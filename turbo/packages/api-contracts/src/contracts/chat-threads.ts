@@ -7,7 +7,11 @@ import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
-import { requestedRunModelSchema } from "./model-providers";
+import { supportedRunModelSchema } from "./model-providers";
+import {
+  avatarVideoAspectRatioSchema,
+  avatarVideoVoiceIdSchema,
+} from "./zero-avatar-video";
 
 const c = initContract();
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -296,6 +300,14 @@ const videoGenerationTemplateRequestSchema = z.object({
   type: z.literal("video"),
   selection: z.object({
     stylePresetId: z.string().min(1),
+    /** User-visible snapshot for API-backed avatar templates. */
+    titleSnapshot: z.string().trim().min(1).optional(),
+    /** User-visible preview snapshot for API-backed avatar templates. */
+    previewUrl: z.url().optional(),
+    /** Provider voice selected for API-backed avatar templates. */
+    voiceId: avatarVideoVoiceIdSchema.optional(),
+    /** Output frame selected for API-backed avatar templates. */
+    aspectRatio: avatarVideoAspectRatioSchema.optional(),
   }),
 });
 
@@ -368,25 +380,44 @@ const feedbackNotePartSchema = z.discriminatedUnion("type", [
   userMessageTemplatePartSchema,
 ]);
 
+const userMessageExternalSourcePartSchema = z
+  .object({
+    type: z.literal("source"),
+    kind: z.enum([
+      "slack",
+      "feishu",
+      "teams",
+      "telegram",
+      "github",
+      "agentphone",
+    ]),
+    href: z.string().url().optional(),
+  })
+  .strict();
+
+const userMessageAgentSourcePartSchema = z
+  .object({
+    type: z.literal("source"),
+    kind: z.literal("agent"),
+    runId: z.string().uuid(),
+    threadId: z.string().uuid(),
+    agentId: z.string().uuid(),
+    titleSnapshot: z.string().min(1),
+    href: z.string().min(1),
+  })
+  .strict();
+
+const userMessageSourcePartSchema = z.discriminatedUnion("kind", [
+  userMessageExternalSourcePartSchema,
+  userMessageAgentSourcePartSchema,
+]);
+
 const userMessagePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
   userMessageAgentPartSchema,
   userMessageTemplatePartSchema,
-  z
-    .object({
-      type: z.literal("source"),
-      kind: z.enum([
-        "slack",
-        "feishu",
-        "teams",
-        "telegram",
-        "github",
-        "agentphone",
-      ]),
-      href: z.string().url().optional(),
-    })
-    .strict(),
+  userMessageSourcePartSchema,
   z
     .object({
       type: z.literal("automation"),
@@ -736,7 +767,7 @@ const chatThreadDraftSchema = z
   })
   .superRefine(requireUserMessageForDraftAttachments);
 
-const selectedModelRequestSchema = requestedRunModelSchema;
+const selectedModelRequestSchema = supportedRunModelSchema;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

@@ -365,6 +365,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatSteer]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Steer pending chat prompts into active runs and render them inline.",
+    enabled: false,
+  },
   [FeatureSwitchKey.PwaChatKeyboardGestures]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -454,13 +460,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ZeroMailReplyFollowUp]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Enable Zero Mail reply follow-up for staff after all API deployments can read Gmail event configurations with threadId.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroBrowser]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -471,9 +470,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ZeroChatMessaging]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Advertise zero chat create, send, and cancel in the agent system prompt without gating the CLI commands or API.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+      "Advertise zero chat create, send, and cancel in the agent system prompt and render source annotations for cross-thread messages without gating the CLI commands or API.",
+    enabled: true,
   },
   [FeatureSwitchKey.RustZeroCli]: {
     maintainer: "yuma@vm0.ai",

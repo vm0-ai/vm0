@@ -6,6 +6,7 @@ import {
   zeroUserPreferencesContract,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -16,6 +17,7 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localeStorageKey } from "../../../i18n/locale-storage.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
+import { billingStatus } from "./chat-composer-test-helpers.ts";
 
 const context = testContext();
 const { set$: setCachedLocale$ } = localStorageSignals(
@@ -29,7 +31,7 @@ function cachedLocale(): string | null {
 
 async function openDialog(
   role: "admin" | "member" = "admin",
-  section: "debug" | "general" | "preference" = "general",
+  section: "debug" | "general" | "model" | "preference" = "general",
 ): Promise<void> {
   context.mocks.data.org({
     id: "org_1",
@@ -915,6 +917,32 @@ describe("settings dialog", () => {
       expect(
         screen.getByRole("heading", { name: "People" }),
       ).toBeInTheDocument();
+    });
+  });
+
+  it.each([
+    {
+      name: "model capabilities",
+      response: billingStatus("limited-free-1", {
+        supportByok: false,
+        restrictedVm0Models: true,
+      }),
+    },
+    {
+      name: "legacy tier-only response",
+      response: billingStatus("limited-free-1"),
+    },
+  ])("hides model settings with $name", async ({ response }) => {
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, response);
+    });
+
+    await openDialog("admin", "model");
+
+    const dialog = screen.getByRole("dialog", { name: "Settings" });
+    await waitFor(() => {
+      expect(within(dialog).queryByText("Models")).not.toBeInTheDocument();
+      expect(screen.getByText("Theme")).toBeInTheDocument();
     });
   });
 

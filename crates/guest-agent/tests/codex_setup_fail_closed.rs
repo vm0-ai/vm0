@@ -101,14 +101,14 @@ fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult
         &guest_contracts::env::RunPayload {
             prompt: "should not reach codex".to_string(),
             codex_runtime_config: serde_json::json!({
-                "providerId": "minimax",
-                "name": "MiniMax",
-                "baseUrl": "https://api.minimax.io/v1",
+                "providerId": "deepseek",
+                "name": "DeepSeek",
+                "baseUrl": "https://api.deepseek.com/",
                 "envKey": "OPENAI_API_KEY",
                 "wireApi": "responses",
                 "supportsWebsockets": false,
                 "modelCatalog": {
-                    "models": [{ "slug": "MiniMax-M3" }],
+                    "models": [{ "slug": "deepseek-v4-flash" }],
                 },
             })
             .to_string(),
@@ -134,7 +134,7 @@ fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult
         "guest-agent must not launch Codex after setup fails"
     );
     assert!(
-        !target_codex_home.join("codex-model-catalog.json").exists(),
+        !target_codex_home.join("models.json").exists(),
         "Codex setup must not write model catalog through symlinked CODEX_HOME"
     );
 

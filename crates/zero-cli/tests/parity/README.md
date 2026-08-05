@@ -41,6 +41,8 @@ case paths, so generated inventory cases can use the same boundary later.
 
 - `argv`, `environment`, `stdin`, `workingDirectory`, `terminalMode`, and
   `timeoutMs`;
+- `rustExecution`, which requires the Rust binary to execute the command
+  natively or through the npm fallback boundary;
 - ordered mock HTTP exchanges, including the exact expected method, raw path,
   raw query, and request body plus the response to return;
 - the request headers to capture for differential comparison;
@@ -71,6 +73,12 @@ with bounded context, and lists per-request and per-path differences. Values of
 the `authorization` header are compared but redacted from diagnostics.
 Fixtures must use synthetic credentials and payload data; never place a real
 token or secret in a case.
+
+The isolated `npx` shim records every Rust fallback invocation. A `native`
+fixture fails immediately if the Rust binary reaches that shim, while a
+`fallback` fixture fails unless the shim was reached. This prevents a parity
+case from passing merely because the Rust binary delegated back to the
+TypeScript executable.
 
 ## Narrow normalization
 

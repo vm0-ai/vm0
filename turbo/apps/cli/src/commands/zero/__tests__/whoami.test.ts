@@ -158,6 +158,81 @@ describe("zero whoami command", () => {
       ).toBe(true);
     });
 
+    it("should show the workspace name and tier", async () => {
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv(
+        "ZERO_TOKEN",
+        buildZeroToken({
+          userId: "user-1",
+          runId: "run-abc",
+          orgId: "org-xyz",
+          scope: "zero",
+          capabilities: ["agent:read"],
+          iat: 1000,
+          exp: 2000,
+        }),
+      );
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("Workspace:  Default Workspace");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Tier:       free");
+        }),
+      ).toBe(true);
+    });
+
+    it("should still print identity when the org lookup fails", async () => {
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv(
+        "ZERO_TOKEN",
+        buildZeroToken({
+          userId: "user-1",
+          runId: "run-abc",
+          orgId: "org-xyz",
+          scope: "zero",
+          capabilities: ["agent:read"],
+          iat: 1000,
+          exp: 2000,
+        }),
+      );
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      server.use(
+        http.get("http://localhost:3000/api/zero/org", () => {
+          return HttpResponse.json(
+            { error: { message: "Organization not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("Workspace:");
+        }),
+      ).toBe(false);
+      expect(
+        output.some((line) => {
+          return line.includes("agent-123");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Capabilities:");
+        }),
+      ).toBe(true);
+    });
+
     it("should show unavailable when ZERO_TOKEN is missing", async () => {
       vi.stubEnv("ZERO_AGENT_ID", "agent-no-token");
 

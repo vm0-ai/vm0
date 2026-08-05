@@ -12,6 +12,7 @@ import {
   Plugin,
   PluginKey,
   NodeSelection,
+  Selection,
   type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
@@ -225,6 +226,7 @@ export type ComposerTemplateAttachmentType =
   | "presentation"
   | "illustration"
   | "video"
+  | "avatar"
   | "workflow"
   | "website";
 
@@ -596,6 +598,7 @@ function templateAttachmentNodeAttributes(
     (type !== "presentation" &&
       type !== "illustration" &&
       type !== "video" &&
+      type !== "avatar" &&
       type !== "workflow" &&
       type !== "website") ||
     typeof title !== "string" ||
@@ -714,6 +717,11 @@ function templateAttachmentTypeLabel(
   if (type === "video") {
     return i18n.t(($) => {
       return $.chat.templates.categories.video;
+    });
+  }
+  if (type === "avatar") {
+    return i18n.t(($) => {
+      return $.artifacts.templates.avatar;
     });
   }
   if (type === "website") {
@@ -1106,6 +1114,7 @@ function isComposerTemplateAttachmentType(
     value === "presentation" ||
     value === "illustration" ||
     value === "video" ||
+    value === "avatar" ||
     value === "workflow" ||
     value === "website"
   );
@@ -1878,6 +1887,14 @@ const inlineTemplatesDisabled$ = computed((): boolean => {
   return false;
 });
 
+function focusMountedEditorAtEnd(editor: Editor): void {
+  editor.view.dispatch(
+    editor.state.tr.setSelection(Selection.atEnd(editor.state.doc)),
+  );
+  editor.view.focus();
+  editor.commands.scrollIntoView();
+}
+
 function createMountEditorCommand({
   editor,
   draft,
@@ -1990,7 +2007,7 @@ function createMountEditorCommand({
       };
       set(registerMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
       if (autoFocus && !isMobileTextInputDevice()) {
-        editor.commands.focus("end");
+        focusMountedEditorAtEnd(editor);
       }
       signal.addEventListener("abort", () => {
         set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
@@ -2217,7 +2234,7 @@ function inlineTemplateNode(
   return editor.schema.nodeFromJSON({
     type: INLINE_TEMPLATE_NODE_NAME,
     attrs: {
-      templateType: request.type,
+      templateType: attachment.type,
       template: request,
       title: attachment.title,
       category: attachment.category,

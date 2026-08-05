@@ -110,6 +110,123 @@ export async function readBrowserScreenshotSchemaAvailable(
   return response.browser_screenshot_schema_available;
 }
 
+export async function readChatAgentRunContextSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-chat-agent-run-context-schema-state",
+  });
+  if (response.chat_agent_run_context_schema_available === undefined) {
+    throw new Error(
+      "readChatAgentRunContextSchemaAvailable missing schema availability",
+    );
+  }
+  return response.chat_agent_run_context_schema_available;
+}
+
+export async function readRunAutonomyBudgetFixture(
+  context: TestContext,
+  runId: string,
+): Promise<number | null> {
+  const response = await postAction(context, {
+    action: "read-run-autonomy-budget",
+    run_id: runId,
+  });
+  if (!("autonomy_budget" in response)) {
+    throw new Error("readRunAutonomyBudgetFixture missing autonomy_budget");
+  }
+  return response.autonomy_budget ?? null;
+}
+
+export async function setRunAutonomyBudgetFixture(
+  context: TestContext,
+  runId: string,
+  autonomyBudget: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-run-autonomy-budget",
+    run_id: runId,
+    autonomy_budget: autonomyBudget,
+  });
+}
+
+export async function readWorkflowAutomationAutonomyFixture(
+  context: TestContext,
+  automationId: string,
+): Promise<{
+  readonly autonomyBudget: number;
+  readonly enabled: boolean;
+  readonly lastRunId: string | null;
+} | null> {
+  const response = await postAction(context, {
+    action: "read-workflow-automation-autonomy-state",
+    automation_id: automationId,
+  });
+  if (!("workflow_automation_state" in response)) {
+    throw new Error(
+      "readWorkflowAutomationAutonomyFixture missing workflow_automation_state",
+    );
+  }
+  const state = response.workflow_automation_state;
+  return state
+    ? {
+        autonomyBudget: state.autonomy_budget,
+        enabled: state.enabled,
+        lastRunId: state.last_run_id,
+      }
+    : null;
+}
+
+export async function setWorkflowAutomationAutonomyBudgetFixture(
+  context: TestContext,
+  automationId: string,
+  autonomyBudget: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-workflow-automation-autonomy-budget",
+    automation_id: automationId,
+    autonomy_budget: autonomyBudget,
+  });
+}
+
+export async function readLatestWorkflowAutomationRunFixture(
+  context: TestContext,
+  automationId: string,
+): Promise<{
+  readonly runId: string;
+  readonly autonomyBudget: number;
+} | null> {
+  const response = await postAction(context, {
+    action: "read-latest-workflow-automation-run",
+    automation_id: automationId,
+  });
+  if (!("workflow_automation_run" in response)) {
+    throw new Error(
+      "readLatestWorkflowAutomationRunFixture missing workflow_automation_run",
+    );
+  }
+  const run = response.workflow_automation_run;
+  return run
+    ? { runId: run.run_id, autonomyBudget: run.autonomy_budget }
+    : null;
+}
+
+export async function readThreadGoalAutonomyBudgetFixture(
+  context: TestContext,
+  threadId: string,
+): Promise<number | null> {
+  const response = await postAction(context, {
+    action: "read-thread-goal-autonomy-budget",
+    thread_id: threadId,
+  });
+  if (!("autonomy_budget" in response)) {
+    throw new Error(
+      "readThreadGoalAutonomyBudgetFixture missing autonomy_budget",
+    );
+  }
+  return response.autonomy_budget ?? null;
+}
+
 export async function resetDatabasePool(context: TestContext): Promise<void> {
   await postAction(context, { action: "reset-database-pool" });
 }

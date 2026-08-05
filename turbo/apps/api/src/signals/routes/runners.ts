@@ -5,6 +5,7 @@ import {
   elapsedSinceApiStartMs,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  runnersActiveInputsContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -27,7 +28,9 @@ import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realti
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   runnerState,
   type RunnerHeldSandboxState as PersistedRunnerHeldSandboxState,
@@ -35,6 +38,7 @@ import {
 } from "@vm0/db/schema/runner-state";
 import {
   and,
+  asc,
   desc,
   eq,
   gt,
@@ -47,11 +51,16 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { z } from "zod";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+
+import { authContext$ } from "../auth/auth-context";
+import { authRoute } from "../auth/auth-route";
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
-import { db$, writeDb$, type Db } from "../external/db";
+import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   generatePresignedGetUrl,
   publicS3DownloadSource,
@@ -60,12 +69,13 @@ import {
 } from "../external/s3";
 import {
   createRunnerGroupRealtimeToken,
+  publishChatThreadMessageCreatedSafely,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../../lib/time";
 import { env } from "../../lib/env";
-import { badRequestMessage, notFound } from "../../lib/error";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import {
@@ -77,8 +87,18 @@ import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
+import {
+  activeInputPromptFitsControlPayload,
+  materializeActiveInputPrompt,
+} from "../services/active-input-prompt.service";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import {
+  lockChatQueueThread,
+  pendingActiveInputPromptCondition,
+} from "../services/chat-event-queue.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
+import { replaceLoadedChatEvent } from "../services/zero-chat-event.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
@@ -2562,6 +2582,277 @@ const builtinFirewallsResolveInner$ = command(
   },
 );
 
+function pendingActiveInputCondition(
+  db: Pick<Db, "select">,
+  chatThreadId: string,
+) {
+  return and(
+    eq(chatEvents.chatThreadId, chatThreadId),
+    pendingActiveInputPromptCondition(db),
+  );
+}
+
+async function loadRunningActiveInputRun(
+  db: ReadonlyDb,
+  args: {
+    readonly runId: string;
+    readonly userId: string;
+    readonly orgId: string;
+  },
+) {
+  const [run] = await db
+    .select({ chatThreadId: zeroRuns.chatThreadId })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.id, args.runId),
+        eq(agentRuns.userId, args.userId),
+        eq(agentRuns.orgId, args.orgId),
+        eq(agentRuns.status, "running"),
+      ),
+    )
+    .limit(1);
+  if (!run?.chatThreadId) {
+    return null;
+  }
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    args.orgId,
+    args.userId,
+  );
+  if (!isFeatureEnabled(FeatureSwitchKey.ChatSteer, featureSwitchContext)) {
+    return null;
+  }
+  return { chatThreadId: run.chatThreadId };
+}
+
+function pendingActiveInputRows(
+  db: Pick<Db, "select">,
+  chatThreadId: string,
+  eventIds?: readonly string[],
+) {
+  return db
+    .select({
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      createdAt: chatEvents.createdAt,
+      eventType: chatEvents.eventType,
+      contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
+      triggerSource: chatEvents.triggerSource,
+      userMessage: chatEvents.userMessage,
+      attachFiles: chatEvents.attachFiles,
+      generationTemplate: chatEvents.generationTemplate,
+      seqId: chatEvents.seqId,
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        pendingActiveInputCondition(db, chatThreadId),
+        eventIds ? inArray(chatEvents.id, eventIds) : undefined,
+      ),
+    )
+    .orderBy(asc(chatEvents.seqId));
+}
+
+type PendingActiveInputRow = Awaited<
+  ReturnType<typeof pendingActiveInputRows>
+>[number];
+
+async function materializePendingActiveInputPrompts(
+  db: Db,
+  candidates: readonly PendingActiveInputRow[],
+  auth: { readonly orgId: string; readonly userId: string },
+  signal: AbortSignal,
+): Promise<Map<string, string> | null> {
+  const prompts = new Map<string, string>();
+  for (const event of candidates) {
+    if (!event.userMessage) {
+      return null;
+    }
+    prompts.set(
+      event.id,
+      await materializeActiveInputPrompt(db, {
+        event: {
+          id: event.id,
+          chatThreadId: event.chatThreadId,
+          triggerSource: event.triggerSource,
+          userMessage: event.userMessage,
+          generationTemplate: event.generationTemplate,
+        },
+        orgId: auth.orgId,
+        userId: auth.userId,
+      }),
+    );
+    signal.throwIfAborted();
+  }
+  return prompts;
+}
+
+const activeInputClaimBody$ = bodyResultOf(runnersActiveInputsContract.claim);
+
+const listActiveInputsInner$ = command(async ({ get }, signal: AbortSignal) => {
+  const auth = get(authContext$);
+  const { runId } = get(pathParamsOf(runnersActiveInputsContract.list));
+  if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
+    return notFound("Run not found");
+  }
+  const db = get(db$);
+  const run = await loadRunningActiveInputRun(db, {
+    runId,
+    userId: auth.userId,
+    orgId: auth.orgId,
+  });
+  signal.throwIfAborted();
+  if (!run) {
+    return notFound("Run not found");
+  }
+  const rows = await pendingActiveInputRows(db, run.chatThreadId);
+  signal.throwIfAborted();
+  return {
+    status: 200 as const,
+    body: {
+      eventIds: rows.map((row) => {
+        return row.id;
+      }),
+    },
+  };
+});
+
+const claimActiveInputsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const { runId } = get(pathParamsOf(runnersActiveInputsContract.claim));
+    if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
+      return notFound("Run not found");
+    }
+    const body = await get(activeInputClaimBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const uniqueEventIds = [...new Set(body.data.eventIds)];
+    if (uniqueEventIds.length !== body.data.eventIds.length) {
+      return badRequestMessage("Active input event IDs must be unique");
+    }
+
+    const db = set(writeDb$);
+    const run = await loadRunningActiveInputRun(db, {
+      runId,
+      userId: auth.userId,
+      orgId: auth.orgId,
+    });
+    signal.throwIfAborted();
+    if (!run) {
+      return notFound("Run not found");
+    }
+    const candidates = await pendingActiveInputRows(
+      db,
+      run.chatThreadId,
+      uniqueEventIds,
+    );
+    signal.throwIfAborted();
+    if (candidates.length !== uniqueEventIds.length) {
+      return conflict("One or more active inputs are no longer pending");
+    }
+    const materializedPrompts = await materializePendingActiveInputPrompts(
+      db,
+      candidates,
+      auth,
+      signal,
+    );
+    if (!materializedPrompts) {
+      return conflict("One or more active inputs cannot be materialized");
+    }
+    const promptParts: string[] = [];
+    for (const candidate of candidates) {
+      const prompt = materializedPrompts.get(candidate.id);
+      if (prompt === undefined) {
+        throw new Error("Active input prompt materialization is missing");
+      }
+      promptParts.push(prompt);
+    }
+    const materializedPrompt = promptParts.join("\n\n");
+    if (!activeInputPromptFitsControlPayload(materializedPrompt)) {
+      return conflict(
+        "Active input batch exceeds runner control payload limit",
+      );
+    }
+
+    const result = await db.transaction(async (tx) => {
+      if (!(await lockChatQueueThread(tx, run.chatThreadId))) {
+        return null;
+      }
+      const [lockedRun] = await tx
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.id, runId),
+            eq(agentRuns.userId, auth.userId),
+            eq(agentRuns.orgId, auth.orgId),
+            eq(agentRuns.status, "running"),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!lockedRun) {
+        return null;
+      }
+      const events = await pendingActiveInputRows(
+        tx,
+        run.chatThreadId,
+        uniqueEventIds,
+      );
+      if (events.length !== uniqueEventIds.length) {
+        return null;
+      }
+      for (const event of events) {
+        if (!event.userMessage) {
+          throw new Error("Pending active input has invalid prompt data");
+        }
+        const replacement = await replaceLoadedChatEvent(
+          tx,
+          {
+            id: event.id,
+            chatThreadId: event.chatThreadId,
+            createdAt: event.createdAt,
+            eventType: event.eventType,
+            contextType: event.contextType,
+            contextId: event.contextId,
+          },
+          {
+            chatThreadId: event.chatThreadId,
+            eventType: "input.prompt",
+            runId,
+            userMessage: event.userMessage,
+            attachFiles: event.attachFiles,
+            generationTemplate: event.generationTemplate,
+            ...(event.triggerSource
+              ? { triggerSource: event.triggerSource }
+              : {}),
+          },
+        );
+        if (!replacement) {
+          throw new Error("Active input claim lost after locking the thread");
+        }
+      }
+      return true;
+    });
+    signal.throwIfAborted();
+    if (!result) {
+      return conflict("One or more active inputs are no longer pending");
+    }
+    await publishChatThreadMessageCreatedSafely(auth.userId, run.chatThreadId);
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: { prompt: materializedPrompt },
+    };
+  },
+);
+
 export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersHeartbeatContract.heartbeat,
@@ -2574,6 +2865,20 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersJobClaimContract.claim,
     handler: claimInner$,
+  },
+  {
+    route: runnersActiveInputsContract.list,
+    handler: authRoute(
+      { accept: ["sandbox"], acceptAnySandboxCapability: true },
+      listActiveInputsInner$,
+    ),
+  },
+  {
+    route: runnersActiveInputsContract.claim,
+    handler: authRoute(
+      { accept: ["sandbox"], acceptAnySandboxCapability: true },
+      claimActiveInputsInner$,
+    ),
   },
   {
     route: runnersNetworkPolicyRefreshContract.refresh,

@@ -20,7 +20,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { readUserSecrets } from "./helpers/user-config-state";
 import {
   awsVerificationCode,
   createConnectorBddApi,
@@ -30,7 +30,6 @@ import {
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
-const authOrgApi = createAuthOrgAgentsBddApi(context);
 
 const AWS_REDIRECT_URI =
   "https://us-east-1.signin.aws.amazon.com/v1/sessions/confirmation";
@@ -77,6 +76,8 @@ const NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN =
   "bdd-switch-parental-controls-session-token";
 const NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN =
   "bdd-switch-parental-controls-replacement-session-token";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_UNLOCK_CODE =
+  "bdd-switch-parental-controls-unlock-code-must-not-leak";
 
 async function awsActor(): Promise<ApiTestUser> {
   const bdd = createBddApi(context);
@@ -259,7 +260,8 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
                 label: "Family room",
                 device: {
                   serialNumber: "bdd-serial-must-not-leak",
-                  synchronizedUnlockCode: "1234",
+                  synchronizedUnlockCode:
+                    NINTENDO_SWITCH_PARENTAL_CONTROLS_UNLOCK_CODE,
                 },
               },
             ],
@@ -420,8 +422,11 @@ describe("CONN-02: external-code session lifecycle", () => {
       );
     }
 
-    const secretList = await authOrgApi.listSecrets(actor);
-    const connectorSecretNames = secretList.secrets
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const connectorSecretNames = storedSecrets
       .filter((secret) => {
         return secret.type === "connector";
       })
@@ -435,8 +440,8 @@ describe("CONN-02: external-code session lifecycle", () => {
       "AWS_SECRET_ACCESS_KEY",
       "AWS_SESSION_TOKEN",
     ]);
-    expectNoVisibleSecret(secretList, "aws-secret-access-key");
-    expectNoVisibleSecret(secretList, "aws-login-refresh-token");
+    expectNoVisibleSecret(storedSecrets, "aws-secret-access-key");
+    expectNoVisibleSecret(storedSecrets, "aws-login-refresh-token");
 
     const replay = await connectorsApi.completeExternalCode(actor, "aws", {
       sessionId: session.sessionId,
@@ -460,9 +465,12 @@ describe("CONN-02: external-code session lifecycle", () => {
     expectApiError(afterDelete.body);
     expect(afterDelete.body.error.code).toBe("NOT_FOUND");
 
-    const secretsAfterDelete = await authOrgApi.listSecrets(actor);
+    const secretsAfterDelete = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      secretsAfterDelete.secrets.filter((secret) => {
+      secretsAfterDelete.filter((secret) => {
         return secret.type === "connector";
       }),
     ).toStrictEqual([]);
@@ -663,8 +671,11 @@ describe("CONN-02: external-code session lifecycle", () => {
         name: "NINTENDO_STORE_LOCALE",
       }),
     );
-    const secretList = await authOrgApi.listSecrets(actor);
-    const connectorSecretNames = secretList.secrets
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const connectorSecretNames = storedSecrets
       .filter((secret) => {
         return secret.type === "connector";
       })
@@ -676,8 +687,8 @@ describe("CONN-02: external-code session lifecycle", () => {
       "NINTENDO_STORE_ID_TOKEN",
       "NINTENDO_STORE_SESSION_TOKEN",
     ]);
-    expectNoVisibleSecret(secretList, "bdd-nintendo-session-token");
-    expectNoVisibleSecret(secretList, "bdd-nintendo-access-token");
+    expectNoVisibleSecret(storedSecrets, "bdd-nintendo-session-token");
+    expectNoVisibleSecret(storedSecrets, "bdd-nintendo-access-token");
 
     await connectorsApi.deleteConnectorBySlug(actor, "nintendo-store");
   });
@@ -764,7 +775,10 @@ describe("CONN-02: external-code session lifecycle", () => {
       "bdd-switch-parental-controls-access-token",
     );
     expectNoVisibleSecret(complete, "bdd-serial-must-not-leak");
-    expectNoVisibleSecret(complete, "1234");
+    expectNoVisibleSecret(
+      complete,
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_UNLOCK_CODE,
+    );
 
     const listed = await connectorsApi.listConnectors(actor);
     for (const name of [
@@ -795,8 +809,11 @@ describe("CONN-02: external-code session lifecycle", () => {
       );
     }
 
-    const secretList = await authOrgApi.listSecrets(actor);
-    const connectorSecretNames = secretList.secrets
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const connectorSecretNames = storedSecrets
       .filter((secret) => {
         return secret.type === "connector";
       })

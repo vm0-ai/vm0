@@ -26,10 +26,6 @@ import {
   type ConnectorSecretValueRef,
   type ConnectorVariableValueRef,
 } from "@vm0/connectors/connector-config";
-import {
-  connectorAuthMethodOwnedSecretNames,
-  connectorAuthMethodRuntimeMetadata,
-} from "@vm0/connectors/connector-auth-method";
 
 import { singleton } from "../../lib/singleton";
 import type { ReadonlyDb } from "../external/db";
@@ -635,50 +631,6 @@ export function getConnectorRuntimeMethod(args: {
     return undefined;
   }
   return method;
-}
-
-export function getConnectorRuntimeStoredSecretDisplayInfo(
-  snapshot: ConnectorRuntimeSnapshot,
-  secretName: string,
-): {
-  readonly label: string;
-  readonly environmentNames: readonly string[];
-} | null {
-  for (const connector of snapshot.connectors.values()) {
-    const methods = [...connector.methods.values()];
-    if (
-      !methods.some((runtimeMethod) => {
-        return connectorAuthMethodOwnedSecretNames(
-          runtimeMethod.method,
-        ).includes(secretName);
-      })
-    ) {
-      continue;
-    }
-    const environmentNames = [
-      ...new Set(
-        methods.flatMap((runtimeMethod) => {
-          return connectorAuthMethodRuntimeMetadata(runtimeMethod.method)
-            .runtimeBindings.filter((binding) => {
-              return (
-                binding.source.kind === "connector-secret" &&
-                binding.source.name === secretName
-              );
-            })
-            .map((binding) => {
-              return binding.envName;
-            });
-        }),
-      ),
-    ];
-    if (environmentNames.length > 0) {
-      return {
-        label: connector.catalogConnector.label,
-        environmentNames,
-      };
-    }
-  }
-  return null;
 }
 
 export function listConnectorRuntimeVisibleSlugs(args: {

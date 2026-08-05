@@ -35,7 +35,6 @@ const signedInAuthState: DesktopAuthState = {
   organization: {
     id: "org_test",
     name: "Desktop Team",
-    slug: "desktop-team",
   },
 };
 

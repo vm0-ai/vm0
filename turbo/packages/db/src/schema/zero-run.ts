@@ -6,6 +6,8 @@ import {
   text,
   index,
   timestamp,
+  integer,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
@@ -30,6 +32,7 @@ export const zeroRuns = pgTable(
         { onDelete: "cascade" },
       ),
     triggerSource: varchar("trigger_source", { length: 20 }).notNull(),
+    autonomyBudget: integer("autonomy_budget").notNull().default(10),
     // Canonical run provenance for the Automation that started this run.
     workflowAutomationId: uuid("workflow_automation_id").references(
       (): AnyPgColumn => {
@@ -85,6 +88,10 @@ export const zeroRuns = pgTable(
       index("idx_zero_runs_goal")
         .on(table.goalId)
         .where(sql`goal_id IS NOT NULL`),
+      check(
+        "zero_runs_autonomy_budget_check",
+        sql`${table.autonomyBudget} BETWEEN 0 AND 10`,
+      ),
     ];
   },
 );

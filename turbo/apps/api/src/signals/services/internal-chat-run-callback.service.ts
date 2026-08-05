@@ -42,6 +42,7 @@ import { z } from "zod";
 
 import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
+import { AUTONOMY_BUDGET_EXHAUSTED_MESSAGE } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
@@ -129,6 +130,7 @@ import {
 } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
+import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import {
   projectUserMessage,
@@ -661,6 +663,7 @@ interface CreateQueuedChatRunInput {
     readonly payload: unknown;
   };
   readonly apiStartTime: number;
+  readonly autonomyBudget: number;
   readonly userInfoExtras?: {
     readonly slackDisplayName?: string;
     readonly slackUserId?: string;
@@ -920,6 +923,7 @@ function buildQueuedCreateZeroRunArgs(
       modelProviderCredentialScope: input.modelPin.modelProviderCredentialScope,
       selectedModel: input.modelPin.selectedModel,
     },
+    zeroRunMetadata: { autonomyBudget: input.autonomyBudget },
     threadSessionRoute: {
       selectedModel: input.modelPin.selectedModel,
       modelProvider: input.effectiveModelProvider ?? null,
@@ -2369,7 +2373,9 @@ async function getLatestRunsByThreadId(
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),
-        eq(zeroRuns.triggerSource, triggerSource),
+        isWebChatTriggerSource(triggerSource)
+          ? inArray(zeroRuns.triggerSource, ["web", "agent"])
+          : eq(zeroRuns.triggerSource, triggerSource),
         or(
           sql`${agentRuns.status} IS DISTINCT FROM ${"cancelled"}`,
           sql`${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR}`,
@@ -2709,10 +2715,11 @@ function loadQueuedMessageSessionState(
           cliAgentType: modelRoute.cliAgentType,
         },
       });
-      const incompleteContext =
-        args.queuedMessage.triggerSource === "web"
-          ? await loadWebChatIncompleteContext(args.db, args.threadId)
-          : "";
+      const incompleteContext = isWebChatTriggerSource(
+        args.queuedMessage.triggerSource,
+      )
+        ? await loadWebChatIncompleteContext(args.db, args.threadId)
+        : "";
       return [
         sessionResolution.action === "rotated",
         incompleteContext,
@@ -2807,7 +2814,8 @@ async function resolveQueuedLaunchMaterial(
   const triggerSource = args.queuedMessage.triggerSource;
   let load: LaunchLoader;
   switch (triggerSource) {
-    case "web": {
+    case "web":
+    case "agent": {
       load = loadWebQueuedLaunchMaterial;
       break;
     }
@@ -2917,7 +2925,8 @@ function queuedMessageAdmissionFailure(
   };
   const triggerSource = args.queuedMessage.triggerSource;
   switch (triggerSource) {
-    case "web": {
+    case "web":
+    case "agent": {
       return { kind: "web_admission_failure", ...common };
     }
     case "slack": {
@@ -3090,6 +3099,18 @@ async function buildCreateQueuedChatRunInput(
     ...args,
     userMessageProjection,
   });
+  if (args.queuedMessage.autonomyBudget.kind !== "ok") {
+    return queuedMessageAdmissionFailure(args, launchMaterial, {
+      code:
+        args.queuedMessage.autonomyBudget.kind === "exhausted"
+          ? "AUTONOMY_BUDGET_EXHAUSTED"
+          : "AUTONOMY_SOURCE_UNAVAILABLE",
+      message:
+        args.queuedMessage.autonomyBudget.kind === "exhausted"
+          ? AUTONOMY_BUDGET_EXHAUSTED_MESSAGE
+          : args.queuedMessage.autonomyBudget.message,
+    });
+  }
   if ("error" in modelRouteResolution) {
     return queuedMessageAdmissionFailure(
       args,
@@ -3175,6 +3196,7 @@ async function buildCreateQueuedChatRunInput(
     ),
     ...queuedIntegrationLaunchFields(launchMaterial),
     apiStartTime: args.queuedMessage.createdAt.getTime(),
+    autonomyBudget: args.queuedMessage.autonomyBudget.autonomyBudget,
   };
 }
 

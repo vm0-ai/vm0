@@ -2,19 +2,24 @@ import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { i18n } from "../i18n/index.ts";
 
 const USAGE_DISPLAY_NAMES = {
-  auto(): string {
-    return i18n.t(($) => {
-      return $.usage.displayNames.auto;
-    });
-  },
   finance(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.finance;
     });
   },
+  imageRecognize(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.imageRecognize;
+    });
+  },
   maps(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.maps;
+    });
+  },
+  model(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.model;
     });
   },
   peopleSearch(): string {
@@ -47,6 +52,8 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
     "people-search": USAGE_DISPLAY_NAMES.peopleSearch,
     finance: USAGE_DISPLAY_NAMES.finance,
     weather: USAGE_DISPLAY_NAMES.weather,
+    "image-recognition": USAGE_DISPLAY_NAMES.imageRecognize,
+    "image-interpret-marks": USAGE_DISPLAY_NAMES.imageRecognize,
   };
 
 // Current Settings responses retain raw usage kinds inside each provider.
@@ -65,7 +72,9 @@ const MANAGED_USAGE_PROVIDER_DISPLAY_NAMES: Readonly<
 };
 
 const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
-  "vm0-model": USAGE_DISPLAY_NAMES.auto,
+  // Rows recorded before image tasks moved to task-scoped kinds carry
+  // kind "model" with this provider; nothing else runs it as a chat model.
+  "google/gemini-3.5-flash": USAGE_DISPLAY_NAMES.imageRecognize,
 };
 
 function titleCaseUsageToken(token: string): string {
@@ -135,8 +144,12 @@ function usageKindBase(kind: string): string {
 export function getCreditUsageDisplayName(
   kind: string,
   provider: string,
+  genericModelName = false,
 ): string {
   const baseKind = usageKindBase(kind);
+  if (genericModelName && baseKind === "model") {
+    return USAGE_DISPLAY_NAMES.model();
+  }
   const managedKindDisplayName = MANAGED_USAGE_KIND_DISPLAY_NAMES[baseKind];
   if (managedKindDisplayName) {
     return managedKindDisplayName();

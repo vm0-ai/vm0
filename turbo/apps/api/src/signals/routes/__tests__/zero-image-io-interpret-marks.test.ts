@@ -29,21 +29,21 @@ const GEMINI_INTERPRET_STARTING_CREDITS = 1000;
 const GEMINI_INTERPRET_EXPECTED_CHARGE = 13;
 const GEMINI_INTERPRET_PRICING_ROWS = [
   {
-    kind: "model",
+    kind: "image-interpret-marks",
     provider: "google/gemini-3.5-flash",
     category: "tokens.input",
     unitPrice: 1500,
     unitSize: 1_000_000,
   },
   {
-    kind: "model",
+    kind: "image-interpret-marks",
     provider: "google/gemini-3.5-flash",
     category: "tokens.cache_read",
     unitPrice: 150,
     unitSize: 1_000_000,
   },
   {
-    kind: "model",
+    kind: "image-interpret-marks",
     provider: "google/gemini-3.5-flash",
     category: "tokens.output",
     unitPrice: 9000,
@@ -82,7 +82,7 @@ async function seedInterpretBilling(orgId: string): Promise<void> {
 
 async function deleteInterpretPricingRows() {
   return await deleteUsagePricingRows({
-    kind: "model",
+    kind: "image-interpret-marks",
     provider: "google/gemini-3.5-flash",
     categories: ["tokens.input", "tokens.cache_read", "tokens.output"],
   });

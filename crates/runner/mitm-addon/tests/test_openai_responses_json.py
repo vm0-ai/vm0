@@ -44,12 +44,12 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
         assert "reasoning_tokens" not in result
 
     def test_missing_cached_input_details_does_not_emit_cache_read(self):
-        body = b'{"model":"gpt-5.4","usage":{"input_tokens":10,"output_tokens":5}}'
+        body = b'{"model":"gpt-5.5","usage":{"input_tokens":10,"output_tokens":5}}'
         result, error = extract_openai_responses_usage_with_error_from_json(body, None)
         assert error is None
         assert result is not None
         assert result == {
-            "model": "gpt-5.4",
+            "model": "gpt-5.5",
             "tokens.input": 10,
             "tokens.output": 5,
         }

@@ -26,6 +26,7 @@ import {
   CLIENT_VERSION_HEADER,
 } from "../../contracts/client-headers";
 import {
+  ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
@@ -71,6 +72,10 @@ const storageManifestMaxPathBytesDoc = [
 const resumeSessionHistoryMaxBytesDoc = [
   "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
   "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
+] as const;
+const activeInputControlPayloadMaxBytesDoc = [
+  "Maximum serialized active-input control payload accepted by runner and guest process control.",
+  "The API validates the materialized prompt against this shared limit before committing claimed chat events.",
 ] as const;
 const runnerCancellationRecoveryGraceMsDoc = [
   "Maximum cooperative user-cancellation recovery window enforced by runners.",
@@ -204,6 +209,12 @@ const expectedBindings = [
     rustConstName: "CLIENT_TYPE_RUNNER",
     value: rustString(CLIENT_TYPE_RUNNER),
     rustDoc: ["Client type value for the runner."],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES",
+    value: rustU64(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES),
+    rustDoc: activeInputControlPayloadMaxBytesDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -462,6 +473,9 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       "/// Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
+    );
+    expect(firstRender).toContain(
+      `pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = ${ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES};`,
     );
     expect(firstRender).toContain(
       `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,

@@ -6,13 +6,13 @@ import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { readUserSecrets } from "./helpers/user-config-state";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -138,19 +138,16 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       created: true,
     });
 
-    const secretClient = setupApp({ context })(zeroSecretsContract);
-    const secretList = await accept(
-      secretClient.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+    });
     expect(
-      secretList.body.secrets.find((secret) => {
+      storedSecrets.some((secret) => {
         return secret.type === "model-provider";
       }),
-    ).toMatchObject({ connectorDisplay: null });
-    expect(JSON.stringify(secretList.body)).not.toContain("sk-ant-test");
+    ).toBeTruthy();
+    expect(JSON.stringify(storedSecrets)).not.toContain("sk-ant-test");
   });
 
   it("updates an existing personal provider with 200", async () => {

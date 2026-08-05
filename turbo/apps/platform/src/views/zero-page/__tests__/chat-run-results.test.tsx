@@ -6,12 +6,15 @@ import {
   chatThreadMarkReadContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { click } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockChatLifecycle, mockSubagentThread } from "./chat-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
+  billingStatus,
   buildModelPolicy,
   buildProvider,
 } from "./chat-composer-test-helpers.ts";
@@ -57,7 +60,7 @@ describe("chat lifecycle", () => {
           runId: "run-usage-chip",
           usage: {
             version: 1,
-            totalCredits: 24_734,
+            totalCredits: 24_234,
             settledAt: "2026-06-09T10:00:02Z",
             breakdown: [
               {
@@ -69,11 +72,6 @@ describe("chat lifecycle", () => {
                 kind: "model/kimi-k2.5/tokens.output",
                 credits: 1000,
                 providers: [{ provider: "moonshot", credits: 1000 }],
-              },
-              {
-                kind: "model/vm0-model/tokens.output",
-                credits: 500,
-                providers: [{ provider: "vm0-model", credits: 500 }],
               },
               {
                 kind: "image",
@@ -93,7 +91,7 @@ describe("chat lifecycle", () => {
     });
 
     const credit = await waitFor(() => {
-      return buttonByLabel("Credit usage 24,734");
+      return buttonByLabel("Credit usage 24,234");
     });
     const actions = credit.closest('[data-testid="chat-event-actions"]');
     expect(actions).not.toBeNull();
@@ -108,10 +106,9 @@ describe("chat lifecycle", () => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
         1,
       );
-      expect(screen.getAllByText("24,734").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("24,234").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("Auto").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
         1,
       );
@@ -136,6 +133,76 @@ describe("chat lifecycle", () => {
       );
       expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("hides run model names for limited-free-1 workspaces", async () => {
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(
+        200,
+        billingStatus("limited-free-1", {
+          supportByok: false,
+          restrictedVm0Models: true,
+        }),
+      );
+    });
+    mockChatLifecycle(context, {
+      threadId: "thread-limited-free-usage-chip",
+      chatEvents: [
+        {
+          id: "msg-limited-free-usage-user",
+          role: "user",
+          content: "Summarize usage",
+          runId: "run-limited-free-usage",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-limited-free-usage-assistant",
+          role: "assistant",
+          content: "Usage summary is ready.",
+          runId: "run-limited-free-usage",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-limited-free-usage",
+          role: "assistant",
+          content: null,
+          runId: "run-limited-free-usage",
+          usage: {
+            version: 1,
+            totalCredits: 330,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/gpt-5.6-luna/tokens.output",
+                credits: 300,
+                providers: [{ provider: "openai", credits: 300 }],
+              },
+              {
+                kind: "image",
+                credits: 30,
+                providers: [{ provider: "gpt-image-2", credits: 30 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-limited-free-usage-chip",
+    });
+
+    click(await screen.findByLabelText("Credit usage 330"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("model").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.queryByText("GPT 5.6 Luna")).not.toBeInTheDocument();
     });
   });
 
@@ -781,6 +848,230 @@ describe("chat lifecycle", () => {
         "false",
       );
     });
+  });
+
+  it.each([
+    {
+      name: "splits one completed run into folds at user boundaries",
+      caseId: "two-folds",
+      sequence: ["U1", "A2", "A3", "A4", "U2", "A5", "A6", "A7", "A8"],
+      visibleOrder: [
+        "U1",
+        "Worked for 30s",
+        "A4",
+        "U2",
+        "Worked for 40s",
+        "A8",
+      ],
+      usageAssistant: "A8",
+      folds: [
+        {
+          label: "Worked for 30s",
+          hidden: ["A2", "A3"],
+          final: "A4",
+        },
+        {
+          label: "Worked for 40s",
+          hidden: ["A5", "A6", "A7"],
+          final: "A8",
+        },
+      ],
+    },
+    {
+      name: "keeps one assistant before a trailing user unfolded",
+      caseId: "single-assistant-before-user",
+      sequence: ["U1", "A2", "U2"],
+      visibleOrder: ["U1", "A2", "U2"],
+      usageAssistant: "A2",
+      folds: [],
+    },
+    {
+      name: "folds earlier assistant work before a trailing user",
+      caseId: "fold-before-user",
+      sequence: ["U1", "A2", "A3", "U2"],
+      visibleOrder: ["U1", "Worked for 20s", "A3", "U2"],
+      usageAssistant: "A3",
+      folds: [
+        {
+          label: "Worked for 20s",
+          hidden: ["A2"],
+          final: "A3",
+        },
+      ],
+    },
+    {
+      name: "keeps one assistant in each user phase unfolded",
+      caseId: "single-assistant-per-phase",
+      sequence: ["U1", "A2", "U2", "A3"],
+      visibleOrder: ["U1", "A2", "U2", "A3"],
+      usageAssistant: "A3",
+      folds: [],
+    },
+  ])(
+    "$name",
+    async ({ caseId, sequence, visibleOrder, usageAssistant, folds }) => {
+      const threadId = `thread-work-folding-${caseId}`;
+      const runId = `run-work-folding-${caseId}`;
+      const chatEvents: MockChatEventInput[] = sequence.map(
+        (content, index) => {
+          const createdAt = new Date(
+            Date.UTC(2026, 7, 5, 10, 0, index * 10),
+          ).toISOString();
+          if (content.startsWith("U")) {
+            return { role: "user", content, runId, createdAt };
+          }
+          return {
+            role: "assistant",
+            content,
+            runId,
+            createdAt,
+            ...(index === sequence.length - 1
+              ? { runLifecycleEvent: "completed" as const }
+              : {}),
+          };
+        },
+      );
+      if (sequence.at(-1)?.startsWith("U")) {
+        chatEvents.push({
+          role: "assistant",
+          content: null,
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: new Date(
+            Date.UTC(2026, 7, 5, 10, 0, sequence.length * 10),
+          ).toISOString(),
+        });
+      }
+      chatEvents.push({
+        role: "assistant",
+        content: null,
+        runId,
+        usage: {
+          version: 1,
+          totalCredits: 12,
+          settledAt: new Date(
+            Date.UTC(2026, 7, 5, 10, 0, sequence.length * 10 + 1),
+          ).toISOString(),
+          breakdown: [],
+        },
+        createdAt: new Date(
+          Date.UTC(2026, 7, 5, 10, 0, sequence.length * 10 + 1),
+        ).toISOString(),
+      });
+      mockChatLifecycle(context, { threadId, chatEvents });
+
+      detachedSetupPage({
+        context,
+        path: `/chats/${threadId}`,
+        featureSwitches: { [FeatureSwitchKey.ChatSteer]: true },
+      });
+
+      await screen.findByText(visibleOrder[0]!);
+      const expandButtons = screen.queryAllByLabelText("Expand work history");
+      expect(expandButtons).toHaveLength(folds.length);
+      for (const [index, fold] of folds.entries()) {
+        const expandButton = expandButtons[index]!;
+        expect(expandButton).toHaveTextContent(fold.label);
+        const assistantGroup = expandButton.closest(
+          '[data-role="assistant"]',
+        ) as HTMLElement | null;
+        expect(assistantGroup).not.toBeNull();
+        expect(
+          within(assistantGroup!).getByText(fold.final),
+        ).toBeInTheDocument();
+        for (const hidden of fold.hidden) {
+          expect(within(assistantGroup!).queryByText(hidden)).toBeNull();
+        }
+      }
+      for (let index = 1; index < visibleOrder.length; index++) {
+        expectTextBefore(
+          document.body,
+          visibleOrder[index - 1]!,
+          visibleOrder[index]!,
+        );
+      }
+      for (const [index, fold] of folds.entries()) {
+        const expandButton = expandButtons[index]!;
+        const assistantGroup = expandButton.closest(
+          '[data-role="assistant"]',
+        ) as HTMLElement;
+        click(expandButton);
+        await waitFor(() => {
+          for (const hidden of fold.hidden) {
+            expect(
+              within(assistantGroup).getByText(hidden),
+            ).toBeInTheDocument();
+          }
+        });
+      }
+
+      const usageButtons = screen.queryAllByLabelText("Credit usage 12");
+      expect(usageButtons).toHaveLength(1);
+      const usageAssistantGroup = usageButtons[0]!.closest(
+        '[data-role="assistant"]',
+      ) as HTMLElement | null;
+      expect(usageAssistantGroup).not.toBeNull();
+      expect(
+        within(usageAssistantGroup!).getByText(usageAssistant),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it("keeps the legacy trailing-user layout when chat steer is disabled", async () => {
+    const threadId = "thread-work-folding-trailing-user-disabled";
+    const runId = "run-work-folding-trailing-user-disabled";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          role: "user",
+          content: "Prepare the disabled-switch launch plan",
+          runId,
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Reviewing the disabled-switch launch notes.",
+          runId,
+          createdAt: "2026-08-04T10:00:10Z",
+        },
+        {
+          role: "assistant",
+          content: "The disabled-switch launch plan is ready.",
+          runId,
+          createdAt: "2026-08-04T10:00:20Z",
+        },
+        {
+          role: "user",
+          content: "Add disabled-switch rollback steps",
+          runId,
+          createdAt: "2026-08-04T10:00:30Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-08-04T10:00:40Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatSteer]: false },
+    });
+
+    await expect(
+      screen.findByText("Reviewing the disabled-switch launch notes."),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    expectTextBefore(
+      document.body,
+      "The disabled-switch launch plan is ready.",
+      "Add disabled-switch rollback steps",
+    );
   });
 
   it("keeps the established completed-run layout across container sizes", async () => {

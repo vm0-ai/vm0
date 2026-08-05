@@ -22,6 +22,7 @@ import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -651,23 +652,6 @@ export async function setTelegramThinkingMessageIdFixture(
     .where(eq(chatTelegramContext.id, event.contextId));
 }
 
-export async function clearGitHubTriggerCommentBodyFixture(
-  eventId: string,
-): Promise<void> {
-  const [event] = await db()
-    .select({ contextId: chatEvents.contextId })
-    .from(chatEvents)
-    .where(eq(chatEvents.id, eventId))
-    .limit(1);
-  if (!event?.contextId) {
-    throw new Error("Expected pending GitHub event context");
-  }
-  await db()
-    .update(chatGithubContext)
-    .set({ triggerCommentBody: null })
-    .where(eq(chatGithubContext.id, event.contextId));
-}
-
 interface AgentphoneChatEventByPromptFixture {
   readonly eventId: string;
 }
@@ -936,6 +920,53 @@ export async function holdCheckpointReadsFixture(args: {
 }
 
 /**
+ * Holds model-policy reads so a route test can pause after a queued goal
+ * captured its target but before model resolution returns. Product APIs cannot
+ * pause at this query boundary, and the fixture does not mutate policy rows.
+ */
+export async function holdModelPolicyReadsFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the model-policy lock holder pid");
+    }
+    await tx.execute(
+      sql`LOCK TABLE ${orgModelPolicies} IN ACCESS EXCLUSIVE MODE`,
+    );
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
+/**
  * Reproduces a crash after the canonical chat callback was acknowledged but
  * before its detached terminal processing became durable. Product APIs cannot
  * delete append-only events, so this fixture removes only the exact cancelled
@@ -1056,6 +1087,7 @@ export async function holdChatThreadRowLockFixture(args: {
 }): Promise<{
   readonly release: () => void;
   readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
   readonly firstBlockedStatementKind: () => Promise<ChatThreadBlockedStatementKind | null>;
 }> {
   const started = createDeferredPromise<number>(args.signal);
@@ -1093,6 +1125,9 @@ export async function holdChatThreadRowLockFixture(args: {
       }
     },
     done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
+    },
     firstBlockedStatementKind: async () => {
       return await firstDirectBlockedStatementKind(holderPid);
     },

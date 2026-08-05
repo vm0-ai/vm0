@@ -42,9 +42,9 @@ fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
 
 fn codex_runtime_config_for_test(model_catalog: Option<serde_json::Value>) -> CodexRuntimeConfig {
     CodexRuntimeConfig {
-        provider_id: "minimax".into(),
-        name: "MiniMax".into(),
-        base_url: "https://api.minimax.io/v1".into(),
+        provider_id: "deepseek".into(),
+        name: "DeepSeek".into(),
+        base_url: "https://api.deepseek.com/".into(),
         env_key: "OPENAI_API_KEY".into(),
         http_headers: None,
         requires_openai_auth: None,
@@ -1205,7 +1205,7 @@ fn build_run_payload_for_run_rejects_prompt_nul() {
 fn build_run_payload_for_run_serializes_codex_runtime_config() {
     let mut ctx = minimal_context();
     let mut config = codex_runtime_config_for_test(Some(json!({
-        "models": [{ "slug": "MiniMax-M3" }],
+        "models": [{ "slug": "deepseek-v4-flash" }],
     })));
     config.http_headers = Some(BTreeMap::from([(
         "x-api-key".to_string(),
@@ -1217,8 +1217,8 @@ fn build_run_payload_for_run_serializes_codex_runtime_config() {
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let value: serde_json::Value = serde_json::from_str(&payload.codex_runtime_config).unwrap();
 
-    assert_eq!(value["providerId"], "minimax");
-    assert_eq!(value["baseUrl"], "https://api.minimax.io/v1");
+    assert_eq!(value["providerId"], "deepseek");
+    assert_eq!(value["baseUrl"], "https://api.deepseek.com/");
     assert_eq!(value["envKey"], "OPENAI_API_KEY");
     assert_eq!(
         value["httpHeaders"]["x-api-key"],
@@ -1227,7 +1227,10 @@ fn build_run_payload_for_run_serializes_codex_runtime_config() {
     assert_eq!(value["requiresOpenaiAuth"], false);
     assert_eq!(value["wireApi"], "responses");
     assert_eq!(value["supportsWebsockets"], false);
-    assert_eq!(value["modelCatalog"]["models"][0]["slug"], "MiniMax-M3");
+    assert_eq!(
+        value["modelCatalog"]["models"][0]["slug"],
+        "deepseek-v4-flash"
+    );
 }
 
 #[test]
@@ -1257,7 +1260,7 @@ fn execution_context_validation_rejects_codex_runtime_config_nul() {
 
 #[test]
 fn execution_context_validation_rejects_codex_runtime_config_catalog_nul() {
-    let secret = "MiniMax\0M3";
+    let secret = "DeepSeek\0Flash";
     let mut ctx = minimal_context();
     ctx.codex_runtime_config = Some(codex_runtime_config_for_test(Some(json!({
         "models": [{ "slug": secret }],

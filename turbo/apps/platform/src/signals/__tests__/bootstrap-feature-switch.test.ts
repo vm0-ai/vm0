@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import {
+  avatarTemplatesEnabled$,
   featureSwitch$,
   imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
@@ -98,31 +99,6 @@ describe("bootstrap feature switch hydration", () => {
     expect(context.store.get(imageRecognitionAvailable$)).toBeTruthy();
   });
 
-  it("accepts image recognition when the temporary marker is present", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: {},
-        effectiveSwitches: {},
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways: true,
-        supportsImageRecognition: true,
-        imageRecognitionRolloutComplete: true,
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/error",
-      withoutRender: true,
-    });
-
-    expect(context.store.get(imageRecognitionAvailable$)).toBeFalsy();
-    await waitFor(() => {
-      expect(context.store.get(imageRecognitionAvailable$)).toBeTruthy();
-    });
-  });
-
   it("keeps image recognition unavailable when the API omits support", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
@@ -131,7 +107,6 @@ describe("bootstrap feature switch hydration", () => {
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
-        imageRecognitionRolloutComplete: true,
       });
     });
 
@@ -153,7 +128,6 @@ describe("bootstrap feature switch hydration", () => {
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
         supportsImageRecognition: false,
-        imageRecognitionRolloutComplete: true,
       });
     });
 
@@ -164,6 +138,45 @@ describe("bootstrap feature switch hydration", () => {
     });
 
     expect(context.store.get(imageRecognitionAvailable$)).toBeFalsy();
+  });
+
+  it("keeps avatar templates disabled when the API lacks support", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+        effectiveSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+      });
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+
+    expect(context.store.get(avatarTemplatesEnabled$)).toBeFalsy();
+  });
+
+  it("waits for current API support before trusting cached avatar templates", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+        effectiveSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+        supportsAvatarTemplates: true,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(avatarTemplatesEnabled$)).toBeFalsy();
+    await waitFor(() => {
+      expect(context.store.get(avatarTemplatesEnabled$)).toBeTruthy();
+    });
   });
 
   it("skips feature switch hydration without an authenticated organization", async () => {

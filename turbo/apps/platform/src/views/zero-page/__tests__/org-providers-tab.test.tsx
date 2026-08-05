@@ -1,7 +1,6 @@
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import {
-  zeroBillingCheckoutContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
@@ -169,8 +168,8 @@ function mockApiKeyModelRouteStory(): void {
   context.mocks.data.orgModelPolicies([
     builtInPolicy(
       "00000000-0000-4000-a000-000000000211",
-      "deepseek-v4-pro",
-      "DeepSeek V4 Pro",
+      "deepseek-v4-flash",
+      "DeepSeek V4 Flash",
       true,
     ),
     claudeOpusApiKeyPolicy(),
@@ -221,14 +220,6 @@ function mockBillingCapabilities(modelCapabilities: {
 }): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, billingStatus("pro", modelCapabilities));
-  });
-}
-
-function mockProCheckout(): void {
-  context.mocks.api(zeroBillingCheckoutContract.create, ({ body, respond }) => {
-    return respond(200, {
-      url: `https://checkout.stripe.com/test-upgrade?tier=${body.tier}`,
-    });
   });
 }
 
@@ -650,8 +641,8 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000214",
-        "deepseek-v4-pro",
-        "DeepSeek V4 Pro",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
         true,
       ),
       builtInPolicy(
@@ -675,7 +666,7 @@ describe("organization model providers settings", () => {
       screen.findByRole("heading", { name: "Modelos" }),
     ).resolves.toBeInTheDocument();
     const deepseekRow = await screen.findByTestId(
-      "org-model-policy-row-deepseek-v4-pro",
+      "org-model-policy-row-deepseek-v4-flash",
     );
     expect(within(deepseekRow).getByText("Integrado")).toBeInTheDocument();
 
@@ -704,18 +695,6 @@ describe("organization model providers settings", () => {
     await expect(
       screen.findByRole("option", { name: "Claude Opus 4.7" }),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Auto" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "GPT-5.4" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "GPT-5.4 Mini" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
-    ).not.toBeInTheDocument();
     await expect(
       screen.findByRole("option", { name: "DeepSeek V4 Flash" }),
     ).resolves.toBeInTheDocument();
@@ -746,38 +725,6 @@ describe("organization model providers settings", () => {
     expect(
       screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
     ).not.toBeInTheDocument();
-  });
-
-  it("lets limited-free-1 workspaces add an allowed Anthropic model", async () => {
-    mockAdminOrg();
-    mockBillingCapabilities({
-      supportByok: false,
-      restrictedVm0Models: true,
-    });
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([
-      builtInPolicy(
-        "00000000-0000-4000-a000-000000000222",
-        "gpt-5.6-luna",
-        "GPT 5.6 Luna",
-        true,
-      ),
-    ]);
-    await openProvidersTab();
-
-    click(buttonByText("Add model"));
-    await selectDialogModel("Claude Sonnet 5");
-
-    const dialog = screen.getByRole("dialog", { name: "Add model" });
-    expect(within(dialog).queryByText("Upgrade to Pro")).toBeNull();
-    click(buttonByText("Add model", dialog));
-
-    const claudeModelRow = await screen.findByTestId(
-      "org-model-policy-row-claude-sonnet-5",
-    );
-    expect(
-      within(claudeModelRow).getByText("Claude Sonnet 5"),
-    ).toBeInTheDocument();
   });
 
   it("opens a workspace API key model route form", async () => {
@@ -917,71 +864,6 @@ describe("organization model providers settings", () => {
     ).toHaveTextContent("GPT 5.5");
   });
 
-  it("opens compare plans when selecting a limited-free-1 default Pro model", async () => {
-    mockAdminOrg();
-    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([
-      builtInPolicy(
-        "00000000-0000-4000-a000-000000000221",
-        "claude-opus-4-8",
-        "Claude Opus 4.8",
-        false,
-      ),
-      builtInPolicy(
-        "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
-        true,
-      ),
-    ]);
-    await openProvidersTab();
-
-    const defaultRow = screen.getByTestId("default-model-row");
-    click(within(defaultRow).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: /Claude Opus 4\.8 Pro/u }));
-
-    await expect(
-      screen.findByRole("heading", { name: "Compare plans" }),
-    ).resolves.toBeInTheDocument();
-  });
-
-  it("starts pro checkout when adding a limited-free-1 Pro model", async () => {
-    mockAdminOrg();
-    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
-    mockProCheckout();
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([
-      builtInPolicy(
-        "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
-        true,
-      ),
-    ]);
-    await openModelSettings();
-
-    click(buttonByText("Add model"));
-    const dialog = screen.getByRole("dialog", { name: "Add model" });
-    click(within(dialog).getByRole("combobox"));
-
-    const gptOption = await screen.findByRole("option", {
-      name: /GPT 5\.5\s+Pro/u,
-    });
-    expect(gptOption).toBeInTheDocument();
-    click(gptOption);
-
-    expect(screen.queryByRole("heading", { name: "Compare plans" })).toBeNull();
-    expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
-    click(buttonByText("Upgrade to Pro", dialog));
-
-    await waitFor(() => {
-      expect(window.location.href).toBe(
-        "https://checkout.stripe.com/test-upgrade?tier=pro",
-      );
-    });
-  });
-
   it("opens compare plans when BYOK is unsupported", async () => {
     mockAdminOrg();
     mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
@@ -1009,55 +891,24 @@ describe("organization model providers settings", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("preserves limited-free restrictions with a legacy billing response", async () => {
-    mockAdminOrg();
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-      return respond(200, billingStatus("limited-free-1"));
-    });
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([
-      builtInPolicy(
-        "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
-        true,
-      ),
-    ]);
-    await openModelSettings();
-
-    click(buttonByText("Add model"));
-    const dialog = screen.getByRole("dialog", { name: "Add model" });
-    click(within(dialog).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: /GPT 5\.5\s+Pro/u }));
-    expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
-
-    await selectDialogModel("Claude Sonnet 5");
-    expect(buttonByText("Add model", dialog)).toBeInTheDocument();
-    click(screen.getByRole("radio", { name: /API key\s+Pro/u }));
-
-    await expect(
-      screen.findByRole("heading", { name: "Compare plans" }),
-    ).resolves.toBeInTheDocument();
-  });
-
   it("reassigns the workspace default model when deleting the default route", async () => {
     mockApiKeyModelRouteStory();
     await openProvidersTab();
 
     const defaultRow = screen.getByTestId("default-model-row");
     expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-      "DeepSeek V4 Pro",
+      "DeepSeek V4 Flash",
     );
 
     const deepseekRow = await screen.findByTestId(
-      "org-model-policy-row-deepseek-v4-pro",
+      "org-model-policy-row-deepseek-v4-flash",
     );
-    click(within(deepseekRow).getByLabelText("Actions for DeepSeek V4 Pro"));
+    click(within(deepseekRow).getByLabelText("Actions for DeepSeek V4 Flash"));
     click(menuItemByText("Delete model"));
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId("org-model-policy-row-deepseek-v4-pro"),
+        screen.queryByTestId("org-model-policy-row-deepseek-v4-flash"),
       ).not.toBeInTheDocument();
       expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
         "Claude Opus 4.7",
@@ -1071,8 +922,8 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000211",
-        "deepseek-v4-pro",
-        "DeepSeek V4 Pro",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
         true,
       ),
       claudeOpusApiKeyPolicy(),
@@ -1092,7 +943,7 @@ describe("organization model providers settings", () => {
 
     const defaultRow = screen.getByTestId("default-model-row");
     expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-      "DeepSeek V4 Pro",
+      "DeepSeek V4 Flash",
     );
 
     click(within(defaultRow).getByRole("combobox"));

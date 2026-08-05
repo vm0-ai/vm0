@@ -9,10 +9,6 @@ import {
 } from "@vm0/api-contracts/contracts/integrations-github";
 import { zeroConnectorsBySlugContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import {
-  zeroSecretsContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { z } from "zod";
@@ -454,22 +450,6 @@ export function createGithubBddApi(context: TestContext) {
         [200],
       );
       return response.body.name;
-    },
-
-    async setSecret(actor: ApiTestUser, name: string, value: string) {
-      const client = setupApp({ context })(zeroSecretsContract);
-      await accept(
-        client.set({ headers: authenticate(actor), body: { name, value } }),
-        [200, 201],
-      );
-    },
-
-    async setVariable(actor: ApiTestUser, name: string, value: string) {
-      const client = setupApp({ context })(zeroVariablesContract);
-      await accept(
-        client.set({ headers: authenticate(actor), body: { name, value } }),
-        [200, 201],
-      );
     },
 
     /**

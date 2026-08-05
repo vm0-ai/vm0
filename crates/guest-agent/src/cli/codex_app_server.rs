@@ -1200,16 +1200,16 @@ mod tests {
     #[test]
     fn app_server_args_put_root_config_overrides_before_subcommand() {
         let args = app_server_args(&[
-            r#"model_provider="minimax""#.to_string(),
-            r#"model_providers.minimax.supports_websockets=false"#.to_string(),
+            r#"model_provider="deepseek""#.to_string(),
+            r#"model_providers.deepseek.supports_websockets=false"#.to_string(),
             r#"web_search="disabled""#.to_string(),
         ]);
 
         let expected = [
             "-c",
-            r#"model_provider="minimax""#,
+            r#"model_provider="deepseek""#,
             "-c",
-            r#"model_providers.minimax.supports_websockets=false"#,
+            r#"model_providers.deepseek.supports_websockets=false"#,
             "-c",
             r#"web_search="disabled""#,
             "app-server",

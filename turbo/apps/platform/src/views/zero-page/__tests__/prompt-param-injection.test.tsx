@@ -68,7 +68,7 @@ describe("prompt query parameter injection", () => {
     let userMessage: unknown;
     let createdThreadModel: string | null | undefined;
     context.mocks.data.orgModelPolicies([
-      modelPolicy("deepseek-v4-pro", "DeepSeek V4 Pro"),
+      modelPolicy("deepseek-v4-flash", "DeepSeek V4 Flash"),
     ]);
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
@@ -82,7 +82,7 @@ describe("prompt query parameter injection", () => {
 
     detachedSetupPage({
       context,
-      path: "/prompt?prompt=Build%20a%20launch%20recap&connector=slack&model=deepseek-v4-pro",
+      path: "/prompt?prompt=Build%20a%20launch%20recap&connector=slack&model=deepseek-v4-flash",
     });
 
     await waitFor(() => {
@@ -92,7 +92,7 @@ describe("prompt query parameter injection", () => {
         version: 1,
         parts: [{ type: "text", text: "Build a launch recap" }],
       });
-      expect(createdThreadModel).toBe("deepseek-v4-pro");
+      expect(createdThreadModel).toBe("deepseek-v4-flash");
     });
   });
 

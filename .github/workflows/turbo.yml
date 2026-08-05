@@ -1246,8 +1246,9 @@ jobs:
           retention-days: 1
 
   # Build the canonical Cloudflare app artifact independently of Vercel, then
-  # deploy the verified R2 artifact to a Pages preview branch. Release PRs keep
-  # the provider preview but do not receive a custom preview domain.
+  # deploy the verified R2 artifact to a Pages preview branch. The shared
+  # gateway fronts that branch at the stable app preview URL. Release PRs keep
+  # the provider preview but do not receive a stable app preview URL.
   deploy-app:
     needs: [detect-release]
     runs-on: ubuntu-latest
@@ -1275,7 +1276,6 @@ jobs:
       AWS_DEFAULT_REGION: auto
       CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
       CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
-      CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
       PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
@@ -1298,43 +1298,14 @@ jobs:
             "$MERGE_GROUP_HEAD_REF")"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve Cloudflare Pages custom preview domain
-        id: pages-custom-domain
+      - name: Resolve app preview gateway URL
+        id: app-preview
         if: needs.detect-release.outputs.skip != 'true' || github.event_name == 'push'
         env:
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
         run: |
           : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-          echo "domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
           echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
-
-      - name: Begin Cloudflare Pages custom preview domain validation
-        id: pages-domain-validation
-        if: steps.pages-custom-domain.outputs.domain != ''
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-custom-domain.outputs.domain }}
-        run: |
-          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          status="$(bash .github/scripts/manage-okou-pages-domain.sh \
-            begin \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "$CF_PAGES_PROJECT_NAME" \
-            "$PAGES_CUSTOM_DOMAIN" \
-            "$PAGES_BRANCH")"
-          case "$status" in
-            active|pending) ;;
-            *)
-              echo "Unexpected Pages domain status: ${status}" >&2
-              exit 1
-              ;;
-          esac
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          echo "Cloudflare Pages domain validation status: ${status}"
 
       - uses: ./.github/actions/toolchain-init
 
@@ -1583,27 +1554,6 @@ jobs:
 
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
 
-      - name: Finalize Cloudflare Pages custom preview domain
-        if: steps.pages-custom-domain.outputs.domain != ''
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-custom-domain.outputs.domain }}
-          PAGES_DOMAIN_STATUS: ${{ steps.pages-domain-validation.outputs.status }}
-        run: |
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          if [[ "$PAGES_DOMAIN_STATUS" == "active" ]]; then
-            echo "Cloudflare Pages custom branch domain already active: https://${PAGES_CUSTOM_DOMAIN}"
-            exit 0
-          fi
-          bash .github/scripts/manage-okou-pages-domain.sh \
-            finish \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "$CF_PAGES_PROJECT_NAME" \
-            "$PAGES_CUSTOM_DOMAIN" \
-            "$PAGES_BRANCH"
-
       - name: Wait for Cloudflare Pages preview assets
         env:
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
@@ -1716,16 +1666,39 @@ jobs:
           echo "::error::Cloudflare Pages preview assets did not become ready"
           exit 1
 
+      - name: Smoke test app preview gateway
+        if: steps.app-preview.outputs.url != ''
+        env:
+          APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          response_headers="$(mktemp)"
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error \
+              --dump-header "$response_headers" \
+              --output /dev/null \
+              "${APP_PREVIEW_URL}/" && \
+              grep -Eiq '^x-vm0-preview-gateway:[[:space:]]*1[[:space:]]*$' \
+                "$response_headers"; then
+              echo "App preview gateway is ready"
+              exit 0
+            fi
+            echo "::warning::App preview gateway is not ready (attempt ${attempt}/12)"
+            sleep 5
+          done
+          echo "::error::${APP_PREVIEW_URL} did not use vm0-preview-gateway"
+          exit 1
+
       - name: Record Cloudflare Pages preview
         env:
+          APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
           PAGES_DEPLOYMENT_URL: ${{ steps.pages-deploy.outputs.url }}
-          PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}
           PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
         run: |
           echo "Cloudflare Pages deployment: ${PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
           echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
-          if [[ -n "$PAGES_CUSTOM_URL" ]]; then
-            echo "Cloudflare Pages custom preview: ${PAGES_CUSTOM_URL}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$APP_PREVIEW_URL" ]]; then
+            echo "App preview gateway: ${APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   deploy-stripe-listener:
@@ -2625,7 +2598,7 @@ jobs:
             policies: [
               {model: "claude-opus-4-7", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
               {model: "claude-sonnet-4-6", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "deepseek-v4-pro", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
+              {model: "deepseek-v4-flash", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
               {model: "gpt-5.5", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
             ]
           }')"

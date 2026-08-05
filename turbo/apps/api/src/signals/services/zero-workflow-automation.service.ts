@@ -56,13 +56,17 @@ import {
   zeroWorkflows,
   type ZeroWorkflowScheduleType,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq } from "drizzle-orm";
-import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
+import { and, asc, eq, sql } from "drizzle-orm";
+
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { isValidTimeZone, safeSync } from "../utils";
 import { calculateNextRun } from "./time-automation";
+import {
+  insertRolloutCompatibleWorkflowAutomation,
+  rolloutCompatibleWorkflowAutomationColumns,
+} from "./autonomy-budget-schema.service";
 import {
   loadVisibleWorkflowById,
   visibleWorkflowCondition,
@@ -884,7 +888,7 @@ async function loadAutomationRow(
   args: { readonly orgId: string; readonly automationId: string },
 ): Promise<AutomationRow | null> {
   const [row] = await db
-    .select()
+    .select(rolloutCompatibleWorkflowAutomationColumns(false))
     .from(zeroWorkflowAutomations)
     .where(
       and(
@@ -928,7 +932,7 @@ export async function loadWorkflowAutomations(
   },
 ): Promise<readonly ZeroWorkflowAutomationSummary[]> {
   const rows = await db
-    .select()
+    .select(rolloutCompatibleWorkflowAutomationColumns(false))
     .from(zeroWorkflowAutomations)
     .where(
       and(
@@ -967,7 +971,7 @@ export async function listWorkspaceWorkflowAutomations(
 ): Promise<readonly ZeroWorkflowAutomationsListEntry[]> {
   const rows = await db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(false),
       workflow: zeroWorkflows,
       agent: {
         id: zeroAgents.id,
@@ -1071,7 +1075,7 @@ export async function listThreadBoundWorkflowAutomations(
 ): Promise<readonly ChatThreadWorkflowAutomation[]> {
   const rows = await db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(false),
       workflow: zeroWorkflows,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
@@ -1184,6 +1188,7 @@ interface CreateScheduleAutomationInput {
   readonly workflowId: string;
   readonly schedule: ZeroWorkflowSchedule;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGmailEventAutomationInput {
@@ -1193,6 +1198,7 @@ interface CreateGmailEventAutomationInput {
   readonly eventType: GmailWorkflowEventType;
   readonly eventConfig: GmailWorkflowEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGithubEventAutomationInputBase {
@@ -1200,6 +1206,7 @@ interface CreateGithubEventAutomationInputBase {
   readonly member: WorkflowMember;
   readonly workflowId: string;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 type CreateGithubEventAutomationInput =
   | (CreateGithubEventAutomationInputBase & {
@@ -1252,6 +1259,7 @@ interface CreateChatRunFinishedEventAutomationInput {
   readonly eventType: ChatRunFinishedWorkflowEventType;
   readonly eventConfig: ChatRunFinishedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGoogleCalendarEventAutomationInput {
@@ -1261,6 +1269,7 @@ interface CreateGoogleCalendarEventAutomationInput {
   readonly eventType: GoogleCalendarWorkflowEventType;
   readonly eventConfig: GoogleCalendarWorkflowEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGoogleMeetEventAutomationInput {
@@ -1270,6 +1279,7 @@ interface CreateGoogleMeetEventAutomationInput {
   readonly eventType: GoogleMeetWorkflowEventType;
   readonly eventConfig: GoogleMeetWorkflowEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateNotionEventAutomationInput {
@@ -1285,6 +1295,7 @@ interface CreateNotionEventAutomationInput {
     | NotionPageContentUpdatedEventCreateConfig
     | NotionPageContentUpdatedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateStrapiEventAutomationInput {
@@ -1294,6 +1305,7 @@ interface CreateStrapiEventAutomationInput {
   readonly eventType: StrapiWorkflowEventType;
   readonly eventConfig: StrapiEntryPublishedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateWebhookEventAutomationInput {
@@ -1303,6 +1315,7 @@ interface CreateWebhookEventAutomationInput {
   readonly eventType: "webhook-received";
   readonly eventConfig?: WebhookReceivedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 type CreateAutomationInput =
@@ -1399,26 +1412,26 @@ async function insertWorkflowEventAutomation(
       currentTime: args.currentTime,
     });
 
-    const [row] = await tx
-      .insert(zeroWorkflowAutomations)
-      .values({
-        orgId: args.input.orgId,
-        workflowId: args.workflowId,
-        ownerUserId: args.input.member.userId,
-        kind: "event",
-        eventType: args.input.eventType,
-        eventConfig: args.input.eventConfig,
-        scheduleType: null,
-        cronExpression: null,
-        intervalSeconds: null,
-        atTime: null,
-        timezone: "UTC",
-        enabled: args.input.enabled,
-        nextRunAt: null,
-        createdAt: args.currentTime,
-        updatedAt: args.currentTime,
-      })
-      .returning();
+    const row = await insertRolloutCompatibleWorkflowAutomation(tx, {
+      orgId: args.input.orgId,
+      workflowId: args.workflowId,
+      ownerUserId: args.input.member.userId,
+      kind: "event",
+      eventType: args.input.eventType,
+      eventConfig: args.input.eventConfig,
+      scheduleType: null,
+      cronExpression: null,
+      intervalSeconds: null,
+      atTime: null,
+      timezone: "UTC",
+      enabled: args.input.enabled,
+      nextRunAt: null,
+      ...(args.input.autonomyBudget === undefined
+        ? {}
+        : { autonomyBudget: args.input.autonomyBudget }),
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    });
     if (!row) {
       throw new Error("Failed to create workflow automation");
     }
@@ -1455,27 +1468,27 @@ async function insertWebhookEventAutomation(
       currentTime: args.currentTime,
     });
 
-    const [row] = await tx
-      .insert(zeroWorkflowAutomations)
-      .values({
-        orgId: args.input.orgId,
-        workflowId: args.workflowId,
-        ownerUserId: args.input.member.userId,
-        kind: "event",
-        eventType: args.input.eventType,
-        eventConfig:
-          args.input.eventConfig ?? defaultWebhookReceivedEventConfig(),
-        scheduleType: null,
-        cronExpression: null,
-        intervalSeconds: null,
-        atTime: null,
-        timezone: "UTC",
-        enabled: args.input.enabled,
-        nextRunAt: null,
-        createdAt: args.currentTime,
-        updatedAt: args.currentTime,
-      })
-      .returning();
+    const row = await insertRolloutCompatibleWorkflowAutomation(tx, {
+      orgId: args.input.orgId,
+      workflowId: args.workflowId,
+      ownerUserId: args.input.member.userId,
+      kind: "event",
+      eventType: args.input.eventType,
+      eventConfig:
+        args.input.eventConfig ?? defaultWebhookReceivedEventConfig(),
+      scheduleType: null,
+      cronExpression: null,
+      intervalSeconds: null,
+      atTime: null,
+      timezone: "UTC",
+      enabled: args.input.enabled,
+      nextRunAt: null,
+      ...(args.input.autonomyBudget === undefined
+        ? {}
+        : { autonomyBudget: args.input.autonomyBudget }),
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    });
     if (!row) {
       throw new Error("Failed to create workflow automation");
     }
@@ -1524,12 +1537,6 @@ async function prepareGmailEventConfigForPersist(
       return {
         kind: "bad-request",
         message: "eventConfig must be a Gmail new message config",
-      };
-    }
-    if (args.eventConfig.threadId && !isZeroMailReplyFollowUpRolloutEnabled()) {
-      return {
-        kind: "bad-request",
-        message: "Gmail thread matching is not enabled",
       };
     }
     return { kind: "ok", eventConfig: args.eventConfig };
@@ -1586,26 +1593,26 @@ async function insertScheduleAutomation(
       currentTime: args.currentTime,
     });
 
-    const [row] = await tx
-      .insert(zeroWorkflowAutomations)
-      .values({
-        orgId: args.input.orgId,
-        workflowId: args.workflowId,
-        ownerUserId: args.input.member.userId,
-        kind: "schedule",
-        eventType: null,
-        eventConfig: null,
-        scheduleType: args.columns.scheduleType,
-        cronExpression: args.columns.cronExpression,
-        intervalSeconds: args.columns.intervalSeconds,
-        atTime: args.columns.atTime,
-        timezone: args.columns.timezone,
-        enabled: args.input.enabled,
-        nextRunAt: args.nextRunAt,
-        createdAt: args.currentTime,
-        updatedAt: args.currentTime,
-      })
-      .returning();
+    const row = await insertRolloutCompatibleWorkflowAutomation(tx, {
+      orgId: args.input.orgId,
+      workflowId: args.workflowId,
+      ownerUserId: args.input.member.userId,
+      kind: "schedule",
+      eventType: null,
+      eventConfig: null,
+      scheduleType: args.columns.scheduleType,
+      cronExpression: args.columns.cronExpression,
+      intervalSeconds: args.columns.intervalSeconds,
+      atTime: args.columns.atTime,
+      timezone: args.columns.timezone,
+      enabled: args.input.enabled,
+      nextRunAt: args.nextRunAt,
+      ...(args.input.autonomyBudget === undefined
+        ? {}
+        : { autonomyBudget: args.input.autonomyBudget }),
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    });
     if (!row) {
       throw new Error("Failed to create workflow automation");
     }
@@ -1957,26 +1964,26 @@ async function createStrapiEventAutomationForWorkflow(args: {
       workflowTitle: args.context.workflowTitle,
       currentTime,
     });
-    const [row] = await tx
-      .insert(zeroWorkflowAutomations)
-      .values({
-        orgId: args.input.orgId,
-        workflowId: args.context.workflowId,
-        ownerUserId: args.input.member.userId,
-        kind: "event",
-        eventType: args.input.eventType,
-        eventConfig,
-        scheduleType: null,
-        cronExpression: null,
-        intervalSeconds: null,
-        atTime: null,
-        timezone: "UTC",
-        enabled: args.input.enabled,
-        nextRunAt: null,
-        createdAt: currentTime,
-        updatedAt: currentTime,
-      })
-      .returning();
+    const row = await insertRolloutCompatibleWorkflowAutomation(tx, {
+      orgId: args.input.orgId,
+      workflowId: args.context.workflowId,
+      ownerUserId: args.input.member.userId,
+      kind: "event",
+      eventType: args.input.eventType,
+      eventConfig,
+      scheduleType: null,
+      cronExpression: null,
+      intervalSeconds: null,
+      atTime: null,
+      timezone: "UTC",
+      enabled: args.input.enabled,
+      nextRunAt: null,
+      ...(args.input.autonomyBudget === undefined
+        ? {}
+        : { autonomyBudget: args.input.autonomyBudget }),
+      createdAt: currentTime,
+      updatedAt: currentTime,
+    });
     if (!row) {
       throw new Error("Failed to create Strapi workflow automation");
     }
@@ -2327,7 +2334,7 @@ async function updateAutomationEventConfig(
       updatedAt: nowDate(),
     })
     .where(eq(zeroWorkflowAutomations.id, args.automationId))
-    .returning();
+    .returning(rolloutCompatibleWorkflowAutomationColumns(false));
   args.signal.throwIfAborted();
   if (!row) {
     throw new Error("Failed to update workflow automation");
@@ -2565,7 +2572,7 @@ export const updateWorkflowAutomation$ = command(
           updatedAt: now,
         })
         .where(eq(zeroWorkflowAutomations.id, automation.id))
-        .returning();
+        .returning(rolloutCompatibleWorkflowAutomationColumns(false));
       if (!updated) {
         throw new Error("Failed to update workflow automation");
       }
@@ -2580,6 +2587,8 @@ interface AutomationActionInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly automationId: string;
+  readonly sourceRunId?: string;
+  readonly autonomyBudgetCeiling?: number;
 }
 
 function manualTriggerSource(automation: AutomationRow) {
@@ -2594,6 +2603,7 @@ function manualTriggerContext(args: {
   readonly automation: AutomationRow;
   readonly workflowName: string;
   readonly requestedAt: Date;
+  readonly sourceRunId?: string;
 }): WorkflowAutomationContext {
   const requestedAt = args.requestedAt.toISOString();
   return {
@@ -2604,6 +2614,9 @@ function manualTriggerContext(args: {
       automationId: args.automation.id,
       trigger: "manual",
       requestedAt,
+      ...(args.sourceRunId === undefined
+        ? {}
+        : { sourceRunId: args.sourceRunId }),
     },
   };
 }
@@ -2681,6 +2694,9 @@ export const runOwnedWorkflowAutomationNow$ = command(
       automation,
       workflowName: target.workflowName,
       requestedAt: currentTime,
+      ...(args.sourceRunId === undefined
+        ? {}
+        : { sourceRunId: args.sourceRunId }),
     });
     const result = await set(
       runWorkflowAutomationNow$,
@@ -2836,6 +2852,7 @@ async function persistEnabledWorkflowAutomation(
     readonly nextRunAt: Date | null;
     readonly now: Date;
     readonly signal: AbortSignal;
+    readonly autonomyBudgetCeiling?: number;
   },
 ): Promise<
   | { readonly status: "team-required" }
@@ -2863,9 +2880,17 @@ async function persistEnabledWorkflowAutomation(
         nextRunAt: args.nextRunAt,
         consecutiveFailures: 0,
         updatedAt: args.now,
+        ...(args.autonomyBudgetCeiling === undefined
+          ? {}
+          : {
+              autonomyBudget: sql`least(
+                ${zeroWorkflowAutomations.autonomyBudget},
+                ${args.autonomyBudgetCeiling}
+              )`,
+            }),
       })
       .where(eq(zeroWorkflowAutomations.id, args.automation.id))
-      .returning();
+      .returning(rolloutCompatibleWorkflowAutomationColumns(false));
     if (
       enabledRow &&
       args.automation.kind === "event" &&
@@ -2967,6 +2992,7 @@ export const enableWorkflowAutomation$ = command(
       nextRunAt,
       now,
       signal,
+      autonomyBudgetCeiling: args.autonomyBudgetCeiling,
     });
     signal.throwIfAborted();
     if (enabled.status === "team-required") {
@@ -3013,7 +3039,7 @@ export const disableWorkflowAutomation$ = command(
       .update(zeroWorkflowAutomations)
       .set({ enabled: false, nextRunAt, updatedAt: now })
       .where(eq(zeroWorkflowAutomations.id, owned.automation.id))
-      .returning();
+      .returning(rolloutCompatibleWorkflowAutomationColumns(false));
     signal.throwIfAborted();
     if (!row) {
       throw new Error("Failed to disable workflow automation");

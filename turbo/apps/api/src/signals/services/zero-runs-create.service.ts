@@ -140,6 +140,7 @@ interface ZeroRunMetadata {
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
   readonly goalId?: string;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateZeroRunCommandArgs {
@@ -263,13 +264,14 @@ function buildIntegrationToolsPrompt(
   });
 
   switch (triggerSource) {
-    case "web": {
+    case "web":
+    case "agent": {
       return [
         "- Web chat files: use `zero web download-file -h` when a web chat message includes a `[Web file]` block. `zero web upload-file -h` can share a local file back to the web chat user when file delivery is needed.",
         "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Feishu: `zero feishu message send --help` for chats, DMs, and replies. Microsoft Teams: `zero teams message send --help` for conversations and thread replies. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub does not currently have a dedicated Zero message-send command, so do not invent `zero github message` commands.",
         "- Email from web chat: use the Gmail skill and `GMAIL_TOKEN` to create the draft directly in Gmail. Before composing, list `GET /gmail/v1/users/me/settings/sendAs`; select the entry matching the message's From address, or the `isDefault` entry when no From address is specified. Include a `multipart/alternative` body with plain-text and HTML versions. Keep each plain-text paragraph on one logical line, never hard-wrap prose to a fixed column width, and use HTML paragraph elements so Gmail wraps the message naturally. If the selected entry has a non-empty HTML `signature`, append that signature exactly once to the HTML body and include a readable text equivalent in the plain-text body. For attachments, upload a valid RFC822 multipart message through Gmail's draft media-upload endpoint. Never call `messages.send` or `drafts.send`. After Gmail returns the draft ID, run `zero mail link <gmail-draft-id>` and return the link from the command to the user.",
         "- Email draft revisions: a linked draft stays editable until the user sends it. When the user asks to change the sender, add or remove attachments, or rewrite the content, update that same Gmail draft in place with `PUT /gmail/v1/users/me/drafts/<gmail-draft-id>` and reuse the existing link instead of creating a second draft. When you hand a draft over, tell the user they can ask you for those changes.",
-        "- Email send handoff: after `zero mail link` returns the review URL, share it and end the turn so the user can review and send the draft. Do not add a mail callback prompt. The sent-email card provides a Follow up action when the user wants reply tracking.",
+        "- Email send handoff: after `zero mail link` returns the review URL, share it and end the turn so the user can review and send the draft. Do not add a mail callback prompt.",
         "- Email send confirmation: on the round that follows a send, confirm the send against Gmail before reporting it — read the draft's thread with `GET /gmail/v1/users/me/threads/<gmail-thread-id>` and verify the message carries the `SENT` label. Never assume the user sent the email.",
         "- Email reply tracking: after a send is confirmed, check whether a Gmail automation already tracks replies for this conversation — `zero workflow list` shows the workflows, and `zero workflow automation list <workflow>` shows one workflow's triggers. When none tracks it, tell the user you can watch for the reply and set it up with the `workflow-setup` skill as a `gmail-new-message` automation narrowed to that recipient and subject. Create it only after the user agrees.",
         "- Email reply handling: when a tracked reply arrives, summarize it for the user, and when a response is warranted prepare the follow-up as a new linked Gmail draft. Never send a reply automatically; the user always sends.",

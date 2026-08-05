@@ -782,7 +782,7 @@ class TestModelProviderWebSocketUsage:
                         "type": "response.completed",
                         "response": {
                             "id": "resp_ws_text",
-                            "model": "gpt-5.4",
+                            "model": "gpt-5.5",
                             "usage": {"input_tokens": 3, "output_tokens": 2},
                         },
                     }
@@ -871,7 +871,7 @@ class TestModelProviderWebSocketUsage:
                 "resp_ws_2",
                 input_tokens=3,
                 output_tokens=2,
-                model="gpt-5.4",
+                model="gpt-5.6-luna",
             ),
         )
 
@@ -1022,7 +1022,7 @@ class TestModelProviderWebSocketUsage:
                     "type": "response.done",
                     "response": {
                         "id": "resp_ws_empty",
-                        "model": "gpt-5.4",
+                        "model": "gpt-5.6-luna",
                         "usage": {
                             "input_tokens": 0,
                             "output_tokens": 0,

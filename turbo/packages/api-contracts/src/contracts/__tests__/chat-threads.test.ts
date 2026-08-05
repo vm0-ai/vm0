@@ -424,6 +424,28 @@ describe("chat thread generation template contract", () => {
     ).toMatchObject({ success: true });
   });
 
+  it("accepts an internal agent-run source annotation", () => {
+    const runId = "00000000-0000-4000-8000-000000000001";
+    const threadId = "00000000-0000-4000-8000-000000000002";
+    expect(
+      userMessageDocumentSchema.safeParse({
+        version: 1,
+        parts: [
+          { type: "text", text: "Delegated prompt" },
+          {
+            type: "source",
+            kind: "agent",
+            runId,
+            threadId,
+            agentId: "00000000-0000-4000-8000-000000000003",
+            titleSnapshot: "New thread",
+            href: `/chats/${threadId}#run-${runId}`,
+          },
+        ],
+      }),
+    ).toMatchObject({ success: true });
+  });
+
   it("accepts template parts inside feedback notes", () => {
     const parsed = userMessageDocumentSchema.safeParse({
       version: 1,
@@ -482,6 +504,33 @@ describe("chat thread generation template contract", () => {
     });
 
     expect(parsed.success).toBe(true);
+  });
+
+  it("accepts avatar snapshots in the compatible video template envelope", () => {
+    const parsed = generationTemplateRequestSchema.safeParse({
+      type: "video",
+      selection: {
+        stylePresetId: "avatar-template:81",
+        titleSnapshot: "Ada",
+        previewUrl: "https://example.com/ada.jpg",
+        voiceId: "en-US-ChristopherNeural",
+        aspectRatio: "landscape",
+      },
+    });
+
+    expect(parsed).toMatchObject({
+      success: true,
+      data: {
+        type: "video",
+        selection: {
+          stylePresetId: "avatar-template:81",
+          titleSnapshot: "Ada",
+          previewUrl: "https://example.com/ada.jpg",
+          voiceId: "en-US-ChristopherNeural",
+          aspectRatio: "landscape",
+        },
+      },
+    });
   });
 
   it("rejects empty workflow template ids", () => {

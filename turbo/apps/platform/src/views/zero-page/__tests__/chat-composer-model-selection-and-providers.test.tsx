@@ -287,8 +287,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000915",
-        model: "deepseek-v4-pro",
-        modelLabel: "DeepSeek V4 Pro",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -1205,9 +1205,11 @@ describe("chat composer models", () => {
     expect(preferenceRequestStarted).toBeFalsy();
   });
 
-  it("opens compare plans from limited-free-1 Pro composer model items", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
+  it("hides the model picker for limited-free-1 workspaces", async () => {
+    mockBillingCapabilities(
+      { supportByok: false, restrictedVm0Models: true },
+      "limited-free-1",
+    );
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000701",
@@ -1217,27 +1219,18 @@ describe("chat composer models", () => {
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
-      buildModelPolicy({
-        id: "00000000-0000-4000-a000-000000000702",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-      }),
     ]);
     mockAgent();
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    await expectComposerModel("Kimi K2.7 Code");
-    await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
-    await user.click(
-      await screen.findByRole("option", { name: /GPT 5\.5.*Pro/u }),
-    );
-
-    await expect(
-      screen.findByRole("heading", { name: "Compare plans" }),
-    ).resolves.toBeInTheDocument();
+    await fill(await screen.findByPlaceholderText(PLACEHOLDER), "Hello");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    expect(
+      screen.queryByRole("combobox", { name: "Kimi K2.7 Code" }),
+    ).not.toBeInTheDocument();
   });
 
   it("opens the model picker directly to options and labels BYOK routes", async () => {

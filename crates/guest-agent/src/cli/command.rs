@@ -544,11 +544,12 @@ mod tests {
     #[test]
     fn build_codex_args_with_structured_runtime_config() {
         let overrides = vec![
-            r#"model_provider="minimax""#.to_string(),
-            r#"model_providers.minimax.supports_websockets=false"#.to_string(),
-            r#"model_catalog_json="/home/user/.codex/codex-model-catalog.json""#.to_string(),
+            r#"model_provider="deepseek""#.to_string(),
+            r#"model_providers.deepseek.supports_websockets=false"#.to_string(),
+            r#"model_catalog_json="/home/user/.codex/models.json""#.to_string(),
         ];
-        let args = build_codex_args_with_startup_config_for_test("MiniMax-M3", &overrides, "p");
+        let args =
+            build_codex_args_with_startup_config_for_test("deepseek-v4-flash", &overrides, "p");
 
         for override_value in overrides {
             assert!(codex_args_have_config(&args, &override_value));
@@ -600,7 +601,12 @@ mod tests {
 
     #[test]
     fn build_codex_args_models_without_overrides_omit_reasoning_effort() {
-        for model in ["gpt-5.4", "gpt-5.4-mini", "openai/gpt-5.4", ""] {
+        for model in [
+            "deepseek-v4-flash",
+            "custom-model",
+            "openai/custom-model",
+            "",
+        ] {
             let args = build_codex_args_for_test(model, "", "p");
             assert!(
                 !args

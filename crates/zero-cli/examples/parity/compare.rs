@@ -565,6 +565,7 @@ mod tests {
             stdin: String::new(),
             working_directory: PathBuf::from("."),
             terminal_mode: TerminalMode::Pipe,
+            rust_execution: crate::model::RustExecution::Fallback,
             timeout_ms: 1_000,
             mock_http: MockHttp {
                 capture_headers: vec!["x-request-id".to_owned()],

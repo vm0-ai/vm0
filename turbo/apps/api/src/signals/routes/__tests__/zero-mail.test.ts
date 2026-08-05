@@ -1,13 +1,11 @@
 import { Buffer } from "node:buffer";
 
 import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsCollectionContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -23,7 +21,6 @@ import {
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   seedConnectorStorageRow,
@@ -248,9 +245,7 @@ function mockGmailDraftApi(options?: {
   return state;
 }
 
-async function seedGmailMailCardFixture(options?: {
-  readonly replyFollowUpEnabled?: boolean;
-}) {
+async function seedGmailMailCardFixture() {
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped actor");
@@ -279,19 +274,12 @@ async function seedGmailMailCardFixture(options?: {
     state,
   });
   await runs.enableAgentConnectors(actor, agent.agentId, ["gmail"]);
-  if (options?.replyFollowUpEnabled) {
-    mockOptionalEnv("ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED", "true");
-  }
   mocks.clerk.session(actor.userId, actorWithOrg.orgId);
   return { actor, agent, thread };
 }
 
 function client() {
   return setupApp({ context })(zeroMailContract);
-}
-
-function featureSwitchesClient() {
-  return setupApp({ context })(zeroFeatureSwitchesContract);
 }
 
 function stateClient() {
@@ -757,10 +745,8 @@ describe("POST /api/zero/mail/drafts/link", () => {
     expect(unlinked.body.exists).toBeFalsy();
   });
 
-  it("sets up reply tracking without starting an agent run", async () => {
-    const fixture = await seedGmailMailCardFixture({
-      replyFollowUpEnabled: true,
-    });
+  it("supports the previous Platform follow-up request without starting an agent run", async () => {
+    const fixture = await seedGmailMailCardFixture();
     mockGmailDraftApi();
 
     const linked = await linkDraft(fixture);
@@ -869,84 +855,8 @@ describe("POST /api/zero/mail/drafts/link", () => {
     ).toHaveLength(1);
   });
 
-  it("rejects reply tracking while its rollout switch is disabled", async () => {
-    mockOptionalEnv("ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED", undefined);
-    const fixture = await seedGmailMailCardFixture();
-    if (!fixture.actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...fixture.actor, orgId: fixture.actor.orgId },
-      { [FeatureSwitchKey.ZeroMailReplyFollowUp]: true },
-    );
-    const featureSwitches = await accept(
-      featureSwitchesClient().get({ headers: authHeaders() }),
-      [200],
-    );
-    expect(
-      featureSwitches.body.switches[FeatureSwitchKey.ZeroMailReplyFollowUp],
-    ).toBeTruthy();
-    expect(
-      featureSwitches.body.effectiveSwitches[
-        FeatureSwitchKey.ZeroMailReplyFollowUp
-      ],
-    ).toBeFalsy();
-
-    const workflow = await accept(
-      setupApp({ context })(zeroWorkflowsCollectionContract).create({
-        headers: authHeaders(),
-        body: {
-          agentId: fixture.agent.agentId,
-          chatThreadId: fixture.thread.id,
-          name: "disabled-mail-follow-up",
-          visibility: "private",
-        },
-      }),
-      [201],
-    );
-    const genericWriter = await accept(
-      setupApp({ context })(zeroWorkflowAutomationsContract).create({
-        headers: authHeaders(),
-        params: { workflowId: workflow.body.id },
-        body: {
-          kind: "event",
-          eventType: "gmail-new-message",
-          eventConfig: {
-            provider: "gmail",
-            event: "new_message",
-            threadId: GMAIL_THREAD_ID,
-          },
-          enabled: true,
-        },
-      }),
-      [400],
-    );
-    expect(genericWriter.body.error.message).toBe(
-      "Gmail thread matching is not enabled",
-    );
-
-    mockGmailDraftApi();
-    const linked = await linkDraft(fixture);
-
-    const response = await accept(
-      client().createFollowUp({
-        headers: authHeaders(),
-        params: { mailDraftId: linked.body.mailDraftId },
-        body: {},
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "Zero Mail reply follow-up is not enabled",
-    );
-  });
-
   it("reuses a matching paused automation attached to the mail chat", async () => {
-    const fixture = await seedGmailMailCardFixture({
-      replyFollowUpEnabled: true,
-    });
+    const fixture = await seedGmailMailCardFixture();
     mockGmailDraftApi();
     const linked = await linkDraft(fixture);
     await accept(

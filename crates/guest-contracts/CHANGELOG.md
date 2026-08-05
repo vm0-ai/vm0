@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.5...guest-contracts-v0.5.6) (2026-08-04)
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+
 ## [0.5.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.4...guest-contracts-v0.5.5) (2026-08-04)
 
 
@@ -207,7 +214,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 
 ## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.3...guest-contracts-v0.3.4) (2026-07-05)
 

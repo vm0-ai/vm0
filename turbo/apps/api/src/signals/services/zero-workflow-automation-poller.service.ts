@@ -12,6 +12,7 @@ import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import { tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { calculateNextRun } from "./time-automation";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import {
@@ -118,7 +119,7 @@ async function claimAutomation(
         eq(zeroWorkflowAutomations.nextRunAt, automation.nextRunAt),
       ),
     )
-    .returning();
+    .returning(rolloutCompatibleWorkflowAutomationColumns(false));
   return claimed ?? null;
 }
 
@@ -226,7 +227,7 @@ async function dueWorkflowAutomationRows(
 ): Promise<DueWorkflowAutomationRow[]> {
   const rows = await db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(false),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,

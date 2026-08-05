@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.37.180](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.179...sandbox-fc-v0.37.180) (2026-08-04)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** stabilize root veth mac identity ([#25071](https://github.com/vm0-ai/vm0/issues/25071)) ([47af501](https://github.com/vm0-ai/vm0/commit/47af501b4e6ab409596fc07f5230b69b732ba06f))
+
+
+### Performance Improvements
+
+* **sandbox-fc:** reduce balloon settle detection latency ([#25069](https://github.com/vm0-ai/vm0/issues/25069)) ([16893fa](https://github.com/vm0-ai/vm0/commit/16893fa7ffa416a8859a112119a8082229da2d88))
+
+## [0.37.179](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.178...sandbox-fc-v0.37.179) (2026-08-04)
+
 ## [0.37.178](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.177...sandbox-fc-v0.37.178) (2026-08-04)
 
 ## [0.37.177](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.176...sandbox-fc-v0.37.177) (2026-08-04)

@@ -11,6 +11,7 @@ import {
   getZeroAgentUserConnectors,
   listZeroUserPermissionGrants,
 } from "../../lib/api/domains/zero-agents";
+import { getZeroOrg } from "../../lib/api/domains/zero-orgs";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { policyIcon } from "../../lib/utils/format-utils";
 import {
@@ -84,6 +85,22 @@ function printConnectorPermissions(info: ConnectorPermissionInfo): void {
   );
 }
 
+/**
+ * Workspace identity is supplementary: whoami must still print the agent
+ * identity, capabilities, and connectors when the org lookup fails or 404s.
+ */
+async function printWorkspace(): Promise<void> {
+  try {
+    const org = await getZeroOrg();
+    console.log(`Workspace:  ${org.name}`);
+    if (org.tier) {
+      console.log(`Tier:       ${org.tier}`);
+    }
+  } catch {
+    // Silently skip — workspace info is supplementary
+  }
+}
+
 async function showSandboxInfo(showPermissions: boolean): Promise<void> {
   const agentId = process.env.ZERO_AGENT_ID;
   const payload = decodeZeroTokenPayload();
@@ -91,6 +108,7 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
   console.log(`Agent ID:   ${agentId}`);
   console.log(`Run ID:     ${payload?.runId ?? chalk.dim("unavailable")}`);
   console.log(`Org ID:     ${payload?.orgId ?? chalk.dim("unavailable")}`);
+  await printWorkspace();
 
   // Capabilities section
   if (payload?.capabilities?.length) {

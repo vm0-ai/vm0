@@ -578,6 +578,7 @@ async function stopActiveBrowserInstance(
   reason: ZeroBrowserSuspensionReason,
   signal: AbortSignal,
   options: {
+    readonly emitCloseEvent?: boolean;
     readonly stopProvider: boolean;
     readonly saveTabSnapshot?: boolean;
   } = { stopProvider: true },
@@ -619,7 +620,23 @@ async function stopActiveBrowserInstance(
         updatedAt: nowDate(),
       })
       .where(eq(browserSessions.chatThreadId, target.chatThreadId));
-    return true;
+    if (options.emitCloseEvent === false) {
+      return { eventSeqId: null };
+    }
+    const event = await insertChatEvent(
+      tx,
+      {
+        id: randomUUID(),
+        chatThreadId: target.chatThreadId,
+        eventType: "browser.close",
+        content: null,
+      },
+      "id",
+    );
+    if (!event) {
+      throw new Error("Failed to persist managed browser close event");
+    }
+    return { eventSeqId: event.seqId };
   });
   if (stopped && options.stopProvider) {
     stopProviderSessionLater(target.providerSessionId);
@@ -631,6 +648,13 @@ async function stopActiveBrowserInstance(
   await publishBrowserSessionChangedSafely(target.userId, {
     threadId: target.chatThreadId,
   });
+  if (stopped.eventSeqId !== null) {
+    await publishChatThreadMessageCreatedSafely(
+      target.userId,
+      target.chatThreadId,
+      stopped.eventSeqId,
+    );
+  }
   signal.throwIfAborted();
   return true;
 }
@@ -2299,7 +2323,7 @@ export const stopZeroBrowserForThreadCompatibility$ = command(
           },
           "user",
           signal,
-          { stopProvider: true },
+          { emitCloseEvent: false, stopProvider: true },
         );
       } else {
         await suspendBrowserWithoutActiveInstance(db, browser, "user", signal);
@@ -2678,6 +2702,7 @@ export const stopThreadZeroBrowsers$ = command(
     for (const target of active) {
       if (
         await stopActiveBrowserInstance(db, target, "reconcile", signal, {
+          emitCloseEvent: false,
           stopProvider: false,
           saveTabSnapshot: false,
         })
@@ -3076,6 +3101,7 @@ const reconcileBrowserInstance$ = command(
       reason,
       signal,
       {
+        emitCloseEvent: row.chatThreadId !== null,
         stopProvider,
       },
     );

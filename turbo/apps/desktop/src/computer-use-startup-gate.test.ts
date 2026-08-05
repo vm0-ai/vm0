@@ -23,7 +23,7 @@ const signedOutAuth: DesktopAuthState = {
 const signedInAuth: DesktopAuthState = {
   status: "signed_in",
   user: { userId: "user-1", email: "user@example.com" },
-  organization: { id: "org-1", name: "Org One", slug: "org-one" },
+  organization: { id: "org-1", name: "Org One" },
 };
 
 describe("hasReadyDesktopAuth", () => {

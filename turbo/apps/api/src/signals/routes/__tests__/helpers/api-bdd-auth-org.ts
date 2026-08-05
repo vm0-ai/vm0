@@ -53,7 +53,6 @@ import {
   zeroOrgDeleteContract,
   zeroOrgLeaveContract,
 } from "@vm0/api-contracts/contracts/zero-org";
-import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import {
   zeroOrgInviteContract,
@@ -66,26 +65,10 @@ import {
 } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
-  zeroSecretsByNameContract,
-  zeroSecretsContract,
-  zeroVariablesByNameContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
-import {
   zeroUserPreferencesContract,
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import type {
-  SecretListResponse,
-  SecretResponse,
-  SetSecretRequest,
-} from "@vm0/api-contracts/contracts/secrets";
-import type {
-  SetVariableRequest,
-  VariableListResponse,
-  VariableResponse,
-} from "@vm0/api-contracts/contracts/variables";
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
 
@@ -118,7 +101,6 @@ import { zeroOrgLogoRoutes } from "../../zero-org-logo";
 import { zeroOrgMembersRoutes } from "../../zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "../../zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
-import { zeroSecretsRoutes } from "../../zero-secrets";
 import { zeroTeamRoutes } from "../../zero-team";
 import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
 import { createBddApi, type OnboardingBootstrapOptions } from "./api-bdd";
@@ -229,7 +211,6 @@ const authOrgRoutes = [
   ...cliAuthRoutes,
   ...zeroOnboardingStatusRoutes,
   ...zeroOnboardingCompleteRoutes,
-  ...zeroSecretsRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroOrgReadRoutes,
   ...zeroOrgDeleteRoutes,
@@ -812,90 +793,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async setSecret(
-      actor: ApiTestUser,
-      body: SetSecretRequest,
-    ): Promise<SecretResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroSecretsContract,
-      );
-      const response = await accept(
-        client.set({ headers: authenticate(actor), body }),
-        [200, 201],
-      );
-      return response.body;
-    },
-
-    async requestSetSecret(
-      actor: ApiTestUser | null,
-      body: SetSecretRequest,
-      statuses: readonly (200 | 201 | 400 | 401 | 500)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroSecretsContract,
-      );
-      return await accept(
-        client.set({ headers: authenticate(actor), body }),
-        statuses,
-      );
-    },
-
-    async listSecrets(actor: ApiTestUser): Promise<SecretListResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroSecretsContract,
-      );
-      const response = await accept(
-        client.list({ headers: authenticate(actor) }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async deleteSecret(actor: ApiTestUser, name: string): Promise<void> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroSecretsByNameContract,
-      );
-      await accept(
-        client.delete({ headers: authenticate(actor), params: { name } }),
-        [204],
-      );
-    },
-
-    async setVariable(
-      actor: ApiTestUser,
-      body: SetVariableRequest,
-    ): Promise<VariableResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroVariablesContract,
-      );
-      const response = await accept(
-        client.set({ headers: authenticate(actor), body }),
-        [200, 201],
-      );
-      return response.body;
-    },
-
-    async listVariables(actor: ApiTestUser): Promise<VariableListResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroVariablesContract,
-      );
-      const response = await accept(
-        client.list({ headers: authenticate(actor) }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async deleteVariable(actor: ApiTestUser, name: string): Promise<void> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroVariablesByNameContract,
-      );
-      await accept(
-        client.delete({ headers: authenticate(actor), params: { name } }),
-        [204],
-      );
-    },
-
     async readPreferences(
       actor: ApiTestUser,
     ): Promise<UserPreferencesResponse> {
@@ -973,17 +870,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.update({ headers: authenticate(actor), body }),
         statuses,
       );
-    },
-
-    async listOrgs(actor: ApiTestUser) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgListContract,
-      );
-      const response = await accept(
-        client.list({ headers: authenticate(actor) }),
-        [200],
-      );
-      return response.body;
     },
 
     async listMembers(actor: ApiTestUser): Promise<OrgMembersResponse> {

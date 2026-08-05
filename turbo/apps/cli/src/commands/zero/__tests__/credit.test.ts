@@ -22,29 +22,6 @@ function buildZeroToken(capabilities: readonly string[]): string {
   return `vm0_sandbox_${header}.${body}.test-signature`;
 }
 
-function stubMembers(role: "admin" | "member") {
-  return http.get("http://localhost:3000/api/zero/org/members", () => {
-    return HttpResponse.json({
-      slug: "test-org",
-      role,
-      members: [
-        {
-          userId: "admin-1",
-          email: "admin@example.com",
-          firstName: "Admin",
-          lastName: "User",
-          imageUrl: "",
-          role: "admin",
-          joinedAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-      pendingInvitations: [],
-      membershipRequests: [],
-      createdAt: "2026-01-01T00:00:00.000Z",
-    });
-  });
-}
-
 function stubBillingStatus(
   overrides: {
     readonly tier?: string;
@@ -150,18 +127,45 @@ describe("zero credit command", () => {
     expect(output()).toContain("Built-in video generation: available");
   });
 
-  it("guides non-admins to zero doctor credit", async () => {
-    server.use(stubMembers("member"));
+  it("surfaces the admin-only checkout rejection for non-admins", async () => {
+    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+      return undefined as never;
+    });
+    const mockConsoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/billing/credit-checkout",
+        () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Only org admins can buy credits",
+                code: "FORBIDDEN",
+              },
+            },
+            { status: 403 },
+          );
+        },
+      ),
+    );
 
-    await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);
+    try {
+      await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);
 
-    expect(output()).toContain("zero doctor credit");
+      const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
+      expect(errorOutput).toContain("Only org admins can buy credits");
+      expect(mockExit).toHaveBeenCalledWith(1);
+    } finally {
+      mockConsoleError.mockRestore();
+      mockExit.mockRestore();
+    }
   });
 
   it("creates a credit checkout link for admins", async () => {
     let capturedBody: unknown = null;
     server.use(
-      stubMembers("admin"),
       http.post(
         "http://localhost:3000/api/zero/billing/credit-checkout",
         async ({ request }) => {
@@ -198,7 +202,6 @@ describe("zero credit command", () => {
   it("routes plans that cannot buy credits to the upgrade link", async () => {
     let checkoutRequests = 0;
     server.use(
-      stubMembers("admin"),
       stubBillingStatus({
         tier: "limited-free-1",
         canBuyCredits: false,
@@ -233,7 +236,6 @@ describe("zero credit command", () => {
     const mockConsoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    server.use(stubMembers("admin"));
 
     try {
       await zeroCreditCommand.parseAsync([

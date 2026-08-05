@@ -198,12 +198,8 @@ fn run_inner(
     while !shutdown.is_cancelled() {
         match process_control_ipc::read_request(&mut stream) {
             Ok(request) => {
-                let (status, diagnostic) = handle_control_payload(
-                    &request.message_id,
-                    &request.payload,
-                    &active_input,
-                    &cli_cancellation,
-                );
+                let (status, diagnostic) =
+                    handle_control_payload(&request.payload, &active_input, &cli_cancellation);
                 process_control_ipc::write_response(
                     &mut stream,
                     &process_control_ipc::ControlResponse {
@@ -232,7 +228,6 @@ fn run_inner(
 }
 
 fn handle_control_payload(
-    message_id: &str,
     payload: &[u8],
     active_input: &ActiveInputController,
     cli_cancellation: &CancellationToken,
@@ -256,7 +251,7 @@ fn handle_control_payload(
         };
     }
 
-    control_response_from_active_input(active_input.handle_control_payload(message_id, payload))
+    control_response_from_active_input(active_input.handle_control_payload(payload))
 }
 
 fn control_response_from_active_input(

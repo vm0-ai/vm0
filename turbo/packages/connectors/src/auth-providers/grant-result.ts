@@ -10,6 +10,16 @@ export interface ConnectorAuthProviderGrantUserInfo {
   readonly email: string | null;
 }
 
+export function requireConnectorGrantUserId(
+  id: string | null | undefined,
+  providerName: string,
+): string {
+  if (!id) {
+    throw new Error(`No user id in ${providerName} user info response`);
+  }
+  return id;
+}
+
 export type ConnectorAuthProviderGrantOutputValues = Readonly<
   Record<string, string | null | undefined>
 >;

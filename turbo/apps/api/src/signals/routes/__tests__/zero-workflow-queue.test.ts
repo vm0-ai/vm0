@@ -506,7 +506,7 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, goalRunId, [200]);
   });
 
-  it("continues to workflow automation after rejecting a higher-priority invalid goal", async () => {
+  it("continues to workflow automation after revoking a higher-priority invalid goal", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     const goal = await createActiveGoalQueueEventFixture({
@@ -526,9 +526,8 @@ describe("workflow queue", () => {
     const events = await wf.readThreadEvents(automation.threadId);
     expect(events).toContainEqual(
       expect.objectContaining({
-        eventType: "input.rejected",
+        eventType: "control.revoke",
         revokesEventId: goal.eventId,
-        error: "Goal continuation no longer matches the active goal",
       }),
     );
     const goalQueue = await readGoalQueueStateFixture(automation.threadId);

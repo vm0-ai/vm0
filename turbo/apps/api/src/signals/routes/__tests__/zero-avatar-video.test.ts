@@ -303,6 +303,10 @@ describe("JoggAI built-in avatar video routes", () => {
         },
       ],
       hasMore: true,
+      filterOptions: {
+        languages: ["english"],
+        useCases: ["narrative_story"],
+      },
     });
 
     expect(new URL(observedUrls[0] ?? "").searchParams.toString()).toBe(
@@ -311,6 +315,71 @@ describe("JoggAI built-in avatar video routes", () => {
     expect(new URL(observedUrls[1] ?? "").searchParams.toString()).toBe(
       "page=3&page_size=25&gender=male&language=english",
     );
+  });
+
+  it("paginates full collections returned by JoggAI", async () => {
+    const fixture = await seedAvatarVideoFixture();
+    const avatars = Array.from({ length: 25 }, (_, index) => {
+      const id = index + 1;
+      return { id, name: `Avatar ${String(id)}` };
+    });
+    const voices = Array.from({ length: 25 }, (_, index) => {
+      const id = index + 1;
+      return { voice_id: `voice-${String(id)}`, name: `Voice ${String(id)}` };
+    });
+    server.use(
+      http.get(JOGGAI_AVATARS_URL, () => {
+        return HttpResponse.json({
+          code: 0,
+          msg: "Success",
+          data: { avatars },
+        });
+      }),
+      http.get(JOGGAI_VOICES_URL, () => {
+        return HttpResponse.json({
+          code: 0,
+          msg: "Success",
+          data: { voices, has_more: true },
+        });
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const app = createAvatarVideoTestApp();
+
+    const avatarResponse = await app.request(
+      "/api/zero/avatar-video/avatars?page=2&pageSize=10",
+      { headers: authHeaders() },
+    );
+    expect(avatarResponse.status).toBe(200);
+    const avatarBody = asRecord(await avatarResponse.json());
+    expect(
+      Array.isArray(avatarBody.avatars)
+        ? avatarBody.avatars.map((avatar) => {
+            return asRecord(avatar).id;
+          })
+        : [],
+    ).toStrictEqual([11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+
+    const voiceResponse = await app.request(
+      "/api/zero/avatar-video/voices?page=3&pageSize=10",
+      { headers: authHeaders() },
+    );
+    expect(voiceResponse.status).toBe(200);
+    const voiceBody = asRecord(await voiceResponse.json());
+    expect(
+      Array.isArray(voiceBody.voices)
+        ? voiceBody.voices.map((voice) => {
+            return asRecord(voice).id;
+          })
+        : [],
+    ).toStrictEqual([
+      "voice-21",
+      "voice-22",
+      "voice-23",
+      "voice-24",
+      "voice-25",
+    ]);
+    expect(voiceBody.hasMore).toBeFalsy();
   });
 
   it("stores a run-scoped talking-avatar video in the avatar catalog", async () => {

@@ -92,19 +92,13 @@ function sandboxOperationEvents(): readonly Record<string, unknown>[] {
   });
 }
 
-function gmailEventContextFromPrompt(
+function expectGmailEventContextInPrompt(
   appendSystemPrompt: string,
-): Record<string, unknown> {
-  const marker = "# This run's event\n";
-  const markerIndex = appendSystemPrompt.indexOf(marker);
-  expect(markerIndex).toBeGreaterThanOrEqual(0);
-  const parsed: unknown = JSON.parse(
-    appendSystemPrompt.slice(markerIndex + marker.length),
+  expected: Record<string, unknown>,
+): void {
+  expect(appendSystemPrompt).toContain(
+    `# This run's event\n${JSON.stringify(expected, null, 2)}`,
   );
-  if (!isRecord(parsed)) {
-    throw new Error("Expected Gmail event context to be an object");
-  }
-  return parsed;
 }
 
 function encodeJwtPart(value: unknown): string {
@@ -626,7 +620,6 @@ describe("POST /api/webhooks/gmail", () => {
   it("dispatches matching new inbound messages and de-duplicates retries", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
-    mockOptionalEnv("ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED", "true");
     const runnerGroup = runsApi.configureRunnerGroup();
     configureGmailWatchMock();
     configureGmailMessageMocks(gmailEmail);
@@ -717,7 +710,7 @@ describe("POST /api/webhooks/gmail", () => {
     }
     expect(appendSystemPrompt).toContain("Not included below: the email body.");
     expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
-    expect(gmailEventContextFromPrompt(appendSystemPrompt)).toStrictEqual({
+    expectGmailEventContextInPrompt(appendSystemPrompt, {
       automationId: created.body.id,
       event: "new_message",
       emailAddress: gmailEmail,
@@ -935,11 +928,15 @@ describe("POST /api/webhooks/gmail", () => {
       throw new Error("Expected appendSystemPrompt on the queued run");
     }
     expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
-    expect(gmailEventContextFromPrompt(appendSystemPrompt)).toMatchObject({
+    expectGmailEventContextInPrompt(appendSystemPrompt, {
       automationId: created.body.id,
       event: "new_message",
+      emailAddress: gmailEmail,
       messageId: "msg-1",
       threadId: "gmail-thread-1",
+      from: "Customer Example <customer@example.com>",
+      to: [gmailEmail],
+      cc: [],
       subject: "Invoice needs a reply",
     });
   });

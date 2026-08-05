@@ -297,6 +297,10 @@ export default [
     files: [
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
+      // A pre-migration schema cannot be constructed through a production API.
+      // This focused transaction validates the rollout contract against real
+      // PostgreSQL tables before and after the autonomy-budget columns exist.
+      "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {
@@ -345,6 +349,10 @@ export default [
       // policy lookup byte-for-byte; individual provider routes cannot cover
       // every lookup-table row without duplicating the contract under test.
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
+      // A pre-migration schema cannot be constructed through a production API.
+      // This focused transaction validates the rollout contract against real
+      // PostgreSQL tables before and after the autonomy-budget columns exist.
+      "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
     ],
     rules: {
       "no-restricted-imports": [

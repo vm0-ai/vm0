@@ -82,7 +82,6 @@ export interface MessageListSignals {
   readonly mailDraftCardSignalsById$: Computed<
     ReadonlyMap<string, MailDraftSignals>
   >;
-  readonly reloadMailDrafts$: Command<void, []>;
   readonly browserSessionSignals: BrowserSessionSignals;
   readonly subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   readonly hasEvents$: Computed<Promise<boolean>>;

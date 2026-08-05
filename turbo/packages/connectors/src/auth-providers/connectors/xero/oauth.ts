@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
@@ -187,7 +188,7 @@ async function fetchXeroUserInfo(accessToken: string): Promise<XeroUserInfo> {
     .parse(await response.json());
 
   return {
-    id: data.sub ?? "",
+    id: requireConnectorGrantUserId(data.sub, "Xero"),
     username: data.name ?? null,
     email: data.email ?? null,
   };

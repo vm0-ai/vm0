@@ -1,6 +1,7 @@
 import { buildInfoContract } from "../contracts/build-info";
 import { runnerRealtimeTokenContract } from "../contracts/realtime";
 import {
+  runnersActiveInputsContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -18,7 +19,12 @@ import {
   webhookTelemetryContract,
 } from "../contracts/webhooks";
 import { zeroModelPoliciesMainContract } from "../contracts/zero-model-policies";
+import { zeroBankingContract } from "../contracts/zero-banking";
+import { zeroFinanceContract } from "../contracts/zero-finance";
+import { zeroPeopleSearchContract } from "../contracts/zero-people-search";
+import { zeroScrapeContract } from "../contracts/zero-scrape";
 import { zeroUserModelPreferenceContract } from "../contracts/zero-user-model-preference";
+import { zeroWebSearchContract } from "../contracts/zero-web-search";
 
 export interface RouteLike {
   readonly method?: unknown;
@@ -49,6 +55,56 @@ export const rustRouteBindings = [
     rustConstName: "GET",
   },
   {
+    route: zeroScrapeContract.scrape,
+    rustModulePath: ["zero", "scrape"],
+    rustConstName: "SCRAPE",
+  },
+  {
+    route: zeroPeopleSearchContract.search,
+    rustModulePath: ["zero", "people_search"],
+    rustConstName: "SEARCH",
+  },
+  {
+    route: zeroWebSearchContract.search,
+    rustModulePath: ["zero", "web_search"],
+    rustConstName: "SEARCH",
+  },
+  {
+    route: zeroFinanceContract.search,
+    rustModulePath: ["zero", "finance"],
+    rustConstName: "SEARCH",
+  },
+  {
+    route: zeroFinanceContract.profile,
+    rustModulePath: ["zero", "finance"],
+    rustConstName: "PROFILE",
+  },
+  {
+    route: zeroFinanceContract.quote,
+    rustModulePath: ["zero", "finance"],
+    rustConstName: "QUOTE",
+  },
+  {
+    route: zeroFinanceContract.chart,
+    rustModulePath: ["zero", "finance"],
+    rustConstName: "CHART",
+  },
+  {
+    route: zeroBankingContract.accounts,
+    rustModulePath: ["zero", "banking"],
+    rustConstName: "ACCOUNTS",
+  },
+  {
+    route: zeroBankingContract.balances,
+    rustModulePath: ["zero", "banking"],
+    rustConstName: "BALANCES",
+  },
+  {
+    route: zeroBankingContract.transactions,
+    rustModulePath: ["zero", "banking"],
+    rustConstName: "TRANSACTIONS",
+  },
+  {
     route: runnersPollContract.poll,
     rustModulePath: ["runners", "poll"],
     rustConstName: "POLL",
@@ -56,6 +112,16 @@ export const rustRouteBindings = [
   {
     route: runnersJobClaimContract.claim,
     rustModulePath: ["runners", "jobs", "by_id", "claim"],
+    rustConstName: "CLAIM",
+  },
+  {
+    route: runnersActiveInputsContract.list,
+    rustModulePath: ["runners", "runs", "by_run_id", "active_inputs"],
+    rustConstName: "LIST",
+  },
+  {
+    route: runnersActiveInputsContract.claim,
+    rustModulePath: ["runners", "runs", "by_run_id", "active_inputs", "claim"],
     rustConstName: "CLAIM",
   },
   {

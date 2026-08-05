@@ -16,6 +16,11 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
+  readWorkflowAutomationAutonomyFixture,
+  setRunAutonomyBudgetFixture,
+  setWorkflowAutomationAutonomyBudgetFixture,
+} from "./helpers/runtime-state";
+import {
   createBddApi,
   type ApiTestUser,
   type ApiTestUserOptions,
@@ -1303,6 +1308,11 @@ describe("zero workflows", () => {
       }),
       [201],
     );
+    await setWorkflowAutomationAutonomyBudgetFixture(
+      context,
+      automation.body.id,
+      4,
+    );
     const webhookAutomation = await accept(
       automationsClient().create({
         headers: authHeaders(actor),
@@ -1347,6 +1357,15 @@ describe("zero workflows", () => {
         enabled: automation.body.enabled,
       }),
     );
+    const copiedSchedule = copiedAutomations.body.find((copiedAutomation) => {
+      return copiedAutomation.kind === "schedule";
+    });
+    if (!copiedSchedule) {
+      throw new Error("Expected the copied schedule automation");
+    }
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, copiedSchedule.id),
+    ).resolves.toMatchObject({ autonomyBudget: 4 });
     expect(
       copiedAutomations.body.some((copiedAutomation) => {
         return (
@@ -1355,6 +1374,101 @@ describe("zero workflows", () => {
         );
       }),
     ).toBeTruthy();
+  });
+
+  it("caps copied automation budgets for Zero callers and rejects exhausted runs", async () => {
+    const actor = user({ orgRole: "org:admin" });
+    await enableWorkflowRuns(actor);
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Budgeted Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Budgeted Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `budgeted-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# budgeted copy source",
+    });
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "schedule",
+          schedule: { type: "loop", intervalSeconds: 900 },
+        },
+      }),
+      [201],
+    );
+    const sourceRun = await accept(
+      detailClient().run({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+      }),
+      [200],
+    );
+    if (!sourceRun.body.runId) {
+      throw new Error("Expected the source workflow run to start");
+    }
+    const sourceToken = api.zeroTokenForRunWithCapabilities(
+      actor,
+      sourceRun.body.runId,
+      ["agent:write"],
+    );
+
+    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 1);
+    const copied = await accept(
+      detailClient().copy({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    const copiedAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(actor),
+        params: { workflowId: copied.body.id },
+      }),
+      [200],
+    );
+    const [copiedAutomation] = copiedAutomations.body;
+    if (!copiedAutomation) {
+      throw new Error("Expected the copied workflow automation");
+    }
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, copiedAutomation.id),
+    ).resolves.toMatchObject({ autonomyBudget: 0 });
+
+    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 0);
+    const blockedTargetAgent = await createAgent(actor, {
+      displayName: "Exhausted Copy Target Agent",
+      visibility: "private",
+    });
+    const blocked = await accept(
+      detailClient().copy({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: blockedTargetAgent.agentId },
+      }),
+      [409],
+    );
+    expect(blocked.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+
+    const blockedTargetWorkflows = await accept(
+      collectionClient().list({
+        headers: authHeaders(actor),
+        query: { agentId: blockedTargetAgent.agentId },
+      }),
+      [200],
+    );
+    expect(names(blockedTargetWorkflows.body)).not.toContain(
+      workflow.body.name,
+    );
+    await api.requestCancelRun(actor, sourceRun.body.runId, [200]);
   });
 
   it("reads and updates workflow content, audit metadata, and deletion through API responses", async () => {

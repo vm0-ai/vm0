@@ -62,6 +62,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { seedUserSecret, seedUserVariable } from "./helpers/user-config-state";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -5793,7 +5794,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("defaults limited-free runs to Luna, allows Terra, rejects Sol, and normalizes retired Auto", async () => {
+  it("defaults limited-free runs to DeepSeek, allows Luna, and rejects Sol", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -5824,7 +5825,10 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       }),
     ).toMatchObject({ isDefault: true });
 
-    for (const model of ["gpt-5.6-terra", "gpt-5.6-luna"] as const) {
+    for (const model of [
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      "gpt-5.6-luna",
+    ] as const) {
       await seedVm0ManagedModelKey(model);
       const sent = await chat.requestSendEvent(
         actor,
@@ -5863,30 +5867,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).toHaveLength(0);
     expect(queue.body.concurrency.active).toBe(0);
-
-    const retiredAuto = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "legacy Auto request",
-        model: "vm0-model",
-      },
-      [201],
-    );
-    if (retiredAuto.status !== 201 || retiredAuto.body.runId === null) {
-      throw new Error("Expected retired Auto to normalize to Luna");
-    }
-    await api.heartbeatRunner(runnerGroup);
-    const retiredAutoClaim = await api.claimRunnerJob(retiredAuto.body.runId);
-    expect(retiredAutoClaim.environment).toMatchObject({
-      OPENAI_MODEL: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    });
-    expect(retiredAutoClaim.environment).not.toHaveProperty("OPENAI_BASE_URL");
-    expect(retiredAutoClaim.codexRuntimeConfig).toBeNull();
-    expect(retiredAutoClaim.modelUsageProvider).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    );
-    await api.requestCancelRun(actor, retiredAuto.body.runId, [200]);
   });
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
@@ -6024,18 +6004,15 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment).toMatchObject({
-      OPENAI_API_KEY: modelProviderPlaceholder(
-        "deepseek-codex",
-        "DEEPSEEK_API_KEY",
-      ),
-      OPENAI_BASE_URL: "https://api.deepseek.com",
+      OPENAI_API_KEY: modelProviderPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
+      OPENAI_BASE_URL: "https://api.deepseek.com/",
       OPENAI_MODEL: selectedModel,
     });
     expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
     expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "deepseek-codex",
+      providerId: "deepseek",
       name: "DeepSeek",
-      baseUrl: "https://api.deepseek.com",
+      baseUrl: "https://api.deepseek.com/",
       envKey: "OPENAI_API_KEY",
       wireApi: "responses",
       supportsWebsockets: false,
@@ -6052,8 +6029,8 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       claim.firewalls?.map((firewall) => {
         return firewallEntryName(firewall);
       }),
-    ).toContain("model-provider:deepseek-codex");
-    expect(claim.billableFirewalls).toContain("model-provider:deepseek-codex");
+    ).toContain("model-provider:deepseek");
+    expect(claim.billableFirewalls).toContain("model-provider:deepseek");
     expect(claim.modelUsageProvider).toBe(selectedModel);
 
     await api.requestCancelRun(actor, sent.body.runId, [200]);
@@ -6071,7 +6048,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const { providerId: deepseekProviderId } = await api.createOrgModelProvider(
       actor,
       {
-        type: "deepseek-codex",
+        type: "deepseek",
         secret: "recognition-deepseek-key",
       },
     );
@@ -6087,7 +6064,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       {
         model: unsupportedModel,
         isDefault: true,
-        defaultProviderType: "deepseek-codex",
+        defaultProviderType: "deepseek",
         credentialScope: "org",
         modelProviderId: deepseekProviderId,
       },
@@ -6492,7 +6469,6 @@ describe("RUN-02: persisted run environment resolution", () => {
   it("preserves scope precedence and excludes unreferenced secrets", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const actor = bdd.user();
     if (!actor.orgId) {
       throw new Error("Expected persisted environment actor organization");
@@ -6519,48 +6495,62 @@ describe("RUN-02: persisted run environment resolution", () => {
       unreferencedSecret: `BDD_UNREFERENCED_SECRET_${suffix}`,
     };
 
-    await authOrg.setVariable(orgActor, {
+    const orgScope = { orgId: actor.orgId, userId: orgActor.userId };
+    const userScope = { orgId: actor.orgId, userId: actor.userId };
+
+    await seedUserVariable(context, {
+      ...orgScope,
       name: names.orgOnlyVariable,
       value: "org-only-variable-value",
     });
-    await authOrg.setVariable(orgActor, {
+    await seedUserVariable(context, {
+      ...orgScope,
       name: names.userVariable,
       value: "org-user-variable-value",
     });
-    await authOrg.setVariable(actor, {
+    await seedUserVariable(context, {
+      ...userScope,
       name: names.userVariable,
       value: "user-variable-value",
     });
-    await authOrg.setVariable(orgActor, {
+    await seedUserVariable(context, {
+      ...orgScope,
       name: names.requestVariable,
       value: "org-request-variable-value",
     });
-    await authOrg.setVariable(actor, {
+    await seedUserVariable(context, {
+      ...userScope,
       name: names.requestVariable,
       value: "user-request-variable-value",
     });
 
-    await authOrg.setSecret(orgActor, {
+    await seedUserSecret(context, {
+      ...orgScope,
       name: names.orgOnlySecret,
       value: "org-only-secret-value",
     });
-    await authOrg.setSecret(orgActor, {
+    await seedUserSecret(context, {
+      ...orgScope,
       name: names.userSecret,
       value: "org-user-secret-value",
     });
-    await authOrg.setSecret(actor, {
+    await seedUserSecret(context, {
+      ...userScope,
       name: names.userSecret,
       value: "user-secret-value",
     });
-    await authOrg.setSecret(orgActor, {
+    await seedUserSecret(context, {
+      ...orgScope,
       name: names.requestSecret,
       value: "org-request-secret-value",
     });
-    await authOrg.setSecret(actor, {
+    await seedUserSecret(context, {
+      ...userScope,
       name: names.requestSecret,
       value: "user-request-secret-value",
     });
-    await authOrg.setSecret(actor, {
+    await seedUserSecret(context, {
+      ...userScope,
       name: names.unreferencedSecret,
       value: "unreferenced-secret-value",
     });
@@ -7658,13 +7648,14 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
   it("ignores plain user secrets named like connector tokens", async () => {
     const api = createRunsApi(context);
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     // openai is enabled on the agent but never connected; a user secret with
     // the connector's token name must not impersonate the connector.
     await api.enableAgentConnectors(actor, agentId, ["openai"]);
-    await authOrg.setSecret(actor, {
+    await seedUserSecret(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
       name: "OPENAI_TOKEN",
       value: "sk-plain-user-secret",
     });
@@ -8856,7 +8847,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
   it("keeps connector-owned vars out of custom connector base urls", async () => {
     const api = createRunsApi(context);
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -8866,7 +8856,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       subdomain: "münich",
     });
     await api.enableAgentConnectors(actor, agentId, ["zendesk"]);
-    await authOrg.setVariable(actor, {
+    await seedUserVariable(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
       name: "ZENDESK_SUBDOMAIN",
       value: "user-subdomain",
     });
@@ -9927,6 +9919,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       },
       {
         [FeatureSwitchKey.ZeroBrowser]: true,
+        [FeatureSwitchKey.ZeroChatMessaging]: false,
       },
     );
     bdd.acceptAgentStorageWrites();

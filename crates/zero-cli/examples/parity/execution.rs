@@ -15,10 +15,10 @@ use tempfile::{Builder, TempDir};
 use crate::compare::normalize_observation;
 use crate::http::MockServer;
 use crate::model::{
-    Case, FilesystemEntry, FilesystemEntryKind, Observation, RuntimeValues, SeedEntry,
-    TerminalMode, Termination,
+    Case, FilesystemEntry, FilesystemEntryKind, Observation, RuntimeValues, RustExecution,
+    SeedEntry, TerminalMode, Termination,
 };
-use crate::{HarnessError, NPX_TARGET_ENV, Result};
+use crate::{HarnessError, NPX_MARKER_ENV, NPX_TARGET_ENV, RUST_EXECUTION_ENV, Result};
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const PTY_COLUMNS: u16 = 100;
@@ -52,6 +52,7 @@ struct IsolatedRuntime {
     home: PathBuf,
     temp: PathBuf,
     bin: PathBuf,
+    npx_marker: PathBuf,
 }
 
 struct ProcessOutput {
@@ -76,6 +77,7 @@ pub fn observe(
         temp_path: display_path(&runtime.temp),
     };
     let command = build_command(
+        implementation,
         executable,
         typescript_executable,
         &runtime,
@@ -83,6 +85,8 @@ pub fn observe(
         case,
     )?;
     let process_result = run_process(command, case);
+    let execution_result =
+        validate_rust_execution(implementation, case.rust_execution, &runtime.npx_marker);
     let http_result = server.finish();
     let process = process_result.map_err(|error| {
         HarnessError::new(format!(
@@ -90,6 +94,7 @@ pub fn observe(
             implementation.label()
         ))
     })?;
+    execution_result?;
     let requests = http_result.map_err(|error| {
         HarnessError::new(format!(
             "{} mock HTTP service failed: {error}",
@@ -133,6 +138,7 @@ impl IsolatedRuntime {
         let home = root.path().join("home");
         let temp = root.path().join("tmp");
         let bin = root.path().join("bin");
+        let npx_marker = temp.join("npm-fallback-invoked");
         for directory in [&workspace, &home, &temp, &bin] {
             fs::create_dir_all(directory).map_err(|error| {
                 HarnessError::new(format!(
@@ -158,11 +164,13 @@ impl IsolatedRuntime {
             home,
             temp,
             bin,
+            npx_marker,
         })
     }
 }
 
 fn build_command(
+    implementation: Implementation,
     executable: &Path,
     typescript_executable: &Path,
     runtime: &IsolatedRuntime,
@@ -191,6 +199,12 @@ fn build_command(
         .env("XDG_CACHE_HOME", runtime.home.join(".cache"))
         .env(NPX_TARGET_ENV, typescript_executable);
 
+    if matches!(implementation, Implementation::Rust) {
+        command
+            .env(NPX_MARKER_ENV, &runtime.npx_marker)
+            .env(RUST_EXECUTION_ENV, case.rust_execution.as_str());
+    }
+
     match case.terminal_mode {
         TerminalMode::Pipe => {
             command.env("NO_COLOR", "1").env("TERM", "dumb");
@@ -204,6 +218,32 @@ fn build_command(
         command.env(key, expand_runtime_placeholders(value, runtime_values));
     }
     Ok(command)
+}
+
+fn validate_rust_execution(
+    implementation: Implementation,
+    expected: RustExecution,
+    marker: &Path,
+) -> Result<()> {
+    if matches!(implementation, Implementation::Typescript) {
+        return Ok(());
+    }
+
+    let fallback_invoked = marker.try_exists().map_err(|error| {
+        HarnessError::new(format!(
+            "inspect npm fallback marker {}: {error}",
+            marker.display()
+        ))
+    })?;
+    match (expected, fallback_invoked) {
+        (RustExecution::Native, false) | (RustExecution::Fallback, true) => Ok(()),
+        (RustExecution::Native, true) => Err(HarnessError::new(
+            "fixture requires native Rust execution, but zero-cli invoked npm fallback",
+        )),
+        (RustExecution::Fallback, false) => Err(HarnessError::new(
+            "fixture requires npm fallback, but zero-cli executed natively",
+        )),
+    }
 }
 
 fn expand_runtime_placeholders(value: &str, runtime_values: &RuntimeValues) -> String {
@@ -595,6 +635,24 @@ mod tests {
     use std::process::Command;
 
     use super::*;
+
+    #[test]
+    fn validates_native_and_fallback_execution_markers() {
+        let temp = tempfile::tempdir().unwrap();
+        let marker = temp.path().join("npm-fallback-invoked");
+
+        validate_rust_execution(Implementation::Rust, RustExecution::Native, &marker).unwrap();
+        assert!(
+            validate_rust_execution(Implementation::Rust, RustExecution::Fallback, &marker)
+                .is_err()
+        );
+
+        fs::write(&marker, b"invoked").unwrap();
+        validate_rust_execution(Implementation::Rust, RustExecution::Fallback, &marker).unwrap();
+        assert!(
+            validate_rust_execution(Implementation::Rust, RustExecution::Native, &marker).is_err()
+        );
+    }
 
     #[test]
     fn pty_execution_connects_all_standard_streams_to_terminals() {

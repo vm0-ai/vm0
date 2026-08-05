@@ -3,7 +3,6 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
 } from "@vm0/api-contracts/contracts/zero-org";
-import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
@@ -15,7 +14,6 @@ import {
   leaveZeroOrg$,
   updateZeroOrg$,
   zeroOrgDetail$,
-  zeroOrgList,
   zeroOrgMembersList,
 } from "../services/zero-org-data.service";
 
@@ -102,12 +100,6 @@ const leaveOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-const listOrgsInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const body = await get(zeroOrgList(auth.userId));
-  return { status: 200 as const, body };
-});
-
 const membersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const body = await get(
@@ -136,17 +128,9 @@ export const zeroOrgReadRoutes: readonly RouteEntry[] = [
     handler: authRoute({ requireOrganization: true }, leaveOrgInner$),
   },
   {
-    route: zeroOrgListContract.list,
-    handler: authRoute({}, listOrgsInner$),
-  },
-  {
     route: zeroOrgMembersContract.members,
     handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "billing:read",
-      },
+      { requireOrganization: true, missingOrganizationStatus: 401 },
       membersInner$,
     ),
   },

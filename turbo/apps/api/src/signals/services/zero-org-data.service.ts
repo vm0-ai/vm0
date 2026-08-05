@@ -9,7 +9,6 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
-import type { OrgListResponse } from "@vm0/api-contracts/contracts/org-list";
 import {
   orgRoleSchema,
   type OrgMessageResponse,
@@ -552,26 +551,6 @@ export const deleteZeroOrg$ = command(
     return { message: "Organization deleted" };
   },
 );
-
-export function zeroOrgList(
-  userId: string,
-): Computed<Promise<OrgListResponse>> {
-  return computed(async (get): Promise<OrgListResponse> => {
-    const client = get(clerk$);
-    const memberships = await client.users.getOrganizationMembershipList({
-      userId,
-    });
-    return {
-      orgs: memberships.data.map((membership) => {
-        return {
-          id: membership.organization.id,
-          name: membership.organization.name,
-          role: mapClerkOrgRole(membership.role),
-        };
-      }),
-    };
-  });
-}
 
 interface OrgMembersListArgs {
   readonly orgId: string;

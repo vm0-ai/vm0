@@ -15,21 +15,19 @@ import {
 import {
   loadGoalQueueTarget,
   loadNextGoalQueueEvent,
-  rejectGoalQueueEvent,
+  revokeGoalQueueEvent,
+  settleFailedGoalQueueEvent,
   type GoalQueueTarget,
   type PendingGoalQueueEvent,
 } from "./chat-goal-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
-import { pauseActiveGoalForThread } from "./zero-goal.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 
 const log = logger("api:zero-goal-queue-drain");
 const MAX_DRAIN_ATTEMPTS = 5;
-const GOAL_INVALIDATED_REASON =
-  "Goal continuation no longer matches the active goal";
 
 type GoalDrainAttempt = "initial" | "retry";
 type GoalDrainTimingRole = "waiting" | "phase" | "aggregate";
@@ -181,6 +179,7 @@ function buildQueueFirstGoalRunInput(args: {
     }),
     zeroRunMetadata: {
       goalId: normalizedGoal.goalId,
+      autonomyBudget: normalizedGoal.autonomyBudget,
     },
     queueFirstAssociation: {
       kind: "goal_event",
@@ -253,24 +252,20 @@ async function publishGoalQueueChanged(
   signal.throwIfAborted();
 }
 
-async function rejectGoalEvent(
+async function revokeGoalEvent(
   db: Db,
   event: PendingGoalQueueEvent,
-  reason: string,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const rejected = await rejectGoalQueueEvent(db, {
+  const revoked = await revokeGoalQueueEvent(db, {
     chatThreadId: event.chatThreadId,
     eventId: event.id,
-    orgId: event.orgId,
-    userId: event.userId,
-    reason,
   });
   signal.throwIfAborted();
-  if (rejected) {
+  if (revoked) {
     await publishGoalQueueChanged(event, signal);
   }
-  return rejected;
+  return revoked;
 }
 
 const launchQueuedGoal$ = command(
@@ -420,15 +415,10 @@ export const drainGoalQueueForThread$ = command(
       signal.throwIfAborted();
       if (!goal) {
         await timing.measure(
-          "api_dispatch_pre_create_zero_goal_drain_reject_invalid_event",
+          "api_dispatch_pre_create_zero_goal_drain_revoke_invalid_event",
           "nested",
           async () => {
-            return await rejectGoalEvent(
-              db,
-              event,
-              GOAL_INVALIDATED_REASON,
-              signal,
-            );
+            return await revokeGoalEvent(db, event, signal);
           },
           phaseDimensions,
         );
@@ -453,35 +443,32 @@ export const drainGoalQueueForThread$ = command(
         await publishGoalQueueChanged(event, signal);
         return;
       }
+
       if (result.kind === "enqueued") {
         const stillValid = await loadGoalQueueTarget(db, event);
         signal.throwIfAborted();
         if (!stillValid) {
-          await rejectGoalEvent(db, event, GOAL_INVALIDATED_REASON, signal);
+          await revokeGoalEvent(db, event, signal);
         }
         return;
       }
 
-      const rejected = await rejectGoalEvent(
-        db,
+      const settlement = await settleFailedGoalQueueEvent(db, {
         event,
-        result.response.body.error.message,
-        signal,
-      );
-      const paused = rejected
-        ? await pauseActiveGoalForThread(db, {
-            orgId: goal.orgId,
-            userId: goal.userId,
-            threadId: goal.threadId,
-          })
-        : null;
+        reason: result.response.body.error.message,
+      });
       signal.throwIfAborted();
+      if (settlement.kind !== "not_pending") {
+        await publishGoalQueueChanged(event, signal);
+      }
       log.warn("Goal queue event failed to create a run", {
         eventId: event.id,
-        goalId: goal.goalId,
+        goalId:
+          settlement.kind === "rejected" ? settlement.goalId : event.goalId,
         code: result.response.body.error.code,
-        rejected,
-        pauseResult: paused?.kind ?? "not_paused",
+        rejected: settlement.kind === "rejected",
+        pauseResult: settlement.kind === "rejected" ? "ok" : "not_paused",
+        settlement: settlement.kind,
       });
       return;
     }

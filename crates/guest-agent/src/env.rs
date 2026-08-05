@@ -919,7 +919,7 @@ mod tests {
                 r#"[{"name":"artifact","mountPath":"/mnt/a","storageId":"storage","versionId":"v1"}]"#
                     .to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
         };
         let path = write_run_payload_fixture(&runtime_dir, &payload);
         let parent = path.parent().unwrap().to_path_buf();
@@ -940,7 +940,7 @@ mod tests {
         assert_eq!(config.settings, "{}");
         assert_eq!(config.artifacts.len(), 1);
         assert_eq!(config.feature_flags.get("flag"), Some(&true));
-        assert_eq!(config.codex_runtime_config, r#"{"providerId":"minimax"}"#);
+        assert_eq!(config.codex_runtime_config, r#"{"providerId":"deepseek"}"#);
         assert!(!path.exists());
         assert!(!parent.exists());
     }

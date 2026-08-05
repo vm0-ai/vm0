@@ -8,6 +8,7 @@ import {
   isChatUserMessageEventType,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
+import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 
 interface UserMessageProjection {
   readonly agentPrompt: string;
@@ -27,6 +28,71 @@ type UserMessageNonContentPart = Extract<
   UserMessagePart,
   { readonly type: "source" | "automation" | "goal" }
 >;
+
+export interface ChatAgentRunSourceAnnotation {
+  readonly runId: string;
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly titleSnapshot: string;
+}
+
+function chatAgentRunSourceHref(
+  source: Pick<ChatAgentRunSourceAnnotation, "runId" | "threadId">,
+): string {
+  return `/chats/${source.threadId}#run-${source.runId}`;
+}
+
+export function hasAgentRunSourceAnnotation(
+  document: UserMessageDocument,
+): boolean {
+  return document.parts.some((part) => {
+    return part.type === "source" && part.kind === "agent";
+  });
+}
+
+/** Project the persisted document for clients that predate agent sources. */
+export function withoutAgentRunSourceAnnotation(
+  document: UserMessageDocument,
+): UserMessageDocument {
+  if (!hasAgentRunSourceAnnotation(document)) {
+    return document;
+  }
+  return {
+    version: 1,
+    parts: document.parts.filter((part) => {
+      return !(part.type === "source" && part.kind === "agent");
+    }),
+  };
+}
+
+/** Replace client-owned annotations with authoritative agent-run provenance. */
+export function withAgentRunSourceAnnotation(
+  document: UserMessageDocument,
+  source: ChatAgentRunSourceAnnotation,
+): UserMessageDocument {
+  const contentParts = document.parts.filter((part) => {
+    return (
+      part.type !== "source" &&
+      part.type !== "automation" &&
+      part.type !== "goal"
+    );
+  });
+  return {
+    version: 1,
+    parts: [
+      ...contentParts,
+      {
+        type: "source",
+        kind: "agent",
+        runId: source.runId,
+        threadId: source.threadId,
+        agentId: source.agentId,
+        titleSnapshot: source.titleSnapshot,
+        href: chatAgentRunSourceHref(source),
+      },
+    ],
+  };
+}
 
 export function requiredUserMessageForEvent(
   eventType: ChatEventType,
@@ -119,7 +185,20 @@ function generationTemplatePrompt(part: {
   readonly titleSnapshot: string;
   readonly template: GenerationTemplateRequest;
 }): string {
-  return `Select ${part.titleSnapshot} ${part.template.type} template`;
+  return `Select ${part.titleSnapshot} ${generationTemplateTypeLabel(part.template)} template`;
+}
+
+function generationTemplateTypeLabel(
+  template: GenerationTemplateRequest,
+): string {
+  if (
+    template.type === "video" &&
+    parseAvatarTemplateStylePresetId(template.selection.stylePresetId) !==
+      undefined
+  ) {
+    return "avatar";
+  }
+  return template.type;
 }
 
 function inlineGenerationTemplatePrompt(
@@ -129,7 +208,7 @@ function inlineGenerationTemplatePrompt(
   },
   referenceNumber: number,
 ): string {
-  return `[Template #${referenceNumber}: ${part.titleSnapshot} (${part.template.type})]`;
+  return `[Template #${referenceNumber}: ${part.titleSnapshot} (${generationTemplateTypeLabel(part.template)})]`;
 }
 
 function formatFeedbackParts(

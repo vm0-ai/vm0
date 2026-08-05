@@ -320,7 +320,7 @@ function vm0ManagedKeyRows(composeId: string) {
     },
     {
       vendor: "deepseek",
-      model: "deepseek-v4-pro",
+      model: "deepseek-v4-flash",
       apiKey: `vm0-key-deepseek-${composeId}`,
       label: composeId,
     },

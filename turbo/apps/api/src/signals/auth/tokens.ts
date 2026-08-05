@@ -21,10 +21,6 @@ import { singleton } from "../../lib/singleton";
 
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
-// Pre-rollout TypeScript Zero CLI versions gate `recognize` with this key.
-// Keep the positive token override until those versions can no longer run,
-// including from resumed sandboxes or npm caches.
-const LEGACY_IMAGE_RECOGNITION_SWITCH = "zeroImageRecognition";
 // Covers the runner's two-hour execution budget plus claim, startup,
 // finalization, and terminal report time.
 const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
@@ -337,21 +333,13 @@ export function generateZeroToken(
       capabilities.push(capability);
     }
   }
-  const featureSwitchOverrides =
-    options?.imageRecognitionAvailable === true
-      ? {
-          ...overrides,
-          [LEGACY_IMAGE_RECOGNITION_SWITCH]: true,
-        }
-      : overrides;
-
   const payload: z.infer<typeof zeroTokenPayloadSchema> = {
     scope: "zero",
     userId,
     runId,
     orgId,
     capabilities,
-    ...(featureSwitchOverrides === undefined ? {} : { featureSwitchOverrides }),
+    ...(overrides === undefined ? {} : { featureSwitchOverrides: overrides }),
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }

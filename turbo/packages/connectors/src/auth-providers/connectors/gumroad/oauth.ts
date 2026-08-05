@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const GUMROAD_TOKEN_URL = "https://gumroad.com/oauth/token";
@@ -178,7 +179,7 @@ async function fetchGumroadUserInfo(
     .parse(await response.json());
 
   return {
-    id: data.user?.id ?? "",
+    id: requireConnectorGrantUserId(data.user?.id, "Gumroad"),
     username: data.user?.name ?? null,
     email: data.user?.email ?? null,
   };

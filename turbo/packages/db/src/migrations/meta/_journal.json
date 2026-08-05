@@ -134,6 +134,34 @@
       "when": 1785842857385,
       "tag": "0826_abandoned_zzzax",
       "breakpoints": true
+    },
+    {
+      "idx": 827,
+      "version": "7",
+      "when": 1785843891909,
+      "tag": "0827_add_image_task_usage_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 828,
+      "version": "7",
+      "when": 1785847164447,
+      "tag": "0828_migrate_legacy_deepseek_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 829,
+      "version": "7",
+      "when": 1785855013869,
+      "tag": "0829_revoke_invalidated_goal_continuations",
+      "breakpoints": true
+    },
+    {
+      "idx": 830,
+      "version": "7",
+      "when": 1785859660690,
+      "tag": "0830_wild_havok",
+      "breakpoints": true
     }
   ]
 }

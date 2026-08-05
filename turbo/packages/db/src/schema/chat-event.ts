@@ -121,6 +121,7 @@ export const chatEvents = pgTable(
       | "automation"
       | "goal"
       | "morning_brief"
+      | "agent_run"
     >(),
     contextId: uuid("context_id"),
     triggerSource: text("trigger_source").$type<TriggerSource>(),
@@ -243,7 +244,8 @@ export const chatEvents = pgTable(
           'agentphone',
           'automation',
           'goal',
-          'morning_brief'
+          'morning_brief',
+          'agent_run'
         )`,
       ),
     ];

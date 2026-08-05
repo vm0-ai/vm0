@@ -10,6 +10,11 @@ import {
   readGoalQueueStateFixture,
   readGoalThreadFixture,
 } from "../../../test-fixtures/goal-queue";
+import {
+  readRunAutonomyBudgetFixture,
+  readThreadGoalAutonomyBudgetFixture,
+  setRunAutonomyBudgetFixture,
+} from "./helpers/runtime-state";
 import { readChatEventContextFixture } from "../../../test-fixtures/chat-events";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
@@ -150,6 +155,12 @@ describe("zero goals", () => {
     const fixture = await seedGoalApiFixture();
 
     const created = await createGoal(fixture, "ship thread goals");
+    await expect(
+      readRunAutonomyBudgetFixture(context, fixture.runId),
+    ).resolves.toBe(10);
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(9);
     expect(created.body).toStrictEqual({
       objective: "ship thread goals",
       objectiveBrief: "ship thread goals",
@@ -177,6 +188,29 @@ describe("zero goals", () => {
       body: { status: "blocked" },
     });
 
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 0);
+    const exhaustedResume = await accept(
+      goalsClient().resume({ headers: headers(fixture) }),
+      [409],
+    );
+    expect(exhaustedResume.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+    const exhaustedEdit = await accept(
+      goalsClient().edit({
+        headers: headers(fixture, ["goal:user-control:write"]),
+        body: { objective: "bypass bounded goal depth" },
+      }),
+      [409],
+    );
+    expect(exhaustedEdit.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: {
+        status: "blocked",
+        objective: "ship thread goals",
+      },
+    });
+
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 1);
+
     const resumed = await accept(
       goalsClient().resume({ headers: headers(fixture) }),
       [200],
@@ -185,6 +219,9 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: { status: "active", objectiveBrief: "ship thread goals" },
     });
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(0);
 
     const completed = await accept(
       goalsClient().complete({ headers: headers(fixture) }),
@@ -193,6 +230,19 @@ describe("zero goals", () => {
     expect(completed.body.status).toBe("complete");
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: { status: "complete" },
+    });
+
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 0);
+    const exhausted = await accept(
+      goalsClient().create({
+        headers: headers(fixture),
+        body: { objective: "exceed goal depth" },
+      }),
+      [409],
+    );
+    expect(exhausted.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: { status: "complete", objective: "ship thread goals" },
     });
   });
 
@@ -243,6 +293,12 @@ describe("zero goals", () => {
     if (!goal) {
       throw new Error("Expected the provisioned thread goal");
     }
+    await expect(
+      readRunAutonomyBudgetFixture(context, origin.runId),
+    ).resolves.toBe(10);
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, goal.threadId),
+    ).resolves.toBe(9);
 
     let goalRunId: string | undefined;
     await expect
@@ -255,6 +311,9 @@ describe("zero goals", () => {
     if (!goalRunId) {
       throw new Error("Expected the bootstrapped goal run");
     }
+    await expect(
+      readRunAutonomyBudgetFixture(context, goalRunId),
+    ).resolves.toBe(9);
 
     const state = await readGoalQueueStateFixture(goal.threadId);
     const goalEventId = state.eventIds[0];
@@ -421,6 +480,7 @@ describe("zero goals", () => {
       body: edited.body,
     });
     await accept(goalsClient().complete({ headers: headers(fixture) }), [200]);
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 1);
 
     const replacement = await accept(
       goalsClient().edit({
@@ -437,6 +497,9 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: replacement.body,
     });
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(0);
   });
 
   it("pauses a chat thread goal with session auth", async () => {
