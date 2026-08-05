@@ -204,6 +204,7 @@ export interface ChatPanelSignals {
   readonly thinkingPhrase$: Computed<string>;
   readonly donePhrase$: Computed<Promise<string>>;
   readonly displayedThinkingText$: Computed<Promise<string>>;
+  readonly thinkingTextFadingOut$: Computed<Promise<boolean>>;
   readonly setThinkingIndicatorTextRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]

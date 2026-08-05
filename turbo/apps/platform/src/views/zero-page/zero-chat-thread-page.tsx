@@ -3947,6 +3947,7 @@ function ChatSkeleton() {
 
 interface ServerThinkingLabel {
   readonly displayedText: string;
+  readonly fadingOut: boolean;
   readonly fullText: string;
   readonly id: string;
   readonly setRef: (
@@ -3993,7 +3994,11 @@ function ThinkingLabel({
       <p
         key={serverThinkingLabel.id}
         ref={serverThinkingLabel.setRef}
-        className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5"
+        className={cn(
+          "zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5",
+          "transition-opacity duration-200",
+          serverThinkingLabel.fadingOut ? "opacity-0" : "opacity-100",
+        )}
         aria-label={serverThinkingLabel.fullText}
       >
         {serverThinkingLabel.displayedText || "\u00a0"}
@@ -4216,6 +4221,8 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   const thinkingEventId = useLastResolved(thread.thinkingEventId$);
   const displayedThinkingText =
     useLastResolved(thread.displayedThinkingText$) ?? "";
+  const thinkingTextFadingOut =
+    useLastResolved(thread.thinkingTextFadingOut$) ?? false;
   const setThinkingIndicatorTextRef = useSet(
     thread.setThinkingIndicatorTextRef$,
   );
@@ -4223,6 +4230,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
     thinkingText && thinkingEventId && running
       ? {
           displayedText: displayedThinkingText,
+          fadingOut: thinkingTextFadingOut,
           fullText: thinkingText,
           id: thinkingEventId,
           setRef: setThinkingIndicatorTextRef,
