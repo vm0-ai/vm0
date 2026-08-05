@@ -1,12 +1,14 @@
 use crate::LOG_TAG;
-use guest_common::{log_info, log_warn};
+use guest_common::{log_error, log_info, log_warn};
 use std::cell::OnceCell;
 use std::collections::HashSet;
-use std::ffi::OsString;
-use std::fs;
+use std::ffi::{CString, OsStr, OsString};
+use std::fs::{self, File, OpenOptions};
 use std::io;
-use std::os::unix::ffi::OsStringExt;
-use std::path::{Path, PathBuf};
+use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Component, Path, PathBuf};
 
 /// Remove stale files from cleanup paths, preserving directories that belong
 /// to unchanged storages.
@@ -17,31 +19,36 @@ use std::path::{Path, PathBuf};
 /// - If no `preserved` path is a child and the path is a mountpoint: preserve
 ///   the mountpoint directory and clean its contents.
 /// - Otherwise: `remove_dir_all` (clean slate).
-pub(crate) fn cleanup_stale_paths(cleanup_paths: &[String], preserved: &[String]) {
-    cleanup_stale_paths_with_mountinfo_loader(cleanup_paths, preserved, cleanup_mountinfo);
+///
+/// Returns `false` when safe cleanup cannot be completed. Callers must stop
+/// before materializing storage through that path.
+pub(crate) fn cleanup_stale_paths(cleanup_paths: &[String], preserved: &[String]) -> bool {
+    cleanup_stale_paths_with_mountinfo_loader(cleanup_paths, preserved, cleanup_mountinfo)
 }
 
 fn cleanup_stale_paths_with_mountinfo_loader<L>(
     cleanup_paths: &[String],
     preserved: &[String],
     load_mountinfo: L,
-) where
+) -> bool
+where
     L: Fn() -> io::Result<String>,
 {
     let detector = CleanupMountPointDetector::new(load_mountinfo);
     cleanup_stale_paths_with_mount_detector(cleanup_paths, preserved, |path| {
         detector.is_mount_point(path)
-    });
+    })
 }
 
 fn cleanup_stale_paths_with_mount_detector<M>(
     cleanup_paths: &[String],
     preserved: &[String],
     is_mount_point: M,
-) where
+) -> bool
+where
     M: Fn(&Path) -> bool,
 {
-    cleanup_stale_paths_with_options(cleanup_paths, preserved, is_mount_point, remove_entry);
+    cleanup_stale_paths_with_options(cleanup_paths, preserved, is_mount_point, remove_entry)
 }
 
 fn cleanup_stale_paths_with_options<M, R>(
@@ -49,7 +56,8 @@ fn cleanup_stale_paths_with_options<M, R>(
     preserved: &[String],
     is_mount_point: M,
     remove_entry: R,
-) where
+) -> bool
+where
     M: Fn(&Path) -> bool,
     R: Fn(&fs::DirEntry) -> io::Result<()>,
 {
@@ -62,7 +70,10 @@ fn cleanup_stale_paths_with_options<M, R>(
         let preserved_child_count = count_preserved_children(cleanup_path, preserved);
 
         if preserved_child_count > 0 {
-            clean_directory_contents(cleanup_path, preserved, &remove_entry);
+            if let Err(e) = clean_directory_contents(cleanup_path, preserved, &remove_entry) {
+                log_error!(LOG_TAG, "Failed to safely clean {path}: {e}");
+                return false;
+            }
             log_info!(
                 LOG_TAG,
                 "Selectively cleaned {path} (preserved {} children)",
@@ -71,31 +82,42 @@ fn cleanup_stale_paths_with_options<M, R>(
         } else if is_mount_point(cleanup_path) {
             // Removing a mounted filesystem root can fail on filesystem metadata
             // such as ext4 lost+found. Keep the mountpoint and remove entries.
-            clean_directory_contents(cleanup_path, preserved, &remove_entry);
-            log_info!(LOG_TAG, "Cleaned mountpoint contents: {path}");
-        } else if let Err(e) = fs::remove_dir_all(cleanup_path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                log_warn!(LOG_TAG, "Failed to clean {path}: {e}");
+            if let Err(e) = clean_directory_contents(cleanup_path, preserved, &remove_entry) {
+                log_error!(LOG_TAG, "Failed to safely clean {path}: {e}");
+                return false;
             }
+            log_info!(LOG_TAG, "Cleaned mountpoint contents: {path}");
         } else {
-            log_info!(LOG_TAG, "Cleaned stale path: {path}");
+            match remove_directory_tree(cleanup_path) {
+                Ok(RemoveOutcome::Removed) => {
+                    log_info!(LOG_TAG, "Cleaned stale path: {path}");
+                }
+                Ok(RemoveOutcome::Missing) => {}
+                Err(e) => {
+                    log_error!(LOG_TAG, "Failed to safely clean {path}: {e}");
+                    return false;
+                }
+            }
         }
     }
+
+    true
 }
 
-fn clean_directory_contents<R>(path: &Path, preserved: &[String], remove_entry: &R)
+fn clean_directory_contents<R>(
+    path: &Path,
+    preserved: &[String],
+    remove_entry: &R,
+) -> io::Result<()>
 where
     R: Fn(&fs::DirEntry) -> io::Result<()>,
 {
-    let entries = match fs::read_dir(path) {
-        Ok(entries) => entries,
-        Err(e) => {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                log_warn!(LOG_TAG, "Failed to read dir {}: {e}", path.display());
-            }
-            return;
-        }
+    let directory = match CleanupDirectory::open(path) {
+        Ok(directory) => directory,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
     };
+    let entries = directory.read_dir()?;
 
     for entry in entries {
         let entry = match entry {
@@ -105,7 +127,7 @@ where
                 continue;
             }
         };
-        let entry_path = entry.path();
+        let entry_path = path.join(entry.file_name());
 
         if entry_overlaps_preserved_path(&entry_path, preserved) {
             continue;
@@ -115,6 +137,8 @@ where
             log_warn!(LOG_TAG, "Failed to remove {}: {e}", entry_path.display());
         }
     }
+
+    Ok(())
 }
 
 fn remove_entry(entry: &fs::DirEntry) -> io::Result<()> {
@@ -123,6 +147,108 @@ fn remove_entry(entry: &fs::DirEntry) -> io::Result<()> {
         fs::remove_dir_all(entry_path)
     } else {
         fs::remove_file(entry_path)
+    }
+}
+
+enum RemoveOutcome {
+    Removed,
+    Missing,
+}
+
+fn remove_directory_tree(path: &Path) -> io::Result<RemoveOutcome> {
+    let (parent, name) = match CleanupDirectory::open_parent(path) {
+        Ok(parent) => parent,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(RemoveOutcome::Missing),
+        Err(e) => return Err(e),
+    };
+    let anchored_path = parent.proc_path().join(name);
+
+    match fs::remove_dir_all(anchored_path) {
+        Ok(()) => Ok(RemoveOutcome::Removed),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(RemoveOutcome::Missing),
+        Err(e) => Err(e),
+    }
+}
+
+struct CleanupDirectory(File);
+
+impl CleanupDirectory {
+    fn open(path: &Path) -> io::Result<Self> {
+        let anchor = if path.is_absolute() {
+            Path::new("/")
+        } else {
+            Path::new(".")
+        };
+        let mut current = Self::open_anchor(anchor)?;
+
+        for component in path.components() {
+            match component {
+                Component::RootDir | Component::CurDir => {}
+                Component::ParentDir => {
+                    current = current.open_child(OsStr::new(".."))?;
+                }
+                Component::Normal(name) => {
+                    current = current.open_child(name)?;
+                }
+                Component::Prefix(_) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "cleanup path contains an unsupported prefix",
+                    ));
+                }
+            }
+        }
+
+        Ok(current)
+    }
+
+    fn open_parent(path: &Path) -> io::Result<(Self, OsString)> {
+        let name = path.file_name().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "cleanup path has no removable basename",
+            )
+        })?;
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        Ok((Self::open(parent)?, name.to_os_string()))
+    }
+
+    fn open_anchor(path: &Path) -> io::Result<Self> {
+        OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(path)
+            .map(Self)
+    }
+
+    fn open_child(&self, name: &OsStr) -> io::Result<Self> {
+        let bytes = name.as_bytes();
+        if bytes.is_empty() || bytes.contains(&b'/') {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "cleanup path component must be a non-empty basename",
+            ));
+        }
+        let name =
+            CString::new(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        // SAFETY: the parent fd is owned by this live `CleanupDirectory`,
+        // `name` is a validated NUL-terminated basename, and these flags do
+        // not require a mode argument.
+        let fd = unsafe { libc::openat(self.0.as_raw_fd(), name.as_ptr(), flags) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: a successful `openat` returns a new owned file descriptor.
+        Ok(Self(unsafe { File::from_raw_fd(fd) }))
+    }
+
+    fn read_dir(&self) -> io::Result<fs::ReadDir> {
+        fs::read_dir(self.proc_path())
+    }
+
+    fn proc_path(&self) -> PathBuf {
+        PathBuf::from("/proc/self/fd").join(self.0.as_raw_fd().to_string())
     }
 }
 

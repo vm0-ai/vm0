@@ -69,8 +69,9 @@ fn run_manifest(manifest: Manifest) -> bool {
     // Clean stale files from changed/removed storages before downloading.
     // This must run before parallel downloads to avoid race conditions with
     // parent-child mount path overlaps.
-    if !cleanup_paths.is_empty() {
-        cleanup::cleanup_stale_paths(&cleanup_paths, &preserved_paths);
+    if !cleanup_paths.is_empty() && !cleanup::cleanup_stale_paths(&cleanup_paths, &preserved_paths)
+    {
+        return false;
     }
     if !instruction_cleanups.is_empty() {
         instructions::cleanup_instruction_files(&instruction_cleanups);
