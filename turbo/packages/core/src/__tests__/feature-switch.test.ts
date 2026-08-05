@@ -31,6 +31,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {})).toBe(
       true,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
