@@ -467,6 +467,48 @@ describe("organization billing settings", () => {
     });
   });
 
+  it("opens the Stripe customer portal for an add-on subscription", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Add-on Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...noActiveBillingStatus(),
+        hasSubscription: true,
+        concurrencySubscriptions: [
+          {
+            id: "sub_concurrency_12345678",
+            quantity: 2,
+            currentPeriodEnd: "2026-06-01T00:00:00Z",
+            cancelAtPeriodEnd: false,
+          },
+        ],
+      });
+    });
+    context.mocks.api(zeroBillingPortalContract.create, ({ respond }) => {
+      return respond(200, {
+        url: "https://billing.stripe.com/customer-portal/add-on-org",
+      });
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Manage billing")).toBeInTheDocument();
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Manage"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://billing.stripe.com/customer-portal/add-on-org",
+      );
+    });
+  });
+
   it("shows custom tier access and disables Pro and Team checkout", async () => {
     context.mocks.data.org({
       id: "org_1",

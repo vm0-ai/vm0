@@ -104,6 +104,11 @@ interface UsageAllowanceStatus {
   windows: UsageAllowanceWindowStatus[];
 }
 
+interface ActiveUsageAllowanceStatus {
+  status: UsageAllowanceStatus;
+  stripeSubscriptionId: string | null;
+}
+
 interface BillingOrgRow {
   tier: string;
   credits: number;
@@ -419,7 +424,7 @@ async function activeUsageAllowanceStatus(
   db: ReadonlyDb,
   orgId: string,
   currentTime: Date,
-): Promise<UsageAllowanceStatus | null> {
+): Promise<ActiveUsageAllowanceStatus | null> {
   const [entitlement] = await db
     .select({
       effectiveAt: orgUsageAllowanceEntitlements.effectiveAt,
@@ -427,6 +432,7 @@ async function activeUsageAllowanceStatus(
       shortWindowUnits: orgUsageAllowanceEntitlements.shortWindowUnits,
       weeklyWindowSeconds: orgUsageAllowanceEntitlements.weeklyWindowSeconds,
       weeklyWindowUnits: orgUsageAllowanceEntitlements.weeklyWindowUnits,
+      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
     })
     .from(orgUsageAllowanceEntitlements)
     .where(
@@ -489,13 +495,16 @@ async function activeUsageAllowanceStatus(
   }
 
   return {
-    windows: USAGE_ALLOWANCE_WINDOW_KINDS.map((kind) => {
-      return usageAllowanceWindowStatus({
-        entitlement,
-        kind,
-        activeWindow: windowByKind.get(kind),
-      });
-    }),
+    status: {
+      windows: USAGE_ALLOWANCE_WINDOW_KINDS.map((kind) => {
+        return usageAllowanceWindowStatus({
+          entitlement,
+          kind,
+          activeWindow: windowByKind.get(kind),
+        });
+      }),
+    },
+    stripeSubscriptionId: entitlement.stripeSubscriptionId,
   };
 }
 
@@ -555,7 +564,7 @@ function billingStatusResponse(args: {
   unsettledExpired: number;
   activeRecords: readonly ActiveCreditRecord[];
   concurrencySubscriptions: readonly ActiveConcurrencySubscription[];
-  usageAllowance: UsageAllowanceStatus | null;
+  usageAllowance: ActiveUsageAllowanceStatus | null;
   baseConcurrencyLimit: number;
 }): BillingStatusResponse {
   const org = args.org ?? DEFAULT_BILLING_ORG;
@@ -586,7 +595,11 @@ function billingStatusResponse(args: {
     currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: org.cancelAtPeriodEnd,
     scheduledChange: scheduledBillingChange(org),
-    hasSubscription: org.stripeSubscriptionId !== null,
+    hasSubscription:
+      org.stripeSubscriptionId !== null ||
+      args.concurrencySubscriptions.length > 0 ||
+      (args.usageAllowance !== null &&
+        args.usageAllowance.stripeSubscriptionId !== null),
     autoRecharge: {
       enabled: org.autoRechargeEnabled,
       threshold: org.autoRechargeThreshold,
@@ -615,7 +628,7 @@ function billingStatusResponse(args: {
         };
       },
     ),
-    usageAllowance: args.usageAllowance,
+    usageAllowance: args.usageAllowance?.status ?? null,
   };
 }
 
