@@ -30,7 +30,6 @@ import {
 import {
   memberUsageSelections$,
   MINIMUM_USAGE_PACK_USD,
-  PAY_AS_YOU_GO,
   selectedUsagePackPlan$,
   setMemberUsageSelection$,
   setSelectedUsagePackPlan$,
@@ -142,11 +141,6 @@ function usagePackDetails(dollars: UsagePackUsd) {
 }
 
 function usageSelectionLabel(selection: MemberUsageSelection): string {
-  if (selection === PAY_AS_YOU_GO) {
-    return i18n.t(($) => {
-      return $.billing.plans.usagePacks.payAsYouGo;
-    });
-  }
   const details = usagePackDetails(selection);
   return i18n.t(
     ($) => {
@@ -161,9 +155,6 @@ function usageSelectionLabel(selection: MemberUsageSelection): string {
 }
 
 function parseUsageSelection(value: string): MemberUsageSelection {
-  if (value === PAY_AS_YOU_GO) {
-    return PAY_AS_YOU_GO;
-  }
   const pack = USAGE_PACKS_USD.find((candidate) => {
     return String(candidate) === value;
   });
@@ -176,11 +167,31 @@ function parseUsageSelection(value: string): MemberUsageSelection {
 function memberUsageSelection(
   selections: Readonly<Record<string, MemberUsageSelection>>,
   memberId: string,
-  index: number,
 ): MemberUsageSelection {
-  return (
-    selections[memberId] ??
-    (index === 0 ? MINIMUM_USAGE_PACK_USD : PAY_AS_YOU_GO)
+  return selections[memberId] ?? MINIMUM_USAGE_PACK_USD;
+}
+
+interface MemberUsageTotals {
+  readonly bonusCredits: number;
+  readonly totalCredits: number;
+  readonly totalUsd: number;
+}
+
+function memberUsageTotals(
+  members: readonly MemberDisplay[],
+  selections: Readonly<Record<string, MemberUsageSelection>>,
+): MemberUsageTotals {
+  return members.reduce<MemberUsageTotals>(
+    (totals, member) => {
+      const selection = memberUsageSelection(selections, member.id);
+      const details = usagePackDetails(selection);
+      return {
+        bonusCredits: totals.bonusCredits + details.bonusCredits,
+        totalCredits: totals.totalCredits + details.credits,
+        totalUsd: totals.totalUsd + selection,
+      };
+    },
+    { bonusCredits: 0, totalCredits: 0, totalUsd: 0 },
   );
 }
 
@@ -236,29 +247,20 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
 function MemberUsageRow({
   member,
   onSelect,
-  payAsYouGoDisabled,
   selection,
 }: {
   readonly member: MemberDisplay;
   readonly onSelect: (selection: MemberUsageSelection) => void;
-  readonly payAsYouGoDisabled: boolean;
   readonly selection: MemberUsageSelection;
 }) {
-  const summary =
-    selection === PAY_AS_YOU_GO
-      ? i18n.t(($) => {
-          return $.billing.plans.usagePacks.payAsYouGoDescription;
-        })
-      : i18n.t(
-          ($) => {
-            return $.billing.plans.usagePacks.bonusCredits;
-          },
-          {
-            value: formatLocalizedNumber(
-              usagePackDetails(selection).bonusCredits,
-            ),
-          },
-        );
+  const summary = i18n.t(
+    ($) => {
+      return $.billing.plans.usagePacks.bonusCredits;
+    },
+    {
+      value: formatLocalizedNumber(usagePackDetails(selection).bonusCredits),
+    },
+  );
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_minmax(15rem,18rem)] items-center gap-3 px-4 py-3">
       <MemberIdentity member={member} />
@@ -281,9 +283,6 @@ function MemberUsageRow({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem disabled={payAsYouGoDisabled} value={PAY_AS_YOU_GO}>
-              {usageSelectionLabel(PAY_AS_YOU_GO)}
-            </SelectItem>
             {USAGE_PACKS_USD.map((pack) => {
               return (
                 <SelectItem key={pack} value={String(pack)}>
@@ -362,14 +361,7 @@ function MemberUsageConfiguration({
   if (!members) {
     return <div className="h-36 animate-pulse rounded-xl bg-muted/40" />;
   }
-  const usagePackTotalUsd = members.reduce((total, member, index) => {
-    const selection = memberUsageSelection(selections, member.id, index);
-    return total + (selection === PAY_AS_YOU_GO ? 0 : selection);
-  }, 0);
-  const monthlyPackCount = members.filter((member, index) => {
-    const selection = memberUsageSelection(selections, member.id, index);
-    return selection !== PAY_AS_YOU_GO;
-  }).length;
+  const { totalUsd } = memberUsageTotals(members, selections);
   const memberUsageLabel = i18n.t(($) => {
     return $.billing.plans.usagePacks.memberUsage;
   });
@@ -380,10 +372,10 @@ function MemberUsageConfiguration({
       aria-label={memberUsageLabel}
       className="rounded-xl bg-card zero-border"
     >
-      <MemberUsageHeader usagePackTotalUsd={usagePackTotalUsd} />
+      <MemberUsageHeader usagePackTotalUsd={totalUsd} />
 
       {members.map((member, index) => {
-        const selection = memberUsageSelection(selections, member.id, index);
+        const selection = memberUsageSelection(selections, member.id);
         return (
           <div
             key={member.id}
@@ -391,9 +383,6 @@ function MemberUsageConfiguration({
           >
             <MemberUsageRow
               member={member}
-              payAsYouGoDisabled={
-                monthlyPackCount === 1 && selection !== PAY_AS_YOU_GO
-              }
               selection={selection}
               onSelect={(usage) => {
                 setSelection({ memberId: member.id, usage });
@@ -501,7 +490,7 @@ function PlanSelectionCard({
       >
         {i18n.t(
           ($) => {
-            return $.billing.plans.usagePacks.continueWithPlan;
+            return $.billing.plans.usagePacks.selectPlan;
           },
           { plan: name },
         )}
@@ -663,9 +652,13 @@ function SelectedPlanSummary({
 }
 
 function OrderSummary({
+  memberUsageBonusCredits,
+  memberUsageCredits,
   memberUsageTotalUsd,
   plan,
 }: {
+  readonly memberUsageBonusCredits: number;
+  readonly memberUsageCredits: number;
   readonly memberUsageTotalUsd: number;
   readonly plan: UsagePackPlan;
 }) {
@@ -701,6 +694,22 @@ function OrderSummary({
             })}
           </span>
           <span>{formatUsd(memberUsageTotalUsd, 0)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 text-muted-foreground">
+          <span>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.totalCredits;
+            })}
+          </span>
+          <span>{formatLocalizedNumber(memberUsageCredits)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 text-muted-foreground">
+          <span>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.discountBonusCredits;
+            })}
+          </span>
+          <span>{formatLocalizedNumber(memberUsageBonusCredits)}</span>
         </div>
         <div className="flex items-center justify-between gap-4 border-t border-border pt-3 text-foreground">
           <span className="font-medium">
@@ -814,10 +823,7 @@ function PackageConfigurationStep({
         }),
       ]
     : undefined;
-  const memberUsageTotalUsd = (members ?? []).reduce((total, member, index) => {
-    const selection = memberUsageSelection(selections, member.id, index);
-    return total + (selection === PAY_AS_YOU_GO ? 0 : selection);
-  }, 0);
+  const totals = memberUsageTotals(members ?? [], selections);
 
   return (
     <>
@@ -825,7 +831,12 @@ function PackageConfigurationStep({
       <PricingSteps current={2} />
       <SelectedPlanSummary plan={plan} onChange={onBack} />
       <MemberUsageConfiguration members={members} />
-      <OrderSummary plan={plan} memberUsageTotalUsd={memberUsageTotalUsd} />
+      <OrderSummary
+        memberUsageBonusCredits={totals.bonusCredits}
+        memberUsageCredits={totals.totalCredits}
+        memberUsageTotalUsd={totals.totalUsd}
+        plan={plan}
+      />
     </>
   );
 }

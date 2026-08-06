@@ -2,11 +2,10 @@ import { command, computed, state } from "ccstate";
 
 export const USAGE_PACKS_USD = [20, 50, 100, 200] as const;
 export const MINIMUM_USAGE_PACK_USD = USAGE_PACKS_USD[0];
-export const PAY_AS_YOU_GO = "payAsYouGo" as const;
 
 export type UsagePackUsd = (typeof USAGE_PACKS_USD)[number];
 export type UsagePackPlanTier = "pro" | "team";
-export type MemberUsageSelection = UsagePackUsd | typeof PAY_AS_YOU_GO;
+export type MemberUsageSelection = UsagePackUsd;
 
 const internalSelectedUsagePackPlan$ = state<UsagePackPlanTier | null>(null);
 

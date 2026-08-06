@@ -966,11 +966,11 @@
         "choosePlan": "プランを選択",
         "choosePlanDescription": "最初にワークスペースプランを選択します。メンバーパッケージは次に設定します。",
         "configurePackages": "メンバーパッケージを設定",
-        "configurePackagesDescription": "メンバーにパッケージを割り当て、月額合計を確認します。",
-        "continueWithPlan": "{{plan}} で続行",
+        "configurePackagesDescription": "各メンバーに必須のパッケージを選択し、月額合計を確認します。",
         "currentMember": "現在のメンバー",
-        "description": "メンバーに月額利用パックを割り当てるか、従量課金クレジットを使用させます。",
-        "memberExclusive": "月額パッケージが1つ以上必要です。各パッケージは1人のメンバー専用で共有できません。パッケージがないメンバーは従量課金クレジットを使用します。",
+        "description": "各メンバーに月額利用パックを選択します。",
+        "discountBonusCredits": "割引によるボーナスクレジット",
+        "memberExclusive": "各パッケージは1人のメンバー専用で共有できません。パッケージを使い切ると、従量課金クレジットに切り替わります。後から新しいパッケージにアップグレードできます。",
         "memberPackages": "メンバーパッケージ",
         "memberUsage": "メンバーの利用設定",
         "memberUsageTotal": "月額パック合計",
@@ -979,13 +979,13 @@
         "orderSummary": "注文内容",
         "packagesStep": "パッケージ",
         "packOption": "{{price}} · {{credits}} クレジット · {{discount}}%オフ",
-        "payAsYouGo": "従量課金",
-        "payAsYouGoDescription": "月額パックなしで従量課金クレジットを使用します。",
         "planStep": "プラン",
         "purchaseSteps": "購入手順",
         "selectedPlan": "選択したプラン",
+        "selectPlan": "{{plan}} を選択",
         "selectUsage": "{{name}} の利用設定",
-        "startingAt": "最低料金"
+        "startingAt": "最低料金",
+        "totalCredits": "合計クレジット"
       }
     },
     "restore": {

@@ -966,11 +966,11 @@
         "choosePlan": "플랜 선택",
         "choosePlanDescription": "먼저 워크스페이스 플랜을 선택하세요. 구성원 패키지는 다음 단계에서 설정합니다.",
         "configurePackages": "구성원 패키지 설정",
-        "configurePackagesDescription": "구성원에게 패키지를 할당한 다음 합산된 월간 총액을 확인하세요.",
-        "continueWithPlan": "{{plan}} 계속하기",
+        "configurePackagesDescription": "각 구성원에게 필수 패키지를 선택한 다음 월간 합계를 확인하세요.",
         "currentMember": "현재 구성원",
-        "description": "구성원에게 월간 사용량 팩을 할당하거나 사용량 기반 크레딧을 사용하도록 설정합니다.",
-        "memberExclusive": "월간 패키지가 하나 이상 필요합니다. 각 패키지는 한 구성원에게만 속하며 공유할 수 없습니다. 패키지가 없는 구성원은 사용량 기반 크레딧을 사용합니다.",
+        "description": "각 구성원의 월간 사용량 패키지를 선택하세요.",
+        "discountBonusCredits": "할인 보너스 크레딧",
+        "memberExclusive": "각 패키지는 한 구성원에게만 속하며 공유할 수 없습니다. 패키지를 모두 사용하면 종량제 크레딧으로 전환됩니다. 나중에 새 패키지로 업그레이드할 수 있습니다.",
         "memberPackages": "구성원 패키지",
         "memberUsage": "구성원 사용량",
         "memberUsageTotal": "월간 팩 합계",
@@ -979,13 +979,13 @@
         "orderSummary": "주문 요약",
         "packagesStep": "패키지",
         "packOption": "{{price}} · {{credits}} 크레딧 · {{discount}}% 할인",
-        "payAsYouGo": "사용량 기반 결제",
-        "payAsYouGoDescription": "월간 팩 없이 사용량 기반 크레딧을 사용합니다.",
         "planStep": "플랜",
         "purchaseSteps": "구매 단계",
         "selectedPlan": "선택한 플랜",
+        "selectPlan": "{{plan}} 선택",
         "selectUsage": "{{name}} 사용량",
-        "startingAt": "최저"
+        "startingAt": "최저",
+        "totalCredits": "총 크레딧"
       }
     },
     "restore": {

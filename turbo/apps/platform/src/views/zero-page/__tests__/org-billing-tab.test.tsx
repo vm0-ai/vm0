@@ -11,7 +11,7 @@ import {
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import {
@@ -354,7 +354,7 @@ describe("organization billing settings", () => {
       screen.queryByRole("group", { name: "Member usage" }),
     ).not.toBeInTheDocument();
 
-    click(buttonByText("Continue with Team", teamPlan));
+    click(buttonByText("Select Team", teamPlan));
 
     const configurePackagesHeading = await screen.findByRole("heading", {
       name: "Configure member packages",
@@ -389,39 +389,43 @@ describe("organization billing settings", () => {
       name: "Usage for pending@example.com",
     });
     expect(alexUsage).toHaveTextContent("$20 · 20,400 credits · 2% off");
-    expect(samUsage).toHaveTextContent("Pay as you go");
-    expect(pendingUsage).toHaveTextContent("Pay as you go");
+    expect(samUsage).toHaveTextContent("$20 · 20,400 credits · 2% off");
+    expect(pendingUsage).toHaveTextContent("$20 · 20,400 credits · 2% off");
     expect(alexUsage).not.toBeDisabled();
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
+    expect(within(memberUsage).getAllByText("+400 bonus credits")).toHaveLength(
+      3,
+    );
     expect(
-      within(memberUsage).getAllByText(
-        "Uses pay-as-you-go credits with no monthly pack.",
+      within(memberUsage).getByText(
+        "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
       ),
-    ).toHaveLength(2);
-    expect(
-      within(memberUsage).getByText("+400 bonus credits"),
     ).toBeInTheDocument();
     expect(within(orderSummary).getByText("Team plan")).toBeInTheDocument();
     expect(within(orderSummary).getByText("$160")).toBeInTheDocument();
     expect(
       within(orderSummary).getByText("Member packages"),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$20")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$180/month")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$60")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("Total credits")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("61,200")).toBeInTheDocument();
+    expect(
+      within(orderSummary).getByText("Bonus credits from discount"),
+    ).toBeInTheDocument();
+    expect(within(orderSummary).getByText("1,200")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$220/month")).toBeInTheDocument();
     expect(buttonByText("Checkout coming soon", orderSummary)).toBeDisabled();
 
     click(alexUsage);
-    const alexPayAsYouGo = await screen.findByRole("option", {
-      name: "Pay as you go",
-    });
-    expect(alexPayAsYouGo).toHaveAttribute("aria-disabled", "true");
+    expect(
+      screen.queryByRole("option", { name: "Pay as you go" }),
+    ).not.toBeInTheDocument();
     const alexFiftyDollarPack = screen.getByRole("option", {
       name: "$50 · 52,600 credits · 5% off",
     });
-    expect(alexFiftyDollarPack).not.toHaveAttribute("aria-disabled", "true");
     click(alexFiftyDollarPack);
-    expect(within(orderSummary).getByText("$210/month")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$250/month")).toBeInTheDocument();
 
     click(pendingUsage);
     click(
@@ -430,29 +434,15 @@ describe("organization billing settings", () => {
       }),
     );
 
-    expect(within(orderSummary).getByText("$310/month")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$330/month")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("181,700")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("11,700")).toBeInTheDocument();
     expect(
       within(memberUsage).getByText("+8,700 bonus credits"),
     ).toBeInTheDocument();
     expect(alexUsage).not.toBeDisabled();
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
-
-    click(alexUsage);
-    const availablePayAsYouGo = await screen.findByRole("option", {
-      name: "Pay as you go",
-    });
-    expect(availablePayAsYouGo).not.toHaveAttribute("aria-disabled", "true");
-    click(availablePayAsYouGo);
-    expect(within(orderSummary).getByText("$260/month")).toBeInTheDocument();
-    expect(pendingUsage).not.toBeDisabled();
-
-    click(pendingUsage);
-    const pendingPayAsYouGo = await screen.findByRole("option", {
-      name: "Pay as you go",
-    });
-    expect(pendingPayAsYouGo).toHaveAttribute("aria-disabled", "true");
-    fireEvent.keyDown(document, { key: "Escape" });
 
     click(buttonByText("Change plan"));
     const returnedChoosePlanHeading = await screen.findByRole("heading", {

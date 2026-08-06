@@ -987,11 +987,11 @@
         "choosePlan": "Elige un plan",
         "choosePlanDescription": "Elige primero el plan del espacio de trabajo. Los paquetes de miembros se configuran después.",
         "configurePackages": "Configurar paquetes de miembros",
-        "configurePackagesDescription": "Asigna paquetes a los miembros y revisa el total mensual combinado.",
-        "continueWithPlan": "Continuar con {{plan}}",
+        "configurePackagesDescription": "Elige un paquete obligatorio para cada miembro y revisa el total mensual combinado.",
         "currentMember": "Miembro actual",
-        "description": "Asigna paquetes de uso mensuales a los miembros o permite que usen créditos de pago por uso.",
-        "memberExclusive": "Se requiere al menos un paquete mensual. Cada paquete pertenece a un miembro y no se puede compartir. Los miembros sin paquete usan créditos de pago por uso.",
+        "description": "Elige un paquete de uso mensual para cada miembro.",
+        "discountBonusCredits": "Créditos extra por descuento",
+        "memberExclusive": "Cada paquete pertenece a un miembro y no se puede compartir. Cuando se agota, el uso vuelve a los créditos de pago por uso. Puedes actualizar a un paquete nuevo más adelante.",
         "memberPackages": "Paquetes de miembros",
         "memberUsage": "Uso del miembro",
         "memberUsageTotal": "Total de paquetes mensuales",
@@ -1000,13 +1000,13 @@
         "orderSummary": "Resumen del pedido",
         "packagesStep": "Paquetes",
         "packOption": "{{price}} · {{credits}} créditos · {{discount}} % de descuento",
-        "payAsYouGo": "Pago por uso",
-        "payAsYouGoDescription": "Usa créditos de pago por uso sin paquete mensual.",
         "planStep": "Plan",
         "purchaseSteps": "Pasos de compra",
         "selectedPlan": "Plan seleccionado",
+        "selectPlan": "Seleccionar {{plan}}",
         "selectUsage": "Uso de {{name}}",
-        "startingAt": "Desde"
+        "startingAt": "Desde",
+        "totalCredits": "Créditos totales"
       }
     },
     "restore": {

@@ -987,11 +987,11 @@
         "choosePlan": "Escolha um plano",
         "choosePlanDescription": "Escolha primeiro o plano do workspace. Os pacotes dos membros são configurados em seguida.",
         "configurePackages": "Configurar pacotes dos membros",
-        "configurePackagesDescription": "Atribua pacotes aos membros e revise o total mensal combinado.",
-        "continueWithPlan": "Continuar com {{plan}}",
+        "configurePackagesDescription": "Escolha um pacote obrigatório para cada membro e revise o total mensal combinado.",
         "currentMember": "Membro atual",
-        "description": "Atribua pacotes mensais de uso aos membros ou permita que usem créditos pagos conforme o uso.",
-        "memberExclusive": "É necessário pelo menos um pacote mensal. Cada pacote pertence a um membro e não pode ser compartilhado. Membros sem pacote usam créditos pagos conforme o uso.",
+        "description": "Escolha um pacote mensal de uso para cada membro.",
+        "discountBonusCredits": "Créditos bônus do desconto",
+        "memberExclusive": "Cada pacote pertence a um membro e não pode ser compartilhado. Quando um pacote acaba, o uso volta para créditos pagos conforme o uso. Você pode fazer upgrade para um novo pacote depois.",
         "memberPackages": "Pacotes dos membros",
         "memberUsage": "Uso do membro",
         "memberUsageTotal": "Total dos pacotes mensais",
@@ -1000,13 +1000,13 @@
         "orderSummary": "Resumo do pedido",
         "packagesStep": "Pacotes",
         "packOption": "{{price}} · {{credits}} créditos · {{discount}}% de desconto",
-        "payAsYouGo": "Pagamento conforme o uso",
-        "payAsYouGoDescription": "Usa créditos pagos conforme o uso sem pacote mensal.",
         "planStep": "Plano",
         "purchaseSteps": "Etapas da compra",
         "selectedPlan": "Plano selecionado",
+        "selectPlan": "Selecionar {{plan}}",
         "selectUsage": "Uso de {{name}}",
-        "startingAt": "A partir de"
+        "startingAt": "A partir de",
+        "totalCredits": "Total de créditos"
       }
     },
     "restore": {

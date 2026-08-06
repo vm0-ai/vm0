@@ -987,11 +987,11 @@
         "choosePlan": "Scegli un piano",
         "choosePlanDescription": "Scegli prima il piano dell’area di lavoro. I pacchetti dei membri vengono configurati dopo.",
         "configurePackages": "Configura i pacchetti dei membri",
-        "configurePackagesDescription": "Assegna i pacchetti ai membri, quindi controlla il totale mensile combinato.",
-        "continueWithPlan": "Continua con {{plan}}",
+        "configurePackagesDescription": "Scegli un pacchetto obbligatorio per ogni membro, quindi verifica il totale mensile combinato.",
         "currentMember": "Membro attuale",
-        "description": "Assegna pacchetti di utilizzo mensili ai membri o consenti loro di usare crediti a consumo.",
-        "memberExclusive": "È richiesto almeno un pacchetto mensile. Ogni pacchetto appartiene a un membro e non può essere condiviso. I membri senza pacchetto usano crediti a consumo.",
+        "description": "Scegli un pacchetto di utilizzo mensile per ogni membro.",
+        "discountBonusCredits": "Crediti bonus dallo sconto",
+        "memberExclusive": "Ogni pacchetto appartiene a un membro e non può essere condiviso. Quando un pacchetto si esaurisce, l’utilizzo torna ai crediti a consumo. In seguito puoi passare a un nuovo pacchetto.",
         "memberPackages": "Pacchetti dei membri",
         "memberUsage": "Utilizzo del membro",
         "memberUsageTotal": "Totale pacchetti mensili",
@@ -1000,13 +1000,13 @@
         "orderSummary": "Riepilogo dell’ordine",
         "packagesStep": "Pacchetti",
         "packOption": "{{price}} · {{credits}} crediti · {{discount}}% di sconto",
-        "payAsYouGo": "Pagamento a consumo",
-        "payAsYouGoDescription": "Usa crediti a consumo senza un pacchetto mensile.",
         "planStep": "Piano",
         "purchaseSteps": "Passaggi di acquisto",
         "selectedPlan": "Piano selezionato",
+        "selectPlan": "Seleziona {{plan}}",
         "selectUsage": "Utilizzo per {{name}}",
-        "startingAt": "A partire da"
+        "startingAt": "A partire da",
+        "totalCredits": "Crediti totali"
       }
     },
     "restore": {

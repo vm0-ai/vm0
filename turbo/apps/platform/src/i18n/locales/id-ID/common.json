@@ -966,11 +966,11 @@
         "choosePlan": "Pilih paket",
         "choosePlanDescription": "Pilih paket ruang kerja terlebih dahulu. Paket anggota dikonfigurasi berikutnya.",
         "configurePackages": "Konfigurasikan paket anggota",
-        "configurePackagesDescription": "Tetapkan paket kepada anggota, lalu tinjau total bulanan gabungan.",
-        "continueWithPlan": "Lanjutkan dengan {{plan}}",
+        "configurePackagesDescription": "Pilih paket wajib untuk setiap anggota, lalu tinjau total bulanan gabungan.",
         "currentMember": "Anggota saat ini",
-        "description": "Tetapkan paket penggunaan bulanan kepada anggota atau izinkan mereka memakai kredit bayar sesuai pemakaian.",
-        "memberExclusive": "Setidaknya satu paket bulanan diperlukan. Setiap paket hanya untuk satu anggota dan tidak dapat dibagikan. Anggota tanpa paket menggunakan kredit bayar sesuai pemakaian.",
+        "description": "Pilih paket penggunaan bulanan untuk setiap anggota.",
+        "discountBonusCredits": "Bonus kredit dari diskon",
+        "memberExclusive": "Setiap paket hanya untuk satu anggota dan tidak dapat dibagikan. Saat paket habis, penggunaan kembali memakai kredit bayar sesuai pemakaian. Anda dapat meningkatkan ke paket baru nanti.",
         "memberPackages": "Paket anggota",
         "memberUsage": "Penggunaan anggota",
         "memberUsageTotal": "Total paket bulanan",
@@ -979,13 +979,13 @@
         "orderSummary": "Ringkasan pesanan",
         "packagesStep": "Paket",
         "packOption": "{{price}} · {{credits}} kredit · Diskon {{discount}}%",
-        "payAsYouGo": "Bayar sesuai pemakaian",
-        "payAsYouGoDescription": "Menggunakan kredit bayar sesuai pemakaian tanpa paket bulanan.",
         "planStep": "Paket",
         "purchaseSteps": "Langkah pembelian",
         "selectedPlan": "Paket yang dipilih",
+        "selectPlan": "Pilih {{plan}}",
         "selectUsage": "Penggunaan untuk {{name}}",
-        "startingAt": "Mulai dari"
+        "startingAt": "Mulai dari",
+        "totalCredits": "Total kredit"
       }
     },
     "restore": {
