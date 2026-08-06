@@ -96,7 +96,7 @@ const miscApi = createMiscRoutesApi(context);
 const CRON_SECRET = "connector-catalog-cron-secret";
 const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-const ACTIVE_KEY = "connectors/v2/active.json";
+const ACTIVE_KEY = "connectors/v3/active.json";
 const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
 const DIAGNOSTICS_USER_ID = `user_${randomUUID()}`;
 const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
@@ -208,7 +208,7 @@ function catalogTemplate(reference: string): string {
 function releaseKeys(version: string): {
   readonly catalog: string;
 } {
-  const prefix = `connectors/v2/releases/${version}`;
+  const prefix = `connectors/v3/releases/${version}`;
   return {
     catalog: `${prefix}/catalog.json`,
   };
@@ -352,7 +352,6 @@ function publicAuthMethod(args: {
     label: `${args.id} auth`,
     description: null,
     visible: true,
-    featureSwitch: null,
     grantKind: args.grantKind,
     manualFields: args.manual
       ? [
@@ -1053,7 +1052,6 @@ function canonicalAuthMethod(
         "label",
         "description",
         "visible",
-        "featureSwitch",
         "grantKind",
         "manualFields",
         "startOptions",
@@ -1067,7 +1065,6 @@ function canonicalAuthMethod(
     label: publicMethod.label,
     description: publicMethod.description,
     visible: publicMethod.visible,
-    featureSwitch: publicMethod.featureSwitch,
     ...(privateMethod.client === undefined
       ? {}
       : { client: privateMethod.client }),
@@ -1096,7 +1093,7 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
     "platform/views/zero-page/components/settings/icons/" +
     `${connectorSlug}-${iconDigest.slice("sha256:".length, 19)}.svg`;
   const catalog: JsonRecord = {
-    artifactSchemaVersion: 2,
+    artifactSchemaVersion: 3,
     catalogVersion: options.version,
     categoryMetadata: {
       categories: [
@@ -1942,7 +1939,7 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: schemaRelease.version,
       rawBytes: jsonBytes({
-        artifactSchemaVersion: 3,
+        artifactSchemaVersion: 4,
         catalogVersion: schemaRelease.version,
       }),
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
@@ -1964,7 +1961,7 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: shapeRelease.version,
       rawBytes: jsonBytes({
-        artifactSchemaVersion: 2,
+        artifactSchemaVersion: 3,
       }),
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
@@ -2129,13 +2126,6 @@ describe("connector catalog valid lifecycle", () => {
 
     const graduated = buildRelease({
       version: "2026-07-15.external-graduated-switch",
-      mutateCatalog: (artifact) => {
-        const method = firstRecord(
-          firstRecord(artifact.connectors, "connectors").authMethods,
-          "authMethods",
-        );
-        method.featureSwitch = "retiredConnectorSwitch";
-      },
     });
     serveObjects(catalogObjects([release, graduated], graduated));
     await syncCatalog();
@@ -3261,7 +3251,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "api",
           grantKind: "device-auth",
         });
-        method.featureSwitch = "testOauthConnector";
         method.startOptions = [
           {
             id: "environment",
@@ -3439,7 +3428,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "cli",
           grantKind: "external-code",
         });
-        method.featureSwitch = "awsConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
       mutateRuntime: (artifact) => {
@@ -4140,7 +4128,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "oauth",
           grantKind: "auth-code",
         });
-        method.featureSwitch = "datadogConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
       mutateRuntime: (artifact) => {
@@ -4228,7 +4215,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "oauth",
           grantKind: "auth-code",
         });
-        method.featureSwitch = "datadogConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
       mutateRuntime: (artifact) => {
@@ -5286,26 +5272,6 @@ describe("connector catalog executable compatibility", () => {
     });
   });
 
-  it("leaves feature-switch rollout out of executable compatibility", async () => {
-    configureSource();
-    const unknownSwitch = buildRelease({
-      version: "2026-07-15.unknown-feature-switch",
-      mutateCatalog: (artifact) => {
-        const method = firstRecord(
-          firstRecord(artifact.connectors, "connectors").authMethods,
-          "authMethods",
-        );
-        method.featureSwitch = "futureConnectorSwitch";
-      },
-    });
-    serveObjects(catalogObjects([unknownSwitch], unknownSwitch));
-
-    expect((await syncCatalog()).body.filtering).toMatchObject({
-      stale: false,
-      filteredAuthMethods: [],
-    });
-  });
-
   it("accepts inline confidential test clients and applies rollout at request time", async () => {
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
     const provider = mockTestOAuthAuthCodeProvider({
@@ -5316,7 +5282,6 @@ describe("connector catalog executable compatibility", () => {
       id: "oauth",
       grantKind: "auth-code",
     });
-    method.featureSwitch = "testOauthConnector";
     const release = buildRelease({
       version: "2026-07-24.inline-confidential-test-client",
       connectorSlug: "test-oauth",
@@ -5984,7 +5949,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           version: "legacy-pointer-reference",
           mutatePointer: (pointer) => {
             pointer.integrity = {
-              key: "connectors/v2/releases/legacy-pointer-reference/integrity/catalog.json",
+              key: "connectors/v3/releases/legacy-pointer-reference/integrity/catalog.json",
               digest: pointer.catalogDigest,
             };
             delete pointer.catalogDigest;
@@ -6011,7 +5976,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "unsupported-schema",
           mutateArtifact: (artifact) => {
-            artifact.artifactSchemaVersion = 3;
+            artifact.artifactSchemaVersion = 4;
           },
         });
       },
