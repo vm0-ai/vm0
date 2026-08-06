@@ -14,20 +14,20 @@ import { createBuiltInGenerationRealtimeSubscription } from "../external/realtim
 import {
   bytePlusBuiltInGenerationWebhookUrl,
   falBuiltInGenerationWebhookUrl,
+  miniMaxBuiltInGenerationWebhookUrl,
 } from "../services/built-in-generation-provider-webhooks.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
   checkVideoCredits$,
+  getMissingVideoPricing,
   parseVideoOptions,
   submitBytePlusVideoGeneration,
   submitFalVideoGeneration,
+  submitMiniMaxVideoGeneration,
   type VideoOptions,
-  type VideoPricingRow,
   videoProviderForModel,
   videoInsufficientCredits,
   videoPricing$,
-  videoPricingCategoryForOptions,
-  videoPricingKey,
   videoRequiresPaidPlan,
   videoServiceUnavailable,
 } from "../services/zero-video-io-generate.service";
@@ -42,7 +42,6 @@ import {
   completeRunBuiltInAdmission$,
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
-  type RunBuiltInAdmission,
 } from "../services/zero-run-built-in-admission.service";
 
 const videoBody$ = bodyResultOf(zeroVideoIoGenerateContract.post);
@@ -61,12 +60,7 @@ interface GenerationErrorResponse {
 
 interface VideoJobArgs {
   readonly generationId: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly runId: string | undefined;
-  readonly admission: RunBuiltInAdmission | null;
   readonly options: VideoOptions;
-  readonly pricing: VideoPricingRow;
 }
 
 function isGenerationError(value: unknown): value is GenerationError {
@@ -138,6 +132,58 @@ function acceptedVideoResponse(
   };
 }
 
+const submitMiniMaxVideoProviderJob$ = command(
+  async (
+    { set },
+    args: VideoJobArgs,
+    signal: AbortSignal,
+  ): Promise<GenerationErrorResponse | null> => {
+    const apiKey = env("MINIMAX_API_KEY");
+    if (!apiKey) {
+      const response = videoServiceUnavailable(
+        "MiniMax H3 video generation is not configured",
+        "NOT_CONFIGURED",
+      );
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: response.body.error },
+        signal,
+      );
+      return response;
+    }
+    const handle = await submitMiniMaxVideoGeneration(
+      args.options,
+      apiKey,
+      signal,
+      miniMaxBuiltInGenerationWebhookUrl({
+        generationId: args.generationId,
+      }),
+    );
+    signal.throwIfAborted();
+    if (isErrorResponse(handle)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: handle.body.error },
+        signal,
+      );
+      return handle;
+    }
+    await set(
+      mergeBuiltInGenerationJobInternal$,
+      {
+        generationId: args.generationId,
+        internal: {
+          provider: "minimax",
+          providerJobId: handle.taskId,
+          providerTask: "video",
+        },
+      },
+      signal,
+    );
+    return null;
+  },
+);
+
 const submitVideoProviderWebhookJob$ = command(
   async (
     { set },
@@ -192,6 +238,10 @@ const submitVideoProviderWebhookJob$ = command(
         signal,
       );
       return null;
+    }
+
+    if (provider === "minimax") {
+      return await set(submitMiniMaxVideoProviderJob$, args, signal);
     }
 
     const apiKey = env("BYTEPLUS_API_KEY");
@@ -271,11 +321,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const pricing = await get(videoPricing$);
   signal.throwIfAborted();
-  const pricingCategory = videoPricingCategoryForOptions(options);
-  const pricingRow = pricing.get(
-    videoPricingKey(options.model, pricingCategory),
-  );
-  if (!pricingRow) {
+  if (getMissingVideoPricing(pricing, options).length > 0) {
     return videoServiceUnavailable(
       "Video generation pricing is not configured",
       "NOT_CONFIGURED",
@@ -292,6 +338,12 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (provider === "byteplus" && !env("BYTEPLUS_API_KEY")) {
     return videoServiceUnavailable(
       "BytePlus video generation is not configured",
+      "NOT_CONFIGURED",
+    );
+  }
+  if (provider === "minimax" && !env("MINIMAX_API_KEY")) {
+    return videoServiceUnavailable(
+      "MiniMax H3 video generation is not configured",
       "NOT_CONFIGURED",
     );
   }
@@ -336,12 +388,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     submitVideoProviderWebhookJob$,
     {
       generationId,
-      orgId: auth.orgId,
-      userId: auth.userId,
-      runId,
-      admission,
       options,
-      pricing: pricingRow,
     },
     signal,
   );

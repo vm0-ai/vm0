@@ -250,8 +250,15 @@
     {
       "idx": 843,
       "version": "7",
-      "when": 1786008298173,
-      "tag": "0843_shallow_tigra",
+      "when": 1786008191487,
+      "tag": "0843_add_minimax_h3_video_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 844,
+      "version": "7",
+      "when": 1786009548808,
+      "tag": "0844_known_kat_farrell",
       "breakpoints": true
     }
   ]

@@ -249,6 +249,7 @@ export {
   webhookStripeContract,
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationBytePlusContract,
+  webhookBuiltInGenerationMiniMaxContract,
   webhookBuiltInGenerationJoggAiContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
@@ -280,6 +281,7 @@ export {
   type WebhookGoogleWorkspaceEventsContract,
   type WebhookStripeContract,
   type WebhookBuiltInGenerationFalContract,
+  type WebhookBuiltInGenerationMiniMaxContract,
   type WebhookBuiltInGenerationJoggAiContract,
 } from "./webhooks";
 export {
