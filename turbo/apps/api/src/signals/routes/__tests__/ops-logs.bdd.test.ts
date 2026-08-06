@@ -37,6 +37,7 @@ import {
 } from "./helpers/model-stats-state";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { zeroAgentInstructionsRoutes } from "../zero-agent-instructions";
 
 /*
  * BILL-02 model stats and OPS-01 user export.
@@ -1379,7 +1380,9 @@ describe("OPS-01: user data export", () => {
       visibility: "private",
     });
     await accept(
-      setupApp({ context })(zeroAgentInstructionsContract).update({
+      setupApp({ context, routes: zeroAgentInstructionsRoutes })(
+        zeroAgentInstructionsContract,
+      ).update({
         params: { id: agent.agentId },
         headers: { authorization: "Bearer clerk-session" },
         body: { content: "Use the exported agent instructions." },

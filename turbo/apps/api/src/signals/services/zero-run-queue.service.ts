@@ -42,6 +42,7 @@ import {
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
 import { tapError } from "../utils";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("ZeroRunQueue");
 
@@ -67,7 +68,7 @@ async function effectiveOrgConcurrencyState(
   };
 }
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 type QueuedRunnerJobPayload = NonNullable<
   Awaited<ReturnType<typeof decryptQueuedRunnerJobPayload>>
 >;

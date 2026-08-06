@@ -21,6 +21,17 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroChatEventsRoutes } from "../zero-chat-events";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { zeroWorkflowQueueRoutes } from "../zero-workflow-queue";
+import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...webhooksWorkflowAutomationsRoutes,
+  ...zeroChatEventsRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+  ...zeroWorkflowQueueRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -35,15 +46,21 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function chatEventsClient() {
-  return setupApp({ context })(chatEventsContract);
+  return setupApp({ context, routes: zeroChatEventsRoutes })(
+    chatEventsContract,
+  );
 }
 
 function previousQueueClient() {
-  return setupApp({ context })(zeroWorkflowQueueContract);
+  return setupApp({ context, routes: zeroWorkflowQueueRoutes })(
+    zeroWorkflowQueueContract,
+  );
 }
 
 interface Scenario {
@@ -151,22 +168,22 @@ async function postWorkflowWebhook(
 ): Promise<string | null> {
   const rawBody = JSON.stringify({ event: payload });
   const timestamp = Math.floor(now() / 1000);
-  const response = await createApp({ signal: context.signal }).request(
-    `/api/webhooks/workflow-automations/${automation.token}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-VM0-Timestamp": String(timestamp),
-        "X-VM0-Signature": computeHmacSignature(
-          rawBody,
-          automation.secret,
-          timestamp,
-        ),
-      },
-      body: rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/webhooks/workflow-automations/${automation.token}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-VM0-Timestamp": String(timestamp),
+      "X-VM0-Signature": computeHmacSignature(
+        rawBody,
+        automation.secret,
+        timestamp,
+      ),
     },
-  );
+    body: rawBody,
+  });
   expect(response.status).toBe(200);
   const body = (await response.json()) as { readonly runId?: string };
   return body.runId ?? null;

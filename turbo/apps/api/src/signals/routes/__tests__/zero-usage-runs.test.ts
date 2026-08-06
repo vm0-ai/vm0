@@ -22,6 +22,7 @@ import {
   readUsageStorageCounts$,
 } from "./helpers/zero-usage-insight";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroUsageRunsRoutes } from "../zero-usage-runs";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -58,7 +59,9 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroUsageRunsContract);
+  return setupApp({ context, routes: zeroUsageRunsRoutes })(
+    zeroUsageRunsContract,
+  );
 }
 
 function userIdsFromClerkRequest(args: unknown): string[] {

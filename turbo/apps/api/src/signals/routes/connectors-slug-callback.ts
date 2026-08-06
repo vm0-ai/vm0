@@ -53,7 +53,7 @@ import {
 import {
   clearConnectorOAuthCookies,
   connectorOAuthRedirectResponse,
-} from "./connector-oauth-route-state";
+} from "../../lib/connector-oauth-state";
 import { openIdRealmForOrigin } from "./connector-openid-auth-start";
 
 type CallbackIdentity = {

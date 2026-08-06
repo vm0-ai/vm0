@@ -13,7 +13,7 @@ import {
   getOAuthApiOrigin,
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
-} from "./oauth-web-origin";
+} from "../../lib/oauth-origin";
 
 export { getOAuthWebOrigin as getConnectorOAuthOrigin };
 

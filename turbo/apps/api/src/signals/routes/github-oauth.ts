@@ -54,7 +54,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
-} from "./oauth-web-origin";
+} from "../../lib/oauth-origin";
 
 const REDIRECT_STATUS = 307;
 const GITHUB_CONNECTOR_SLUG = "github";

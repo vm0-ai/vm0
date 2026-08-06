@@ -25,6 +25,15 @@ import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser } from "./api-bdd";
 import { mockClerkMembership } from "./api-bdd-clerk";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { integrationsGithubRoutes } from "../../integrations-github";
+import { zeroConnectorsRoutes } from "../../zero-connectors";
+import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...integrationsGithubRoutes,
+  ...zeroConnectorsRoutes,
+  ...zeroFeatureSwitchesRoutes,
+]);
 
 const GITHUB_APP_SLUG = "vm0-test";
 const GITHUB_APP_CLIENT_ID = "github-app-client-id";
@@ -260,7 +269,9 @@ export function createGithubBddApi(context: TestContext) {
   }
 
   function githubClient() {
-    return setupApp({ context })(integrationsGithubContract);
+    return setupApp({ context, routes: integrationsGithubRoutes })(
+      integrationsGithubContract,
+    );
   }
 
   async function rawRequest(
@@ -272,7 +283,7 @@ export function createGithubBddApi(context: TestContext) {
       readonly body?: string;
     },
   ): Promise<RawRouteResponse> {
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(
       `${init.origin ?? DEFAULT_TEST_ORIGIN}${path}`,
       {
@@ -395,7 +406,9 @@ export function createGithubBddApi(context: TestContext) {
     },
 
     async readGithubConnector(actor: ApiTestUser) {
-      const client = setupApp({ context })(zeroConnectorsBySlugContract);
+      const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      );
       const response = await accept(
         client.get({
           headers: authenticate(actor),
@@ -407,7 +420,9 @@ export function createGithubBddApi(context: TestContext) {
     },
 
     async enableAuditLink(actor: ApiTestUser): Promise<void> {
-      const client = setupApp({ context })(zeroFeatureSwitchesContract);
+      const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+        zeroFeatureSwitchesContract,
+      );
       await accept(
         client.update({
           headers: authenticate(actor),

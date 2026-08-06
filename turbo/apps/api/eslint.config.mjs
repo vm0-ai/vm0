@@ -97,6 +97,9 @@ const apiTestDirectDbImportMessage =
 const productionRouteTestImportMessage =
   "Production route composition must not import test-only routes. Mount required test fixture routes explicitly from tests.";
 
+const lowerLayerRouteImportMessage =
+  "Lower layers must not import HTTP route or bootstrap aggregation modules. Move shared behavior to lib, command, computed, external, or service modules.";
+
 const apiTestDirectDbImportPatterns = [
   "./lib/db",
   "./lib/db.ts",
@@ -160,6 +163,9 @@ const apiTestServiceImportPatterns = [
 ];
 
 export default [
+  {
+    ignores: [".typecheck/**"],
+  },
   ...config,
   {
     files: ["src/**/*.ts"],
@@ -327,6 +333,51 @@ export default [
             {
               name: "./routes/cli-auth-test",
               message: productionRouteTestImportMessage,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      "src/lib/**/*.ts",
+      "src/signals/commands/**/*.ts",
+      "src/signals/computed/**/*.ts",
+      "src/signals/external/**/*.ts",
+      "src/signals/services/**/*.ts",
+    ],
+    ignores: [
+      "src/**/__tests__/**/*.ts",
+      "src/**/__benches__/**/*.ts",
+      "src/**/*.bench.ts",
+      "src/**/*.spec.ts",
+      "src/**/*.suite.ts",
+      "src/**/*.test.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "**/routes/*",
+                "**/routes/**/*",
+                "**/signals/route",
+                "**/signals/route.ts",
+                "**/signals/e2e-routes",
+                "**/signals/e2e-routes.ts",
+                "**/production-bootstrap",
+                "**/production-bootstrap.ts",
+              ],
+              message: lowerLayerRouteImportMessage,
+            },
+            {
+              group: ["**/zero-runs-create.service"],
+              importNames: ["createTestFixtureZeroRun$"],
+              message:
+                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
             },
           ],
         },

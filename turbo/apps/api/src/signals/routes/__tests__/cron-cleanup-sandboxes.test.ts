@@ -45,6 +45,13 @@ import {
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
+import { runnersRoutes } from "../runners";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronCleanupSandboxesRoutes,
+  ...runnersRoutes,
+]);
 
 const context = testContext();
 const webhooks = createWebhookCallbackApi(context);
@@ -115,7 +122,9 @@ interface ChatThreadFixture {
 }
 
 function apiClient() {
-  return setupApp({ context })(cronCleanupSandboxesContract);
+  return setupApp({ context, routes: cronCleanupSandboxesRoutes })(
+    cronCleanupSandboxesContract,
+  );
 }
 
 function cronHeaders(secret = CRON_SECRET) {
@@ -125,7 +134,7 @@ function cronHeaders(secret = CRON_SECRET) {
 async function rawCronRequest(
   headers: Record<string, string> = {},
 ): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   return await app.request("/api/cron/cleanup-sandboxes", {
     method: "GET",
     headers,
@@ -1092,7 +1101,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
 
     const refresh = await accept(
-      setupApp({ context })(runnersNetworkPolicyRefreshContract).refresh({
+      setupApp({ context, routes: runnersRoutes })(
+        runnersNetworkPolicyRefreshContract,
+      ).refresh({
         headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
         params: { runId: fixture.runId },
         body: { connectorSlugs: ["slack"] },

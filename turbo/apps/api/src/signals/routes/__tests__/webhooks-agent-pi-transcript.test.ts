@@ -16,6 +16,8 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { webhooksAgentEventsRoutes } from "../webhooks-agent-events";
+import { webhooksAgentPiTranscriptRoutes } from "../webhooks-agent-pi-transcript";
 
 /**
  * PI-01: pi.message.completed ingestion through the agent events webhook and
@@ -118,11 +120,15 @@ function piEvent(args: {
 }
 
 function eventsClient() {
-  return setupApp({ context })(webhookEventsContract);
+  return setupApp({ context, routes: webhooksAgentEventsRoutes })(
+    webhookEventsContract,
+  );
 }
 
 function transcriptClient() {
-  return setupApp({ context })(webhookPiTranscriptContract);
+  return setupApp({ context, routes: webhooksAgentPiTranscriptRoutes })(
+    webhookPiTranscriptContract,
+  );
 }
 
 async function sendEvents(

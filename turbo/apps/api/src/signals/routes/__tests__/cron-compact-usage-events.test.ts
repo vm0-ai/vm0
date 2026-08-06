@@ -28,6 +28,13 @@ import {
   seedUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
+import { cronCompactUsageEventsRoutes } from "../cron-compact-usage-events";
+import { zeroUsageInsightRoutes } from "../zero-usage-insight";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronCompactUsageEventsRoutes,
+  ...zeroUsageInsightRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -36,11 +43,15 @@ const CRON_SECRET = "test-compact-usage-events-secret";
 const RAW_SEED_LIMIT = 500;
 
 function cronClient() {
-  return setupApp({ context })(cronCompactUsageEventsContract);
+  return setupApp({ context, routes: cronCompactUsageEventsRoutes })(
+    cronCompactUsageEventsContract,
+  );
 }
 
 function usageInsightClient() {
-  return setupApp({ context })(zeroUsageInsightContract);
+  return setupApp({ context, routes: zeroUsageInsightRoutes })(
+    zeroUsageInsightContract,
+  );
 }
 
 function cronHeaders(secret = CRON_SECRET) {
@@ -765,7 +776,7 @@ describe("usage event compaction cron", () => {
       hourly: 1,
     });
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(
       cronCompactUsageEventsContract.compact.path,
       {

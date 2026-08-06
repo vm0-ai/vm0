@@ -31,6 +31,7 @@ import {
   insertUsageEvent$,
   materializeHourlyUsage$,
 } from "./helpers/zero-usage-insight";
+import { zeroUsageInsightRoutes } from "../zero-usage-insight";
 
 /*
  * Finalized usage is filtered and bucketed by settlement time. Database
@@ -49,7 +50,9 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroUsageInsightContract);
+  return setupApp({ context, routes: zeroUsageInsightRoutes })(
+    zeroUsageInsightContract,
+  );
 }
 
 function sumBucketSeries(

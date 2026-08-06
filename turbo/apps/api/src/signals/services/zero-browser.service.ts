@@ -73,6 +73,7 @@ import {
 } from "./org-concurrency-entitlements.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import { insertChatEvent } from "./zero-chat-event.service";
+import type { Tx } from "../../lib/db-types";
 
 const RECONCILE_BATCH_SIZE = 20;
 const PROVIDER_CLEANUP_TIMEOUT_MS = 30_000;
@@ -104,7 +105,7 @@ const browserTabSnapshotSchema = z.array(z.string().max(8192)).max(50);
 type BrowserSessionRow = typeof browserSessions.$inferSelect;
 type BrowserInstanceRow = typeof browserSessionInstances.$inferSelect;
 type BrowserThreadProfileRow = typeof browserThreadProfiles.$inferSelect;
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 type InactiveBrowserStatus = (typeof INACTIVE_BROWSER_STATUSES)[number];
 
 class BrowserOpenEventIdConflictError extends Error {}

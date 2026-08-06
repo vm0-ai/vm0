@@ -11,6 +11,8 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { cronAggregateUsageRoutes } from "../cron-aggregate-usage";
+import { usageRoutes } from "../usage";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -41,11 +43,13 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(usageContract);
+  return setupApp({ context, routes: usageRoutes })(usageContract);
 }
 
 function aggregateUsageClient() {
-  return setupApp({ context })(cronAggregateUsageContract);
+  return setupApp({ context, routes: cronAggregateUsageRoutes })(
+    cronAggregateUsageContract,
+  );
 }
 
 async function entitledUsageActor(): Promise<UsageActor> {

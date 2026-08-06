@@ -9,6 +9,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { postOneTimePurchaseCompleted } from "./helpers/stripe-billing-webhook";
+import { zeroBillingRedeemRoutes } from "../zero-billing-redeem";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -47,7 +48,9 @@ function postRedeem(options?: {
   readonly successUrl?: string;
   readonly headers?: { readonly authorization?: string };
 }) {
-  const client = setupApp({ context })(zeroBillingRedeemContract);
+  const client = setupApp({ context, routes: zeroBillingRedeemRoutes })(
+    zeroBillingRedeemContract,
+  );
   return client.create({
     params: { campaign: options?.campaign ?? CAMPAIGN },
     body: {

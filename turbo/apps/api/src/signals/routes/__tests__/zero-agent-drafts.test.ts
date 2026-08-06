@@ -9,6 +9,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroAgentDraftRoutes } from "../zero-agent-drafts";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -43,7 +44,9 @@ function authHeaders() {
 }
 
 function draftsClient() {
-  return setupApp({ context })(zeroAgentDraftContract);
+  return setupApp({ context, routes: zeroAgentDraftRoutes })(
+    zeroAgentDraftContract,
+  );
 }
 
 describe("GET/PATCH /api/zero/agents/:id/draft", () => {

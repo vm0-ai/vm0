@@ -81,7 +81,8 @@ import {
   type WorkflowRow,
 } from "../services/zero-workflow-data.service";
 import type { RouteEntry } from "../route-entry";
-import { sendNormalEvent$ } from "./zero-chat-events";
+import { sendNormalEvent$ } from "../services/zero-chat-events.command";
+import type { Tx } from "../../lib/db-types";
 
 const log = logger("api:zero:workflow-connector-readiness");
 
@@ -707,7 +708,7 @@ const deleteWorkflowInner$ = command(
   },
 );
 
-type WorkflowCopyTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WorkflowCopyTransaction = Tx;
 
 interface CopyWorkflowRuntimeArgs {
   readonly orgId: string;

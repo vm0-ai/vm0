@@ -16,6 +16,7 @@ import {
   teamsConnectFixture,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
+import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -127,7 +128,9 @@ async function bindTeamsInstallation(
   userId: string,
 ): Promise<void> {
   mocks.clerk.session(userId, fixture.orgId, "org:admin");
-  const client = setupApp({ context })(zeroTeamsConnectContract);
+  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    zeroTeamsConnectContract,
+  );
   await accept(
     client.connect({
       headers: { authorization: "Bearer clerk-session" },
@@ -145,7 +148,9 @@ async function expectTeamsConnected(
     readonly teamName?: string | null;
   } = {},
 ): Promise<void> {
-  const client = setupApp({ context })(zeroTeamsConnectContract);
+  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    zeroTeamsConnectContract,
+  );
   const status = await accept(
     client.getStatus({
       headers: { authorization: "Bearer clerk-session" },

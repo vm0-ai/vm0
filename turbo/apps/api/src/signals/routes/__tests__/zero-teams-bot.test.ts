@@ -26,7 +26,7 @@ import { server } from "../../../mocks/server";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
-import { ROUTES } from "../../route";
+import { zeroIntegrationsTeamsDownloadFileRoutes } from "../zero-integrations-teams-download-file";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
@@ -46,6 +46,8 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();
 const callbackStore = createStore();
@@ -761,7 +763,9 @@ async function connectTeamsFixture(
   fixture: TeamsConnectFixture,
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-  const client = setupApp({ context })(zeroTeamsConnectContract);
+  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    zeroTeamsConnectContract,
+  );
   await accept(
     client.connect({
       headers: { authorization: "Bearer clerk-session" },
@@ -1056,7 +1060,9 @@ describe("POST /api/zero/teams/bot", () => {
       "org_teams_bot_test",
       "org:admin",
     );
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
@@ -1493,7 +1499,9 @@ describe("POST /api/zero/teams/bot", () => {
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context })(chatThreadsContract).events({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
         headers: { authorization: "Bearer clerk-session" },
         query: {},
       }),
@@ -1508,7 +1516,9 @@ describe("POST /api/zero/teams/bot", () => {
       throw new Error("Expected the canonical Teams file chat thread");
     }
     const threadEventsPage = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: chatThreadCreated.chatThreadId },
         query: {},
@@ -1567,7 +1577,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     const app = createAppWithRoutes({
       signal: context.signal,
-      routes: ROUTES,
+      routes: zeroIntegrationsTeamsDownloadFileRoutes,
     });
     const downloadResponse = await app.request(
       `/api/zero/integrations/teams/download-file?${new URLSearchParams({
@@ -1649,7 +1659,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     const app = createAppWithRoutes({
       signal: context.signal,
-      routes: ROUTES,
+      routes: zeroIntegrationsTeamsDownloadFileRoutes,
     });
     const downloadResponse = await app.request(
       `/api/zero/integrations/teams/download-file?${new URLSearchParams({
@@ -2980,7 +2990,9 @@ describe("POST /api/zero/teams/bot", () => {
     });
     await flushWaitUntilForTest();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },

@@ -47,6 +47,8 @@ import {
   generateDataKeyOutput,
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
+import { cronBrowserReconcileRoutes } from "../cron-browser-reconcile";
+import { zeroGoalsRoutes } from "../zero-goals";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
@@ -65,7 +67,7 @@ const chatCallbacks = createChatCallbacksApi(context);
 const misc = createMiscRoutesApi(context);
 
 function goalsClient() {
-  return setupApp({ context })(zeroGoalsContract);
+  return setupApp({ context, routes: zeroGoalsRoutes })(zeroGoalsContract);
 }
 
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
@@ -534,7 +536,9 @@ async function expectCancellationRecoveryPending(
 }
 
 function cancellationRecoveryCronClient() {
-  return setupApp({ context })(cronBrowserReconcileContract);
+  return setupApp({ context, routes: cronBrowserReconcileRoutes })(
+    cronBrowserReconcileContract,
+  );
 }
 
 async function waitForRunContext(actor: ApiTestUser, runId: string) {

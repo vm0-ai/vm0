@@ -14,6 +14,8 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
 
 const context = testContext();
 const store = createStore();
@@ -77,11 +79,15 @@ function zeroToken(args: {
 }
 
 function client() {
-  return setupApp({ context })(chatThreadMetadataContract);
+  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+    chatThreadMetadataContract,
+  );
 }
 
 function eventsClient() {
-  return setupApp({ context })(chatThreadEventsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadEventsContract,
+  );
 }
 
 describe("GET /api/zero/chat-threads/:id/metadata", () => {

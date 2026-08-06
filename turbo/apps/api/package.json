@@ -12,7 +12,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint src --type-aware -c ../../.oxlintrc.typeaware.json --ignore-pattern '**/__tests__/**' && oxlint $(find src -type d -name __tests__) --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
-    "check-types": "NODE_OPTIONS=--max-old-space-size=3584 tsc --noEmit"
+    "check-types": "pnpm run check-types:boundaries && pnpm run check-types:core && pnpm run check-types:bootstrap && pnpm run check-types:tests && pnpm run check-types:bootstrap-wiring",
+    "check-types:boundaries": "node scripts/check-typecheck-boundaries.mjs",
+    "check-types:core": "NODE_OPTIONS=--max-old-space-size=3072 tsc -p tsconfig.core.json",
+    "check-types:bootstrap": "NODE_OPTIONS=--max-old-space-size=3072 tsc -p tsconfig.bootstrap.json",
+    "check-types:tests": "NODE_OPTIONS=--max-old-space-size=3072 tsc -p tsconfig.tests.json --noEmit",
+    "check-types:bootstrap-wiring": "NODE_OPTIONS=--max-old-space-size=3072 tsc -p tsconfig.bootstrap-wiring.json --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1098.0",

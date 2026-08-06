@@ -24,6 +24,9 @@ import {
   teamsConnectFixture,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
+import { zeroIntegrationsTeamsMessageRoutes } from "../zero-integrations-teams-message";
+import { zeroIntegrationsTeamsUploadCompleteRoutes } from "../zero-integrations-teams-upload-complete";
+import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();
 const store = createStore();
@@ -123,7 +126,9 @@ async function seedConnectedTeams(fixture: TeamsConnectFixture): Promise<void> {
   await installTeamsForTest(context.signal, fixture);
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-  const client = setupApp({ context })(zeroTeamsConnectContract);
+  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    zeroTeamsConnectContract,
+  );
   await accept(
     client.connect({
       headers: { authorization: "Bearer clerk-session" },
@@ -162,7 +167,10 @@ describe("Microsoft Teams integration CLI routes", () => {
     const captured: CapturedTeamsActivity = {};
     mockOutgoingTeams(captured);
 
-    const client = setupApp({ context })(integrationsTeamsMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTeamsMessageRoutes,
+    })(integrationsTeamsMessageContract);
     const response = await accept(
       client.sendMessage({
         body: {
@@ -203,7 +211,10 @@ describe("Microsoft Teams integration CLI routes", () => {
     const captured: CapturedTeamsActivity = {};
     mockOutgoingTeams(captured);
 
-    const client = setupApp({ context })(integrationsTeamsMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTeamsMessageRoutes,
+    })(integrationsTeamsMessageContract);
     const response = await accept(
       client.sendMessage({
         body: {
@@ -276,9 +287,10 @@ describe("Microsoft Teams integration CLI routes", () => {
       },
     ]);
 
-    const client = setupApp({ context })(
-      integrationsTeamsUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTeamsUploadCompleteRoutes,
+    })(integrationsTeamsUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: {

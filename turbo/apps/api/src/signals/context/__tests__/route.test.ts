@@ -6,7 +6,6 @@ import { z } from "zod";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockNow } from "../../../lib/time";
-import { ROUTES } from "../../route";
 import { apiStartTime$ } from "../hono";
 
 const context = testContext();
@@ -82,10 +81,7 @@ describe("honoSignalHandler", () => {
     });
     const client = setupApp({
       context,
-      routes: [
-        ...ROUTES,
-        { route: routeTestContract.computed, handler: handler$ },
-      ],
+      routes: [{ route: routeTestContract.computed, handler: handler$ }],
     })(routeTestContract);
 
     const response = await accept(client.computed(), [200]);
@@ -105,10 +101,7 @@ describe("honoSignalHandler", () => {
     });
     const client = setupApp({
       context,
-      routes: [
-        ...ROUTES,
-        { route: routeTestContract.command, handler: handler$ },
-      ],
+      routes: [{ route: routeTestContract.command, handler: handler$ }],
     })(routeTestContract);
 
     const response = await accept(client.command(), [200]);
@@ -133,10 +126,7 @@ describe("honoSignalHandler", () => {
     });
     const client = setupApp({
       context,
-      routes: [
-        ...ROUTES,
-        { route: routeTestContract.command, handler: handler$ },
-      ],
+      routes: [{ route: routeTestContract.command, handler: handler$ }],
     })(routeTestContract);
 
     const response = await accept(client.command(), [200]);
@@ -165,10 +155,7 @@ describe("honoSignalHandler", () => {
     });
     const client = setupApp({
       context,
-      routes: [
-        ...ROUTES,
-        { route: routeTestContract.responseLike, handler: handler$ },
-      ],
+      routes: [{ route: routeTestContract.responseLike, handler: handler$ }],
     })(routeTestContract);
 
     const response = await accept(client.responseLike(), [200]);
@@ -183,7 +170,7 @@ describe("honoSignalHandler", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: routeTestContract.post, handler: handler$ }],
+      routes: [{ route: routeTestContract.post, handler: handler$ }],
     })(routeTestContract);
 
     const response = await accept(
@@ -206,10 +193,7 @@ describe("honoSignalHandler", () => {
     });
     const client = setupApp({
       context,
-      routes: [
-        ...ROUTES,
-        { route: routeTestContract.structured, handler: handler$ },
-      ],
+      routes: [{ route: routeTestContract.structured, handler: handler$ }],
     })(routeTestContract);
 
     const response = await accept(client.structured(), [200]);

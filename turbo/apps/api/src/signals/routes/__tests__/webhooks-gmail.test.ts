@@ -37,6 +37,13 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { chatEventAutomationPart } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { replaceBddVm0ApiKeys } from "../../../test-fixtures/chat-events";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { webhooksGmailRoutes } from "../webhooks-gmail";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...webhooksGmailRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -72,7 +79,9 @@ function authHeaders(actor: ApiTestUser) {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -332,17 +341,17 @@ function gmailPushBody(args: {
 async function postGmailWebhook(
   rawBody: string,
 ): Promise<{ readonly status: number; readonly body: unknown }> {
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/gmail",
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${signedGoogleIdToken()}`,
-        "Content-Type": "application/json",
-      },
-      body: rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/webhooks/gmail", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${signedGoogleIdToken()}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: rawBody,
+  });
   return {
     status: response.status,
     body: await response.json(),
@@ -538,13 +547,13 @@ async function runAutomationNow(
   actor: ApiTestUser,
   automationId: string,
 ): Promise<{ readonly chatThreadId: string; readonly runId: string }> {
-  const response = await createApp({ signal: context.signal }).request(
-    `/api/zero/workflow-automations/${automationId}/run`,
-    {
-      method: "POST",
-      headers: authHeaders(actor),
-    },
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/zero/workflow-automations/${automationId}/run`, {
+    method: "POST",
+    headers: authHeaders(actor),
+  });
   const body = (await response.json()) as unknown;
   if (response.status !== 201) {
     expectApiError(body);

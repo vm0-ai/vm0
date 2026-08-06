@@ -51,6 +51,7 @@ import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.servic
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
 
@@ -73,7 +74,7 @@ const CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE = "oauth.access_token";
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 type NotFoundResponse = ReturnType<typeof notFound>;
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 export interface CustomConnectorOAuthConfigRow {
   readonly connectorId: string;

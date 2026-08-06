@@ -5,6 +5,7 @@ import { env, mockEnv } from "../../../lib/env";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -14,7 +15,9 @@ function authHeaders() {
 }
 
 function mainClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsMainContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsMainContract,
+  );
 }
 
 function preMigrationDatabaseUrl(): string {
