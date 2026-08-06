@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
+import type { UserMessageInputDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -289,7 +289,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const uploadId = randomUUID();
     const clientEventId = randomUUID();
     api.mockCompletedUploadObject(actor, uploadId, "launch-plan.txt", 24);
-    const expectedUserMessage: UserMessageDocument = {
+    const expectedUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         { type: "text", text: "Build a launch-plan presentation" },

@@ -14,6 +14,7 @@ import {
   generationTemplateRequestSchema,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   userMessageDocumentSchema,
+  userMessageInputDocumentSchema,
 } from "../chat-threads";
 
 const legacyModelSelection = {
@@ -460,6 +461,31 @@ describe("chat thread generation template contract", () => {
         ],
       }),
     ).toMatchObject({ success: true });
+  });
+
+  it("accepts one server-owned model annotation but rejects it upstream", () => {
+    const userMessage = {
+      version: 1,
+      parts: [
+        { type: "text", text: "Run with this model" },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    };
+    expect(userMessageDocumentSchema.safeParse(userMessage)).toMatchObject({
+      success: true,
+    });
+    expect(
+      userMessageDocumentSchema.safeParse({
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          { type: "model", selectedModel: "gpt-5.6-sol" },
+        ],
+      }),
+    ).toMatchObject({ success: false });
+    expect(userMessageInputDocumentSchema.safeParse(userMessage)).toMatchObject(
+      { success: false },
+    );
   });
 
   it("accepts template parts inside feedback notes", () => {

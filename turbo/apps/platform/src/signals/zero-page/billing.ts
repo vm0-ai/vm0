@@ -16,6 +16,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
+import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { tapError } from "../utils.ts";
@@ -297,6 +298,61 @@ export const reloadBillingStatus$ = command(({ set }) => {
   });
 });
 
+export const handleBillingRedirect$ = command(({ get, set }) => {
+  const searchParams = new URLSearchParams(get(searchParams$));
+  const billing = searchParams.get("billing");
+  const credits = searchParams.get("credits");
+  const concurrency = searchParams.get("concurrency");
+  if (!billing && !credits && !concurrency) {
+    return;
+  }
+
+  searchParams.delete("billing");
+  searchParams.delete("billing_session_id");
+  searchParams.delete("credits");
+  searchParams.delete("credit_checkout_session_id");
+  searchParams.delete("concurrency");
+  set(replaceSearchParams$, searchParams);
+
+  if (billing === "pro" || billing === "team") {
+    const label =
+      billing === "pro"
+        ? i18n.t(($) => {
+            return $.billing.plans.pro.name;
+          })
+        : i18n.t(($) => {
+            return $.billing.plans.team.name;
+          });
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.billing.toasts.checkoutCompleted;
+        },
+        { plan: label },
+      ),
+    );
+    set(reloadBillingStatus$);
+  }
+
+  if (credits === "purchased") {
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.creditsAdded;
+      }),
+    );
+    set(reloadBillingStatus$);
+  }
+
+  if (concurrency === "purchased") {
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.concurrencyAdded;
+      }),
+    );
+    set(reloadBillingStatus$);
+  }
+});
+
 const reloadBillingStatusFromRealtime$ = command(({ set }) => {
   set(reloadBillingStatus$);
   set(reloadUsageRecords$);
@@ -468,7 +524,7 @@ export const startCreditCheckout$ = command(
 
 export const startConcurrencyCheckout$ = command(
   async ({ get }, quantity: number, newTab: boolean, signal: AbortSignal) => {
-    const successUrl = checkoutReturnUrl();
+    const successUrl = new URL("/", window.location.origin);
     successUrl.searchParams.set("concurrency", "purchased");
     const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("concurrency", "canceled");

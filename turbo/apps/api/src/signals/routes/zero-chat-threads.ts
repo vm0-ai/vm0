@@ -7,11 +7,13 @@ import {
   chatThreadsContract,
   type ChatEvent,
   type CompatibleChatEvent,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   clientVersionSupportsCapability,
   CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
   CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
+  CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION,
   CLIENT_TYPE_APP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
@@ -43,7 +45,10 @@ import {
   getChatThreadEventsSince,
   getChatThreadSnapshot,
 } from "../services/zero-chat-thread-event.service";
-import { withoutAgentRunSourceAnnotation } from "../services/zero-chat-user-message.service";
+import {
+  withoutAgentRunSourceAnnotation,
+  withoutRunModelAnnotation,
+} from "../services/zero-chat-user-message.service";
 import type { RouteEntry } from "../route-entry";
 import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
@@ -84,10 +89,12 @@ function chatEventForClient(
   event: ChatEvent,
   canonicalBrowserLifecycleEvents: boolean,
   supportsAgentRunSource: boolean,
+  supportsRunModelAnnotation: boolean,
 ): CompatibleChatEvent {
   const projectedEvent = projectChatEventForClient(
     event,
     supportsAgentRunSource,
+    supportsRunModelAnnotation,
   );
   if (canonicalBrowserLifecycleEvents) {
     return projectedEvent;
@@ -104,33 +111,63 @@ function chatEventForClient(
 function projectChatEventForClient(
   event: ChatEvent,
   supportsAgentRunSource: boolean,
+  supportsRunModelAnnotation: boolean,
 ): ChatEvent {
-  if (supportsAgentRunSource) {
+  if (supportsAgentRunSource && supportsRunModelAnnotation) {
     return event;
   }
   if (
     event.eventType === "input.prompt" ||
+    event.eventType === "input.budget" ||
     event.eventType === "input.goal" ||
     event.eventType === "input.rejected"
   ) {
     return {
       ...event,
-      userMessage: withoutAgentRunSourceAnnotation(event.userMessage),
+      userMessage: userMessageForClient(
+        event.userMessage,
+        supportsAgentRunSource,
+        supportsRunModelAnnotation,
+      ),
     };
   }
   if (event.eventType === "input.automation" && event.userMessage) {
     return {
       ...event,
-      userMessage: withoutAgentRunSourceAnnotation(event.userMessage),
+      userMessage: userMessageForClient(
+        event.userMessage,
+        supportsAgentRunSource,
+        supportsRunModelAnnotation,
+      ),
     };
   }
   return event;
+}
+
+function userMessageForClient(
+  userMessage: UserMessageDocument,
+  supportsAgentRunSource: boolean,
+  supportsRunModelAnnotation: boolean,
+): UserMessageDocument {
+  const sourceCompatible = supportsAgentRunSource
+    ? userMessage
+    : withoutAgentRunSourceAnnotation(userMessage);
+  return supportsRunModelAnnotation
+    ? sourceCompatible
+    : withoutRunModelAnnotation(sourceCompatible);
 }
 
 function clientSupportsAgentRunSource(version: string | null): boolean {
   return clientVersionSupportsCapability(
     version,
     CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
+  );
+}
+
+function clientSupportsRunModelAnnotation(version: string | null): boolean {
+  return clientVersionSupportsCapability(
+    version,
+    CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION,
   );
 }
 
@@ -218,9 +255,10 @@ const listChatEventsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.list));
   const query = get(queryOf(chatThreadEventsContract.list));
-  const supportsAgentRunSource = clientSupportsAgentRunSource(
-    get(request$).raw.headers.get(CLIENT_VERSION_HEADER),
-  );
+  const clientVersion = get(request$).raw.headers.get(CLIENT_VERSION_HEADER);
+  const supportsAgentRunSource = clientSupportsAgentRunSource(clientVersion);
+  const supportsRunModelAnnotation =
+    clientSupportsRunModelAnnotation(clientVersion);
 
   const events = await get(
     zeroChatThreadEventsPage({
@@ -246,6 +284,7 @@ const listChatEventsInner$ = computed(async (get) => {
           event,
           canonicalBrowserLifecycleEvents,
           supportsAgentRunSource,
+          supportsRunModelAnnotation,
         );
       }),
     },
@@ -255,9 +294,10 @@ const listChatEventsInner$ = computed(async (get) => {
 const getChatThreadEventInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.get));
-  const supportsAgentRunSource = clientSupportsAgentRunSource(
-    get(request$).raw.headers.get(CLIENT_VERSION_HEADER),
-  );
+  const clientVersion = get(request$).raw.headers.get(CLIENT_VERSION_HEADER);
+  const supportsAgentRunSource = clientSupportsAgentRunSource(clientVersion);
+  const supportsRunModelAnnotation =
+    clientSupportsRunModelAnnotation(clientVersion);
 
   const event = await get(
     zeroChatThreadEventById({
@@ -276,6 +316,7 @@ const getChatThreadEventInner$ = computed(async (get) => {
       event,
       get(canonicalBrowserLifecycleEvents$),
       supportsAgentRunSource,
+      supportsRunModelAnnotation,
     ),
   };
 });

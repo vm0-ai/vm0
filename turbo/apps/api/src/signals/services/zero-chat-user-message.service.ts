@@ -2,6 +2,8 @@ import type {
   FeedbackNotePart,
   GenerationTemplateRequest,
   UserMessageDocument,
+  UserMessageInputDocument,
+  UserMessageInputPart,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -25,7 +27,7 @@ interface UserMessageFile {
 }
 
 type UserMessageNonContentPart = Extract<
-  UserMessagePart,
+  UserMessageInputPart,
   { readonly type: "source" | "automation" | "goal" | "morning_brief" }
 >;
 
@@ -67,6 +69,14 @@ export function withoutAgentRunSourceAnnotation(
 
 /** Replace client-owned annotations with authoritative agent-run provenance. */
 export function withAgentRunSourceAnnotation(
+  document: UserMessageInputDocument,
+  source: ChatAgentRunSourceAnnotation,
+): UserMessageInputDocument;
+export function withAgentRunSourceAnnotation(
+  document: UserMessageDocument,
+  source: ChatAgentRunSourceAnnotation,
+): UserMessageDocument;
+export function withAgentRunSourceAnnotation(
   document: UserMessageDocument,
   source: ChatAgentRunSourceAnnotation,
 ): UserMessageDocument {
@@ -95,6 +105,34 @@ export function withAgentRunSourceAnnotation(
   };
 }
 
+/** Hide server-owned run-model provenance from clients that predate it. */
+export function withoutRunModelAnnotation(
+  document: UserMessageDocument,
+): UserMessageDocument {
+  const parts = document.parts.filter((part) => {
+    return part.type !== "model";
+  });
+  return parts.length === document.parts.length
+    ? document
+    : { version: 1, parts };
+}
+
+/** Replace any prior run-model annotation with the model persisted for the run. */
+export function withRunModelAnnotation(
+  document: UserMessageDocument,
+  selectedModel: string,
+): UserMessageDocument {
+  return {
+    version: 1,
+    parts: [
+      ...document.parts.filter((part) => {
+        return part.type !== "model";
+      }),
+      { type: "model", selectedModel },
+    ],
+  };
+}
+
 export function requiredUserMessageForEvent(
   eventType: ChatEventType,
   document: UserMessageDocument | null,
@@ -112,8 +150,8 @@ function maybeCreateUserMessageDocument(args: {
   readonly text: string | null;
   readonly files?: readonly UserMessageFile[];
   readonly nonContentPart?: UserMessageNonContentPart;
-}): UserMessageDocument | null {
-  const parts: UserMessagePart[] = (args.files ?? []).map((file) => {
+}): UserMessageInputDocument | null {
+  const parts: UserMessageInputPart[] = (args.files ?? []).map((file) => {
     return {
       type: "file",
       fileId: file.id,
@@ -134,7 +172,7 @@ export function createUserMessageDocument(args: {
   readonly text: string | null;
   readonly files?: readonly UserMessageFile[];
   readonly nonContentPart?: UserMessageNonContentPart;
-}): UserMessageDocument {
+}): UserMessageInputDocument {
   const document = maybeCreateUserMessageDocument(args);
   if (!document) {
     throw new Error("User message must contain at least one part");
@@ -361,7 +399,8 @@ export function projectUserMessage(
       part.type === "source" ||
       part.type === "automation" ||
       part.type === "goal" ||
-      part.type === "morning_brief"
+      part.type === "morning_brief" ||
+      part.type === "model"
     ) {
       continue;
     }

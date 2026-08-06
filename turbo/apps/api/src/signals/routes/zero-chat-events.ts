@@ -8,6 +8,7 @@ import {
   type CodexServiceTier,
   type GenerationTemplateRequest,
   type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -145,7 +146,7 @@ interface NormalSendBody {
   readonly runOptions?: {
     readonly codexServiceTier?: CodexServiceTier;
   };
-  readonly userMessage: UserMessageDocument;
+  readonly userMessage: UserMessageInputDocument;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
@@ -2575,7 +2576,7 @@ function scheduleCreatedChatRunSideEffects(params: {
  */
 function scheduleClaimedQueueFirstEventSideEffects(params: {
   readonly db: Db;
-  readonly body: NormalSendBody;
+  readonly body: RuntimeNormalSendBody;
   readonly threadId: string;
   readonly userId: string;
   readonly runId: string;

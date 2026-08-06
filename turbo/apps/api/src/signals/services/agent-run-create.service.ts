@@ -119,6 +119,7 @@ import type { PersistedStorageMount } from "@vm0/db/types";
 import {
   and,
   count,
+  desc,
   eq,
   inArray,
   isNotNull,
@@ -1991,22 +1992,17 @@ async function vm0ModelProviderEnvironment(
   const concreteType = getVm0ConcreteProviderType(selectedModel);
   const vendor = getVm0Vendor(selectedModel);
   const apiModel = getProviderRuntimeModel("vm0", selectedModel);
-  const exactRows = await db
+  const rows = await db
     .select({ apiKey: vm0ApiKeys.apiKey })
     .from(vm0ApiKeys)
-    .where(and(eq(vm0ApiKeys.vendor, vendor), eq(vm0ApiKeys.model, apiModel)))
-    .orderBy(vm0ApiKeySelectionOrder(), sql`random()`)
+    .where(eq(vm0ApiKeys.vendor, vendor))
+    .orderBy(
+      vm0ApiKeySelectionOrder(),
+      desc(vm0ApiKeys.updatedAt),
+      sql`random()`,
+    )
     .limit(1);
-  const fallbackRows =
-    exactRows.length > 0
-      ? exactRows
-      : await db
-          .select({ apiKey: vm0ApiKeys.apiKey })
-          .from(vm0ApiKeys)
-          .where(eq(vm0ApiKeys.vendor, vendor))
-          .orderBy(vm0ApiKeySelectionOrder(), sql`random()`)
-          .limit(1);
-  const apiKey = fallbackRows[0]?.apiKey;
+  const apiKey = rows[0]?.apiKey;
   const secretName = getSecretNameForType(concreteType);
   if (!apiKey || !secretName) {
     return null;
@@ -6343,10 +6339,14 @@ async function claimQueueFirstAssociationForLaunch(args: {
   if (!args.admission) {
     throw new Error("Queue-first claim requires resolved thread admission");
   }
+  if (!args.createArgs.zeroRunModelPin) {
+    throw new Error("Queue-first claim requires a run model pin");
+  }
   return await claimQueueFirstRunAssociation(args.tx, {
     ...association,
     admission: args.admission,
     runId: args.identity.runId,
+    selectedModel: args.createArgs.zeroRunModelPin.selectedModel,
     timing: args.timing,
   });
 }
