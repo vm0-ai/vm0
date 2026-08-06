@@ -27,6 +27,12 @@ describe("getCreditUsageDisplayName", () => {
     ).toBe("Image Recognize");
   });
 
+  it("labels managed translation without exposing its backing model", () => {
+    expect(
+      getCreditUsageDisplayName("translation", "qwen/qwen-2.5-7b-instruct"),
+    ).toBe("Translation");
+  });
+
   it("labels pre-task-kind model rows recorded for image recognition", () => {
     expect(getCreditUsageDisplayName("model", "google/gemini-3.5-flash")).toBe(
       "Image Recognize",

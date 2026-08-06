@@ -220,6 +220,12 @@ describe("auth tokens", () => {
     );
   });
 
+  it("grants translation capability by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+
+    expect(verifyZeroToken(token)?.capabilities).toContain("translation:write");
+  });
+
   it("gates image recognition on run eligibility", () => {
     const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
     const ineligibleToken = generateZeroToken(
