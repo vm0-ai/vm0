@@ -1124,7 +1124,9 @@ def test_error_status_logs_warning(tmp_path, real_flow, headers):
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
     flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
-    flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/fail?api_key=secret#frag"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = (
+        "https://user:pass@api.example.com/fail?api_key=secret#frag"
+    )
 
     flow.response = tutils.tresp(status_code=500, headers=http.Headers())
 
@@ -1133,5 +1135,6 @@ def test_error_status_logs_warning(tmp_path, real_flow, headers):
     assert jsonl_exists_after_flush(proxy_log)
     [entry] = read_jsonl_entries_after_flush(proxy_log)
     assert entry["message"] == "Response 500: https://api.example.com/fail"
+    assert "user:pass" not in entry["message"]
     assert "api_key=secret" not in entry["message"]
     assert "#frag" not in entry["message"]

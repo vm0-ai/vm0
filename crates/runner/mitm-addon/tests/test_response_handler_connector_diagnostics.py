@@ -48,6 +48,9 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
+        flow.metadata[metadata_keys.ORIGINAL_URL] = (
+            "https://fal.run/fal-ai/nano-banana-pro?debug=secret#fragment"
+        )
         flow.response = tutils.tresp(
             status_code=401,
             headers=header_map({"content-type": "text/plain", "content-length": "8"}),
@@ -87,8 +90,11 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
     assert proxy_entry["type"] == "connector_diagnostic"
     assert proxy_entry["connector"] == "fal"
     assert proxy_entry["upstream_status"] == 401
-    assert proxy_entry["url"] == flow.metadata[metadata_keys.ORIGINAL_URL]
+    assert proxy_entry["url"] == "https://fal.run/fal-ai/nano-banana-pro"
     assert proxy_entry["message"].endswith(f": {proxy_entry['url']}")
+    serialized_proxy_entry = json.dumps(proxy_entry)
+    assert "debug=secret" not in serialized_proxy_entry
+    assert "#fragment" not in serialized_proxy_entry
     assert "url_truncated" not in proxy_entry
     assert "url_original_char_count" not in proxy_entry
 
