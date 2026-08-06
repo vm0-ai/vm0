@@ -5,14 +5,13 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
-  workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import type { Db, ReadonlyDb } from "../external/db";
+import type { Db } from "../external/db";
 import {
   hasPendingUserChatQueueEvent,
   listPendingChatQueueEvents,
@@ -20,11 +19,7 @@ import {
   lockChatQueueThread,
   staleChatEventQueueThreadIds,
 } from "./chat-event-queue.service";
-import {
-  insertChatEvent,
-  replaceChatEvent,
-  revokeChatEvent,
-} from "./zero-chat-event.service";
+import { insertChatEvent, replaceChatEvent } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import type {
