@@ -830,7 +830,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 events: Vec::new(),
-                active_results: VecDeque::from([Ok(true), Ok(true)]),
+                active_results: VecDeque::from([Ok(true)]),
                 enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::Enabled)]),
                 write_error: false,
                 remove_error: false,
