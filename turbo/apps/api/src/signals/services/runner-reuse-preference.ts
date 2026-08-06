@@ -1,4 +1,7 @@
-import type { RunnerPreference } from "@vm0/api-contracts/contracts/runners";
+import type {
+  RunnerPreference,
+  RunnerPreferenceResolution,
+} from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
@@ -267,19 +270,9 @@ export function runnerReusePreferencePollPriority(args: {
   END`;
 }
 
-export type RunnerPreferenceResolutionOutcome =
-  | "exact_history_generation"
-  | "finalizing_predecessor"
-  | "matching_reusable_sandbox"
-  | "matching_workspace_cache"
-  | "no_reuse_key"
-  | "expired"
-  | "no_viable_holder"
-  | "lookup_error";
-
 interface RunnerReusePreferenceResolution {
   readonly runnerPreference: RunnerPreference | null;
-  readonly outcome: RunnerPreferenceResolutionOutcome;
+  readonly outcome: RunnerPreferenceResolution;
 }
 
 export function runnerReusePreferenceLookupError(): RunnerReusePreferenceResolution {

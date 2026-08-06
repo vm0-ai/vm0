@@ -39,7 +39,9 @@ use crate::idle_pool::{
 use crate::ids::RunId;
 use crate::lifecycle::RunnerMode;
 use crate::paths::short_digest;
-use crate::provider::{ClaimedJob, JobCandidate, RunnerPreferenceReason};
+use crate::provider::{
+    ClaimedJob, JobCandidate, RunnerPreferenceReason, RunnerPreferenceRemovalReason,
+};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{
     RunCancellationHandle, RunCancellationRegistration, RunCancellationRegistry,
@@ -762,16 +764,22 @@ async fn prepare_preference_candidate(
         return ordinary_preparation(candidate);
     };
     if preference.is_expired() {
-        return ordinary_preparation(candidate.without_runner_preference());
+        return ordinary_preparation(
+            candidate.without_runner_preference(RunnerPreferenceRemovalReason::Expired),
+        );
     }
     let Some(reuse_key) = candidate.reuse_key().map(str::to_owned) else {
-        return ordinary_preparation(candidate.without_runner_preference());
+        return ordinary_preparation(
+            candidate.without_runner_preference(RunnerPreferenceRemovalReason::Cleared),
+        );
     };
 
     match preference.reason() {
         RunnerPreferenceReason::ExactHistoryGeneration => {
             let Some(history_generation_run_id) = candidate.history_generation_run_id() else {
-                return ordinary_preparation(candidate.without_runner_preference());
+                return ordinary_preparation(
+                    candidate.without_runner_preference(RunnerPreferenceRemovalReason::Cleared),
+                );
             };
             if let Some(reservation) = reserve_reusable_idle(
                 &reuse_key,
@@ -817,7 +825,9 @@ async fn prepare_preference_candidate(
         }
         RunnerPreferenceReason::FinalizingPredecessor => {
             let Some(history_generation_run_id) = candidate.history_generation_run_id() else {
-                return ordinary_preparation(candidate.without_runner_preference());
+                return ordinary_preparation(
+                    candidate.without_runner_preference(RunnerPreferenceRemovalReason::Cleared),
+                );
             };
             if let Some(reservation) = reserve_reusable_idle(
                 &reuse_key,
@@ -833,7 +843,9 @@ async fn prepare_preference_candidate(
 
             if preference.targets(ctx.runner_id, ctx.heartbeat_generation) {
                 if !contains_active_reuse_key(&ctx.spawn_ctx.active_reuse_keys, &reuse_key) {
-                    return ordinary_preparation(candidate.without_runner_preference());
+                    return ordinary_preparation(
+                        candidate.without_runner_preference(RunnerPreferenceRemovalReason::Cleared),
+                    );
                 }
                 return defer_preference_candidate(candidate, &preference, &reuse_key, ctx, true)
                     .await;
@@ -881,7 +893,9 @@ async fn defer_preference_candidate(
     retain: bool,
 ) -> PreferencePreparation {
     if preference.is_expired() {
-        return ordinary_preparation(candidate.without_runner_preference());
+        return ordinary_preparation(
+            candidate.without_runner_preference(RunnerPreferenceRemovalReason::Expired),
+        );
     }
     let delay = preference.remaining();
     info!(

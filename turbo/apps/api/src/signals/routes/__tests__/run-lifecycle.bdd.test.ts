@@ -3725,6 +3725,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(canonicalHeartbeatHolder.job?.reuseKey).toBe(reuseKey);
     expect(runnerPreference(canonicalHeartbeatHolder.job)).toBeUndefined();
+    expect(canonicalHeartbeatHolder.job?.runnerPreferenceResolution).toBe(
+      "no_viable_holder",
+    );
 
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reuseRunnerId,
@@ -3755,6 +3758,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       reason: "matchingReuseKey",
       expiresAt: expect.any(String),
     });
+    expect(workspaceOnlyHolder.job?.runnerPreferenceResolution).toBe(
+      "matching_workspace_cache",
+    );
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
       workspaceCaches: [
@@ -3767,6 +3773,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(runnerPreference(capableWorkspaceHolder.job)).toMatchObject({
       reason: "matchingReuseKey",
     });
+    expect(capableWorkspaceHolder.job?.runnerPreferenceResolution).toBe(
+      "matching_workspace_cache",
+    );
 
     const reusableRunnerId = randomUUID();
     await api.requestHeartbeatRunner(true, [200], {
@@ -3797,11 +3806,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(runnerPreference(reusableOverWorkspace.job)).toStrictEqual(
       reusablePreference,
     );
+    expect(reusableOverWorkspace.job?.runnerPreferenceResolution).toBe(
+      "matching_reusable_sandbox",
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
       expect.objectContaining({
         runId: reusableOverWorkspace.run.runId,
         runnerPreference: reusablePreference,
+        runnerPreferenceResolution: "matching_reusable_sandbox",
       }),
     );
     await api.requestHeartbeatRunner(true, [200], {
@@ -3821,6 +3834,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue with a mismatched capable workspace",
     );
     expect(runnerPreference(mismatchedCapableWorkspace.job)).toBeUndefined();
+    expect(mismatchedCapableWorkspace.job?.runnerPreferenceResolution).toBe(
+      "no_viable_holder",
+    );
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3840,6 +3856,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       reason: "matchingReuseKey",
       expiresAt: expect.any(String),
     });
+    expect(differentGenerationHolder.job?.runnerPreferenceResolution).toBe(
+      "matching_reusable_sandbox",
+    );
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3859,6 +3878,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       reason: "exactHistoryGeneration",
       expiresAt: expect.any(String),
     });
+    expect(exactGenerationHolder.job?.runnerPreferenceResolution).toBe(
+      "exact_history_generation",
+    );
 
     for (const { runId, resolution } of [
       {
@@ -3942,6 +3964,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         reuseKey,
         historyGenerationRunId: first.runId,
         runnerPreference: finalizingPreference,
+        runnerPreferenceResolution: "finalizing_predecessor",
       }),
     );
 
@@ -3960,6 +3983,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(sourcePoll.body.job?.runId).toBe(successor.runId);
     expect(runnerPreference(sourcePoll.body.job)).toStrictEqual(
       finalizingPreference,
+    );
+    expect(sourcePoll.body.job?.runnerPreferenceResolution).toBe(
+      "finalizing_predecessor",
     );
     for (const actionType of [
       "runner_notification_affinity_lookup",
@@ -3997,6 +4023,50 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       reason: "matchingReuseKey",
       expiresAt: new Date(successorCreatedAt + 2000).toISOString(),
     });
+    expect(genericPoll.body.job?.runnerPreferenceResolution).toBe(
+      "matching_reusable_sandbox",
+    );
+
+    const claimed = await api.requestClaimRunnerJob(
+      true,
+      successor.runId,
+      [200],
+      {
+        runnerIdentity: sourceRunnerIdentity,
+        telemetry: {
+          discoverySource: "ably",
+          runnerPreferenceResolution: "finalizing_predecessor",
+          runnerPreferenceClaimState: "expired",
+          runnerPreferenceTargetedSelf: true,
+        },
+      },
+    );
+    expect(claimed.status).toBe(200);
+    const successfulClaim = sandboxOperationEventsForRunByAction(
+      successor.runId,
+      "claim_request_to_running",
+    );
+    expect(successfulClaim).toHaveLength(1);
+    expect(successfulClaim[0]).toStrictEqual(
+      expect.objectContaining({
+        runner_preference_resolution: "finalizing_predecessor",
+        runner_preference_claim_state: "expired",
+        runner_preference_targeted_self: "true",
+      }),
+    );
+    for (const event of sandboxOperationEventsForRun(successor.runId)) {
+      if (event.op_type === "claim_request_to_running") {
+        continue;
+      }
+      if (
+        event.op_type === "runner_notification_affinity_lookup" ||
+        event.op_type === "runner_poll_pending_job_lookup"
+      ) {
+        continue;
+      }
+      expect(event).not.toHaveProperty("runner_preference_claim_state");
+      expect(event).not.toHaveProperty("runner_preference_targeted_self");
+    }
 
     await api.requestCancelRun(actor, successor.runId, [200]);
     await flushWaitUntilForTest();
@@ -10751,6 +10821,19 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(serialized).not.toContain(apiKey.token);
     }
     const timingEvents = sandboxOperationEventsForRun(first.runId);
+    const oldRunnerClaimEvent = singleSandboxOperationEvent(
+      timingEvents,
+      "claim_request_to_running",
+    );
+    expect(oldRunnerClaimEvent).not.toHaveProperty(
+      "runner_preference_resolution",
+    );
+    expect(oldRunnerClaimEvent).not.toHaveProperty(
+      "runner_preference_claim_state",
+    );
+    expect(oldRunnerClaimEvent).not.toHaveProperty(
+      "runner_preference_targeted_self",
+    );
     expect(
       timingEvents.find((event) => {
         return event.op_type === "job_discovered_to_claim_request";
@@ -10911,6 +10994,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           directCandidateInboxWaitMs: 34,
           providerDiscoveryToMainLoopMs: 45,
           mainLoopToLocalAdmissionMs: 67,
+          runnerPreferenceResolution: "matching_workspace_cache",
+          runnerPreferenceClaimState: "active",
+          runnerPreferenceTargetedSelf: false,
         },
       },
     );
@@ -10929,6 +11015,19 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         apiKey.token,
       ],
     });
+    const directClaimEvents = sandboxOperationEventsForRun(second.runId);
+    expect(
+      singleSandboxOperationEvent(
+        directClaimEvents,
+        "claim_request_to_running",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        runner_preference_resolution: "matching_workspace_cache",
+        runner_preference_claim_state: "active",
+        runner_preference_targeted_self: "false",
+      }),
+    );
 
     const tokenRequest = {
       keyName: "bdd-key",
@@ -12692,6 +12791,14 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             session_history_download_source: "configured_public_endpoint",
             session_history_ref_hash: "should-not-forward",
           },
+          {
+            ts: nowDate().toISOString(),
+            action_type: "api_to_spawn",
+            duration_ms: 125,
+            success: true,
+            runner_startup_path: "workspace",
+            sandbox_reuse_result: "poolMiss",
+          },
         ],
       },
       sandboxHeaders,
@@ -12790,6 +12897,20 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         }),
       ],
     );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "api_to_spawn",
+          run_id: created.runId,
+          duration_ms: 125,
+          success: true,
+          runner_startup_path: "workspace",
+          sandbox_reuse_result: "poolMiss",
+          source: "sandbox",
+        }),
+      ],
+    );
     const sessionHistoryDownloadEvents = sandboxOperationEventsForRunByAction(
       created.runId,
       "session_history_download",
@@ -12797,6 +12918,12 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     expect(sessionHistoryDownloadEvents).toHaveLength(1);
     expect(sessionHistoryDownloadEvents[0]).not.toHaveProperty(
       "session_history_ref_hash",
+    );
+    expect(sessionHistoryDownloadEvents[0]).not.toHaveProperty(
+      "runner_startup_path",
+    );
+    expect(sessionHistoryDownloadEvents[0]).not.toHaveProperty(
+      "sandbox_reuse_result",
     );
 
     const observed = await webhooks.requestAgentModelUsageObservationV2(
