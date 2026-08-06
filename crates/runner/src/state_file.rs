@@ -28,8 +28,6 @@ pub(crate) const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = 16 * 1024 * 1024;
 pub(crate) const USAGE_PENDING_MAX_BYTES: u64 = 64 * 1024;
 pub(crate) const WORKSPACE_METADATA_MAX_BYTES: u64 = 1024 * 1024;
 
-const PRIVATE_FILE_MODE: u32 = 0o600;
-
 /// Ownership policy for reading a runner state file.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum OwnerCheck {
@@ -216,75 +214,9 @@ fn validate_open_state_file<Fd: std::os::fd::AsRawFd>(
 /// directory are not fsynced, so this does not provide a crash-durability
 /// guarantee. Non-Unix builds use `tokio::fs::write` as a weaker fallback.
 pub(crate) async fn write_private_atomic(path: &Path, content: &[u8]) -> RunnerResult<()> {
-    #[cfg(unix)]
-    {
-        write_private_atomic_unix(path, content).await
-    }
-
-    #[cfg(not(unix))]
-    {
-        tokio::fs::write(path, content)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("write state file {}: {e}", path.display())))
-    }
-}
-
-#[cfg(unix)]
-async fn write_private_atomic_unix(path: &Path, content: &[u8]) -> RunnerResult<()> {
-    use std::ffi::OsString;
-    use tokio::io::AsyncWriteExt;
-
-    let file_name = path.file_name().ok_or_else(|| {
-        RunnerError::Internal(format!(
-            "{} does not have a file name; refusing to write state file",
-            path.display()
-        ))
-    })?;
-    let mut tmp_name = OsString::from(".");
-    tmp_name.push(file_name);
-    tmp_name.push(format!(".{}.tmp", uuid::Uuid::new_v4()));
-    let tmp = path.with_file_name(tmp_name);
-
-    let result = async {
-        let mut options = tokio::fs::OpenOptions::new();
-        options.write(true).create_new(true).mode(PRIVATE_FILE_MODE);
-        let mut file = options.open(&tmp).await.map_err(|e| {
-            RunnerError::Internal(format!("open state file tmp {}: {e}", tmp.display()))
-        })?;
-        chmod_private_file_fd(&file, &tmp)?;
-        file.write_all(content).await.map_err(|e| {
-            RunnerError::Internal(format!("write state file tmp {}: {e}", tmp.display()))
-        })?;
-        file.flush().await.map_err(|e| {
-            RunnerError::Internal(format!("flush state file tmp {}: {e}", tmp.display()))
-        })?;
-        drop(file);
-        tokio::fs::rename(&tmp, path).await.map_err(|e| {
-            RunnerError::Internal(format!("rename state file {}: {e}", path.display()))
-        })?;
-        Ok(())
-    }
-    .await;
-
-    if result.is_err() {
-        let _ = tokio::fs::remove_file(&tmp).await;
-    }
-    result
-}
-
-#[cfg(unix)]
-fn chmod_private_file_fd<Fd: std::os::fd::AsRawFd>(file: &Fd, path: &Path) -> RunnerResult<()> {
-    // SAFETY: `fchmod` operates on the live fd.
-    let result = unsafe { libc::fchmod(file.as_raw_fd(), PRIVATE_FILE_MODE as libc::mode_t) };
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(RunnerError::Internal(format!(
-            "chmod state file {}: {}",
-            path.display(),
-            std::io::Error::last_os_error()
-        )))
-    }
+    crate::host_file::write_private_atomic(path, content, "state file")
+        .await
+        .map_err(|e| RunnerError::Internal(e.to_string()))
 }
 
 #[cfg(test)]
@@ -295,7 +227,7 @@ mod tests {
         ignored_child_test_env_guard_enabled, run_ignored_child_test,
     };
     use std::ffi::CString;
-    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::os::unix::fs::symlink;
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -393,20 +325,6 @@ mod tests {
         assert!(
             error.to_string().contains("exceeds 5 bytes"),
             "unexpected error: {error}"
-        );
-    }
-
-    #[tokio::test]
-    async fn write_private_atomic_writes_private_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("state.json");
-
-        write_private_atomic(&path, b"{}").await.unwrap();
-
-        assert_eq!(std::fs::read(&path).unwrap(), b"{}");
-        assert_eq!(
-            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
-            0o600
         );
     }
 }
