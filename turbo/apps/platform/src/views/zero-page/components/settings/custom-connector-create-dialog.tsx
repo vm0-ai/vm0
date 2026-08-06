@@ -6,7 +6,6 @@ import type {
   CustomConnectorResponse,
   UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Button,
   CopyButton,
@@ -31,7 +30,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 
 import { resolveApiBaseForTarget } from "../../../../signals/api-base.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   addCustomConnectorAuthMethod$,
@@ -613,10 +611,6 @@ function OAuth2AuthenticationFields({
   );
 }
 
-function LegacyApiFields(props: CreateFormFieldProps) {
-  return <ApiAuthenticationFields {...props} removable={false} />;
-}
-
 function connectorHasSimpleApiDefinition(
   connector: CustomConnectorResponse,
 ): boolean {
@@ -767,19 +761,8 @@ function canonicalDefinitionFromForm(
 
 function buildCreateBody(
   form: CustomConnectorCreateForm,
-  oauth2Enabled: boolean,
 ): CreateCustomConnectorBody {
-  const prefixTemplates = parsePrefixLines(form.prefixesRaw);
-  if (!oauth2Enabled) {
-    return {
-      displayName: form.displayName.trim(),
-      prefixes: prefixTemplates,
-      headerName: form.headerName.trim(),
-      headerTemplate: form.headerTemplate,
-    };
-  }
-  const definition = canonicalDefinitionFromForm(form);
-  return definition;
+  return canonicalDefinitionFromForm(form);
 }
 
 function buildUpdateBody(
@@ -827,7 +810,6 @@ function oauthCredentialsCanSubmit(
 
 function formCanSubmit(
   form: CustomConnectorCreateForm,
-  oauth2Enabled: boolean,
   connector?: CustomConnectorResponse,
 ): boolean {
   if (
@@ -835,12 +817,6 @@ function formCanSubmit(
     parsePrefixLines(form.prefixesRaw).length === 0
   ) {
     return false;
-  }
-  if (!oauth2Enabled && !connector) {
-    return (
-      form.headerName.trim().length > 0 &&
-      form.headerTemplate.includes("{{secret}}")
-    );
   }
   if (form.authMethodTypes.length === 0) {
     return false;
@@ -870,7 +846,6 @@ function formCanSubmit(
 }
 
 interface AuthenticationFieldsProps extends CreateFormFieldProps {
-  readonly oauth2Enabled: boolean;
   readonly editing: boolean;
   readonly advancedApiDefinition: boolean;
   readonly addAuthMethod: (type: CustomConnectorAuthMethodType) => void;
@@ -880,19 +855,13 @@ interface AuthenticationFieldsProps extends CreateFormFieldProps {
 function AuthenticationFields({
   form,
   setField,
-  oauth2Enabled,
   editing,
   advancedApiDefinition,
   addAuthMethod,
   removeAuthMethod,
 }: AuthenticationFieldsProps) {
   const { t } = useTranslation();
-  if (!oauth2Enabled && !editing) {
-    return <LegacyApiFields form={form} setField={setField} />;
-  }
-  const availableAuthMethods = (
-    oauth2Enabled ? (["api", "oauth2"] as const) : (["api"] as const)
-  ).filter((type) => {
+  const availableAuthMethods = (["api", "oauth2"] as const).filter((type) => {
     return !form.authMethodTypes.includes(type);
   });
   return (
@@ -962,7 +931,6 @@ function AuthenticationFields({
 function CustomConnectorForm({
   form,
   setField,
-  oauth2Enabled,
   editing,
   advancedApiDefinition,
   addAuthMethod,
@@ -984,7 +952,6 @@ function CustomConnectorForm({
       <AuthenticationFields
         form={form}
         setField={setField}
-        oauth2Enabled={oauth2Enabled}
         editing={editing}
         advancedApiDefinition={advancedApiDefinition}
         addAuthMethod={addAuthMethod}
@@ -1045,9 +1012,6 @@ export function CustomConnectorCreateDialog({
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);
-  const featureSwitches = useGet(featureSwitch$);
-  const oauth2Enabled =
-    featureSwitches[FeatureSwitchKey.CustomConnectorOAuth2] ?? false;
   const setField = useSet(setCustomConnectorCreateField$);
   const addAuthMethod = useSet(addCustomConnectorAuthMethod$);
   const removeAuthMethod = useSet(removeCustomConnectorAuthMethod$);
@@ -1072,8 +1036,7 @@ export function CustomConnectorCreateDialog({
   const submitting = editing
     ? updateLoadable.state === "loading"
     : createLoadable.state === "loading";
-  const canSubmit =
-    !submitting && formCanSubmit(form, oauth2Enabled, connector);
+  const canSubmit = !submitting && formCanSubmit(form, connector);
   const advancedApiDefinition =
     connector !== undefined &&
     (connector.authMode ?? "manual") === "manual" &&
@@ -1119,7 +1082,7 @@ export function CustomConnectorCreateDialog({
     }
     detach(
       (async () => {
-        await createConnector(buildCreateBody(form, oauth2Enabled), signal);
+        await createConnector(buildCreateBody(form), signal);
         close();
       })(),
       Reason.DomCallback,
@@ -1147,7 +1110,6 @@ export function CustomConnectorCreateDialog({
           <CustomConnectorForm
             form={form}
             setField={setField}
-            oauth2Enabled={oauth2Enabled}
             editing={editing}
             advancedApiDefinition={advancedApiDefinition}
             addAuthMethod={addAuthMethod}

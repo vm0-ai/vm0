@@ -1672,7 +1672,6 @@
       "edit": "Bearbeiten",
       "grant": "Gewähren",
       "reconnect": "Wieder verbinden",
-      "rename": "Umbenennen",
       "revoke": "Widerrufen",
       "save": "Speichern",
       "saving": "Speichern...",
@@ -1922,17 +1921,12 @@
       "emptyAdmin": "Noch keine benutzerdefinierten Integrationen. Erstellen Sie eine, um eine API zu registrieren, die jedes Mitglied verwenden kann.",
       "emptyMember": "Ihre Organisation hat noch keine benutzerdefinierten Integrationen registriert.",
       "moreOptions": "Weitere Optionen",
-      "rename": {
-        "displayName": "Anzeigename",
-        "title": "Benutzerdefinierte Integration umbenennen"
-      },
       "statusConnected": "Verbunden",
       "toasts": {
         "connected": "Verbunden",
         "created": "Erstellt „{{connector}}“",
         "deleted": "Benutzerdefinierte Integration gelöscht",
         "disconnected": "Getrennt",
-        "renamed": "Umbenannt in „{{connector}}“",
         "updated": "Aktualisiert „{{connector}}“"
       },
       "updateConfirm": {
