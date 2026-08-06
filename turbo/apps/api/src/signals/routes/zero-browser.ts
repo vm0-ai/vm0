@@ -14,7 +14,6 @@ import {
   leaseZeroBrowserByThread$,
   openZeroBrowserForThread$,
   resizeZeroBrowserByThread$,
-  stopZeroBrowserForThreadCompatibility$,
   useZeroBrowser$,
   type BrowserServiceError,
 } from "../services/zero-browser.service";
@@ -182,60 +181,6 @@ const closeBrowserInner$ = command(
   },
 );
 
-const legacyStartParams$ = pathParamsOf(zeroBrowserContract.start);
-const legacyStartBody$ = bodyResultOf(zeroBrowserContract.start);
-const legacyStartBrowserInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const body = await get(legacyStartBody$);
-    signal.throwIfAborted();
-    if (!body.ok) {
-      return body.response;
-    }
-    const auth = get(organizationAuthContext$);
-    const result = await set(
-      openZeroBrowserForThread$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        chatThreadId: get(legacyStartParams$).threadId,
-        lifecycleEventId: body.data.eventId,
-        ...("runId" in auth ? { runId: auth.runId } : {}),
-      },
-      signal,
-    );
-    return result.kind === "error"
-      ? errorResponse(result)
-      : { status: 200 as const, body: result.value };
-  },
-);
-
-const legacyStopParams$ = pathParamsOf(zeroBrowserContract.stop);
-const legacyStopBody$ = bodyResultOf(zeroBrowserContract.stop);
-const legacyStopBrowserInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const body = await get(legacyStopBody$);
-    signal.throwIfAborted();
-    if (!body.ok) {
-      return body.response;
-    }
-    const auth = get(organizationAuthContext$);
-    const result = await set(
-      stopZeroBrowserForThreadCompatibility$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        chatThreadId: get(legacyStopParams$).threadId,
-        lifecycleEventId: body.data.eventId,
-        ...("runId" in auth ? { runId: auth.runId } : {}),
-      },
-      signal,
-    );
-    return result.kind === "error"
-      ? errorResponse(result)
-      : { status: 200 as const, body: result.value };
-  },
-);
-
 const resizeByThreadParams$ = pathParamsOf(zeroBrowserContract.resizeByThread);
 const resizeByThreadBody$ = bodyResultOf(zeroBrowserContract.resizeByThread);
 const resizeBrowserByThreadInner$ = command(
@@ -353,14 +298,6 @@ export const zeroBrowserRoutes: readonly RouteEntry[] = [
   {
     route: zeroBrowserContract.close,
     handler: authRoute(browserViewerWriteAuth, closeBrowserInner$),
-  },
-  {
-    route: zeroBrowserContract.start,
-    handler: authRoute(browserViewerWriteAuth, legacyStartBrowserInner$),
-  },
-  {
-    route: zeroBrowserContract.stop,
-    handler: authRoute(browserViewerWriteAuth, legacyStopBrowserInner$),
   },
   {
     route: zeroBrowserContract.resizeByThread,
