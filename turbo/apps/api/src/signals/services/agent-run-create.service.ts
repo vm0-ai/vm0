@@ -8019,6 +8019,7 @@ async function committedAtomicLaunchResponse(args: {
       model: args.launch.piEdge,
       executionEnv: args.launch.piExecutionEnv,
       skillSnapshot: args.launch.runSkillSnapshot,
+      runnerGroup: args.committed.runnerJobPayload.runnerGroup,
       apiStartTime: args.createArgs.apiStartTime,
     });
   }

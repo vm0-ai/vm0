@@ -21,7 +21,9 @@
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.83.0",
-    "@vm0/api-contracts": "workspace:*"
+    "@earendil-works/pi-ai": "0.83.0",
+    "@vm0/api-contracts": "workspace:*",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

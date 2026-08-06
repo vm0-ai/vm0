@@ -1,5 +1,10 @@
 import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
-import type { ExecutionEnv } from "@vm0/pi-agent-runtime";
+import {
+  isPiAgentModelSupported,
+  type ExecutionEnv,
+  type PiAgentModelConfig,
+  type PiOpenAICompatibleProvider,
+} from "@vm0/pi-agent-runtime";
 
 /**
  * Cycle-free Pi edge configuration shared between the launch pipeline
@@ -7,11 +12,7 @@ import type { ExecutionEnv } from "@vm0/pi-agent-runtime";
  * module must not import other services.
  */
 
-export interface PiEdgeModelConfig {
-  readonly baseUrl: string;
-  readonly apiKey: string;
-  readonly model: string;
-}
+export type PiEdgeModelConfig = PiAgentModelConfig;
 
 export interface PiEdgeTurnArgs {
   readonly runId: string;
@@ -22,6 +23,7 @@ export interface PiEdgeTurnArgs {
   readonly model: PiEdgeModelConfig;
   readonly executionEnv: ExecutionEnv;
   readonly skillSnapshot: RunSkillSnapshot;
+  readonly runnerGroup: string;
   readonly apiStartTime: number;
 }
 
@@ -46,6 +48,29 @@ export function isPiEdgeCompatibleProviderType(type: string): boolean {
   );
 }
 
+function piProvider(concreteType: string): PiOpenAICompatibleProvider | null {
+  switch (concreteType) {
+    case "deepseek": {
+      return "deepseek";
+    }
+    case "moonshot-api-key": {
+      return "moonshotai";
+    }
+    case "openai-api-key": {
+      return "openai";
+    }
+    case "openrouter-codex": {
+      return "openrouter";
+    }
+    case "vercel-ai-gateway-codex": {
+      return "vercel-ai-gateway";
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 /**
  * Resolves the edge-callable model config from a resolved run provider. The
  * API-only key is kept separate from the runner secret namespace so firewall
@@ -66,7 +91,8 @@ export function resolvePiEdgeModelConfig(
     return null;
   }
   const concreteType = provider.concreteType ?? provider.type;
-  if (!isPiEdgeCompatibleProviderType(concreteType)) {
+  const piProviderId = piProvider(concreteType);
+  if (!isPiEdgeCompatibleProviderType(concreteType) || !piProviderId) {
     return null;
   }
   const baseUrl =
@@ -80,9 +106,11 @@ export function resolvePiEdgeModelConfig(
   if (!baseUrl || !model || !apiKey || apiKey.trim().length === 0) {
     return null;
   }
-  return {
+  const config: PiEdgeModelConfig = {
+    provider: piProviderId,
     baseUrl,
     apiKey,
     model,
   };
+  return isPiAgentModelSupported(config) ? config : null;
 }

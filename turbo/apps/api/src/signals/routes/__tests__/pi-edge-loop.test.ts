@@ -32,6 +32,95 @@ const workflows = createWorkflowsBddApi(context);
 const MODEL = "deepseek-v4-flash";
 const COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
 
+function recordOf(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function completionStream(
+  deltas: readonly Record<string, unknown>[],
+  finishReason: "stop" | "tool_calls",
+): HttpResponse<string> {
+  const chunks = [
+    ...deltas.map((delta) => {
+      return {
+        id: "chatcmpl-pi-edge",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: MODEL,
+        choices: [{ index: 0, delta, finish_reason: null }],
+      };
+    }),
+    {
+      id: "chatcmpl-pi-edge",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: MODEL,
+      choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
+    },
+  ];
+  return HttpResponse.text(
+    `${chunks
+      .map((chunk) => {
+        return `data: ${JSON.stringify(chunk)}\n\n`;
+      })
+      .join("")}data: [DONE]\n\n`,
+    { headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+function assistantTextStream(
+  text: string,
+  thinking: string,
+): HttpResponse<string> {
+  return completionStream(
+    [{ role: "assistant", reasoning_content: thinking }, { content: text }],
+    "stop",
+  );
+}
+
+function assistantToolStream(args: {
+  readonly id: string;
+  readonly name: string;
+  readonly arguments: Record<string, unknown>;
+  readonly thinking: string;
+  readonly text?: string;
+}): HttpResponse<string> {
+  return completionStream(
+    [
+      { role: "assistant", reasoning_content: args.thinking },
+      {
+        ...(args.text === undefined ? {} : { content: args.text }),
+        tool_calls: [
+          {
+            index: 0,
+            id: args.id,
+            type: "function",
+            function: {
+              name: args.name,
+              arguments: JSON.stringify(args.arguments),
+            },
+          },
+        ],
+      },
+    ],
+    "tool_calls",
+  );
+}
+
+function systemPromptFromRequest(request: unknown): string | undefined {
+  const messages = recordOf(request)?.messages;
+  if (!Array.isArray(messages)) {
+    return undefined;
+  }
+  const systemMessage = recordOf(messages[0]);
+  return systemMessage?.role === "system" &&
+    typeof systemMessage.content === "string"
+    ? systemMessage.content
+    : undefined;
+}
+
 function commandInput(command: unknown): Record<string, unknown> {
   if (
     typeof command === "object" &&
@@ -241,23 +330,28 @@ describe("PiLoop edge turn", () => {
         releaseModel.resolve();
       }
     });
-    let completionRequest: unknown;
+    const completionRequests: unknown[] = [];
+    let modelCall = 0;
     server.use(
       http.post(COMPLETIONS_URL, async ({ request }) => {
-        completionRequest = await request.json();
-        modelStarted.resolve();
-        await releaseModel.promise;
-        return HttpResponse.json({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                reasoning_content: "edge reasoning",
-                content: "edge answer",
-              },
+        completionRequests.push(await request.json());
+        const currentCall = modelCall;
+        modelCall += 1;
+        if (currentCall === 0) {
+          modelStarted.resolve();
+          await releaseModel.promise;
+          return assistantToolStream({
+            id: "read_skill_1",
+            name: "read",
+            arguments: {
+              path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
             },
-          ],
-        });
+            thinking: "inspect the pinned skill",
+          });
+        }
+        return currentCall === 1
+          ? assistantTextStream("edge answer", "edge reasoning")
+          : assistantTextStream("follow-up answer", "follow-up reasoning");
       }),
     );
 
@@ -330,20 +424,55 @@ describe("PiLoop edge turn", () => {
     releaseModel.resolve();
     await flushWaitUntilForTest();
 
-    expect(completionRequest).toMatchObject({
+    expect(completionRequests).toHaveLength(2);
+    expect(completionRequests[0]).toMatchObject({
       model: MODEL,
       messages: [
         { role: "system", content: piSystemPrompt },
-        { role: "user", content: edgePrompt },
+        {
+          role: "user",
+          content: [{ type: "text", text: edgePrompt }],
+        },
       ],
-      stream: false,
+      stream: true,
+      tools: expect.arrayContaining([
+        expect.objectContaining({
+          type: "function",
+          function: expect.objectContaining({ name: "read" }),
+        }),
+      ]),
     });
-    expect(JSON.stringify(completionRequest)).not.toContain(legacyPrompt);
+    expect(completionRequests[1]).toMatchObject({
+      model: MODEL,
+      messages: [
+        { role: "system", content: piSystemPrompt },
+        {
+          role: "user",
+          content: [{ type: "text", text: edgePrompt }],
+        },
+        expect.objectContaining({
+          role: "assistant",
+          tool_calls: [
+            expect.objectContaining({
+              id: "read_skill_1",
+              function: expect.objectContaining({ name: "read" }),
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          role: "tool",
+          tool_call_id: "read_skill_1",
+        }),
+      ],
+      stream: true,
+    });
+    expect(systemPromptFromRequest(completionRequests[1])).toBe(piSystemPrompt);
+    expect(JSON.stringify(completionRequests)).not.toContain(legacyPrompt);
 
     const transcript = await readTranscript(edge.runId);
     expect(transcript).toMatchObject({
       version: 1,
-      lastOrdinal: 2,
+      lastOrdinal: 4,
       messages: [
         {
           ordinal: 1,
@@ -365,9 +494,56 @@ describe("PiLoop edge turn", () => {
           payload: {
             role: "assistant",
             content: [
-              { type: "thinking", text: "edge reasoning" },
+              {
+                type: "thinking",
+                thinking: "inspect the pinned skill",
+              },
+              {
+                type: "toolCall",
+                id: "read_skill_1",
+                name: "read",
+                arguments: {
+                  path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
+                },
+              },
+            ],
+            stopReason: "toolUse",
+          },
+        },
+        {
+          ordinal: 3,
+          messageId: `${edge.runId}/3`,
+          runId: edge.runId,
+          runEventSequenceNumber: 3,
+          role: "toolResult",
+          payload: {
+            role: "toolResult",
+            toolCallId: "read_skill_1",
+            toolName: "read",
+            content: [
+              expect.objectContaining({
+                type: "text",
+                text: expect.stringContaining(
+                  `name: ${fixture.workflowSkillName}`,
+                ),
+              }),
+            ],
+            isError: false,
+          },
+        },
+        {
+          ordinal: 4,
+          messageId: `${edge.runId}/4`,
+          runId: edge.runId,
+          runEventSequenceNumber: 4,
+          role: "assistant",
+          payload: {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "edge reasoning" },
               { type: "text", text: "edge answer" },
             ],
+            stopReason: "stop",
           },
         },
       ],
@@ -390,6 +566,72 @@ describe("PiLoop edge turn", () => {
           return topic === `chatThreadMessageCreated:${edge.threadId}`;
         }),
     ).toBeTruthy();
+
+    const followUpPrompt = "continue with the Pi-only history";
+    const followUp = await sendChatRun(fixture, followUpPrompt, edge.threadId);
+    await flushWaitUntilForTest();
+
+    expect(completionRequests).toHaveLength(3);
+    expect(completionRequests[2]).toMatchObject({
+      model: MODEL,
+      messages: [
+        { role: "system", content: piSystemPrompt },
+        expect.objectContaining({ role: "user" }),
+        expect.objectContaining({
+          role: "assistant",
+          tool_calls: [expect.objectContaining({ id: "read_skill_1" })],
+        }),
+        expect.objectContaining({
+          role: "tool",
+          tool_call_id: "read_skill_1",
+        }),
+        expect.objectContaining({ role: "assistant", content: "edge answer" }),
+        {
+          role: "user",
+          content: [{ type: "text", text: followUpPrompt }],
+        },
+      ],
+      stream: true,
+    });
+    expect(JSON.stringify(completionRequests[2])).not.toContain(legacyPrompt);
+    const continuedTranscript = await readTranscript(followUp.runId);
+    expect(continuedTranscript).toMatchObject({
+      version: 1,
+      lastOrdinal: 6,
+      messages: [
+        expect.objectContaining({ ordinal: 1, runId: edge.runId }),
+        expect.objectContaining({ ordinal: 2, runId: edge.runId }),
+        expect.objectContaining({ ordinal: 3, runId: edge.runId }),
+        expect.objectContaining({ ordinal: 4, runId: edge.runId }),
+        expect.objectContaining({
+          ordinal: 5,
+          runId: followUp.runId,
+          messageId: `${followUp.runId}/1`,
+          role: "user",
+        }),
+        expect.objectContaining({
+          ordinal: 6,
+          runId: followUp.runId,
+          messageId: `${followUp.runId}/2`,
+          role: "assistant",
+          payload: expect.objectContaining({
+            content: [
+              expect.objectContaining({
+                type: "thinking",
+                thinking: "follow-up reasoning",
+              }),
+              expect.objectContaining({
+                type: "text",
+                text: "follow-up answer",
+              }),
+            ],
+          }),
+        }),
+      ],
+    });
+    expect((await api.readRun(fixture.actor, followUp.runId)).status).toBe(
+      "completed",
+    );
   });
 
   it("fails the run after preserving the user message when the model call fails", async () => {
@@ -412,7 +654,7 @@ describe("PiLoop edge turn", () => {
     const transcript = await readTranscript(run.runId);
     expect(transcript).toMatchObject({
       version: 1,
-      lastOrdinal: 1,
+      lastOrdinal: 2,
       messages: [
         {
           ordinal: 1,
@@ -423,10 +665,111 @@ describe("PiLoop edge turn", () => {
             content: [{ type: "text", text: prompt }],
           },
         },
+        {
+          ordinal: 2,
+          messageId: `${run.runId}/2`,
+          role: "assistant",
+          payload: {
+            role: "assistant",
+            content: [],
+            stopReason: "error",
+          },
+        },
       ],
     });
     await expect(
       outputMessages(fixture.actor, run.threadId),
     ).resolves.toHaveLength(0);
+  });
+
+  it("commits the complete sandbox tool batch, publishes handoff, and stops writing", async () => {
+    const fixture = await piEdgeFixture();
+    await enablePiLoop(fixture);
+    const completionRequests: unknown[] = [];
+    server.use(
+      http.post(COMPLETIONS_URL, async ({ request }) => {
+        completionRequests.push(await request.json());
+        return assistantToolStream({
+          id: "bash_handoff_1",
+          name: "bash",
+          arguments: { command: "pwd" },
+          thinking: "the sandbox must execute this",
+          text: "I will inspect the workspace.",
+        });
+      }),
+    );
+
+    const prompt = "inspect the sandbox workspace";
+    const publishedBefore = context.mocks.ably.publish.mock.calls.length;
+    const run = await sendChatRun(fixture, prompt);
+    await flushWaitUntilForTest();
+
+    expect(completionRequests).toHaveLength(1);
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+      "pending",
+    );
+    const transcript = await readTranscript(run.runId);
+    expect(transcript).toMatchObject({
+      version: 1,
+      lastOrdinal: 2,
+      messages: [
+        {
+          ordinal: 1,
+          messageId: `${run.runId}/1`,
+          role: "user",
+        },
+        {
+          ordinal: 2,
+          messageId: `${run.runId}/2`,
+          role: "assistant",
+          payload: {
+            role: "assistant",
+            content: [
+              {
+                type: "thinking",
+                thinking: "the sandbox must execute this",
+              },
+              { type: "text", text: "I will inspect the workspace." },
+              {
+                type: "toolCall",
+                id: "bash_handoff_1",
+                name: "bash",
+                arguments: { command: "pwd" },
+              },
+            ],
+            stopReason: "toolUse",
+          },
+        },
+      ],
+    });
+    expect(
+      context.mocks.ably.publish.mock.calls
+        .slice(publishedBefore)
+        .some(([topic, payload]) => {
+          return (
+            topic === "pi-handoff" && recordOf(payload)?.runId === run.runId
+          );
+        }),
+    ).toBeTruthy();
+
+    const standbyPoll = await api.requestPollRunner(
+      true,
+      {
+        group: fixture.runnerGroup,
+        supportedProfiles: ["vm0/pi-standby"],
+      },
+      [200],
+    );
+    if (standbyPoll.status !== 200) {
+      throw new Error("Expected Pi standby poll to return 200");
+    }
+    expect(standbyPoll.body.job?.runId).toBe(run.runId);
+    const standbyContext = await api.claimRunnerJob(run.runId);
+    expect(standbyContext.piSystemPrompt).toBe(
+      systemPromptFromRequest(completionRequests[0]),
+    );
+    expect(standbyContext.runSkillSnapshot?.digest).toMatch(
+      /^sha256:[a-f0-9]{64}$/,
+    );
   });
 });

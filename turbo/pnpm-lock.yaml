@@ -976,9 +976,15 @@ importers:
       '@earendil-works/pi-agent-core':
         specifier: 0.83.0
         version: 0.83.0(@modelcontextprotocol/sdk@1.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(ws@8.21.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.3.6)
+      '@earendil-works/pi-ai':
+        specifier: 0.83.0
+        version: 0.83.0(@modelcontextprotocol/sdk@1.29.0)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(ws@8.21.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.3.6)
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: 24.3.0

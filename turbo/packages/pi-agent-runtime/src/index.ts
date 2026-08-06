@@ -10,6 +10,16 @@ export {
   createPiReadTool,
   isPiEdgeToolName,
 } from "./tools";
+export {
+  isPiAgentModelSupported,
+  resolvePiAgentModel,
+  runPiAgentPrompt,
+  type PiAgentEvent,
+  type PiAgentMessage,
+  type PiAgentModelConfig,
+  type PiOpenAICompatibleProvider,
+} from "./agent-loop";
+export { parsePiAgentMessages } from "./transcript";
 export type {
   ExecutionEnv,
   FileInfo,
