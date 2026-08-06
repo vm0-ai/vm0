@@ -29,9 +29,9 @@ use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::host_file::PRIVATE_FILE_MODE;
 
 const PRIVATE_DIR_MODE: u32 = 0o700;
-const PRIVATE_FILE_MODE: u32 = 0o600;
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
 const STICKY_BIT: u32 = 0o1000;
@@ -285,60 +285,10 @@ pub async fn read_private_file_to_string_with_max(
 /// a crash-durability guarantee. The function also provides no locking or
 /// concurrent-writer ordering guarantee. After an error, staging-file removal
 /// is attempted as best-effort cleanup.
-#[cfg(unix)]
 pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()> {
-    use std::ffi::OsString;
-    use tokio::io::AsyncWriteExt;
-
-    let file_name = path.file_name().ok_or_else(|| {
-        RunnerError::Config(format!(
-            "{} does not have a file name; refusing to write private file",
-            path.display()
-        ))
-    })?;
-    let mut tmp_name = OsString::from(".");
-    tmp_name.push(file_name);
-    tmp_name.push(format!(".{}.tmp", uuid::Uuid::new_v4()));
-    let tmp = path.with_file_name(tmp_name);
-
-    let result = async {
-        let mut options = tokio::fs::OpenOptions::new();
-        options.write(true).create_new(true).mode(PRIVATE_FILE_MODE);
-        let mut file = options.open(&tmp).await.map_err(|e| {
-            RunnerError::Config(format!("open private file tmp {}: {e}", tmp.display()))
-        })?;
-        chmod_private_file_fd(&file, &tmp)?;
-        file.write_all(content).await.map_err(|e| {
-            RunnerError::Config(format!("write private file tmp {}: {e}", tmp.display()))
-        })?;
-        file.flush().await.map_err(|e| {
-            RunnerError::Config(format!("flush private file tmp {}: {e}", tmp.display()))
-        })?;
-        drop(file);
-
-        tokio::fs::rename(&tmp, path).await.map_err(|e| {
-            RunnerError::Config(format!("rename private file {}: {e}", path.display()))
-        })?;
-        Ok(())
-    }
-    .await;
-
-    if result.is_err() {
-        let _ = tokio::fs::remove_file(&tmp).await;
-    }
-    result
-}
-
-/// Write a file directly with the platform filesystem API on non-Unix.
-///
-/// This fallback does not provide the Unix sibling staging, explicit `0600`
-/// mode, or atomic replacement. It uses ordinary path resolution and does not
-/// validate the destination or parent chain.
-#[cfg(not(unix))]
-pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()> {
-    tokio::fs::write(path, content)
+    crate::host_file::write_private_atomic(path, content, "private file")
         .await
-        .map_err(|e| RunnerError::Config(format!("write private file {}: {e}", path.display())))
+        .map_err(|e| RunnerError::Config(e.to_string()))
 }
 
 #[cfg(unix)]
@@ -1310,33 +1260,5 @@ mod tests {
             error.to_string().contains("owned by uid"),
             "unexpected error: {error}"
         );
-    }
-
-    #[tokio::test]
-    async fn write_private_file_removes_tmp_after_rename_failure() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("runner.yaml");
-        std::fs::create_dir(&path).unwrap();
-
-        let error = write_private_file(&path, b"secret").await.unwrap_err();
-
-        assert!(
-            error.to_string().contains("rename private file"),
-            "unexpected error: {error}"
-        );
-        let leftover_tmp_files: Vec<_> = std::fs::read_dir(dir.path())
-            .unwrap()
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                name.starts_with(".runner.yaml.") && name.ends_with(".tmp")
-            })
-            .collect();
-        assert!(
-            leftover_tmp_files.is_empty(),
-            "private file tmp should be removed after rename failure"
-        );
-        assert!(path.is_dir());
     }
 }
