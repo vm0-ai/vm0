@@ -96,19 +96,24 @@ function isClosedFence(node: HastNode, source: string): boolean {
   );
 }
 
-function mermaidBlockNode(code: string): HastNode {
+function mermaidBlockNode(code: string, scope: string): HastNode {
   return {
     type: "element",
     tagName: "div",
     properties: {
       className: [MERMAID_BLOCK_CLASS],
       dataMermaidCode: code,
+      dataMermaidScope: scope,
     },
     children: [],
   };
 }
 
-function replaceMermaidBlocks(node: HastNode, source: string): void {
+function replaceMermaidBlocks(
+  node: HastNode,
+  source: string,
+  scope: string,
+): void {
   const children = node.children;
   if (!children) {
     return;
@@ -119,19 +124,21 @@ function replaceMermaidBlocks(node: HastNode, source: string): void {
       if (isClosedFence(child, source)) {
         children[index] = mermaidBlockNode(
           collectText(code).replace(/\n$/, ""),
+          scope,
         );
       }
       continue;
     }
-    replaceMermaidBlocks(child, source);
+    replaceMermaidBlocks(child, source, scope);
   }
 }
 
-export function rehypeMermaid() {
+export function rehypeMermaid(options: { readonly scope?: string } = {}) {
   return (tree: HastNode, file: MarkdownFile): void => {
     replaceMermaidBlocks(
       tree,
       typeof file.value === "string" ? file.value : "",
+      options.scope ?? "",
     );
   };
 }

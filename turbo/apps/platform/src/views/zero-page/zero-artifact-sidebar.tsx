@@ -289,6 +289,7 @@ function ArtifactSidebarResolvedContent({
         kind={display.kind}
         artifactKind={display.artifactKind}
         subtitle={display.subtitle}
+        shareAvailable={display.shareAvailable}
         syncTarget={syncTarget}
         url={display.url}
         fullscreen={fullscreen}
@@ -450,6 +451,7 @@ interface ArtifactDisplay {
   kind: ArtifactKindForBody;
   filename: string;
   subtitle: string;
+  shareAvailable: boolean;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
 }
 
@@ -508,6 +510,7 @@ function resolveArtifactDisplay(
       kind: ref.kind,
       filename: item.file.filename,
       subtitle: artifactTitleSubtitle(ref.kind, item.file),
+      shareAvailable: ref.shareAvailable ?? true,
       artifactKind: item.file.artifactKind,
     };
   }
@@ -516,6 +519,7 @@ function resolveArtifactDisplay(
     kind: ref.kind,
     filename: ref.filename,
     subtitle: artifactFallbackSubtitle(ref.kind, ref.filename),
+    shareAvailable: ref.shareAvailable ?? true,
   };
 }
 
@@ -524,6 +528,7 @@ function ArtifactSidebarHeader({
   kind,
   artifactKind,
   subtitle,
+  shareAvailable,
   syncTarget,
   url,
   fullscreen,
@@ -535,6 +540,7 @@ function ArtifactSidebarHeader({
   kind?: ArtifactKindForBody;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   subtitle: string;
+  shareAvailable: boolean;
   syncTarget?: ArtifactDownloadSyncTarget;
   url?: string;
   fullscreen: boolean;
@@ -582,6 +588,7 @@ function ArtifactSidebarHeader({
         kind={kind}
         onClose={onClose}
         onToggleFullscreen={onToggleFullscreen}
+        shareAvailable={shareAvailable}
         syncTarget={syncTarget}
         title={title}
         url={url}
@@ -597,6 +604,7 @@ function ArtifactSidebarActions({
   kind,
   onClose,
   onToggleFullscreen,
+  shareAvailable,
   syncTarget,
   title,
   url,
@@ -607,6 +615,7 @@ function ArtifactSidebarActions({
   kind?: ArtifactKindForBody;
   onClose: () => void;
   onToggleFullscreen: () => void;
+  shareAvailable: boolean;
   syncTarget?: ArtifactDownloadSyncTarget;
   title: string;
   url?: string;
@@ -617,6 +626,7 @@ function ArtifactSidebarActions({
         <ArtifactSidebarPreviewActions
           artifactKind={artifactKind}
           kind={kind}
+          shareAvailable={shareAvailable}
           syncTarget={syncTarget}
           title={title}
           url={url}
@@ -638,12 +648,14 @@ function ArtifactSidebarActions({
 function ArtifactSidebarPreviewActions({
   artifactKind,
   kind,
+  shareAvailable,
   syncTarget,
   title,
   url,
 }: {
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   kind?: ArtifactKindForBody;
+  shareAvailable: boolean;
   syncTarget?: ArtifactDownloadSyncTarget;
   title: string;
   url: string;
@@ -652,12 +664,14 @@ function ArtifactSidebarPreviewActions({
   return (
     <>
       {kind === "html" && <ArtifactOpenExternalAction url={url} />}
-      <ArtifactShareButton
-        ariaLabel={t(($) => {
-          return $.artifacts.actions.shareArtifact;
-        })}
-        url={url}
-      />
+      {shareAvailable && (
+        <ArtifactShareButton
+          ariaLabel={t(($) => {
+            return $.artifacts.actions.shareArtifact;
+          })}
+          url={url}
+        />
+      )}
       <ArtifactDownloadMenu
         ariaLabel={t(($) => {
           return $.artifacts.actions.downloadArtifact;

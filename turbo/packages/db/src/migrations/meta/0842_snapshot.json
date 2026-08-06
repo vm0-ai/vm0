@@ -1,6 +1,6 @@
 {
-  "id": "226ccfce-12b2-4c39-87ac-ba826e2e47ca",
-  "prevId": "acb411cd-b782-4710-9a2a-a925067a5861",
+  "id": "dfee6b98-ec83-48c5-8694-fe3c8c6c1b6b",
+  "prevId": "226ccfce-12b2-4c39-87ac-ba826e2e47ca",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4801,15 +4801,15 @@
       "checkConstraints": {
         "chat_events_event_type_check": {
           "name": "chat_events_event_type_check",
-          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
+          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.budget',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
         },
         "chat_events_input_user_message_check": {
           "name": "chat_events_input_user_message_check",
-          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_events\".\"user_message\" IS NOT NULL"
+          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.budget', 'input.rejected')\n          OR \"chat_events\".\"user_message\" IS NOT NULL"
         },
         "chat_events_input_content_check": {
           "name": "chat_events_input_content_check",
-          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_events\".\"content\" IS NULL"
+          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.budget', 'input.rejected')\n          OR \"chat_events\".\"content\" IS NULL"
         },
         "chat_events_context_pair_check": {
           "name": "chat_events_context_pair_check",
@@ -4821,7 +4821,7 @@
         },
         "chat_events_input_context_type_check": {
           "name": "chat_events_input_context_type_check",
-          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.automation', 'input.goal')\n          OR \"chat_events\".\"context_type\" IS NOT NULL"
+          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.automation', 'input.goal', 'input.budget')\n          OR \"chat_events\".\"context_type\" IS NOT NULL"
         }
       },
       "isRLSEnabled": false
