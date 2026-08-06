@@ -66,8 +66,7 @@ import {
 
 const actionBody$ = bodyResultOf(testRuntimeStateContract.action);
 const fakeKmsDataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
-const RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY =
-  "vm0-key-run-lifecycle-bdd-default-model";
+const VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
 const fakeKmsDecryptCallCount = testOverride<number>(() => {
   return 0;
 });
@@ -216,42 +215,110 @@ function fakeSecretKmsClient(): SecretKmsClient {
 
 async function seedVm0ManagedDefaultModelKey(
   db: Db,
+  fixtureId: string,
   signal: AbortSignal,
 ): Promise<string> {
   const selectedModel = MODEL_PROVIDER_TYPES.vm0.defaultModel;
   if (!selectedModel) {
     throw new Error("Expected vm0 to define a default model");
   }
-  return await seedVm0ManagedModelKey(db, selectedModel, signal);
+  return await seedVm0ManagedModelKey(db, fixtureId, selectedModel, signal);
 }
 
 async function seedVm0ManagedModelKey(
   db: Db,
+  fixtureId: string,
   selectedModel: string,
   signal: AbortSignal,
 ): Promise<string> {
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY));
-  signal.throwIfAborted();
   await db.insert(vm0ApiKeys).values({
     vendor: getVm0Vendor(selectedModel),
     model: getProviderRuntimeModel("vm0", selectedModel),
-    apiKey: RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY,
-    label: "run-lifecycle-bdd",
+    apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
+    label: "runtime-state-fixture",
   });
   signal.throwIfAborted();
   return selectedModel;
 }
 
-async function deleteVm0ManagedDefaultModelKey(
+async function deleteVm0ManagedModelKey(
   db: Db,
+  fixtureId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  await db
+  const deleted = await db
     .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY));
+    .where(
+      eq(
+        vm0ApiKeys.apiKey,
+        `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
+      ),
+    )
+    .returning({ id: vm0ApiKeys.id });
   signal.throwIfAborted();
+  if (deleted.length !== 1) {
+    throw new Error(`Expected one VM0 managed model-key fixture: ${fixtureId}`);
+  }
+}
+
+type Vm0ManagedModelKeyAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "seed-vm0-managed-default-model-key"
+      | "seed-vm0-managed-model-key"
+      | "delete-vm0-managed-model-key";
+  }
+>;
+
+function isVm0ManagedModelKeyAction(
+  body: TestRuntimeStateActionBody,
+): body is Vm0ManagedModelKeyAction {
+  return (
+    body.action === "seed-vm0-managed-default-model-key" ||
+    body.action === "seed-vm0-managed-model-key" ||
+    body.action === "delete-vm0-managed-model-key"
+  );
+}
+
+async function vm0ManagedModelKeyActionResponse(
+  db: Db,
+  body: Vm0ManagedModelKeyAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "seed-vm0-managed-default-model-key": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          selected_model: await seedVm0ManagedDefaultModelKey(
+            db,
+            body.fixture_id,
+            signal,
+          ),
+        },
+      };
+    }
+    case "seed-vm0-managed-model-key": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          selected_model: await seedVm0ManagedModelKey(
+            db,
+            body.fixture_id,
+            body.selected_model,
+            signal,
+          ),
+        },
+      };
+    }
+    case "delete-vm0-managed-model-key": {
+      await deleteVm0ManagedModelKey(db, body.fixture_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+  }
 }
 
 async function clearRunApiStart(
@@ -1287,33 +1354,10 @@ const postRuntimeStateAction$ = command(
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);
     }
+    if (isVm0ManagedModelKeyAction(body)) {
+      return await vm0ManagedModelKeyActionResponse(db, body, signal);
+    }
     switch (body.action) {
-      case "seed-vm0-managed-default-model-key": {
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            selected_model: await seedVm0ManagedDefaultModelKey(db, signal),
-          },
-        };
-      }
-      case "seed-vm0-managed-model-key": {
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            selected_model: await seedVm0ManagedModelKey(
-              db,
-              body.selected_model,
-              signal,
-            ),
-          },
-        };
-      }
-      case "delete-vm0-managed-default-model-key": {
-        await deleteVm0ManagedDefaultModelKey(db, signal);
-        return { status: 200 as const, body: { ok: true as const } };
-      }
       case "enable-fake-kms": {
         fakeKmsDecryptCallCount.set(0);
         setSecretKmsClientForTests(fakeSecretKmsClient());

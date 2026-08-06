@@ -65,7 +65,6 @@ import { readAgentRunState$ } from "./helpers/agent-run-callback";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   clearThreadSessionBinding,
-  deleteVm0ManagedDefaultModelKey,
   readRunAutonomyBudgetFixture,
   readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
@@ -318,10 +317,8 @@ async function entitledChatActor(
 }
 
 async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
-  onTestFinished(async () => {
-    await deleteVm0ManagedDefaultModelKey(context);
-  });
-  return await seedVm0ManagedModelKeyState(context, selectedModel);
+  const fixture = await seedVm0ManagedModelKeyState(context, selectedModel);
+  return fixture.selectedModel;
 }
 
 async function sendChatRun(

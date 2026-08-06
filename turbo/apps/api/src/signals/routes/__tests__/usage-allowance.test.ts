@@ -18,10 +18,7 @@ import {
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import {
-  deleteVm0ManagedDefaultModelKey,
-  seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
-} from "./helpers/runtime-state";
+import { seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState } from "./helpers/runtime-state";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   generatedStripeCustomerId,
@@ -43,9 +40,6 @@ function addDays(date: Date, days: number): Date {
 }
 
 async function seedVm0ManagedDefaultModelKey(): Promise<void> {
-  onTestFinished(async () => {
-    await deleteVm0ManagedDefaultModelKey(context);
-  });
   await seedVm0ManagedDefaultModelKeyState(context);
 }
 

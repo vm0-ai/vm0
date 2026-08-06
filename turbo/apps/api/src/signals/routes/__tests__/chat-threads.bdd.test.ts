@@ -59,10 +59,7 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import {
-  deleteVm0ManagedDefaultModelKey,
-  seedVm0ManagedDefaultModelKey,
-} from "./helpers/runtime-state";
+import { seedVm0ManagedDefaultModelKey } from "./helpers/runtime-state";
 import {
   generatedStripeCustomerId,
   generatedStripeSubscriptionId,
@@ -2190,12 +2187,9 @@ describe("CHAT-03 run usage events", () => {
   }, 60_000);
 
   it("emits complete allowance-covered usage in one event", async () => {
-    const seededModel = await seedVm0ManagedDefaultModelKey(context);
+    const fixture = await seedVm0ManagedDefaultModelKey(context);
     const selectedModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
-    expect(seededModel).toBe(selectedModel);
-    onTestFinished(async () => {
-      await deleteVm0ManagedDefaultModelKey(context);
-    });
+    expect(fixture.selectedModel).toBe(selectedModel);
 
     const { actor, agentId } = await entitledChatActorWithoutRunner(
       "Allowance usage message agent",
