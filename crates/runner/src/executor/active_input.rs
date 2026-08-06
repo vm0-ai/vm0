@@ -9,7 +9,7 @@ use tracing::{debug, warn};
 use crate::active_input::{ActiveInputBatch, ActiveInputPayload, ActiveInputSource};
 use crate::ids::RunId;
 
-const LOCAL_ACTIVE_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const ACTIVE_INPUT_READ_RETRY_INTERVAL: Duration = Duration::from_millis(250);
 const ACTIVE_INPUT_CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_FORWARDER_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
 const FIRST_ACTIVE_INPUT_SEQUENCE: u64 = 1;
@@ -67,7 +67,7 @@ async fn run_forwarder(
             () = job_cancel.cancelled() => return,
             batch = source.read(next_local_sequence) => batch,
         };
-        match batch {
+        let retry_after_read_error = match batch {
             Ok(ActiveInputBatch::Local(entries)) => {
                 for entry in entries {
                     if entry.sequence < next_local_sequence {
@@ -80,23 +80,32 @@ async fn run_forwarder(
                     forward_text(run_id, delivery_sequence, &entry.text, &control).await;
                     next_local_sequence = next_local_sequence.saturating_add(1);
                 }
+                false
             }
             Ok(ActiveInputBatch::Api(prompt)) => {
                 if let Some(prompt) = prompt {
                     delivery_sequence = delivery_sequence.saturating_add(1);
                     forward_text(run_id, delivery_sequence, &prompt, &control).await;
                 }
+                false
             }
             Err(error) => {
                 warn!(run_id = %run_id, error = %error, "active-input source read failed");
+                true
             }
-        }
+        };
 
         tokio::select! {
             biased;
             () = stop.cancelled() => return,
             () = job_cancel.cancelled() => return,
-            () = source.wait(LOCAL_ACTIVE_INPUT_POLL_INTERVAL) => {}
+            () = async {
+                if retry_after_read_error {
+                    tokio::time::sleep(ACTIVE_INPUT_READ_RETRY_INTERVAL).await;
+                } else {
+                    source.wait(ACTIVE_INPUT_READ_RETRY_INTERVAL).await;
+                }
+            } => {}
         }
     }
 }

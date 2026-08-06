@@ -925,7 +925,7 @@ pub(crate) struct ApiClient {
 }
 
 impl ApiClient {
-    pub(super) fn new(http: HttpClient, token: String) -> Self {
+    pub(crate) fn new(http: HttpClient, token: String) -> Self {
         Self { http, token }
     }
 
