@@ -1,4 +1,8 @@
+use std::path::Path;
+use std::time::Duration;
+
 use clap::Args;
+use tokio::time::Instant;
 use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
@@ -9,10 +13,13 @@ use super::gate::read_runner_status;
 use super::reload::{SystemdReloadRequirement, coordinate_systemd_reload};
 use super::signal::{ServiceSignalOutcome, signal_service_main};
 use super::systemctl::{
-    SystemdUnitEnablement, get_service_restart_policy, is_unit_active, read_unit_enablement,
-    restore_unit_enablement, run_systemctl,
+    SystemdUnitEnablement, get_service_restart_policy, is_unit_active, is_unit_active_bounded,
+    read_unit_enablement, restore_unit_enablement, run_systemctl,
 };
 use super::{RunnerServiceUnit, ServiceFuture, acquire_service_lock};
+
+const RESUME_ACKNOWLEDGEMENT_TIMEOUT: Duration = Duration::from_secs(10);
+const RESUME_ACKNOWLEDGEMENT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 #[derive(Args)]
 pub(super) struct DrainArgs {
@@ -68,7 +75,11 @@ trait ServiceDrainOps {
 }
 
 trait ServiceResumeOps {
-    fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
+    fn is_active<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        timeout: Duration,
+    ) -> ServiceFuture<'a, bool>;
     fn enablement<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
@@ -154,8 +165,12 @@ impl ServiceDrainOps for RealServiceDrainOps {
 }
 
 impl ServiceResumeOps for RealServiceResumeOps {
-    fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
-        Box::pin(async move { is_unit_active(unit).await })
+    fn is_active<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        timeout: Duration,
+    ) -> ServiceFuture<'a, bool> {
+        Box::pin(async move { is_unit_active_bounded(unit, timeout).await })
     }
 
     fn enablement<'a>(
@@ -525,8 +540,99 @@ async fn drain_with_ops(
     Ok(())
 }
 
+fn resume_acknowledgement_timeout_error(unit: &RunnerServiceUnit) -> RunnerError {
+    RunnerError::Internal(format!(
+        "timed out after {}s waiting for {} to acknowledge resume (last mode=draining)",
+        RESUME_ACKNOWLEDGEMENT_TIMEOUT.as_secs(),
+        unit.unit_name()
+    ))
+}
+
+async fn wait_for_resume_acknowledgement(
+    unit: &RunnerServiceUnit,
+    base_dir: &Path,
+    expected_started_at: chrono::DateTime<chrono::Utc>,
+    ops: &mut impl ServiceResumeOps,
+) -> RunnerResult<()> {
+    let deadline = Instant::now() + RESUME_ACKNOWLEDGEMENT_TIMEOUT;
+
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(resume_acknowledgement_timeout_error(unit));
+        }
+
+        let active = ops.is_active(unit, deadline - now).await.map_err(|error| {
+            RunnerError::Internal(format!(
+                "cannot verify {} while waiting for resume acknowledgement: {error}",
+                unit.unit_name()
+            ))
+        })?;
+        if !active {
+            return Err(RunnerError::Internal(format!(
+                "{} exited before acknowledging resume",
+                unit.unit_name()
+            )));
+        }
+        if Instant::now() >= deadline {
+            return Err(resume_acknowledgement_timeout_error(unit));
+        }
+
+        let status = read_runner_status(base_dir).await.map_err(|error| {
+            RunnerError::Internal(format!(
+                "cannot read status.json for {} while waiting for resume acknowledgement: {error}",
+                unit.unit_name()
+            ))
+        })?;
+        if Instant::now() >= deadline {
+            return Err(resume_acknowledgement_timeout_error(unit));
+        }
+        if status.started_at != expected_started_at {
+            return Err(RunnerError::Internal(format!(
+                "{} was replaced before acknowledging resume (started_at changed from {} to {})",
+                unit.unit_name(),
+                expected_started_at,
+                status.started_at
+            )));
+        }
+
+        match status.mode.as_str() {
+            "running" => {
+                info!(unit = %unit.unit_name(), "runner acknowledged resume");
+                return Ok(());
+            }
+            "draining" => {}
+            "stopping" | "stopped" => {
+                return Err(RunnerError::Internal(format!(
+                    "{} entered mode={} before acknowledging resume",
+                    unit.unit_name(),
+                    status.mode
+                )));
+            }
+            mode => {
+                return Err(RunnerError::Internal(format!(
+                    "{} reported invalid mode {mode:?} while acknowledging resume",
+                    unit.unit_name()
+                )));
+            }
+        }
+
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(resume_acknowledgement_timeout_error(unit));
+        }
+        tokio::time::sleep(std::cmp::min(
+            RESUME_ACKNOWLEDGEMENT_POLL_INTERVAL,
+            deadline - now,
+        ))
+        .await;
+    }
+}
+
 async fn resume_after_preflight_with_ops(
     unit: &RunnerServiceUnit,
+    base_dir: &Path,
+    expected_started_at: chrono::DateTime<chrono::Utc>,
     ops: &mut impl ServiceResumeOps,
 ) -> RunnerResult<()> {
     let prior_enablement = resume_enablement_before_transition(unit, ops).await;
@@ -561,22 +667,28 @@ async fn resume_after_preflight_with_ops(
         .await);
     }
 
-    let signal_result = match ops.signal_resume(unit).await {
+    let (failure_context, signal_result) = match ops.signal_resume(unit).await {
         Ok(ServiceSignalOutcome::Sent) => {
             info!(unit = %unit.unit_name(), "sent SIGUSR2 (resume)");
-            return Ok(());
+            match wait_for_resume_acknowledgement(unit, base_dir, expected_started_at, ops).await {
+                Ok(()) => return Ok(()),
+                Err(error) => ("acknowledge_resume", error),
+            }
         }
         Ok(ServiceSignalOutcome::AlreadyGone) => {
             info!(
                 unit = %unit.unit_name(),
                 "runner exited between preflight and signal; refusing resume",
             );
-            RunnerError::Internal(format!(
-                "{} is not active — cannot resume an inactive runner",
-                unit.unit_name()
-            ))
+            (
+                "signal_resume",
+                RunnerError::Internal(format!(
+                    "{} is not active — cannot resume an inactive runner",
+                    unit.unit_name()
+                )),
+            )
         }
-        Err(error) => error,
+        Err(error) => ("signal_resume", error),
     };
 
     Err(resume_error_after_rollback(
@@ -584,7 +696,7 @@ async fn resume_after_preflight_with_ops(
         drain_override_removed,
         prior_enablement,
         ops,
-        "signal_resume",
+        failure_context,
         signal_result,
     )
     .await)
@@ -595,7 +707,7 @@ async fn resume_with_ops(
     home: &HomePaths,
     ops: &mut impl ServiceResumeOps,
 ) -> RunnerResult<()> {
-    if !ops.is_active(unit).await? {
+    if !ops.is_active(unit, RESUME_ACKNOWLEDGEMENT_TIMEOUT).await? {
         return Err(RunnerError::Internal(format!(
             "{} is not active — cannot resume an inactive runner",
             unit.unit_name()
@@ -616,7 +728,7 @@ async fn resume_with_ops(
     })?;
     ensure_resume_mode_is_draining(unit, &status.mode)?;
 
-    resume_after_preflight_with_ops(unit, ops).await
+    resume_after_preflight_with_ops(unit, &base_dir, status.started_at, ops).await
 }
 
 /// `service drain` — send SIGUSR1, disable unit, return immediately.
@@ -646,8 +758,37 @@ pub(super) async fn run_resume(args: ResumeArgs) -> RunnerResult<()> {
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
+    use std::path::{Path, PathBuf};
 
     use super::*;
+
+    const TEST_RUNNER_STARTED_AT: &str = "2026-08-04T00:00:00Z";
+
+    fn test_started_at() -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::parse_from_rfc3339(TEST_RUNNER_STARTED_AT)
+            .unwrap()
+            .with_timezone(&chrono::Utc)
+    }
+
+    fn test_status_content(mode: &str, started_at: &str) -> String {
+        format!(r#"{{"mode":"{mode}","active_runs":[],"started_at":"{started_at}"}}"#)
+    }
+
+    async fn write_test_status(base_dir: &Path, mode: &str, started_at: &str) {
+        tokio::fs::create_dir_all(base_dir).await.unwrap();
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            test_status_content(mode, started_at),
+        )
+        .await
+        .unwrap();
+    }
+
+    async fn resume_after_preflight_for_test(ops: &mut FakeResumeOps) -> RunnerResult<()> {
+        let dir = tempfile::tempdir().unwrap();
+        write_test_status(dir.path(), "running", TEST_RUNNER_STARTED_AT).await;
+        resume_after_preflight_with_ops(&service_unit(), dir.path(), test_started_at(), ops).await
+    }
 
     fn service_unit() -> RunnerServiceUnit {
         RunnerServiceUnit::from_suffix("test").unwrap()
@@ -680,6 +821,7 @@ mod tests {
         reload_requirements: Vec<SystemdReloadRequirement>,
         signal_error: bool,
         signal_outcome: ServiceSignalOutcome,
+        status_update_on_signal: Option<(PathBuf, String)>,
         enable_error: bool,
         restore_enablement_error: bool,
     }
@@ -688,7 +830,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 events: Vec::new(),
-                active_results: VecDeque::from([Ok(true)]),
+                active_results: VecDeque::from([Ok(true), Ok(true)]),
                 enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::Enabled)]),
                 write_error: false,
                 remove_error: false,
@@ -717,6 +859,7 @@ mod tests {
                 reload_requirements: Vec::new(),
                 signal_error: false,
                 signal_outcome: ServiceSignalOutcome::Sent,
+                status_update_on_signal: None,
                 enable_error: false,
                 restore_enablement_error: false,
             }
@@ -832,10 +975,14 @@ mod tests {
     }
 
     impl ServiceResumeOps for FakeResumeOps {
-        fn is_active<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        fn is_active<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            _timeout: Duration,
+        ) -> ServiceFuture<'a, bool> {
             self.events.push("is_active");
             Box::pin(std::future::ready(
-                self.active_results.pop_front().unwrap_or(Ok(false)),
+                self.active_results.pop_front().unwrap_or(Ok(true)),
             ))
         }
 
@@ -889,11 +1036,23 @@ mod tests {
             _unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, ServiceSignalOutcome> {
             self.events.push("signal_resume");
-            Box::pin(std::future::ready(if self.signal_error {
+            let sent = !self.signal_error && self.signal_outcome == ServiceSignalOutcome::Sent;
+            let result = if self.signal_error {
                 Err(fake_error("signal failed"))
             } else {
                 Ok(self.signal_outcome)
-            }))
+            };
+            let status_update = if sent {
+                self.status_update_on_signal.take()
+            } else {
+                None
+            };
+            Box::pin(async move {
+                if let Some((path, content)) = status_update {
+                    tokio::fs::write(path, content).await.unwrap();
+                }
+                result
+            })
         }
 
         fn enable<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
@@ -1397,7 +1556,13 @@ mod tests {
         )
         .await
         .unwrap();
-        let mut ops = FakeResumeOps::default();
+        let mut ops = FakeResumeOps {
+            status_update_on_signal: Some((
+                base_dir.join("status.json"),
+                test_status_content("running", TEST_RUNNER_STARTED_AT),
+            )),
+            ..FakeResumeOps::default()
+        };
 
         resume_with_ops(&unit, &home, &mut ops).await.unwrap();
 
@@ -1410,18 +1575,16 @@ mod tests {
                 "enable",
                 "daemon_reload",
                 "signal_resume",
+                "is_active",
             ]
         );
     }
 
     #[tokio::test]
     async fn resume_enables_and_reloads_before_signal() {
-        let unit = service_unit();
         let mut ops = FakeResumeOps::default();
 
-        resume_after_preflight_with_ops(&unit, &mut ops)
-            .await
-            .unwrap();
+        resume_after_preflight_for_test(&mut ops).await.unwrap();
 
         assert_eq!(
             ops.events,
@@ -1431,21 +1594,19 @@ mod tests {
                 "enable",
                 "daemon_reload",
                 "signal_resume",
+                "is_active",
             ]
         );
     }
 
     #[tokio::test]
     async fn resume_enable_failure_remains_successful_after_reload_and_signal() {
-        let unit = service_unit();
         let mut ops = FakeResumeOps {
             enable_error: true,
             ..FakeResumeOps::default()
         };
 
-        resume_after_preflight_with_ops(&unit, &mut ops)
-            .await
-            .unwrap();
+        resume_after_preflight_for_test(&mut ops).await.unwrap();
 
         assert_eq!(
             ops.events,
@@ -1455,21 +1616,202 @@ mod tests {
                 "enable",
                 "daemon_reload",
                 "signal_resume",
+                "is_active",
+            ]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn resume_waits_for_delayed_running_acknowledgement() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        write_test_status(dir.path(), "draining", TEST_RUNNER_STARTED_AT).await;
+        let status_dir = dir.path().to_path_buf();
+        let update_task = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(125)).await;
+            write_test_status(&status_dir, "running", TEST_RUNNER_STARTED_AT).await;
+        });
+        let mut ops = FakeResumeOps::default();
+
+        resume_after_preflight_with_ops(&unit, dir.path(), test_started_at(), &mut ops)
+            .await
+            .unwrap();
+        update_task.await.unwrap();
+
+        assert_eq!(ops.events.first(), Some(&"is_enabled"));
+        assert_eq!(
+            ops.events
+                .iter()
+                .filter(|event| **event == "is_active")
+                .count(),
+            2
+        );
+        assert!(!ops.events.contains(&"write_restart_override"));
+        assert!(!ops.events.contains(&"restore_not_enabled"));
+    }
+
+    #[tokio::test]
+    async fn resume_stopping_after_draining_preflight_rolls_back_transition() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let base_dir = home.runners_dir().join(unit.suffix());
+        write_test_status(&base_dir, "draining", TEST_RUNNER_STARTED_AT).await;
+        let mut ops = FakeResumeOps {
+            status_update_on_signal: Some((
+                base_dir.join("status.json"),
+                test_status_content("stopping", TEST_RUNNER_STARTED_AT),
+            )),
+            ..FakeResumeOps::default()
+        };
+
+        let error = resume_with_ops(&unit, &home, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("entered mode=stopping"));
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "is_enabled",
+                "remove_restart_override",
+                "enable",
+                "daemon_reload",
+                "signal_resume",
+                "is_active",
+                "write_restart_override",
+                "restore_not_enabled",
+                "daemon_reload",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_stopped_acknowledgement_rolls_back_transition() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        write_test_status(dir.path(), "stopped", TEST_RUNNER_STARTED_AT).await;
+        let mut ops = FakeResumeOps::default();
+
+        let error = resume_after_preflight_with_ops(&unit, dir.path(), test_started_at(), &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("entered mode=stopped"));
+        assert!(ops.events.contains(&"write_restart_override"));
+        assert!(ops.events.contains(&"restore_not_enabled"));
+    }
+
+    #[tokio::test]
+    async fn resume_target_exit_before_acknowledgement_rolls_back_transition() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        write_test_status(dir.path(), "draining", TEST_RUNNER_STARTED_AT).await;
+        let mut ops = FakeResumeOps {
+            active_results: VecDeque::from([Ok(false)]),
+            ..FakeResumeOps::default()
+        };
+
+        let error = resume_after_preflight_with_ops(&unit, dir.path(), test_started_at(), &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("exited before acknowledging resume")
+        );
+        assert!(ops.events.contains(&"write_restart_override"));
+        assert!(ops.events.contains(&"restore_not_enabled"));
+    }
+
+    #[tokio::test]
+    async fn resume_replacement_before_acknowledgement_rolls_back_transition() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        write_test_status(dir.path(), "running", "2026-08-04T00:00:01Z").await;
+        let mut ops = FakeResumeOps::default();
+
+        let error = resume_after_preflight_with_ops(&unit, dir.path(), test_started_at(), &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("was replaced before acknowledging resume")
+        );
+        assert!(ops.events.contains(&"write_restart_override"));
+        assert!(ops.events.contains(&"restore_not_enabled"));
+    }
+
+    #[tokio::test]
+    async fn resume_unreadable_acknowledgement_rolls_back_transition() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(dir.path().join("status.json"), "{")
+            .await
+            .unwrap();
+        let mut ops = FakeResumeOps::default();
+
+        let error = resume_after_preflight_with_ops(&unit, dir.path(), test_started_at(), &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("while waiting for resume acknowledgement")
+        );
+        assert!(ops.events.contains(&"write_restart_override"));
+        assert!(ops.events.contains(&"restore_not_enabled"));
+    }
+
+    #[tokio::test]
+    async fn resume_unknown_acknowledgement_mode_rolls_back_transition() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        write_test_status(dir.path(), "paused", TEST_RUNNER_STARTED_AT).await;
+        let mut ops = FakeResumeOps::default();
+
+        let error = resume_after_preflight_with_ops(&unit, dir.path(), test_started_at(), &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("invalid mode \"paused\""));
+        assert!(ops.events.contains(&"write_restart_override"));
+        assert!(ops.events.contains(&"restore_not_enabled"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn resume_draining_acknowledgement_times_out_and_rolls_back_transition() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        write_test_status(dir.path(), "draining", TEST_RUNNER_STARTED_AT).await;
+        let mut ops = FakeResumeOps::default();
+
+        let error = resume_after_preflight_with_ops(&unit, dir.path(), test_started_at(), &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("timed out after 10s"));
+        assert_eq!(
+            &ops.events[ops.events.len() - 3..],
+            [
+                "write_restart_override",
+                "restore_not_enabled",
+                "daemon_reload"
             ]
         );
     }
 
     #[tokio::test]
     async fn resume_reload_failure_restores_override_and_enablement() {
-        let unit = service_unit();
         let mut ops = FakeResumeOps {
             reload_errors: VecDeque::from([true, false]),
             ..FakeResumeOps::default()
         };
 
-        let error = resume_after_preflight_with_ops(&unit, &mut ops)
-            .await
-            .unwrap_err();
+        let error = resume_after_preflight_for_test(&mut ops).await.unwrap_err();
 
         assert!(error.to_string().contains("reload failed"));
         assert_eq!(
@@ -1488,15 +1830,12 @@ mod tests {
 
     #[tokio::test]
     async fn resume_signal_failure_restores_override_and_enablement() {
-        let unit = service_unit();
         let mut ops = FakeResumeOps {
             signal_error: true,
             ..FakeResumeOps::default()
         };
 
-        let error = resume_after_preflight_with_ops(&unit, &mut ops)
-            .await
-            .unwrap_err();
+        let error = resume_after_preflight_for_test(&mut ops).await.unwrap_err();
 
         assert!(error.to_string().contains("signal failed"));
         assert_eq!(
@@ -1516,7 +1855,6 @@ mod tests {
 
     #[tokio::test]
     async fn resume_signal_failure_reports_rollback_failures() {
-        let unit = service_unit();
         let mut ops = FakeResumeOps {
             write_error: true,
             restore_enablement_error: true,
@@ -1525,9 +1863,7 @@ mod tests {
             ..FakeResumeOps::default()
         };
 
-        let error = resume_after_preflight_with_ops(&unit, &mut ops)
-            .await
-            .unwrap_err();
+        let error = resume_after_preflight_for_test(&mut ops).await.unwrap_err();
         let message = error.to_string();
 
         assert!(message.contains("signal failed"));
@@ -1539,15 +1875,12 @@ mod tests {
 
     #[tokio::test]
     async fn resume_already_gone_restores_transition() {
-        let unit = service_unit();
         let mut ops = FakeResumeOps {
             signal_outcome: ServiceSignalOutcome::AlreadyGone,
             ..FakeResumeOps::default()
         };
 
-        let error = resume_after_preflight_with_ops(&unit, &mut ops)
-            .await
-            .unwrap_err();
+        let error = resume_after_preflight_for_test(&mut ops).await.unwrap_err();
 
         assert!(
             error
@@ -1571,16 +1904,13 @@ mod tests {
 
     #[tokio::test]
     async fn resume_failure_without_override_restores_only_enablement() {
-        let unit = service_unit();
         let mut ops = FakeResumeOps {
             removed_restart_override: false,
             signal_error: true,
             ..FakeResumeOps::default()
         };
 
-        let error = resume_after_preflight_with_ops(&unit, &mut ops)
-            .await
-            .unwrap_err();
+        let error = resume_after_preflight_for_test(&mut ops).await.unwrap_err();
 
         assert!(error.to_string().contains("signal failed"));
         assert_eq!(
