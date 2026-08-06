@@ -914,12 +914,7 @@ profiles:
 
         let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
         tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-        for path in [
-            snapshot.snapshot_bin(),
-            snapshot.memory_bin(),
-            snapshot.cow_img(),
-            snapshot.cow_bitmap(),
-        ] {
+        for path in snapshot.required_artifacts() {
             tokio::fs::write(path, b"snapshot").await.unwrap();
         }
         tokio::fs::write(

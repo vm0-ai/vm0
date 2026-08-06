@@ -512,12 +512,7 @@ async fn local_provider_setup_failure_does_not_create_runtime() {
     let snapshot = rootfs.snapshot(SNAPSHOT_HASH);
     tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
     tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
-    for path in [
-        snapshot.snapshot_bin(),
-        snapshot.memory_bin(),
-        snapshot.cow_img(),
-        snapshot.cow_bitmap(),
-    ] {
+    for path in snapshot.required_artifacts() {
         tokio::fs::write(path, b"").await.unwrap();
     }
     tokio::fs::write(
