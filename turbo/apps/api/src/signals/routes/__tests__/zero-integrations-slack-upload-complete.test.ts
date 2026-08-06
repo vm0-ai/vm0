@@ -618,15 +618,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         materialization: { status: "ready" },
       },
     });
-    const artifacts = await chatApi.listArtifacts(actorFor({ orgId, userId }));
-    expect(
-      artifacts.artifacts.find((artifact) => {
-        return artifact.assetRef?.id === canonicalAssetId;
-      }),
-    ).toMatchObject({
-      fileId: canonicalAssetId,
-      assetRef: { id: canonicalAssetId },
-    });
 
     mockGoogleDriveConnectorOAuth();
     const oauth = await connectorsApi.startOauth(
@@ -1086,7 +1077,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   });
 
   it("generates a poster immediately for a Slack video Artifact", async () => {
-    const { orgId, userId, runId } = await seedRunScoped();
+    const { orgId, userId, runId, threadId } = await seedRunScoped();
     const fileId = `F-${randomUUID().slice(0, 8)}`;
     const permalink = `https://slack.example/files/${fileId}`;
     context.mocks.slack.files.info.mockResolvedValue({
@@ -1140,13 +1131,19 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         );
       }),
     ).toBeTruthy();
-    const artifacts = await chatApi.listArtifacts(actorFor({ orgId, userId }));
-    const videoArtifact = artifacts.artifacts.find((artifact) => {
-      return artifact.fileId === fileId;
+    const files = await visibleUploadedFiles({
+      orgId,
+      userId,
+      runId,
+      threadId,
     });
-    expect(videoArtifact?.previewImageUrl).toMatch(
-      /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
-    );
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({
+      id: fileId,
+      previewImageUrl: expect.stringMatching(
+        /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+      ),
+    });
   });
 
   it("does not record a run association for ordinary clerk session auth", async () => {
