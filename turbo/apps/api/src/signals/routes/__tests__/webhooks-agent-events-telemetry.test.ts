@@ -79,7 +79,7 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
       [
         {
           runId: run.runId,
-          userId: actor.userId,
+          userId: "user_bdd_sandbox_webhook",
           sequenceNumber: 1,
           eventType: "pi.message.completed",
           eventData: {
