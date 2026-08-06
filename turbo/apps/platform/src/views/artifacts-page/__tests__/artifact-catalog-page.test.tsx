@@ -289,6 +289,7 @@ describe("artifact catalog page", () => {
   it("renders shared conversations as compact rows", async () => {
     const sharedRequestStarted = context.mocks.deferred<void>();
     const releaseSharedResponse = context.mocks.deferred<void>();
+    const locationAssign = context.mocks.browser.locationAssign();
     context.mocks.api(
       artifactCatalogContract.list,
       async ({ query, respond }) => {
@@ -311,6 +312,16 @@ describe("artifact catalog page", () => {
         });
       },
     );
+    context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
+      return respond(200, {
+        ...artifact({
+          kind: "shared-thread",
+          title: "Weekly launch review",
+        }),
+        kind: "shared-thread",
+        sharedThread: { id: "b0000000-0000-4000-a000-000000000001" },
+      });
+    });
 
     setupArtifactCatalogPage();
     await findCard("launch-deck");
@@ -324,7 +335,7 @@ describe("artifact catalog page", () => {
     click(sharedConversationFilter);
     await sharedRequestStarted.promise;
 
-    expect(screen.getByLabelText("Loading artifacts")).toHaveClass("divide-y");
+    expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
 
     await act(async () => {
       releaseSharedResponse.resolve();
@@ -332,12 +343,20 @@ describe("artifact catalog page", () => {
     });
 
     const row = await findCard("Weekly launch review");
-    const list = screen.getByTestId("artifact-catalog-shared-thread-list");
-    expect(row.closest("ul")).toBe(list);
-    expect(list).toHaveClass("divide-y");
-    expect(
-      screen.queryByTestId("artifact-catalog-card-preview"),
-    ).not.toBeInTheDocument();
+    const listItem = row.closest("li");
+    if (!listItem) {
+      throw new Error("Expected a shared conversation list item");
+    }
+    expect(row).toHaveRole("button");
+    expect(listItem).toHaveRole("listitem");
+    expect(listItem.parentElement).toHaveRole("list");
+
+    click(row);
+    await waitFor(() => {
+      expect(locationAssign.calls).toStrictEqual([
+        "/share/threads/b0000000-0000-4000-a000-000000000001",
+      ]);
+    });
   });
 
   it("localizes the catalog and filters without changing artifact titles", async () => {

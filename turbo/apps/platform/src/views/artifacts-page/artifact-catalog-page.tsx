@@ -217,10 +217,7 @@ function ArtifactSharedConversationList({
 }) {
   const { t } = useTranslation();
   return (
-    <ul
-      data-testid="artifact-catalog-shared-thread-list"
-      className="zero-card divide-y divide-border overflow-hidden"
-    >
+    <ul className="zero-card divide-y divide-border overflow-hidden">
       {artifacts.map((artifact) => {
         return (
           <li key={artifact.id}>
@@ -237,10 +234,7 @@ function ArtifactSharedConversationList({
               }}
               className="group flex w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
-              <span
-                data-testid="artifact-catalog-kind-icon-shared-thread"
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground transition-colors group-hover:text-foreground"
-              >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground transition-colors group-hover:text-foreground">
                 <IconMessages size={16} stroke={1.7} aria-hidden />
               </span>
               <span
