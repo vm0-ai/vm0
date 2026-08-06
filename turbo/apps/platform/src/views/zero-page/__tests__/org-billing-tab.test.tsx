@@ -329,63 +329,72 @@ describe("organization billing settings", () => {
     });
     click(buttonByText("Upgrade"));
 
+    const choosePlanHeading = await screen.findByRole("heading", {
+      name: "Choose a plan",
+    });
+    expect(choosePlanHeading).toBeInTheDocument();
     const proPlan = await screen.findByRole("article", { name: "Pro plan" });
     const teamPlan = screen.getByRole("article", { name: "Team plan" });
     expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
     expect(
-      within(proPlan).getByText("$0 base + $20 member usage"),
+      within(proPlan).getByText("$0 plan + $20 required member package"),
     ).toBeInTheDocument();
     expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
     expect(
-      within(teamPlan).getByText("$160 base + $20 member usage"),
+      within(teamPlan).getByText("$160 plan + $20 required member package"),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Member usage" }),
+    ).not.toBeInTheDocument();
+
+    click(buttonByText("Continue with Team", teamPlan));
+
+    const configurePackagesHeading = await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    expect(configurePackagesHeading).toBeInTheDocument();
 
     const memberUsage = screen.getByRole("group", {
       name: "Member usage",
+    });
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
     });
     expect(within(memberUsage).getByText("Alex Chen")).toBeInTheDocument();
     expect(
       within(memberUsage).getByText("alex@example.com"),
     ).toBeInTheDocument();
+    expect(within(memberUsage).getByText("Sam Lee")).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("sam@example.com"),
+    ).toBeInTheDocument();
     const alexUsage = within(memberUsage).getByRole("combobox", {
       name: "Usage for Alex Chen",
     });
+    const samUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for Sam Lee",
+    });
     expect(alexUsage).toHaveTextContent("$20 · 20,400 credits · 2% off");
-    expect(
-      within(memberUsage).getByText("+400 bonus credits"),
-    ).toBeInTheDocument();
-
-    click(alexUsage);
-    click(await screen.findByRole("option", { name: "Pay as you go" }));
-
-    expect(within(proPlan).getByText("$0/month")).toBeInTheDocument();
-    expect(
-      within(proPlan).getByText("$0 base + $0 member usage"),
-    ).toBeInTheDocument();
-    expect(within(teamPlan).getByText("$160/month")).toBeInTheDocument();
+    expect(samUsage).toHaveTextContent("Pay as you go");
+    expect(alexUsage).toBeDisabled();
+    expect(samUsage).not.toBeDisabled();
     expect(
       within(memberUsage).getByText(
         "Uses pay-as-you-go credits with no monthly pack.",
       ),
     ).toBeInTheDocument();
-
-    click(
-      within(memberUsage).getByRole("combobox", {
-        name: "Add member",
-      }),
-    );
-    click(await screen.findByRole("option", { name: "Sam Lee" }));
-
-    expect(within(memberUsage).getByText("Sam Lee")).toBeInTheDocument();
     expect(
-      within(memberUsage).getByText("sam@example.com"),
+      within(memberUsage).getByText("+400 bonus credits"),
     ).toBeInTheDocument();
-    expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
-    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("Team plan")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$160")).toBeInTheDocument();
+    expect(
+      within(orderSummary).getByText("Member packages"),
+    ).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$20")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$180/month")).toBeInTheDocument();
+    expect(buttonByText("Checkout coming soon", orderSummary)).toBeDisabled();
 
-    const samUsage = within(memberUsage).getByRole("combobox", {
-      name: "Usage for Sam Lee",
-    });
     click(samUsage);
     click(
       await screen.findByRole("option", {
@@ -393,18 +402,26 @@ describe("organization billing settings", () => {
       }),
     );
 
-    expect(within(proPlan).getByText("$100/month")).toBeInTheDocument();
-    expect(within(teamPlan).getByText("$260/month")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$280/month")).toBeInTheDocument();
     expect(
       within(memberUsage).getByText("+8,700 bonus credits"),
     ).toBeInTheDocument();
+    expect(alexUsage).not.toBeDisabled();
+    expect(samUsage).not.toBeDisabled();
 
-    click(within(memberUsage).getByLabelText("Remove Sam Lee"));
-    expect(within(memberUsage).queryByText("Sam Lee")).not.toBeInTheDocument();
-    expect(within(proPlan).getByText("$0/month")).toBeInTheDocument();
-    expect(within(teamPlan).getByText("$160/month")).toBeInTheDocument();
-    expect(buttonByText("Checkout coming soon", proPlan)).toBeDisabled();
-    expect(buttonByText("Checkout coming soon", teamPlan)).toBeDisabled();
+    click(alexUsage);
+    click(await screen.findByRole("option", { name: "Pay as you go" }));
+    expect(within(orderSummary).getByText("$260/month")).toBeInTheDocument();
+    expect(samUsage).toBeDisabled();
+
+    click(buttonByText("Change plan"));
+    const returnedChoosePlanHeading = await screen.findByRole("heading", {
+      name: "Choose a plan",
+    });
+    expect(returnedChoosePlanHeading).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Member usage" }),
+    ).not.toBeInTheDocument();
   });
 
   it("scrolls to buy credits from the credits billing deep link", async () => {

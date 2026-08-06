@@ -2,9 +2,7 @@ import {
   IconArrowLeft,
   IconCheck,
   IconCrown,
-  IconPlus,
   IconUser,
-  IconX,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -29,13 +27,15 @@ import {
   type OrgMember,
 } from "../../../../signals/external/org-members.ts";
 import {
-  addMemberUsageConfiguration$,
   memberUsageSelections$,
+  MINIMUM_USAGE_PACK_USD,
   PAY_AS_YOU_GO,
-  removeMemberUsageConfiguration$,
+  selectedUsagePackPlan$,
   setMemberUsageSelection$,
+  setSelectedUsagePackPlan$,
   USAGE_PACKS_USD,
   type MemberUsageSelection,
+  type UsagePackPlanTier,
   type UsagePackUsd,
 } from "../../../../signals/zero-page/settings/usage-pack-pricing-state.ts";
 import { planProImg, planTeamImg } from "../../platform-assets.ts";
@@ -48,8 +48,6 @@ const USAGE_PACK_PRICE_PERCENT: Readonly<Record<UsagePackUsd, number>> = {
   100: 92,
   200: 90,
 };
-
-type UsagePackPlanTier = "pro" | "team";
 
 interface UsagePackPlan {
   readonly tier: UsagePackPlanTier;
@@ -173,6 +171,17 @@ function parseUsageSelection(value: string): MemberUsageSelection {
   return pack;
 }
 
+function memberUsageSelection(
+  selections: Readonly<Record<string, MemberUsageSelection>>,
+  memberId: string,
+  index: number,
+): MemberUsageSelection {
+  return (
+    selections[memberId] ??
+    (index === 0 ? MINIMUM_USAGE_PACK_USD : PAY_AS_YOU_GO)
+  );
+}
+
 function memberName(member: OrgMember): string {
   const name = [member.firstName, member.lastName].filter(Boolean).join(" ");
   return name || member.email;
@@ -216,13 +225,13 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
 }
 
 function MemberUsageRow({
+  disabled,
   member,
-  onRemove,
   onSelect,
   selection,
 }: {
+  readonly disabled: boolean;
   readonly member: MemberDisplay;
-  readonly onRemove: (() => void) | undefined;
   readonly onSelect: (selection: MemberUsageSelection) => void;
   readonly selection: MemberUsageSelection;
 }) {
@@ -242,10 +251,11 @@ function MemberUsageRow({
           },
         );
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_minmax(15rem,18rem)_2rem] items-center gap-3 px-4 py-3">
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(15rem,18rem)] items-center gap-3 px-4 py-3">
       <MemberIdentity member={member} />
       <div className="min-w-0">
         <Select
+          disabled={disabled}
           value={String(selection)}
           onValueChange={(value) => {
             onSelect(parseUsageSelection(value));
@@ -279,23 +289,6 @@ function MemberUsageRow({
           {summary}
         </p>
       </div>
-      {onRemove ? (
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={i18n.t(
-            ($) => {
-              return $.billing.plans.usagePacks.removeMember;
-            },
-            { name: member.name },
-          )}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <IconX size={15} stroke={1.8} />
-        </button>
-      ) : (
-        <span />
-      )}
     </div>
   );
 }
@@ -338,48 +331,14 @@ function MemberUsageHeader({
   );
 }
 
-function AddMemberUsageConfiguration({
-  eligibleMembers,
-  onAdd,
-}: {
-  readonly eligibleMembers: readonly OrgMember[];
-  readonly onAdd: (memberId: string) => void;
-}) {
+function MemberUsageFooter() {
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-border/60 px-4 py-3">
+    <div className="border-t border-border/60 px-4 py-3">
       <p className="text-[11px] text-muted-foreground">
         {i18n.t(($) => {
           return $.billing.plans.usagePacks.memberExclusive;
         })}
       </p>
-      <Select
-        value=""
-        disabled={eligibleMembers.length === 0}
-        onValueChange={onAdd}
-      >
-        <SelectTrigger
-          className="h-8 w-auto min-w-32 gap-1.5 border-dashed text-xs"
-          aria-label={i18n.t(($) => {
-            return $.billing.plans.usagePacks.addMember;
-          })}
-        >
-          <IconPlus size={13} stroke={1.8} />
-          <SelectValue
-            placeholder={i18n.t(($) => {
-              return $.billing.plans.usagePacks.addMember;
-            })}
-          />
-        </SelectTrigger>
-        <SelectContent>
-          {eligibleMembers.map((member) => {
-            return (
-              <SelectItem key={member.userId} value={member.userId}>
-                {memberName(member)}
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
     </div>
   );
 }
@@ -388,8 +347,6 @@ function MemberUsageConfiguration() {
   const userLoadable = useLastLoadable(currentUserInfo$);
   const membersLoadable = useLastLoadable(orgMembers$);
   const selections = useGet(memberUsageSelections$);
-  const addMember = useSet(addMemberUsageConfiguration$);
-  const removeMember = useSet(removeMemberUsageConfiguration$);
   const setSelection = useSet(setMemberUsageSelection$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const orgMembers =
@@ -411,40 +368,30 @@ function MemberUsageConfiguration() {
         return $.billing.plans.usagePacks.currentMember;
       }),
   };
-  const orgMembersById = new Map(
-    orgMembers.map((member) => {
-      return [member.userId, member] as const;
-    }),
-  );
-  const configuredMembers = Object.keys(selections)
-    .filter((memberId) => {
-      return memberId !== user.id && orgMembersById.has(memberId);
-    })
-    .map((memberId): MemberDisplay => {
-      const member = orgMembersById.get(memberId);
-      if (!member) {
-        throw new Error(`Configured member not found: ${memberId}`);
-      }
-      return {
-        id: member.userId,
-        email: member.email,
-        imageUrl: member.imageUrl,
-        isCurrent: false,
-        name: memberName(member),
-      };
-    });
-  const eligibleMembers = orgMembers.filter((member) => {
-    return member.userId !== user.id && selections[member.userId] === undefined;
-  });
-  const configuredSelections = [
-    selections[user.id] ?? 20,
-    ...configuredMembers.map((member) => {
-      return selections[member.id] ?? 20;
-    }),
+  const members: readonly MemberDisplay[] = [
+    currentMember,
+    ...orgMembers
+      .filter((member) => {
+        return member.userId !== user.id;
+      })
+      .map((member): MemberDisplay => {
+        return {
+          id: member.userId,
+          email: member.email,
+          imageUrl: member.imageUrl,
+          isCurrent: false,
+          name: memberName(member),
+        };
+      }),
   ];
-  const usagePackTotalUsd = configuredSelections.reduce((total, selection) => {
+  const usagePackTotalUsd = members.reduce((total, member, index) => {
+    const selection = memberUsageSelection(selections, member.id, index);
     return total + (selection === PAY_AS_YOU_GO ? 0 : selection);
   }, 0);
+  const monthlyPackCount = members.filter((member, index) => {
+    const selection = memberUsageSelection(selections, member.id, index);
+    return selection !== PAY_AS_YOU_GO;
+  }).length;
   const memberUsageLabel = i18n.t(($) => {
     return $.billing.plans.usagePacks.memberUsage;
   });
@@ -457,35 +404,26 @@ function MemberUsageConfiguration() {
     >
       <MemberUsageHeader usagePackTotalUsd={usagePackTotalUsd} />
 
-      <MemberUsageRow
-        member={currentMember}
-        selection={selections[user.id] ?? 20}
-        onSelect={(usage) => {
-          setSelection({ memberId: user.id, usage });
-        }}
-        onRemove={undefined}
-      />
-      {configuredMembers.map((member) => {
+      {members.map((member, index) => {
+        const selection = memberUsageSelection(selections, member.id, index);
         return (
-          <div key={member.id} className="border-t border-border/50">
+          <div
+            key={member.id}
+            className={index === 0 ? undefined : "border-t border-border/50"}
+          >
             <MemberUsageRow
+              disabled={monthlyPackCount === 1 && selection !== PAY_AS_YOU_GO}
               member={member}
-              selection={selections[member.id] ?? 20}
+              selection={selection}
               onSelect={(usage) => {
                 setSelection({ memberId: member.id, usage });
-              }}
-              onRemove={() => {
-                removeMember(member.id);
               }}
             />
           </div>
         );
       })}
 
-      <AddMemberUsageConfiguration
-        eligibleMembers={eligibleMembers}
-        onAdd={addMember}
-      />
+      <MemberUsageFooter />
     </section>
   );
 }
@@ -509,15 +447,15 @@ function PlanFeatureList({ tier }: { readonly tier: UsagePackPlanTier }) {
   );
 }
 
-function UsagePackPlanCard({
-  memberUsageTotalUsd,
+function PlanSelectionCard({
+  onSelect,
   plan,
 }: {
-  readonly memberUsageTotalUsd: number;
+  readonly onSelect: () => void;
   readonly plan: UsagePackPlan;
 }) {
   const name = planName(plan.tier);
-  const totalUsd = plan.basePriceUsd + memberUsageTotalUsd;
+  const minimumTotalUsd = plan.basePriceUsd + MINIMUM_USAGE_PACK_USD;
   return (
     <article
       aria-label={i18n.t(
@@ -551,7 +489,7 @@ function UsagePackPlanCard({
       <div className="mt-5">
         <p className="text-[12px] text-muted-foreground">
           {i18n.t(($) => {
-            return $.billing.plans.usagePacks.monthlyTotal;
+            return $.billing.plans.usagePacks.startingAt;
           })}
         </p>
         <p className="mt-1 text-3xl font-light tracking-tight text-foreground">
@@ -559,29 +497,322 @@ function UsagePackPlanCard({
             ($) => {
               return $.billing.plans.pricePerMonth;
             },
-            { price: formatUsd(totalUsd, 0) },
+            { price: formatUsd(minimumTotalUsd, 0) },
           )}
         </p>
-        <p className="mt-1 text-[12px] text-muted-foreground">
+        <p className="mt-1 text-[11px] text-muted-foreground">
           {i18n.t(
             ($) => {
-              return $.billing.plans.usagePacks.baseAndMemberUsage;
+              return $.billing.plans.usagePacks.minimumPackageBreakdown;
             },
             {
               base: formatUsd(plan.basePriceUsd, 0),
-              usage: formatUsd(memberUsageTotalUsd, 0),
+              package: formatUsd(MINIMUM_USAGE_PACK_USD, 0),
             },
           )}
         </p>
       </div>
 
       <PlanFeatureList tier={plan.tier} />
-      <Button className="mt-auto h-11 w-full text-sm font-medium" disabled>
+      <Button
+        type="button"
+        className="mt-auto h-11 w-full text-sm font-medium"
+        onClick={onSelect}
+      >
+        {i18n.t(
+          ($) => {
+            return $.billing.plans.usagePacks.continueWithPlan;
+          },
+          { plan: name },
+        )}
+      </Button>
+    </article>
+  );
+}
+
+function PricingPageHeader({
+  onBack,
+  step,
+}: {
+  readonly onBack: () => void;
+  readonly step: 1 | 2;
+}) {
+  const { t } = useTranslation();
+  const title =
+    step === 1
+      ? t(($) => {
+          return $.billing.plans.usagePacks.choosePlan;
+        })
+      : t(($) => {
+          return $.billing.plans.usagePacks.configurePackages;
+        });
+  const description =
+    step === 1
+      ? t(($) => {
+          return $.billing.plans.usagePacks.choosePlanDescription;
+        })
+      : t(($) => {
+          return $.billing.plans.usagePacks.configurePackagesDescription;
+        });
+  return (
+    <div className="flex items-center gap-3">
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              aria-label={t(($) => {
+                return $.billing.common.back;
+              })}
+            >
+              <IconArrowLeft size={16} stroke={1.8} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p className="text-xs">
+              {t(($) => {
+                return $.billing.common.back;
+              })}
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <div>
+        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+        <p className="text-[13px] text-muted-foreground">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function PricingStep({
+  active,
+  label,
+  number,
+}: {
+  readonly active: boolean;
+  readonly label: string;
+  readonly number: number;
+}) {
+  return (
+    <li
+      aria-current={active ? "step" : undefined}
+      className={`flex items-center gap-2 text-xs font-medium ${
+        active ? "text-primary" : "text-muted-foreground"
+      }`}
+    >
+      <span
+        className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] ${
+          active ? "bg-primary text-primary-foreground" : "zero-badge"
+        }`}
+      >
+        {number}
+      </span>
+      {label}
+    </li>
+  );
+}
+
+function PricingSteps({ current }: { readonly current: 1 | 2 }) {
+  return (
+    <ol
+      aria-label={i18n.t(($) => {
+        return $.billing.plans.usagePacks.purchaseSteps;
+      })}
+      className="flex items-center rounded-xl bg-muted/30 px-4 py-3 zero-border"
+    >
+      <PricingStep
+        active={current === 1}
+        label={i18n.t(($) => {
+          return $.billing.plans.usagePacks.planStep;
+        })}
+        number={1}
+      />
+      <span className="mx-4 h-px flex-1 bg-border" aria-hidden="true" />
+      <PricingStep
+        active={current === 2}
+        label={i18n.t(($) => {
+          return $.billing.plans.usagePacks.packagesStep;
+        })}
+        number={2}
+      />
+    </ol>
+  );
+}
+
+function SelectedPlanSummary({
+  onChange,
+  plan,
+}: {
+  readonly onChange: () => void;
+  readonly plan: UsagePackPlan;
+}) {
+  const name = planName(plan.tier);
+  return (
+    <section className="flex items-center gap-4 rounded-xl bg-card px-4 py-3 zero-border">
+      <img
+        src={plan.image}
+        alt=""
+        className="h-12 w-12 shrink-0 object-contain"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.selectedPlan;
+          })}
+        </p>
+        <p className="mt-0.5 text-sm font-medium text-foreground">{name}</p>
+      </div>
+      <p className="shrink-0 text-sm font-semibold text-foreground">
+        {i18n.t(
+          ($) => {
+            return $.billing.plans.pricePerMonth;
+          },
+          { price: formatUsd(plan.basePriceUsd, 0) },
+        )}
+      </p>
+      <Button type="button" variant="outline" size="sm" onClick={onChange}>
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.changePlan;
+        })}
+      </Button>
+    </section>
+  );
+}
+
+function OrderSummary({
+  memberUsageTotalUsd,
+  plan,
+}: {
+  readonly memberUsageTotalUsd: number;
+  readonly plan: UsagePackPlan;
+}) {
+  const totalUsd = plan.basePriceUsd + memberUsageTotalUsd;
+  return (
+    <section
+      aria-label={i18n.t(($) => {
+        return $.billing.plans.usagePacks.orderSummary;
+      })}
+      className="rounded-xl bg-card p-4 zero-border"
+    >
+      <h4 className="text-sm font-medium text-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.orderSummary;
+        })}
+      </h4>
+      <div className="mt-4 space-y-2.5 text-[13px]">
+        <div className="flex items-center justify-between gap-4 text-muted-foreground">
+          <span>
+            {i18n.t(
+              ($) => {
+                return $.billing.plans.namedPlan;
+              },
+              { plan: planName(plan.tier) },
+            )}
+          </span>
+          <span>{formatUsd(plan.basePriceUsd, 0)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 text-muted-foreground">
+          <span>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.memberPackages;
+            })}
+          </span>
+          <span>{formatUsd(memberUsageTotalUsd, 0)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 border-t border-border pt-3 text-foreground">
+          <span className="font-medium">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.monthlyTotal;
+            })}
+          </span>
+          <span className="text-lg font-semibold">
+            {i18n.t(
+              ($) => {
+                return $.billing.plans.pricePerMonth;
+              },
+              { price: formatUsd(totalUsd, 0) },
+            )}
+          </span>
+        </div>
+      </div>
+      <Button className="mt-4 h-10 w-full text-sm font-medium" disabled>
         {i18n.t(($) => {
           return $.billing.plans.usagePacks.checkoutComingSoon;
         })}
       </Button>
-    </article>
+    </section>
+  );
+}
+
+function PlanSelectionStep({
+  onBack,
+  onSelect,
+}: {
+  readonly onBack: () => void;
+  readonly onSelect: (plan: UsagePackPlanTier) => void;
+}) {
+  return (
+    <>
+      <PricingPageHeader onBack={onBack} step={1} />
+      <PricingSteps current={1} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {USAGE_PACK_PLANS.map((plan) => {
+          return (
+            <PlanSelectionCard
+              key={plan.tier}
+              plan={plan}
+              onSelect={() => {
+                onSelect(plan.tier);
+              }}
+            />
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function PackageConfigurationStep({
+  onBack,
+  plan,
+}: {
+  readonly onBack: () => void;
+  readonly plan: UsagePackPlan;
+}) {
+  const userLoadable = useLastLoadable(currentUserInfo$);
+  const membersLoadable = useLastLoadable(orgMembers$);
+  const selections = useGet(memberUsageSelections$);
+  const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
+  const orgMembers =
+    membersLoadable.state === "hasData" ? membersLoadable.data : [];
+  const memberIds = user
+    ? [
+        user.id,
+        ...orgMembers
+          .filter((member) => {
+            return member.userId !== user.id;
+          })
+          .map((member) => {
+            return member.userId;
+          }),
+      ]
+    : [];
+  const memberUsageTotalUsd = memberIds.reduce((total, memberId, index) => {
+    const selection = memberUsageSelection(selections, memberId, index);
+    return total + (selection === PAY_AS_YOU_GO ? 0 : selection);
+  }, 0);
+
+  return (
+    <>
+      <PricingPageHeader onBack={onBack} step={2} />
+      <PricingSteps current={2} />
+      <SelectedPlanSummary plan={plan} onChange={onBack} />
+      <MemberUsageConfiguration />
+      <OrderSummary plan={plan} memberUsageTotalUsd={memberUsageTotalUsd} />
+    </>
   );
 }
 
@@ -590,21 +821,11 @@ export function UsagePackPricingPage({
 }: {
   readonly onBack: () => void;
 }) {
-  const { t } = useTranslation();
-  const userLoadable = useLastLoadable(currentUserInfo$);
-  const selections = useGet(memberUsageSelections$);
-  const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
-  const currentSelection = user ? (selections[user.id] ?? 20) : 20;
-  const memberUsageTotalUsd = Object.entries(selections).reduce(
-    (total, [memberId, selection]) => {
-      if (memberId === user?.id || selection === PAY_AS_YOU_GO) {
-        return total;
-      }
-      return total + selection;
-    },
-    currentSelection === PAY_AS_YOU_GO ? 0 : currentSelection,
-  );
-
+  const selectedPlanTier = useGet(selectedUsagePackPlan$);
+  const setSelectedPlan = useSet(setSelectedUsagePackPlan$);
+  const selectedPlan = USAGE_PACK_PLANS.find((plan) => {
+    return plan.tier === selectedPlanTier;
+  });
   return (
     <div
       className="flex flex-col gap-5 outline-none"
@@ -614,57 +835,22 @@ export function UsagePackPricingPage({
         element?.focus();
       }}
     >
-      <div className="flex items-center gap-3">
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={onBack}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                aria-label={t(($) => {
-                  return $.billing.common.back;
-                })}
-              >
-                <IconArrowLeft size={16} stroke={1.8} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">
-                {t(($) => {
-                  return $.billing.common.back;
-                })}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <div>
-          <h3 className="text-sm font-medium text-foreground">
-            {t(($) => {
-              return $.billing.plans.compare;
-            })}
-          </h3>
-          <p className="text-[13px] text-muted-foreground">
-            {t(($) => {
-              return $.billing.plans.usagePacks.description;
-            })}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {USAGE_PACK_PLANS.map((plan) => {
-          return (
-            <UsagePackPlanCard
-              key={plan.tier}
-              plan={plan}
-              memberUsageTotalUsd={memberUsageTotalUsd}
-            />
-          );
-        })}
-      </div>
-
-      <MemberUsageConfiguration />
+      {selectedPlan ? (
+        <PackageConfigurationStep
+          plan={selectedPlan}
+          onBack={() => {
+            setSelectedPlan(null);
+          }}
+        />
+      ) : (
+        <PlanSelectionStep
+          onBack={() => {
+            setSelectedPlan(null);
+            onBack();
+          }}
+          onSelect={setSelectedPlan}
+        />
+      )}
     </div>
   );
 }
