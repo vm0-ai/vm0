@@ -7,6 +7,7 @@ import {
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
   zeroBillingUsagePackManagementContract,
+  zeroBillingUsagePackMigrationContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -1519,6 +1520,957 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     expect(
       context.mocks.stripe.checkout.sessions.create,
     ).not.toHaveBeenCalled();
+  });
+});
+
+describe("legacy subscription usage pack migration", () => {
+  interface LegacyMigrationFixture extends SubscriptionFixture {
+    readonly tier: "pro" | "team";
+    readonly legacyPriceId: string;
+    readonly legacyItemId: string;
+    readonly period: { readonly start: number; readonly end: number };
+    readonly legacyCreditInvoiceId: string;
+    readonly invitation?: {
+      readonly id: string;
+      readonly email: string;
+      readonly role: "org:admin" | "org:member";
+    };
+  }
+
+  interface MigrationStripeController {
+    readonly invoice: () => object;
+    readonly applyPendingUpdate: () => void;
+    readonly expirePendingUpdate: () => void;
+  }
+
+  interface MigrationSubscriptionMock {
+    readonly id: string;
+    readonly customer: string;
+    readonly status: string;
+    readonly cancel_at: number | null;
+    readonly cancel_at_period_end: boolean;
+    readonly schedule: string | null;
+    readonly pending_update: { readonly expires_at: number } | null;
+    readonly latest_invoice: string | null;
+    readonly metadata: Readonly<Record<string, string>>;
+    readonly items: {
+      readonly data: readonly {
+        readonly id: string;
+        readonly price: { readonly id: string };
+        readonly quantity: number;
+        readonly current_period_start: number;
+        readonly current_period_end: number;
+      }[];
+    };
+  }
+
+  async function clearMigrationFixture(): Promise<void> {
+    await usagePackStateAction({
+      action: "cleanup-migration",
+      orgId: TEST_STAFF_ORG_ID,
+    });
+  }
+
+  async function seedLegacyMigrationFixture(args: {
+    readonly tier: "pro" | "team";
+    readonly invitation?: boolean;
+  }): Promise<LegacyMigrationFixture> {
+    await clearMigrationFixture();
+    const fixture = createOrgFixture(TEST_STAFF_ORG_ID);
+    const customerId = `cus_migration_${randomUUID()}`;
+    const subscriptionId = `sub_migration_${randomUUID()}`;
+    const legacyPriceId =
+      args.tier === "team" ? TEST_PRICE_TEAM : TEST_PRICE_PRO;
+    const legacyItemId = `si_legacy_${randomUUID()}`;
+    const period = {
+      start: currentSecond() - 15 * 86_400,
+      end: currentSecond() + 15 * 86_400,
+    };
+    const legacyCreditInvoiceId = `in_legacy_${randomUUID()}`;
+    const invitation = args.invitation
+      ? {
+          id: `inv_migration_${randomUUID()}`,
+          email: `pending-${randomUUID()}@example.test`,
+          role: "org:member" as const,
+        }
+      : undefined;
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: args.tier,
+      credits: 12_345,
+    });
+    await usagePackStateAction({
+      action: "seed-legacy-migration",
+      orgId: fixture.orgId,
+      tier: args.tier,
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: subscriptionId,
+      currentPeriodEnd: new Date(period.end * 1000).toISOString(),
+      legacyCreditInvoiceId,
+      credits: 12_345,
+    });
+    authenticateOrg(fixture);
+    mockClerkOrganization(fixture);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: fixture.userId },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      {
+        data: invitation
+          ? [
+              {
+                id: invitation.id,
+                emailAddress: invitation.email,
+                role: invitation.role,
+                createdAt: now(),
+              },
+            ]
+          : [],
+      },
+    );
+    onTestFinished(clearMigrationFixture);
+    return {
+      ...fixture,
+      customerId,
+      subscriptionId,
+      tier: args.tier,
+      legacyPriceId,
+      legacyItemId,
+      period,
+      legacyCreditInvoiceId,
+      ...(invitation ? { invitation } : {}),
+    };
+  }
+
+  function legacyMigrationSubscription(
+    fixture: LegacyMigrationFixture,
+  ): MigrationSubscriptionMock {
+    return {
+      id: fixture.subscriptionId,
+      customer: fixture.customerId,
+      status: "active",
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      pending_update: null,
+      latest_invoice: null,
+      metadata: { orgId: fixture.orgId },
+      items: {
+        data: [
+          {
+            id: fixture.legacyItemId,
+            price: { id: fixture.legacyPriceId },
+            quantity: 1,
+            current_period_start: fixture.period.start,
+            current_period_end: fixture.period.end,
+          },
+        ],
+      },
+    };
+  }
+
+  function mockMigrationStripe(args: {
+    readonly fixture: LegacyMigrationFixture;
+    readonly packageQuantity: number;
+    readonly amountDueCents: number;
+    readonly amountPaidCents: number;
+    readonly pending: boolean;
+  }): MigrationStripeController {
+    const planPriceId =
+      args.fixture.tier === "team"
+        ? TEST_PRICE_USAGE_PACK_PLAN_TEAM
+        : TEST_PRICE_USAGE_PACK_PLAN_PRO;
+    const invoiceId = `in_migration_${randomUUID()}`;
+    const paymentIntentId = `pi_migration_${randomUUID()}`;
+    const packageLineAmount = 1000 * args.packageQuantity;
+    const paidInvoice = () => {
+      return {
+        id: invoiceId,
+        customer: args.fixture.customerId,
+        metadata: { orgId: args.fixture.orgId },
+        status: "paid",
+        paid: true,
+        amount_due: args.amountDueCents,
+        amount_paid: args.amountPaidCents,
+        currency: "usd",
+        hosted_invoice_url: `https://invoice.stripe.test/${invoiceId}`,
+        status_transitions: { paid_at: currentSecond() },
+        payments: {
+          data:
+            args.amountPaidCents > 0
+              ? [
+                  {
+                    status: "paid",
+                    amount_paid: args.amountPaidCents,
+                    payment: {
+                      type: "payment_intent",
+                      payment_intent: paymentIntentId,
+                    },
+                  },
+                ]
+              : [],
+        },
+        parent: {
+          subscription_details: {
+            subscription: args.fixture.subscriptionId,
+            metadata: { orgId: args.fixture.orgId },
+          },
+        },
+        lines: {
+          data: [
+            {
+              id: `il_migration_${randomUUID()}`,
+              amount: packageLineAmount,
+              subtotal: packageLineAmount,
+              quantity: args.packageQuantity,
+              price: { id: TEST_PRICE_USAGE_PACK_20 },
+              pricing: {
+                price_details: { price: TEST_PRICE_USAGE_PACK_20 },
+              },
+              proration: true,
+              period: { start: currentSecond(), end: args.fixture.period.end },
+              parent: {
+                type: "subscription_item_details",
+                subscription_item_details: { proration: true },
+              },
+            },
+          ],
+        },
+      };
+    };
+    const openInvoice = () => {
+      return {
+        ...paidInvoice(),
+        status: "open",
+        paid: false,
+        amount_paid: 0,
+        status_transitions: { paid_at: null },
+        payments: { data: [] },
+      };
+    };
+    const appliedSubscription = (): MigrationSubscriptionMock => {
+      return {
+        ...legacyMigrationSubscription(args.fixture),
+        pending_update: null,
+        latest_invoice: invoiceId,
+        items: {
+          data: [
+            {
+              id: `si_plan_${args.fixture.tier}`,
+              price: { id: planPriceId },
+              quantity: 1,
+              current_period_start: args.fixture.period.start,
+              current_period_end: args.fixture.period.end,
+            },
+            {
+              id: "si_pack_20",
+              price: { id: TEST_PRICE_USAGE_PACK_20 },
+              quantity: args.packageQuantity,
+              current_period_start: args.fixture.period.start,
+              current_period_end: args.fixture.period.end,
+            },
+          ],
+        },
+      };
+    };
+    let invoice = args.pending ? openInvoice() : paidInvoice();
+    let subscription: MigrationSubscriptionMock = legacyMigrationSubscription(
+      args.fixture,
+    );
+    let applyAsPending = args.pending;
+    const syncRetrievalMocks = () => {
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+        subscription,
+      );
+      context.mocks.stripe.invoices.retrieve.mockResolvedValue(invoice);
+    };
+    syncRetrievalMocks();
+    context.mocks.stripe.invoices.createPreview.mockImplementation((params) => {
+      if (
+        typeof params !== "object" ||
+        params === null ||
+        !("preview_mode" in params)
+      ) {
+        throw new Error("Expected Stripe migration preview parameters");
+      }
+      return Promise.resolve({
+        amount_due:
+          params.preview_mode === "recurring"
+            ? 2000 * args.packageQuantity
+            : args.amountDueCents,
+        currency: "usd",
+      });
+    });
+    context.mocks.stripe.subscriptions.update.mockImplementation(
+      (_subscriptionId, params) => {
+        if (
+          typeof params === "object" &&
+          params !== null &&
+          "metadata" in params
+        ) {
+          subscription = {
+            ...subscription,
+            metadata: {
+              ...subscription.metadata,
+              ...(params.metadata as Readonly<Record<string, string>>),
+            },
+          };
+          syncRetrievalMocks();
+          return Promise.resolve(subscription);
+        }
+        if (applyAsPending) {
+          subscription = {
+            ...legacyMigrationSubscription(args.fixture),
+            pending_update: { expires_at: currentSecond() + 3600 },
+            latest_invoice: invoiceId,
+          };
+        } else {
+          subscription = appliedSubscription();
+        }
+        syncRetrievalMocks();
+        return Promise.resolve(subscription);
+      },
+    );
+    return {
+      invoice: () => {
+        return invoice;
+      },
+      applyPendingUpdate: () => {
+        applyAsPending = false;
+        invoice = paidInvoice();
+        subscription = appliedSubscription();
+        syncRetrievalMocks();
+      },
+      expirePendingUpdate: () => {
+        applyAsPending = false;
+        invoice = { ...openInvoice(), status: "void" };
+        subscription = legacyMigrationSubscription(args.fixture);
+        syncRetrievalMocks();
+      },
+    };
+  }
+
+  function migrationClient() {
+    return setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingUsagePackMigrationContract,
+    );
+  }
+
+  async function enableMigration(fixture: BillingOrgFixture): Promise<void> {
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+  }
+
+  async function postMigrationInvoice(invoice: object): Promise<void> {
+    const event = {
+      id: `evt_migration_${randomUUID()}`,
+      type: "invoice.paid",
+      created: currentSecond(),
+      data: { object: invoice },
+    };
+    context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
+    await accept(
+      setupApp({ context, routes: webhooksStripeRoutes })(
+        webhookStripeContract,
+      ).post({
+        body: JSON.stringify(event),
+        extraHeaders: { "stripe-signature": "t=1,v1=migration-test" },
+      }),
+      [200],
+    );
+  }
+
+  async function postMigrationSubscription(
+    subscription: object,
+  ): Promise<void> {
+    const event = {
+      id: `evt_migration_${randomUUID()}`,
+      type: "customer.subscription.updated",
+      created: currentSecond(),
+      data: { object: subscription },
+    };
+    context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
+    await accept(
+      setupApp({ context, routes: webhooksStripeRoutes })(
+        webhookStripeContract,
+      ).post({
+        body: JSON.stringify(event),
+        extraHeaders: { "stripe-signature": "t=1,v1=migration-test" },
+      }),
+      [200],
+    );
+  }
+
+  async function postMigrationInvitationAccepted(args: {
+    readonly fixture: LegacyMigrationFixture;
+    readonly purchaseId: string;
+    readonly userId: string;
+  }): Promise<void> {
+    if (!args.fixture.invitation) {
+      throw new Error("Expected a pending invitation fixture");
+    }
+    const event = {
+      type: "organizationInvitation.accepted",
+      data: {
+        object: "organization_invitation",
+        id: args.fixture.invitation.id,
+        email_address: args.fixture.invitation.email,
+        organization_id: args.fixture.orgId,
+        role: args.fixture.invitation.role,
+        role_name: "Member",
+        status: "accepted",
+        user_id: args.userId,
+        public_metadata: {},
+        private_metadata: {
+          usagePackInvitationPurchaseId: args.purchaseId,
+        },
+        url: null,
+        created_at: now() - 1000,
+        updated_at: now(),
+        expires_at: args.fixture.period.end * 1000,
+      },
+    };
+    context.mocks.clerk.verifyWebhook.mockResolvedValueOnce(event);
+    await accept(
+      setupApp({ context, routes: webhooksClerkRoutes })(
+        webhookClerkContract,
+      ).post({
+        body: JSON.stringify(event),
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+  }
+
+  async function previewMigration(
+    fixture: LegacyMigrationFixture,
+  ): Promise<{ readonly migrationId: string }> {
+    const memberUsagePacks = [
+      { memberId: fixture.userId, usagePackUsd: 20 as const },
+      ...(fixture.invitation
+        ? [{ memberId: fixture.invitation.id, usagePackUsd: 20 as const }]
+        : []),
+    ];
+    const response = await accept(
+      migrationClient().preview({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { memberUsagePacks },
+      }),
+      [200],
+    );
+    expect(response.body).toMatchObject({
+      tier: fixture.tier,
+      currency: "usd",
+      purchasedCredits: 20_000 * memberUsagePacks.length,
+      bonusCredits: 400 * memberUsagePacks.length,
+      totalCredits: 20_400 * memberUsagePacks.length,
+    });
+    return { migrationId: response.body.migrationId };
+  }
+
+  beforeEach(() => {
+    mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+    setZeroPrice();
+    setUsagePackPrices();
+    mockUsagePackCatalog();
+    mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
+  });
+
+  it("hides legacy migration while UsagePackPlans is disabled", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      legacyMigrationSubscription(fixture),
+    );
+
+    const response = await accept(
+      migrationClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Usage pack management is not enabled",
+    );
+    expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Stripe subscription scheduled for cancellation", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    await enableMigration(fixture);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      ...legacyMigrationSubscription(fixture),
+      cancel_at_period_end: true,
+    });
+
+    const response = await accept(
+      migrationClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Legacy subscription migration is not available",
+    );
+  });
+
+  it("prevents an active legacy subscription from bypassing migration", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    await enableMigration(fixture);
+
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingUsagePackCheckoutContract,
+      ).create({
+        body: {
+          tier: "team",
+          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Existing subscriptions must migrate before starting usage pack checkout",
+    );
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("keeps legacy state when the legacy item changes after preview", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    await enableMigration(fixture);
+    mockMigrationStripe({
+      fixture,
+      packageQuantity: 1,
+      amountDueCents: 1000,
+      amountPaidCents: 1000,
+      pending: false,
+    });
+    const preview = await previewMigration(fixture);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      ...legacyMigrationSubscription(fixture),
+      items: {
+        data: [
+          {
+            ...legacyMigrationSubscription(fixture).items.data[0],
+            quantity: 2,
+          },
+        ],
+      },
+    });
+
+    const response = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Usage pack migration is no longer available",
+    );
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+    const persisted = await readUsagePackState(fixture.orgId);
+    expect(persisted.migrations).toStrictEqual([
+      expect.objectContaining({
+        id: preview.migrationId,
+        status: "failed",
+        failureReason: "subscription_changed",
+      }),
+    ]);
+    expect(persisted.subscriptionCount).toBe(0);
+  });
+
+  it("converts Pro in place and retains legacy organization credits", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    await enableMigration(fixture);
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 1,
+      amountDueCents: 1000,
+      amountPaidCents: 1000,
+      pending: false,
+    });
+    const state = await accept(
+      migrationClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(state.body).toMatchObject({ tier: "pro", status: "eligible" });
+    const preview = await previewMigration(fixture);
+
+    const confirmation = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(confirmation.body.status).toBe("completed");
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      fixture.subscriptionId,
+      expect.objectContaining({
+        billing_cycle_anchor: "unchanged",
+        payment_behavior: "pending_if_incomplete",
+        proration_behavior: "always_invoice",
+      }),
+      expect.objectContaining({
+        idempotencyKey: `usage-pack-migration:${preview.migrationId}:apply`,
+      }),
+    );
+    const usageState = await readUsagePackState(
+      fixture.orgId,
+      preview.migrationId,
+    );
+    expect(usageState.allocations).toStrictEqual([
+      expect.objectContaining({
+        userId: fixture.userId,
+        status: "active",
+        usagePackUsd: 20,
+      }),
+    ]);
+    expect(usageState.grants).toHaveLength(2);
+    expect(usageState.legacyCredits).toStrictEqual([
+      expect.objectContaining({
+        stripeInvoiceId: fixture.legacyCreditInvoiceId,
+        amount: 12_345,
+        remaining: 12_345,
+      }),
+    ]);
+
+    await postMigrationInvoice(stripe.invoice());
+    const duplicateState = await readUsagePackState(
+      fixture.orgId,
+      preview.migrationId,
+    );
+    expect(duplicateState.grants).toHaveLength(2);
+
+    await postMigrationSubscription(legacyMigrationSubscription(fixture));
+    const delayedState = await readUsagePackState(
+      fixture.orgId,
+      preview.migrationId,
+    );
+    expect(delayedState.subscription?.subscriptionStatus).toBe("active");
+    expect(delayedState.grants).toHaveLength(2);
+  });
+
+  it("keeps Team legacy state intact when a pending update expires", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "team" });
+    await enableMigration(fixture);
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 1,
+      amountDueCents: 1000,
+      amountPaidCents: 1000,
+      pending: true,
+    });
+    const preview = await previewMigration(fixture);
+    const confirmation = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(confirmation.body.status).toBe("pending_payment");
+    expect((await readUsagePackState(fixture.orgId)).subscriptionCount).toBe(0);
+
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      { data: [] },
+    );
+    const retry = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(retry.body.status).toBe("pending_payment");
+
+    stripe.expirePendingUpdate();
+    mockNow(now() + 2 * 60 * 60 * 1000);
+    mockEnv("CRON_SECRET", "migration-cron-secret");
+    const cronResponse = await createApp({
+      signal: context.signal,
+      routes: cronReconcileBillingEntitlementsRoutes,
+    }).request("/api/cron/reconcile-billing-entitlements", {
+      headers: { authorization: "Bearer migration-cron-secret" },
+    });
+    expect(cronResponse.status).toBe(200);
+
+    const persisted = await readUsagePackState(fixture.orgId);
+    expect(persisted.migrations).toStrictEqual([
+      expect.objectContaining({ id: preview.migrationId, status: "failed" }),
+    ]);
+    expect(persisted.subscriptionCount).toBe(0);
+    expect(persisted.org).toMatchObject({
+      tier: "team",
+      stripeSubscriptionId: fixture.subscriptionId,
+      credits: 12_345,
+    });
+  });
+
+  it("refunds only a pending invitation's share of a migration payment", async () => {
+    const fixture = await seedLegacyMigrationFixture({
+      tier: "team",
+      invitation: true,
+    });
+    if (!fixture.invitation) {
+      throw new Error("Expected a pending invitation fixture");
+    }
+    await enableMigration(fixture);
+    mockMigrationStripe({
+      fixture,
+      packageQuantity: 2,
+      amountDueCents: 1000,
+      amountPaidCents: 1000,
+      pending: false,
+    });
+    const preview = await previewMigration(fixture);
+    const confirmation = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(confirmation.body.status).toBe("completed");
+
+    const [purchase] = (
+      await readUsagePackState(fixture.orgId, preview.migrationId)
+    ).invitationPurchases;
+    expect(purchase).toMatchObject({
+      status: "invitation_pending",
+      expectedAmountCents: 500,
+      amountPaidCents: 500,
+    });
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [{ id: fixture.invitation.id }] },
+    );
+    context.mocks.stripe.refunds.create.mockResolvedValue({
+      id: `re_${randomUUID()}`,
+      status: "succeeded",
+    });
+
+    await accept(
+      setupApp({ context, routes: zeroOrgInviteRoutes })(
+        zeroOrgInviteContract,
+      ).revoke({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { invitationId: fixture.invitation.id },
+      }),
+      [200],
+    );
+
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_intent: purchase?.stripePaymentIntentId,
+        amount: 500,
+      }),
+      expect.any(Object),
+    );
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      fixture.subscriptionId,
+      {
+        items: [{ id: "si_pack_20", quantity: 1 }],
+        proration_behavior: "none",
+      },
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining(
+          `usage-pack-projection:invitation:${purchase?.id}:refund:`,
+        ),
+      }),
+    );
+  });
+
+  it("activates a migrated invitation without adding a second Stripe seat", async () => {
+    const fixture = await seedLegacyMigrationFixture({
+      tier: "team",
+      invitation: true,
+    });
+    if (!fixture.invitation) {
+      throw new Error("Expected a pending invitation fixture");
+    }
+    await enableMigration(fixture);
+    mockMigrationStripe({
+      fixture,
+      packageQuantity: 2,
+      amountDueCents: 1000,
+      amountPaidCents: 1000,
+      pending: false,
+    });
+    const preview = await previewMigration(fixture);
+    await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const [purchase] = (
+      await readUsagePackState(fixture.orgId, preview.migrationId)
+    ).invitationPurchases;
+    if (!purchase) {
+      throw new Error("Expected a migrated invitation purchase");
+    }
+
+    context.mocks.stripe.subscriptions.update.mockClear();
+    const acceptedUserId = `user_migration_invited_${randomUUID()}`;
+    await postMigrationInvitationAccepted({
+      fixture,
+      purchaseId: purchase.id,
+      userId: acceptedUserId,
+    });
+    await postMigrationInvitationAccepted({
+      fixture,
+      purchaseId: purchase.id,
+      userId: acceptedUserId,
+    });
+
+    const accepted = await readUsagePackState(
+      fixture.orgId,
+      preview.migrationId,
+    );
+    expect(accepted.invitationPurchases).toStrictEqual([
+      expect.objectContaining({
+        id: purchase.id,
+        status: "accepted",
+        acceptedUserId,
+      }),
+    ]);
+    expect(
+      accepted.allocations.filter((allocation) => {
+        return allocation.userId === acceptedUserId;
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({
+        invitationId: null,
+        status: "active",
+        usagePackUsd: 20,
+      }),
+    ]);
+    expect(
+      accepted.grants.filter((grant) => {
+        return grant.userId === acceptedUserId;
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({
+        grantType: "bonus",
+        originalAmount: 200,
+      }),
+      expect.objectContaining({
+        grantType: "purchased",
+        originalAmount: 10_000,
+      }),
+    ]);
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+  });
+
+  it("finishes a zero-amount Team conversion and invitation lifecycle after switch-off", async () => {
+    const fixture = await seedLegacyMigrationFixture({
+      tier: "team",
+      invitation: true,
+    });
+    if (!fixture.invitation) {
+      throw new Error("Expected a pending invitation fixture");
+    }
+    await enableMigration(fixture);
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 2,
+      amountDueCents: 0,
+      amountPaidCents: 0,
+      pending: true,
+    });
+    const preview = await previewMigration(fixture);
+    const confirmation = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(confirmation.body.status).toBe("pending_payment");
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: false,
+    });
+    stripe.applyPendingUpdate();
+    await postMigrationInvoice(stripe.invoice());
+
+    const state = await readUsagePackState(fixture.orgId, preview.migrationId);
+    const [purchase] = state.invitationPurchases;
+    expect(purchase).toMatchObject({
+      status: "invitation_pending",
+      amountPaidCents: 0,
+      stripePaymentIntentId: null,
+    });
+    expect(state.allocations).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          invitationId: fixture.invitation.id,
+          status: "pending_invitation",
+        }),
+      ]),
+    );
+
+    const revokeResponse = await accept(
+      setupApp({ context, routes: zeroOrgInviteRoutes })(
+        zeroOrgInviteContract,
+      ).revoke({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { invitationId: fixture.invitation.id },
+      }),
+      [200],
+    );
+    expect(revokeResponse.body.message).toBe(
+      "Invitation revoked and refund initiated",
+    );
+    const [refunded] = (
+      await readUsagePackState(fixture.orgId, preview.migrationId)
+    ).invitationPurchases;
+    expect(refunded?.status).toBe("refunded");
+    expect(context.mocks.stripe.refunds.create).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      fixture.subscriptionId,
+      {
+        items: [{ id: "si_pack_20", quantity: 1 }],
+        proration_behavior: "none",
+      },
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining(
+          `usage-pack-projection:invitation:${purchase?.id}:refund:`,
+        ),
+      }),
+    );
   });
 });
 

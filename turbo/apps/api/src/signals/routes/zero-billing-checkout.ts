@@ -4,6 +4,7 @@ import {
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
   zeroBillingUsagePackManagementContract,
+  zeroBillingUsagePackMigrationContract,
   type MemberUsagePack,
   type UsagePackCatalogItem,
 } from "@vm0/api-contracts/contracts/zero-billing";
@@ -59,6 +60,14 @@ import {
   usagePackMemberAdditionSchemaAvailable,
   usagePackSubscriptionChangeSchemaAvailable,
 } from "../services/usage-pack-plan-change.service";
+import {
+  confirmUsagePackSubscriptionMigration,
+  getUsagePackMigrationState,
+  previewUsagePackSubscriptionMigration,
+  usagePackSubscriptionMigrationSchemaAvailable,
+  type UsagePackMigrationOwner,
+} from "../services/usage-pack-subscription-migration.service";
+import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   mergeFirstTouchAttribution,
@@ -155,6 +164,38 @@ interface UsagePackMembership {
 
 interface UsagePackInvitation {
   readonly id: string;
+}
+
+interface UsagePackMigrationInvitation extends UsagePackInvitation {
+  readonly emailAddress: string;
+  readonly role: string;
+}
+
+function usagePackMigrationOwners(
+  memberships: readonly UsagePackMembership[],
+  invitations: readonly UsagePackMigrationInvitation[],
+  inviterUserId: string,
+): readonly UsagePackMigrationOwner[] {
+  return [
+    ...memberships.map((membership): UsagePackMigrationOwner => {
+      const userId = membership.publicUserData?.userId;
+      if (!userId) {
+        throw new Error("Clerk organization membership is missing its user ID");
+      }
+      return { userId };
+    }),
+    ...invitations.map((invitation): UsagePackMigrationOwner => {
+      return {
+        invitationId: invitation.id,
+        normalizedEmail: invitation.emailAddress.trim().toLowerCase(),
+        role:
+          invitation.role === "org:admin" || invitation.role === "admin"
+            ? "admin"
+            : "member",
+        inviterUserId,
+      };
+    }),
+  ];
 }
 
 function usagePackCheckoutAllocations(
@@ -388,6 +429,26 @@ const usagePackCheckoutAuthed$ = command(
       );
     }
 
+    const [metadata] = await db
+      .select({
+        tier: orgMetadata.tier,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, auth.orgId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (
+      metadata?.stripeSubscriptionId &&
+      metadata.subscriptionStatus === "active" &&
+      (metadata.tier === "pro" || metadata.tier === "team")
+    ) {
+      return badRequestMessage(
+        "Existing subscriptions must migrate before starting usage pack checkout",
+      );
+    }
+
     const catalog = await loadUsagePackCatalog();
     signal.throwIfAborted();
 
@@ -408,12 +469,6 @@ const usagePackCheckoutAuthed$ = command(
       );
     }
 
-    const [metadata] = await db
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, auth.orgId))
-      .limit(1);
-    signal.throwIfAborted();
     if (
       checkoutWouldReplaceWithSameOrLowerTier({
         currentTier: metadata?.tier,
@@ -646,6 +701,152 @@ const usagePackChangeConfirmAuthed$ = command(
   },
 );
 
+async function usagePackMigrationSchemasAvailable(
+  db: Parameters<typeof usagePackSubscriptionSchemaAvailable>[0],
+): Promise<boolean> {
+  const [subscriptionSchema, invitationSchema, migrationSchema] =
+    await Promise.all([
+      usagePackSubscriptionSchemaAvailable(db),
+      usagePackInvitationPurchaseSchemaAvailable(db),
+      usagePackSubscriptionMigrationSchemaAvailable(db),
+    ]);
+  return subscriptionSchema && invitationSchema && migrationSchema;
+}
+
+const usagePackMigrationGetAuthed$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    const access = await set(usagePackManagementAccess$, signal);
+    if (!access.allowed) {
+      return access.response;
+    }
+    const db = set(writeDb$);
+    if (!(await usagePackMigrationSchemasAvailable(db))) {
+      return providerUnavailable("Usage pack migration is not ready");
+    }
+    signal.throwIfAborted();
+    const result = await getUsagePackMigrationState(db, access.auth.orgId);
+    signal.throwIfAborted();
+    if (result.status === "not_found") {
+      return notFound("Legacy subscription migration is not available");
+    }
+    if (result.status === "conflict") {
+      return conflict("Another subscription update is in progress");
+    }
+    return { status: 200 as const, body: result.state };
+  },
+);
+
+const usagePackMigrationPreviewAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const access = await set(usagePackManagementAccess$, signal);
+    if (!access.allowed) {
+      return access.response;
+    }
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingUsagePackMigrationContract.preview),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const db = set(writeDb$);
+    if (!(await usagePackMigrationSchemasAvailable(db))) {
+      return providerUnavailable("Usage pack migration is not ready");
+    }
+    const clerk = get(clerk$);
+    const [memberships, invitations] = await Promise.all([
+      listAllOrganizationMemberships(clerk.organizations, access.auth.orgId),
+      listAllPendingOrganizationInvitations(
+        clerk.organizations,
+        access.auth.orgId,
+      ),
+    ]);
+    signal.throwIfAborted();
+    const result = await previewUsagePackSubscriptionMigration(db, {
+      orgId: access.auth.orgId,
+      memberUsagePacks: bodyResult.data.memberUsagePacks,
+      owners: usagePackMigrationOwners(
+        memberships,
+        invitations,
+        access.auth.userId,
+      ),
+      signal,
+    });
+    if (result.status === "not_found") {
+      return notFound("Eligible legacy subscription not found");
+    }
+    if (result.status === "owners_changed") {
+      return badRequestMessage(
+        "Organization members changed; refresh billing and try again",
+      );
+    }
+    if (result.status === "conflict") {
+      return conflict("Another subscription update is in progress");
+    }
+    return { status: 200 as const, body: result.preview };
+  },
+);
+
+const usagePackMigrationConfirmAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const access = await set(usagePackManagementAccess$, signal);
+    if (!access.allowed) {
+      return access.response;
+    }
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingUsagePackMigrationContract.confirm),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const { migrationId } = get(
+      pathParamsOf(zeroBillingUsagePackMigrationContract.confirm),
+    );
+    const db = set(writeDb$);
+    if (!(await usagePackMigrationSchemasAvailable(db))) {
+      return providerUnavailable("Usage pack migration is not ready");
+    }
+    const clerk = get(clerk$);
+    const [memberships, invitations] = await Promise.all([
+      listAllOrganizationMemberships(clerk.organizations, access.auth.orgId),
+      listAllPendingOrganizationInvitations(
+        clerk.organizations,
+        access.auth.orgId,
+      ),
+    ]);
+    signal.throwIfAborted();
+    const ownerIds = usagePackMigrationOwners(
+      memberships,
+      invitations,
+      access.auth.userId,
+    ).map((owner) => {
+      return "userId" in owner ? owner.userId : owner.invitationId;
+    });
+    const result = await confirmUsagePackSubscriptionMigration(db, {
+      orgId: access.auth.orgId,
+      migrationId,
+      ownerIds,
+      signal,
+    });
+    if (result.status === "not_found") {
+      return notFound("Usage pack migration not found");
+    }
+    if (result.status === "expired") {
+      return badRequestMessage("Usage pack migration preview expired");
+    }
+    if (result.status === "owners_changed") {
+      return conflict(
+        "Organization members changed; create a new migration preview",
+      );
+    }
+    if (result.status === "conflict") {
+      return conflict("Usage pack migration is no longer available");
+    }
+    return { status: 200 as const, body: result.response };
+  },
+);
+
 const usagePackManagementGet$ = command(
   async ({ set }, signal: AbortSignal) => {
     if (!optionalEnv("STRIPE_SECRET_KEY")) {
@@ -854,6 +1055,49 @@ const usagePackSubscriptionChangePreview$ = command(
   },
 );
 
+const usagePackMigrationGet$ = command(async ({ set }, signal: AbortSignal) => {
+  if (!optionalEnv("STRIPE_SECRET_KEY")) {
+    return providerUnavailable("Billing not configured");
+  }
+  return await set(
+    authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      usagePackMigrationGetAuthed$,
+    ),
+    signal,
+  );
+});
+
+const usagePackMigrationPreview$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+    return await set(
+      authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        usagePackMigrationPreviewAuthed$,
+      ),
+      signal,
+    );
+  },
+);
+
+const usagePackMigrationConfirm$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+    return await set(
+      authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        usagePackMigrationConfirmAuthed$,
+      ),
+      signal,
+    );
+  },
+);
+
 const usagePackSubscriptionChangeConfirm$ = command(
   async ({ set }, signal: AbortSignal) => {
     if (!optionalEnv("STRIPE_SECRET_KEY")) {
@@ -963,5 +1207,17 @@ export const zeroBillingCheckoutRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
     handler: usagePackSubscriptionChangeConfirm$,
+  },
+  {
+    route: zeroBillingUsagePackMigrationContract.get,
+    handler: usagePackMigrationGet$,
+  },
+  {
+    route: zeroBillingUsagePackMigrationContract.preview,
+    handler: usagePackMigrationPreview$,
+  },
+  {
+    route: zeroBillingUsagePackMigrationContract.confirm,
+    handler: usagePackMigrationConfirm$,
   },
 ];

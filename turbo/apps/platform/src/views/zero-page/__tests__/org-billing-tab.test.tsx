@@ -4,6 +4,7 @@ import {
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
   zeroBillingUsagePackManagementContract,
+  zeroBillingUsagePackMigrationContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -768,6 +769,293 @@ describe("organization billing settings", () => {
     await expect(
       screen.findByRole("dialog", { name: "Review package change" }),
     ).resolves.toBeInTheDocument();
+  });
+
+  it("does not probe legacy migrations while usage packs are disabled", async () => {
+    let migrationCalls = 0;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Legacy Team Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeTeamBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingUsagePackMigrationContract.get,
+      ({ respond }) => {
+        migrationCalls += 1;
+        return respond(200, {
+          tier: "team",
+          status: "eligible",
+          migrationId: null,
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+
+    await openBillingTab();
+
+    expect(screen.getByText("Team plan")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Move to member packages"),
+    ).not.toBeInTheDocument();
+    expect(migrationCalls).toBe(0);
+  });
+
+  it("waits for legacy migration state before showing usage pack pricing", async () => {
+    const migrationReady = createDeferredPromise<void>(context.signal);
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Legacy Team Org",
+      role: "admin",
+    });
+    context.mocks.data.orgMembers({
+      name: "Legacy Team Org",
+      role: "admin",
+      members: [
+        {
+          userId: "user_1",
+          email: "alex@example.com",
+          firstName: "Alex",
+          lastName: "Chen",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+      pendingInvitations: [],
+      membershipRequests: [],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeTeamBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCatalogContract.get,
+      ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackMigrationContract.get,
+      async ({ respond }) => {
+        await migrationReady.promise;
+        return respond(200, {
+          tier: "team",
+          status: "eligible",
+          migrationId: null,
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await screen.findByText("Team plan");
+    click(buttonByText("Compare all plans"));
+
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Choose a plan" }),
+    ).not.toBeInTheDocument();
+
+    migrationReady.resolve(undefined);
+
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Choose a plan" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("previews and confirms an in-place legacy Team migration", async () => {
+    let migrationState = {
+      tier: "team" as const,
+      status: "eligible" as
+        | "eligible"
+        | "previewed"
+        | "applying"
+        | "pending_payment",
+      migrationId: null as string | null,
+      hostedInvoiceUrl: null as string | null,
+    };
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Legacy Team Org",
+      role: "admin",
+    });
+    context.mocks.data.orgMembers({
+      name: "Legacy Team Org",
+      role: "admin",
+      members: [
+        {
+          userId: "user_1",
+          email: "alex@example.com",
+          firstName: "Alex",
+          lastName: "Chen",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+      pendingInvitations: [
+        {
+          id: "invitation_1",
+          email: "pending@example.com",
+          role: "member",
+          createdAt: "2026-01-03T00:00:00Z",
+        },
+      ],
+      membershipRequests: [],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeTeamBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCatalogContract.get,
+      ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.get,
+      ({ respond }) => {
+        return respond(404, {
+          error: {
+            message: "Usage pack subscription not found",
+            code: "NOT_FOUND",
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackMigrationContract.get,
+      ({ respond }) => {
+        return respond(200, migrationState);
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackMigrationContract.preview,
+      ({ body, respond }) => {
+        expect(body.memberUsagePacks).toStrictEqual([
+          { memberId: "user_1", usagePackUsd: 20 },
+          { memberId: "invitation_1", usagePackUsd: 50 },
+        ]);
+        migrationState = {
+          ...migrationState,
+          status: "previewed",
+          migrationId: "3ea4b7cf-d71e-45dc-8273-8bc8b9712490",
+        };
+        return respond(200, {
+          migrationId: "3ea4b7cf-d71e-45dc-8273-8bc8b9712490",
+          tier: "team",
+          immediateAmountCents: 1500,
+          nextRecurringAmountCents: 23_000,
+          currency: "usd",
+          purchasedCredits: 70_000,
+          bonusCredits: 5555,
+          totalCredits: 75_555,
+          prorationDate: "2026-03-16T00:00:00Z",
+          expiresAt: "2026-03-16T00:30:00Z",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackMigrationContract.confirm,
+      ({ body, params, respond }) => {
+        expect(body).toStrictEqual({});
+        expect(params.migrationId).toBe("3ea4b7cf-d71e-45dc-8273-8bc8b9712490");
+        migrationState = {
+          ...migrationState,
+          status: "pending_payment",
+          hostedInvoiceUrl: "https://invoice.stripe.com/test-migration",
+        };
+        return respond(200, {
+          status: "pending_payment",
+          hostedInvoiceUrl: "https://invoice.stripe.com/test-migration",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await screen.findByText("Move to member packages");
+    click(buttonByText("Configure packages"));
+
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Choose a plan" }),
+    ).not.toBeInTheDocument();
+    const memberUsage = screen.getByRole("group", { name: "Member usage" });
+    expect(within(memberUsage).getByText("Alex Chen")).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("pending@example.com"),
+    ).toBeInTheDocument();
+    const pendingUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for pending@example.com",
+    });
+    click(pendingUsage);
+    click(
+      await screen.findByRole("option", {
+        name: "$50 · 54,321 credits · 8% off",
+      }),
+    );
+
+    click(buttonByText("Review migration"));
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review plan migration",
+    });
+    expect(within(reviewDialog).getByText("Due now")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$15.00")).toBeInTheDocument();
+    expect(
+      within(reviewDialog).getByText("Next recurring total"),
+    ).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$230.00")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("70,000")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("75,555")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("5,555")).toBeInTheDocument();
+
+    click(buttonByText("Confirm", reviewDialog));
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Waiting for Stripe payment before changing the subscription.",
+        ),
+      ).toBeInTheDocument();
+    });
+    const invoice = queryAllByRoleFast("link").find((candidate) => {
+      return candidate.textContent?.trim() === "View invoice";
+    });
+    if (!invoice) {
+      throw new Error("View invoice link not found");
+    }
+    expect(invoice).toHaveAttribute(
+      "href",
+      "https://invoice.stripe.com/test-migration",
+    );
   });
 
   it("previews and confirms a current member package change inline", async () => {

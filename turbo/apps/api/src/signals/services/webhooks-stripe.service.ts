@@ -68,6 +68,10 @@ import {
   handleUsagePackInvitationCheckoutPaid,
   handleUsagePackInvitationPaymentIntentSucceeded,
 } from "./usage-pack-invitation-purchase.service";
+import {
+  handleUsagePackMigrationInvoicePaid,
+  handleUsagePackMigrationSubscriptionUpdated,
+} from "./usage-pack-subscription-migration.service";
 
 const L = logger("WebhookStripe");
 
@@ -3283,6 +3287,14 @@ async function handleInvoicePaid(
   getClerk: ClerkClientProvider,
   invoice: InvoiceInput,
 ): Promise<string | null> {
+  const migrationResult = await handleUsagePackMigrationInvoicePaid(
+    db,
+    invoice as Stripe.Invoice,
+  );
+  if (migrationResult.handled) {
+    return migrationResult.orgId;
+  }
+
   const usagePackResult = await handleUsagePackInvoicePaid(db, invoice);
   if (usagePackResult.handled) {
     return usagePackResult.orgId;
@@ -3738,6 +3750,13 @@ async function handleSubscriptionUpdated(
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
 ): Promise<readonly string[]> {
+  const migrationOutcome = await handleUsagePackMigrationSubscriptionUpdated(
+    db,
+    subscription as Stripe.Subscription,
+  );
+  if (migrationOutcome.handled) {
+    return migrationOutcome.orgId ? [migrationOutcome.orgId] : [];
+  }
   const usagePackOutcome = await handleUsagePackSubscriptionUpdated(
     db,
     subscription,

@@ -17,11 +17,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@vm0/ui/components/ui/dialog";
 import type {
   MemberUsagePack,
   UsagePackCatalogItem,
   UsagePackManagementResponse,
   UsagePackSubscriptionChangePreviewResponse,
+  UsagePackMigrationPreviewResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -36,6 +44,8 @@ import {
   closeUsagePackSubscriptionChangePreview$,
   confirmUsagePackSubscriptionChange$,
   previewUsagePackSubscriptionChange$,
+  confirmUsagePackMigration$,
+  previewUsagePackMigration$,
   startUsagePackCheckout$,
   type BillingTier,
   usagePackCatalogAsync$,
@@ -56,6 +66,8 @@ import {
   setSelectedUsagePackPlan$,
   usagePackSubscriptionChangePreview$,
   usagePackPricingPageRef$,
+  closeUsagePackMigrationPreview$,
+  usagePackMigrationPreview$,
   type MemberUsageSelection,
   type UsagePackPlanTier,
   type UsagePackUsd,
@@ -786,7 +798,7 @@ function SelectedPlanSummary({
   onChange,
   plan,
 }: {
-  readonly onChange: () => void;
+  readonly onChange?: () => void;
   readonly plan: UsagePackPlan;
 }) {
   const name = planName(plan.tier);
@@ -813,11 +825,13 @@ function SelectedPlanSummary({
           { price: formatUsd(plan.basePriceUsd, 0) },
         )}
       </p>
-      <Button type="button" variant="outline" size="sm" onClick={onChange}>
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.changePlan;
-        })}
-      </Button>
+      {onChange && (
+        <Button type="button" variant="outline" size="sm" onClick={onChange}>
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.changePlan;
+          })}
+        </Button>
+      )}
     </section>
   );
 }
@@ -1035,6 +1049,61 @@ function PlanSelectionStep({
       {error && <p className="text-sm text-destructive">{error}</p>}
     </>
   );
+}
+
+function useUsagePackMembers(): readonly MemberDisplay[] | undefined {
+  const userLoadable = useLastLoadable(currentUserInfo$);
+  const membersLoadable = useLoadable(orgMembers$);
+  const pendingInvitationsLoadable = useLoadable(orgPendingInvitations$);
+  const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
+  const orgMembers =
+    membersLoadable.state === "hasData" ? membersLoadable.data : undefined;
+  const pendingInvitations =
+    pendingInvitationsLoadable.state === "hasData"
+      ? pendingInvitationsLoadable.data
+      : undefined;
+  if (!user || !orgMembers || !pendingInvitations) {
+    return undefined;
+  }
+  return [
+    {
+      id: user.id,
+      email: user.primaryEmailAddress?.emailAddress,
+      imageUrl: user.imageUrl,
+      isCurrent: true,
+      isPending: false,
+      name:
+        user.fullName ??
+        user.primaryEmailAddress?.emailAddress ??
+        i18n.t(($) => {
+          return $.billing.plans.usagePacks.currentMember;
+        }),
+    },
+    ...orgMembers
+      .filter((member) => {
+        return member.userId !== user.id;
+      })
+      .map((member): MemberDisplay => {
+        return {
+          id: member.userId,
+          email: member.email,
+          imageUrl: member.imageUrl,
+          isCurrent: false,
+          isPending: false,
+          name: memberName(member),
+        };
+      }),
+    ...pendingInvitations.map((invitation): MemberDisplay => {
+      return {
+        id: invitation.id,
+        email: invitation.email,
+        imageUrl: undefined,
+        isCurrent: false,
+        isPending: true,
+        name: invitation.email,
+      };
+    }),
+  ];
 }
 
 function ManagedSubscriptionSummaryDetails({
@@ -1797,65 +1866,11 @@ function PackageConfigurationStep({
   readonly onBack: () => void;
   readonly plan: UsagePackPlan;
 }) {
-  const userLoadable = useLastLoadable(currentUserInfo$);
-  const membersLoadable = useLoadable(orgMembers$);
-  const pendingInvitationsLoadable = useLoadable(orgPendingInvitations$);
   const selections = useGet(memberUsageSelections$);
-  const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
-  const orgMembers =
-    membersLoadable.state === "hasData" ? membersLoadable.data : undefined;
-  const pendingInvitations =
-    pendingInvitationsLoadable.state === "hasData"
-      ? pendingInvitationsLoadable.data
-      : undefined;
-  const activeMembers: readonly MemberDisplay[] | undefined =
-    user && orgMembers
-      ? [
-          {
-            id: user.id,
-            email: user.primaryEmailAddress?.emailAddress,
-            imageUrl: user.imageUrl,
-            isCurrent: true,
-            isPending: false,
-            name:
-              user.fullName ??
-              user.primaryEmailAddress?.emailAddress ??
-              i18n.t(($) => {
-                return $.billing.plans.usagePacks.currentMember;
-              }),
-          },
-          ...orgMembers
-            .filter((member) => {
-              return member.userId !== user.id;
-            })
-            .map((member): MemberDisplay => {
-              return {
-                id: member.userId,
-                email: member.email,
-                imageUrl: member.imageUrl,
-                isCurrent: false,
-                isPending: false,
-                name: memberName(member),
-              };
-            }),
-        ]
-      : undefined;
-  const allMembers: readonly MemberDisplay[] | undefined =
-    activeMembers && pendingInvitations
-      ? [
-          ...activeMembers,
-          ...pendingInvitations.map((invitation): MemberDisplay => {
-            return {
-              id: invitation.id,
-              email: invitation.email,
-              imageUrl: undefined,
-              isCurrent: false,
-              isPending: true,
-              name: invitation.email,
-            };
-          }),
-        ]
-      : undefined;
+  const allMembers = useUsagePackMembers();
+  const activeMembers = allMembers?.filter((member) => {
+    return !member.isPending;
+  });
   const members = management
     ? management.supportsMemberAdditions
       ? activeMembers
@@ -1900,6 +1915,296 @@ function PackageConfigurationStep({
         />
       )}
     </>
+  );
+}
+
+function MigrationOrderSummary({
+  members,
+  plan,
+  selections,
+  totals,
+}: {
+  readonly members: readonly MemberDisplay[] | undefined;
+  readonly plan: UsagePackPlan;
+  readonly selections: Readonly<Record<string, MemberUsageSelection>>;
+  readonly totals: MemberUsageTotals;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [previewLoadable, previewMigration] = useLoadableSet(
+    previewUsagePackMigration$,
+  );
+  const previewing = previewLoadable.state === "loading";
+  const previewError = previewLoadable.state === "hasError";
+  const monthlyTotal = plan.basePriceUsd + totals.totalUsd;
+  return (
+    <section
+      aria-label={i18n.t(($) => {
+        return $.billing.plans.usagePacks.orderSummary;
+      })}
+      className="rounded-xl bg-card p-4 zero-border"
+    >
+      <h4 className="text-sm font-medium text-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.migration.title;
+        })}
+      </h4>
+      <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.migration.reviewDescription;
+        })}
+      </p>
+      <div className="mt-4 space-y-2.5 text-[13px]">
+        <div className="flex items-center justify-between gap-4 text-muted-foreground">
+          <span>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.memberPackages;
+            })}
+          </span>
+          <span>{formatUsd(totals.totalUsd, 0)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 text-muted-foreground">
+          <span>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.totalCredits;
+            })}
+          </span>
+          <span>{formatLocalizedNumber(totals.totalCredits)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 border-t border-border pt-3 text-foreground">
+          <span className="font-medium">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.monthlyTotal;
+            })}
+          </span>
+          <span className="text-lg font-semibold">
+            {i18n.t(
+              ($) => {
+                return $.billing.plans.pricePerMonth;
+              },
+              { price: formatUsd(monthlyTotal, 0) },
+            )}
+          </span>
+        </div>
+      </div>
+      {previewError && (
+        <p className="mt-3 text-xs text-destructive">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.error;
+          })}
+        </p>
+      )}
+      <Button
+        type="button"
+        className="mt-4 h-10 w-full text-sm font-medium"
+        disabled={!members || previewing}
+        onClick={() => {
+          if (!members) {
+            return;
+          }
+          detach(
+            previewMigration(
+              checkoutMemberUsagePacks(members, selections),
+              pageSignal,
+            ),
+            Reason.DomCallback,
+          );
+        }}
+      >
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.migration.review;
+        })}
+      </Button>
+    </section>
+  );
+}
+
+function MigrationReviewDialog({
+  onComplete,
+}: {
+  readonly onComplete: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const preview = useGet(usagePackMigrationPreview$);
+  const closePreview = useSet(closeUsagePackMigrationPreview$);
+  const [confirmLoadable, confirmMigration] = useLoadableSet(
+    confirmUsagePackMigration$,
+  );
+  const confirming = confirmLoadable.state === "loading";
+  const error = confirmLoadable.state === "hasError";
+  const handleConfirm = async (): Promise<void> => {
+    if (!preview) {
+      return;
+    }
+    await confirmMigration(preview.migrationId, pageSignal);
+    onComplete();
+  };
+  return (
+    <Dialog
+      open={preview !== null}
+      onOpenChange={(open) => {
+        if (!open && !confirming) {
+          closePreview();
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.reviewTitle;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.confirmDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        {preview && <MigrationPreviewDetails preview={preview} />}
+        {error && (
+          <p className="text-sm text-destructive">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.error;
+            })}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            disabled={confirming}
+            onClick={closePreview}
+          >
+            {i18n.t(($) => {
+              return $.billing.common.cancel;
+            })}
+          </Button>
+          <Button
+            disabled={confirming}
+            onClick={() => {
+              detach(handleConfirm(), Reason.DomCallback);
+            }}
+          >
+            {confirming
+              ? i18n.t(($) => {
+                  return $.billing.plans.usagePacks.management.confirming;
+                })
+              : i18n.t(($) => {
+                  return $.billing.common.confirm;
+                })}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MigrationPreviewDetails({
+  preview,
+}: {
+  readonly preview: UsagePackMigrationPreviewResponse;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl bg-muted/30 p-4 text-sm">
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.management.immediateAmount;
+          })}
+        </span>
+        <span className="font-medium text-foreground">
+          {formatUsd(preview.immediateAmountCents / 100, 2)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.management.nextRecurring;
+          })}
+        </span>
+        <span className="font-medium text-foreground">
+          {formatUsd(preview.nextRecurringAmountCents / 100, 2)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.purchasedCredits;
+          })}
+        </span>
+        <span className="font-medium text-foreground">
+          {formatLocalizedNumber(preview.purchasedCredits)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.discountBonusCredits;
+          })}
+        </span>
+        <span className="font-medium text-foreground">
+          {formatLocalizedNumber(preview.bonusCredits)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.totalCredits;
+          })}
+        </span>
+        <span className="font-medium text-foreground">
+          {formatLocalizedNumber(preview.totalCredits)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function UsagePackMigrationPage({
+  onBack,
+  tier,
+}: {
+  readonly onBack: () => void;
+  readonly tier: UsagePackPlanTier;
+}) {
+  const selections = useGet(memberUsageSelections$);
+  const members = useUsagePackMembers();
+  const usagePackPricingPageRef = useSet(usagePackPricingPageRef$);
+  const catalogLoadable = useLoadable(usagePackCatalogAsync$);
+  const catalog =
+    catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
+  const plan = USAGE_PACK_PLANS.find((candidate) => {
+    return candidate.tier === tier;
+  });
+  if (!plan) {
+    throw new Error(`Usage pack migration plan is missing for ${tier}`);
+  }
+  const totals = catalog
+    ? memberUsageTotals(members ?? [], selections, catalog)
+    : { bonusCredits: 0, totalCredits: 0, totalUsd: 0 };
+  return (
+    <div
+      className="flex flex-col gap-5 outline-none"
+      ref={usagePackPricingPageRef}
+      role="group"
+      tabIndex={-1}
+    >
+      {!catalog ? (
+        <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
+      ) : (
+        <>
+          <PricingPageHeader onBack={onBack} step={2} />
+          <SelectedPlanSummary plan={plan} />
+          <MemberUsageConfiguration catalog={catalog} members={members} />
+          <MigrationOrderSummary
+            members={members}
+            plan={plan}
+            selections={selections}
+            totals={totals}
+          />
+          <MigrationReviewDialog onComplete={onBack} />
+        </>
+      )}
+    </div>
   );
 }
 

@@ -3,6 +3,7 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingUsagePackCheckoutContract,
   zeroBillingUsagePackCreditsContract,
+  zeroBillingUsagePackMigrationContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingPortalContract,
@@ -93,6 +94,15 @@ export const apiBillingHandlers = [
       purchasedCredits: 0,
       bonusCredits: 0,
       creditGrants: [],
+    });
+  }),
+
+  mockApi(zeroBillingUsagePackMigrationContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        message: "Legacy subscription migration is not available",
+        code: "NOT_FOUND",
+      },
     });
   }),
 

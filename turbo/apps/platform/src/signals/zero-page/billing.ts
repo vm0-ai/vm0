@@ -6,6 +6,7 @@ import {
   zeroBillingUsagePackCheckoutContract,
   zeroBillingUsagePackManagementContract,
   zeroBillingUsagePackCreditsContract,
+  zeroBillingUsagePackMigrationContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -17,7 +18,9 @@ import {
   type BillingStatusResponse,
   type ConcurrencySubscriptionChangePreviewResponse,
   type MemberUsagePack,
+  type UsagePackMigrationStateResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
@@ -34,7 +37,9 @@ import {
   capturePaidOnboardingRedirectToStripe,
 } from "../bootstrap/paid-funnel-telemetry.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
+  setUsagePackMigrationPreview$,
   setUsagePackSubscriptionChangePreview$,
   usagePackSubscriptionChangePreview$,
 } from "./settings/usage-pack-pricing-state.ts";
@@ -219,6 +224,7 @@ function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
 
 const billingReload$ = state(0);
 const usagePackManagementReload$ = state(0);
+const usagePackMigrationReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
 const internalRestoreDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
@@ -371,6 +377,19 @@ export const usagePackCreditsAsync$ = computed(async (get) => {
   return result.body;
 });
 
+export const usagePackMigrationAsync$ = computed(
+  async (get): Promise<UsagePackMigrationStateResponse | null> => {
+    get(usagePackMigrationReload$);
+    if (!get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
+      return null;
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const result = await accept(client.get(), [200, 403, 404, 409, 503]);
+    return result.status === 200 ? result.body : null;
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -384,6 +403,12 @@ export const reloadBillingStatus$ = command(({ set }) => {
 
 export const reloadUsagePackManagement$ = command(({ set }) => {
   set(usagePackManagementReload$, (value) => {
+    return value + 1;
+  });
+});
+
+const reloadUsagePackMigration$ = command(({ set }) => {
+  set(usagePackMigrationReload$, (value) => {
     return value + 1;
   });
 });
@@ -576,6 +601,48 @@ export const startUsagePackCheckout$ = command(
     } else {
       window.location.href = result.body.url;
     }
+  },
+);
+
+export const previewUsagePackMigration$ = command(
+  async (
+    { get, set },
+    memberUsagePacks: readonly MemberUsagePack[],
+    signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const result = await accept(
+      client.preview({
+        body: { memberUsagePacks: [...memberUsagePacks] },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(setUsagePackMigrationPreview$, result.body);
+    return result.body;
+  },
+);
+
+export const confirmUsagePackMigration$ = command(
+  async ({ get, set }, migrationId: string, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const result = await accept(
+      client.confirm({
+        params: { migrationId },
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(setUsagePackMigrationPreview$, null);
+    set(reloadUsagePackMigration$);
+    set(reloadUsagePackManagement$);
+    set(reloadBillingStatus$);
+    return result.body;
   },
 );
 

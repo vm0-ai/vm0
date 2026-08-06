@@ -39,6 +39,7 @@ import {
 } from "./usage-pack-subscription.service";
 import { reconcileUsagePackCreditRefunds } from "./usage-pack-credit-refund.service";
 import { reconcileUsagePackInvitationPurchases } from "./usage-pack-invitation-purchase.service";
+import { reconcileUsagePackSubscriptionMigrations } from "./usage-pack-subscription-migration.service";
 import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
 import type { Tx } from "../../lib/db-types";
 
@@ -1003,6 +1004,9 @@ export const reconcileBillingEntitlements$ = command(
       now.getTime() - PAYMENT_FAILURE_DOWNGRADE_GRACE_MS,
     );
 
+    const usagePackMigrationReconciliation =
+      await reconcileUsagePackSubscriptionMigrations(db, signal);
+    signal.throwIfAborted();
     const usagePackReconciliation = await reconcileUsagePackSubscriptions(
       db,
       signal,
@@ -1114,6 +1118,12 @@ export const reconcileBillingEntitlements$ = command(
       L.warn("usage pack subscriptions reconciled from Stripe", {
         count: usagePackReconciliation.reconciled,
         orgIds: usagePackReconciliation.orgIds.slice(0, 10),
+      });
+    }
+    if (usagePackMigrationReconciliation.reconciled > 0) {
+      L.warn("usage pack subscription migrations reconciled from Stripe", {
+        count: usagePackMigrationReconciliation.reconciled,
+        orgIds: usagePackMigrationReconciliation.orgIds.slice(0, 10),
       });
     }
     if (invitationPurchasesReconciled > 0) {

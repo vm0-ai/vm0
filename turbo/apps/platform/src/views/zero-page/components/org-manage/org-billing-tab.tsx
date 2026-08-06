@@ -46,6 +46,7 @@ import {
   closeRestoreDialog$,
   restoreDialogOpen$,
   restorePlan$,
+  usagePackMigrationAsync$,
   type BillingTier,
   type ConcurrencyChangeMode,
   type ConcurrencyConfirmDialogState,
@@ -61,6 +62,7 @@ import {
 import type {
   BillingStatusResponse,
   ConcurrencySubscriptionChangePreviewResponse,
+  UsagePackMigrationStateResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import {
   Dialog,
@@ -89,7 +91,10 @@ import {
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
-import { UsagePackPricingPage } from "./usage-pack-pricing-page.tsx";
+import {
+  UsagePackMigrationPage,
+  UsagePackPricingPage,
+} from "./usage-pack-pricing-page.tsx";
 
 const PLANS = [
   {
@@ -2123,14 +2128,128 @@ function ConcurrencyBillingSection({
   );
 }
 
+function usagePackMigrationStatusLabel(
+  migration: UsagePackMigrationStateResponse,
+): string {
+  return migration.status === "pending_payment"
+    ? i18n.t(($) => {
+        return $.billing.plans.usagePacks.migration.pendingPayment;
+      })
+    : i18n.t(($) => {
+        return $.billing.plans.usagePacks.migration.processing;
+      });
+}
+
+function UsagePackMigrationAvailability({
+  migration,
+  onOpen,
+}: {
+  readonly migration: UsagePackMigrationStateResponse | null;
+  readonly onOpen?: () => void;
+}) {
+  if (!migration) {
+    return null;
+  }
+  const configurable =
+    migration.status === "eligible" || migration.status === "previewed";
+  return (
+    <section className="flex flex-col gap-3">
+      <div>
+        <h3 className="text-sm font-medium text-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.title;
+          })}
+        </h3>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">
+          {i18n.t(
+            ($) => {
+              return $.billing.plans.usagePacks.migration.description;
+            },
+            { plan: planName(migration.tier) },
+          )}
+        </p>
+      </div>
+      <div className="flex items-center justify-between gap-4 rounded-xl bg-card px-5 py-4 zero-border">
+        <p className="text-sm text-muted-foreground">
+          {configurable
+            ? i18n.t(($) => {
+                return $.billing.plans.usagePacks.migration.ready;
+              })
+            : usagePackMigrationStatusLabel(migration)}
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          {migration.hostedInvoiceUrl && (
+            <Button asChild variant="outline" size="sm" className="h-8 text-xs">
+              <a
+                href={migration.hostedInvoiceUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {i18n.t(($) => {
+                  return $.billing.plans.usagePacks.migration.invoice;
+                })}
+                <IconExternalLink size={13} stroke={1.5} />
+              </a>
+            </Button>
+          )}
+          {configurable && onOpen && (
+            <Button size="sm" className="h-8 text-xs" onClick={onOpen}>
+              {i18n.t(($) => {
+                return $.billing.plans.usagePacks.migration.action;
+              })}
+            </Button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function UsagePackMigrationProgressPage({
+  migration,
+  onBack,
+}: {
+  readonly migration: UsagePackMigrationStateResponse;
+  readonly onBack: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center gap-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onBack}
+          aria-label={i18n.t(($) => {
+            return $.billing.common.back;
+          })}
+        >
+          <IconArrowLeft size={16} stroke={1.8} />
+        </Button>
+        <h3 className="text-sm font-medium text-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.title;
+          })}
+        </h3>
+      </div>
+      <UsagePackMigrationAvailability migration={migration} />
+    </div>
+  );
+}
+
 function BillingPricingPage({
   currentTier,
+  migration,
+  migrationLoading,
   onBack,
   onRestore,
   periodEnd,
   scheduledChange,
 }: {
   readonly currentTier: BillingTier;
+  readonly migration: UsagePackMigrationStateResponse | null;
+  readonly migrationLoading: boolean;
   readonly onBack: () => void;
   readonly onRestore: () => void;
   readonly periodEnd: string | null | undefined;
@@ -2139,9 +2258,20 @@ function BillingPricingPage({
   const featureSwitches = useGet(featureSwitch$);
   const usagePackPlansEnabled =
     featureSwitches[FeatureSwitchKey.UsagePackPlans];
+  const migrationInProgress =
+    migration?.status === "applying" || migration?.status === "pending_payment";
   return (
     <>
-      {usagePackPlansEnabled ? (
+      {migrationLoading ? (
+        <div
+          role="status"
+          className="h-80 animate-pulse rounded-xl bg-muted/40"
+        />
+      ) : migration && migrationInProgress ? (
+        <UsagePackMigrationProgressPage migration={migration} onBack={onBack} />
+      ) : migration ? (
+        <UsagePackMigrationPage tier={migration.tier} onBack={onBack} />
+      ) : usagePackPlansEnabled ? (
         <UsagePackPricingPage currentTier={currentTier} onBack={onBack} />
       ) : (
         <PricingPage
@@ -2162,6 +2292,12 @@ function BillingPricingPage({
   );
 }
 
+function shouldWaitForUsagePackMigration(
+  enabled: boolean,
+  loading: boolean,
+): boolean {
+  return enabled && loading;
+}
 export function OrgBillingTab() {
   const { t } = useTranslation();
   const featureSwitches = useGet(featureSwitch$);
@@ -2180,10 +2316,19 @@ export function OrgBillingTab() {
   const openRestore = useSet(openRestoreDialog$);
   const [portalLoadable, portal] = useLoadableSet(openBillingPortal$);
   const statusLoadable = useLastLoadable(billingStatusAsync$);
+  const migrationLoadable = useLastLoadable(usagePackMigrationAsync$);
+  const usagePackPlansEnabled =
+    featureSwitches[FeatureSwitchKey.UsagePackPlans];
   const loading = portalLoadable.state === "loading";
 
   const status =
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
+  const migration =
+    migrationLoadable.state === "hasData" ? migrationLoadable.data : null;
+  const migrationLoading = shouldWaitForUsagePackMigration(
+    usagePackPlansEnabled,
+    migrationLoadable.state === "loading",
+  );
   const statusLoading = statusLoadable.state === "loading";
   const statusError = statusLoadable.state === "hasError";
   const capabilities = billingControlCapabilities(status);
@@ -2236,6 +2381,8 @@ export function OrgBillingTab() {
     return (
       <BillingPricingPage
         currentTier={currentTier}
+        migration={migration}
+        migrationLoading={migrationLoading}
         scheduledChange={scheduledChange}
         periodEnd={periodEnd}
         onBack={() => {
@@ -2390,6 +2537,12 @@ export function OrgBillingTab() {
         </div>
       </section>
 
+      <UsagePackMigrationAvailability
+        migration={migration}
+        onOpen={() => {
+          return setPricingOpen(true);
+        }}
+      />
       {showBuyCredits && (
         <div ref={buyCreditsScrollRef}>
           <BuyCreditsSection />

@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import {
+  type UsagePackMigrationPreviewResponse,
   USAGE_PACKS_USD,
   type UsagePackManagementResponse,
   type UsagePackSubscriptionChangePreviewResponse,
@@ -35,6 +36,8 @@ const internalMemberUsageSelections$ = state<
 >({});
 const internalUsagePackSubscriptionChangePreview$ =
   state<UsagePackSubscriptionChangePreviewResponse | null>(null);
+const internalUsagePackMigrationPreview$ =
+  state<UsagePackMigrationPreviewResponse | null>(null);
 
 export const memberUsageSelections$ = computed((get) => {
   return get(internalMemberUsageSelections$);
@@ -48,16 +51,31 @@ export const usagePackSubscriptionChangePreview$ = computed((get) => {
   return get(internalUsagePackSubscriptionChangePreview$);
 });
 
+export const usagePackMigrationPreview$ = computed((get) => {
+  return get(internalUsagePackMigrationPreview$);
+});
+
 export const setSelectedUsagePackPlan$ = command(
   ({ set }, plan: UsagePackPlanTier | null) => {
     set(internalSelectedUsagePackPlan$, plan);
   },
 );
 
+export const setUsagePackMigrationPreview$ = command(
+  ({ set }, preview: UsagePackMigrationPreviewResponse | null) => {
+    set(internalUsagePackMigrationPreview$, preview);
+  },
+);
+
+export const closeUsagePackMigrationPreview$ = command(({ set }) => {
+  set(internalUsagePackMigrationPreview$, null);
+});
+
 export const resetUsagePackPricing$ = command(({ set }) => {
   set(internalSelectedUsagePackPlan$, null);
   set(internalMemberUsageSelections$, {});
   set(internalUsagePackSubscriptionChangePreview$, null);
+  set(internalUsagePackMigrationPreview$, null);
 });
 
 export const setUsagePackSubscriptionChangePreview$ = command(
