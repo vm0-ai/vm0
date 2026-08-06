@@ -21,7 +21,6 @@ import { click, fill } from "../../../__tests__/page-helper.ts";
 import {
   expectQueuedMessages,
   mockChatLifecycle,
-  sendQueuedMessage,
 } from "./chat-test-helpers.ts";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../../signals/chat-page/workflow-prompt-action";
 import {
@@ -653,6 +652,21 @@ describe("chat lifecycle", () => {
           },
           createdAt: "2026-06-09T10:00:02Z",
         },
+        {
+          id: "msg-goal-morning-brief",
+          eventType: "input.prompt",
+          role: "user",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "First queued follow-up" },
+              { type: "morning_brief", briefDate: "2026-06-09" },
+            ],
+          },
+          runId: undefined,
+          createdAt: "2026-06-09T10:00:03Z",
+        },
       ],
       activeRunIds: ["run-active"],
     });
@@ -685,7 +699,6 @@ describe("chat lifecycle", () => {
     expect(screen.getAllByText("Drive the release to merge")).toHaveLength(1);
 
     // The goal is the lowest-priority row: it sits after every queued message.
-    await sendQueuedMessage(user, "First queued follow-up");
     await expectQueuedMessages(["First queued follow-up"]);
     const goalRow = screen.getByLabelText("Active goal");
     const strip = goalRow.closest('[role="list"]');

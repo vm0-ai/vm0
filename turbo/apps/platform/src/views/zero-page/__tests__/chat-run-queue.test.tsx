@@ -21,7 +21,6 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import {
   activeRunComposer,
-  expectQueuedMessages,
   mockChatLifecycle,
   PLACEHOLDER,
   sendQueuedMessage,
@@ -182,7 +181,14 @@ function mockCancellationRecoveryQueue(options?: {
       {
         id: `${THREAD_ID}-queued-user`,
         role: "user",
-        content: "Continue after recovery",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Continue after recovery" },
+            { type: "morning_brief", briefDate: "2026-07-30" },
+          ],
+        },
         runId: undefined,
         createdAt: "2026-07-30T10:00:02Z",
       },
@@ -213,7 +219,7 @@ function mockCancellationRecoveryQueue(options?: {
 }
 
 describe("chat run queue", () => {
-  it("renders pending prompts inline when chat steer is enabled", async () => {
+  it("renders pending prompts inline", async () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       activeRunIds: ["run-active"],
@@ -276,7 +282,6 @@ describe("chat run queue", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ChatSteer]: true },
     });
 
     await expect(
@@ -322,7 +327,6 @@ describe("chat run queue", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ChatSteer]: true },
     });
 
     await screen.findByText("Still working.");
@@ -570,6 +574,7 @@ describe("chat run queue", () => {
                 titleSnapshot: "Project Alpha",
               },
               { type: "text", text: " then\ncontinue" },
+              { type: "morning_brief", briefDate: "2026-06-09" },
             ],
           },
           createdAt: "2026-06-09T10:00:02Z",
@@ -649,43 +654,6 @@ describe("chat run queue", () => {
     await waitFor(() => {
       expect(screen.getByText("First new-thread message")).toBeInTheDocument();
     });
-  });
-
-  it("replays recalled queued content during an active run", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockActiveRunThread(THREAD_ID);
-
-    detachedSetupPage({ context, path: CHAT_PATH });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    await sendQueuedMessage(user, "First queued follow-up");
-    await sendQueuedMessage(user, "Second queued follow-up");
-    await expectQueuedMessages([
-      "First queued follow-up",
-      "Second queued follow-up",
-    ]);
-
-    click(screen.getAllByLabelText("Remove queued message")[0]!);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("textbox", { name: "Message" }),
-      ).toHaveTextContent("First queued follow-up");
-    });
-
-    await fill(
-      screen.getByRole("textbox", { name: "Message" }),
-      "Replayed follow-up",
-    );
-    await user.keyboard("{Enter}");
-
-    await expectQueuedMessages([
-      "Second queued follow-up",
-      "Replayed follow-up",
-    ]);
   });
 
   it("omits model selection when queueing a follow-up on an existing thread", async () => {
@@ -775,7 +743,7 @@ describe("chat run queue", () => {
     expect(queuedBodies[0]?.content).toBe("排队完整内容");
   });
 
-  it("queues when the hydrated model needs server reconciliation", async () => {
+  it("renders a server-reconciled follow-up inline", async () => {
     const user = userEvent.setup({ delay: null });
     const queuedBodies: QueuedMessageCapture[] = [];
     context.mocks.data.orgModelPolicies([]);
@@ -792,14 +760,13 @@ describe("chat run queue", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
     const composer = await activeRunComposer();
-    await fill(composer, "Keep this queued draft");
+    await fill(composer, "Keep this follow-up");
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(queuedBodies).toHaveLength(1);
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Keep this queued draft",
-      );
+      expect(screen.getByText("Keep this follow-up")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     });
     expect(queuedBodies[0]?.modelSelection).toBeUndefined();
     expect(
@@ -852,7 +819,7 @@ describe("chat run queue", () => {
     });
   });
 
-  it("queues a video-only follow-up for a fallback-enabled text-only model", async () => {
+  it("renders a video-only follow-up inline for a fallback-enabled text-only model", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000902";
     let queuedBody: QueuedMessageCapture | null = null;
@@ -921,10 +888,9 @@ describe("chat run queue", () => {
     await user.click(await screen.findByLabelText("Send"));
 
     await waitFor(() => {
-      expect(screen.getByText("1 message waiting")).toBeInTheDocument();
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "[File: queued.mp4]",
-      );
+      expect(screen.getByLabelText("Preview queued.mp4")).toBeInTheDocument();
+      expect(screen.queryByText("1 message waiting")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
       expect(queuedBody).toMatchObject({
         content: "(see attached files)",
         hasTextContent: false,
@@ -941,7 +907,7 @@ describe("chat run queue", () => {
     });
   });
 
-  it("recalls queued content and clears the thinking indicator when the active run is stopped", async () => {
+  it("stops an active run after inline steering and clears the thinking indicator", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -950,7 +916,11 @@ describe("chat run queue", () => {
     await startActiveRun(user);
     await sendQueuedMessage(user, "First queued");
     await sendQueuedMessage(user, "Second queued");
-    await expectQueuedMessages(["First queued", "Second queued"]);
+    await waitFor(() => {
+      expect(screen.getByText("First queued")).toBeInTheDocument();
+      expect(screen.getByText("Second queued")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    });
 
     click(screen.getByLabelText("Stop"));
 
@@ -963,6 +933,8 @@ describe("chat run queue", () => {
       expect(
         screen.getByText("Paused mid-thought — pick it back up whenever."),
       ).toBeInTheDocument();
+      expect(screen.getByText("First queued")).toBeInTheDocument();
+      expect(screen.getByText("Second queued")).toBeInTheDocument();
     });
   });
 });

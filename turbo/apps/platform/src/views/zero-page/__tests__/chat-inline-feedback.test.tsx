@@ -472,90 +472,12 @@ describe("chat inline feedback", () => {
     });
   });
 
-  it("restores queued inline feedback as a userMessage draft", async () => {
+  it("restores queued Morning Brief feedback as a userMessage draft", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000706";
     const assistantReply = "The rollout plan needs a clearer owner.";
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    const queuedEvents: RunCreateCapture[] = [];
-    const draftPatches: Record<string, unknown>[] = [];
-
-    context.mocks.data.orgModelPolicies([
-      {
-        id: "00000000-0000-4000-a000-000000000706",
-        model: "claude-sonnet-4-6",
-        modelLabel: "Claude Sonnet 4.6",
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-        routeStatus: "valid",
-        routeStatusReason: null,
-        createdAt: "2026-07-14T00:00:00.000Z",
-        updatedAt: "2026-07-14T00:00:00.000Z",
-      },
-    ]);
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Queued feedback",
-      selectedModel: "claude-sonnet-4-6",
-      chatEvents: [
-        {
-          id: "msg-queued-feedback-user",
-          role: "user",
-          content: "Review this rollout plan",
-          runId: "run-queued-feedback",
-          createdAt: "2026-07-26T10:00:00Z",
-        },
-        {
-          id: "msg-queued-feedback-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-queued-feedback",
-          createdAt: "2026-07-26T10:00:01Z",
-        },
-      ],
-      activeRunIds: ["run-queued-feedback"],
-      onQueuedEventAppend: (body) => {
-        queuedEvents.push(body);
-      },
-    });
-    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
-      return respond(204);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-    });
-
-    click(await screen.findByLabelText("Template"));
-    click(
-      await screen.findByLabelText(
-        `Preview ${template.title} at current slide`,
-      ),
-    );
-    click(await screen.findByLabelText("Select style Award night"));
-    click(await screen.findByLabelText(`Select template ${template.title}`));
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
-    });
-
-    selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
-    pastePlainText(
-      await findFeedbackNote(),
-      "Name the owner and explain the complete result.",
-    );
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(queuedEvents).toHaveLength(1);
-    });
-    expect(queuedEvents[0]?.userMessage).toStrictEqual({
+    const recalledUserMessage = {
       version: 1,
       parts: [
         {
@@ -581,6 +503,57 @@ describe("chat inline feedback", () => {
           ],
         },
       ],
+    } satisfies UserMessageDocument;
+    const queuedUserMessage = {
+      version: 1,
+      parts: [
+        ...recalledUserMessage.parts,
+        { type: "morning_brief", briefDate: "2026-07-26" },
+      ],
+    } satisfies UserMessageDocument;
+    const draftPatches: Record<string, unknown>[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Queued feedback",
+      chatEvents: [
+        {
+          id: "msg-queued-feedback-user",
+          role: "user",
+          content: "Review this rollout plan",
+          runId: "run-queued-feedback",
+          createdAt: "2026-07-26T10:00:00Z",
+        },
+        {
+          id: "msg-queued-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-queued-feedback",
+          createdAt: "2026-07-26T10:00:01Z",
+        },
+        {
+          id: "msg-queued-feedback-pending",
+          role: "user",
+          content: "invalidate",
+          userMessage: queuedUserMessage,
+          runId: undefined,
+          createdAt: "2026-07-26T10:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-queued-feedback"],
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
     });
 
     await user.click(await screen.findByLabelText("Remove queued message"));
@@ -604,7 +577,7 @@ describe("chat inline feedback", () => {
     expect(composer).not.toHaveTextContent(`> ${assistantReply}`);
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftUserMessage: queuedEvents[0]?.userMessage,
+        draftUserMessage: recalledUserMessage,
         draftAttachments: null,
       });
     });
