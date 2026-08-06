@@ -22,6 +22,11 @@ const USAGE_DISPLAY_NAMES = {
       return $.usage.displayNames.peopleSearch;
     });
   },
+  translation(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.translation;
+    });
+  },
   weather(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.weather;
@@ -49,6 +54,7 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
     weather: USAGE_DISPLAY_NAMES.weather,
     "image-recognition": USAGE_DISPLAY_NAMES.imageRecognize,
     "image-interpret-marks": USAGE_DISPLAY_NAMES.imageRecognize,
+    translation: USAGE_DISPLAY_NAMES.translation,
   };
 
 // Current Settings responses retain raw usage kinds inside each provider.
