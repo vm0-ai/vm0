@@ -471,9 +471,24 @@ def build_rewrite_url(
     path from the firewall match, and query strings from trusted auth data
     and the original request. ``orig_query`` is the raw query string of the
     incoming request (no leading ``?``). Query key precedence is
-    ``resolved_query`` > resolved base query > original request query. Unsafe
-    path syntax in ``rel_path`` is rejected as an invariant; firewall matching
-    should already have blocked it before auth is applied.
+    ``resolved_query`` > resolved base query > original request query.
+
+    ``resolved_base`` must be an absolute HTTPS URL with a valid authority and
+    safe path; userinfo and fragments are not allowed. Backslashes, whitespace
+    or unsafe code points, invalid ports, unsafe path syntax, malformed Unicode,
+    and unsafe or invalid percent-encoded host syntax are rejected. Accepted
+    hostnames are normalized for forwarding: Unicode and percent-encoded Unicode
+    names use canonical IDNA form, IPv4 literals must already be canonical dotted
+    quads, IPv6 literals are compressed and bracketed, and explicit valid ports
+    are preserved.
+
+    Unsafe path syntax in ``rel_path`` is rejected as an invariant; firewall
+    matching should already have blocked it before auth is applied.
+
+    Raises:
+        ValueError: If ``resolved_base`` is not a safe absolute HTTPS URL,
+            ``rel_path`` has unsafe path syntax, or a URL component contains
+            Unicode that cannot be safely encoded.
     """
     if has_unsafe_path(rel_path):
         raise ValueError("Unsafe rewrite path: unsafe path syntax is not allowed")
