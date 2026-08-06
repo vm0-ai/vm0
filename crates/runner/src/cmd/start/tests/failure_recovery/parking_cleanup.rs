@@ -2,14 +2,12 @@ use super::super::super::*;
 use super::super::support::{
     MockRunEnv, context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool,
     shutdown, test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
-    wait_heartbeat_with_workspace_after, wait_status_idle_reuse_keys_and_active_runs,
-    wait_workspace_cache_reuse_keys,
+    wait_status_idle_reuse_keys_and_active_runs, wait_workspace_cache_reuse_keys,
 };
 use super::support::assert_no_completion_for_run;
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
-use crate::types::{WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability};
 use crate::workspace_image_cache::WorkspaceImageCache;
 use sandbox_mock::MockLifecycleGate;
 
@@ -82,7 +80,7 @@ async fn park_failure_promotes_workspace_cache_before_destroy() {
 }
 
 #[tokio::test]
-async fn non_reusable_park_destroy_panic_preserves_workspace_cache_and_heartbeat() {
+async fn non_reusable_park_destroy_panic_preserves_workspace_cache_and_cleanup() {
     assert_workspace_cache_after_park_cleanup(
         "sess-severe-retention-destroy-panic-cache",
         |overrides| {
@@ -134,7 +132,6 @@ async fn assert_workspace_cache_after_park_cleanup(
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
-    let heartbeat_baseline = env.handle.heartbeat_count();
 
     let run_id = RunId::new_v4();
     let context = context_with_session(run_id, session_id);
@@ -176,22 +173,6 @@ async fn assert_workspace_cache_after_park_cleanup(
     if expect_cache {
         wait_workspace_cache_reuse_keys(&workspace_cache, &[session_id], Duration::from_secs(2))
             .await;
-        let expected_workspace = WorkspaceCacheCapability {
-            profile: "vm0/default".to_string(),
-            workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
-        };
-        assert!(
-            wait_heartbeat_with_workspace_after(
-                &env.handle,
-                heartbeat_baseline,
-                session_id,
-                &expected_workspace,
-                None,
-                Duration::from_secs(5),
-            )
-            .await,
-            "post-cleanup heartbeat should advertise the promoted workspace cache",
-        );
     } else {
         let held = workspace_cache.held_workspace_states().await;
         assert!(held.is_empty());

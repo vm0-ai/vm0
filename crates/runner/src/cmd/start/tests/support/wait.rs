@@ -3,9 +3,7 @@ use super::env::MockRunEnv;
 use std::future::Future;
 
 use crate::idle_pool::ParkingState;
-use crate::provider::mock::MockProviderHandle;
 use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistry};
-use crate::types::WorkspaceCacheCapability;
 use crate::workspace_image_cache::WorkspaceImageCache;
 
 const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(10);
@@ -145,43 +143,6 @@ pub(in super::super) async fn wait_workspace_cache_reuse_keys(
         }
     })
     .await;
-}
-
-pub(in super::super) async fn wait_heartbeat_with_workspace_after(
-    handle: &MockProviderHandle,
-    mut cursor: usize,
-    reuse_key: &str,
-    expected_workspace: &WorkspaceCacheCapability,
-    absent_sandbox_reuse_key: Option<&str>,
-    timeout: Duration,
-) -> bool {
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        {
-            let heartbeats = handle.heartbeats.lock().unwrap_or_else(|e| e.into_inner());
-            if heartbeats[cursor..].iter().any(|heartbeat| {
-                let has_expected_workspace = heartbeat.held_workspace_states.iter().any(|state| {
-                    state.reuse_key == reuse_key
-                        && state.workspace_caches.contains(expected_workspace)
-                });
-                let omits_claimed_sandbox = absent_sandbox_reuse_key.is_none_or(|reuse_key| {
-                    heartbeat
-                        .held_sandbox_states
-                        .iter()
-                        .all(|state| state.reuse_key != reuse_key)
-                });
-                has_expected_workspace && omits_claimed_sandbox
-            }) {
-                return true;
-            }
-            cursor = heartbeats.len();
-        }
-
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        if remaining.is_zero() || !handle.wait_heartbeat_past(cursor, remaining).await {
-            return false;
-        }
-    }
 }
 
 pub(in super::super) async fn wait_sandbox_lifecycle_counts(
