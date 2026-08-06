@@ -4,6 +4,7 @@ import {
   type BillingStatusResponse,
   USAGE_PACKS_USD,
   zeroBillingCheckoutContract,
+  zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
@@ -16,6 +17,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { createStore } from "ccstate";
 import type StripeSDK from "stripe";
+import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -37,10 +39,44 @@ import { zeroBillingConcurrencyCheckoutRoutes } from "../zero-billing-concurrenc
 import { zeroBillingConcurrencySubscriptionRoutes } from "../zero-billing-concurrency-subscriptions";
 import { zeroBillingCreditCheckoutRoutes } from "../zero-billing-credit-checkout";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import {
+  testUsagePackSubscriptionStateContract,
+  testUsagePackSubscriptionStateRoutes,
+  type TestUsagePackSubscriptionStateAction,
+  type TestUsagePackSubscriptionStateResponse,
+} from "../test-usage-pack-subscription-state";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+async function usagePackStateAction(
+  body: TestUsagePackSubscriptionStateAction,
+): Promise<TestUsagePackSubscriptionStateResponse> {
+  const response = await accept(
+    setupApp({
+      context,
+      routes: testUsagePackSubscriptionStateRoutes,
+    })(testUsagePackSubscriptionStateContract).action({ body }),
+    [200],
+  );
+  return response.body;
+}
+
+async function readUsagePackState(
+  orgId: string,
+  usagePackSubscriptionId?: string,
+) {
+  const response = await usagePackStateAction({
+    action: "read",
+    orgId,
+    usagePackSubscriptionId,
+  });
+  if (response.action !== "read") {
+    throw new Error("Usage pack test state did not return a read response");
+  }
+  return response.state;
+}
 
 const APP_ORIGIN = "http://localhost:3002";
 // This unshared test tenant collides with the staff-org identity hash so the
@@ -89,6 +125,50 @@ function setUsagePackPrices(): void {
   mockEnv("ZERO_PRICE_USAGE_PACK_50", TEST_PRICE_USAGE_PACK_50);
   mockEnv("ZERO_PRICE_USAGE_PACK_100", TEST_PRICE_USAGE_PACK_100);
   mockEnv("ZERO_PRICE_USAGE_PACK_200", TEST_PRICE_USAGE_PACK_200);
+}
+
+function usagePackPriceConfiguration(priceId: string): {
+  readonly usagePackUsd: 20 | 50 | 100 | 200;
+  readonly bonusCredits: number;
+} {
+  switch (priceId) {
+    case TEST_PRICE_USAGE_PACK_20: {
+      return { usagePackUsd: 20, bonusCredits: 400 };
+    }
+    case TEST_PRICE_USAGE_PACK_50: {
+      return { usagePackUsd: 50, bonusCredits: 2600 };
+    }
+    case TEST_PRICE_USAGE_PACK_100: {
+      return { usagePackUsd: 100, bonusCredits: 8700 };
+    }
+    case TEST_PRICE_USAGE_PACK_200: {
+      return { usagePackUsd: 200, bonusCredits: 22_200 };
+    }
+    default: {
+      throw new Error(`Unexpected usage pack Price: ${priceId}`);
+    }
+  }
+}
+
+function mockUsagePackCatalog(): void {
+  context.mocks.stripe.prices.retrieve.mockImplementation((priceId) => {
+    if (typeof priceId !== "string") {
+      throw new Error("Expected a Stripe Price ID");
+    }
+    const configuration = usagePackPriceConfiguration(priceId);
+    return Promise.resolve({
+      id: priceId,
+      active: true,
+      currency: "usd",
+      type: "recurring",
+      recurring: { interval: "month", interval_count: 1 },
+      unit_amount: configuration.usagePackUsd * 100,
+      product: {
+        id: `prod_${configuration.usagePackUsd}`,
+        metadata: { bonusCredits: String(configuration.bonusCredits) },
+      },
+    });
+  });
 }
 
 function currentSecond(): number {
@@ -1062,11 +1142,81 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
     setZeroPrice();
     setUsagePackPrices();
+    mockUsagePackCatalog();
+  });
+
+  it("keeps the usage pack catalog behind the same feature switch", async () => {
+    const fixture = createOrgFixture(TEST_STAFF_ORG_ID);
+    authenticateOrg(fixture);
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingUsagePackCatalogContract).get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Usage pack checkout is not enabled",
+        code: "FORBIDDEN",
+      },
+    });
+    expect(context.mocks.stripe.prices.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("returns the server-validated Stripe usage pack catalog", async () => {
+    const fixture = createOrgFixture(TEST_STAFF_ORG_ID);
+    authenticateOrg(fixture);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingUsagePackCatalogContract).get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      usagePacks: [
+        {
+          usagePackUsd: 20,
+          priceUsd: 20,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+          totalCredits: 20_400,
+        },
+        {
+          usagePackUsd: 50,
+          priceUsd: 50,
+          purchasedCredits: 50_000,
+          bonusCredits: 2600,
+          totalCredits: 52_600,
+        },
+        {
+          usagePackUsd: 100,
+          priceUsd: 100,
+          purchasedCredits: 100_000,
+          bonusCredits: 8700,
+          totalCredits: 108_700,
+        },
+        {
+          usagePackUsd: 200,
+          priceUsd: 200,
+          purchasedCredits: 200_000,
+          bonusCredits: 22_200,
+          totalCredits: 222_200,
+        },
+      ],
+    });
   });
 
   it("keeps usage pack checkout behind its feature switch", async () => {
     const fixture = createOrgFixture(TEST_STAFF_ORG_ID);
     authenticateOrg(fixture);
+    const before = await readUsagePackState(fixture.orgId);
 
     const response = await accept(
       setupApp({ context, routes: zeroBillingCheckoutRoutes })(
@@ -1092,6 +1242,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     expect(
       context.mocks.stripe.checkout.sessions.create,
     ).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.prices.retrieve).not.toHaveBeenCalled();
+    const after = await readUsagePackState(fixture.orgId);
+    expect(after.subscriptionCount).toBe(before.subscriptionCount);
   });
 
   it("keeps usage pack checkout restricted to staff organizations", async () => {
@@ -1179,9 +1332,34 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     context.mocks.stripe.customers.create.mockResolvedValueOnce({
       id: customerId,
     });
-    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
-      url: "https://checkout.stripe.com/session/usage-pack",
-    });
+    let snapshotExistedBeforeStripe = false;
+    let createdUsagePackSubscriptionId: string | null = null;
+    const checkoutSessionId = `cs_${randomUUID()}`;
+    context.mocks.stripe.checkout.sessions.create.mockImplementationOnce(
+      async (input) => {
+        if (
+          typeof input !== "object" ||
+          input === null ||
+          !("metadata" in input) ||
+          typeof input.metadata !== "object" ||
+          input.metadata === null ||
+          !("usagePackSubscriptionId" in input.metadata) ||
+          typeof input.metadata.usagePackSubscriptionId !== "string"
+        ) {
+          throw new Error("Expected usage pack subscription metadata");
+        }
+        createdUsagePackSubscriptionId = input.metadata.usagePackSubscriptionId;
+        const state = await readUsagePackState(
+          fixture.orgId,
+          input.metadata.usagePackSubscriptionId,
+        );
+        snapshotExistedBeforeStripe = state.subscription !== null;
+        return {
+          id: checkoutSessionId,
+          url: "https://checkout.stripe.com/session/usage-pack",
+        };
+      },
+    );
 
     const response = await accept(
       setupApp({ context, routes: zeroBillingCheckoutRoutes })(
@@ -1209,11 +1387,49 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     expect(response.body).toStrictEqual({
       url: "https://checkout.stripe.com/session/usage-pack",
     });
+    expect(snapshotExistedBeforeStripe).toBeTruthy();
+    if (!createdUsagePackSubscriptionId) {
+      throw new Error("Checkout did not expose its usage pack subscription ID");
+    }
+    const createdSnapshotId = createdUsagePackSubscriptionId;
+    onTestFinished(async () => {
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId: fixture.orgId,
+        usagePackSubscriptionId: createdSnapshotId,
+        deleteGrants: false,
+        deleteOrgMetadata: false,
+      });
+    });
+    const state = await readUsagePackState(fixture.orgId, createdSnapshotId);
+    const snapshot = state.subscription;
+    expect(snapshot?.stripeCheckoutSessionId).toBe(checkoutSessionId);
+    const allocationRows = state.allocations;
+    expect(allocationRows).toHaveLength(102);
+    expect(allocationRows).toContainEqual(
+      expect.objectContaining({
+        userId: memberIds[1],
+        invitationId: null,
+        usagePackUsd: 50,
+        stripePriceId: TEST_PRICE_USAGE_PACK_50,
+        status: "pending_payment",
+      }),
+    );
+    expect(allocationRows).toContainEqual(
+      expect.objectContaining({
+        userId: null,
+        invitationId,
+        usagePackUsd: 20,
+        stripePriceId: TEST_PRICE_USAGE_PACK_20,
+        status: "pending_payment",
+      }),
+    );
     const metadata = {
       orgId: fixture.orgId,
       tier: "team",
       priceId: TEST_PRICE_USAGE_PACK_PLAN_TEAM,
       purpose: "usage_pack_subscription",
+      usagePackSubscriptionId: createdSnapshotId,
     };
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
       mode: "subscription",
