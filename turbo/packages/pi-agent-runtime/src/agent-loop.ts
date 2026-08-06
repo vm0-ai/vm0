@@ -1,5 +1,6 @@
 import {
   runAgentLoop,
+  runAgentLoopContinue,
   type AgentEvent,
   type AgentMessage,
   type AgentTool,
@@ -15,6 +16,7 @@ import { vercelAIGatewayProvider } from "@earendil-works/pi-ai/providers/vercel-
 import type { Api, Message, Model } from "@earendil-works/pi-ai";
 
 import { createPiExecutionTools } from "./tools";
+import { executePiUnresolvedToolBatch } from "./recovery";
 
 export type PiOpenAICompatibleProvider =
   | "deepseek"
@@ -150,6 +152,58 @@ export async function runPiAgentPrompt(args: {
     args.signal,
     piOpenAICompletionsStream,
   );
+}
+
+/**
+ * Resume a handed-off Pi turn by executing the latest unresolved assistant
+ * tool batch in the Sandbox, then continuing the native model loop.
+ */
+export async function runPiAgentResume(args: {
+  readonly model: PiAgentModelConfig;
+  readonly systemPrompt: string;
+  readonly messages: readonly AgentMessage[];
+  readonly executionEnv: ExecutionEnv;
+  readonly signal: AbortSignal;
+  readonly onEvent: (event: AgentEvent) => Promise<void> | void;
+}): Promise<readonly AgentMessage[]> {
+  const model = resolvePiAgentModel(args.model);
+  if (!model) {
+    throw new Error(
+      `Pi provider ${args.model.provider} does not catalog model ${args.model.model}`,
+    );
+  }
+  const messages = [...args.messages];
+  const toolResults = await executePiUnresolvedToolBatch({
+    messages,
+    executionEnv: args.executionEnv,
+    signal: args.signal,
+    onEvent: args.onEvent,
+  });
+  if (toolResults.length === 0) {
+    throw new Error(
+      "Pi transcript has no unresolved assistant tool-call batch",
+    );
+  }
+  messages.push(...toolResults);
+  const continued = await runAgentLoopContinue(
+    {
+      systemPrompt: args.systemPrompt,
+      messages,
+      tools: executionTools(args.executionEnv),
+    },
+    {
+      model,
+      apiKey: args.model.apiKey,
+      timeoutMs: 120_000,
+      convertToLlm(currentMessages) {
+        return currentMessages.filter(isPiLlmMessage);
+      },
+    },
+    args.onEvent,
+    args.signal,
+    piOpenAICompletionsStream,
+  );
+  return [...toolResults, ...continued];
 }
 
 export type { AgentEvent as PiAgentEvent, AgentMessage as PiAgentMessage };

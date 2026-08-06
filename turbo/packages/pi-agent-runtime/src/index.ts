@@ -14,11 +14,17 @@ export {
   isPiAgentModelSupported,
   resolvePiAgentModel,
   runPiAgentPrompt,
+  runPiAgentResume,
   type PiAgentEvent,
   type PiAgentMessage,
   type PiAgentModelConfig,
   type PiOpenAICompatibleProvider,
 } from "./agent-loop";
+export {
+  executePiUnresolvedToolBatch,
+  findPiUnresolvedToolBatch,
+  type PiUnresolvedToolBatch,
+} from "./recovery";
 export { parsePiAgentMessages } from "./transcript";
 export type {
   ExecutionEnv,
