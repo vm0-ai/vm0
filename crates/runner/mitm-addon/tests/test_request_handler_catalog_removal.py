@@ -177,6 +177,76 @@ async def test_removed_connector_becomes_ordinary_request_without_auth(
     assert retained_flow.request.headers["Authorization"] == "Bearer retained"
 
 
+async def test_explicit_absent_custom_intent_does_not_fall_through_to_sibling(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+):
+    custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
+    sibling_name = "retained-custom-sibling"
+    shared_host = "shared.example.com"
+    registry_path = tmp_path / "registry.json"
+    write_multi_vm_registry(
+        registry_path,
+        {
+            _CLIENT_IP: {
+                "runId": "run-custom-removal",
+                "cliAgentType": "codex",
+                "sandboxToken": "sandbox-token",
+                "networkLogPath": str(tmp_path / "network.jsonl"),
+                "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                "encryptedSecrets": "iv:tag:data",
+                "firewalls": [
+                    {
+                        "kind": "inline",
+                        "firewall": _firewall(
+                            sibling_name,
+                            f"https://{shared_host}",
+                        ),
+                    }
+                ],
+                "networkPolicies": {
+                    sibling_name: {
+                        "allow": ["items.read"],
+                        "deny": [],
+                        "ask": [],
+                        "unknownPolicy": "deny",
+                    }
+                },
+                "omittedCustomConnectorIds": [custom_connector_id],
+                "billableFirewalls": [],
+            }
+        },
+    )
+    removed_flow = real_flow(
+        with_response=False,
+        client_ip=_CLIENT_IP,
+        host=shared_host,
+        path="/items/123",
+        request_headers=headers(
+            ("Host", shared_host),
+            ("X-VM0-Connector-Intent", custom_connector_id),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer sibling"}) as auth_fetch,
+    ):
+        state = registry.load_registry_state(str(registry_path))
+        await mitm_addon.request(removed_flow)
+
+    assert not isinstance(state, registry.RegistryUnavailable)
+    assert state.omitted_custom_connector_ids == {_CLIENT_IP: frozenset({custom_connector_id})}
+    auth_fetch.assert_not_awaited()
+    assert removed_flow.response is None
+    assert removed_flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert metadata_keys.FIREWALL_NAME not in removed_flow.metadata
+    assert "Authorization" not in removed_flow.request.headers
+
+
 async def test_catalog_removal_during_auth_revalidation_discards_old_credentials(
     tmp_path,
     real_flow,

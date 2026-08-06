@@ -172,6 +172,19 @@ def _build_firewall_auth_context(
     firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
     api_id = flow.metadata[metadata_keys.FIREWALL_API_ID]
     run_id = flow_metadata.run_id(flow.metadata)
+    custom_connector_auth_owner = api_entry.get("customConnectorAuthOwner")
+    matched_firewall: dict | None = None
+    custom_owner_cache_key: tuple[str, str] | None = None
+    if isinstance(custom_connector_auth_owner, dict):
+        matched_firewall = {
+            "name": allow.name,
+            "apiId": api_id,
+            "customConnectorAuthOwner": custom_connector_auth_owner,
+        }
+        custom_connector_id = custom_connector_auth_owner.get("customConnectorId")
+        auth_state_digest = custom_connector_auth_owner.get("authStateDigest")
+        if isinstance(custom_connector_id, str) and isinstance(auth_state_digest, str):
+            custom_owner_cache_key = (custom_connector_id, auth_state_digest)
     auth_request = FirewallAuthRequest(
         sandbox_token=vm_info.get("sandboxToken", ""),
         encrypted_secrets=vm_info.get("encryptedSecrets") or "",
@@ -183,6 +196,7 @@ def _build_firewall_auth_context(
         secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
         vars_map=vm_info.get("vars"),
         firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
+        matched_firewall=matched_firewall,
     )
     auth_cache_key = FirewallAuthCacheKey(
         run_id=run_id,
@@ -194,6 +208,7 @@ def _build_firewall_auth_context(
             firewall_base=firewall_base,
             auth_request=auth_request,
         ),
+        custom_connector_auth_owner=custom_owner_cache_key,
     )
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = auth_cache_key
     return _FirewallAuthContext(

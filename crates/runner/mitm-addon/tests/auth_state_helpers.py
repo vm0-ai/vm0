@@ -13,11 +13,13 @@ def auth_cache_key(
     run_id: str = "run-1",
     api_id: str = "api-1",
     auth_identity: str = "auth-identity-1",
+    custom_connector_auth_owner: tuple[str, str] | None = None,
 ) -> auth_cache.FirewallAuthCacheKey:
     return auth_cache.FirewallAuthCacheKey(
         run_id=run_id,
         api_id=api_id,
         auth_identity=auth_identity,
+        custom_connector_auth_owner=custom_connector_auth_owner,
     )
 
 

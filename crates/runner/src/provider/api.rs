@@ -10,6 +10,7 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::{
     constants::runners::{
+        CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE,
         NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     routes,
@@ -41,8 +42,9 @@ use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
-    PollResponse, SandboxReuseResult,
+    CompleteRequest, ConnectorRuntimeReconcileBatchResponse, ConnectorRuntimeTarget,
+    ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse, PollResponse,
+    SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -108,6 +110,12 @@ struct PollRequestBody<'a> {
 pub(super) enum NetworkPolicyRefreshOutcome {
     Refreshed(NetworkPolicyRefreshBatchResponse),
     RunTerminal,
+}
+
+pub(super) enum ConnectorRuntimeReconcileOutcome {
+    Reconciled(ConnectorRuntimeReconcileBatchResponse),
+    RunTerminal,
+    RouteUnavailable,
 }
 
 #[derive(Deserialize)]
@@ -1206,6 +1214,59 @@ impl ApiClient {
             )
             .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
             .json(&serde_json::json!({ "connectorSlugs": connector_slugs }))
+    }
+
+    pub(super) async fn reconcile_connector_runtime(
+        &self,
+        run_id: RunId,
+        targets: &[ConnectorRuntimeTarget],
+    ) -> RunnerResult<ConnectorRuntimeReconcileOutcome> {
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.connector_runtime_reconcile_request(&run_id, targets),
+            "connector runtime reconcile",
+        )
+        .await?;
+
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Ok(ConnectorRuntimeReconcileOutcome::RouteUnavailable);
+        }
+        if resp.status() == StatusCode::CONFLICT {
+            let (status, body) = read_api_error(resp).await;
+            if serde_json::from_str::<ApiErrorEnvelope>(&body).is_ok_and(|response| {
+                response.error.code == CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE
+            }) {
+                return Ok(ConnectorRuntimeReconcileOutcome::RunTerminal);
+            }
+            return Err(api_status_error(
+                "connector runtime reconcile",
+                status,
+                &body,
+            ));
+        }
+
+        let resp = check_api_status(resp, "connector runtime reconcile").await?;
+        decode_api_json(resp, "connector runtime reconcile")
+            .await
+            .map(ConnectorRuntimeReconcileOutcome::Reconciled)
+    }
+
+    fn connector_runtime_reconcile_request(
+        &self,
+        run_id: &str,
+        targets: &[ConnectorRuntimeTarget],
+    ) -> ApiRequestBuilder {
+        self.http
+            .request_resolved_route(
+                routes::runners::runs::by_run_id::connector_runtime::reconcile::route(
+                    routes::runners::runs::by_run_id::connector_runtime::reconcile::Params {
+                        run_id,
+                    },
+                ),
+                &self.token,
+            )
+            .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
+            .json(&serde_json::json!({ "targets": targets }))
     }
 
     pub(super) async fn resolve_builtin_firewall_catalog(

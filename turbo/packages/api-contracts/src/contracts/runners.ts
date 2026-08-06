@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
+  customConnectorAuthOwnerSchema,
+  executionFirewallInlineEntrySchema,
   executionFirewallsSchema,
+  firewallApiSchema,
   firewallPolicyValueSchema,
   firewallSchema,
   networkPolicySchema,
@@ -38,6 +41,9 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX = 256;
 export const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
+export const CONNECTOR_RUNTIME_TARGETS_MAX = 256;
+export const CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE =
+  "RUN_TERMINAL";
 export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
 export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS + 30_000;
@@ -172,6 +178,102 @@ const networkPolicyRefreshesSchema = z.record(
   z.string(),
   networkPolicyRefreshSchema,
 );
+
+export const connectorRuntimeBuiltinTargetSchema = z.object({
+  kind: z.literal("builtin"),
+  connectorSlug: connectorSlugSchema,
+});
+
+export const connectorRuntimeCustomTargetSchema = z.object({
+  kind: z.literal("custom"),
+  customConnectorId: z.uuid(),
+});
+
+export const connectorRuntimeTargetSchema = z.discriminatedUnion("kind", [
+  connectorRuntimeBuiltinTargetSchema,
+  connectorRuntimeCustomTargetSchema,
+]);
+
+function connectorRuntimeTargetKey(
+  target: z.infer<typeof connectorRuntimeTargetSchema>,
+): string {
+  return target.kind === "builtin"
+    ? `builtin:${target.connectorSlug}`
+    : `custom:${target.customConnectorId}`;
+}
+
+function uniqueConnectorRuntimeTargets(
+  targets: readonly z.infer<typeof connectorRuntimeTargetSchema>[],
+  context: z.RefinementCtx,
+): void {
+  const seen = new Set<string>();
+  for (const [index, target] of targets.entries()) {
+    const key = connectorRuntimeTargetKey(target);
+    if (seen.has(key)) {
+      context.addIssue({
+        code: "custom",
+        path: [index],
+        message: "Connector runtime targets must be unique",
+      });
+      continue;
+    }
+    seen.add(key);
+  }
+}
+
+const connectorRuntimeTargetsSchema = z
+  .array(connectorRuntimeTargetSchema)
+  .max(CONNECTOR_RUNTIME_TARGETS_MAX)
+  .superRefine(uniqueConnectorRuntimeTargets);
+
+export const connectorRuntimeAbsentReasonSchema = z.enum([
+  "connector-unavailable",
+  "grant-unavailable",
+  "credentials-unavailable",
+  "permission-bundle-unavailable",
+  "runtime-configuration-unavailable",
+]);
+
+const connectorRuntimeResultBaseSchema = z.object({
+  nextReconcileAt: z.string().datetime({ offset: true }),
+});
+
+export const connectorRuntimeBuiltinAvailableResultSchema =
+  connectorRuntimeResultBaseSchema.extend({
+    target: connectorRuntimeBuiltinTargetSchema,
+    state: z.literal("available"),
+    networkPolicy: networkPolicySchema,
+  });
+
+export const connectorRuntimeCustomAvailableResultSchema =
+  connectorRuntimeResultBaseSchema.extend({
+    target: connectorRuntimeCustomTargetSchema,
+    state: z.literal("available"),
+    firewall: executionFirewallInlineEntrySchema.extend({
+      firewall: firewallSchema.extend({
+        apis: z.array(
+          firewallApiSchema.extend({
+            id: z.string().min(1),
+          }),
+        ),
+      }),
+      customConnectorAuthOwner: customConnectorAuthOwnerSchema,
+    }),
+    networkPolicy: networkPolicySchema,
+  });
+
+export const connectorRuntimeAbsentResultSchema =
+  connectorRuntimeResultBaseSchema.extend({
+    target: connectorRuntimeTargetSchema,
+    state: z.literal("absent"),
+    reason: connectorRuntimeAbsentReasonSchema,
+  });
+
+export const connectorRuntimeReconcileResultSchema = z.union([
+  connectorRuntimeBuiltinAvailableResultSchema,
+  connectorRuntimeCustomAvailableResultSchema,
+  connectorRuntimeAbsentResultSchema,
+]);
 const connectorPermissionNameListSchema = z
   .array(z.string().min(1))
   .superRefine((names, context) => {
@@ -606,6 +708,9 @@ export const storedExecutionContextSchema = z.object({
   // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
   // active sandbox policy when temporary allow grants expire.
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
+  // Stable connector targets pinned for this run. The runner owns this list
+  // after claim independently of whether each target is currently available.
+  connectorRuntimeTargets: connectorRuntimeTargetsSchema.optional(),
   // API-only catalog-derived permission defaults for claim-time grant refresh.
   connectorPermissionBaseline:
     storedConnectorPermissionBaselineSchema.optional(),
@@ -692,6 +797,9 @@ export const executionContextSchema = z.object({
   // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
   // active sandbox policy when temporary allow grants expire.
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
+  // Stable connector targets pinned for this run. The runner owns this list
+  // after claim independently of whether each target is currently available.
+  connectorRuntimeTargets: connectorRuntimeTargetsSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -826,6 +934,36 @@ export const runnersNetworkPolicyRefreshContract = c.router({
   },
 });
 
+export const runnersConnectorRuntimeReconcileContract = c.router({
+  reconcile: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/connector-runtime/reconcile",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    body: z.object({
+      targets: connectorRuntimeTargetsSchema.min(1),
+    }),
+    responses: {
+      200: z.object({
+        results: z.array(connectorRuntimeReconcileResultSchema),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema.extend({
+        error: apiErrorSchema.shape.error.extend({
+          code: z.literal(CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE),
+        }),
+      }),
+      500: apiErrorSchema,
+    },
+    summary: "Reconcile active run connector runtime targets",
+  },
+});
+
 export const runnersBuiltinFirewallsResolveContract = c.router({
   resolve: {
     method: "POST",
@@ -906,6 +1044,8 @@ export type RunnersJobClaimContract = typeof runnersJobClaimContract;
 export type RunnersActiveInputsContract = typeof runnersActiveInputsContract;
 export type RunnersNetworkPolicyRefreshContract =
   typeof runnersNetworkPolicyRefreshContract;
+export type RunnersConnectorRuntimeReconcileContract =
+  typeof runnersConnectorRuntimeReconcileContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
@@ -930,6 +1070,15 @@ export type StoredConnectorPermissionBaseline = z.infer<
   typeof storedConnectorPermissionBaselineSchema
 >;
 export type NetworkPolicyRefresh = z.infer<typeof networkPolicyRefreshSchema>;
+export type ConnectorRuntimeTarget = z.infer<
+  typeof connectorRuntimeTargetSchema
+>;
+export type ConnectorRuntimeAbsentReason = z.infer<
+  typeof connectorRuntimeAbsentReasonSchema
+>;
+export type ConnectorRuntimeReconcileResult = z.infer<
+  typeof connectorRuntimeReconcileResultSchema
+>;
 export type RunnerBuiltinFirewallsResolveBody = z.infer<
   typeof runnerBuiltinFirewallsResolveBodySchema
 >;

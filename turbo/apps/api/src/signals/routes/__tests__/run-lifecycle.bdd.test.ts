@@ -13,7 +13,9 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
+  CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  type ConnectorRuntimeReconcileResult,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -560,6 +562,50 @@ function inlineFirewallApis(
     throw new Error(`Expected inline firewall entry: ${name}`);
   }
   return entry.firewall.apis;
+}
+
+type AvailableCustomConnectorRuntime = Extract<
+  ConnectorRuntimeReconcileResult,
+  { readonly state: "available"; readonly target: { readonly kind: "custom" } }
+>;
+
+function availableCustomConnectorRuntime(
+  result: ConnectorRuntimeReconcileResult | undefined,
+): AvailableCustomConnectorRuntime {
+  if (
+    !result ||
+    result.state !== "available" ||
+    result.target.kind !== "custom" ||
+    !("firewall" in result)
+  ) {
+    throw new Error("Expected the custom runtime target to be available");
+  }
+  return result;
+}
+
+function customConnectorRuntimeAuthBody(
+  runtime: AvailableCustomConnectorRuntime,
+  encryptedSecrets: string,
+) {
+  const api = runtime.firewall.firewall.apis[0];
+  if (!api) {
+    throw new Error("Expected the reconciled custom firewall API");
+  }
+  return {
+    api,
+    body: {
+      encryptedSecrets,
+      authHeaders: api.auth.headers ?? {},
+      ...(api.auth.base ? { authBase: api.auth.base } : {}),
+      ...(api.auth.query ? { authQuery: api.auth.query } : {}),
+      ...(api.auth.awsSigv4 ? { authAwsSigv4: api.auth.awsSigv4 } : {}),
+      matchedFirewall: {
+        name: runtime.firewall.firewall.name,
+        apiId: api.id,
+        customConnectorAuthOwner: runtime.firewall.customConnectorAuthOwner,
+      },
+    },
+  };
 }
 
 async function waitForRunStatus(
@@ -8093,6 +8139,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
     expect(claim.secretValues).not.toContain("custom-secret-value");
+    expect(claim.connectorRuntimeTargets ?? []).not.toContainEqual({
+      kind: "custom",
+      customConnectorId: custom.id,
+    });
+    const legacyCustomFirewall = findFirewallEntry(
+      claim.firewalls,
+      internalName,
+    );
+    if (!legacyCustomFirewall || legacyCustomFirewall.kind !== "inline") {
+      throw new Error("Expected the legacy custom firewall snapshot");
+    }
+    expect(legacyCustomFirewall.customConnectorAuthOwner).toBeUndefined();
 
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -8109,6 +8167,83 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(resolved.body.headers).toStrictEqual({
       Authorization: "Bearer custom-secret-value",
+    });
+
+    const target = { kind: "custom" as const, customConnectorId: custom.id };
+    const [initialRuntime] = await api.reconcileConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const initialAvailable = availableCustomConnectorRuntime(initialRuntime);
+    const initialOwner = initialAvailable.firewall.customConnectorAuthOwner;
+    const { api: initialApi, body: currentAuthBody } =
+      customConnectorRuntimeAuthBody(
+        initialAvailable,
+        fw.encryptedSecretsBody({}),
+      );
+    expect(initialApi.id).toBe(`${internalName}:0`);
+    expect(initialOwner).toMatchObject({ customConnectorId: custom.id });
+    expect(initialAvailable.networkPolicy.unknownPolicy).toBe("allow");
+    const initialCurrentAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(initialCurrentAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer custom-secret-value" },
+    });
+
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "updated-custom-secret-value",
+    );
+    const staleOwnerAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [424],
+    );
+    if (staleOwnerAuth.status !== 424) {
+      throw new Error("Expected the stale custom owner to be rejected");
+    }
+    expect(staleOwnerAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    const [updatedRuntime] = await api.reconcileConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const updatedAvailable = availableCustomConnectorRuntime(updatedRuntime);
+    expect(
+      updatedAvailable.firewall.customConnectorAuthOwner.authStateDigest,
+    ).not.toBe(initialOwner.authStateDigest);
+    const { body: updatedAuthBody } = customConnectorRuntimeAuthBody(
+      updatedAvailable,
+      fw.encryptedSecretsBody({}),
+    );
+    const updatedCurrentAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      updatedAuthBody,
+      [200],
+    );
+    expect(updatedCurrentAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer updated-custom-secret-value" },
+    });
+
+    await connectors.updateAgentCustomConnectors(actor, agentId, []);
+    const [absentRuntime] = await api.reconcileConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(absentRuntime).toMatchObject({
+      target,
+      state: "absent",
+      reason: "grant-unavailable",
+    });
+
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+    const [restoredRuntime] = await api.reconcileConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(restoredRuntime).toMatchObject({
+      target,
+      state: "available",
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -9306,6 +9441,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(grantedContext.claim.networkPolicyRefreshes).not.toHaveProperty(
       "model-provider:anthropic-api-key",
     );
+    expect(grantedContext.claim.connectorRuntimeTargets).toContainEqual({
+      kind: "builtin",
+      connectorSlug: "slack",
+    });
     expect(granted.allow).toContain("chat:write");
     expect(granted.allow).toContain("files:read");
     expect(granted.deny).not.toContain("chat:write");
@@ -9370,6 +9509,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(sameUserRefresh.body.refreshes[0]).toMatchObject({
       connectorSlug: "slack",
     });
+    const sameUserRuntime = await api.requestReconcileConnectorRuntimeAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      {
+        targets: [{ kind: "builtin", connectorSlug: "slack" }],
+      },
+      [200],
+    );
+    expect(sameUserRuntime.body.results[0]).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "slack" },
+      state: "available",
+    });
     const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${memberRunnerKey.token}`,
       snapshotRun.runId,
@@ -9382,6 +9533,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       );
     }
     expect(otherUserRefresh.body.error.message).toBe(
+      "Run does not belong to user",
+    );
+    const otherUserRuntime = await api.requestReconcileConnectorRuntimeAs(
+      `Bearer ${memberRunnerKey.token}`,
+      snapshotRun.runId,
+      {
+        targets: [{ kind: "builtin", connectorSlug: "slack" }],
+      },
+      [403],
+    );
+    expect(otherUserRuntime.body.error.message).toBe(
       "Run does not belong to user",
     );
     context.mocks.ably.publish.mockClear();
@@ -9431,6 +9593,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(cancelledRefresh.body.error.code).toBe(
       NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
+    const cancelledRuntime = await api.requestReconcileConnectorRuntimeAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      {
+        targets: [{ kind: "builtin", connectorSlug: "slack" }],
+      },
+      [409],
+    );
+    expect(cancelledRuntime.body.error.code).toBe(
+      CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE,
     );
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);

@@ -142,3 +142,67 @@ class TestRegistryBuiltinCatalogResolution:
                 builtin_vm("run-fallback", "fallback"),
                 builtin_firewall_catalog_snapshot=snapshot,
             )
+
+    def test_inline_custom_auth_owner_is_preserved_on_firewall_and_apis(self):
+        owner = {
+            "customConnectorId": "550e8400-e29b-41d4-a716-446655440000",
+            "authStateDigest": f"sha256:{'a' * 64}",
+        }
+        resolved = registry_firewalls.resolve_firewall_entries(
+            {
+                "runId": "run-custom-owner",
+                "firewalls": [
+                    {
+                        "kind": "inline",
+                        "customConnectorAuthOwner": owner,
+                        "firewall": {
+                            "name": "custom_connector_test",
+                            "apis": [
+                                {
+                                    "id": "custom-api:0",
+                                    "base": "https://custom.example.test/api/",
+                                    "auth": {"headers": {}},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            },
+            builtin_firewall_catalog_snapshot=None,
+        )
+
+        assert resolved.firewalls is not None
+        assert resolved.firewalls[0]["customConnectorAuthOwner"] == owner
+        assert resolved.firewalls[0]["apis"][0]["customConnectorAuthOwner"] == owner
+
+    @pytest.mark.parametrize(
+        "owner",
+        [
+            {
+                "customConnectorId": "not-a-uuid",
+                "authStateDigest": f"sha256:{'a' * 64}",
+            },
+            {
+                "customConnectorId": "550e8400-e29b-41d4-a716-446655440000",
+                "authStateDigest": "not-a-digest",
+            },
+        ],
+    )
+    def test_inline_custom_auth_owner_rejects_invalid_identity(self, owner):
+        with pytest.raises(registry_firewalls.FirewallEntryResolutionError):
+            registry_firewalls.resolve_firewall_entries(
+                {
+                    "runId": "run-custom-owner",
+                    "firewalls": [
+                        {
+                            "kind": "inline",
+                            "customConnectorAuthOwner": owner,
+                            "firewall": {
+                                "name": "custom_connector_test",
+                                "apis": [],
+                            },
+                        }
+                    ],
+                },
+                builtin_firewall_catalog_snapshot=None,
+            )

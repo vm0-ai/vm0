@@ -197,9 +197,25 @@ export const executionFirewallBuiltinEntrySchema = z.object({
   baseUrlVars: z.record(z.string(), z.string()).optional(),
 });
 
+const executionFirewallSchema = firewallSchema.extend({
+  apis: z.array(
+    firewallApiSchema.extend({
+      id: z.string().min(1).optional(),
+    }),
+  ),
+});
+
+export const customConnectorAuthOwnerSchema = z
+  .object({
+    customConnectorId: z.uuid(),
+    authStateDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  })
+  .strict();
+
 export const executionFirewallInlineEntrySchema = z.object({
   kind: z.literal("inline"),
-  firewall: firewallSchema,
+  firewall: executionFirewallSchema,
+  customConnectorAuthOwner: customConnectorAuthOwnerSchema.optional(),
 });
 
 export const executionFirewallEntrySchema = z.discriminatedUnion("kind", [
@@ -309,6 +325,9 @@ export type ExecutionFirewallBuiltinEntry = z.infer<
 >;
 export type ExecutionFirewallInlineEntry = z.infer<
   typeof executionFirewallInlineEntrySchema
+>;
+export type CustomConnectorAuthOwner = z.infer<
+  typeof customConnectorAuthOwnerSchema
 >;
 export type ExecutionFirewallEntry = z.infer<
   typeof executionFirewallEntrySchema

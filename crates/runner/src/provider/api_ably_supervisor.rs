@@ -36,6 +36,7 @@ use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::RunCancellationRegistry;
+use crate::types::ConnectorRuntimeTarget;
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -692,6 +693,26 @@ async fn handle_ably_message_with_network_policy_refresh(
         return;
     }
 
+    if let Some(notification) = parse_connector_runtime_reconcile_notification(msg) {
+        let Some(network_policy_refresh) = network_policy_refresh else {
+            return;
+        };
+        if let Some(cancel) = network_policy_refresh_cancel {
+            network_policy_refresh
+                .notify_connector_runtime_reconcile_until_cancelled(
+                    notification.run_id,
+                    notification.target,
+                    cancel,
+                )
+                .await;
+        } else {
+            network_policy_refresh
+                .notify_connector_runtime_reconcile(notification.run_id, notification.target)
+                .await;
+        }
+        return;
+    }
+
     let action = {
         let Some(notif) = parse_job_notification(msg) else {
             return;
@@ -761,6 +782,11 @@ struct JobNotification<'a> {
 struct NetworkPolicyRefreshNotification {
     run_id: RunId,
     connector_slug: String,
+}
+
+struct ConnectorRuntimeReconcileNotification {
+    run_id: RunId,
+    target: ConnectorRuntimeTarget,
 }
 
 fn parse_active_input_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
@@ -915,6 +941,39 @@ fn parse_network_policy_refresh_notification(
         run_id,
         connector_slug: connector_slug.to_string(),
     })
+}
+
+fn parse_connector_runtime_reconcile_notification(
+    msg: &ably_subscriber::Message,
+) -> Option<ConnectorRuntimeReconcileNotification> {
+    if msg.name.as_deref() != Some("connector-runtime-reconcile") {
+        return None;
+    }
+    let run_id = match msg.data.get("runId").and_then(serde_json::Value::as_str) {
+        Some(value) => match value.parse() {
+            Ok(run_id) => run_id,
+            Err(error) => {
+                warn!(value, error = %error, "ably: invalid connector-runtime-reconcile runId");
+                return None;
+            }
+        },
+        None => {
+            warn!("ably: connector-runtime-reconcile message missing runId");
+            return None;
+        }
+    };
+    let target = match msg.data.get("target").cloned().map(serde_json::from_value) {
+        Some(Ok(target)) => target,
+        Some(Err(error)) => {
+            warn!(error = %error, "ably: connector-runtime-reconcile message has invalid target");
+            return None;
+        }
+        None => {
+            warn!("ably: connector-runtime-reconcile message missing target");
+            return None;
+        }
+    };
+    Some(ConnectorRuntimeReconcileNotification { run_id, target })
 }
 
 fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification<'_>> {
@@ -2332,6 +2391,54 @@ mod tests {
                 parse_network_policy_refresh_notification(&msg).is_none(),
                 "{case}"
             );
+        }
+    }
+
+    #[test]
+    fn parse_connector_runtime_reconcile_notification_reads_tagged_target() {
+        let msg = make_message(
+            Some("connector-runtime-reconcile"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": {
+                    "kind": "custom",
+                    "customConnectorId": "550e8400-e29b-41d4-a716-446655440000"
+                }
+            }),
+        );
+
+        let notification = parse_connector_runtime_reconcile_notification(&msg)
+            .expect("tagged connector runtime notification should parse");
+
+        assert_eq!(
+            notification.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000003"
+        );
+        assert_eq!(
+            notification.target,
+            ConnectorRuntimeTarget::Custom {
+                custom_connector_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_connector_runtime_reconcile_notification_rejects_malformed_target() {
+        for data in [
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003"
+            }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": { "kind": "custom" }
+            }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": { "kind": "unknown", "connectorSlug": "slack" }
+            }),
+        ] {
+            let msg = make_message(Some("connector-runtime-reconcile"), data);
+            assert!(parse_connector_runtime_reconcile_notification(&msg).is_none());
         }
     }
 

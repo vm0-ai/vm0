@@ -28,6 +28,7 @@ class FirewallAuthCacheKey:
     run_id: str
     api_id: str
     auth_identity: str
+    custom_connector_auth_owner: tuple[str, str] | None = None
 
 
 @dataclass
@@ -140,6 +141,25 @@ def evict_stale_cache_keys(active_run_ids: set[str]) -> None:
     stale = [k for k in _auth_state if k.run_id not in active_run_ids]
     for k in stale:
         _auth_state.pop(k, None)
+
+
+def evict_stale_custom_owner_cache_keys(
+    active_owners: set[tuple[str, str, str]],
+) -> None:
+    """Remove only custom-owner entries whose exact owner digest is no longer active."""
+    stale = [
+        key
+        for key in _auth_state
+        if key.custom_connector_auth_owner is not None
+        and (
+            key.run_id,
+            key.custom_connector_auth_owner[0],
+            key.custom_connector_auth_owner[1],
+        )
+        not in active_owners
+    ]
+    for key in stale:
+        _auth_state.pop(key, None)
 
 
 def evict_all_cache_keys() -> None:

@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   compatibleStoredExecutionContextSchema,
+  connectorRuntimeReconcileResultSchema,
   elapsedSinceApiStartMs,
   executionContextSchema,
   heartbeatBodySchema,
@@ -21,6 +22,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
   runnersBuiltinFirewallsResolveContract,
+  runnersConnectorRuntimeReconcileContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
   runnersPollContract,
@@ -106,6 +108,72 @@ describe("runner claim response contract", () => {
     });
 
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
+  });
+});
+
+describe("connector runtime reconciliation contract", () => {
+  const customConnectorId = "00000000-0000-4000-8000-000000000001";
+
+  it("requires unique tagged targets", () => {
+    const target = {
+      kind: "custom" as const,
+      customConnectorId,
+    };
+
+    expect(
+      runnersConnectorRuntimeReconcileContract.reconcile.body.safeParse({
+        targets: [target, target],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires stable API identities on available custom firewalls", () => {
+    const result = {
+      target: { kind: "custom" as const, customConnectorId },
+      state: "available" as const,
+      nextReconcileAt: "2026-08-06T00:00:00.000Z",
+      firewall: {
+        kind: "inline" as const,
+        firewall: {
+          name: "custom_connector_fixture",
+          apis: [
+            {
+              id: "custom_connector_fixture:0",
+              base: "https://api.example.com",
+              auth: { headers: { Authorization: "Bearer token" } },
+            },
+          ],
+        },
+        customConnectorAuthOwner: {
+          customConnectorId,
+          authStateDigest: `sha256:${"a".repeat(64)}`,
+        },
+      },
+      networkPolicy: {
+        allow: [],
+        deny: [],
+        ask: [],
+        unknownPolicy: "allow" as const,
+      },
+    };
+
+    expect(
+      connectorRuntimeReconcileResultSchema.safeParse(result).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeReconcileResultSchema.safeParse({
+        ...result,
+        firewall: {
+          ...result.firewall,
+          firewall: {
+            ...result.firewall.firewall,
+            apis: result.firewall.firewall.apis.map((api) => {
+              return { base: api.base, auth: api.auth };
+            }),
+          },
+        },
+      }).success,
+    ).toBe(false);
   });
 });
 

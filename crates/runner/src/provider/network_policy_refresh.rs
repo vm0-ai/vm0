@@ -1,46 +1,26 @@
-//! Runtime network policy refresh for active API-backed runs.
+//! Connector runtime reconciliation for active API-backed runs.
 //!
-//! This module is the runner-side safety boundary that keeps connector network
-//! policies fresh while an API-backed run is active. A run is registered after
-//! its VM is written to the proxy registry, carrying the source IP, registry
-//! handle, active connector slugs, per-run cancellation state, and any initial
-//! `nextRefreshAt` deadlines returned with the claim.
+//! Tagged builtin and custom connector targets share one scheduler, bounded
+//! queue, generation model, retry policy, and registry publication boundary.
+//! Realtime notifications advance a target generation and schedule immediate
+//! work; API deadlines and retries continue the generation they belong to.
+//! Nearby due targets for one run are coalesced and split to the shared API
+//! contract limit. Untagged execution contexts continue through the legacy
+//! builtin network-policy endpoint during rolling deployment.
 //!
-//! Refresh work comes from two sources: realtime/API notifications and
-//! scheduled deadlines. Both use one per-connector scheduler. Realtime
-//! notifications advance a reconciliation generation and schedule it
-//! immediately; API deadlines and retries continue the generation they belong
-//! to. Scheduled refreshes replace older tasks for the same connector and
-//! coalesce nearby due connectors for that same run before enqueueing work. The
-//! worker drains a bounded queue, ignores superseded generations, splits API
-//! requests by `NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX`, validates each API
-//! response, patches the proxy registry, and replaces the next schedule from
-//! the returned `nextRefreshAt` only when the generation remains current.
+//! A tagged reconciliation response must contain each requested target exactly
+//! once. Available results atomically replace the target's firewall and policy;
+//! authoritative absence removes them while retaining the target schedule so a
+//! later grant or configuration restore can reactivate the same run. Transport,
+//! validation, queue, and registry publication failures retain last-known-good
+//! state and install a capped, jittered retry. Older queued or in-flight work
+//! cannot clear a newer realtime trigger.
 //!
-//! A typed terminal-run response removes the entire run from refresh tracking,
-//! cancels its scheduled work, and fail-closes every still-matching connector
-//! policy. A first transport failure is retried once while the current policy
-//! remains installed.
-//!
-//! The refresh-failure contract prioritizes active-run continuity. Queue
-//! overflow, final API refresh failure, omitted or duplicate requested
-//! connectors, malformed `nextRefreshAt`, and registry patch errors retain the
-//! affected connector's last successfully published policy and reinstall a
-//! capped, jittered retry. Retries continue while the run and reconciliation
-//! generation remain active. An older queued or in-flight result cannot clear a
-//! newer realtime trigger. Registry writes always re-check source IP, run id,
-//! and connector slug so stale work cannot patch a later run that reused the
-//! same source IP.
-//!
-//! Explicit terminal-run reconciliation remains fail-closed. Inactive runs,
-//! superseded generations, and unknown connector slugs are ignored. Extra
-//! unrequested response connectors are ignored. A closed refresh queue during
-//! shutdown is logged and stopped. A valid but already-expired deadline is
-//! retried after
-//! `EXPIRED_REFRESH_DEADLINE_RETRY_DELAY`. A registry patch result of
-//! `Ok(false)` means the registry no longer matches the active run/connector,
-//! so refresh tracking for that run is stopped instead of force-patching stale
-//! registry state.
+//! A typed terminal-run response removes the entire run from tracking, cancels
+//! scheduled work, and fail-closes every still-matching target. Registry writes
+//! always re-check source IP and run id so stale work cannot patch a later run
+//! that reused the same source IP. A first transport failure is retried once
+//! before entering the scheduled retry path.
 //!
 //! Unregister and shutdown remove active run state, cancel per-run tokens, and
 //! abort scheduled task handles. Dropping the worker cancels the global token
@@ -52,7 +32,9 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
-use api_contracts::generated::constants::runners::NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX;
+use api_contracts::generated::constants::runners::{
+    CONNECTOR_RUNTIME_TARGETS_MAX, NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
+};
 use chrono::{DateTime, Utc};
 use tokio::sync::{
     Mutex, mpsc,
@@ -61,14 +43,19 @@ use tokio::sync::{
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::api::{ApiClient, NetworkPolicyRefreshOutcome};
+use super::api::{ApiClient, ConnectorRuntimeReconcileOutcome, NetworkPolicyRefreshOutcome};
 use crate::error::RunnerError;
 use crate::ids::RunId;
-use crate::proxy::ProxyRegistryHandle;
-use crate::types::{NetworkPolicy, NetworkPolicyRefresh};
+use crate::proxy::{ConnectorRuntimeRegistryState, ProxyRegistryHandle};
+use crate::types::{
+    ConnectorRuntimeReconcileBatchResponse, ConnectorRuntimeReconcileResult,
+    ConnectorRuntimeReconcileState, ConnectorRuntimeTarget, FirewallEntry, NetworkPolicy,
+    NetworkPolicyRefresh,
+};
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
 const NETWORK_POLICY_REFRESH_BATCH_MAX: usize = NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX as usize;
+const CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX: usize = CONNECTOR_RUNTIME_TARGETS_MAX as usize;
 const EXPIRED_REFRESH_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
 const SCHEDULED_REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 const REFRESH_RETRY_INITIAL_DELAY: Duration = Duration::from_secs(1);
@@ -102,9 +89,11 @@ struct NetworkPolicyRefreshState {
 struct ActiveRunNetworkPolicyState {
     source_ip: String,
     registry: ProxyRegistryHandle,
-    connectors: HashMap<String, ActiveConnectorRefreshState>,
+    connectors: HashMap<ConnectorRuntimeTarget, ActiveConnectorRefreshState>,
+    tagged: bool,
+    builtin_firewalls: HashMap<String, FirewallEntry>,
     cancel: CancellationToken,
-    refresh_tasks: HashMap<String, ScheduledRefreshTask>,
+    refresh_tasks: HashMap<ConnectorRuntimeTarget, ScheduledRefreshTask>,
     next_refresh_task_id: u64,
 }
 
@@ -124,6 +113,7 @@ struct ScheduledRefreshTask {
 struct ActiveRunNetworkPolicySnapshot {
     source_ip: String,
     registry: ProxyRegistryHandle,
+    builtin_firewalls: HashMap<String, FirewallEntry>,
 }
 
 pub(crate) struct NetworkPolicyRefreshRegistration<'a> {
@@ -131,6 +121,8 @@ pub(crate) struct NetworkPolicyRefreshRegistration<'a> {
     pub(crate) source_ip: &'a str,
     pub(crate) registry: ProxyRegistryHandle,
     pub(crate) connector_slugs: HashSet<String>,
+    pub(crate) targets: Option<&'a [ConnectorRuntimeTarget]>,
+    pub(crate) firewalls: Option<&'a [FirewallEntry]>,
     pub(crate) refreshes: Option<&'a HashMap<String, NetworkPolicyRefresh>>,
 }
 
@@ -141,7 +133,7 @@ struct RefreshRequest {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ConnectorRefreshTarget {
-    connector_slug: String,
+    target: ConnectorRuntimeTarget,
     generation: u64,
 }
 
@@ -190,7 +182,10 @@ impl NetworkPolicyRefreshHandle {
         connector_slug: String,
     ) {
         self.core
-            .notify_network_policy_refresh(run_id, connector_slug)
+            .notify_connector_runtime_reconcile(
+                run_id,
+                ConnectorRuntimeTarget::Builtin { connector_slug },
+            )
             .await;
     }
 
@@ -201,7 +196,32 @@ impl NetworkPolicyRefreshHandle {
         cancel: &CancellationToken,
     ) {
         self.core
-            .notify_network_policy_refresh_until_cancelled(run_id, connector_slug, cancel)
+            .notify_connector_runtime_reconcile_until_cancelled(
+                run_id,
+                ConnectorRuntimeTarget::Builtin { connector_slug },
+                cancel,
+            )
+            .await;
+    }
+
+    pub(crate) async fn notify_connector_runtime_reconcile(
+        &self,
+        run_id: RunId,
+        target: ConnectorRuntimeTarget,
+    ) {
+        self.core
+            .notify_connector_runtime_reconcile(run_id, target)
+            .await;
+    }
+
+    pub(crate) async fn notify_connector_runtime_reconcile_until_cancelled(
+        &self,
+        run_id: RunId,
+        target: ConnectorRuntimeTarget,
+        cancel: &CancellationToken,
+    ) {
+        self.core
+            .notify_connector_runtime_reconcile_until_cancelled(run_id, target, cancel)
             .await;
     }
 
@@ -242,10 +262,29 @@ impl NetworkPolicyRefreshCore {
         if self.inner.cancel.is_cancelled() {
             return;
         }
-        if registration.connector_slugs.is_empty() {
+        let tagged = registration.targets.is_some();
+        let runtime_targets = match registration.targets {
+            Some(targets) => targets.to_vec(),
+            None => registration
+                .connector_slugs
+                .iter()
+                .cloned()
+                .map(|connector_slug| ConnectorRuntimeTarget::Builtin { connector_slug })
+                .collect(),
+        };
+        if runtime_targets.is_empty() {
             self.unregister_run(registration.run_id).await;
             return;
         }
+        let builtin_firewalls = registration
+            .firewalls
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|entry| match entry {
+                FirewallEntry::Builtin { name, .. } => Some((name.clone(), entry.clone())),
+                FirewallEntry::Inline { .. } => None,
+            })
+            .collect();
 
         let run_cancel = CancellationToken::new();
         let mut old_tasks = Vec::new();
@@ -259,12 +298,12 @@ impl NetworkPolicyRefreshCore {
                 old_tasks.extend(old.refresh_tasks.into_values().map(|task| task.handle));
             }
 
-            let connectors = registration
-                .connector_slugs
-                .into_iter()
-                .map(|connector_slug| {
+            let connectors = runtime_targets
+                .iter()
+                .cloned()
+                .map(|target| {
                     (
-                        connector_slug,
+                        target,
                         ActiveConnectorRefreshState {
                             generation: 0,
                             consecutive_failures: 0,
@@ -278,6 +317,8 @@ impl NetworkPolicyRefreshCore {
                     source_ip: registration.source_ip.to_string(),
                     registry: registration.registry,
                     connectors,
+                    tagged,
+                    builtin_firewalls,
                     cancel: run_cancel.clone(),
                     refresh_tasks: HashMap::new(),
                     next_refresh_task_id: 0,
@@ -286,11 +327,28 @@ impl NetworkPolicyRefreshCore {
         }
         abort_tasks(old_tasks);
 
+        if tagged {
+            for target in runtime_targets {
+                self.replace_schedule_deadline_if_current(
+                    registration.run_id,
+                    &ConnectorRefreshTarget {
+                        target,
+                        generation: 0,
+                    },
+                    Some(tokio::time::Instant::now()),
+                )
+                .await;
+            }
+            return;
+        }
+
         if let Some(refreshes) = registration.refreshes {
             let mut invalid_targets = Vec::new();
             for (connector_slug, refresh) in refreshes {
                 let target = ConnectorRefreshTarget {
-                    connector_slug: connector_slug.clone(),
+                    target: ConnectorRuntimeTarget::Builtin {
+                        connector_slug: connector_slug.clone(),
+                    },
                     generation: 0,
                 };
                 match parse_refresh_deadline(&refresh.next_refresh_at) {
@@ -329,25 +387,53 @@ impl NetworkPolicyRefreshCore {
         Some(old)
     }
 
+    #[cfg(test)]
     async fn notify_network_policy_refresh(&self, run_id: RunId, connector_slug: String) {
-        self.notify_network_policy_refresh_inner(run_id, connector_slug, None)
-            .await;
+        self.notify_connector_runtime_reconcile(
+            run_id,
+            ConnectorRuntimeTarget::Builtin { connector_slug },
+        )
+        .await;
     }
 
+    #[cfg(test)]
     async fn notify_network_policy_refresh_until_cancelled(
         &self,
         run_id: RunId,
         connector_slug: String,
         cancel: &CancellationToken,
     ) {
-        self.notify_network_policy_refresh_inner(run_id, connector_slug, Some(cancel))
+        self.notify_connector_runtime_reconcile_until_cancelled(
+            run_id,
+            ConnectorRuntimeTarget::Builtin { connector_slug },
+            cancel,
+        )
+        .await;
+    }
+
+    async fn notify_connector_runtime_reconcile(
+        &self,
+        run_id: RunId,
+        target: ConnectorRuntimeTarget,
+    ) {
+        self.notify_connector_runtime_reconcile_inner(run_id, target, None)
             .await;
     }
 
-    async fn notify_network_policy_refresh_inner(
+    async fn notify_connector_runtime_reconcile_until_cancelled(
         &self,
         run_id: RunId,
-        connector_slug: String,
+        target: ConnectorRuntimeTarget,
+        cancel: &CancellationToken,
+    ) {
+        self.notify_connector_runtime_reconcile_inner(run_id, target, Some(cancel))
+            .await;
+    }
+
+    async fn notify_connector_runtime_reconcile_inner(
+        &self,
+        run_id: RunId,
+        target: ConnectorRuntimeTarget,
         cancel: Option<&CancellationToken>,
     ) {
         if self.inner.cancel.is_cancelled() || cancel.is_some_and(CancellationToken::is_cancelled) {
@@ -363,12 +449,12 @@ impl NetworkPolicyRefreshCore {
         if active.cancel.is_cancelled() {
             return;
         }
-        let Some(connector) = active.connectors.get_mut(&connector_slug) else {
+        let Some(connector) = active.connectors.get_mut(&target) else {
             return;
         };
         connector.generation += 1;
         let target = ConnectorRefreshTarget {
-            connector_slug,
+            target,
             generation: connector.generation,
         };
         self.replace_schedule_locked(active, run_id, &target, Some(tokio::time::Instant::now()));
@@ -426,7 +512,12 @@ impl NetworkPolicyRefreshCore {
             return;
         }
 
-        for targets in active_targets.chunks(NETWORK_POLICY_REFRESH_BATCH_MAX) {
+        let batch_max = if self.run_is_tagged(run_id).await {
+            CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX
+        } else {
+            NETWORK_POLICY_REFRESH_BATCH_MAX
+        };
+        for targets in active_targets.chunks(batch_max) {
             let current_targets = self.active_refresh_targets(run_id, targets.to_vec()).await;
             if current_targets.is_empty() {
                 continue;
@@ -445,10 +536,34 @@ impl NetworkPolicyRefreshCore {
         run_id: RunId,
         active_targets: &[ConnectorRefreshTarget],
     ) -> bool {
+        if self.run_is_tagged(run_id).await {
+            return self
+                .reconcile_connector_runtime_batch_now(run_id, active_targets)
+                .await;
+        }
+        self.refresh_legacy_network_policy_batch_now(run_id, active_targets)
+            .await
+    }
+
+    async fn refresh_legacy_network_policy_batch_now(
+        &self,
+        run_id: RunId,
+        active_targets: &[ConnectorRefreshTarget],
+    ) -> bool {
         let active_connector_slugs = active_targets
             .iter()
-            .map(|target| target.connector_slug.clone())
+            .filter_map(|target| {
+                target
+                    .target
+                    .builtin_connector_slug()
+                    .map(ToOwned::to_owned)
+            })
             .collect::<Vec<_>>();
+        if active_connector_slugs.len() != active_targets.len() {
+            self.schedule_refresh_retries(run_id, active_targets, "legacy_custom_target")
+                .await;
+            return true;
+        }
         let mut transport_retry_attempted = false;
         let response = loop {
             let response = self
@@ -533,7 +648,10 @@ impl NetworkPolicyRefreshCore {
 
         let mut retry_targets = Vec::new();
         for target in active_targets {
-            let connector_slug = target.connector_slug.as_str();
+            let Some(connector_slug) = target.target.builtin_connector_slug() else {
+                retry_targets.push(target.clone());
+                continue;
+            };
             if duplicate_connector_slugs.contains(connector_slug) {
                 retry_targets.push(target.clone());
                 continue;
@@ -602,6 +720,222 @@ impl NetworkPolicyRefreshCore {
         true
     }
 
+    async fn reconcile_connector_runtime_batch_now(
+        &self,
+        run_id: RunId,
+        active_targets: &[ConnectorRefreshTarget],
+    ) -> bool {
+        let requested_targets = active_targets
+            .iter()
+            .map(|target| target.target.clone())
+            .collect::<Vec<_>>();
+        let mut transport_retry_attempted = false;
+        let response = loop {
+            let response = self
+                .inner
+                .api
+                .reconcile_connector_runtime(run_id, &requested_targets)
+                .await;
+            if !transport_retry_attempted && let Err(RunnerError::ApiTransport(error)) = &response {
+                transport_retry_attempted = true;
+                warn!(
+                    run_id = %run_id,
+                    targets = ?target_identities(active_targets),
+                    error = %error,
+                    attempt = 1,
+                    max_attempts = 2,
+                    will_retry = true,
+                    "connector runtime reconcile transport failed, retrying"
+                );
+                continue;
+            }
+            break response;
+        };
+
+        let response = match response {
+            Ok(ConnectorRuntimeReconcileOutcome::Reconciled(response)) => response,
+            Ok(ConnectorRuntimeReconcileOutcome::RunTerminal) => {
+                self.reconcile_terminal_run(run_id).await;
+                return false;
+            }
+            Ok(ConnectorRuntimeReconcileOutcome::RouteUnavailable) => {
+                let builtin_targets = active_targets
+                    .iter()
+                    .filter(|target| target.target.builtin_connector_slug().is_some())
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if !builtin_targets.is_empty()
+                    && !self
+                        .refresh_legacy_network_policy_batch_now(run_id, &builtin_targets)
+                        .await
+                {
+                    return false;
+                }
+                let custom_targets = active_targets
+                    .iter()
+                    .filter(|target| target.target.builtin_connector_slug().is_none())
+                    .cloned()
+                    .collect::<Vec<_>>();
+                self.schedule_refresh_retries(
+                    run_id,
+                    &custom_targets,
+                    "connector_runtime_route_unavailable",
+                )
+                .await;
+                return true;
+            }
+            Err(error) => {
+                warn!(
+                    run_id = %run_id,
+                    targets = ?target_identities(active_targets),
+                    error = %error,
+                    transport_retry_attempted,
+                    "connector runtime reconcile failed; retaining last-known-good state"
+                );
+                self.schedule_refresh_retries(run_id, active_targets, "api_error")
+                    .await;
+                return true;
+            }
+        };
+
+        self.publish_connector_runtime_response(run_id, active_targets, response)
+            .await
+    }
+
+    async fn publish_connector_runtime_response(
+        &self,
+        run_id: RunId,
+        active_targets: &[ConnectorRefreshTarget],
+        response: ConnectorRuntimeReconcileBatchResponse,
+    ) -> bool {
+        let requested_targets = active_targets
+            .iter()
+            .map(|target| target.target.clone())
+            .collect::<HashSet<_>>();
+        let mut responses_by_target = HashMap::new();
+        let mut invalid_identity = false;
+        for result in response.results {
+            if !requested_targets.contains(&result.target) {
+                invalid_identity = true;
+                warn!(
+                    run_id = %run_id,
+                    target = %result.target.log_identity(),
+                    "connector runtime reconcile returned unexpected target"
+                );
+                continue;
+            }
+            let target = result.target.clone();
+            if responses_by_target.insert(target.clone(), result).is_some() {
+                invalid_identity = true;
+                warn!(
+                    run_id = %run_id,
+                    target = %target.log_identity(),
+                    "connector runtime reconcile returned duplicate target"
+                );
+            }
+        }
+
+        if invalid_identity || responses_by_target.len() != requested_targets.len() {
+            for target in requested_targets
+                .iter()
+                .filter(|target| !responses_by_target.contains_key(*target))
+            {
+                warn!(
+                    run_id = %run_id,
+                    target = %target.log_identity(),
+                    "connector runtime reconcile response omitted requested target"
+                );
+            }
+            self.schedule_refresh_retries(run_id, active_targets, "invalid_response_identity")
+                .await;
+            return true;
+        }
+
+        let mut retry_targets = Vec::new();
+        for target in active_targets {
+            let Some(result) = responses_by_target.remove(&target.target) else {
+                warn!(
+                    run_id = %run_id,
+                    target = %target.target.log_identity(),
+                    "connector runtime reconcile response lost a validated target"
+                );
+                retry_targets.push(target.clone());
+                continue;
+            };
+            let deadline = match parse_refresh_deadline(&result.next_reconcile_at) {
+                Ok(deadline) => deadline,
+                Err(()) => {
+                    retry_targets.push(target.clone());
+                    continue;
+                }
+            };
+            let Some(snapshot) = self.active_snapshot_for_target(run_id, target).await else {
+                continue;
+            };
+            let registry_state = match connector_runtime_registry_state(&result, &snapshot) {
+                Ok(state) => state,
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        target = %target.target.log_identity(),
+                        error,
+                        "invalid connector runtime reconcile result; retaining last-known-good state"
+                    );
+                    retry_targets.push(target.clone());
+                    continue;
+                }
+            };
+            if let ConnectorRuntimeReconcileState::Absent { reason } = &result.state {
+                info!(
+                    run_id = %run_id,
+                    target = %target.target.log_identity(),
+                    reason = ?reason,
+                    "connector runtime target is authoritatively absent"
+                );
+            }
+            match snapshot
+                .registry
+                .replace_connector_runtime_target_if_run_matches(
+                    &snapshot.source_ip,
+                    &run_id.to_string(),
+                    &target.target,
+                    registry_state,
+                )
+                .await
+            {
+                Ok(true) => {
+                    if self
+                        .complete_successful_refresh(run_id, target, Some(deadline))
+                        .await
+                    {
+                        info!(
+                            run_id = %run_id,
+                            target = %target.target.log_identity(),
+                            generation = target.generation,
+                            "reconciled connector runtime target"
+                        );
+                    }
+                }
+                Ok(false) => {
+                    self.unregister_run(run_id).await;
+                    return false;
+                }
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        target = %target.target.log_identity(),
+                        error = %error,
+                        "failed to publish connector runtime target; retaining last-known-good state"
+                    );
+                    retry_targets.push(target.clone());
+                }
+            }
+        }
+        self.schedule_refresh_retries(run_id, &retry_targets, "invalid_or_unpublished_response")
+            .await;
+        true
+    }
+
     async fn reconcile_terminal_run(&self, run_id: RunId) {
         let Some(active) = self.take_active_run(run_id).await else {
             return;
@@ -610,22 +944,23 @@ impl NetworkPolicyRefreshCore {
         let snapshot = ActiveRunNetworkPolicySnapshot {
             source_ip: active.source_ip,
             registry: active.registry,
+            builtin_firewalls: active.builtin_firewalls,
         };
-        for connector_slug in active.connectors.into_keys() {
+        for target in active.connectors.into_keys() {
             if let Err(error) = snapshot
                 .registry
-                .fail_closed_network_policy_if_run_matches(
+                .fail_closed_connector_runtime_target_if_run_matches(
                     &snapshot.source_ip,
                     &run_id.to_string(),
-                    &connector_slug,
+                    &target,
                 )
                 .await
             {
                 warn!(
                     run_id = %run_id,
-                    connector_slug = connector_slug,
+                    target = %target.log_identity(),
                     error = %error,
-                    "failed to close terminal run network policy"
+                    "failed to close terminal run connector runtime target"
                 );
             }
         }
@@ -644,9 +979,12 @@ impl NetworkPolicyRefreshCore {
     ) -> Option<ConnectorRefreshTarget> {
         let active_runs = self.inner.active_runs.lock().await;
         let active = active_runs.get(&run_id)?;
-        let connector = active.connectors.get(connector_slug)?;
-        Some(ConnectorRefreshTarget {
+        let runtime_target = ConnectorRuntimeTarget::Builtin {
             connector_slug: connector_slug.to_string(),
+        };
+        let connector = active.connectors.get(&runtime_target)?;
+        Some(ConnectorRefreshTarget {
+            target: runtime_target,
             generation: connector.generation,
         })
     }
@@ -668,9 +1006,10 @@ impl NetworkPolicyRefreshCore {
                 if !seen.insert(connector_slug.clone()) {
                     return None;
                 }
-                let connector = active.connectors.get(&connector_slug)?;
+                let runtime_target = ConnectorRuntimeTarget::Builtin { connector_slug };
+                let connector = active.connectors.get(&runtime_target)?;
                 Some(ConnectorRefreshTarget {
-                    connector_slug,
+                    target: runtime_target,
                     generation: connector.generation,
                 })
             })
@@ -692,11 +1031,20 @@ impl NetworkPolicyRefreshCore {
             .filter(|target| {
                 active
                     .connectors
-                    .get(&target.connector_slug)
+                    .get(&target.target)
                     .is_some_and(|connector| connector.generation == target.generation)
-                    && seen.insert(target.connector_slug.clone())
+                    && seen.insert(target.target.clone())
             })
             .collect()
+    }
+
+    async fn run_is_tagged(&self, run_id: RunId) -> bool {
+        self.inner
+            .active_runs
+            .lock()
+            .await
+            .get(&run_id)
+            .is_some_and(|active| active.tagged)
     }
 
     async fn active_snapshot_for_target(
@@ -708,7 +1056,7 @@ impl NetworkPolicyRefreshCore {
         let active = active_runs.get(&run_id)?;
         if active
             .connectors
-            .get(&target.connector_slug)
+            .get(&target.target)
             .is_none_or(|connector| connector.generation != target.generation)
         {
             return None;
@@ -716,6 +1064,7 @@ impl NetworkPolicyRefreshCore {
         Some(ActiveRunNetworkPolicySnapshot {
             source_ip: active.source_ip.clone(),
             registry: active.registry.clone(),
+            builtin_firewalls: active.builtin_firewalls.clone(),
         })
     }
 
@@ -729,7 +1078,7 @@ impl NetworkPolicyRefreshCore {
         let Some(active) = active_runs.get_mut(&run_id) else {
             return false;
         };
-        let Some(connector) = active.connectors.get_mut(&target.connector_slug) else {
+        let Some(connector) = active.connectors.get_mut(&target.target) else {
             return false;
         };
         if connector.generation != target.generation {
@@ -758,10 +1107,10 @@ impl NetworkPolicyRefreshCore {
 
         let mut seen = HashSet::new();
         for target in targets {
-            if !seen.insert(target.connector_slug.as_str()) {
+            if !seen.insert(&target.target) {
                 continue;
             }
-            let Some(connector) = active.connectors.get_mut(&target.connector_slug) else {
+            let Some(connector) = active.connectors.get_mut(&target.target) else {
                 continue;
             };
             if connector.generation != target.generation {
@@ -780,7 +1129,7 @@ impl NetworkPolicyRefreshCore {
         for (target, attempt, delay) in scheduled {
             warn!(
                 run_id = %run_id,
-                connector_slug = target.connector_slug,
+                target = %target.target.log_identity(),
                 generation = target.generation,
                 attempt,
                 retry_delay_ms = delay.as_millis() as u64,
@@ -813,13 +1162,13 @@ impl NetworkPolicyRefreshCore {
     ) -> bool {
         if active
             .connectors
-            .get(&target.connector_slug)
+            .get(&target.target)
             .is_none_or(|connector| connector.generation != target.generation)
         {
             return false;
         }
 
-        if let Some(old) = active.refresh_tasks.remove(&target.connector_slug) {
+        if let Some(old) = active.refresh_tasks.remove(&target.target) {
             old.handle.abort();
         }
         let Some(deadline) = deadline else {
@@ -830,17 +1179,17 @@ impl NetworkPolicyRefreshCore {
         active.next_refresh_task_id += 1;
         let cancel = active.cancel.clone();
         let global_cancel = self.inner.cancel.clone();
-        let connector_slug = target.connector_slug.clone();
+        let runtime_target = target.target.clone();
         let generation = target.generation;
         let handle = self.clone();
-        let task_connector_slug = connector_slug.clone();
+        let task_target = runtime_target.clone();
         let task = tokio::spawn(async move {
             tokio::select! {
                 () = global_cancel.cancelled() => {}
                 () = cancel.cancelled() => {}
                 () = tokio::time::sleep_until(deadline) => {
                     if let Some((targets, enqueue_cancel)) = handle
-                        .take_due_scheduled_refreshes(run_id, &task_connector_slug, task_id)
+                        .take_due_scheduled_refreshes(run_id, &task_target, task_id)
                         .await
                     {
                         handle
@@ -857,7 +1206,7 @@ impl NetworkPolicyRefreshCore {
             }
         });
         active.refresh_tasks.insert(
-            connector_slug,
+            runtime_target,
             ScheduledRefreshTask {
                 id: task_id,
                 generation,
@@ -871,7 +1220,7 @@ impl NetworkPolicyRefreshCore {
     async fn take_due_scheduled_refreshes(
         &self,
         run_id: RunId,
-        connector_slug: &str,
+        target: &ConnectorRuntimeTarget,
         task_id: u64,
     ) -> Option<(Vec<ConnectorRefreshTarget>, CancellationToken)> {
         let mut handles_to_abort = Vec::new();
@@ -880,29 +1229,29 @@ impl NetworkPolicyRefreshCore {
             let active = active_runs.get_mut(&run_id)?;
             if active
                 .refresh_tasks
-                .get(connector_slug)
+                .get(target)
                 .is_none_or(|task| task.id != task_id)
             {
                 return None;
             }
 
             let coalesce_deadline = tokio::time::Instant::now() + SCHEDULED_REFRESH_COALESCE_WINDOW;
-            let mut due_connector_slugs = active
+            let mut due_targets = active
                 .refresh_tasks
                 .iter()
                 .filter(|(_, task)| task.deadline <= coalesce_deadline)
-                .map(|(connector_slug, _)| connector_slug.clone())
+                .map(|(target, _)| target.clone())
                 .collect::<Vec<_>>();
-            due_connector_slugs.sort();
+            due_targets.sort_by_key(ConnectorRuntimeTarget::log_identity);
 
-            let mut targets = Vec::with_capacity(due_connector_slugs.len());
-            for due_connector_slug in due_connector_slugs {
-                if let Some(task) = active.refresh_tasks.remove(&due_connector_slug) {
-                    if due_connector_slug != connector_slug {
+            let mut targets = Vec::with_capacity(due_targets.len());
+            for due_target in due_targets {
+                if let Some(task) = active.refresh_tasks.remove(&due_target) {
+                    if due_target != *target {
                         handles_to_abort.push(task.handle);
                     }
                     targets.push(ConnectorRefreshTarget {
-                        connector_slug: due_connector_slug,
+                        target: due_target,
                         generation: task.generation,
                     });
                 }
@@ -969,6 +1318,96 @@ async fn patch_network_policy(
         .await
 }
 
+fn connector_runtime_registry_state(
+    result: &ConnectorRuntimeReconcileResult,
+    snapshot: &ActiveRunNetworkPolicySnapshot,
+) -> Result<ConnectorRuntimeRegistryState, &'static str> {
+    match (&result.target, &result.state) {
+        (_, ConnectorRuntimeReconcileState::Absent { .. }) => {
+            Ok(ConnectorRuntimeRegistryState::Absent)
+        }
+        (
+            ConnectorRuntimeTarget::Builtin { connector_slug },
+            ConnectorRuntimeReconcileState::Available {
+                network_policy,
+                firewall,
+            },
+        ) => {
+            validate_connector_runtime_network_policy(network_policy)?;
+            if firewall.is_some() {
+                return Err("builtin available result must not include an inline firewall");
+            }
+            let Some(firewall) = snapshot.builtin_firewalls.get(connector_slug) else {
+                return Err("builtin target has no retained firewall entry");
+            };
+            Ok(ConnectorRuntimeRegistryState::Available {
+                firewall: firewall.clone(),
+                network_policy: network_policy.clone(),
+            })
+        }
+        (
+            ConnectorRuntimeTarget::Custom {
+                custom_connector_id,
+            },
+            ConnectorRuntimeReconcileState::Available {
+                network_policy,
+                firewall:
+                    Some(
+                        firewall @ FirewallEntry::Inline {
+                            firewall: inline_firewall,
+                            custom_connector_auth_owner: Some(owner),
+                        },
+                    ),
+            },
+        ) => {
+            validate_connector_runtime_network_policy(network_policy)?;
+            if owner.custom_connector_id != *custom_connector_id {
+                return Err("custom available result has a mismatched auth owner");
+            }
+            if !valid_custom_auth_state_digest(&owner.auth_state_digest) {
+                return Err("custom available result has an invalid auth state digest");
+            }
+            inline_firewall
+                .validate_for_connector_runtime()
+                .map_err(|_| "custom available result has an invalid inline firewall")?;
+            Ok(ConnectorRuntimeRegistryState::Available {
+                firewall: firewall.clone(),
+                network_policy: network_policy.clone(),
+            })
+        }
+        (
+            ConnectorRuntimeTarget::Custom { .. },
+            ConnectorRuntimeReconcileState::Available { network_policy, .. },
+        ) => {
+            validate_connector_runtime_network_policy(network_policy)?;
+            Err("custom available result must include an inline firewall")
+        }
+    }
+}
+
+fn validate_connector_runtime_network_policy(policy: &NetworkPolicy) -> Result<(), &'static str> {
+    if !matches!(policy.unknown_policy.as_str(), "allow" | "deny" | "ask") {
+        return Err("connector runtime network policy has an invalid unknown policy");
+    }
+    let mut permission_names = HashSet::new();
+    for permission_name in policy.allow.iter().chain(&policy.deny).chain(&policy.ask) {
+        if permission_name.is_empty() || !permission_names.insert(permission_name) {
+            return Err("connector runtime network policy has invalid permission names");
+        }
+    }
+    Ok(())
+}
+
+fn valid_custom_auth_state_digest(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return false;
+    };
+    hex.len() == 64
+        && hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 fn parse_optional_refresh_deadline(
     value: Option<&str>,
 ) -> Result<Option<tokio::time::Instant>, ()> {
@@ -1010,7 +1449,14 @@ fn refresh_retry_delay(run_id: RunId, attempt: u32) -> Duration {
 fn target_connector_slugs(targets: &[ConnectorRefreshTarget]) -> Vec<&str> {
     targets
         .iter()
-        .map(|target| target.connector_slug.as_str())
+        .filter_map(|target| target.target.builtin_connector_slug())
+        .collect()
+}
+
+fn target_identities(targets: &[ConnectorRefreshTarget]) -> Vec<String> {
+    targets
+        .iter()
+        .map(|target| target.target.log_identity())
         .collect()
 }
 
@@ -1034,7 +1480,9 @@ mod tests {
 
     use crate::http::{HttpClient, HttpClientConfig};
     use crate::proxy::{ProxyRegistryHandle, VmRegistration};
-    use crate::types::FirewallEntry;
+    use crate::types::{
+        CustomConnectorAuthOwner, Firewall, FirewallApi, FirewallAuth, FirewallEntry,
+    };
 
     fn api_client_for_url(api_url: String) -> ApiClient {
         ApiClient::new(
@@ -1046,6 +1494,48 @@ mod tests {
             .expect("test API URL should be valid"),
             "runner-token".to_string(),
         )
+    }
+
+    fn builtin_target(connector_slug: &str) -> ConnectorRuntimeTarget {
+        ConnectorRuntimeTarget::Builtin {
+            connector_slug: connector_slug.to_string(),
+        }
+    }
+
+    fn custom_target(custom_connector_id: &str) -> ConnectorRuntimeTarget {
+        ConnectorRuntimeTarget::Custom {
+            custom_connector_id: custom_connector_id.to_string(),
+        }
+    }
+
+    fn custom_runtime_firewall(
+        custom_connector_id: &str,
+        auth_state_digest: &str,
+    ) -> FirewallEntry {
+        FirewallEntry::Inline {
+            firewall: Firewall {
+                name: format!("custom_connector_{}", custom_connector_id.replace('-', "")),
+                apis: vec![FirewallApi {
+                    id: "custom-api:0".to_string(),
+                    base: "https://custom.example.test/api/".to_string(),
+                    auth: FirewallAuth {
+                        headers: HashMap::from([(
+                            "Authorization".to_string(),
+                            "Bearer ${{ secrets.CUSTOM_TOKEN }}".to_string(),
+                        )]),
+                        base: None,
+                        query: None,
+                        aws_sigv4: None,
+                    },
+                    host_policy: None,
+                    permissions: None,
+                }],
+            },
+            custom_connector_auth_owner: Some(CustomConnectorAuthOwner {
+                custom_connector_id: custom_connector_id.to_string(),
+                auth_state_digest: auth_state_digest.to_string(),
+            }),
+        }
     }
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
@@ -1244,6 +1734,8 @@ mod tests {
                     source_ip,
                     registry: registry.clone(),
                     connector_slugs,
+                    targets: None,
+                    firewalls: Some(&firewalls),
                     refreshes: None,
                 })
                 .await;
@@ -1317,12 +1809,16 @@ mod tests {
             .expect("run should remain active while refresh retries");
         let connector = active
             .connectors
-            .get(connector_slug)
+            .get(&ConnectorRuntimeTarget::Builtin {
+                connector_slug: connector_slug.to_string(),
+            })
             .expect("connector should remain active while refresh retries");
         assert_eq!(connector.consecutive_failures, expected_attempt);
         let task = active
             .refresh_tasks
-            .get(connector_slug)
+            .get(&ConnectorRuntimeTarget::Builtin {
+                connector_slug: connector_slug.to_string(),
+            })
             .expect("connector should retain a scheduled refresh retry");
         assert_eq!(task.generation, connector.generation);
         assert!(task.deadline > tokio::time::Instant::now());
@@ -1396,7 +1892,9 @@ mod tests {
                 .into_iter()
                 .map(|connector_slug| {
                     (
-                        connector_slug.into(),
+                        ConnectorRuntimeTarget::Builtin {
+                            connector_slug: connector_slug.into(),
+                        },
                         ActiveConnectorRefreshState {
                             generation: 0,
                             consecutive_failures: 0,
@@ -1404,6 +1902,8 @@ mod tests {
                     )
                 })
                 .collect(),
+            tagged: false,
+            builtin_firewalls: HashMap::new(),
             cancel: CancellationToken::new(),
             refresh_tasks: HashMap::new(),
             next_refresh_task_id: 0,
@@ -1414,7 +1914,9 @@ mod tests {
         RefreshRequest {
             run_id,
             targets: vec![ConnectorRefreshTarget {
-                connector_slug: connector_slug.to_string(),
+                target: ConnectorRuntimeTarget::Builtin {
+                    connector_slug: connector_slug.to_string(),
+                },
                 generation: 0,
             }],
         }
@@ -1494,6 +1996,48 @@ mod tests {
             .await
             .expect("vm should be registered");
         (dir, registry, registry_path, lock_path)
+    }
+
+    async fn registered_runtime_registry(
+        run_id: RunId,
+        firewalls: &[FirewallEntry],
+        network_policies: &HashMap<String, NetworkPolicy>,
+    ) -> (tempfile::TempDir, ProxyRegistryHandle, std::path::PathBuf) {
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry_path = dir.path().join("proxy-registry.json");
+        tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
+            .await
+            .expect("empty registry should be written");
+        let registry = ProxyRegistryHandle::new(
+            registry_path.clone(),
+            dir.path().join("proxy-registry.lock"),
+        );
+        let run_id = run_id.to_string();
+        let network_log_path = dir.path().join("network.jsonl");
+        let proxy_log_path = dir.path().join("proxy.log");
+        registry
+            .register_vm(
+                "10.200.0.2",
+                &VmRegistration {
+                    run_id: &run_id,
+                    cli_agent_type: "codex",
+                    sandbox_token: "sandbox-token",
+                    network_log_path: &network_log_path,
+                    proxy_log_path: &proxy_log_path,
+                    firewalls: Some(firewalls),
+                    network_policies: Some(network_policies),
+                    encrypted_secrets: None,
+                    secret_connector_map: None,
+                    secret_connector_metadata_map: None,
+                    vars: None,
+                    capture_network_bodies: false,
+                    billable_firewalls: &[],
+                    model_usage_provider: None,
+                },
+            )
+            .await
+            .expect("vm should be registered");
+        (dir, registry, registry_path)
     }
 
     async fn wait_until_slack_policy(
@@ -1737,6 +2281,8 @@ mod tests {
                 source_ip: "10.200.0.2",
                 registry,
                 connector_slugs: HashSet::from(["slack".to_string()]),
+                targets: None,
+                firewalls: None,
                 refreshes: Some(&refreshes),
             })
             .await;
@@ -1770,11 +2316,288 @@ mod tests {
                 source_ip: "10.200.0.2",
                 registry,
                 connector_slugs: HashSet::from(["slack".to_string()]),
+                targets: None,
+                firewalls: None,
                 refreshes: None,
             })
             .await;
 
         assert!(handle.core.inner.active_runs.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tagged_custom_target_registers_while_absent_and_restores_from_reconcile() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let target = custom_target(custom_connector_id);
+        let absent_reconcile = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!(
+                    "/api/runners/runs/{run_id}/connector-runtime/reconcile"
+                ))
+                .json_body(json!({ "targets": [target.clone()] }));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [{
+                        "target": target.clone(),
+                        "state": "absent",
+                        "reason": "grant-unavailable",
+                        "nextReconcileAt": "2999-01-01T00:00:00Z",
+                    }],
+                }));
+        });
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let firewall = custom_runtime_firewall(custom_connector_id, &digest);
+        let empty_firewalls = Vec::new();
+        let empty_policies = HashMap::new();
+        let (_dir, registry, registry_path) =
+            registered_runtime_registry(run_id, &empty_firewalls, &empty_policies).await;
+
+        core.register_run(NetworkPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_slugs: HashSet::new(),
+            targets: Some(std::slice::from_ref(&target)),
+            firewalls: Some(&empty_firewalls),
+            refreshes: None,
+        })
+        .await;
+        let request = recv_refresh_request(&mut requests).await;
+        assert_eq!(request.targets[0].target, target);
+
+        assert!(
+            core.reconcile_connector_runtime_batch_now(run_id, &request.targets)
+                .await
+        );
+        absent_reconcile.assert_calls(1);
+        let absent_registry: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(&registry_path)
+                .await
+                .expect("registry should be readable"),
+        )
+        .expect("registry should be valid JSON");
+        assert_eq!(
+            absent_registry["vms"]["10.200.0.2"]["omittedCustomConnectorIds"],
+            json!([custom_connector_id])
+        );
+        assert!(
+            core.inner.active_runs.lock().await[&run_id]
+                .refresh_tasks
+                .contains_key(&target)
+        );
+
+        absent_reconcile.delete_async().await;
+        let available_reconcile = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!(
+                    "/api/runners/runs/{run_id}/connector-runtime/reconcile"
+                ))
+                .json_body(json!({ "targets": [target.clone()] }));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [{
+                        "target": target.clone(),
+                        "state": "available",
+                        "firewall": firewall,
+                        "networkPolicy": {
+                            "allow": ["custom.read"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        },
+                        "nextReconcileAt": "2999-01-01T00:00:00Z",
+                    }],
+                }));
+        });
+        core.notify_connector_runtime_reconcile(run_id, target.clone())
+            .await;
+        let request = recv_refresh_request(&mut requests).await;
+        assert!(
+            core.reconcile_connector_runtime_batch_now(run_id, &request.targets)
+                .await
+        );
+
+        available_reconcile.assert_calls(1);
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(&registry_path)
+                .await
+                .expect("registry should be readable"),
+        )
+        .expect("registry should be valid JSON");
+        let vm = &registry_json["vms"]["10.200.0.2"];
+        assert_eq!(
+            vm["firewalls"][0]["customConnectorAuthOwner"],
+            json!({
+                "authStateDigest": digest,
+                "customConnectorId": custom_connector_id,
+            })
+        );
+        assert_eq!(
+            vm["networkPolicies"]["custom_connector_550e8400e29b41d4a716446655440000"]["allow"],
+            json!(["custom.read"])
+        );
+        assert!(vm.get("omittedCustomConnectorIds").is_none());
+        core.unregister_run(run_id).await;
+    }
+
+    #[tokio::test]
+    async fn invalid_tagged_custom_response_retains_last_known_good_and_retries() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let target = custom_target(custom_connector_id);
+        let initial_digest = format!("sha256:{}", "a".repeat(64));
+        let initial_firewall = custom_runtime_firewall(custom_connector_id, &initial_digest);
+        let initial_name = format!("custom_connector_{}", custom_connector_id.replace('-', ""));
+        let initial_policies = HashMap::from([(
+            initial_name,
+            NetworkPolicy {
+                allow: vec!["custom.read".to_string()],
+                deny: vec![],
+                ask: vec![],
+                unknown_policy: "deny".to_string(),
+            },
+        )]);
+        let invalid_firewall = custom_runtime_firewall(custom_connector_id, "not-a-digest");
+        server.mock(|when, then| {
+            when.method(POST).path(format!(
+                "/api/runners/runs/{run_id}/connector-runtime/reconcile"
+            ));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [{
+                        "target": target.clone(),
+                        "state": "available",
+                        "firewall": invalid_firewall,
+                        "networkPolicy": {
+                            "allow": ["custom.write"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "allow",
+                        },
+                        "nextReconcileAt": "2999-01-01T00:00:00Z",
+                    }],
+                }));
+        });
+        let firewalls = vec![initial_firewall];
+        let (_dir, registry, registry_path) =
+            registered_runtime_registry(run_id, &firewalls, &initial_policies).await;
+        let registry_before = tokio::fs::read(&registry_path).await.unwrap();
+
+        core.register_run(NetworkPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_slugs: HashSet::new(),
+            targets: Some(std::slice::from_ref(&target)),
+            firewalls: Some(&firewalls),
+            refreshes: None,
+        })
+        .await;
+        let request = recv_refresh_request(&mut requests).await;
+
+        assert!(
+            core.reconcile_connector_runtime_batch_now(run_id, &request.targets)
+                .await
+        );
+
+        assert_eq!(
+            tokio::fs::read(&registry_path).await.unwrap(),
+            registry_before
+        );
+        let active_runs = core.inner.active_runs.lock().await;
+        let active = &active_runs[&run_id];
+        assert_eq!(active.connectors[&target].consecutive_failures, 1);
+        assert!(active.refresh_tasks.contains_key(&target));
+        drop(active_runs);
+        core.unregister_run(run_id).await;
+    }
+
+    #[tokio::test]
+    async fn old_api_fallback_refreshes_builtin_without_short_retry_loop() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let target = builtin_target("slack");
+        let tagged_route = server.mock(|when, then| {
+            when.method(POST).path(format!(
+                "/api/runners/runs/{run_id}/connector-runtime/reconcile"
+            ));
+            then.status(404);
+        });
+        let legacy_route = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"))
+                .json_body(json!({ "connectorSlugs": ["slack"] }));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "refreshes": [{
+                        "connectorSlug": "slack",
+                        "networkPolicy": {
+                            "allow": ["chat:write", "files:write"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "allow",
+                        },
+                        "nextRefreshAt": "2999-01-01T00:00:00Z",
+                    }],
+                }));
+        });
+        let firewalls = vec![FirewallEntry::Builtin {
+            name: "slack".to_string(),
+            base_url_vars: None,
+        }];
+        let policies = HashMap::from([(
+            "slack".to_string(),
+            NetworkPolicy {
+                allow: vec!["chat:write".to_string()],
+                deny: vec!["files:write".to_string()],
+                ask: vec![],
+                unknown_policy: "allow".to_string(),
+            },
+        )]);
+        let (_dir, registry, registry_path) =
+            registered_runtime_registry(run_id, &firewalls, &policies).await;
+
+        core.register_run(NetworkPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_slugs: HashSet::from(["slack".to_string()]),
+            targets: Some(std::slice::from_ref(&target)),
+            firewalls: Some(&firewalls),
+            refreshes: None,
+        })
+        .await;
+        let request = recv_refresh_request(&mut requests).await;
+
+        assert!(
+            core.reconcile_connector_runtime_batch_now(run_id, &request.targets)
+                .await
+        );
+
+        tagged_route.assert_calls(1);
+        legacy_route.assert_calls(1);
+        let registry_json: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(registry_path).await.unwrap()).unwrap();
+        assert_eq!(
+            registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"]["allow"],
+            json!(["chat:write", "files:write"])
+        );
+        let active_runs = core.inner.active_runs.lock().await;
+        let active = &active_runs[&run_id];
+        assert_eq!(active.connectors[&target].consecutive_failures, 0);
+        assert!(active.refresh_tasks.contains_key(&target));
+        drop(active_runs);
+        core.unregister_run(run_id).await;
     }
 
     #[tokio::test]
@@ -1857,7 +2680,7 @@ mod tests {
         assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
         let active_runs = core.inner.active_runs.lock().await;
         let active = active_runs.get(&run_id).expect("run should remain active");
-        assert_eq!(active.connectors["slack"].generation, 0);
+        assert_eq!(active.connectors[&builtin_target("slack")].generation, 0);
         assert!(active.refresh_tasks.is_empty());
     }
 
@@ -1899,8 +2722,8 @@ mod tests {
                     .await
                     .get(&run_id)
                     .is_some_and(|active| {
-                        active.connectors["slack"].consecutive_failures == 1
-                            && active.refresh_tasks.contains_key("slack")
+                        active.connectors[&builtin_target("slack")].consecutive_failures == 1
+                            && active.refresh_tasks.contains_key(&builtin_target("slack"))
                     })
                 {
                     return;
@@ -2023,17 +2846,18 @@ mod tests {
             let active_runs = core.inner.active_runs.lock().await;
             let active = &active_runs[&run_id];
             assert_eq!(
-                active.refresh_tasks["slack"].deadline, active.refresh_tasks["github"].deadline,
+                active.refresh_tasks[&builtin_target("slack")].deadline,
+                active.refresh_tasks[&builtin_target("github")].deadline,
                 "same-run connectors at the same attempt should remain coalescible"
             );
-            let first_delay = active.refresh_tasks["slack"].deadline - first_base;
+            let first_delay = active.refresh_tasks[&builtin_target("slack")].deadline - first_base;
             assert!(first_delay >= Duration::from_millis(800));
             assert!(first_delay <= REFRESH_RETRY_INITIAL_DELAY);
         }
 
         let slack_target = targets
             .iter()
-            .find(|target| target.connector_slug == "slack")
+            .find(|target| target.target == builtin_target("slack"))
             .expect("slack target should exist")
             .clone();
         for expected_attempt in 2..=7 {
@@ -2047,11 +2871,12 @@ mod tests {
             let active_runs = core.inner.active_runs.lock().await;
             let active = &active_runs[&run_id];
             assert_eq!(
-                active.connectors["slack"].consecutive_failures,
+                active.connectors[&builtin_target("slack")].consecutive_failures,
                 expected_attempt
             );
             if expected_attempt >= 6 {
-                let delay = active.refresh_tasks["slack"].deadline - scheduling_base;
+                let delay =
+                    active.refresh_tasks[&builtin_target("slack")].deadline - scheduling_base;
                 assert!(delay >= Duration::from_secs(24));
                 assert!(delay <= REFRESH_RETRY_MAX_DELAY);
             }
@@ -2145,8 +2970,8 @@ mod tests {
                     .await
                     .get(&run_id)
                     .is_some_and(|active| {
-                        active.connectors["slack"].consecutive_failures == 1
-                            && active.refresh_tasks.contains_key("slack")
+                        active.connectors[&builtin_target("slack")].consecutive_failures == 1
+                            && active.refresh_tasks.contains_key(&builtin_target("slack"))
                     })
                 {
                     return;
@@ -2267,7 +3092,7 @@ mod tests {
         );
         let scheduled_task = {
             let active_runs = harness.handle.core.inner.active_runs.lock().await;
-            active_runs[&run_id].refresh_tasks["github"]
+            active_runs[&run_id].refresh_tasks[&builtin_target("github")]
                 .handle
                 .abort_handle()
         };
@@ -2475,7 +3300,8 @@ mod tests {
             .notify_network_policy_refresh(run_id, "slack".to_string())
             .await;
         assert_eq!(
-            harness.handle.core.inner.active_runs.lock().await[&run_id].connectors["slack"]
+            harness.handle.core.inner.active_runs.lock().await[&run_id].connectors
+                [&builtin_target("slack")]
                 .generation,
             2
         );
@@ -2499,9 +3325,12 @@ mod tests {
         let active = active_runs
             .get(&run_id)
             .expect("run should remain active after newer refresh");
-        assert_eq!(active.connectors["slack"].generation, 2);
-        assert_eq!(active.connectors["slack"].consecutive_failures, 0);
-        assert!(!active.refresh_tasks.contains_key("slack"));
+        assert_eq!(active.connectors[&builtin_target("slack")].generation, 2);
+        assert_eq!(
+            active.connectors[&builtin_target("slack")].consecutive_failures,
+            0
+        );
+        assert!(!active.refresh_tasks.contains_key(&builtin_target("slack")));
         drop(active_runs);
         harness.shutdown().await;
     }
@@ -2595,7 +3424,7 @@ mod tests {
                 .lock()
                 .await
                 .get(&run_id)
-                .is_some_and(|active| active.refresh_tasks.contains_key("slack")),
+                .is_some_and(|active| active.refresh_tasks.contains_key(&builtin_target("slack"))),
             "successful retry should install the returned refresh schedule"
         );
         let retry = captured_event(&events, "network policy refresh transport failed, retrying");
@@ -2669,7 +3498,7 @@ mod tests {
         assert_last_known_good_policy(&harness.slack_policy().await);
         assert_retry_scheduled(&harness.handle.core, run_id, "slack", 1).await;
         let retry_deadline = harness.handle.core.inner.active_runs.lock().await[&run_id]
-            .refresh_tasks["slack"]
+            .refresh_tasks[&builtin_target("slack")]
             .deadline;
         assert_eq!(
             events
@@ -2722,8 +3551,8 @@ mod tests {
                     .await
                     .get(&run_id)
                     .is_some_and(|active| {
-                        active.connectors["slack"].consecutive_failures == 0
-                            && !active.refresh_tasks.contains_key("slack")
+                        active.connectors[&builtin_target("slack")].consecutive_failures == 0
+                            && !active.refresh_tasks.contains_key(&builtin_target("slack"))
                     })
                 {
                     return;
@@ -2737,9 +3566,12 @@ mod tests {
         let active = active_runs
             .get(&run_id)
             .expect("run should remain active after recovery");
-        assert_eq!(active.connectors["slack"].consecutive_failures, 0);
+        assert_eq!(
+            active.connectors[&builtin_target("slack")].consecutive_failures,
+            0
+        );
         assert!(
-            !active.refresh_tasks.contains_key("slack"),
+            !active.refresh_tasks.contains_key(&builtin_target("slack")),
             "null nextRefreshAt should clear the retry schedule"
         );
         drop(active_runs);
@@ -3017,6 +3849,8 @@ mod tests {
             source_ip: "10.200.0.2",
             registry,
             connector_slugs: HashSet::from(["slack".to_string()]),
+            targets: None,
+            firewalls: None,
             refreshes: Some(&refreshes),
         })
         .await;

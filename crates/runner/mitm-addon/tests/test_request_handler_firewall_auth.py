@@ -80,6 +80,140 @@ async def test_repeated_firewall_requests_reuse_snapshot_auth_identity(
     assert flows[1].request.headers["Authorization"] == "Bearer resolved"
 
 
+async def test_custom_owner_scopes_cache_and_auth_request_to_exact_match(
+    tmp_path, real_flow, mitm_ctx
+):
+    owner = {
+        "customConnectorId": "550e8400-e29b-41d4-a716-446655440000",
+        "authStateDigest": f"sha256:{'a' * 64}",
+    }
+    firewall_name = "custom_connector_550e8400e29b41d4a716446655440000"
+    api_id = f"{firewall_name}:0"
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name=firewall_name,
+            custom_connector_auth_owner=owner,
+            api_entry={
+                "id": api_id,
+                "base": "https://custom.example.test/api/",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.CUSTOM_TOKEN }}"}},
+            },
+            network_policy={
+                "allow": [],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="custom.example.test",
+        path="/api/items",
+    )
+    auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
+    ):
+        await mitm_addon.request(flow)
+
+    cache_key = flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    assert cache_key.custom_connector_auth_owner == (
+        owner["customConnectorId"],
+        owner["authStateDigest"],
+    )
+    auth_fetch.assert_awaited_once()
+    await_args = auth_fetch.await_args
+    assert await_args is not None
+    request = await_args.args[0]
+    assert request.to_body()["matchedFirewall"] == {
+        "name": firewall_name,
+        "apiId": api_id,
+        "customConnectorAuthOwner": owner,
+    }
+    assert flow.request.headers["Authorization"] == "Bearer resolved"
+
+
+async def test_custom_owner_change_during_auth_discards_stale_credentials(
+    tmp_path, real_flow, mitm_ctx
+):
+    custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
+    firewall_name = "custom_connector_550e8400e29b41d4a716446655440000"
+
+    def write_owner(digest_character: str):
+        return _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                firewall_name=firewall_name,
+                custom_connector_auth_owner={
+                    "customConnectorId": custom_connector_id,
+                    "authStateDigest": f"sha256:{digest_character * 64}",
+                },
+                api_entry={
+                    "id": f"{firewall_name}:0",
+                    "base": "https://custom.example.test/api/",
+                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.CUSTOM_TOKEN }}"}},
+                },
+                network_policy={
+                    "allow": [],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+            ),
+        )
+
+    reg_path = write_owner("a")
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="custom.example.test",
+        path="/api/items",
+    )
+    auth_resolution_entered = asyncio.Event()
+    release_auth_resolution = asyncio.Event()
+
+    async def resolve_auth(*_args, **_kwargs):
+        auth_resolution_entered.set()
+        await release_auth_resolution.wait()
+        return {
+            "headers": {"Authorization": "Bearer stale"},
+            "query": {},
+            "resolved_secrets": ["CUSTOM_TOKEN"],
+            "refreshed_connectors": [],
+            "refreshed_secrets": [],
+            "cache_hit": False,
+        }
+
+    auth_fetch = AsyncMock(side_effect=resolve_auth)
+    request_task: asyncio.Task[None] | None = None
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", auth_fetch),
+    ):
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+            write_owner("b")
+            release_auth_resolution.set()
+            await request_task
+        finally:
+            release_auth_resolution.set()
+            await cancel_pending_task(request_task)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is not None
+    assert flow.response.status_code == 409
+    assert json.loads(flow.response.content)["error"] == "firewall_authorization_changed"
+    assert "Authorization" not in flow.request.headers
+
+
 async def test_requestheaders_and_request_share_snapshot_auth_identity(
     tmp_path, real_flow, mitm_ctx, headers
 ):

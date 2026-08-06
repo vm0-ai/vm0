@@ -1,6 +1,8 @@
 """Registry VM firewall entry resolution."""
 
 import copy
+import re
+import uuid
 from dataclasses import dataclass
 
 import builtin_base_url
@@ -20,6 +22,46 @@ BuiltinFirewallCoreCacheKey = tuple[
 
 class FirewallEntryResolutionError(ValueError):
     """Execution firewall entries could not be expanded into runtime configs."""
+
+
+_AUTH_STATE_DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
+
+
+def _custom_connector_auth_owner(entry: dict) -> dict | None:
+    raw_owner = entry.get("customConnectorAuthOwner")
+    if raw_owner is None:
+        return None
+    if not isinstance(raw_owner, dict) or set(raw_owner) != {
+        "customConnectorId",
+        "authStateDigest",
+    }:
+        raise FirewallEntryResolutionError(
+            "inline firewall customConnectorAuthOwner must contain "
+            "customConnectorId and authStateDigest"
+        )
+    custom_connector_id = raw_owner.get("customConnectorId")
+    auth_state_digest = raw_owner.get("authStateDigest")
+    if not isinstance(custom_connector_id, str):
+        raise FirewallEntryResolutionError(
+            "inline firewall customConnectorAuthOwner customConnectorId must be a UUID"
+        )
+    try:
+        uuid.UUID(custom_connector_id)
+    except ValueError as error:
+        raise FirewallEntryResolutionError(
+            "inline firewall customConnectorAuthOwner customConnectorId must be a UUID"
+        ) from error
+    if (
+        not isinstance(auth_state_digest, str)
+        or _AUTH_STATE_DIGEST_PATTERN.fullmatch(auth_state_digest) is None
+    ):
+        raise FirewallEntryResolutionError(
+            "inline firewall customConnectorAuthOwner authStateDigest must be a SHA-256 digest"
+        )
+    return {
+        "customConnectorId": custom_connector_id,
+        "authStateDigest": auth_state_digest,
+    }
 
 
 @dataclass(frozen=True)
@@ -286,7 +328,14 @@ def resolve_firewall_entries(
                 raise FirewallEntryResolutionError(
                     "inline firewall entry firewall must be an object"
                 )
-            resolved.append(copy.deepcopy(firewall))
+            resolved_firewall = copy.deepcopy(firewall)
+            custom_connector_auth_owner = _custom_connector_auth_owner(entry)
+            if custom_connector_auth_owner is not None:
+                resolved_firewall["customConnectorAuthOwner"] = custom_connector_auth_owner
+                for api in resolved_firewall.get("apis", []):
+                    if isinstance(api, dict):
+                        api["customConnectorAuthOwner"] = custom_connector_auth_owner
+            resolved.append(resolved_firewall)
             builtin_cache_keys.append(None)
             continue
         raise FirewallEntryResolutionError("firewall entries must use a supported kind")
