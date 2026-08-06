@@ -209,6 +209,38 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.hasSubscription).toBeTruthy();
   });
 
+  it.each(["canceled", "incomplete_expired"])(
+    "does not report a %s plan as a subscription",
+    async (status) => {
+      const fixture = await track(
+        store.set(
+          seedBillingStatusOrg$,
+          {
+            subscription: {
+              tier: "pro",
+              status,
+              currentPeriodEnd: new Date("2099-04-20T00:00:00Z"),
+              stripeCustomerId: `cus_${randomUUID()}`,
+              stripeSubscriptionId: `sub_${randomUUID()}`,
+            },
+          },
+          context.signal,
+        ),
+      );
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+
+      const response = await accept(
+        setupApp({ context })(zeroBillingStatusContract).get({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body.subscriptionStatus).toBe(status);
+      expect(response.body.hasSubscription).toBeFalsy();
+    },
+  );
+
   it("returns custom tier status without subscription plan credits", async () => {
     const fixture = await track(
       store.set(seedBillingStatusOrg$, { credits: 0 }, context.signal),
@@ -726,6 +758,7 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.cancelAtPeriodEnd).toBeTruthy();
+    expect(response.body.hasSubscription).toBeTruthy();
     expect(response.body.scheduledChange).toStrictEqual({
       type: "cancel",
       targetTier: "limited-free-1",

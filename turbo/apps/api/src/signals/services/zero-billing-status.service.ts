@@ -551,6 +551,14 @@ function scheduledBillingChange(
   };
 }
 
+function hasManageablePlanSubscription(org: BillingOrgRow): boolean {
+  return (
+    org.stripeSubscriptionId !== null &&
+    org.subscriptionStatus !== "canceled" &&
+    org.subscriptionStatus !== "incomplete_expired"
+  );
+}
+
 function billingStatusResponse(args: {
   orgId: string;
   org: BillingOrgRow | undefined;
@@ -596,7 +604,7 @@ function billingStatusResponse(args: {
     cancelAtPeriodEnd: org.cancelAtPeriodEnd,
     scheduledChange: scheduledBillingChange(org),
     hasSubscription:
-      org.stripeSubscriptionId !== null ||
+      hasManageablePlanSubscription(org) ||
       args.concurrencySubscriptions.length > 0 ||
       (args.usageAllowance !== null &&
         args.usageAllowance.stripeSubscriptionId !== null),
