@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 
 import {
-  customConnectorAuthModeSchema,
   updateCustomConnectorBodySchema,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -12,15 +11,49 @@ import { createZeroCustomConnector } from "../../../../lib/api/domains/zero-conn
 import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
 import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
-const apiCustomConnectorDefinitionSchema = updateCustomConnectorBodySchema
-  .omit({
-    authMode: true,
-    oauthConfig: true,
-  })
-  .extend({
-    authMode: customConnectorAuthModeSchema.extract(["manual"]),
-  })
-  .strict();
+const customConnectorDefinitionSchema = updateCustomConnectorBodySchema
+  .strict()
+  .refine(
+    (definition) => {
+      return definition.authMode !== undefined;
+    },
+    { message: 'Custom connector authMode must be "manual" or "oauth"' },
+  )
+  .refine(
+    (definition) => {
+      if (definition.authMode !== "manual") {
+        return true;
+      }
+      const field = definition.fields[0];
+      return (
+        definition.oauthConfig === undefined &&
+        definition.fields.length === 1 &&
+        field?.key === "secret" &&
+        field.kind === "secret" &&
+        field.required
+      );
+    },
+    {
+      message:
+        'Manual definitions require exactly one required secret field with key "secret" and no oauthConfig',
+    },
+  )
+  .refine(
+    (definition) => {
+      if (definition.authMode !== "oauth") {
+        return true;
+      }
+      return (
+        definition.fields.length === 0 &&
+        definition.oauthConfig?.providerAdapter === "standard" &&
+        definition.oauthConfig.clientSecret !== undefined
+      );
+    },
+    {
+      message:
+        "OAuth definitions require empty fields and standard OAuth app configuration including clientSecret",
+    },
+  );
 
 interface CreateOptions {
   readonly file: string;
@@ -50,41 +83,50 @@ function printCreateResult(
   );
   console.log(chalk.dim(`  ID:             ${connector.id}`));
   console.log(chalk.dim(`  Slug:           ${connector.slug}`));
+  console.log(chalk.dim(`  Authentication: ${connector.authMode ?? "manual"}`));
   console.log(chalk.dim("  Status:         awaiting connection"));
   console.log();
   console.log(
-    "Open the Connectors page to enter the credential before using this connector.",
+    connector.authMode === "oauth"
+      ? "Open the Connectors page to complete OAuth authorization before using this connector."
+      : "Open the Connectors page to enter the credential before using this connector.",
   );
 }
 
 export const createCustomConnectorCommand = new Command()
   .name("create")
-  .description("Create an API custom connector definition from JSON")
+  .description("Create a manual or OAuth custom connector definition from JSON")
   .requiredOption("-f, --file <path>", "JSON connector definition file")
   .option("--json", "Print the created connector as JSON")
   .addHelpText(
     "after",
     `
 Definition file:
-  Describe only the connector metadata and credential injection template.
-  Never include an API token, credential value, or values array. Creating the
-  definition is separate from connecting it with a user's credential.
+  Describe only the connector metadata, Header/Query injection templates, and
+  OAuth app configuration when applicable. Never include an API token,
+  end-user OAuth token, or values array. Creating the definition is separate
+  from connecting it with a user's credential or OAuth grant.
 
 Agent workflow:
-  1. Ask only for missing metadata: name, HTTPS API prefix, and the Header or
-     Query injection template. Do not ask the user for the actual API token.
-  2. Convert placeholders such as <API Token> into a secret field reference.
-  3. Write a temporary JSON definition, run this command, then remove the file.
-  4. Tell the user to connect it from the Connectors page when they are ready
-     to enter the actual credential.
+  1. For manual connectors, ask only for missing metadata: name, HTTPS API
+     prefix, and the Header or Query injection template. Do not ask the user
+     for the actual API token.
+  2. Convert placeholders such as <API Token> into {{secrets.secret}}. Manual
+     definitions use exactly one required secret field whose key is "secret",
+     matching the Connect dialog.
+  3. For OAuth connectors, collect the same OAuth app configuration shown by
+     the Connectors page, including the client ID and client secret. Never ask
+     for an end-user access token or refresh token.
+  4. Write a temporary JSON definition, run this command, then remove the file.
+  5. Tell the user to finish the separate Connect flow when they are ready.
 
-API connector example:
+Manual API connector example:
   {
     "displayName": "Acme API",
     "prefixTemplates": ["https://api.acme.example/v1/"],
     "fields": [
       {
-        "key": "api_token",
+        "key": "secret",
         "label": "API Token",
         "kind": "secret",
         "required": true,
@@ -94,33 +136,59 @@ API connector example:
     "headerInjections": [
       {
         "name": "Authorization",
-        "valueTemplate": "Bearer {{secrets.api_token}}"
+        "valueTemplate": "Bearer {{secrets.secret}}"
       }
     ],
     "queryInjections": [],
     "authMode": "manual"
   }
 
-Template references:
-  - Secret fields:   {{secrets.KEY}}
-  - Variable fields: {{variables.KEY}}
+OAuth connector example:
+  {
+    "displayName": "Acme OAuth API",
+    "prefixTemplates": ["https://api.acme.example/v1/"],
+    "fields": [],
+    "headerInjections": [
+      {
+        "name": "Authorization",
+        "valueTemplate": "Bearer {{oauth.access_token}}"
+      }
+    ],
+    "queryInjections": [],
+    "authMode": "oauth",
+    "oauthConfig": {
+      "providerAdapter": "standard",
+      "clientId": "<oauth-client-id>",
+      "clientSecret": "<oauth-client-secret>",
+      "authorizationUrl": "https://acme.example/oauth/authorize",
+      "tokenUrl": "https://acme.example/oauth/token",
+      "tokenEndpointAuthMethod": "client_secret_post",
+      "pkceMethod": "S256",
+      "scopes": ["read", "write"],
+      "authorizationParams": {}
+    }
+  }
 
 Examples:
   zero connector custom create --file ./connector.json
   zero connector custom create --file ./connector.json --json
 
 Notes:
-  - This command creates API/manual connector definitions only.
-  - OAuth custom connectors must be created from the Connectors page.
-  - The user supplies the actual credential later through the Connect dialog.
-  - Requires an organization admin and the customConnectorCliCreate feature.`,
+  - This command only creates the connector definition; it does not store a
+    manual API token, start OAuth authorization, or authorize an agent.
+  - Manual credentials and end-user OAuth grants are supplied later through
+    the Connect dialog.
+  - OAuth app client secrets are definition-time configuration, matching UI
+    creation, and should be kept in a temporary file that is never committed.
+  - Requires an organization admin and the customConnectorCliCreate feature.
+  - OAuth definitions also require the customConnectorOAuth2 feature.`,
   )
   .action(
     withErrorHandler(async (options: CreateOptions) => {
       requireCustomConnectorWriteCapability();
       const raw = await readFile(options.file, "utf8");
       const input: unknown = JSON.parse(raw);
-      const definition = apiCustomConnectorDefinitionSchema.parse(input);
+      const definition = customConnectorDefinitionSchema.parse(input);
       const connector = await createZeroCustomConnector(definition);
       printCreateResult(connector, options.json ?? false);
     }),

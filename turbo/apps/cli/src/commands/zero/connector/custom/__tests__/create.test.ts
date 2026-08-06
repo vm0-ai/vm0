@@ -31,13 +31,13 @@ function buildZeroToken(capabilities: readonly string[]): string {
   return `vm0_sandbox_${header}.${payload}.test-signature`;
 }
 
-function definition() {
+function manualDefinition() {
   return {
     displayName: "Acme API",
     prefixTemplates: ["https://api.acme.example/v1/"],
     fields: [
       {
-        key: "api_token",
+        key: "secret",
         label: "API Token",
         kind: "secret",
         required: true,
@@ -47,11 +47,38 @@ function definition() {
     headerInjections: [
       {
         name: "Authorization",
-        valueTemplate: "Bearer {{secrets.api_token}}",
+        valueTemplate: "Bearer {{secrets.secret}}",
       },
     ],
     queryInjections: [],
     authMode: "manual",
+  } as const;
+}
+
+function oauthDefinition() {
+  return {
+    displayName: "Acme OAuth API",
+    prefixTemplates: ["https://api.acme.example/v1/"],
+    fields: [],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{oauth.access_token}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "oauth",
+    oauthConfig: {
+      providerAdapter: "standard",
+      clientId: "oauth-client-id",
+      clientSecret: "oauth-client-secret",
+      authorizationUrl: "https://acme.example/oauth/authorize",
+      tokenUrl: "https://acme.example/oauth/token",
+      tokenEndpointAuthMethod: "client_secret_post",
+      pkceMethod: "S256",
+      scopes: ["read", "write"],
+      authorizationParams: {},
+    },
   } as const;
 }
 
@@ -79,15 +106,15 @@ describe("zero connector custom create", () => {
   }
 
   it("creates only the API connector definition", async () => {
-    const definitionPath = writeDefinition(definition());
+    const definitionPath = writeDefinition(manualDefinition());
     let createBody: unknown;
     const created = customConnector({
       id: CONNECTOR_ID,
       displayName: "Acme API",
       prefixTemplates: ["https://api.acme.example/v1/"],
-      fields: [...definition().fields],
-      headerInjections: [...definition().headerInjections],
-      missingRequiredFields: ["api_token"],
+      fields: [...manualDefinition().fields],
+      headerInjections: [...manualDefinition().headerInjections],
+      missingRequiredFields: ["secret"],
     });
     server.use(
       http.post(
@@ -107,7 +134,7 @@ describe("zero connector custom create", () => {
       definitionPath,
     ]);
 
-    expect(createBody).toStrictEqual(definition());
+    expect(createBody).toStrictEqual(manualDefinition());
     expect(createBody).not.toHaveProperty("values");
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain('Custom connector "Acme API" created');
@@ -115,10 +142,70 @@ describe("zero connector custom create", () => {
     expect(output).toContain("Connectors page to enter the credential");
   });
 
+  it("creates only an OAuth definition and leaves authorization to Connect", async () => {
+    const definitionPath = writeDefinition(oauthDefinition());
+    let createBody: unknown;
+    let oauthStartRequests = 0;
+    const created = customConnector({
+      id: CONNECTOR_ID,
+      displayName: "Acme OAuth API",
+      authMode: "oauth",
+      prefixTemplates: ["https://api.acme.example/v1/"],
+      fields: [],
+      headerInjections: [...oauthDefinition().headerInjections],
+      missingRequiredFields: ["oauth"],
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "oauth-client-id",
+        authorizationUrl: "https://acme.example/oauth/authorize",
+        tokenUrl: "https://acme.example/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        scopes: ["read", "write"],
+        authorizationParams: {},
+      },
+    });
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/custom-connectors",
+        async ({ request }) => {
+          createBody = await request.json();
+          return HttpResponse.json(created, { status: 201 });
+        },
+      ),
+      http.post(
+        `http://localhost:3000/api/zero/custom-connectors/${CONNECTOR_ID}/oauth2/start`,
+        () => {
+          oauthStartRequests += 1;
+          return HttpResponse.json({
+            authorizationUrl: "https://acme.example/oauth/authorize",
+          });
+        },
+      ),
+    );
+
+    await customConnectorCommand.parseAsync([
+      "node",
+      "zero",
+      "create",
+      "--file",
+      definitionPath,
+    ]);
+
+    expect(createBody).toStrictEqual(oauthDefinition());
+    expect(createBody).not.toHaveProperty("values");
+    expect(oauthStartRequests).toBe(0);
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain('Custom connector "Acme OAuth API" created');
+    expect(output).toContain("Authentication: oauth");
+    expect(output).toContain("Connectors page to complete OAuth authorization");
+    expect(output).not.toContain("oauth-client-secret");
+  });
+
   it("rejects files containing credential values", async () => {
     const definitionPath = writeDefinition({
-      ...definition(),
-      values: [{ key: "api_token", kind: "secret", value: "plaintext-secret" }],
+      ...manualDefinition(),
+      values: [{ key: "secret", kind: "secret", value: "plaintext-secret" }],
     });
     const mockConsoleError = vi
       .spyOn(console, "error")
@@ -147,8 +234,51 @@ describe("zero connector custom create", () => {
     }
   });
 
+  it("rejects manual fields that the Connect dialog cannot populate", async () => {
+    const definitionPath = writeDefinition({
+      ...manualDefinition(),
+      fields: [
+        {
+          ...manualDefinition().fields[0],
+          key: "api_token",
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_token}}",
+        },
+      ],
+    });
+    const mockConsoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+      return undefined as never;
+    });
+
+    try {
+      await customConnectorCommand.parseAsync([
+        "node",
+        "zero",
+        "create",
+        "--file",
+        definitionPath,
+      ]);
+
+      expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+        "Manual definitions require exactly one required secret field",
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    } finally {
+      mockConsoleError.mockRestore();
+      mockExit.mockRestore();
+    }
+  });
+
   it("rejects an agent run without custom connector write access", async () => {
-    const definitionPath = writeDefinition(definition());
+    const definitionPath = writeDefinition(manualDefinition());
     const mockConsoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
@@ -186,13 +316,17 @@ describe("zero connector custom create", () => {
     createCustomConnectorCommand.outputHelp();
 
     expect(createHelp).toContain("Never include an API token");
-    expect(createHelp).toContain(
-      "Do not ask the user for the actual API token",
-    );
+    expect(createHelp).toContain("Do not ask the user");
+    expect(createHelp).toContain("for the actual API token");
     expect(createHelp).toContain("<API Token>");
-    expect(createHelp).toContain("Bearer {{secrets.api_token}}");
-    expect(createHelp).toContain("actual credential later");
-    expect(createHelp).toContain("OAuth custom connectors must be created");
+    expect(createHelp).toContain("Bearer {{secrets.secret}}");
+    expect(createHelp).toContain('"authMode": "oauth"');
+    expect(createHelp).toContain("Bearer {{oauth.access_token}}");
+    expect(createHelp).toContain("Never ask");
+    expect(createHelp).toContain("end-user access token or refresh token");
+    expect(createHelp).toContain("does not store a");
+    expect(createHelp).toContain("start OAuth authorization");
+    expect(createHelp).toContain("customConnectorOAuth2");
 
     let customHelp = "";
     customConnectorCommand.configureOutput({

@@ -11,10 +11,7 @@
 import { randomInt, randomUUID } from "node:crypto";
 
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import {
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -2021,7 +2018,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(admin, agent.agentId);
   });
 
-  it("lets an enabled admin agent run create and configure a custom connector", async () => {
+  it("lets an enabled admin agent create a manual definition that Connect can configure", async () => {
     const admin = createBddApi(context).user({ orgRole: "org:admin" });
     if (!admin.orgId) {
       throw new Error("Expected an org-scoped admin");
@@ -2039,16 +2036,17 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       prefixTemplates: ["https://agent-created.example.test/v1/"],
       fields: [
         {
-          key: "api_key",
-          label: "API key",
+          key: "secret",
+          label: "Secret",
           kind: "secret" as const,
           required: true,
+          description: "API credential",
         },
       ],
       headerInjections: [
         {
           name: "Authorization",
-          valueTemplate: "Bearer {{secrets.api_key}}",
+          valueTemplate: "Bearer {{secrets.secret}}",
         },
       ],
       queryInjections: [],
@@ -2095,32 +2093,28 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
       [201],
     );
-
-    const valuesClient = setupApp({ context })(
-      zeroCustomConnectorValuesContract,
-    );
-    const configured = await accept(
-      valuesClient.set({
-        params: { id: created.body.id },
-        headers: { authorization: `Bearer ${writeToken}` },
-        body: {
-          values: [
-            {
-              key: "api_key",
-              kind: "secret",
-              value: "agent-created-secret",
-            },
-          ],
-        },
-      }),
-      [200],
-    );
-    expect(configured.body).toMatchObject({
-      id: created.body.id,
-      connected: true,
-      configuredFieldKeys: ["api_key"],
+    expect(created.body).toMatchObject({
+      connected: false,
+      missingRequiredFields: ["secret"],
+      configuredFieldKeys: [],
     });
-    expectNoVisibleSecret(configured.body, "agent-created-secret");
+
+    await connectorsApi.setCustomConnectorSecret(
+      admin,
+      created.body.id,
+      "agent-created-secret",
+    );
+    const configured = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      configured.find((connector) => {
+        return connector.id === created.body.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
+    });
+    expectNoVisibleSecret(configured, "agent-created-secret");
 
     await connectorsApi.deleteCustomConnector(admin, created.body.id);
   });
