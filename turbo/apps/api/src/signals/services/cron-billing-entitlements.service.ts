@@ -32,6 +32,7 @@ import {
   knownPlanPriceItem,
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
+import { reconcileUsagePackSubscriptions } from "./usage-pack-subscription.service";
 import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
 import type { Tx } from "../../lib/db-types";
 
@@ -961,6 +962,12 @@ export const reconcileBillingEntitlements$ = command(
       now.getTime() - PAYMENT_FAILURE_DOWNGRADE_GRACE_MS,
     );
 
+    const usagePackReconciliation = await reconcileUsagePackSubscriptions(
+      db,
+      signal,
+    );
+    signal.throwIfAborted();
+
     const {
       candidates,
       atomGrantCandidates,
@@ -1048,6 +1055,12 @@ export const reconcileBillingEntitlements$ = command(
         subscriptionIds: reconciledUsageAllowances.slice(0, 10).map((row) => {
           return row.subscriptionId;
         }),
+      });
+    }
+    if (usagePackReconciliation.reconciled > 0) {
+      L.warn("usage pack subscriptions reconciled from Stripe", {
+        count: usagePackReconciliation.reconciled,
+        orgIds: usagePackReconciliation.orgIds.slice(0, 10),
       });
     }
 

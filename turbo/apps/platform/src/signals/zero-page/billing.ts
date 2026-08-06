@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
@@ -285,6 +286,13 @@ export const billingStatusAsync$ = computed(async (get) => {
   maybeShowPendingRestoreToast(result.body);
   maybeShowPendingDowngradeToast(result.body);
   return result.body;
+});
+
+export const usagePackCatalogAsync$ = computed(async (get) => {
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingUsagePackCatalogContract);
+  const result = await accept(client.get(), [200]);
+  return result.body.usagePacks;
 });
 
 // ---------------------------------------------------------------------------

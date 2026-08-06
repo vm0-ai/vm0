@@ -274,6 +274,13 @@
       "when": 1786012727628,
       "tag": "0846_backfill_chat_run_model_annotations",
       "breakpoints": true
+    },
+    {
+      "idx": 847,
+      "version": "7",
+      "when": 1786020021206,
+      "tag": "0847_bitter_pride",
+      "breakpoints": true
     }
   ]
 }
