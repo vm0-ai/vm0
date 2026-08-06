@@ -384,19 +384,28 @@ function createCloseBrowserSignals({
 
 function createBrowserSessionSubscriptionSignals(
   descriptor: BrowserSessionDescriptor,
+  session$: BrowserSessionSignals["session$"],
   reload$: BrowserSessionSignals["reload$"],
+  browserFitDom: BrowserFitDomSignals,
 ): Pick<BrowserSessionSignals, "subscribe$"> {
   const reloadBrowserSession$ = command(
-    ({ set }, _signal: AbortSignal): boolean => {
+    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
       set(reload$);
+      const session = await get(session$);
+      signal.throwIfAborted();
+      set(browserFitDom.syncFitActionForScreen$, session?.screen);
       return false;
     },
   );
   const onBrowserSessionChanged$ = command(
-    ({ set }, payload: unknown, _signal: AbortSignal): boolean => {
+    (
+      { set },
+      payload: unknown,
+      signal: AbortSignal,
+    ): Promise<boolean> | boolean => {
       const parsed = browserSessionChangedPayloadSchema.safeParse(payload);
       if (parsed.success && parsed.data.threadId === descriptor.threadId) {
-        set(reload$);
+        return set(reloadBrowserSession$, signal);
       }
       return false;
     },
@@ -464,7 +473,9 @@ export function createBrowserSessionSignals(
   const closeSignals = createCloseBrowserSignals(mutationContext);
   const subscriptionSignals = createBrowserSessionSubscriptionSignals(
     descriptor,
+    session$,
     reload$,
+    browserFitDom,
   );
 
   const keepAliveRef$ = onRef(
