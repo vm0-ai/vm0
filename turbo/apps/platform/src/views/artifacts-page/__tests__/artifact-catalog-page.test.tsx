@@ -217,6 +217,91 @@ describe("artifact catalog page", () => {
     await findCard("avatar-video.mp4");
   });
 
+  it("shows capability-gated filters while the first page loads", async () => {
+    const requestStarted = context.mocks.deferred<void>();
+    const releaseResponse = context.mocks.deferred<void>();
+    context.mocks.api(artifactCatalogContract.list, async ({ respond }) => {
+      requestStarted.resolve();
+      await releaseResponse.promise;
+      return respond(200, {
+        artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+        nextCursor: null,
+        supportedKinds: [...ARTIFACT_CATALOG_KINDS],
+      });
+    });
+
+    setupArtifactCatalogPage();
+    await requestStarted.promise;
+
+    expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
+    expect(buttonByLabel("Show avatar artifacts")).toBeInTheDocument();
+    expect(
+      buttonByLabel("Show shared conversation artifacts"),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      releaseResponse.resolve();
+      await releaseResponse.promise;
+    });
+    await findCard("launch-deck");
+  });
+
+  it("renders shared conversations as compact rows", async () => {
+    const sharedRequestStarted = context.mocks.deferred<void>();
+    const releaseSharedResponse = context.mocks.deferred<void>();
+    context.mocks.api(
+      artifactCatalogContract.list,
+      async ({ query, respond }) => {
+        if (query.kind === "shared-thread") {
+          sharedRequestStarted.resolve();
+          await releaseSharedResponse.promise;
+          return respond(200, {
+            artifacts: [
+              artifact({
+                kind: "shared-thread",
+                title: "Weekly launch review",
+              }),
+            ],
+            nextCursor: null,
+            supportedKinds: [...ARTIFACT_CATALOG_KINDS],
+          });
+        }
+        return respond(200, {
+          artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+          nextCursor: null,
+          supportedKinds: [...ARTIFACT_CATALOG_KINDS],
+        });
+      },
+    );
+
+    setupArtifactCatalogPage();
+    await findCard("launch-deck");
+
+    const sharedConversationFilter = buttonByLabel(
+      "Show shared conversation artifacts",
+    );
+    if (!sharedConversationFilter) {
+      throw new Error("Expected a shared conversation kind filter");
+    }
+    click(sharedConversationFilter);
+    await sharedRequestStarted.promise;
+
+    expect(screen.getByLabelText("Loading artifacts")).toHaveClass("divide-y");
+
+    await act(async () => {
+      releaseSharedResponse.resolve();
+      await releaseSharedResponse.promise;
+    });
+
+    const row = await findCard("Weekly launch review");
+    const list = screen.getByTestId("artifact-catalog-shared-thread-list");
+    expect(row.closest("ul")).toBe(list);
+    expect(list).toHaveClass("divide-y");
+    expect(
+      screen.queryByTestId("artifact-catalog-card-preview"),
+    ).not.toBeInTheDocument();
+  });
+
   it("localizes the catalog and filters without changing artifact titles", async () => {
     document.documentElement.lang = "pt-BR";
     const requestedKinds: (string | undefined)[] = [];
