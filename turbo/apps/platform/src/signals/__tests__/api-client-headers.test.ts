@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { HttpResponse } from "msw";
 import {
   addClientCapabilityToVersion,
@@ -20,6 +20,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 
 import {
   clearMockedAuth,
+  mockClerkSessionTransitioning,
   mockedClerk,
   mockUser,
 } from "../../__tests__/mock-auth.ts";
@@ -31,9 +32,11 @@ import {
   listenForceUpgradeDialog$,
 } from "../force-upgrade.ts";
 import { setRootSignal$ } from "../root-signal.ts";
+import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
+const resetAuthRecoverySignal$ = resetSignal();
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -251,6 +254,109 @@ describe("api client headers", () => {
     await expect(response.json()).resolves.toStrictEqual({ recovered: true });
     expect(requests).toBe(3);
     expect(forcedTokenRefreshes).toBe(3);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
+  it("waits for Clerk to settle its session before refreshing the token", async () => {
+    mockSignedInUser();
+    context.store.set(setRootSignal$, context.signal);
+    mockClerkSessionTransitioning(true);
+
+    const listenerRegistered = context.mocks.deferred<void>();
+    const addListener = mockedClerk.addListener;
+    vi.spyOn(mockedClerk, "addListener").mockImplementation(
+      (listener, options) => {
+        const unsubscribe = addListener(listener, options);
+        if (options?.skipInitialEmit) {
+          listenerRegistered.resolve();
+        }
+        return unsubscribe;
+      },
+    );
+
+    const authorizationHeaders: (string | null)[] = [];
+    context.mocks.http.get(
+      "*/api/zero/auth-session-transition-test",
+      ({ request }) => {
+        authorizationHeaders.push(request.headers.get("authorization"));
+        if (authorizationHeaders.length === 1) {
+          return HttpResponse.json(
+            {
+              error: {
+                code: "UNAUTHORIZED",
+                message: "Unauthorized",
+              },
+            },
+            { status: 401 },
+          );
+        }
+        return HttpResponse.json({ recovered: true });
+      },
+    );
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
+    });
+
+    const responsePromise = getFetchForTest()(
+      "/api/zero/auth-session-transition-test",
+    );
+    await listenerRegistered.promise;
+    mockClerkSessionTransitioning(false);
+
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ recovered: true });
+    expect(authorizationHeaders).toStrictEqual([null, "Bearer fresh-token"]);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
+  it("stops waiting for Clerk when the request is aborted", async () => {
+    mockSignedInUser();
+    context.store.set(setRootSignal$, context.signal);
+    mockClerkSessionTransitioning(true);
+
+    const listenerRegistered = context.mocks.deferred<void>();
+    const addListener = mockedClerk.addListener;
+    vi.spyOn(mockedClerk, "addListener").mockImplementation(
+      (listener, options) => {
+        const unsubscribe = addListener(listener, options);
+        if (options?.skipInitialEmit) {
+          listenerRegistered.resolve();
+        }
+        return unsubscribe;
+      },
+    );
+
+    let requests = 0;
+    context.mocks.http.get("*/api/zero/aborted-auth-recovery-test", () => {
+      requests += 1;
+      return HttpResponse.json(
+        {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        },
+        { status: 401 },
+      );
+    });
+
+    const requestSignal = context.store.set(
+      resetAuthRecoverySignal$,
+      context.signal,
+    );
+    const responsePromise = getFetchForTest()(
+      "/api/zero/aborted-auth-recovery-test",
+      { signal: requestSignal },
+    );
+    await listenerRegistered.promise;
+
+    context.store.set(resetAuthRecoverySignal$, context.signal);
+
+    await expect(responsePromise).rejects.toMatchObject({ name: "AbortError" });
+    mockClerkSessionTransitioning(false);
+    expect(requests).toBe(1);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
