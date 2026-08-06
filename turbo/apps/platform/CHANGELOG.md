@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.692.0](https://github.com/vm0-ai/vm0/compare/app-v0.691.0...app-v0.692.0) (2026-08-06)
+
+
+### Features
+
+* **platform:** open mermaid diagrams in artifact sidebar ([#25385](https://github.com/vm0-ai/vm0/issues/25385)) ([be07422](https://github.com/vm0-ai/vm0/commit/be07422b14772efe47aee7c23e25f68a41bbf3da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.278.0
+    * @vm0/core bumped to 8.522.1
+
 ## [0.691.0](https://github.com/vm0-ai/vm0/compare/app-v0.690.0...app-v0.691.0) (2026-08-06)
 
 
