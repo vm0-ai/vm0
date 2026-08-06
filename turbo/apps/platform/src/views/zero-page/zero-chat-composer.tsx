@@ -1470,7 +1470,7 @@ function WorkflowTemplatePillRow({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
+    <div className="flex flex-wrap items-center gap-1.5 px-6">
       {["all", ...pills].map((pill) => {
         const isActive = active === pill;
         return (
@@ -3484,7 +3484,7 @@ function TemplatePreviewPage({
     <>
       <DialogHeader
         data-presentation-template-detail-header=""
-        className="flex h-14 shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none"
+        className="flex h-[68px] shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none"
       >
         <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
@@ -4678,7 +4678,7 @@ function TemplatePickerCategoryNav({
 function TemplatePickerHeader() {
   const { t } = useTranslation();
   return (
-    <header className="flex h-14 shrink-0 items-center px-5">
+    <header className="flex h-[68px] shrink-0 items-center px-5">
       <h2 className="text-lg font-semibold leading-6 tracking-tight text-foreground">
         {t(($) => {
           return $.artifacts.templates.template;
@@ -4870,7 +4870,7 @@ function TemplatePickerDialog({
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     skipEnterAnimation && "data-[state=open]:!animate-none",
-    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-3 [&>button]:top-2.5",
+    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
   const filteredPptItems = filterTemplatesByTitle(presentationItems, search);
   const filteredIllustrationItems = filterTemplatesByTitle(
@@ -5160,7 +5160,7 @@ function TemplatePickerDialog({
                 onChange={handleCategoryChange}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                <div className="relative flex h-14 shrink-0 items-center px-6 pr-14">
+                <div className="relative flex h-[68px] shrink-0 items-center px-6 pr-14">
                   <TemplatePickerSearch
                     search={search}
                     onSearchChange={handleSearchChange}
@@ -5392,7 +5392,7 @@ function TemplatePickerCategoryContent({
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             data-workflow-template-grid-scroll=""
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-4"
           >
             {workflowCatalog.items.length > 0 ? (
               <WorkflowTemplateGrid
