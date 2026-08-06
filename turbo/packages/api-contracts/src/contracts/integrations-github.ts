@@ -23,11 +23,8 @@ export type GithubInstallationResponse = z.infer<
   typeof githubInstallationResponseSchema
 >;
 
-// `installUrl` is optional so a new frontend paired with the previous API
-// deployment can still parse this body during a rollout. Make it required once
-// no API version without the field is serving traffic.
 export const githubInstallationNotFoundResponseSchema = apiErrorSchema.extend({
-  installUrl: z.string().nullish(),
+  installUrl: z.string().nullable(),
 });
 
 export type GithubInstallationNotFoundResponse = z.infer<
