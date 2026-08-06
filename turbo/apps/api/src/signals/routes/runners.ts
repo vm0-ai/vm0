@@ -51,8 +51,6 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { z } from "zod";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -91,7 +89,6 @@ import {
   activeInputPromptFitsControlPayload,
   materializeActiveInputPrompt,
 } from "../services/active-input-prompt.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   lockChatQueueThread,
   pendingActiveInputPromptCondition,
@@ -2614,14 +2611,6 @@ async function loadRunningActiveInputRun(
     )
     .limit(1);
   if (!run?.chatThreadId) {
-    return null;
-  }
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    args.orgId,
-    args.userId,
-  );
-  if (!isFeatureEnabled(FeatureSwitchKey.ChatSteer, featureSwitchContext)) {
     return null;
   }
   return { chatThreadId: run.chatThreadId };

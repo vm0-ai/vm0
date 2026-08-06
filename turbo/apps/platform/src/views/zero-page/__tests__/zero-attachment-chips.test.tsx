@@ -2526,6 +2526,104 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("renders short artifact video urls and links as preview cards", async () => {
+    const bareVideoUrl = "https://cdn.vm7.io/artifacts/0123456789.mp4";
+    const linkedVideoUrl = "https://cdn.vm7.io/artifacts/abcdefghij.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-short-artifact-video-links",
+          role: "assistant",
+          content: `${bareVideoUrl}\n[Generated clip](${linkedVideoUrl})`,
+          runId: "run-short-artifact-video-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Preview 0123456789.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
+  });
+
+  it("renders other short artifact urls with their preview ui", async () => {
+    const urls = {
+      audio: "https://cdn.vm7.io/artifacts/0000000001.mp3",
+      markdown: "https://cdn.vm7.io/artifacts/0000000002.md",
+      text: "https://cdn.vm7.io/artifacts/0000000003.txt",
+      json: "https://cdn.vm7.io/artifacts/0000000004.json",
+      csv: "https://cdn.vm7.io/artifacts/0000000005.csv",
+      pdf: "https://cdn.vm7.io/artifacts/0000000006.pdf",
+      html: "https://cdn.vm7.io/artifacts/0000000007.html",
+      file: "https://cdn.vm7.io/artifacts/0000000008.bin",
+      image: "https://cdn.vm7.io/artifacts/0000000009.png",
+    } as const;
+    context.mocks.http.get(urls.markdown, () => {
+      return new Response("# Notes", {
+        headers: { "Content-Type": "text/markdown" },
+      });
+    });
+    context.mocks.http.get(urls.text, () => {
+      return new Response("Transcript", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    context.mocks.http.get(urls.json, () => {
+      return new Response('{"status":"ready"}', {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.http.get(urls.csv, () => {
+      return new Response("metric,value\nactivation,87", {
+        headers: { "Content-Type": "text/csv" },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-other-short-artifact-links",
+          role: "assistant",
+          content: `${urls.audio}\n[Notes](${urls.markdown})\n${urls.text}\n[Status](${urls.json})\n${urls.csv}\n[Plan](${urls.pdf})\n[Short site](${urls.html})\n${urls.file}\n${urls.image}`,
+          runId: "run-other-short-artifact-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Open audio preview for 0000000001.mp3"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open markdown preview for 0000000002.md"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open text preview for 0000000003.txt"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open json preview for 0000000004.json"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open csv preview for 0000000005.csv"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open pdf preview for 0000000006.pdf"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open html preview for Short site"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Download 0000000008.bin"),
+    ).toBeInTheDocument();
+    expect(screen.getByAltText("0000000009.png")).toBeInTheDocument();
+  });
+
   it("opens document previews parsed from chat message links", async () => {
     await setupBodyLinkPreviews();
 

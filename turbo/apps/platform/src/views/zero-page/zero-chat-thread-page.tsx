@@ -2618,12 +2618,7 @@ function ChatThreadRenderedEventGroups({
   );
   const runGroupVisibleGroups =
     runGroupFolding?.visibleGroups ?? renderedActiveGroups;
-  const chatSteerEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatSteer] ?? false;
-  const completedWorkFolding = buildCompletedWorkFolding(
-    runGroupVisibleGroups,
-    chatSteerEnabled,
-  );
+  const completedWorkFolding = buildCompletedWorkFolding(runGroupVisibleGroups);
   const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
   const effectiveCompletedWorkExpandedKeys =
     completedWorkExpandedKeysForScrollTarget(
@@ -3140,15 +3135,12 @@ function completedWorkFinalEventIndex(
   return lastCompletedWorkEventIndex(events, isRenderableAssistantEvent);
 }
 
-function canFoldCompletedWorkTrailingEvent(
-  event: EnrichedChatEvent,
-  chatSteerEnabled: boolean,
-): boolean {
+function canFoldCompletedWorkTrailingEvent(event: EnrichedChatEvent): boolean {
   const role = chatEventCompatibilityRole(event.eventType);
-  if (chatSteerEnabled && role === "user") {
-    return true;
-  }
-  return role === "assistant" && !isRenderableAssistantEvent(event);
+  return (
+    role === "user" ||
+    (role === "assistant" && !isRenderableAssistantEvent(event))
+  );
 }
 
 interface CompletedWorkPhaseFolding {
@@ -3159,7 +3151,6 @@ interface CompletedWorkPhaseFolding {
 function foldCompletedWorkPhase(
   runId: string,
   events: readonly EnrichedChatEvent[],
-  chatSteerEnabled: boolean,
 ): CompletedWorkPhaseFolding {
   const finalEventIndex = completedWorkFinalEventIndex(events);
   const finalEvent =
@@ -3172,15 +3163,13 @@ function foldCompletedWorkPhase(
       !isThinkingOnlyAssistantEvent(event)
     );
   });
-  const userEvents = (chatSteerEnabled ? events : precedingEvents).filter(
-    (event) => {
-      return chatEventCompatibilityRole(event.eventType) === "user";
-    },
-  );
+  const userEvents = events.filter((event) => {
+    return chatEventCompatibilityRole(event.eventType) === "user";
+  });
   const trailingEvents =
     finalEventIndex >= 0 ? events.slice(finalEventIndex + 1) : [];
   const trailingEventsCanFold = trailingEvents.every((event) => {
-    return canFoldCompletedWorkTrailingEvent(event, chatSteerEnabled);
+    return canFoldCompletedWorkTrailingEvent(event);
   });
   if (
     finalEvent === undefined ||
@@ -3206,7 +3195,6 @@ function foldCompletedWorkPhase(
 
 function buildCompletedWorkFolding(
   groups: readonly ChatEventGroup[],
-  chatSteerEnabled: boolean,
 ): CompletedWorkFolding | null {
   const usageByRunId = usageByRunIdFromGroups(groups);
   const events = groups.flatMap((group) => {
@@ -3237,18 +3225,12 @@ function buildCompletedWorkFolding(
       continue;
     }
 
-    const completedWorkEventGroups = chatSteerEnabled
-      ? splitCompletedWorkEventsAtUsers(runEvents)
-      : [runEvents];
+    const completedWorkEventGroups = splitCompletedWorkEventsAtUsers(runEvents);
     if (completedWorkEventGroups.length > 1) {
       hasCompletedWorkPhaseBoundary = true;
     }
     for (const completedWorkEvents of completedWorkEventGroups) {
-      const phaseFolding = foldCompletedWorkPhase(
-        runId,
-        completedWorkEvents,
-        chatSteerEnabled,
-      );
+      const phaseFolding = foldCompletedWorkPhase(runId, completedWorkEvents);
       visibleEvents.push(...phaseFolding.visibleEvents);
       if (phaseFolding.fold !== null) {
         folds.push(phaseFolding.fold);

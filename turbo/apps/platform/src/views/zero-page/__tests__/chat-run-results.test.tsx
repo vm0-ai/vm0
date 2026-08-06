@@ -597,7 +597,17 @@ describe("chat lifecycle", () => {
         {
           id: "msg-server-queued-followup",
           role: "user",
-          content: "Follow up when the queued run starts",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "text",
+                text: "Follow up when the queued run starts",
+              },
+              { type: "morning_brief", briefDate: "2026-06-09" },
+            ],
+          },
           runId: undefined,
           createdAt: "2026-06-09T10:00:02Z",
         },
@@ -964,7 +974,6 @@ describe("chat lifecycle", () => {
       detachedSetupPage({
         context,
         path: `/chats/${threadId}`,
-        featureSwitches: { [FeatureSwitchKey.ChatSteer]: true },
       });
 
       await screen.findByText(visibleOrder[0]!);
@@ -1017,63 +1026,6 @@ describe("chat lifecycle", () => {
       ).toBeInTheDocument();
     },
   );
-
-  it("keeps the legacy trailing-user layout when chat steer is disabled", async () => {
-    const threadId = "thread-work-folding-trailing-user-disabled";
-    const runId = "run-work-folding-trailing-user-disabled";
-    mockChatLifecycle(context, {
-      threadId,
-      chatEvents: [
-        {
-          role: "user",
-          content: "Prepare the disabled-switch launch plan",
-          runId,
-          createdAt: "2026-08-04T10:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: "Reviewing the disabled-switch launch notes.",
-          runId,
-          createdAt: "2026-08-04T10:00:10Z",
-        },
-        {
-          role: "assistant",
-          content: "The disabled-switch launch plan is ready.",
-          runId,
-          createdAt: "2026-08-04T10:00:20Z",
-        },
-        {
-          role: "user",
-          content: "Add disabled-switch rollback steps",
-          runId,
-          createdAt: "2026-08-04T10:00:30Z",
-        },
-        {
-          role: "assistant",
-          content: null,
-          runId,
-          runLifecycleEvent: "completed",
-          createdAt: "2026-08-04T10:00:40Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatSteer]: false },
-    });
-
-    await expect(
-      screen.findByText("Reviewing the disabled-switch launch notes."),
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByLabelText("Expand work history")).toBeNull();
-    expectTextBefore(
-      document.body,
-      "The disabled-switch launch plan is ready.",
-      "Add disabled-switch rollback steps",
-    );
-  });
 
   it("keeps the established completed-run layout across container sizes", async () => {
     const finalReply = "The launch plan is ready.";

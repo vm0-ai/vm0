@@ -228,6 +228,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.Translation]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the managed Zero translation command and translation:write ZERO_TOKEN capability.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Lab page for toggling experimental features",
@@ -366,13 +373,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatSteer]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Steer pending chat prompts into active runs and render them inline.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

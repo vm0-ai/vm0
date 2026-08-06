@@ -220,6 +220,23 @@ describe("auth tokens", () => {
     );
   });
 
+  it("gates translation capability behind the translation feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.Translation]: true },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "translation:write",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "translation:write",
+    );
+  });
+
   it("gates image recognition on run eligibility", () => {
     const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
     const ineligibleToken = generateZeroToken(
