@@ -24,10 +24,6 @@ use super::idle_lifecycle::{
     spawn_idle_destroy_job,
 };
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
-use super::pre_park_handoff_observation::{
-    CandidateOutcome, CandidateReason, is_selected_finalizing_candidate,
-    record_candidate_observation,
-};
 use crate::config::ProfileConfig;
 use crate::executor::{
     ExactReuseSpeculationTiming, RunnerPreSpawnOperationTiming, RunnerPreSpawnPhase,
@@ -579,13 +575,6 @@ async fn claim_with_local_admission(
     let cancellation = match ctx.cancel_tokens.register(run_id).await {
         Ok(registration) => registration,
         Err(_) => {
-            record_candidate_observation(
-                &candidate,
-                ctx.runner_id,
-                ctx.heartbeat_generation,
-                CandidateOutcome::ClaimLost,
-                Some(CandidateReason::CancellationRegistrationConflict),
-            );
             rollback_untracked_resource(resource, ctx).await;
             return None;
         }
@@ -603,24 +592,10 @@ async fn claim_with_local_admission(
     match mode {
         RunnerMode::Running => {}
         RunnerMode::Starting => {
-            record_candidate_observation(
-                &candidate,
-                ctx.runner_id,
-                ctx.heartbeat_generation,
-                CandidateOutcome::Cancelled,
-                Some(CandidateReason::RunnerModeChanged),
-            );
             admission.rollback(ctx).await;
             return None;
         }
         RunnerMode::Draining => {
-            record_candidate_observation(
-                &candidate,
-                ctx.runner_id,
-                ctx.heartbeat_generation,
-                CandidateOutcome::Cancelled,
-                Some(CandidateReason::RunnerModeChanged),
-            );
             admission.rollback(ctx).await;
             return None;
         }
@@ -628,22 +603,12 @@ async fn claim_with_local_admission(
             admission.cancellation.request_hard_cancellation().await;
         }
         RunnerMode::Stopped => {
-            record_candidate_observation(
-                &candidate,
-                ctx.runner_id,
-                ctx.heartbeat_generation,
-                CandidateOutcome::Cancelled,
-                Some(CandidateReason::RunnerModeChanged),
-            );
             admission.rollback(ctx).await;
             return None;
         }
     }
     // claim() runs in the branch handler: non-interruptible, so a valid
     // successful claim is always paired with complete().
-    let observed_candidate =
-        is_selected_finalizing_candidate(&candidate, ctx.runner_id, ctx.heartbeat_generation)
-            .then(|| candidate.clone());
     let LocalAdmission {
         resource,
         cancellation,
@@ -693,29 +658,11 @@ async fn claim_with_local_admission(
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and
         // cancellation registration so the runner can continue.
-        if let Some(candidate) = observed_candidate.as_ref() {
-            record_candidate_observation(
-                candidate,
-                ctx.runner_id,
-                ctx.heartbeat_generation,
-                CandidateOutcome::ClaimLost,
-                Some(CandidateReason::ProviderRejected),
-            );
-        }
         cancellation.unregister().await;
         rollback_admitted_resource(admitted_resource, run_id, workspace_disk_mb, ctx).await;
         return None;
     };
     if claimed.context().run_id != run_id {
-        if let Some(candidate) = observed_candidate.as_ref() {
-            record_candidate_observation(
-                candidate,
-                ctx.runner_id,
-                ctx.heartbeat_generation,
-                CandidateOutcome::ClaimLost,
-                Some(CandidateReason::ProviderRunIdMismatch),
-            );
-        }
         warn!(
             run_id = %run_id,
             context_run_id = %claimed.context().run_id,
@@ -724,16 +671,6 @@ async fn claim_with_local_admission(
         cancellation.unregister().await;
         rollback_admitted_resource(admitted_resource, run_id, workspace_disk_mb, ctx).await;
         return None;
-    }
-
-    if let Some(candidate) = observed_candidate.as_ref() {
-        record_candidate_observation(
-            candidate,
-            ctx.runner_id,
-            ctx.heartbeat_generation,
-            CandidateOutcome::Claimed,
-            None,
-        );
     }
 
     Some(AdmittedClaim {
@@ -825,23 +762,9 @@ async fn prepare_preference_candidate(
         return ordinary_preparation(candidate);
     };
     if preference.is_expired() {
-        record_candidate_observation(
-            &candidate,
-            ctx.runner_id,
-            ctx.heartbeat_generation,
-            CandidateOutcome::Expired,
-            None,
-        );
         return ordinary_preparation(candidate.without_runner_preference());
     }
     let Some(reuse_key) = candidate.reuse_key().map(str::to_owned) else {
-        record_candidate_observation(
-            &candidate,
-            ctx.runner_id,
-            ctx.heartbeat_generation,
-            CandidateOutcome::Mismatched,
-            Some(CandidateReason::MissingReuseKey),
-        );
         return ordinary_preparation(candidate.without_runner_preference());
     };
 
@@ -894,13 +817,6 @@ async fn prepare_preference_candidate(
         }
         RunnerPreferenceReason::FinalizingPredecessor => {
             let Some(history_generation_run_id) = candidate.history_generation_run_id() else {
-                record_candidate_observation(
-                    &candidate,
-                    ctx.runner_id,
-                    ctx.heartbeat_generation,
-                    CandidateOutcome::Mismatched,
-                    Some(CandidateReason::MissingHistoryGeneration),
-                );
                 return ordinary_preparation(candidate.without_runner_preference());
             };
             if let Some(reservation) = reserve_reusable_idle(
@@ -917,13 +833,6 @@ async fn prepare_preference_candidate(
 
             if preference.targets(ctx.runner_id, ctx.heartbeat_generation) {
                 if !contains_active_reuse_key(&ctx.spawn_ctx.active_reuse_keys, &reuse_key) {
-                    record_candidate_observation(
-                        &candidate,
-                        ctx.runner_id,
-                        ctx.heartbeat_generation,
-                        CandidateOutcome::Mismatched,
-                        Some(CandidateReason::InactivePredecessor),
-                    );
                     return ordinary_preparation(candidate.without_runner_preference());
                 }
                 return defer_preference_candidate(candidate, &preference, &reuse_key, ctx, true)
@@ -972,13 +881,6 @@ async fn defer_preference_candidate(
     retain: bool,
 ) -> PreferencePreparation {
     if preference.is_expired() {
-        record_candidate_observation(
-            &candidate,
-            ctx.runner_id,
-            ctx.heartbeat_generation,
-            CandidateOutcome::Expired,
-            None,
-        );
         return ordinary_preparation(candidate.without_runner_preference());
     }
     let delay = preference.remaining();
