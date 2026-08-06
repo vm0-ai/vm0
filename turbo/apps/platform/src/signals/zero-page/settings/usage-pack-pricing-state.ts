@@ -1,5 +1,7 @@
 import { command, computed, state } from "ccstate";
 
+import { onRef } from "../../utils.ts";
+
 export const USAGE_PACKS_USD = [20, 50, 100, 200] as const;
 export const MINIMUM_USAGE_PACK_USD = USAGE_PACKS_USD[0];
 
@@ -25,6 +27,24 @@ export const setSelectedUsagePackPlan$ = command(
   ({ set }, plan: UsagePackPlanTier | null) => {
     set(internalSelectedUsagePackPlan$, plan);
   },
+);
+
+const resetUsagePackPricing$ = command(({ set }) => {
+  set(internalSelectedUsagePackPlan$, null);
+  set(internalMemberUsageSelections$, {});
+});
+
+export const usagePackPricingPageRef$ = onRef(
+  command(({ set }, element: HTMLDivElement, signal: AbortSignal) => {
+    element.focus();
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(resetUsagePackPricing$);
+      },
+      { once: true },
+    );
+  }),
 );
 
 export const setMemberUsageSelection$ = command(

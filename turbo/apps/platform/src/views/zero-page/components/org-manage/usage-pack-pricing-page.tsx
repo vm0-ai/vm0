@@ -34,6 +34,7 @@ import {
   setMemberUsageSelection$,
   setSelectedUsagePackPlan$,
   USAGE_PACKS_USD,
+  usagePackPricingPageRef$,
   type MemberUsageSelection,
   type UsagePackPlanTier,
   type UsagePackUsd,
@@ -848,17 +849,16 @@ export function UsagePackPricingPage({
 }) {
   const selectedPlanTier = useGet(selectedUsagePackPlan$);
   const setSelectedPlan = useSet(setSelectedUsagePackPlan$);
+  const usagePackPricingPageRef = useSet(usagePackPricingPageRef$);
   const selectedPlan = USAGE_PACK_PLANS.find((plan) => {
     return plan.tier === selectedPlanTier;
   });
   return (
     <div
       className="flex flex-col gap-5 outline-none"
+      ref={usagePackPricingPageRef}
       role="group"
       tabIndex={-1}
-      ref={(element) => {
-        element?.focus();
-      }}
     >
       {selectedPlan ? (
         <PackageConfigurationStep

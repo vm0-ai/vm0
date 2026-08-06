@@ -212,8 +212,10 @@ function installScrollIntoViewMock(): Mock<HTMLElement["scrollIntoView"]> {
   return scrollIntoView;
 }
 
-async function openSettingsFromAccountMenu(): Promise<HTMLElement> {
-  const accountName = await screen.findByText("Test User");
+async function openSettingsFromAccountMenu(
+  userName = "Test User",
+): Promise<HTMLElement> {
+  const accountName = await screen.findByText(userName);
   const accountButton = accountName.closest("button");
   if (!accountButton) {
     throw new Error("Account menu trigger not found");
@@ -452,6 +454,53 @@ describe("organization billing settings", () => {
     expect(
       screen.queryByRole("group", { name: "Member usage" }),
     ).not.toBeInTheDocument();
+
+    const returnedTeamPlan = screen.getByRole("article", {
+      name: "Team plan",
+    });
+    click(buttonByText("Select Team", returnedTeamPlan));
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+
+    const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
+    click(within(settingsDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+    });
+
+    const reopenedDialog = await openSettingsFromAccountMenu("Alex Chen");
+    click(buttonByText("Billing", reopenedDialog));
+    await expect(
+      screen.findByRole("heading", { name: "Choose a plan" }),
+    ).resolves.toBeInTheDocument();
+
+    const reopenedTeamPlan = screen.getByRole("article", {
+      name: "Team plan",
+    });
+    click(buttonByText("Select Team", reopenedTeamPlan));
+
+    const resetMemberUsage = await screen.findByRole("group", {
+      name: "Member usage",
+    });
+    expect(
+      within(resetMemberUsage).getByRole("combobox", {
+        name: "Usage for Alex Chen",
+      }),
+    ).toHaveTextContent("$20 · 20,400 credits · 2% off");
+    expect(
+      within(resetMemberUsage).getByRole("combobox", {
+        name: "Usage for pending@example.com",
+      }),
+    ).toHaveTextContent("$20 · 20,400 credits · 2% off");
+    const resetOrderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    expect(
+      within(resetOrderSummary).getByText("$220/month"),
+    ).toBeInTheDocument();
   });
 
   it("scrolls to buy credits from the credits billing deep link", async () => {
