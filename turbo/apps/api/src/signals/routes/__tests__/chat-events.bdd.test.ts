@@ -5545,12 +5545,12 @@ describe("CHAT-02: generation templates and attachments", () => {
     const run = await api.readRun(actor, sent.runId);
     expect(run.prompt).toBe(
       [
-        `Select ${style.title} illustration template`,
+        `[Template #1: ${style.title} (illustration)]`,
         `[Web file] brief.pdf (application/pdf)\n   [ID] ${fileId}`,
         prompt,
       ].join("\n\n"),
     );
-    expect(run.appendSystemPrompt).toContain("# Artifact Template Context");
+    expect(run.appendSystemPrompt).toContain("# Inline Templates");
     expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
 
     const messages = await waitForThreadMessages(

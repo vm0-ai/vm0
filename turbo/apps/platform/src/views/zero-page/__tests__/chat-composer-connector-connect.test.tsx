@@ -15,6 +15,7 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   detachedSetupPage,
@@ -171,7 +172,13 @@ describe("chat composer connector connection", () => {
       },
     );
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
+    });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
@@ -219,7 +226,13 @@ describe("chat composer connector connection", () => {
       },
     );
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
+    });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
@@ -275,7 +288,13 @@ describe("chat composer connector connection", () => {
         return respond(200, { enabledIds: [connector.id] });
       },
     );
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
+    });
 
     const dialog = await openAddConnectorsDialog(user);
     await user.click(
@@ -338,7 +357,13 @@ describe("chat composer connector connection", () => {
       },
     );
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
+    });
 
     const dialog = await openAddConnectorsDialog(user);
     const connectorCard = within(dialog).getByLabelText(
@@ -417,7 +442,13 @@ describe("chat composer connector connection", () => {
       },
     );
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
+    });
 
     const dialog = await openAddConnectorsDialog(user);
     await user.click(within(dialog).getByLabelText("Connect Public Stripe"));
@@ -463,7 +494,13 @@ describe("chat composer connector connection", () => {
       }),
     ]);
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
+    });
 
     const dialog = await openAddConnectorsDialog(user);
     await user.click(within(dialog).getByLabelText("Connect Axiom"));
