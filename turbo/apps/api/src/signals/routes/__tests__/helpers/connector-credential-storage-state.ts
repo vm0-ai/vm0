@@ -44,6 +44,42 @@ export async function readConnectorCredentialStorageState(
   });
 }
 
+export async function readCustomConnectorCredentialStorageParent(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly customConnectorId: string;
+  },
+): Promise<TestConnectorCredentialStorageStateActionResponse> {
+  return await postAction(context, {
+    action: "read-custom-parent",
+    org_id: args.orgId,
+    user_id: args.userId,
+    custom_connector_id: args.customConnectorId,
+  });
+}
+
+export async function readCustomConnectorOAuthStorageState(
+  context: TestContext,
+  state: string,
+): Promise<TestConnectorCredentialStorageStateActionResponse> {
+  return await postAction(context, {
+    action: "read-custom-oauth-state",
+    state,
+  });
+}
+
+export async function downgradeCustomConnectorOAuthStorageState(
+  context: TestContext,
+  state: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "downgrade-custom-oauth-state",
+    state,
+  });
+}
+
 export async function seedOwnedConnectorSecret(
   context: TestContext,
   args: {

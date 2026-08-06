@@ -10,6 +10,7 @@ import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@vm0/core";
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
@@ -211,8 +212,10 @@ function installScrollIntoViewMock(): Mock<HTMLElement["scrollIntoView"]> {
   return scrollIntoView;
 }
 
-async function openSettingsFromAccountMenu(): Promise<HTMLElement> {
-  const accountName = await screen.findByText("Test User");
+async function openSettingsFromAccountMenu(
+  userName = "Test User",
+): Promise<HTMLElement> {
+  const accountName = await screen.findByText(userName);
   const accountButton = accountName.closest("button");
   if (!accountButton) {
     throw new Error("Account menu trigger not found");
@@ -273,6 +276,231 @@ describe("organization billing settings", () => {
       expect(screen.getByText("20.000 créditos / mês")).toBeInTheDocument();
       expect(screen.getAllByText("/mês").length).toBeGreaterThan(0);
     });
+  });
+
+  it("configures member usage behind the feature switch", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Usage Pack Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, noActiveBillingStatus());
+    });
+    context.mocks.data.orgMembers({
+      name: "Usage Pack Org",
+      role: "admin",
+      members: [
+        {
+          userId: "user_1",
+          email: "alex@example.com",
+          firstName: "Alex",
+          lastName: "Chen",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00Z",
+        },
+        {
+          userId: "user_2",
+          email: "sam@example.com",
+          firstName: "Sam",
+          lastName: "Lee",
+          imageUrl: "",
+          role: "member",
+          joinedAt: "2026-01-02T00:00:00Z",
+        },
+      ],
+      pendingInvitations: [
+        {
+          id: "invitation_1",
+          email: "pending@example.com",
+          role: "member",
+          createdAt: "2026-01-03T00:00:00Z",
+        },
+      ],
+      membershipRequests: [],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+    click(buttonByText("Upgrade"));
+
+    const choosePlanHeading = await screen.findByRole("heading", {
+      name: "Choose a plan",
+    });
+    expect(choosePlanHeading).toBeInTheDocument();
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    const teamPlan = screen.getByRole("article", { name: "Team plan" });
+    expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
+    expect(
+      within(proPlan).getByText("$0 plan + $20 required member package"),
+    ).toBeInTheDocument();
+    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
+    expect(
+      within(teamPlan).getByText("$160 plan + $20 required member package"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Member usage" }),
+    ).not.toBeInTheDocument();
+
+    click(buttonByText("Select Team", teamPlan));
+
+    const configurePackagesHeading = await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    expect(configurePackagesHeading).toBeInTheDocument();
+
+    const memberUsage = screen.getByRole("group", {
+      name: "Member usage",
+    });
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    expect(within(memberUsage).getByText("Alex Chen")).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("alex@example.com"),
+    ).toBeInTheDocument();
+    expect(within(memberUsage).getByText("Sam Lee")).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("sam@example.com"),
+    ).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("pending@example.com"),
+    ).toBeInTheDocument();
+    expect(within(memberUsage).getByText("Pending")).toBeInTheDocument();
+    const alexUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for Alex Chen",
+    });
+    const samUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for Sam Lee",
+    });
+    const pendingUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for pending@example.com",
+    });
+    expect(alexUsage).toHaveTextContent("$20 · 20,400 credits · 2% off");
+    expect(samUsage).toHaveTextContent("$20 · 20,400 credits · 2% off");
+    expect(pendingUsage).toHaveTextContent("$20 · 20,400 credits · 2% off");
+    expect(alexUsage).not.toBeDisabled();
+    expect(samUsage).not.toBeDisabled();
+    expect(pendingUsage).not.toBeDisabled();
+    expect(within(memberUsage).getAllByText("+400 bonus credits")).toHaveLength(
+      3,
+    );
+    expect(
+      within(memberUsage).getByText(
+        "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(orderSummary).getByText("Team plan")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$160")).toBeInTheDocument();
+    expect(
+      within(orderSummary).getByText("Member packages"),
+    ).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$60")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("Total credits")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("61,200")).toBeInTheDocument();
+    expect(
+      within(orderSummary).getByText("Bonus credits from discount"),
+    ).toBeInTheDocument();
+    expect(within(orderSummary).getByText("1,200")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$220/month")).toBeInTheDocument();
+    expect(buttonByText("Checkout coming soon", orderSummary)).toBeDisabled();
+
+    click(alexUsage);
+    expect(
+      screen.queryByRole("option", { name: "Pay as you go" }),
+    ).not.toBeInTheDocument();
+    const alexFiftyDollarPack = screen.getByRole("option", {
+      name: "$50 · 52,600 credits · 5% off",
+    });
+    click(alexFiftyDollarPack);
+    expect(within(orderSummary).getByText("$250/month")).toBeInTheDocument();
+
+    click(pendingUsage);
+    click(
+      await screen.findByRole("option", {
+        name: "$100 · 108,700 credits · 8% off",
+      }),
+    );
+
+    expect(within(orderSummary).getByText("$330/month")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("181,700")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("11,700")).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("+8,700 bonus credits"),
+    ).toBeInTheDocument();
+    expect(alexUsage).not.toBeDisabled();
+    expect(samUsage).not.toBeDisabled();
+    expect(pendingUsage).not.toBeDisabled();
+
+    click(buttonByText("Change plan"));
+    const returnedChoosePlanHeading = await screen.findByRole("heading", {
+      name: "Choose a plan",
+    });
+    expect(returnedChoosePlanHeading).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Member usage" }),
+    ).not.toBeInTheDocument();
+
+    const returnedTeamPlan = screen.getByRole("article", {
+      name: "Team plan",
+    });
+    click(buttonByText("Select Team", returnedTeamPlan));
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+
+    const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
+    click(within(settingsDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+    });
+
+    const reopenedDialog = await openSettingsFromAccountMenu("Alex Chen");
+    click(buttonByText("Billing", reopenedDialog));
+    await expect(
+      screen.findByRole("heading", { name: "Choose a plan" }),
+    ).resolves.toBeInTheDocument();
+
+    const reopenedTeamPlan = screen.getByRole("article", {
+      name: "Team plan",
+    });
+    click(buttonByText("Select Team", reopenedTeamPlan));
+
+    const resetMemberUsage = await screen.findByRole("group", {
+      name: "Member usage",
+    });
+    expect(
+      within(resetMemberUsage).getByRole("combobox", {
+        name: "Usage for Alex Chen",
+      }),
+    ).toHaveTextContent("$20 · 20,400 credits · 2% off");
+    expect(
+      within(resetMemberUsage).getByRole("combobox", {
+        name: "Usage for pending@example.com",
+      }),
+    ).toHaveTextContent("$20 · 20,400 credits · 2% off");
+    const resetOrderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    expect(
+      within(resetOrderSummary).getByText("$220/month"),
+    ).toBeInTheDocument();
   });
 
   it("scrolls to buy credits from the credits billing deep link", async () => {

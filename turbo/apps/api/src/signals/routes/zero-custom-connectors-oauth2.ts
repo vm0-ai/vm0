@@ -16,9 +16,10 @@ import {
 } from "../services/connector-oauth-state.service";
 import { validateConnectorAuthorizationTarget$ } from "../services/connected-connector-authorization.service";
 import {
+  customConnectorOAuthStateMatchesDefinition,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
-  parseCustomConnectorOAuthStateContext,
+  parseValidCustomConnectorOAuthState,
   startCustomConnectorOAuth2$,
   storeCustomConnectorOAuth2Connection,
 } from "../services/custom-connector-oauth2.service";
@@ -167,20 +168,12 @@ function validateClaimedState(storedState: StoredOAuthState):
   | {
       readonly ok: true;
       readonly context: NonNullable<
-        ReturnType<typeof parseCustomConnectorOAuthStateContext>
+        ReturnType<typeof parseValidCustomConnectorOAuthState>
       >;
     }
   | { readonly ok: false } {
-  const context = parseCustomConnectorOAuthStateContext(
-    storedState.oauthContext,
-  );
-  if (
-    !context ||
-    storedState.connectorSlug !== null ||
-    storedState.customConnectorId !== context.connectorId ||
-    storedState.connectorRevision !== context.connectorRevision ||
-    storedState.authMethod !== "oauth2"
-  ) {
+  const context = parseValidCustomConnectorOAuthState(storedState);
+  if (!context) {
     return { ok: false };
   }
   return { ok: true, context };
@@ -262,7 +255,7 @@ const completeOAuth2Callback$ = command(
       !connector ||
       connector.authMode !== "oauth" ||
       !connector.oauthConfig ||
-      connector.revision !== state.context.connectorRevision
+      !customConnectorOAuthStateMatchesDefinition(state.context, connector)
     ) {
       return callbackError(
         origin,
@@ -315,6 +308,7 @@ const completeOAuth2Callback$ = command(
           orgId: claimed.state.orgId,
           userId: claimed.state.userId,
           connectorId: connector.id,
+          storageVersion: connector.storageVersion,
           token,
           featureContext,
         });

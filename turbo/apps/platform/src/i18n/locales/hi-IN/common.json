@@ -958,7 +958,35 @@
         "name": "टीम"
       },
       "upgrade": "अपग्रेड",
-      "upgradeTo": "{{plan}} में अपग्रेड करें"
+      "upgradeTo": "{{plan}} में अपग्रेड करें",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} बोनस क्रेडिट",
+        "changePlan": "प्लान बदलें",
+        "checkoutComingSoon": "चेकआउट जल्द उपलब्ध होगा",
+        "choosePlan": "प्लान चुनें",
+        "choosePlanDescription": "पहले वर्कस्पेस प्लान चुनें। सदस्य पैकेज अगले चरण में कॉन्फ़िगर किए जाते हैं।",
+        "configurePackages": "सदस्य पैकेज कॉन्फ़िगर करें",
+        "configurePackagesDescription": "हर सदस्य के लिए एक आवश्यक पैकेज चुनें, फिर संयुक्त मासिक कुल की समीक्षा करें।",
+        "currentMember": "मौजूदा सदस्य",
+        "description": "हर सदस्य के लिए मासिक उपयोग पैक चुनें।",
+        "discountBonusCredits": "छूट से बोनस क्रेडिट",
+        "memberExclusive": "हर पैकेज एक सदस्य का होता है और साझा नहीं किया जा सकता। पैकेज समाप्त होने पर उपयोग पे-एज़-यू-गो क्रेडिट पर वापस चला जाता है। आप बाद में नए पैकेज में अपग्रेड कर सकते हैं।",
+        "memberPackages": "सदस्य पैकेज",
+        "memberUsage": "सदस्य उपयोग",
+        "memberUsageTotal": "मासिक पैक का कुल",
+        "minimumPackageBreakdown": "{{base}} प्लान + {{package}} का आवश्यक सदस्य पैकेज",
+        "monthlyTotal": "मासिक कुल",
+        "orderSummary": "ऑर्डर सारांश",
+        "packagesStep": "पैकेज",
+        "packOption": "{{price}} · {{credits}} क्रेडिट · {{discount}}% की छूट",
+        "planStep": "प्लान",
+        "purchaseSteps": "खरीद के चरण",
+        "selectedPlan": "चुना गया प्लान",
+        "selectPlan": "{{plan}} चुनें",
+        "selectUsage": "{{name}} के लिए उपयोग",
+        "startingAt": "शुरुआती कीमत",
+        "totalCredits": "कुल क्रेडिट"
+      }
     },
     "restore": {
       "cancellationDescription": "यह आपके {{plan}} योजना के लिए निर्धारित रद्दीकरण पूर्ववत कर देगा।",

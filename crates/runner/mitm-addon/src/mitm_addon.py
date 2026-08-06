@@ -95,7 +95,7 @@ from logging_utils import (
     NETWORK_LOG_MAX_SAFE_SIZE,
     add_firewall_metadata,
     elapsed_ms,
-    log_network_entry,
+    log_http_network_entry,
     log_proxy_entry,
     shutdown_log_writer,
 )
@@ -588,7 +588,7 @@ def _http_network_log_entry(
     latency_ms: int,
     request_size: int,
     response_size: int,
-) -> dict:
+) -> tuple[dict, str]:
     url, host, port = http_network_log.target(flow)
     entry = {
         "type": "http",
@@ -596,7 +596,6 @@ def _http_network_log_entry(
         "host": host,
         "port": port,
         "method": flow.request.method,
-        "url": network_log_sanitization.sanitize_request_url_for_network_log(url),
         "status": status_code,
         "latency_ms": latency_ms,
         "request_size": request_size,
@@ -617,7 +616,7 @@ def _http_network_log_entry(
     if flow_metadata.firewall_base(flow.metadata):
         add_firewall_metadata(flow, entry)
     codex_model_catalog_cache.add_network_log_fields(flow, entry)
-    return entry
+    return entry, url
 
 
 def _block_authority_validation_error(flow: http.HTTPFlow, error: AuthorityValidationError) -> None:
@@ -1748,7 +1747,7 @@ def _finish_response_handling(
     proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
     if network_log_path:
         response_size = _response_size(flow)
-        log_entry = _http_network_log_entry(
+        log_entry, raw_url = _http_network_log_entry(
             flow,
             action=firewall_action,
             status_code=status_code,
@@ -1761,7 +1760,7 @@ def _finish_response_handling(
         if flow_metadata.should_capture_body(flow.metadata):
             body_capture.add_capture_fields(flow, log_entry)
 
-        log_network_entry(network_log_path, log_entry)
+        log_http_network_entry(network_log_path, log_entry, raw_url)
 
     response_streaming.finalize_model_sse_usage(flow)
     response_streaming.finalize_model_json_usage(flow, proxy_log_path)
@@ -1862,7 +1861,7 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     error_msg = flow.error.msg if flow.error else "unknown error"
 
     # [NETWORK_LOG_FIELDS] — HTTP error fields; api-contracts is the shared schema boundary.
-    log_entry = _http_network_log_entry(
+    log_entry, raw_url = _http_network_log_entry(
         flow,
         action=firewall_action,
         status_code=0,
@@ -1872,7 +1871,7 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     )
     log_entry["error"] = error_msg
 
-    log_network_entry(network_log_path, log_entry)
+    log_http_network_entry(network_log_path, log_entry, raw_url)
 
     # Report proxy-extracted usage for model provider responses.
     # The SSE parser may have partially populated model_provider_usage before the
