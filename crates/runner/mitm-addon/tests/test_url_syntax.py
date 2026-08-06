@@ -13,7 +13,7 @@ class _NoPythonCharacterAccess(str):
         raise AssertionError("safe URL syntax checks must not iterate the input in Python")
 
     def __getitem__(self, key: int | slice) -> str:
-        raise AssertionError("safe URL syntax checks must not index the input in Python")
+        raise IndexError("safe URL syntax checks must not index the input in Python")
 
 
 def _numeric_unsafe_url_codepoint_policy(value: str) -> bool:
