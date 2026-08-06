@@ -17,6 +17,7 @@ import type { SandboxAuth } from "../../types/auth";
 import { publishRunChangedForUserSafely } from "../external/realtime";
 import { refreshAgentPhoneTypingEvents$ } from "./agent-event-consumer-agentphone-typing.service";
 import { ingestAxiomEvents } from "./agent-event-consumer-axiom.service";
+import { steerRunNearTimeBudget$ } from "./agent-event-consumer-run-time-budget.service";
 import {
   materializeRunOutputEvents$,
   publishMaterializedChatProjection,
@@ -66,6 +67,11 @@ interface AcceptedAgentEvents {
 }
 
 const OPTIONAL_EVENT_CONSUMERS: readonly DispatchableConsumer[] = [
+  {
+    name: "run-time-budget",
+    command$: steerRunNearTimeBudget$,
+    eventTypes: ["assistant"],
+  },
   {
     name: "telegram-typing",
     command$: refreshTelegramTypingEvents$,

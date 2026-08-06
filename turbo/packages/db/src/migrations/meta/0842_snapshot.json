@@ -1,5 +1,5 @@
 {
-  "id": "14ee03ca-2add-444c-aaa8-da91ab39e6c7",
+  "id": "dfee6b98-ec83-48c5-8694-fe3c8c6c1b6b",
   "prevId": "226ccfce-12b2-4c39-87ac-ba826e2e47ca",
   "version": "7",
   "dialect": "postgresql",
@@ -1858,7 +1858,7 @@
           "name": "projection_file_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "projection_created_at": {
           "name": "projection_created_at",
@@ -4801,15 +4801,15 @@
       "checkConstraints": {
         "chat_events_event_type_check": {
           "name": "chat_events_event_type_check",
-          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
+          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.budget',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
         },
         "chat_events_input_user_message_check": {
           "name": "chat_events_input_user_message_check",
-          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_events\".\"user_message\" IS NOT NULL"
+          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.budget', 'input.rejected')\n          OR \"chat_events\".\"user_message\" IS NOT NULL"
         },
         "chat_events_input_content_check": {
           "name": "chat_events_input_content_check",
-          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_events\".\"content\" IS NULL"
+          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.budget', 'input.rejected')\n          OR \"chat_events\".\"content\" IS NULL"
         },
         "chat_events_context_pair_check": {
           "name": "chat_events_context_pair_check",
@@ -4821,7 +4821,7 @@
         },
         "chat_events_input_context_type_check": {
           "name": "chat_events_input_context_type_check",
-          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.automation', 'input.goal')\n          OR \"chat_events\".\"context_type\" IS NOT NULL"
+          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.automation', 'input.goal', 'input.budget')\n          OR \"chat_events\".\"context_type\" IS NOT NULL"
         }
       },
       "isRLSEnabled": false
@@ -18188,126 +18188,6 @@
           "value": "(\"secrets\".\"type\" = 'connector') = (\"secrets\".\"connector_id\" IS NOT NULL)"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.shared_threads": {
-      "name": "shared_threads",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_chat_thread_id": {
-          "name": "source_chat_thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "messages": {
-          "name": "messages",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "shared_threads_user_created_idx": {
-          "name": "shared_threads_user_created_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "shared_threads_source_created_idx": {
-          "name": "shared_threads_source_created_idx",
-          "columns": [
-            {
-              "expression": "source_chat_thread_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "shared_threads_source_chat_thread_id_chat_threads_id_fk": {
-          "name": "shared_threads_source_chat_thread_id_chat_threads_id_fk",
-          "tableFrom": "shared_threads",
-          "tableTo": "chat_threads",
-          "columnsFrom": [
-            "source_chat_thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.skills": {

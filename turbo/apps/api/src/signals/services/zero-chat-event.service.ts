@@ -252,6 +252,13 @@ type InputGoalEvent = ChatEventIdentity &
     readonly runGroupId: string;
   };
 
+type InputBudgetEvent = ChatEventIdentity &
+  ChatAgentRunDisplayContext &
+  Pick<ChatEventInputPayload, "userMessage"> & {
+    readonly eventType: "input.budget";
+    readonly content?: null;
+  };
+
 type InputRejectedEvent = ChatEventIdentity &
   ChatEventDisplayContext &
   ChatEventInputPayload &
@@ -364,6 +371,7 @@ export type NewChatEvent =
   | InputPromptEvent
   | InputAutomationEvent
   | InputGoalEvent
+  | InputBudgetEvent
   | InputRejectedEvent
   | OutputMessageEvent
   | OutputErrorEvent
@@ -937,7 +945,8 @@ function persistedChatEventValues(
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||
     values.eventType === "input.automation" ||
-    values.eventType === "input.goal"
+    values.eventType === "input.goal" ||
+    values.eventType === "input.budget"
       ? { content: null }
       : {}),
     // Keep the physical value compatible with the pre-deploy constraint and

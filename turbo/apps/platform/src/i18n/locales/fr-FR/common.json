@@ -987,7 +987,6 @@
       "usagePacks": {
         "bonusCredits": "+{{value}} crédits bonus",
         "changePlan": "Changer de forfait",
-        "checkoutComingSoon": "Paiement bientôt disponible",
         "choosePlan": "Choisissez un forfait",
         "choosePlanDescription": "Choisissez d’abord le forfait de l’espace de travail. Les forfaits des membres sont configurés ensuite.",
         "configurePackages": "Configurer les forfaits des membres",

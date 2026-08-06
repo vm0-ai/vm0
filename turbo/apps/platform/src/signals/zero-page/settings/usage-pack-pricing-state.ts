@@ -1,11 +1,15 @@
 import { command, computed, state } from "ccstate";
+import {
+  USAGE_PACKS_USD,
+  type UsagePackUsd,
+} from "@vm0/api-contracts/contracts/zero-billing";
 
 import { onRef } from "../../utils.ts";
 
-export const USAGE_PACKS_USD = [20, 50, 100, 200] as const;
+export { USAGE_PACKS_USD };
 export const MINIMUM_USAGE_PACK_USD = USAGE_PACKS_USD[0];
 
-export type UsagePackUsd = (typeof USAGE_PACKS_USD)[number];
+export type { UsagePackUsd };
 export type UsagePackPlanTier = "pro" | "team";
 export type MemberUsageSelection = UsagePackUsd;
 

@@ -565,6 +565,69 @@ describe("zero chat thread IndexedDB fallback", () => {
     }
   });
 
+  it("treats an event type unknown to the client as an IndexedDB cache miss", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000104",
+      threadId: THREAD_ID,
+      eventType: "input.future-budget",
+      content: null,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Unsupported cached input" }],
+      },
+      runId: "run-unsupported-cached-input",
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:01Z",
+    });
+
+    context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
+      return respond(200, {
+        events: [
+          {
+            id: "00000000-0000-4000-8000-000000000105",
+            threadId: THREAD_ID,
+            eventType: "input.prompt",
+            content: null,
+            userMessage: {
+              version: 1,
+              parts: [{ type: "text", text: USER_MESSAGE }],
+            },
+            seqId: 1,
+            createdAt: "2026-03-10T00:00:01Z",
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000106",
+            threadId: THREAD_ID,
+            eventType: "output.message",
+            content: ASSISTANT_MESSAGE,
+            seqId: 2,
+            createdAt: "2026-03-10T00:00:02Z",
+          },
+        ],
+      });
+    });
+
+    try {
+      setupChatPage();
+
+      await expect(
+        screen.findByText(USER_MESSAGE),
+      ).resolves.toBeInTheDocument();
+      await expect(
+        screen.findByText(ASSISTANT_MESSAGE),
+      ).resolves.toBeInTheDocument();
+      expect(
+        screen.queryByText("Unsupported cached input"),
+      ).not.toBeInTheDocument();
+    } finally {
+      runtimeDb.close();
+    }
+  });
+
   it("hides the message skeleton when IndexedDB loads any cached event", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();

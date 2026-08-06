@@ -347,7 +347,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",

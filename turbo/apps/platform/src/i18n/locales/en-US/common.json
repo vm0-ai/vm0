@@ -966,7 +966,6 @@
       "usagePacks": {
         "bonusCredits": "+{{value}} bonus credits",
         "changePlan": "Change plan",
-        "checkoutComingSoon": "Checkout coming soon",
         "choosePlan": "Choose a plan",
         "choosePlanDescription": "Choose the workspace plan first. Member packages are configured next.",
         "configurePackages": "Configure member packages",

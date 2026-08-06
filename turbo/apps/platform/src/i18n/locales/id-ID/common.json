@@ -966,7 +966,6 @@
       "usagePacks": {
         "bonusCredits": "+{{value}} kredit bonus",
         "changePlan": "Ubah paket",
-        "checkoutComingSoon": "Checkout segera hadir",
         "choosePlan": "Pilih paket",
         "choosePlanDescription": "Pilih paket ruang kerja terlebih dahulu. Paket anggota dikonfigurasi berikutnya.",
         "configurePackages": "Konfigurasikan paket anggota",

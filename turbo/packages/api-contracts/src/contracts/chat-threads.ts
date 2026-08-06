@@ -503,6 +503,14 @@ const inputGoalEventSchema = chatEventBaseSchema
   })
   .strict();
 
+const inputBudgetEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.budget"),
+    content: z.null(),
+    userMessage: userMessageDocumentSchema,
+  })
+  .strict();
+
 const inputRejectedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.rejected"),
@@ -656,6 +664,7 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   inputPromptEventSchema,
   inputAutomationEventSchema,
   inputGoalEventSchema,
+  inputBudgetEventSchema,
   inputRejectedEventSchema,
   outputMessageEventSchema,
   outputErrorEventSchema,
@@ -1665,12 +1674,13 @@ export type ChatInputEvent = Extract<
       | "input.prompt"
       | "input.automation"
       | "input.goal"
+      | "input.budget"
       | "input.rejected";
   }
 >;
 export type ChatUserMessageEvent = Extract<
   ChatEvent,
-  { eventType: "input.prompt" | "input.rejected" }
+  { eventType: "input.prompt" | "input.budget" | "input.rejected" }
 >;
 export type ChatAutomationEvent = Extract<
   ChatEvent,
