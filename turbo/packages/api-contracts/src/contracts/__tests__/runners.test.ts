@@ -159,7 +159,6 @@ describe("connector runtime synchronization contract", () => {
     const result = {
       target: { kind: "custom" as const, customConnectorId },
       state: "available" as const,
-      nextSyncAt: "2026-08-06T00:00:00.000Z",
       firewall: {
         kind: "inline" as const,
         firewall: {

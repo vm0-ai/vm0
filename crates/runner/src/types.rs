@@ -1240,7 +1240,7 @@ impl ConnectorRuntimeTarget {
 #[serde(rename_all = "camelCase")]
 pub struct ConnectorRuntimeSyncResult {
     pub target: ConnectorRuntimeTarget,
-    pub next_sync_at: String,
+    pub next_sync_at: Option<String>,
     #[serde(flatten)]
     pub state: ConnectorRuntimeSyncState,
 }

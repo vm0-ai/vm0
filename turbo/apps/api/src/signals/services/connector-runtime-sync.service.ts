@@ -31,8 +31,6 @@ import {
   type StoredValueRow,
 } from "./zero-custom-connector.service";
 
-const PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000;
-
 interface ConnectorRuntimeScope {
   readonly orgId: string;
   readonly userId: string;
@@ -71,26 +69,15 @@ function targetKey(target: ConnectorRuntimeTarget): string {
     : `custom:${target.customConnectorId}`;
 }
 
-function periodicSyncAt(checkedAt: Date, semanticAt?: string | null): string {
-  const periodicAt = new Date(checkedAt.getTime() + PERIODIC_SYNC_INTERVAL_MS);
-  if (!semanticAt) {
-    return periodicAt.toISOString();
-  }
-  const semanticDate = new Date(semanticAt);
-  return (semanticDate < periodicAt ? semanticDate : periodicAt).toISOString();
-}
-
 function absentResult(
   target: ConnectorRuntimeTarget,
   reason: ConnectorRuntimeAbsentReason,
-  checkedAt: Date,
 ): ConnectorRuntimeResolution {
   return {
     result: {
       target,
       state: "absent",
       reason,
-      nextSyncAt: periodicSyncAt(checkedAt),
     },
   };
 }
@@ -323,18 +310,17 @@ async function loadSnapshot(args: {
 async function resolveCustomTarget(args: {
   readonly target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>;
   readonly snapshot: Awaited<ReturnType<typeof loadSnapshot>>;
-  readonly checkedAt: Date;
 }): Promise<ConnectorRuntimeResolution> {
   const custom = args.snapshot.customTargets.get(args.target.customConnectorId);
   if (!custom) {
-    return absentResult(args.target, "connector-unavailable", args.checkedAt);
+    return absentResult(args.target, "connector-unavailable");
   }
   if (!custom.grant) {
-    return absentResult(args.target, "grant-unavailable", args.checkedAt);
+    return absentResult(args.target, "grant-unavailable");
   }
   const values = valuesWithOAuthAccessToken(custom);
   if (!customCredentialsAvailable(custom, values)) {
-    return absentResult(args.target, "credentials-unavailable", args.checkedAt);
+    return absentResult(args.target, "credentials-unavailable");
   }
   const row = { ...custom.row, values };
   const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle({
@@ -342,11 +328,7 @@ async function resolveCustomTarget(args: {
     snapshot: args.snapshot.connectorCatalogSnapshot,
   });
   if (permissionBundle === undefined) {
-    return absentResult(
-      args.target,
-      "permission-bundle-unavailable",
-      args.checkedAt,
-    );
+    return absentResult(args.target, "permission-bundle-unavailable");
   }
 
   const contextResult = await settle(
@@ -359,11 +341,7 @@ async function resolveCustomTarget(args: {
   );
   if (!contextResult.ok) {
     if (contextResult.error instanceof CustomConnectorRuntimePrefixError) {
-      return absentResult(
-        args.target,
-        "runtime-configuration-unavailable",
-        args.checkedAt,
-      );
+      return absentResult(args.target, "runtime-configuration-unavailable");
     }
     throw contextResult.error;
   }
@@ -372,18 +350,13 @@ async function resolveCustomTarget(args: {
     connectorId: args.target.customConnectorId,
   });
   if (!state) {
-    return absentResult(
-      args.target,
-      "runtime-configuration-unavailable",
-      args.checkedAt,
-    );
+    return absentResult(args.target, "runtime-configuration-unavailable");
   }
   const result = {
     target: args.target,
     state: "available" as const,
     firewall: state.firewall,
     networkPolicy: state.networkPolicy,
-    nextSyncAt: periodicSyncAt(args.checkedAt),
   };
   return {
     result: {
@@ -424,7 +397,7 @@ export async function resolveConnectorRuntimeTargets(args: {
   const results: ConnectorRuntimeResolution[] = [];
   for (const target of args.targets) {
     if (target.kind === "custom") {
-      results.push(await resolveCustomTarget({ target, snapshot, checkedAt }));
+      results.push(await resolveCustomTarget({ target, snapshot }));
       continue;
     }
     const refresh = builtinByTarget.get(targetKey(target));
@@ -435,10 +408,12 @@ export async function resolveConnectorRuntimeTargets(args: {
               target,
               state: "available",
               networkPolicy: refresh.networkPolicy,
-              nextSyncAt: periodicSyncAt(checkedAt, refresh.nextRefreshAt),
+              ...(refresh.nextRefreshAt
+                ? { nextSyncAt: refresh.nextRefreshAt }
+                : {}),
             },
           }
-        : absentResult(target, "connector-unavailable", checkedAt),
+        : absentResult(target, "connector-unavailable"),
     );
   }
   return results;

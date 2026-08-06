@@ -236,7 +236,7 @@ export const connectorRuntimeAbsentReasonSchema = z.enum([
 ]);
 
 const connectorRuntimeResultBaseSchema = z.object({
-  nextSyncAt: z.string().datetime({ offset: true }),
+  nextSyncAt: z.string().datetime({ offset: true }).optional(),
 });
 
 export const connectorRuntimeBuiltinAvailableResultSchema =

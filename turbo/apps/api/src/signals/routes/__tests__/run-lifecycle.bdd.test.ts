@@ -8174,6 +8174,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       targets: [target],
     });
     const initialAvailable = availableCustomConnectorRuntime(initialRuntime);
+    expect(initialAvailable.nextSyncAt).toBeUndefined();
     const { api: initialApi, body: currentAuthBody } =
       customConnectorRuntimeAuthBody(
         initialAvailable,
@@ -8229,11 +8230,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const [absentRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
+    if (!absentRuntime) {
+      throw new Error("Expected an absent custom connector runtime result");
+    }
     expect(absentRuntime).toMatchObject({
       target,
       state: "absent",
       reason: "grant-unavailable",
     });
+    expect(absentRuntime.nextSyncAt).toBeUndefined();
 
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
     const [restoredRuntime] = await api.syncConnectorRuntime(run.runId, {
@@ -9518,6 +9523,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(sameUserRuntime.body.results[0]).toMatchObject({
       target: { kind: "builtin", connectorSlug: "slack" },
       state: "available",
+      nextSyncAt: expect.any(String),
     });
     const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${memberRunnerKey.token}`,

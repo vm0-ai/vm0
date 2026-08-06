@@ -857,7 +857,7 @@ impl NetworkPolicyRefreshCore {
                 retry_targets.push(target.clone());
                 continue;
             };
-            let deadline = match parse_refresh_deadline(&result.next_sync_at) {
+            let deadline = match parse_optional_refresh_deadline(result.next_sync_at.as_deref()) {
                 Ok(deadline) => deadline,
                 Err(()) => {
                     retry_targets.push(target.clone());
@@ -900,7 +900,7 @@ impl NetworkPolicyRefreshCore {
             {
                 Ok(true) => {
                     if self
-                        .complete_successful_refresh(run_id, target, Some(deadline))
+                        .complete_successful_refresh(run_id, target, deadline)
                         .await
                     {
                         info!(
@@ -2315,7 +2315,6 @@ mod tests {
                         "target": target.clone(),
                         "state": "absent",
                         "reason": "grant-unavailable",
-                        "nextSyncAt": "2999-01-01T00:00:00Z",
                     }],
                 }));
         });
@@ -2354,7 +2353,7 @@ mod tests {
             json!([custom_connector_id])
         );
         assert!(
-            core.inner.active_runs.lock().await[&run_id]
+            !core.inner.active_runs.lock().await[&run_id]
                 .refresh_tasks
                 .contains_key(&target)
         );
@@ -2406,6 +2405,11 @@ mod tests {
             json!(["custom.read"])
         );
         assert!(vm.get("omittedCustomConnectorIds").is_none());
+        assert!(
+            core.inner.active_runs.lock().await[&run_id]
+                .refresh_tasks
+                .contains_key(&target)
+        );
         core.unregister_run(run_id).await;
     }
 
@@ -2444,7 +2448,6 @@ mod tests {
                             "ask": [],
                             "unknownPolicy": "allow",
                         },
-                        "nextSyncAt": "2999-01-01T00:00:00Z",
                     }],
                 }));
         });
