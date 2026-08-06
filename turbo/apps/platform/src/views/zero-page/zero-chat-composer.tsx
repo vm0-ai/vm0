@@ -1072,9 +1072,11 @@ const TEMPLATE_TILE_SCRIM =
   "pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-14 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100";
 const TEMPLATE_TILE_USE =
   "absolute bottom-2 right-2 z-20 h-[30px] rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground opacity-0 transition-opacity duration-150 hover:bg-primary-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/tile:opacity-100";
-const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-0.5 pt-2";
+// Caption metrics track the illustration card: same text size, and enough
+// breathing room under the artwork that the title never crowds it.
+const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-0.5 pb-1 pt-3";
 const TEMPLATE_TILE_NAME =
-  "min-w-0 truncate text-[13px] font-medium leading-[18px] text-foreground";
+  "min-w-0 truncate text-sm font-medium leading-5 text-foreground";
 
 function VideoTemplateCard({
   item,
