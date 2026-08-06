@@ -9,12 +9,16 @@ use guest_contracts::diagnostics::{FailureClass, FailureDiagnostic};
 use serde_json::Value;
 use shell_quote::quote_shell_arg;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
+use std::time::Duration;
+use tokio::process::Command;
+
+const GUEST_AGENT_TIMEOUT: Duration = Duration::from_secs(20);
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-#[test]
-fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
+#[tokio::test]
+async fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let tmp = tempfile::tempdir()?;
@@ -38,7 +42,8 @@ fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
         run_payload_path: &run_payload_path,
         home: tmp.path(),
         run_id: "codex-auth-setup-fail-closed",
-    })?;
+    })
+    .await?;
 
     assert!(
         !output.status.success(),
@@ -84,8 +89,8 @@ fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
 }
 
 #[cfg(unix)]
-#[test]
-fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult {
+#[tokio::test]
+async fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let tmp = tempfile::tempdir()?;
@@ -122,7 +127,8 @@ fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult
         run_payload_path: &run_payload_path,
         home: tmp.path(),
         run_id: "codex-auth-setup-symlink-fail-closed",
-    })?;
+    })
+    .await?;
 
     assert!(
         !output.status.success(),
@@ -156,9 +162,10 @@ struct GuestAgentInvocation<'a> {
     run_id: &'a str,
 }
 
-fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Error> {
+async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Error> {
     let guest_agent = env!("CARGO_BIN_EXE_guest-agent");
-    Command::new(guest_agent)
+    let mut command = Command::new(guest_agent);
+    command
         .env_clear()
         .env("CLI_AGENT_TYPE", "codex")
         .env("USE_MOCK_CODEX", "true")
@@ -176,8 +183,12 @@ fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Er
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             args.runtime_dir,
         )
-        .env("HOME", args.home)
-        .output()
+        .env("HOME", args.home);
+    let timeout_context = format!(
+        "codex_setup_fail_closed guest-agent scenario '{}' exceeded its completion budget",
+        args.run_id
+    );
+    common::command_output_with_timeout(&mut command, GUEST_AGENT_TIMEOUT, &timeout_context).await
 }
 
 fn write_fake_codex(path: &Path, marker: &Path) -> TestResult {
