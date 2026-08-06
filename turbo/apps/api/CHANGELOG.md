@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.381.1](https://github.com/vm0-ai/vm0/compare/api-v1.381.0...api-v1.381.1) (2026-08-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.518.0
+    * @vm0/db bumped to 1.167.1
+
 ## [1.381.0](https://github.com/vm0-ai/vm0/compare/api-v1.380.1...api-v1.381.0) (2026-08-06)
 
 
