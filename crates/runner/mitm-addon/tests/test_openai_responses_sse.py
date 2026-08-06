@@ -174,6 +174,31 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert terminal_usage == []
 
     @pytest.mark.parametrize(
+        "event_prefix",
+        [
+            pytest.param(b"event: response.completed\n", id="named"),
+            pytest.param(b"", id="eventless"),
+        ],
+    )
+    def test_conflicting_duplicate_terminal_types_do_not_report_snapshot(self, event_prefix):
+        terminal_usage: list[dict] = []
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_terminal_usage=terminal_usage.append
+        )
+        parse(
+            event_prefix + b'data: {"type":"response.failed","type":"response.completed",'
+            b'"response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.5",
+            "tokens.input": 9,
+            "tokens.output": 4,
+        }
+        assert terminal_usage == []
+
+    @pytest.mark.parametrize(
         "usage_json",
         [
             pytest.param(b'"usage":{"input_tokens":0,"output_tokens":0}', id="zero-only"),
@@ -571,17 +596,17 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         assert len(payload) < openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES
 
-        real_classify = openai_responses._classify_responses_event_type
+        real_inspect = openai_responses._inspect_responses_event_type
         classified_prefixes: list[bytes] = []
 
-        def track_classification(body: bytes):
+        def track_inspection(body: bytes):
             classified_prefixes.append(body)
-            return real_classify(body)
+            return real_inspect(body)
 
         monkeypatch.setattr(
             openai_responses,
-            "_classify_responses_event_type",
-            track_classification,
+            "_inspect_responses_event_type",
+            track_inspection,
         )
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(event_prefix + b"data: ")
