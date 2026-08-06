@@ -4682,12 +4682,10 @@ function TemplatePickerHeader() {
   );
 }
 
-function TemplatePickerWorkflowSearch({
-  selectedCategory,
+function TemplatePickerSearch({
   search,
   onSearchChange,
 }: {
-  selectedCategory: string;
   search: string;
   onSearchChange: (value: string) => void;
 }) {
@@ -5157,8 +5155,7 @@ function TemplatePickerDialog({
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="relative flex h-14 shrink-0 items-center justify-end px-6 pr-14">
-                  <TemplatePickerWorkflowSearch
-                    selectedCategory={selectedCategory}
+                  <TemplatePickerSearch
                     search={search}
                     onSearchChange={handleSearchChange}
                   />

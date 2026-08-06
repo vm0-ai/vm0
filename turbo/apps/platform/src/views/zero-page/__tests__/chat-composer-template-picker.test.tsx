@@ -2482,7 +2482,7 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
-    expect(screen.queryByLabelText("Search templates")).toBeNull();
+    expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
     click(
       screen.getByLabelText(`Select template ${illustrationTemplate.title}`),
     );
@@ -3097,7 +3097,7 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.queryByLabelText("Search templates")).toBeNull();
+    expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
     click(screen.getByLabelText(`Select video template ${videoStyle.title}`));
 
     await waitFor(() => {
@@ -3259,7 +3259,7 @@ describe("chat composer templates", () => {
       expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
       expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
     });
-    expect(screen.queryByLabelText("Search templates")).toBeNull();
+    expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
     click(
       screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
     );
