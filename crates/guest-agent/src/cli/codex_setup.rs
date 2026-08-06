@@ -1,8 +1,8 @@
 //! Codex setup boundary.
 //!
 //! This module owns the guest-side setup wrapper that runs before Codex starts.
-//! Auth-state file construction lives in `codex_auth`; command construction
-//! stays in `cli::command`.
+//! Auth-state file construction lives in `codex_auth`; app-server process and
+//! protocol orchestration stay in the sibling Codex app-server modules.
 
 use std::time::Instant;
 
@@ -22,7 +22,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 ///
 /// Auth reconciliation owns `CODEX_HOME` validation and permissions. API-owned
 /// runtime provider metadata writes the model catalog only after that boundary
-/// succeeds, before `codex exec` or `codex app-server` can observe startup
+/// succeeds, before `codex app-server` can observe startup
 /// config.
 ///
 /// Three mutually-exclusive states are supported:

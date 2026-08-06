@@ -177,7 +177,6 @@ pub struct GuestConfigRaw {
     pub user_env_file: String,
     pub run_payload_file: String,
     pub use_mock_codex: String,
-    pub use_codex_app_server_backend: String,
     /// Optional `VM0_MOCK_CODEX_PATH` executable override.
     ///
     /// [`Self::from_process_env`] captures an absent or non-Unicode value as
@@ -219,9 +218,6 @@ impl GuestConfigRaw {
             user_env_file: env_or_empty(USER_ENV_FILE_ENV_KEY),
             run_payload_file: env_or_empty(RUN_PAYLOAD_FILE_ENV_KEY),
             use_mock_codex: env_or_empty(guest_contracts::env::USE_MOCK_CODEX_ENV),
-            use_codex_app_server_backend: env_or_empty(
-                guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
-            ),
             mock_codex_path: std::env::var(guest_contracts::env::MOCK_CODEX_PATH_ENV).ok(),
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
@@ -273,7 +269,6 @@ pub struct GuestConfig {
     pub framework: Framework,
     pub user_env: HashMap<String, String>,
     pub use_mock_codex: bool,
-    pub use_codex_app_server_backend: bool,
     pub mock_codex_path: String,
     pub home_dir: String,
     pub artifacts: Vec<ArtifactEnv>,
@@ -353,9 +348,6 @@ impl GuestConfig {
             cli_agent_type: raw.cli_agent_type,
             user_env,
             use_mock_codex: bool_true_or_one_value(Some(&raw.use_mock_codex)),
-            use_codex_app_server_backend: bool_true_or_one_value(Some(
-                &raw.use_codex_app_server_backend,
-            )),
             mock_codex_path: default_mock_path(
                 raw.mock_codex_path.as_deref(),
                 DEFAULT_MOCK_CODEX_PATH,
@@ -823,7 +815,6 @@ mod tests {
             use_mock_claude: "true".to_string(),
             cli_agent_type: "codex".to_string(),
             use_mock_codex: "1".to_string(),
-            use_codex_app_server_backend: "true".to_string(),
             stuck_tool_timeout_secs: "7".to_string(),
             post_result_sigterm_grace_secs: "8".to_string(),
             post_result_total_cap_secs: "9".to_string(),
@@ -856,7 +847,6 @@ mod tests {
         assert_eq!(config.cli_agent_type, "codex");
         assert_eq!(config.framework, Framework::Codex);
         assert!(config.use_mock_codex);
-        assert!(config.use_codex_app_server_backend);
         assert_eq!(config.mock_codex_path, DEFAULT_MOCK_CODEX_PATH);
         assert_eq!(config.home_dir, "/home/vm0");
         assert_eq!(config.stuck_tool_timeout_secs, 7);

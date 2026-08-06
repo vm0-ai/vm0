@@ -1449,10 +1449,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(active.runId);
-    // The runner release before #25369 defaults a missing chatSteer field to
-    // false. Keep this wire assertion until that runner cannot drain or roll
-    // back against the current API.
-    expect(claim.featureFlags).toMatchObject({ chatSteer: true });
 
     const firstPendingEventId = randomUUID();
     const secondPendingEventId = randomUUID();
@@ -1633,7 +1629,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
       prompt: "run until the time budget warning",
     });
     const claimed = await claimChatRun(runnerGroup, active.runId);
-    expect(claimed.claim.featureFlags).toMatchObject({ chatSteer: true });
     const running = await api.readRun(actor, active.runId);
     if (!running.startedAt) {
       throw new Error("Expected the claimed run to have a start time");

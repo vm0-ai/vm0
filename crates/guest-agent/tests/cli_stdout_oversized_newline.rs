@@ -1,4 +1,4 @@
-//! An oversized LF-terminated ordinary CLI stdout record must fail before it
+//! An oversized LF-terminated Claude Code stdout record must fail before it
 //! is retained or logged and must trigger bounded cleanup of a live child.
 
 mod common;

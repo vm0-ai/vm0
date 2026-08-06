@@ -277,7 +277,6 @@ import {
 import type { Tx } from "../../lib/db-types";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
-const LEGACY_CHAT_STEER_RUNNER_FLAG = "chatSteer";
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
 type ArtifactMissingRootPolicy = NonNullable<
   StorageMountEntry["missingRootPolicy"]
@@ -5256,13 +5255,7 @@ async function buildStoredExecutionContextDraft(args: {
       disallowedTools: args.body.disallowedTools,
       tools: args.body.tools,
       settings: args.body.settings,
-      // API promotion precedes runner promotion. The runner release before
-      // #25369 requires this protocol field to attach active input to thread
-      // runs. Remove it only after that runner can no longer drain or roll back.
-      featureFlags: {
-        ...getAllFeatureStates(args.featureSwitchContext),
-        [LEGACY_CHAT_STEER_RUNNER_FLAG]: true,
-      },
+      featureFlags: getAllFeatureStates(args.featureSwitchContext),
       billableFirewalls: [...args.billableFirewalls],
       modelUsageProvider: args.modelUsageProvider,
       codexRuntimeConfig: args.modelProvider?.codexRuntimeConfig ?? null,

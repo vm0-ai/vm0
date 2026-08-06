@@ -238,10 +238,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
     let masker = Arc::new(masker::SecretMasker::from_config(&runtime.config));
     let shutdown = CancellationToken::new();
     let cli_cancellation = CancellationToken::new();
-    let framework_supports_active_input = framework_supports_active_input(
-        runtime.config.framework,
-        runtime.config.use_codex_app_server_backend,
-    );
+    let framework_supports_active_input = framework_supports_active_input(runtime.config.framework);
     let has_process_control_endpoint = matches!(
         std::env::var(process_control_ipc::BOOTSTRAP_ENV),
         Ok(endpoint) if !endpoint.is_empty()
@@ -326,12 +323,11 @@ async fn run(runtime: GuestRuntime) -> i32 {
     exit_code
 }
 
-fn framework_supports_active_input(
-    framework: env::Framework,
-    use_codex_app_server_backend: bool,
-) -> bool {
-    matches!(framework, env::Framework::ClaudeCode)
-        || (matches!(framework, env::Framework::Codex) && use_codex_app_server_backend)
+fn framework_supports_active_input(framework: env::Framework) -> bool {
+    matches!(
+        framework,
+        env::Framework::ClaudeCode | env::Framework::Codex
+    )
 }
 
 /// Main execution logic: working dir, CLI, checkpoint/recovery, and `/complete`.
@@ -1035,20 +1031,9 @@ mod tests {
     }
 
     #[test]
-    fn framework_supports_active_input_for_claude_and_codex_app_server_only() {
-        assert!(framework_supports_active_input(
-            env::Framework::ClaudeCode,
-            false
-        ));
-        assert!(framework_supports_active_input(
-            env::Framework::ClaudeCode,
-            true
-        ));
-        assert!(!framework_supports_active_input(
-            env::Framework::Codex,
-            false
-        ));
-        assert!(framework_supports_active_input(env::Framework::Codex, true));
+    fn framework_supports_active_input_for_claude_and_codex() {
+        assert!(framework_supports_active_input(env::Framework::ClaudeCode));
+        assert!(framework_supports_active_input(env::Framework::Codex));
     }
 
     struct TestEnvGuard;
@@ -1105,12 +1090,10 @@ mod tests {
             guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::USE_MOCK_CLAUDE_ENV,
             guest_contracts::env::USE_MOCK_CODEX_ENV,
-            guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
             guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
             guest_contracts::env::MOCK_CODEX_PATH_ENV,
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::BOOTSTRAP_ENV,
-            "MOCK_CODEX_FIXTURE",
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
             unsafe {

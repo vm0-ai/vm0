@@ -14,6 +14,18 @@ use crate::error::AgentError;
 const MODEL_CATALOG_FILENAME: &str = "models.json";
 const MODEL_CATALOG_PREPARE_ACTION: &str = "codex_model_catalog_prepare";
 
+/// Per-model default for Codex app-server's turn reasoning effort.
+pub(super) fn default_reasoning_effort_for_model(model: &str) -> Option<&'static str> {
+    let bare = model.strip_prefix("openai/").unwrap_or(model);
+    match bare {
+        "gpt-5.6-sol" => Some("max"),
+        "gpt-5.6-terra" => Some("low"),
+        "gpt-5.6-luna" => Some("max"),
+        "gpt-5.5" => Some("xhigh"),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct CodexRuntimeConfig {
@@ -219,6 +231,23 @@ pub(super) fn quote_toml_basic_string(value: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn default_reasoning_effort_matches_supported_models() {
+        for (model, effort) in [
+            ("gpt-5.5", "xhigh"),
+            ("openai/gpt-5.5", "xhigh"),
+            ("gpt-5.6-sol", "max"),
+            ("openai/gpt-5.6-sol", "max"),
+            ("gpt-5.6-terra", "low"),
+            ("openai/gpt-5.6-terra", "low"),
+            ("gpt-5.6-luna", "max"),
+            ("openai/gpt-5.6-luna", "max"),
+        ] {
+            assert_eq!(default_reasoning_effort_for_model(model), Some(effort));
+        }
+        assert_eq!(default_reasoning_effort_for_model("custom-model"), None);
+    }
 
     #[test]
     fn startup_config_overrides_include_provider_and_catalog_path() {
