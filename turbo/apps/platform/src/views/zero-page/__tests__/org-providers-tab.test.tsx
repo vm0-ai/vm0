@@ -15,8 +15,6 @@ import {
   type CreateModelProviderConnectionRequest,
   type ModelProviderConnectionResponse,
 } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -316,13 +314,10 @@ function mockGatewayConnectionLifecycle() {
   };
 }
 
-async function openProvidersTab(customModelGateways = false): Promise<void> {
+async function openProvidersTab(): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=model",
-    featureSwitches: {
-      [FeatureSwitchKey.CustomModelGateways]: customModelGateways,
-    },
   });
   await waitFor(() => {
     expect(
@@ -407,51 +402,6 @@ function dialogContaining(element: HTMLElement): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
-  it("hides provider connections when the feature switch is disabled", async () => {
-    mockAdminOrg();
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([]);
-
-    await openProvidersTab();
-
-    expect(
-      screen.queryByRole("heading", { name: "Provider connections" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("hides provider connections when the backend capability is absent", async () => {
-    mockAdminOrg();
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([]);
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: { [FeatureSwitchKey.CustomModelGateways]: true },
-        effectiveSwitches: {
-          [FeatureSwitchKey.CustomModelGateways]: true,
-        },
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/?settings=model",
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Settings" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: "Models" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(
-      screen.queryByRole("heading", { name: "Provider connections" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("hides provider connections from non-admin members", async () => {
     context.mocks.data.org({
       id: "org_1",
@@ -461,7 +411,7 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
 
-    await openProvidersTab(true);
+    await openProvidersTab();
 
     expect(
       screen.queryByRole("heading", { name: "Provider connections" }),
@@ -474,7 +424,7 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([]);
     mockGatewayConnectionLifecycle();
 
-    await openProvidersTab(true);
+    await openProvidersTab();
 
     const connectionsHeading = await screen.findByRole("heading", {
       name: "Provider connections",
@@ -544,7 +494,7 @@ describe("organization model providers settings", () => {
     ]);
     const lifecycle = mockGatewayConnectionLifecycle();
 
-    await openProvidersTab(true);
+    await openProvidersTab();
 
     const connectionsHeading = await screen.findByRole("heading", {
       name: "Provider connections",

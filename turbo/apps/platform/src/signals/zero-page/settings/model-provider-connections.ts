@@ -9,14 +9,11 @@ import type {
   ModelProviderConnectionResponse,
   ModelProviderSurfaceProtocol,
 } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import {
   createModelProviderConnection$,
-  modelProviderConnections$,
   updateModelProviderConnection$,
 } from "../../external/model-provider-connections.ts";
-import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { jsonParseOr, resetSignal } from "../../utils.ts";
 
 export type ModelProviderConnectionTemplate =
@@ -24,13 +21,6 @@ export type ModelProviderConnectionTemplate =
   | "vercel"
   | "openrouter"
   | "fireworks";
-
-export const availableModelProviderConnections$ = computed(async (get) => {
-  if (!get(featureSwitch$)[FeatureSwitchKey.CustomModelGateways]) {
-    return [];
-  }
-  return await get(modelProviderConnections$);
-});
 
 interface SurfaceDraft {
   readonly enabled: boolean;
