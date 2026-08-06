@@ -11,7 +11,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -135,15 +135,23 @@ async function uploadFile(file: File): Promise<void> {
   await user.upload(fileInput, file);
 }
 
-async function setupComposer(): Promise<void> {
-  detachedSetupPage({ context, path: "/" });
+async function setupComposer(
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
+): Promise<void> {
+  detachedSetupPage({
+    context,
+    path: "/",
+    ...(featureSwitches ? { featureSwitches } : {}),
+  });
 
   await waitFor(() => {
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
   });
 }
 
-async function setupUploadedImagePreview(): Promise<void> {
+async function setupUploadedImagePreview(
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
+): Promise<void> {
   context.mocks.upload.success({
     id: "upload-photo",
     filename: "photo.png",
@@ -152,7 +160,7 @@ async function setupUploadedImagePreview(): Promise<void> {
     url: "https://example.com/photo.png",
   });
 
-  await setupComposer();
+  await setupComposer(featureSwitches);
   await uploadFile(new File(["img"], "photo.png", { type: "image/png" }));
 
   await waitFor(() => {
@@ -454,8 +462,10 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("opens, zooms, and closes an uploaded image preview", async () => {
-    await setupUploadedImagePreview();
+  it("zooms an uploaded image preview with controls and double-click", async () => {
+    await setupUploadedImagePreview({
+      [FeatureSwitchKey.ImageCanvasDoubleClickZoom]: true,
+    });
 
     click(screen.getByLabelText("Open image preview for photo.png"));
 
@@ -473,9 +483,12 @@ describe("zero attachment chips", () => {
       "artifact-dialog-image-stage-content",
     );
     const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
 
     const lightboxImage = screen.getByTestId("attachment-lightbox-image");
     mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformWrapper, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
     Object.defineProperty(lightboxImage, "naturalWidth", {
       configurable: true,
       value: 1200,
@@ -484,6 +497,22 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("200%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(-200px, -150px) scale(2)",
+      );
+    });
+
+    click(screen.getByLabelText("Reset zoom"));
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
     });
 
     click(screen.getByLabelText("Zoom in"));
@@ -509,6 +538,102 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+  });
+
+  it("resets a transformed uploaded image preview with double-click", async () => {
+    await setupUploadedImagePreview({
+      [FeatureSwitchKey.ImageCanvasDoubleClickZoom]: true,
+    });
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(screen.getByText("115%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toContain("scale(1.15)");
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
+    });
+  });
+
+  it("keeps double-click zoom disabled when its feature switch is off", async () => {
+    await setupUploadedImagePreview({
+      [FeatureSwitchKey.ImageCanvasDoubleClickZoom]: false,
+    });
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformWrapper, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    const requestAnimationFrameSpy = vi.spyOn(window, "requestAnimationFrame");
+    requestAnimationFrameSpy.mockClear();
+
+    try {
+      fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+
+      expect(requestAnimationFrameSpy).not.toHaveBeenCalled();
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
+    } finally {
+      requestAnimationFrameSpy.mockRestore();
+    }
   });
 
   it("closes the attachment lightbox with Escape before browser shortcuts run", async () => {
