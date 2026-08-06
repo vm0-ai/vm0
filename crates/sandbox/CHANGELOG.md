@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.39](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.38...sandbox-v0.19.39) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** remove resolved dns diagnostics ([#25426](https://github.com/vm0-ai/vm0/issues/25426)) ([a301c42](https://github.com/vm0-ai/vm0/commit/a301c42affa3da95dc3cec1b0c456acf16af2a5c))
+
 ## [0.19.38](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.37...sandbox-v0.19.38) (2026-08-05)
 
 
