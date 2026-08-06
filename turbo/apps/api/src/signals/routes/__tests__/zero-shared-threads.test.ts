@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { sharedThreadsContract } from "@vm0/api-contracts/contracts/shared-threads";
+import {
+  sharedThreadsContract,
+  type SharedThreadResponse,
+} from "@vm0/api-contracts/contracts/shared-threads";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -29,6 +32,51 @@ interface SharedThreadActor {
 
 function sharedThreadsClient() {
   return setupApp({ context })(sharedThreadsContract);
+}
+
+interface CreatedSharedThreadResult {
+  readonly status: 201;
+  readonly body: { readonly id: string };
+  readonly headers: Headers;
+}
+
+interface ReadSharedThreadResult {
+  readonly status: 200;
+  readonly body: SharedThreadResponse;
+  readonly headers: Headers;
+}
+
+interface ReadSharedThreadMetaResult {
+  readonly status: 200;
+  readonly body: { readonly title: string };
+  readonly headers: Headers;
+}
+
+async function createSharedThreadSnapshot(
+  actor: ApiTestUser,
+  threadId: string,
+  eventIds: readonly string[],
+): Promise<CreatedSharedThreadResult> {
+  return await accept(
+    sharedThreadsClient().create({
+      headers: authenticate(actor),
+      params: { threadId },
+      body: { eventIds },
+    }),
+    [201],
+  );
+}
+
+async function readSharedThreadSnapshot(
+  id: string,
+): Promise<ReadSharedThreadResult> {
+  return await accept(sharedThreadsClient().get({ params: { id } }), [200]);
+}
+
+async function readSharedThreadMeta(
+  id: string,
+): Promise<ReadSharedThreadMetaResult> {
+  return await accept(sharedThreadsClient().meta({ params: { id } }), [200]);
 }
 
 function authenticate(actor: ApiTestUser) {
@@ -157,31 +205,22 @@ describe("shared thread routes", () => {
       promptEvent.id,
       assistantEvent.id,
     ];
-    const first = await accept(
-      sharedThreadsClient().create({
-        headers: authenticate(owner.actor),
-        params: { threadId: run.threadId },
-        body: { eventIds },
-      }),
-      [201],
+    const first = await createSharedThreadSnapshot(
+      owner.actor,
+      run.threadId,
+      eventIds,
     );
-    const second = await accept(
-      sharedThreadsClient().create({
-        headers: authenticate(owner.actor),
-        params: { threadId: run.threadId },
-        body: { eventIds },
-      }),
-      [201],
+    const second = await createSharedThreadSnapshot(
+      owner.actor,
+      run.threadId,
+      eventIds,
     );
     expect(second.body.id).not.toBe(first.body.id);
     expect(titlePrompts).toHaveLength(2);
     expect(titlePrompts[0]).toContain("Prepare the private launch plan");
     expect(titlePrompts[0]).toContain(assistantText);
 
-    const publicSnapshot = await accept(
-      sharedThreadsClient().get({ params: { id: first.body.id } }),
-      [200],
-    );
+    const publicSnapshot = await readSharedThreadSnapshot(first.body.id);
     expect(publicSnapshot.headers.get("cache-control")).toBe("no-store");
     expect(publicSnapshot.body).toStrictEqual({
       id: first.body.id,
@@ -202,10 +241,7 @@ describe("shared thread routes", () => {
       ],
     });
 
-    const metadata = await accept(
-      sharedThreadsClient().meta({ params: { id: first.body.id } }),
-      [200],
-    );
+    const metadata = await readSharedThreadMeta(first.body.id);
     expect(metadata.body).toStrictEqual({ title: "Private launch plan" });
     expect(metadata.headers.get("cache-control")).toBe(
       "public, max-age=31536000, s-maxage=31536000, immutable",
@@ -232,10 +268,7 @@ describe("shared thread routes", () => {
     expect(detail.kind).toBe("shared-thread");
 
     await chat.deleteThread(owner.actor, run.threadId);
-    const afterSourceDeletion = await accept(
-      sharedThreadsClient().get({ params: { id: first.body.id } }),
-      [200],
-    );
+    const afterSourceDeletion = await readSharedThreadSnapshot(first.body.id);
     expect(afterSourceDeletion.body).toStrictEqual(publicSnapshot.body);
   }, 180_000);
 
@@ -254,17 +287,14 @@ describe("shared thread routes", () => {
       return "Private launch plan";
     });
 
-    const created = await accept(
-      sharedThreadsClient().create({
-        headers: authenticate(owner.actor),
-        params: { threadId: run.threadId },
-        body: { eventIds: [promptEvent.id] },
-      }),
-      [201],
+    const created = await createSharedThreadSnapshot(
+      owner.actor,
+      run.threadId,
+      [promptEvent.id],
     );
 
     await expect(
-      sharedThreadsClient().get({ params: { id: created.body.id } }),
+      readSharedThreadSnapshot(created.body.id),
     ).resolves.toMatchObject({
       status: 200,
       body: { title: "Private launch plan" },
