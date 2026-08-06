@@ -1,7 +1,9 @@
 import type { ReactNode, Ref, SyntheticEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { cn } from "@vm0/ui";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
   IMAGE_LIGHTBOX_MIN_ZOOM,
@@ -13,6 +15,7 @@ import {
 } from "../../signals/view-component-state.ts";
 
 const IMAGE_ZOOM_STEP = 0.15;
+const IMAGE_DOUBLE_CLICK_ZOOM_STEP = 1;
 
 type ZoomableArtifactImageSurface =
   | "attachment-lightbox"
@@ -192,6 +195,7 @@ export function ZoomableArtifactImageCanvas({
   src,
   zoomKey = src,
 }: ZoomableArtifactImageCanvasProps) {
+  const featureSwitches = useGet(featureSwitch$);
   const zoomByKey = useGet(zoomableImageCanvasZoomByKey$);
   const fitWidthByKey = useGet(zoomableImageCanvasFitWidthByKey$);
   const setDisplayZoom = useSet(setZoomableImageCanvasZoom$);
@@ -199,6 +203,8 @@ export function ZoomableArtifactImageCanvas({
   const resetDisplayZoom = useSet(resetZoomableImageCanvasZoom$);
   const displayZoom = zoomByKey[zoomKey] ?? 1;
   const fitWidth = fitWidthByKey[zoomKey];
+  const doubleClickZoomEnabled =
+    featureSwitches[FeatureSwitchKey.ImageCanvasDoubleClickZoom] ?? false;
   const imageWidth =
     fitWidth !== undefined ? `${Math.round(fitWidth)}px` : "100%";
   const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
@@ -215,7 +221,14 @@ export function ZoomableArtifactImageCanvas({
       key={zoomKey}
       centerZoomedOut
       disablePadding
-      doubleClick={{ disabled: true }}
+      doubleClick={
+        doubleClickZoomEnabled
+          ? {
+              mode: displayZoom === 1 ? "zoomIn" : "reset",
+              step: IMAGE_DOUBLE_CLICK_ZOOM_STEP,
+            }
+          : { disabled: true }
+      }
       initialScale={1}
       maxScale={IMAGE_LIGHTBOX_MAX_ZOOM}
       minScale={IMAGE_LIGHTBOX_MIN_ZOOM}
