@@ -6,6 +6,8 @@ import { useGet, useSet } from "ccstate-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import rehypeKatex from "rehype-katex";
+import remarkCjkFriendly from "remark-cjk-friendly";
+import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethrough";
 import remarkMath from "remark-math";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { rehypeMermaid } from "../../lib/rehype-mermaid.ts";
@@ -403,6 +405,46 @@ function escapeHtmlTags(source: string): string {
 }
 
 type RehypePlugins = MarkdownPreviewProps["rehypePlugins"];
+type RemarkPlugins = NonNullable<MarkdownPreviewProps["remarkPlugins"]>;
+type PluginsFilter = NonNullable<MarkdownPreviewProps["pluginsFilter"]>;
+
+// CommonMark only closes `**`/`*` when the delimiter is not wedged between a
+// punctuation character and a letter. CJK writes `（）。「」` with no surrounding
+// spaces, so `**加粗（x）**后面` never closes and the asterisks leak as text.
+// These two plugins relax that rule for CJK punctuation only; ASCII output is
+// unchanged.
+//
+// `remark-cjk-friendly` is order-independent, but the strikethrough companion
+// has to replace `remark-gfm`'s own `~~` extension and therefore must run after
+// it. `@uiw/react-markdown-preview` builds `[remarkAlert, ...caller, gfm]`, so
+// caller plugins always land *before* `gfm` — moving the companion to the tail
+// is what puts it behind `gfm`.
+const reorderCjkStrikethrough: PluginsFilter = (type, plugins) => {
+  if (type !== "remark") {
+    return plugins;
+  }
+  return [
+    ...plugins.filter((plugin) => {
+      return plugin !== remarkCjkFriendlyStrikethrough;
+    }),
+    remarkCjkFriendlyStrikethrough,
+  ];
+};
+
+function buildRemarkPlugins(args: {
+  mathEnabled: boolean;
+  remarkPlugins: MarkdownPreviewProps["remarkPlugins"];
+}): RemarkPlugins {
+  const mathPlugins: RemarkPlugins = args.mathEnabled
+    ? [[remarkMath, { singleDollarTextMath: false }]]
+    : [];
+  return [
+    ...mathPlugins,
+    remarkCjkFriendly,
+    remarkCjkFriendlyStrikethrough,
+    ...(args.remarkPlugins ?? []),
+  ];
+}
 
 // The mermaid plugin has to stay ahead of `rehype-prism-plus`, which
 // `@uiw/react-markdown-preview` appends after every caller-provided plugin.
@@ -457,14 +499,8 @@ export function Markdown({
       }}
       wrapperElement={{ "data-color-mode": theme }}
       rehypeRewrite={rehypeRewriteHandler}
-      remarkPlugins={
-        mathEnabled
-          ? [
-              [remarkMath, { singleDollarTextMath: false }],
-              ...(remarkPlugins ?? []),
-            ]
-          : remarkPlugins
-      }
+      pluginsFilter={reorderCjkStrikethrough}
+      remarkPlugins={buildRemarkPlugins({ mathEnabled, remarkPlugins })}
       rehypePlugins={buildRehypePlugins({
         mathEnabled,
         mermaidScope: mermaidScope ?? pageLifecycleId,
