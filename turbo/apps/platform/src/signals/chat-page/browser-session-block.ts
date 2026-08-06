@@ -40,8 +40,13 @@ export interface BrowserSessionSignals extends BrowserSessionDescriptor {
   readonly reloadPanel$: Command<void, []>;
   readonly start$: Command<Promise<void>, [AbortSignal]>;
   readonly close$: Command<Promise<void>, [AbortSignal]>;
-  readonly fitWindow$: Command<Promise<void>, [number, AbortSignal]>;
+  readonly fitViewport$: Command<Promise<void>, [AbortSignal]>;
+  readonly syncFitActionVisibility$: Command<void, []>;
   readonly subscribe$: Command<Promise<void>, [AbortSignal]>;
+  readonly fitViewportRef$: Command<
+    (() => void) | undefined,
+    [HTMLDivElement | null]
+  >;
   // Attach to the visible panel container: the lease heartbeat lives exactly as
   // long as that element is mounted.
   readonly keepAliveRef$: Command<
@@ -89,6 +94,138 @@ function viewerIsVisible(): boolean {
     : document.visibilityState === "visible";
 }
 
+const BROWSER_FIT_GAP_TOLERANCE_PX = 2;
+
+interface ViewportSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+interface BrowserFitDomSignals extends Pick<
+  BrowserSessionSignals,
+  "fitViewportRef$" | "syncFitActionVisibility$"
+> {
+  readonly syncFitActionForScreen$: Command<
+    void,
+    [ZeroBrowserSession["screen"]]
+  >;
+  readonly viewportAspectRatio$: Command<number | null, []>;
+}
+
+function measuredViewport(element: HTMLElement | null): ViewportSize | null {
+  if (!element) {
+    return null;
+  }
+  const { width, height } = element.getBoundingClientRect();
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return null;
+  }
+  return { width, height };
+}
+
+function browserFrameNeedsFit(
+  viewport: ViewportSize | null,
+  browserAspectRatio: number,
+): boolean {
+  if (
+    !viewport ||
+    !Number.isFinite(browserAspectRatio) ||
+    browserAspectRatio <= 0
+  ) {
+    return false;
+  }
+  const fittedWidth = Math.min(
+    viewport.width,
+    viewport.height * browserAspectRatio,
+  );
+  const fittedHeight = Math.min(
+    viewport.height,
+    viewport.width / browserAspectRatio,
+  );
+  return (
+    viewport.width - fittedWidth > BROWSER_FIT_GAP_TOLERANCE_PX ||
+    viewport.height - fittedHeight > BROWSER_FIT_GAP_TOLERANCE_PX
+  );
+}
+
+function createBrowserFitDomSignals(): BrowserFitDomSignals {
+  const runtime: { viewport: HTMLDivElement | null } = { viewport: null };
+  const fitAction = (): HTMLElement | null => {
+    return (
+      runtime.viewport?.querySelector("[data-browser-session-fit-action]") ??
+      null
+    );
+  };
+  const updateFitActionVisibility = (
+    browserAspectRatio: number,
+    canFitWindow: boolean,
+  ): void => {
+    const action = fitAction();
+    if (!action) {
+      return;
+    }
+    action.hidden = !(
+      canFitWindow &&
+      browserFrameNeedsFit(
+        measuredViewport(runtime.viewport),
+        browserAspectRatio,
+      )
+    );
+  };
+  const syncFitActionVisibility$ = command(() => {
+    const viewport = runtime.viewport;
+    const browserAspectRatio = Number(
+      viewport?.dataset.browserAspectRatio ?? "",
+    );
+    const canFitWindow = viewport?.dataset.canFitWindow === "true";
+    updateFitActionVisibility(browserAspectRatio, canFitWindow);
+  });
+  const syncFitActionForScreen$ = command(
+    (_, screen: ZeroBrowserSession["screen"]): void => {
+      updateFitActionVisibility(
+        screen ? screen.width / screen.height : Number.NaN,
+        screen?.resizable === true,
+      );
+    },
+  );
+  const viewportAspectRatio$ = command((): number | null => {
+    const size = measuredViewport(runtime.viewport);
+    return size ? size.width / size.height : null;
+  });
+  const fitViewportRef$ = onRef(
+    command(({ set }, viewport: HTMLDivElement, signal: AbortSignal): void => {
+      runtime.viewport = viewport;
+      const syncFitActionVisibility = () => {
+        set(syncFitActionVisibility$);
+      };
+      const win = viewport.ownerDocument.defaultView;
+      win?.addEventListener("resize", syncFitActionVisibility);
+      signal.addEventListener(
+        "abort",
+        () => {
+          win?.removeEventListener("resize", syncFitActionVisibility);
+          if (runtime.viewport === viewport) {
+            runtime.viewport = null;
+          }
+        },
+        { once: true },
+      );
+      set(syncFitActionVisibility$);
+    }),
+  );
+  return {
+    fitViewportRef$,
+    syncFitActionForScreen$,
+    syncFitActionVisibility$,
+    viewportAspectRatio$,
+  };
+}
+
 async function fetchBrowserSession(
   createClient: ZeroClientFactory,
   threadId: string,
@@ -107,15 +244,16 @@ async function fetchBrowserSession(
 function createFitWindowSignals(
   descriptor: BrowserSessionDescriptor,
   sessionOverride$: State<ZeroBrowserSession | null | undefined>,
-): Pick<BrowserSessionSignals, "fittingWindow$" | "fitWindow$"> {
+  browserFitDom: BrowserFitDomSignals,
+): Pick<BrowserSessionSignals, "fittingWindow$" | "fitViewport$"> {
   const fittingWindowState$ = state(false);
-  const fitWindow$ = command(
-    async (
-      { get, set },
-      aspectRatio: number,
-      signal: AbortSignal,
-    ): Promise<void> => {
+  const fitViewport$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
       if (get(fittingWindowState$)) {
+        return;
+      }
+      const aspectRatio = set(browserFitDom.viewportAspectRatio$);
+      if (aspectRatio === null) {
         return;
       }
       set(fittingWindowState$, true);
@@ -138,6 +276,10 @@ function createFitWindowSignals(
       );
       if (fitted.ok) {
         set(sessionOverride$, fitted.value.body.browser);
+        set(
+          browserFitDom.syncFitActionForScreen$,
+          fitted.value.body.browser.screen,
+        );
       }
     },
   );
@@ -145,7 +287,7 @@ function createFitWindowSignals(
     fittingWindow$: computed((get) => {
       return get(fittingWindowState$);
     }),
-    fitWindow$,
+    fitViewport$,
   };
 }
 
@@ -306,9 +448,11 @@ export function createBrowserSessionSignals(
     });
   });
 
-  const { fittingWindow$, fitWindow$ } = createFitWindowSignals(
+  const browserFitDom = createBrowserFitDomSignals();
+  const { fittingWindow$, fitViewport$ } = createFitWindowSignals(
     descriptor,
     sessionOverride$,
+    browserFitDom,
   );
   const mutationContext: BrowserMutationSignalContext = {
     descriptor,
@@ -376,7 +520,9 @@ export function createBrowserSessionSignals(
     fittingWindow$,
     reload$,
     reloadPanel$: reload$,
-    fitWindow$,
+    fitViewport$,
+    fitViewportRef$: browserFitDom.fitViewportRef$,
+    syncFitActionVisibility$: browserFitDom.syncFitActionVisibility$,
     ...subscriptionSignals,
     keepAliveRef$,
   };

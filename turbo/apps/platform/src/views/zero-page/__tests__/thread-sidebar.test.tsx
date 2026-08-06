@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   artifactCatalogContract,
@@ -810,7 +810,25 @@ describe("thread-owned utility sidebar", () => {
         height: 900,
       }),
     );
-    window.dispatchEvent(new Event("resize"));
+    const resizeHandle = screen.getByRole("separator", {
+      name: "Resize sidebar",
+    });
+    const sidebarLayout = resizeHandle.parentElement;
+    if (!(sidebarLayout instanceof HTMLDivElement)) {
+      throw new Error("Expected the sidebar layout");
+    }
+    vi.spyOn(sidebarLayout, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ width: 1600, height: 900 }),
+    );
+    fireEvent.pointerDown(resizeHandle, { clientX: 840 });
+    const resizeMask = document.querySelector(
+      "[data-chat-thread-sidebar-resize-mask]",
+    );
+    if (!(resizeMask instanceof HTMLDivElement)) {
+      throw new Error("Expected the sidebar resize mask");
+    }
+    fireEvent.pointerMove(resizeMask, { clientX: 780 });
+    fireEvent.pointerUp(resizeMask);
     const fitWindow = await waitFor(() => {
       const button = queryAllByRoleFast("button").find((candidate) => {
         return candidate.getAttribute("aria-label") === "Fit browser to window";
