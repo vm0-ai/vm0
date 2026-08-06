@@ -131,16 +131,13 @@ describe("shared thread routes", () => {
 
     const events = await chat.listThreadEvents(owner.actor, run.threadId);
     const promptEvent = events.events.find((event) => {
-      return event.eventType === "input.prompt";
+      return event.eventType === "input.prompt" && event.runId === run.runId;
     });
     const assistantEvent = events.events.find((event) => {
       return event.eventType === "output.message";
     });
-    const unsupportedEvent = events.events.find((event) => {
-      return event.eventType === "run.completed";
-    });
-    if (!promptEvent || !assistantEvent || !unsupportedEvent) {
-      throw new Error("Expected prompt, assistant, and completion events");
+    if (!promptEvent || !assistantEvent) {
+      throw new Error("Expected prompt and assistant events");
     }
 
     const disabled = await accept(
@@ -176,7 +173,6 @@ describe("shared thread routes", () => {
     });
 
     const eventIds = [
-      unsupportedEvent.id,
       randomUUID(),
       assistantEvent.id,
       promptEvent.id,

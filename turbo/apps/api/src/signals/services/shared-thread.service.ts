@@ -25,7 +25,7 @@ interface CreateSharedThreadArgs {
   readonly eventIds: readonly string[];
 }
 
-export type CreateSharedThreadResult =
+type CreateSharedThreadResult =
   | { readonly kind: "created"; readonly id: string }
   | { readonly kind: "thread-not-found" }
   | { readonly kind: "no-shareable-messages" }
@@ -108,7 +108,7 @@ export const createSharedThread$ = command(
           ? row.content
           : row.userMessage
             ? projectUserMessageForPublicShare(row.userMessage)
-            : null;
+            : row.content;
       if (content === null || content.length === 0) {
         continue;
       }

@@ -1,11 +1,34 @@
 import { z } from "zod";
 
-import { apiErrorSchema } from "./errors";
+import { apiErrorSchema, type ApiErrorResponse } from "./errors";
 import { authHeadersSchema, initContract } from "./base";
+import type { ZodLikeSchema } from "./trpc-contract";
 
 const c = initContract();
 
-export const sharedMessageSchema = z
+export interface SharedMessage {
+  readonly messageIndex: number;
+  readonly role: "user" | "assistant";
+  readonly content: string;
+  readonly runIndex?: number;
+  readonly runGroupIndex?: number;
+}
+
+export interface SharedThreadResponse {
+  readonly id: string;
+  readonly title: string;
+  readonly messages: readonly SharedMessage[];
+}
+
+interface CreateSharedThreadResponse {
+  readonly id: string;
+}
+
+interface SharedThreadMetaResponse {
+  readonly title: string;
+}
+
+const sharedMessageZodSchema = z
   .object({
     messageIndex: z.number().int().nonnegative(),
     role: z.enum(["user", "assistant"]),
@@ -14,43 +37,55 @@ export const sharedMessageSchema = z
     runGroupIndex: z.number().int().nonnegative().optional(),
   })
   .strict();
+export const sharedMessageSchema: ZodLikeSchema<SharedMessage> =
+  sharedMessageZodSchema;
 
 const sharedThreadIdPathParamsSchema = z.object({
   id: z.string().uuid(),
+});
+
+const createSharedThreadPathParamsSchema = z.object({
+  threadId: z.string().uuid(),
 });
 
 const createSharedThreadBodySchema = z.object({
   eventIds: z.array(z.string().uuid()).min(1),
 });
 
-const createSharedThreadResponseSchema = z.object({
-  id: z.string().uuid(),
-});
+const createSharedThreadResponseSchema: ZodLikeSchema<CreateSharedThreadResponse> =
+  z.object({
+    id: z.string().uuid(),
+  });
 
-const sharedThreadResponseSchema = z.object({
-  id: z.string().uuid(),
-  title: z.string(),
-  messages: z.array(sharedMessageSchema),
-});
+const sharedThreadResponseSchema: ZodLikeSchema<SharedThreadResponse> =
+  z.object({
+    id: z.string().uuid(),
+    title: z.string(),
+    messages: z.array(sharedMessageZodSchema),
+  });
 
-const sharedThreadMetaResponseSchema = z.object({
-  title: z.string(),
-});
+const sharedThreadMetaResponseSchema: ZodLikeSchema<SharedThreadMetaResponse> =
+  z.object({
+    title: z.string(),
+  });
+
+const sharedThreadApiErrorSchema: ZodLikeSchema<ApiErrorResponse> =
+  apiErrorSchema;
 
 export const sharedThreadsContract = c.router({
   create: {
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/shared-threads",
     headers: authHeadersSchema,
-    pathParams: z.object({ threadId: z.string().uuid() }),
+    pathParams: createSharedThreadPathParamsSchema,
     body: createSharedThreadBodySchema,
     responses: {
       201: createSharedThreadResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      413: apiErrorSchema,
+      400: sharedThreadApiErrorSchema,
+      401: sharedThreadApiErrorSchema,
+      403: sharedThreadApiErrorSchema,
+      404: sharedThreadApiErrorSchema,
+      413: sharedThreadApiErrorSchema,
     },
     summary: "Create an immutable public snapshot from selected chat events",
   },
@@ -60,7 +95,7 @@ export const sharedThreadsContract = c.router({
     pathParams: sharedThreadIdPathParamsSchema,
     responses: {
       200: sharedThreadResponseSchema,
-      404: apiErrorSchema,
+      404: sharedThreadApiErrorSchema,
     },
     summary: "Read an immutable public chat snapshot",
   },
@@ -70,12 +105,10 @@ export const sharedThreadsContract = c.router({
     pathParams: sharedThreadIdPathParamsSchema,
     responses: {
       200: sharedThreadMetaResponseSchema,
-      404: apiErrorSchema,
+      404: sharedThreadApiErrorSchema,
     },
     summary: "Read public metadata for a shared chat snapshot",
   },
 });
 
 export type SharedThreadsContract = typeof sharedThreadsContract;
-export type SharedMessage = z.infer<typeof sharedMessageSchema>;
-export type SharedThreadResponse = z.infer<typeof sharedThreadResponseSchema>;
