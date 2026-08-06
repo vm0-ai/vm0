@@ -663,8 +663,8 @@
       "previewWebsite": "Pratinjau template website {{title}}",
       "previousHtmlPreview": "pratinjau HTML sebelumnya {{title}}",
       "previousSlide": "Pratinjau slide sebelumnya",
-      "searchConnector": "Cari alur kerja",
-      "searchConnectors": "Cari alur kerja",
+      "searchConnector": "Cari templat",
+      "searchConnectors": "Cari templat",
       "selected": "Templat: {{title}}",
       "selectStyle": "Pilih gaya {{style}}",
       "selectTemplate": "Pilih template {{title}}",
@@ -676,7 +676,6 @@
       "singleAccent": "Satu aksen",
       "slidePreview": "pratinjau slide {{title}}",
       "slideThumbnail": "pratinjau slide {{title}} {{slideNumber}}",
-      "subtitle": "Pilih titik awal — semuanya masih bisa diubah nanti",
       "template": "Template",
       "theme": "Tema",
       "themeNames": {

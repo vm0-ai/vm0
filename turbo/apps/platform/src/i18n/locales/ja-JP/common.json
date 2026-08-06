@@ -663,8 +663,8 @@
       "previewWebsite": "Web サイト テンプレートのプレビュー {{title}}",
       "previousHtmlPreview": "{{title}} 前の HTML プレビュー",
       "previousSlide": "前のスライドをプレビューする",
-      "searchConnector": "ワークフローを検索",
-      "searchConnectors": "ワークフローを検索",
+      "searchConnector": "テンプレートを検索",
+      "searchConnectors": "テンプレートを検索",
       "selected": "テンプレート: {{title}}",
       "selectStyle": "スタイル {{style}} を選択してください",
       "selectTemplate": "テンプレート {{title}} を選択します",
@@ -676,7 +676,6 @@
       "singleAccent": "シングルアクセント",
       "slidePreview": "{{title}} スライド プレビュー",
       "slideThumbnail": "{{title}} スライド {{slideNumber}} プレビュー",
-      "subtitle": "出発点を選んでください。あとからすべて変更できます",
       "template": "テンプレート",
       "theme": "テーマ",
       "themeNames": {

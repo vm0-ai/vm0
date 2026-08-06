@@ -663,8 +663,8 @@
       "previewWebsite": "Vorschau der Website-Vorlage {{title}}",
       "previousHtmlPreview": "{{title}} vorherige HTML-Vorschau",
       "previousSlide": "Vorschau der vorherigen Folie",
-      "searchConnector": "Workflows suchen",
-      "searchConnectors": "Workflows suchen",
+      "searchConnector": "Vorlagen suchen",
+      "searchConnectors": "Vorlagen suchen",
       "selected": "Vorlage: {{title}}",
       "selectStyle": "Stil auswählen {{style}}",
       "selectTemplate": "Wählen Sie die Vorlage {{title}} aus.",
@@ -676,7 +676,6 @@
       "singleAccent": "Einzelakzent",
       "slidePreview": "{{title}} Folienvorschau",
       "slideThumbnail": "{{title}} Folie {{slideNumber}} Vorschau",
-      "subtitle": "Wähle einen Startpunkt — alles lässt sich später ändern",
       "template": "Vorlage",
       "theme": "Thema",
       "themeNames": {

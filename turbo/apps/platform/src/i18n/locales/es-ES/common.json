@@ -680,8 +680,8 @@
       "previewWebsite": "Vista previa de la plantilla de sitio web {{title}}",
       "previousHtmlPreview": "Vista previa HTML anterior de {{title}}",
       "previousSlide": "Vista previa de la diapositiva anterior",
-      "searchConnector": "Buscar flujos de trabajo",
-      "searchConnectors": "Buscar flujos de trabajo",
+      "searchConnector": "Buscar plantillas",
+      "searchConnectors": "Buscar plantillas",
       "selected": "Plantilla: {{title}}",
       "selectStyle": "Selecciona el estilo {{style}}",
       "selectTemplate": "Seleccionar plantilla {{title}}",
@@ -693,7 +693,6 @@
       "singleAccent": "Acento único",
       "slidePreview": "Vista previa de las diapositivas de {{title}}",
       "slideThumbnail": "Vista previa de la diapositiva {{slideNumber}} de {{title}}",
-      "subtitle": "Elige un punto de partida: podrás cambiarlo todo después",
       "template": "Plantilla",
       "theme": "Tema",
       "themeNames": {

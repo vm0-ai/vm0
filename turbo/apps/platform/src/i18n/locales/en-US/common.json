@@ -663,8 +663,8 @@
       "previewWebsite": "Preview website template {{title}}",
       "previousHtmlPreview": "{{title}} previous HTML preview",
       "previousSlide": "Preview previous slide",
-      "searchConnector": "Search workflows",
-      "searchConnectors": "Search workflows",
+      "searchConnector": "Search templates",
+      "searchConnectors": "Search templates",
       "selected": "Template: {{title}}",
       "selectStyle": "Select style {{style}}",
       "selectTemplate": "Select template {{title}}",
@@ -676,7 +676,6 @@
       "singleAccent": "Single-accent",
       "slidePreview": "{{title}} slide preview",
       "slideThumbnail": "{{title}} slide {{slideNumber}} preview",
-      "subtitle": "Pick a starting point — you can change everything later",
       "template": "Template",
       "theme": "Theme",
       "themeNames": {

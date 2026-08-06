@@ -680,8 +680,8 @@
       "previewWebsite": "Visualizar o modelo de site {{title}}",
       "previousHtmlPreview": "Visualização HTML anterior de {{title}}",
       "previousSlide": "Visualizar slide anterior",
-      "searchConnector": "Buscar fluxos de trabalho",
-      "searchConnectors": "Buscar fluxos de trabalho",
+      "searchConnector": "Buscar modelos",
+      "searchConnectors": "Buscar modelos",
       "selected": "Modelo: {{title}}",
       "selectStyle": "Selecionar estilo {{style}}",
       "selectTemplate": "Selecionar modelo {{title}}",
@@ -693,7 +693,6 @@
       "singleAccent": "Uma cor de destaque",
       "slidePreview": "Visualização dos slides de {{title}}",
       "slideThumbnail": "Visualização do slide {{slideNumber}} de {{title}}",
-      "subtitle": "Escolha um ponto de partida — você pode mudar tudo depois",
       "template": "Modelo",
       "theme": "Tema",
       "themeNames": {

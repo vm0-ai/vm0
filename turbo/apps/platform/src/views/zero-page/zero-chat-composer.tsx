@@ -878,6 +878,20 @@ function selectedWorkflowTemplateItem(
   return findWorkflowTemplateItem(value.selection.workflowTemplateId);
 }
 
+// The header search spans every catalogue, so each one narrows by title.
+function filterTemplatesByTitle<T extends { readonly title: string }>(
+  items: readonly T[],
+  query: string,
+): readonly T[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return items;
+  }
+  return items.filter((item) => {
+    return item.title.toLowerCase().includes(normalizedQuery);
+  });
+}
+
 function workflowTemplateMatchesSearch(
   item: WorkflowTemplateItem,
   query: string,
@@ -1063,7 +1077,7 @@ const TEMPLATE_CARD_SHADOW =
 const TEMPLATE_TILE_WRAPPER = "group/tile relative cursor-pointer";
 const TEMPLATE_TILE_RING =
   "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
-const TEMPLATE_TILE_RING_HOVER = "ring-primary group-hover/tile:ring-1";
+const TEMPLATE_TILE_RING_HOVER = "ring-gray-400 hover:ring-1";
 const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
 const TEMPLATE_TILE_MEDIA =
   "relative overflow-hidden border border-gray-200 bg-muted";
@@ -3464,7 +3478,7 @@ function TemplatePreviewPage({
     <>
       <DialogHeader
         data-presentation-template-detail-header=""
-        className="flex h-[68px] shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none"
+        className="flex h-14 shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none"
       >
         <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
@@ -4658,17 +4672,12 @@ function TemplatePickerCategoryNav({
 function TemplatePickerHeader() {
   const { t } = useTranslation();
   return (
-    <header className="flex shrink-0 flex-col gap-0.5 px-5 pb-3 pt-[18px]">
+    <header className="flex h-14 shrink-0 items-center px-5">
       <h2 className="text-[17px] font-semibold leading-6 tracking-tight text-foreground">
         {t(($) => {
           return $.artifacts.templates.template;
         })}
       </h2>
-      <p className="text-[13px] leading-[18px] text-gray-800">
-        {t(($) => {
-          return $.artifacts.templates.subtitle;
-        })}
-      </p>
     </header>
   );
 }
@@ -4683,9 +4692,6 @@ function TemplatePickerWorkflowSearch({
   onSearchChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
-  if (selectedCategory !== "workflow") {
-    return null;
-  }
   return (
     <div className="relative w-56 shrink-0">
       <div className="relative">
@@ -4860,12 +4866,21 @@ function TemplatePickerDialog({
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     skipEnterAnimation && "data-[state=open]:!animate-none",
-    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:top-4",
+    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-3 [&>button]:top-3",
   );
-  const filteredPptItems = presentationItems;
-  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
-  const filteredVideoItems = VIDEO_TEMPLATE_ITEMS;
-  const filteredWebsiteItems = WEBSITE_TEMPLATE_ITEMS;
+  const filteredPptItems = filterTemplatesByTitle(presentationItems, search);
+  const filteredIllustrationItems = filterTemplatesByTitle(
+    ILLUSTRATION_TEMPLATE_ITEMS,
+    search,
+  );
+  const filteredVideoItems = filterTemplatesByTitle(
+    VIDEO_TEMPLATE_ITEMS,
+    search,
+  );
+  const filteredWebsiteItems = filterTemplatesByTitle(
+    WEBSITE_TEMPLATE_ITEMS,
+    search,
+  );
   // A persona pill filters the grid, ideation-gallery style.
   // resolveWorkflowCatalog() keeps that logic out of this component to stay
   // under the complexity budget.
@@ -5141,19 +5156,21 @@ function TemplatePickerDialog({
                 onChange={handleCategoryChange}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                <div className="flex h-[68px] shrink-0 items-center justify-end px-6 pr-14">
+                <div className="relative flex h-14 shrink-0 items-center justify-end px-6 pr-14">
                   <TemplatePickerWorkflowSearch
                     selectedCategory={selectedCategory}
                     search={search}
                     onSearchChange={handleSearchChange}
                   />
+                  {/* Anchored to the header's own bottom edge so no seam can
+                      open between the wash and the chrome above it. */}
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 top-full z-10 h-5 bg-gradient-to-b from-card via-card/70 to-transparent backdrop-blur-[2px] [mask-image:linear-gradient(to_bottom,black,transparent)]"
+                  />
                 </div>
                 {/* Cards dissolve into the header instead of being clipped by it:
                     a white wash whose own blur fades out over the same 32px. */}
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-x-0 top-[68px] z-10 h-8 bg-gradient-to-b from-card via-card/70 to-transparent backdrop-blur-[2px] [mask-image:linear-gradient(to_bottom,black,transparent)]"
-                />
                 <TemplatePickerCategoryContent
                   signals={signals}
                   selectedCategory={selectedCategory}

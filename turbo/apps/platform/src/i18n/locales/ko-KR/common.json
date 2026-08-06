@@ -663,8 +663,8 @@
       "previewWebsite": "웹사이트 템플릿 {{title}} 미리보기",
       "previousHtmlPreview": "{{title}} 이전 HTML 미리보기",
       "previousSlide": "이전 슬라이드 미리보기",
-      "searchConnector": "워크플로 검색",
-      "searchConnectors": "워크플로 검색",
+      "searchConnector": "템플릿 검색",
+      "searchConnectors": "템플릿 검색",
       "selected": "템플릿: {{title}}",
       "selectStyle": "스타일 선택 {{style}}",
       "selectTemplate": "템플릿 선택 {{title}}",
@@ -676,7 +676,6 @@
       "singleAccent": "단일 악센트",
       "slidePreview": "{{title}} 슬라이드 미리보기",
       "slideThumbnail": "{{title}} 슬라이드 {{slideNumber}} 미리보기",
-      "subtitle": "시작점을 선택하세요. 나중에 모두 바꿀 수 있습니다",
       "template": "템플릿",
       "theme": "테마",
       "themeNames": {
