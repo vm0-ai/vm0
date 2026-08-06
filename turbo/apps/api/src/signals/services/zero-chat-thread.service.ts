@@ -726,6 +726,9 @@ function toChatEvent(
   canonicalAttachments: readonly ResolvedAttachFile[],
 ): Computed<Promise<ChatEvent>> {
   return computed(async (get): Promise<ChatEvent> => {
+    if (row.eventType === "input.budget") {
+      throw new Error("Budget input events cannot be publicly materialized");
+    }
     const attachFiles =
       row.eventType === "input.prompt" || row.eventType === "input.rejected"
         ? await get(chatEventAttachFiles(userId, row, canonicalAttachments))
@@ -1428,7 +1431,10 @@ export function zeroChatThreadEventsPage(args: {
       args.sinceSeqId ?? (args.sinceId ? legacyCursor?.seqId : undefined);
     const beforeSeqId =
       args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
-    const threadFilter = eq(chatEvents.chatThreadId, args.threadId);
+    const threadFilter = and(
+      eq(chatEvents.chatThreadId, args.threadId),
+      not(chatEventTypeIn(["input.budget"])),
+    );
     let rows: ChatEventRow[];
 
     if (sinceSeqId !== undefined) {
@@ -1508,6 +1514,7 @@ export function zeroChatThreadEventById(args: {
         and(
           eq(chatEvents.id, args.eventId),
           eq(chatEvents.chatThreadId, args.threadId),
+          not(chatEventTypeIn(["input.budget"])),
         ),
       )
       .limit(1);

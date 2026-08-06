@@ -30,6 +30,7 @@ type ContextBackedTriggerSource =
 interface ActiveInputPromptEvent {
   readonly id: string;
   readonly chatThreadId: string;
+  readonly eventType: "input.prompt" | "input.budget";
   readonly triggerSource: TriggerSource | null;
   readonly userMessage: ChatEventUserMessage;
   readonly generationTemplate: ChatEventGenerationTemplate | null;
@@ -116,7 +117,7 @@ export async function materializeActiveInputPrompt(
     featureSwitchContext,
   );
   const userMessage = requiredUserMessageForEvent(
-    "input.prompt",
+    args.event.eventType,
     args.event.userMessage,
   );
   if (!userMessage) {

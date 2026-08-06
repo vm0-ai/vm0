@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { CHAT_EVENT_TYPES } from "./chat-events";
+import { PUBLIC_CHAT_EVENT_TYPES, chatEventTypeSchema } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
@@ -674,9 +674,12 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   usageRecordedEventSchema,
 ]);
 
-if (CHAT_EVENT_TYPES.length !== chatEventSchema.options.length) {
+if (
+  PUBLIC_CHAT_EVENT_TYPES.length !== chatEventSchema.options.length ||
+  !chatEventTypeSchema.options.includes("input.budget")
+) {
   throw new Error(
-    "ChatEvent schema must cover every registered event catalog leaf",
+    "ChatEvent schema must cover every public event catalog leaf",
   );
 }
 

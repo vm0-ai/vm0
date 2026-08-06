@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import {
-  CHAT_EVENT_TYPES,
+  PUBLIC_CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
 } from "@vm0/api-contracts/contracts/chat-events";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -634,7 +634,7 @@ async function collectUnreadChatThreads(args: {
               isNotNull(chatEvents.content),
             ),
           ),
-          chatEventTypeIn(CHAT_EVENT_TYPES),
+          chatEventTypeIn(PUBLIC_CHAT_EVENT_TYPES),
         ),
       )
       .orderBy(desc(chatEvents.createdAt))

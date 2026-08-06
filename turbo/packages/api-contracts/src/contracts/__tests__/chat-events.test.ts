@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHAT_EVENT_TYPES,
+  PUBLIC_CHAT_EVENT_TYPES,
   foldActiveChatGoalObjective,
   foldChatRunStates,
   foldLatestChatUsageByRunId,
@@ -278,7 +279,7 @@ describe("ChatEvent catalog", () => {
       chatEvents.map((event) => {
         return event.eventType;
       }),
-    ).toStrictEqual([...CHAT_EVENT_TYPES]);
+    ).toStrictEqual([...PUBLIC_CHAT_EVENT_TYPES]);
     for (const event of chatEvents) {
       expect(chatEventSchema.parse(event)).toStrictEqual(event);
     }
@@ -288,6 +289,10 @@ describe("ChatEvent catalog", () => {
     const prompt = chatEvents[0];
     expect(
       chatEventSchema.safeParse({ ...prompt, eventType: "input.unknown" })
+        .success,
+    ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({ ...prompt, eventType: "input.budget" })
         .success,
     ).toBe(false);
     expect(
@@ -459,6 +464,7 @@ describe("ChatEvent revocation rules", () => {
     "input.prompt->input.automation",
     "input.prompt->input.goal",
     "input.prompt->output.followups",
+    "input.budget->input.budget",
     "input.rejected->input.prompt",
     "input.rejected->input.automation",
     "input.rejected->input.goal",
@@ -466,6 +472,7 @@ describe("ChatEvent revocation rules", () => {
     "control.revoke->input.prompt",
     "control.revoke->input.automation",
     "control.revoke->input.goal",
+    "control.revoke->input.budget",
     "control.revoke->input.rejected",
     "run.dequeued->run.queued",
   ]);

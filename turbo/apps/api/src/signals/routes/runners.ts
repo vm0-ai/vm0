@@ -91,7 +91,7 @@ import {
 } from "../services/active-input-prompt.service";
 import {
   lockChatQueueThread,
-  pendingActiveInputPromptCondition,
+  pendingActiveInputCondition,
 } from "../services/chat-event-queue.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
@@ -2579,16 +2579,6 @@ const builtinFirewallsResolveInner$ = command(
   },
 );
 
-function pendingActiveInputCondition(
-  db: Pick<Db, "select">,
-  chatThreadId: string,
-) {
-  return and(
-    eq(chatEvents.chatThreadId, chatThreadId),
-    pendingActiveInputPromptCondition(db),
-  );
-}
-
 async function loadRunningActiveInputRun(
   db: ReadonlyDb,
   args: {
@@ -2619,6 +2609,7 @@ async function loadRunningActiveInputRun(
 function pendingActiveInputRows(
   db: Pick<Db, "select">,
   chatThreadId: string,
+  runId: string,
   eventIds?: readonly string[],
 ) {
   return db
@@ -2638,7 +2629,8 @@ function pendingActiveInputRows(
     .from(chatEvents)
     .where(
       and(
-        pendingActiveInputCondition(db, chatThreadId),
+        eq(chatEvents.chatThreadId, chatThreadId),
+        pendingActiveInputCondition(db, runId),
         eventIds ? inArray(chatEvents.id, eventIds) : undefined,
       ),
     )
@@ -2648,6 +2640,55 @@ function pendingActiveInputRows(
 type PendingActiveInputRow = Awaited<
   ReturnType<typeof pendingActiveInputRows>
 >[number];
+type ActiveInputClaimTransaction = Parameters<
+  Parameters<Db["transaction"]>[0]
+>[0];
+
+async function claimPendingActiveInputEvent(
+  tx: ActiveInputClaimTransaction,
+  event: PendingActiveInputRow,
+  runId: string,
+): Promise<void> {
+  if (!event.userMessage) {
+    throw new Error("Pending active input has invalid prompt data");
+  }
+  if (
+    event.eventType !== "input.prompt" &&
+    event.eventType !== "input.budget"
+  ) {
+    throw new Error("Pending active input has invalid event type");
+  }
+  const target = {
+    id: event.id,
+    chatThreadId: event.chatThreadId,
+    createdAt: event.createdAt,
+    eventType: event.eventType,
+    contextType: event.contextType,
+    contextId: event.contextId,
+  };
+  const replacement =
+    event.eventType === "input.budget"
+      ? await replaceLoadedChatEvent(tx, target, {
+          chatThreadId: event.chatThreadId,
+          eventType: "input.budget",
+          runId,
+          userMessage: event.userMessage,
+        })
+      : await replaceLoadedChatEvent(tx, target, {
+          chatThreadId: event.chatThreadId,
+          eventType: "input.prompt",
+          runId,
+          userMessage: event.userMessage,
+          attachFiles: event.attachFiles,
+          generationTemplate: event.generationTemplate,
+          ...(event.triggerSource
+            ? { triggerSource: event.triggerSource }
+            : {}),
+        });
+  if (!replacement) {
+    throw new Error("Active input claim lost after locking the thread");
+  }
+}
 
 async function materializePendingActiveInputPrompts(
   db: Db,
@@ -2657,7 +2698,10 @@ async function materializePendingActiveInputPrompts(
 ): Promise<Map<string, string> | null> {
   const prompts = new Map<string, string>();
   for (const event of candidates) {
-    if (!event.userMessage) {
+    if (
+      !event.userMessage ||
+      (event.eventType !== "input.prompt" && event.eventType !== "input.budget")
+    ) {
       return null;
     }
     prompts.set(
@@ -2666,6 +2710,7 @@ async function materializePendingActiveInputPrompts(
         event: {
           id: event.id,
           chatThreadId: event.chatThreadId,
+          eventType: event.eventType,
           triggerSource: event.triggerSource,
           userMessage: event.userMessage,
           generationTemplate: event.generationTemplate,
@@ -2697,7 +2742,7 @@ const listActiveInputsInner$ = command(async ({ get }, signal: AbortSignal) => {
   if (!run) {
     return notFound("Run not found");
   }
-  const rows = await pendingActiveInputRows(db, run.chatThreadId);
+  const rows = await pendingActiveInputRows(db, run.chatThreadId, runId);
   signal.throwIfAborted();
   return {
     status: 200 as const,
@@ -2739,6 +2784,7 @@ const claimActiveInputsInner$ = command(
     const candidates = await pendingActiveInputRows(
       db,
       run.chatThreadId,
+      runId,
       uniqueEventIds,
     );
     signal.throwIfAborted();
@@ -2792,40 +2838,14 @@ const claimActiveInputsInner$ = command(
       const events = await pendingActiveInputRows(
         tx,
         run.chatThreadId,
+        runId,
         uniqueEventIds,
       );
       if (events.length !== uniqueEventIds.length) {
         return null;
       }
       for (const event of events) {
-        if (!event.userMessage) {
-          throw new Error("Pending active input has invalid prompt data");
-        }
-        const replacement = await replaceLoadedChatEvent(
-          tx,
-          {
-            id: event.id,
-            chatThreadId: event.chatThreadId,
-            createdAt: event.createdAt,
-            eventType: event.eventType,
-            contextType: event.contextType,
-            contextId: event.contextId,
-          },
-          {
-            chatThreadId: event.chatThreadId,
-            eventType: "input.prompt",
-            runId,
-            userMessage: event.userMessage,
-            attachFiles: event.attachFiles,
-            generationTemplate: event.generationTemplate,
-            ...(event.triggerSource
-              ? { triggerSource: event.triggerSource }
-              : {}),
-          },
-        );
-        if (!replacement) {
-          throw new Error("Active input claim lost after locking the thread");
-        }
+        await claimPendingActiveInputEvent(tx, event, runId);
       }
       return true;
     });
@@ -2833,7 +2853,16 @@ const claimActiveInputsInner$ = command(
     if (!result) {
       return conflict("One or more active inputs are no longer pending");
     }
-    await publishChatThreadMessageCreatedSafely(auth.userId, run.chatThreadId);
+    if (
+      candidates.some((candidate) => {
+        return candidate.eventType === "input.prompt";
+      })
+    ) {
+      await publishChatThreadMessageCreatedSafely(
+        auth.userId,
+        run.chatThreadId,
+      );
+    }
     signal.throwIfAborted();
     return {
       status: 200 as const,

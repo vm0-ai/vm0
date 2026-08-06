@@ -1,7 +1,7 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import {
-  CHAT_EVENT_TYPES,
+  PUBLIC_CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -126,7 +126,7 @@ async function selectIncompleteRoundFrontier(
                 agentRuns.status,
                 sql`('cancelled', 'failed', 'timeout')`,
               ),
-              chatEventTypeIn(CHAT_EVENT_TYPES),
+              chatEventTypeIn(PUBLIC_CHAT_EVENT_TYPES),
             ),
           ),
         )}
@@ -222,7 +222,7 @@ async function loadSelectedIncompleteRounds(
       and(
         eq(chatEvents.chatThreadId, threadId),
         inArray(chatEvents.runId, runIds),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
+        chatEventTypeIn(PUBLIC_CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
         ...(selection.successfulRunId === null
           ? []

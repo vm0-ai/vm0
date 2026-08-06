@@ -121,6 +121,14 @@ const routeMocks = createZeroRouteMocks(context);
 const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
+const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
+const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
+
+An active goal allows unfinished work to continue in a later run. An existing goal already provides that continuity and remains unchanged. If no goal exists, the unfinished outcome needs to be captured in a new goal before this run ends.
+
+A normal completion provides a reliable handoff for the next run. The handoff includes completed work, current state, verification performed, remaining work, and blockers.
+
+Use the remaining time to leave the task in a resumable state and finish this turn normally.`;
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
@@ -1584,6 +1592,182 @@ describe("CHAT-02: queueing and recalling messages", () => {
     );
 
     await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
+  it("steers a run once when assistant output reaches its time budget", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ChatSteer]: true,
+      },
+    );
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "run until the time budget warning",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const running = await api.readRun(actor, active.runId);
+    if (!running.startedAt) {
+      throw new Error("Expected the claimed run to have a start time");
+    }
+    const startedAt = Date.parse(running.startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS - 1);
+    await webhooks.requestAgentEvents(
+      {
+        runId: active.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              content: [{ type: "text", text: "still below the threshold" }],
+            },
+          },
+        ],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await expect(
+      api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([]);
+
+    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS);
+    await webhooks.requestAgentEvents(
+      {
+        runId: active.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              content: [{ type: "text", text: "threshold reached" }],
+            },
+          },
+        ],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const budgetEventIds = await api.listRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    expect(budgetEventIds).toHaveLength(1);
+    await expect(
+      api.claimRunnerActiveInputs(
+        claimed.claim.sandboxToken,
+        active.runId,
+        budgetEventIds,
+      ),
+    ).resolves.toBe(RUN_TIME_BUDGET_MESSAGE);
+
+    const publicEvents = await chat.listThreadEvents(actor, active.threadId);
+    expect(
+      publicEvents.events.some((event) => {
+        return chatEventDisplayText(event) === RUN_TIME_BUDGET_MESSAGE;
+      }),
+    ).toBeFalsy();
+
+    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
+    await webhooks.requestAgentEvents(
+      {
+        runId: active.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 2,
+            message: {
+              content: [{ type: "text", text: "another assistant event" }],
+            },
+          },
+        ],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await expect(
+      api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([]);
+
+    clearMockNow();
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
+  it("does not carry an unclaimed time budget input into a later run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ChatSteer]: true,
+      },
+    );
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "leave the budget input unclaimed",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    const running = await api.readRun(actor, first.runId);
+    if (!running.startedAt) {
+      throw new Error("Expected the claimed run to have a start time");
+    }
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    mockNow(Date.parse(running.startedAt) + RUN_TIME_BUDGET_STEER_AT_MS);
+    await webhooks.requestAgentEvents(
+      {
+        runId: first.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              content: [{ type: "text", text: "leave this warning pending" }],
+            },
+          },
+        ],
+      },
+      firstClaim.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await expect(
+      api.listRunnerActiveInputs(firstClaim.claim.sandboxToken, first.runId),
+    ).resolves.toHaveLength(1);
+
+    clearMockNow();
+    await cancelChatRun(actor, first.runId, firstClaim.sandboxHeaders);
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "start a later run",
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    await expect(
+      api.listRunnerActiveInputs(secondClaim.claim.sandboxToken, second.runId),
+    ).resolves.toStrictEqual([]);
+    await cancelChatRun(actor, second.runId, secondClaim.sandboxHeaders);
   }, 90_000);
 
   it("queues, retries, and recalls messages behind an active run", async () => {
