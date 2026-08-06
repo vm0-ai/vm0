@@ -47,6 +47,12 @@ impl PiStandbyRuntime {
     }
 }
 
+impl Default for PiStandbyRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PiStandbyController {
     pub fn handle_control_payload(&self, payload: &[u8]) -> Result<bool, String> {
         let Some(payload_type) = serde_json::from_slice::<serde_json::Value>(payload)

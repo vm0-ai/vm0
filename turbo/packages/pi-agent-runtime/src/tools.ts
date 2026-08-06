@@ -3,6 +3,7 @@ import {
   createEditTool,
   createReadTool,
   createWriteTool,
+  type AgentMessage,
   type AgentToolUpdateCallback,
   type BashToolDetails,
   type BashToolInput,
@@ -129,4 +130,15 @@ export function createPiExecutionTools(env: ExecutionEnv): PiExecutionTools {
 
 export function isPiEdgeToolName(name: string): boolean {
   return name === "read";
+}
+
+/** Whether an assistant batch must leave the API-backed ExecutionEnv. */
+export function piMessageRequiresSandbox(message: AgentMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    message.stopReason === "toolUse" &&
+    message.content.some((block) => {
+      return block.type === "toolCall" && !isPiEdgeToolName(block.name);
+    })
+  );
 }

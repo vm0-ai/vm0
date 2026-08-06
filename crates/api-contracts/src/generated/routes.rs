@@ -253,6 +253,16 @@ pub mod webhooks {
             };
         }
 
+        /// Generated route bindings under `webhooks::agent::pi_transcript`.
+        pub mod pi_transcript {
+            /// Read the Pi transcript for the run's chat thread.
+            /// Route contract: `GET /api/webhooks/agent/pi-transcript`.
+            pub const READ: crate::Route = crate::Route {
+                method: crate::Method::Get,
+                path: "/api/webhooks/agent/pi-transcript",
+            };
+        }
+
         /// Generated route bindings under `webhooks::agent::storages`.
         pub mod storages {
             /// Generated route bindings under `webhooks::agent::storages::commit`.

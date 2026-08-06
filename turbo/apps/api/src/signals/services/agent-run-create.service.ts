@@ -8038,10 +8038,13 @@ async function committedAtomicLaunchResponse(args: {
       apiStartTime: args.createArgs.apiStartTime,
     });
   }
+  const dispatchedProfile = args.launch.piEdge
+    ? PI_STANDBY_PROFILE
+    : args.committed.runnerJobPayload.profile;
   await notifyRunnerJob(args.db, {
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
     runId: args.committed.run.id,
-    profile: args.committed.runnerJobPayload.profile,
+    profile: dispatchedProfile,
     reuseKey: args.committed.runnerJobPayload.reuseKey,
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
     historyGenerationRunId:
@@ -8051,7 +8054,7 @@ async function committedAtomicLaunchResponse(args: {
   args.timing.flush({
     runId: args.committed.run.id,
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
-    profile: args.committed.runnerJobPayload.profile,
+    profile: dispatchedProfile,
     dispatchPath: "direct",
     ...(args.createArgs.timingDimensions
       ? { dimensions: args.createArgs.timingDimensions }

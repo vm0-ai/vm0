@@ -1,6 +1,7 @@
-import type {
-  PiModelConfig,
-  RunSkillSnapshot,
+import {
+  PI_STANDBY_PROFILE,
+  type PiModelConfig,
+  type RunSkillSnapshot,
 } from "@vm0/api-contracts/contracts/runners";
 import {
   isPiAgentModelSupported,
@@ -35,7 +36,7 @@ export interface PiEdgeTurnArgs {
  * lane backed by the default Sandbox resource shape, allowing the standby job
  * to be claimed independently from ordinary agent work.
  */
-export const PI_STANDBY_PROFILE = "vm0/pi-standby";
+export { PI_STANDBY_PROFILE };
 
 /** Build the non-secret model config persisted for the standby Sandbox. */
 export function piSandboxModelConfig(config: PiEdgeModelConfig): PiModelConfig {

@@ -13,6 +13,7 @@ import {
   webhookCompleteContract,
   webhookEventsContract,
   webhookHeartbeatContract,
+  webhookPiTranscriptContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookTelemetryContract,
@@ -95,6 +96,11 @@ export const rustRouteBindings = [
     route: webhookHeartbeatContract.send,
     rustModulePath: ["webhooks", "agent", "heartbeat"],
     rustConstName: "SEND",
+  },
+  {
+    route: webhookPiTranscriptContract.read,
+    rustModulePath: ["webhooks", "agent", "pi_transcript"],
+    rustConstName: "READ",
   },
   {
     route: webhookTelemetryContract.send,

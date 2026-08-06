@@ -377,6 +377,7 @@ async fn run_codex_app_server(
             failure_diagnostic: ingestor.failure_diagnostic(),
             control_error: None,
             cli_termination: None,
+            completion_disposition: super::CliCompletionDisposition::Terminal,
         })
     };
     let run_outcome =
@@ -438,6 +439,7 @@ async fn run_codex_app_server(
                 cli_termination: Some(CliTerminationDiagnostic::new(
                     CliTerminationReason::ExecutionTimeout,
                 )),
+                completion_disposition: super::CliCompletionDisposition::Terminal,
             })
         }
         AppServerRunOutcome::UserCancelled => {
@@ -461,6 +463,7 @@ async fn run_codex_app_server(
                 cli_termination: Some(CliTerminationDiagnostic::new(
                     CliTerminationReason::UserCancellation,
                 )),
+                completion_disposition: super::CliCompletionDisposition::Terminal,
             })
         }
     }

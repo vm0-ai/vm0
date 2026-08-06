@@ -283,6 +283,15 @@ const runnerBuiltinFirewallsResolveResponseSchema = z.object({
 export const DEFAULT_PROFILE = "vm0/default";
 
 /**
+ * Prewarmed Pi Sandbox lane. Must stay in sync with
+ * `crates/runner/src/profile.rs`.
+ */
+export const PI_STANDBY_PROFILE = "vm0/pi-standby";
+
+/** Non-terminal Guest/Runner exit used to request Pi cold-start fallback. */
+export const PI_STANDBY_TTL_RELEASE_EXIT_CODE = 75;
+
+/**
  * Runner group format: vm0/<name> (e.g., "vm0/production")
  */
 export const runnerGroupSchema = z

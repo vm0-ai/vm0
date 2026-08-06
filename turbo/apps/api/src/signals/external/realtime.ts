@@ -398,6 +398,23 @@ export async function publishPiHandoffToRunnerGroupSafely(
   });
 }
 
+/** Release a prewarmed Pi Sandbox after the API has settled the run. */
+export async function publishPiStandbyReleaseToRunnerGroupSafely(
+  group: string,
+  runId: string,
+): Promise<void> {
+  await tapError(
+    (async () => {
+      const channel = ablyClient().channels.get(`runner-group:${group}`);
+      await channel.publish("pi-standby-release", { runId });
+      L.debug(`Published Pi standby release ${runId} to runner-group:${group}`);
+    })(),
+    (error) => {
+      L.warn("Failed to publish Pi standby release", { group, runId, error });
+    },
+  );
+}
+
 export async function publishRunnerJobNotification(
   group: string,
   runId: string,

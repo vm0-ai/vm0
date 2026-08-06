@@ -666,7 +666,22 @@ impl JobProvider for ApiProvider {
             .await
         {
             Ok(Some(ctx)) => {
-                let active_input_source = (!is_pi_standby
+                let has_pi_runtime = ctx.pi_system_prompt.is_some()
+                    && ctx.pi_model_config.is_some()
+                    && ctx.run_skill_snapshot.is_some();
+                let pi_standby_source = (is_pi_standby || has_pi_runtime).then(|| {
+                    let source = self.pi_standby_notifications.subscribe(run_id);
+                    if !is_pi_standby {
+                        // A standby failure/TTL requeues the exact context on
+                        // the default lane. Cold-started Pi must resume
+                        // immediately because the original Ably handoff may
+                        // predate this replacement subscription.
+                        self.pi_standby_notifications
+                            .notify(run_id, crate::pi_standby::PiStandbySignal::Handoff);
+                    }
+                    source
+                });
+                let active_input_source = (!has_pi_runtime
                     && supports_thread_active_input(ctx.reuse_key.as_deref()))
                 .then(|| {
                     ActiveInputSource::api(
@@ -676,12 +691,8 @@ impl JobProvider for ApiProvider {
                         self.active_input_notifications.subscribe(run_id),
                     )
                 });
-                let claimed = match if is_pi_standby {
-                    ClaimedJob::api_with_pi_standby_source(
-                        run_id,
-                        ctx,
-                        self.pi_standby_notifications.subscribe(run_id),
-                    )
+                let claimed = match if let Some(pi_standby_source) = pi_standby_source {
+                    ClaimedJob::api_with_pi_standby_source(run_id, ctx, pi_standby_source)
                 } else if let Some(active_input_source) = active_input_source {
                     ClaimedJob::api_with_active_input_source(run_id, ctx, active_input_source)
                 } else {
@@ -4196,6 +4207,63 @@ mod tests {
 
         claim_mock.assert_calls_async(1).await;
         complete_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn cold_start_pi_claim_receives_immediate_handoff() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "resume Pi",
+                    "sandboxToken": "pi-cold-sandbox-token",
+                    "cliAgentType": "codex",
+                    "billableFirewalls": [],
+                    "piSystemPrompt": "fixed Pi system prompt",
+                    "piModelConfig": {
+                        "provider": "deepseek",
+                        "baseUrl": "https://api.deepseek.com/",
+                        "model": "deepseek-chat",
+                        "apiKeyEnv": "OPENAI_API_KEY"
+                    },
+                    "runSkillSnapshot": {
+                        "schemaVersion": 1,
+                        "policyVersion": 1,
+                        "root": "/home/user/.pi/agent/skills",
+                        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                        "entries": []
+                    }
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
+        let claimed = provider
+            .claim(candidate)
+            .await
+            .expect("cold Pi claim should succeed");
+        let (_, _, _, mut pi_standby_source) = claimed.into_run_parts();
+        let signal = tokio::time::timeout(
+            Duration::from_millis(100),
+            pi_standby_source
+                .as_mut()
+                .expect("Pi context should install standby control")
+                .wait(),
+        )
+        .await
+        .expect("cold Pi claim should not wait for another Ably handoff");
+
+        assert_eq!(signal, crate::pi_standby::PiStandbySignal::Handoff);
+        claim_mock.assert_calls_async(1).await;
     }
 
     #[tokio::test]

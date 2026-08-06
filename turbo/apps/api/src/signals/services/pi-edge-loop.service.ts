@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import {
-  isPiEdgeToolName,
   parsePiAgentMessages,
+  piMessageRequiresSandbox,
   runPiAgentPrompt,
   type PiAgentMessage,
 } from "@vm0/pi-agent-runtime";
@@ -12,7 +12,7 @@ import type {
 } from "../../lib/event-consumer/verify";
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
-import { publishPiHandoffToRunnerGroupSafely } from "../external/realtime";
+import { publishPiStandbyReleaseToRunnerGroupSafely } from "../external/realtime";
 import { settle } from "../utils";
 import {
   materializeRunOutputEvents$,
@@ -21,6 +21,7 @@ import {
 import {
   completeAgentRun$,
   dispatchCompleteSideEffects$,
+  dispatchPiSandboxHandoff$,
 } from "./agent-webhook-complete.service";
 import type { PiEdgeTurnArgs } from "./pi-edge-config";
 import {
@@ -50,16 +51,6 @@ function piMessageEvent(args: {
   };
 }
 
-function requiresSandbox(message: PiAgentMessage): boolean {
-  return (
-    message.role === "assistant" &&
-    message.stopReason === "toolUse" &&
-    message.content.some((block) => {
-      return block.type === "toolCall" && !isPiEdgeToolName(block.name);
-    })
-  );
-}
-
 function failedAssistantMessage(message: PiAgentMessage): string | null {
   if (
     message.role !== "assistant" ||
@@ -68,6 +59,11 @@ function failedAssistantMessage(message: PiAgentMessage): string | null {
     return null;
   }
   return message.errorMessage ?? `Pi model turn ${message.stopReason}`;
+}
+
+function piEdgeFailure(runId: string, error: unknown): string {
+  L.error("Pi edge turn failed", { runId, error });
+  return error instanceof Error ? error.message : "Pi edge turn failed";
 }
 
 /**
@@ -145,12 +141,17 @@ export const runPiEdgeTurn$ = command(
             }
             await project(event.message);
             modelFailure ??= failedAssistantMessage(event.message);
-            if (!requiresSandbox(event.message)) {
+            if (!piMessageRequiresSandbox(event.message)) {
               return;
             }
-            await publishPiHandoffToRunnerGroupSafely(
-              args.runnerGroup,
-              args.runId,
+            await set(
+              dispatchPiSandboxHandoff$,
+              {
+                runId: args.runId,
+                userId: args.userId,
+                runnerGroup: args.runnerGroup,
+              },
+              signal,
             );
             throw new PiHandoffRequested();
           },
@@ -169,17 +170,9 @@ export const runPiEdgeTurn$ = command(
       return;
     }
 
-    let failure: string | undefined;
-    if (!outcome.ok) {
-      L.error("Pi edge turn failed", {
-        runId: args.runId,
-        error: outcome.error,
-      });
-      failure =
-        outcome.error instanceof Error
-          ? outcome.error.message
-          : "Pi edge turn failed";
-    }
+    const failure = outcome.ok
+      ? undefined
+      : piEdgeFailure(args.runId, outcome.error);
 
     const result = await set(
       completeAgentRun$,
@@ -203,5 +196,9 @@ export const runPiEdgeTurn$ = command(
         signal,
       );
     }
+    await publishPiStandbyReleaseToRunnerGroupSafely(
+      args.runnerGroup,
+      args.runId,
+    );
   },
 );

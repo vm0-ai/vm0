@@ -573,7 +573,7 @@ export const webhookCompleteContract = c.router({
     responses: {
       200: z.object({
         success: z.boolean(),
-        status: z.enum(["completed", "failed"]),
+        status: z.enum(["completed", "failed", "released"]),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

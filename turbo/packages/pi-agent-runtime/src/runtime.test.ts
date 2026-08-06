@@ -5,16 +5,47 @@ import {
   PI_SKILLS_ROOT,
   type RunSkillSnapshot,
 } from "@vm0/api-contracts/contracts/runners";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 import {
   createPiReadTool,
   formatPiUserPrompt,
   loadPiRunSkills,
   NodeExecutionEnv,
+  piMessageRequiresSandbox,
   renderPiSystemPrompt,
 } from "./node";
 
 const SHA256_ZERO = `sha256:${"0".repeat(64)}`;
+
+const ZERO_USAGE = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+
+function assistantToolCall(name: string): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [
+      {
+        type: "toolCall",
+        id: `${name}_1`,
+        name,
+        arguments: {},
+      },
+    ],
+    api: "openai-completions",
+    provider: "deepseek",
+    model: "deepseek-chat",
+    usage: ZERO_USAGE,
+    stopReason: "toolUse",
+    timestamp: 1,
+  };
+}
 
 async function writeSkill(
   directory: string,
@@ -30,6 +61,11 @@ async function writeSkill(
 }
 
 describe("Pi run Skill runtime", () => {
+  it("routes only sandbox-dependent tool batches out of the API loop", () => {
+    expect(piMessageRequiresSandbox(assistantToolCall("read"))).toBe(false);
+    expect(piMessageRequiresSandbox(assistantToolCall("bash"))).toBe(true);
+  });
+
   it("loads only snapshot Skills and preserves prompt and read semantics", async () => {
     await mkdir(PI_SKILLS_ROOT, { recursive: true });
     const testRoot = await mkdtemp(join(PI_SKILLS_ROOT, "vm0-runtime-test-"));

@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { PI_SKILLS_ROOT } from "@vm0/api-contracts/contracts/runners";
+import {
+  DEFAULT_PROFILE,
+  PI_SKILLS_ROOT,
+  PI_STANDBY_PROFILE,
+  PI_STANDBY_TTL_RELEASE_EXIT_CODE,
+} from "@vm0/api-contracts/contracts/runners";
 import { webhookPiTranscriptContract } from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -366,7 +371,7 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: ["vm0/pi-standby"],
+        supportedProfiles: [PI_STANDBY_PROFILE],
       },
       [200],
     );
@@ -375,7 +380,7 @@ describe("PiLoop edge turn", () => {
     }
     expect(standbyPoll.body.job).toMatchObject({
       runId: edge.runId,
-      experimentalProfile: "vm0/pi-standby",
+      experimentalProfile: PI_STANDBY_PROFILE,
     });
     const standbyContext = await api.claimRunnerJob(edge.runId);
     const skillSnapshot = standbyContext.runSkillSnapshot;
@@ -572,6 +577,16 @@ describe("PiLoop edge turn", () => {
           return topic === `chatThreadMessageCreated:${edge.threadId}`;
         }),
     ).toBeTruthy();
+    expect(
+      context.mocks.ably.publish.mock.calls
+        .slice(publishedBefore)
+        .some(([topic, payload]) => {
+          return (
+            topic === "pi-standby-release" &&
+            recordOf(payload)?.runId === edge.runId
+          );
+        }),
+    ).toBeTruthy();
 
     const followUpPrompt = "continue with the Pi-only history";
     const followUp = await sendChatRun(fixture, followUpPrompt, edge.threadId);
@@ -637,6 +652,102 @@ describe("PiLoop edge turn", () => {
     });
     expect((await api.readRun(fixture.actor, followUp.runId)).status).toBe(
       "completed",
+    );
+  });
+
+  it("requeues an expired standby onto the cold-start lane without settling the run", async () => {
+    const fixture = await piEdgeFixture();
+    await enablePiLoop(fixture);
+    const modelStarted = createDeferredPromise<void>(context.signal);
+    const releaseModel = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseModel.settled()) {
+        releaseModel.resolve();
+      }
+    });
+    server.use(
+      http.post(COMPLETIONS_URL, async () => {
+        modelStarted.resolve();
+        await releaseModel.promise;
+        return assistantToolStream({
+          id: "bash_ttl_fallback_1",
+          name: "bash",
+          arguments: { command: "pwd" },
+          thinking: "Sandbox work is required after the standby TTL.",
+        });
+      }),
+    );
+
+    const run = await sendChatRun(fixture, "wait past the standby TTL");
+    await modelStarted.promise;
+    const standbyPoll = await api.requestPollRunner(
+      true,
+      {
+        group: fixture.runnerGroup,
+        supportedProfiles: [PI_STANDBY_PROFILE],
+      },
+      [200],
+    );
+    if (standbyPoll.status !== 200) {
+      throw new Error("Expected Pi standby poll to return 200");
+    }
+    expect(standbyPoll.body.job?.runId).toBe(run.runId);
+    const standbyContext = await api.claimRunnerJob(run.runId);
+
+    const released = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: PI_STANDBY_TTL_RELEASE_EXIT_CODE,
+      },
+      webhooks.sandboxWebhookHeaders({ runId: run.runId }),
+      [200],
+    );
+    expect(released.body).toStrictEqual({ success: true, status: "released" });
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+      "running",
+    );
+
+    const prematureColdPoll = await api.requestPollRunner(
+      true,
+      {
+        group: fixture.runnerGroup,
+        supportedProfiles: [DEFAULT_PROFILE],
+      },
+      [200],
+    );
+    if (prematureColdPoll.status !== 200) {
+      throw new Error("Expected premature Pi cold-start poll to return 200");
+    }
+    expect(prematureColdPoll.body.job).toBeNull();
+
+    releaseModel.resolve();
+    await flushWaitUntilForTest();
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+      "pending",
+    );
+
+    const coldPoll = await api.requestPollRunner(
+      true,
+      {
+        group: fixture.runnerGroup,
+        supportedProfiles: [DEFAULT_PROFILE],
+      },
+      [200],
+    );
+    if (coldPoll.status !== 200) {
+      throw new Error("Expected Pi cold-start poll to return 200");
+    }
+    expect(coldPoll.body.job).toMatchObject({
+      runId: run.runId,
+      experimentalProfile: DEFAULT_PROFILE,
+    });
+    const coldContext = await api.claimRunnerJob(run.runId);
+    expect(coldContext.piSystemPrompt).toBe(standbyContext.piSystemPrompt);
+    expect(coldContext.runSkillSnapshot).toStrictEqual(
+      standbyContext.runSkillSnapshot,
+    );
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+      "running",
     );
   });
 
@@ -762,7 +873,7 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: ["vm0/pi-standby"],
+        supportedProfiles: [PI_STANDBY_PROFILE],
       },
       [200],
     );
@@ -777,5 +888,82 @@ describe("PiLoop edge turn", () => {
     expect(standbyContext.runSkillSnapshot?.digest).toMatch(
       /^sha256:[a-f0-9]{64}$/,
     );
+
+    const sandboxHeaders = webhooks.sandboxWebhookHeaders({
+      runId: run.runId,
+    });
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "pi.message.completed",
+            sequenceNumber: 3,
+            messageId: `${run.runId}/3`,
+            expectedVersion: 1,
+            expectedLastOrdinal: 2,
+            message: {
+              role: "toolResult",
+              toolCallId: "bash_handoff_1",
+              toolName: "bash",
+              content: [{ type: "text", text: "/home/user/workspace\n" }],
+              details: {},
+              isError: false,
+              timestamp: 2,
+            },
+          },
+          {
+            type: "pi.message.completed",
+            sequenceNumber: 4,
+            messageId: `${run.runId}/4`,
+            expectedVersion: 1,
+            expectedLastOrdinal: 3,
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "Sandbox resumed the handed-off tool call.",
+                },
+              ],
+              stopReason: "stop",
+              timestamp: 3,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 4 },
+      sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+      "completed",
+    );
+    const completedTranscript = await readTranscript(run.runId);
+    expect(completedTranscript).toMatchObject({
+      version: 1,
+      lastOrdinal: 4,
+      messages: [
+        expect.objectContaining({ messageId: `${run.runId}/1` }),
+        expect.objectContaining({ messageId: `${run.runId}/2` }),
+        expect.objectContaining({
+          messageId: `${run.runId}/3`,
+          role: "toolResult",
+        }),
+        expect.objectContaining({
+          messageId: `${run.runId}/4`,
+          role: "assistant",
+          payload: expect.objectContaining({
+            stopReason: "stop",
+          }),
+        }),
+      ],
+    });
   });
 });
