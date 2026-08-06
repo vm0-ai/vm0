@@ -4,7 +4,7 @@ import AdmZip from "adm-zip";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import type {
   GenerationTemplateRequest,
-  UserMessageDocument,
+  UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
@@ -1305,7 +1305,7 @@ describe("OPS-01: user data export", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -1352,7 +1352,7 @@ describe("OPS-01: user data export", () => {
     ) as {
       readonly role: string;
       readonly content: string;
-      readonly userMessage?: UserMessageDocument;
+      readonly userMessage?: UserMessageInputDocument;
     }[];
     expect(messages[0]).toMatchObject({
       role: "user",

@@ -325,6 +325,19 @@ function isUserMessageNonContentPart(
   );
 }
 
+type UserMessageHiddenPart = Extract<
+  UserMessagePart,
+  {
+    readonly type: "source" | "automation" | "goal" | "morning_brief" | "model";
+  }
+>;
+
+function isUserMessageHiddenPart(
+  part: UserMessagePart,
+): part is UserMessageHiddenPart {
+  return isUserMessageNonContentPart(part) || part.type === "model";
+}
+
 function isInputChatEvent(event: ChatEvent): event is ChatInputEvent {
   return (
     event.eventType === "input.prompt" ||
@@ -7533,7 +7546,9 @@ function UserMessageFeedbackGroup({
 
 type UserMessageContentPart = Exclude<
   UserMessagePart,
-  { readonly type: "source" | "automation" | "goal" | "morning_brief" }
+  {
+    readonly type: "source" | "automation" | "goal" | "morning_brief" | "model";
+  }
 >;
 type UserMessageStandalonePart = Exclude<
   UserMessageContentPart,
@@ -7605,7 +7620,7 @@ function UserMessageView({
   const bodyParts = document.parts.filter(
     (part): part is UserMessageContentPart => {
       return (
-        !isUserMessageNonContentPart(part) &&
+        !isUserMessageHiddenPart(part) &&
         !isElevatedUserMessagePart(
           part,
           elevatedFileIds,
@@ -7716,7 +7731,7 @@ function UserMessageContent({
       });
   const hasBody = document.parts.some((part) => {
     return (
-      !isUserMessageNonContentPart(part) &&
+      !isUserMessageHiddenPart(part) &&
       !isElevatedUserMessagePart(part, elevatedFileIds, inlineTemplatesEnabled)
     );
   });
