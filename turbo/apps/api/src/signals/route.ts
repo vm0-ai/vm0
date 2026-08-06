@@ -121,6 +121,7 @@ import { zeroPushSubscriptionsRoutes } from "./routes/zero-push-subscriptions";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRealtimeTokenRoutes } from "./routes/zero-realtime-token";
 import { zeroRecognitionRoutes } from "./routes/zero-recognition";
+import { zeroTranslationRoutes } from "./routes/zero-translation";
 import { zeroReportErrorRoutes } from "./routes/zero-report-error";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
@@ -325,6 +326,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroQueuePositionRoutes,
   ...zeroRealtimeTokenRoutes,
   ...zeroRecognitionRoutes,
+  ...zeroTranslationRoutes,
   ...zeroReportErrorRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,

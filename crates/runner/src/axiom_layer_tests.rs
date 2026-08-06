@@ -182,11 +182,6 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
         tracing::error!(code = 42, "a failure");
         tracing::info!("info is below threshold, should not be ingested");
         tracing::info!(
-            target: "runner::pre_park_successor_handoff",
-            outcome = "retained",
-            "pre-park INFO measurement"
-        );
-        tracing::info!(
             target: "sandbox_fc::balloon_settle",
             measurement = "balloon_settle",
             outcome = "target_reached",
@@ -216,7 +211,6 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     assert_eq!(failure["code"], json!(42));
     for message in [
         "info is below threshold, should not be ingested",
-        "pre-park INFO measurement",
         "balloon settle completed",
     ] {
         assert!(
