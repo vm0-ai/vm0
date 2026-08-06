@@ -152,11 +152,15 @@ const rehypeRewriteHandler = (() => {
   return (...args: RewriteArgs) => {
     const [node, , parent] = args;
 
-    // Convert unknown HTML tags to plain text, preserving child content
+    // Convert unknown HTML tags to plain text, preserving child content.
+    // Raw HTML written at the top level of a document lands directly under the
+    // hast root, so root-level nodes must be rewritten too — otherwise tags
+    // like <style> and <script> survive into the app's DOM, where a generated
+    // `* { margin: 0; padding: 0 }` reset unstyles the whole page.
     if (
       node.type === "element" &&
       !validHtmlTags.has(node.tagName) &&
-      parent?.type === "element"
+      (parent?.type === "element" || parent?.type === "root")
     ) {
       const inner = collectText(node);
       const text = inner

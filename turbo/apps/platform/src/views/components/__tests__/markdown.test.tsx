@@ -135,6 +135,34 @@ describe("assistant markdown", () => {
     });
   });
 
+  it("shows a raw style block as text instead of styling the page", async () => {
+    mockThread("<style>\n.zero-injected { color: red }\n</style>");
+
+    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+
+    await waitFor(() => {
+      expect(document.querySelector(".wmde-markdown")?.textContent).toContain(
+        ".zero-injected { color: red }",
+      );
+    });
+    // A mounted stylesheet would restyle the whole page, not just this message.
+    const injectedSheets = Array.from(
+      document.querySelectorAll("style"),
+    ).filter((sheet) => {
+      return sheet.textContent?.includes(".zero-injected") ?? false;
+    });
+    expect(injectedSheets).toHaveLength(0);
+  });
+
+  it("keeps allowlisted html blocks rendering as elements", async () => {
+    mockThread("<div><strong>kept markup</strong></div>");
+
+    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+
+    const kept = await screen.findByText("kept markup", { selector: "strong" });
+    expect(kept).toBeInTheDocument();
+  });
+
   it("renders media links inline", async () => {
     const imageSrc = "https://example.com/cat.png";
     const videoSrc = "https://example.com/clip.mp4";
