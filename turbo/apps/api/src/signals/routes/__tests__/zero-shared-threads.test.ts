@@ -193,7 +193,20 @@ describe("shared thread routes", () => {
     const assistantText = "Here is the **public** launch plan.";
     await completeRun(owner.runnerGroup, run.runId, assistantText);
 
-    const events = await chat.listThreadEvents(owner.actor, run.threadId);
+    let events: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
+    await expect
+      .poll(async () => {
+        events = await chat.listThreadEvents(owner.actor, run.threadId);
+        return events.events.some((event) => {
+          return (
+            event.eventType === "run.completed" && event.runId === run.runId
+          );
+        });
+      })
+      .toBe(true);
+    if (!events) {
+      throw new Error("Expected completed shared-thread fixture events");
+    }
     const promptEvent = events.events.find((event) => {
       return event.eventType === "input.prompt" && event.runId === run.runId;
     });
