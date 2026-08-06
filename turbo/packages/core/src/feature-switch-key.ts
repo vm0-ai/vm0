@@ -73,4 +73,5 @@ export enum FeatureSwitchKey {
   ThreeColumnNav = "threeColumnNav",
   ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
   ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
+  SharedThreadSharing = "sharedThreadSharing",
 }

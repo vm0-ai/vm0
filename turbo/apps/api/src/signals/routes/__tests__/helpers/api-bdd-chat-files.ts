@@ -1008,7 +1008,7 @@ export function createChatFilesBddApi(context: TestContext) {
       const response = await accept(
         artifactCatalogClient().list({
           headers: authenticate(context, actor),
-          query,
+          query: { ...query, includeSharedThreads: "1" },
         }),
         [200],
       );
@@ -1023,6 +1023,7 @@ export function createChatFilesBddApi(context: TestContext) {
         artifactCatalogClient().get({
           headers: authenticate(context, actor),
           params: { artifactId },
+          query: { includeSharedThreads: "1" },
         }),
         [200],
       );
@@ -1038,6 +1039,7 @@ export function createChatFilesBddApi(context: TestContext) {
         artifactCatalogClient().get({
           headers: authenticate(context, actor),
           params: { artifactId },
+          query: { includeSharedThreads: "1" },
         }),
         statuses,
       );

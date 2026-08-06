@@ -11,13 +11,16 @@ export const testRuntimeStateErrorSchema = z.object({
 export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("seed-vm0-managed-default-model-key"),
+    fixture_id: z.uuid(),
   }),
   z.object({
     action: z.literal("seed-vm0-managed-model-key"),
+    fixture_id: z.uuid(),
     selected_model: z.string(),
   }),
   z.object({
-    action: z.literal("delete-vm0-managed-default-model-key"),
+    action: z.literal("delete-vm0-managed-model-key"),
+    fixture_id: z.uuid(),
   }),
   z.object({
     action: z.literal("enable-fake-kms"),

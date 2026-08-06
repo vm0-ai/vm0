@@ -3,6 +3,7 @@ import {
   webhookBuiltInGenerationBytePlusContract,
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationJoggAiContract,
+  webhookBuiltInGenerationMiniMaxContract,
 } from "@vm0/api-contracts/contracts/webhooks";
 
 import { request$ } from "../context/hono";
@@ -38,16 +39,18 @@ import {
 } from "../services/built-in-generation-provider-webhooks.service";
 import {
   bytePlusBuiltInGenerationError,
-  downloadFalVideo,
   downloadBytePlusVideo,
-  parseFalVideoResult,
+  downloadFalVideo,
+  downloadMiniMaxVideo,
+  getMissingVideoPricing,
+  miniMaxBuiltInGenerationError,
   parseBytePlusVideoResult,
+  parseFalVideoResult,
+  parseMiniMaxVideoResult,
   parseVideoOptions,
   recordGeneratedVideo$,
-  type VideoPricingRow,
+  type VideoPricing,
   videoPricing$,
-  videoPricingCategoryForOptions,
-  videoPricingKey,
 } from "../services/zero-video-io-generate.service";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -72,6 +75,12 @@ const bytePlusWebhookPathParams$ = pathParamsOf(
 const bytePlusWebhookQuery$ = queryOf(
   webhookBuiltInGenerationBytePlusContract.post,
 );
+const miniMaxWebhookPathParams$ = pathParamsOf(
+  webhookBuiltInGenerationMiniMaxContract.post,
+);
+const miniMaxWebhookQuery$ = queryOf(
+  webhookBuiltInGenerationMiniMaxContract.post,
+);
 interface GenerationErrorResponse {
   readonly status: number;
   readonly body: {
@@ -82,7 +91,7 @@ interface GenerationErrorResponse {
   };
 }
 
-type FalWebhookResponse =
+type ProviderWebhookResponse =
   | {
       readonly status: 200;
       readonly body: "OK";
@@ -94,14 +103,21 @@ type FalWebhookResponse =
       };
     };
 
-function okResponse(): FalWebhookResponse {
+type MiniMaxWebhookResponse =
+  | ProviderWebhookResponse
+  | {
+      readonly status: 200;
+      readonly body: { readonly challenge: string };
+    };
+
+function okResponse(): ProviderWebhookResponse {
   return { status: 200, body: "OK" };
 }
 
 function jsonError(
   message: string,
   status: 400 | 401 | 503,
-): FalWebhookResponse {
+): ProviderWebhookResponse {
   return { status, body: { error: message } };
 }
 
@@ -186,14 +202,11 @@ function activeImagePricing(
 }
 
 function activeVideoPricing(
-  pricing: ReadonlyMap<string, VideoPricingRow>,
+  pricing: VideoPricing,
   job: BuiltInGenerationWebhookJob,
-): VideoPricingRow | GenerationErrorResponse {
+): VideoPricing | GenerationErrorResponse {
   const options = parseJobVideoOptions(job);
-  const row = pricing.get(
-    videoPricingKey(options.model, videoPricingCategoryForOptions(options)),
-  );
-  if (!row) {
+  if (getMissingVideoPricing(pricing, options).length > 0) {
     return {
       status: 503,
       body: {
@@ -204,7 +217,7 @@ function activeVideoPricing(
       },
     };
   }
-  return row;
+  return pricing;
 }
 
 function falPayloadBody(payload: unknown): {
@@ -239,6 +252,20 @@ function bytePlusPayloadBody(payload: unknown): {
     status: typeof payload.status === "string" ? payload.status : undefined,
     body: payload,
   };
+}
+
+function miniMaxPayloadBody(payload: unknown): {
+  readonly status: string;
+  readonly body: Record<string, unknown>;
+} | null {
+  if (!isRecord(payload) || !isRecord(payload.task)) {
+    return null;
+  }
+  const status = payload.task.status;
+  if (typeof status !== "string" || status.length === 0) {
+    return null;
+  }
+  return { status, body: payload.task };
 }
 
 const PROVIDER_FAILURE_DETAIL_KEYS = [
@@ -523,6 +550,98 @@ const handleBytePlusVideoCompletion$ = command(
   },
 );
 
+const handleMiniMaxVideoCompletion$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly job: BuiltInGenerationWebhookJob;
+      readonly payload: unknown;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const options = parseJobVideoOptions(args.job);
+    const miniMaxResult = parseMiniMaxVideoResult(args.payload);
+    if (isErrorResponse(miniMaxResult)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.job.id, error: miniMaxResult.body.error },
+        signal,
+      );
+      await set(completeAdmissionForJob$, {
+        job: args.job,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+
+    const videoPricing = await get(videoPricing$);
+    signal.throwIfAborted();
+    const pricing = activeVideoPricing(videoPricing, args.job);
+    if (isErrorResponse(pricing)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.job.id, error: pricing.body.error },
+        signal,
+      );
+      await set(completeAdmissionForJob$, {
+        job: args.job,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+
+    const generation = await downloadMiniMaxVideo(
+      miniMaxResult,
+      options,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (isErrorResponse(generation)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.job.id, error: generation.body.error },
+        signal,
+      );
+      await set(completeAdmissionForJob$, {
+        job: args.job,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+
+    const result = await set(
+      recordGeneratedVideo$,
+      {
+        orgId: args.job.orgId,
+        userId: args.job.userId,
+        runId: args.job.runId ?? undefined,
+        pricing,
+        generation,
+        usageIdempotency: {
+          generationId: args.job.id,
+          scope: "video",
+        },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    await set(
+      completeBuiltInGenerationJob$,
+      { generationId: args.job.id, result },
+      signal,
+    );
+    signal.throwIfAborted();
+    await set(completeAdmissionForJob$, {
+      job: args.job,
+      status: "completed",
+    });
+    signal.throwIfAborted();
+  },
+);
+
 const handleFalVideoCompletion$ = command(
   async (
     { get, set },
@@ -695,7 +814,10 @@ const handleJoggAiAvatarVideoCompletion$ = command(
 );
 
 const postFalBuiltInGenerationWebhook$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<FalWebhookResponse> => {
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<ProviderWebhookResponse> => {
     const params = get(falWebhookPathParams$);
     const query = get(falWebhookQuery$);
     if (
@@ -800,7 +922,10 @@ const postFalBuiltInGenerationWebhook$ = command(
 );
 
 const postBytePlusBuiltInGenerationWebhook$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<FalWebhookResponse> => {
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<ProviderWebhookResponse> => {
     const params = get(bytePlusWebhookPathParams$);
     const query = get(bytePlusWebhookQuery$);
     if (
@@ -915,8 +1040,130 @@ const postBytePlusBuiltInGenerationWebhook$ = command(
   },
 );
 
+const postMiniMaxBuiltInGenerationWebhook$ = command(
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<MiniMaxWebhookResponse> => {
+    const params = get(miniMaxWebhookPathParams$);
+    const query = get(miniMaxWebhookQuery$);
+    if (
+      !verifyBuiltInGenerationProviderWebhookToken({
+        provider: "minimax",
+        generationId: params.generationId,
+        visualKey: query.visualKey,
+        token: query.token,
+      })
+    ) {
+      L.warn("MiniMax built-in generation webhook rejected invalid token", {
+        generationId: params.generationId,
+        visualKey: query.visualKey,
+      });
+      return jsonError("Invalid token", 401);
+    }
+
+    const request = get(request$);
+    const rawBody = await request.text();
+    signal.throwIfAborted();
+    const parsed = safeJsonParse(rawBody);
+    if (isRecord(parsed) && typeof parsed.challenge === "string") {
+      return { status: 200, body: { challenge: parsed.challenge } };
+    }
+
+    const payload = miniMaxPayloadBody(parsed);
+    if (!payload) {
+      L.warn("MiniMax built-in generation webhook rejected invalid payload", {
+        generationId: params.generationId,
+        visualKey: query.visualKey,
+      });
+      return jsonError("Invalid payload", 400);
+    }
+
+    const status = payload.status.toLowerCase();
+    L.debug("MiniMax built-in generation webhook received", {
+      generationId: params.generationId,
+      visualKey: query.visualKey,
+      status: payload.status,
+    });
+    if (status === "queued" || status === "running") {
+      return okResponse();
+    }
+
+    const job = await set(
+      getBuiltInGenerationWebhookJob$,
+      params.generationId,
+      signal,
+    );
+    if (!job) {
+      L.debug("MiniMax built-in generation webhook ignored inactive job", {
+        generationId: params.generationId,
+        visualKey: query.visualKey,
+      });
+      return okResponse();
+    }
+
+    if (status === "failed" || status === "cancelled" || status === "expired") {
+      const failureDetails = providerFailureDetailsForLog(payload.body);
+      L.warn("MiniMax built-in generation webhook reported failed generation", {
+        generationId: job.id,
+        type: job.type,
+        status: payload.status,
+        visualKey: query.visualKey,
+        ...failureDetails,
+      });
+      await set(
+        failBuiltInGenerationJob$,
+        {
+          generationId: job.id,
+          error: miniMaxBuiltInGenerationError(payload.body),
+        },
+        signal,
+      );
+      await set(completeAdmissionForJob$, { job, status: "failed" });
+      signal.throwIfAborted();
+      return okResponse();
+    }
+
+    if (status !== "succeeded") {
+      L.debug("MiniMax built-in generation webhook ignored status", {
+        generationId: job.id,
+        type: job.type,
+        status: payload.status,
+        visualKey: query.visualKey,
+      });
+      return okResponse();
+    }
+
+    if (job.type === "video") {
+      await set(
+        handleMiniMaxVideoCompletion$,
+        { job, payload: payload.body },
+        signal,
+      );
+      L.debug("MiniMax built-in generation video webhook processed", {
+        generationId: job.id,
+        visualKey: query.visualKey,
+      });
+      return okResponse();
+    }
+
+    L.debug(
+      "MiniMax built-in generation webhook ignored unsupported job type",
+      {
+        generationId: job.id,
+        type: job.type,
+        visualKey: query.visualKey,
+      },
+    );
+    return okResponse();
+  },
+);
+
 const postJoggAiBuiltInGenerationWebhook$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<FalWebhookResponse> => {
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<ProviderWebhookResponse> => {
     const webhookSecret = env("JOGGAI_WEBHOOK_SECRET");
     if (!webhookSecret) {
       L.error("JoggAI webhook signing secret is not configured");
@@ -1013,6 +1260,10 @@ export const webhooksBuiltInGenerationRoutes: readonly RouteEntry[] = [
   {
     route: webhookBuiltInGenerationBytePlusContract.post,
     handler: postBytePlusBuiltInGenerationWebhook$,
+  },
+  {
+    route: webhookBuiltInGenerationMiniMaxContract.post,
+    handler: postMiniMaxBuiltInGenerationWebhook$,
   },
   {
     route: webhookBuiltInGenerationJoggAiContract.post,

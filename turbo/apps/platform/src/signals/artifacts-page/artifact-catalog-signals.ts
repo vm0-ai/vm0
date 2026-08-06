@@ -42,6 +42,16 @@ export function artifactDetailPreview(detail: ArtifactDetail): {
   readonly url: string;
   readonly filename: string;
 } {
+  if (detail.kind === "shared-thread") {
+    return {
+      kind: "html",
+      url: new URL(
+        `/share/threads/${encodeURIComponent(detail.sharedThread.id)}`,
+        window.location.origin,
+      ).toString(),
+      filename: detail.title,
+    };
+  }
   if (detail.kind === "hosted-site" || detail.kind === "presentation") {
     return { kind: "html", url: detail.site.url, filename: detail.title };
   }
@@ -80,6 +90,13 @@ export const openArtifact$ = command(
     const detail = await get(pageCatalog.selectedArtifactDetail$);
     signal.throwIfAborted();
     if (!detail) {
+      return;
+    }
+
+    if (detail.kind === "shared-thread") {
+      window.location.assign(
+        `/share/threads/${encodeURIComponent(detail.sharedThread.id)}`,
+      );
       return;
     }
 

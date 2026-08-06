@@ -387,3 +387,57 @@ export function projectUserMessage(
     hasTextContent,
   };
 }
+
+/**
+ * Project a user message into static public text. User-visible snapshots are
+ * retained while internal IDs, source links, and mail identifiers are omitted.
+ */
+export function projectUserMessageForPublicShare(
+  document: UserMessageDocument,
+): string {
+  const sanitizedDocument: UserMessageDocument = {
+    version: 1,
+    parts: document.parts.map((part): UserMessagePart => {
+      if (part.type !== "feedback") {
+        return part;
+      }
+      return {
+        type: "feedback",
+        quote: part.quote,
+        note: part.note.map((notePart): FeedbackNotePart => {
+          if (notePart.type === "text") {
+            return notePart;
+          }
+          if (notePart.type === "chat_thread") {
+            return {
+              type: "text",
+              text: `[Chat thread: ${notePart.titleSnapshot}]`,
+            };
+          }
+          if (notePart.type === "agent") {
+            return {
+              type: "text",
+              text: `[Agent: ${notePart.nameSnapshot}]`,
+            };
+          }
+          return {
+            type: "text",
+            text: `[Template: ${notePart.titleSnapshot}]`,
+          };
+        }),
+      };
+    }),
+  };
+  const displayText = projectUserMessage(sanitizedDocument).displayText.trim();
+  if (displayText.length > 0) {
+    return displayText;
+  }
+  const automation = document.parts.find((part) => {
+    return part.type === "automation";
+  });
+  if (!automation || automation.type !== "automation") {
+    return "";
+  }
+  const brief = automation.automationBrief?.trim();
+  return brief && brief.length > 0 ? brief : automation.workflowName.trim();
+}

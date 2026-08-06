@@ -546,6 +546,8 @@
         "label": "Filter für Artefakttypen",
         "presentation": "Präsentationen",
         "presentationAria": "Präsentationsartefakte anzeigen",
+        "sharedConversation": "Geteilte Unterhaltungen",
+        "sharedConversationAria": "Artefakte mit geteilten Unterhaltungen anzeigen",
         "video": "Videos",
         "videoAria": "Videoartefakte anzeigen",
         "website": "Websites",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Präsentation",
+      "sharedConversation": "Geteilte Unterhaltung",
       "text": "Text",
       "video": "Video"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "Videovorschau für {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Geteilte Unterhaltung öffnen",
       "panelTitle": "Artefakte",
       "singularTitle": "Artefakt",
       "unavailable": "Dieses Artefakt ist nicht mehr verfügbar."
@@ -1525,6 +1529,22 @@
       "waitingIn": "Warten",
       "worked": "Ausgeführt",
       "workedFor": "Ausgeführt in {{duration}}"
+    },
+    "sharing": {
+      "cancel": "Abbrechen",
+      "close": "Schließen",
+      "copyFailed": "Der Link konnte nicht kopiert werden",
+      "copyLink": "Link kopieren",
+      "create": "Teilen",
+      "createFailed": "Die geteilte Unterhaltung konnte nicht erstellt werden. Versuche es erneut.",
+      "deselectGroup": "Nachrichtengruppe abwählen",
+      "linkCopied": "Link kopiert",
+      "selectedCount_one": "{{count}} ausgewählt",
+      "selectedCount_other": "{{count}} ausgewählt",
+      "selectGroup": "Nachrichtengruppe auswählen",
+      "shareLink": "Link zur geteilten Unterhaltung",
+      "start": "Nachrichten teilen",
+      "tooLarge": "Wähle weniger Nachrichten zum Teilen aus"
     },
     "shortcuts": {
       "number": "Nummer"
@@ -4586,6 +4606,12 @@
       "description": "Die gesuchte Seite existiert nicht.",
       "title": "Seite nicht gefunden"
     }
+  },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "Diese geteilte Unterhaltung existiert nicht.",
+    "notFoundTitle": "Geteilte Unterhaltung nicht gefunden",
+    "tryOkou": "Okou ausprobieren"
   },
   "usage": {
     "automations": {

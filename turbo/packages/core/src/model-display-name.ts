@@ -70,6 +70,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "seedance-2-0-260128": "Seedance 2.0",
   "seedance-2-0-fast-260128": "Seedance 2.0 Fast",
   "seedance-1-5-pro-251215": "Seedance 1.5 Pro",
+  "MiniMax-H3": "MiniMax H3",
   "fal-ai/veo3.1": "Veo 3.1",
   "fal-ai/veo3.1/fast": "Veo 3.1 Fast",
   "fal-ai/kling-video/o3/standard/text-to-video": "Kling O3 Standard",

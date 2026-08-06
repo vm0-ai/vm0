@@ -2618,6 +2618,37 @@ describe("zero attachment chips", () => {
     expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
   });
 
+  it("requires complete urls for flat artifact preview cards", async () => {
+    const incompletePath = "artifacts/97ngzkxdyn.mp4";
+    const rootRelativePath = "/artifacts/97ngzkxdyn.mp4";
+    const completeUrl = "https://cdn.vm7.io/artifacts/97ngzkxdyn.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-incomplete-short-artifact-video-links",
+          role: "assistant",
+          content: `${incompletePath}\n${rootRelativePath}\n${completeUrl}`,
+          runId: "run-incomplete-short-artifact-video-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Preview 97ngzkxdyn.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Preview 97ngzkxdyn.mp4")).toHaveLength(1);
+    expect(
+      screen.getByText(incompletePath, { exact: false }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(rootRelativePath, { exact: false }),
+    ).toBeInTheDocument();
+  });
+
   it("renders other short artifact urls with their preview ui", async () => {
     const urls = {
       audio: "https://cdn.vm7.io/artifacts/0000000001.mp3",

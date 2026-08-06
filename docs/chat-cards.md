@@ -50,8 +50,10 @@ Current link-backed card patterns include:
 - `/?settings=billing&billingView=plans`
 - `/mail/drafts/:vm0DraftId`
 - `/browsers/:threadId`
-- platform artifact URLs such as `/f/...` and `/artifacts/...`, plus hosted
-  site URLs that support an inline preview
+- platform artifact URLs such as legacy `/f/...` and `/artifacts/.../.../...`
+  paths, plus hosted site URLs that support an inline preview. Flat V2 artifact
+  paths such as `/artifacts/97ngzkxdyn.mp4` require a complete URL with an
+  allowed VM0 origin.
 
 Recognized billing-plan links render as rich upgrade cards.
 

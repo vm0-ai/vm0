@@ -65,7 +65,7 @@ use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
 use crate::provider::{
     ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, JobCandidate, JobProvider,
-    LocalProvider, NetworkPolicyRefreshHandle,
+    LocalProvider, NetworkPolicyRefreshHandle, RunnerPreferenceRemovalReason,
 };
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
@@ -1854,7 +1854,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let Some(candidate) = pending_finalizing_candidate.take() else {
                     continue;
                 };
-                let candidate = candidate.without_runner_preference();
+                let candidate = candidate
+                    .without_runner_preference(RunnerPreferenceRemovalReason::Expired);
                 let result = handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {

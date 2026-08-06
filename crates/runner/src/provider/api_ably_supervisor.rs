@@ -27,7 +27,10 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
-use super::{RunnerPreference, parse_runner_preference};
+use super::{
+    RunnerPreference, RunnerPreferenceResolution, parse_runner_preference,
+    parse_runner_preference_resolution,
+};
 use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
@@ -709,6 +712,7 @@ async fn handle_ably_message_with_network_policy_refresh(
                         notif.reuse_key.map(str::to_owned),
                         notif.runner_preference,
                     )
+                    .with_runner_preference_resolution(notif.runner_preference_resolution)
                     .with_history_generation_run_id(notif.history_generation_run_id),
                 )
             } else {
@@ -751,6 +755,7 @@ struct JobNotification<'a> {
     reuse_key: Option<&'a str>,
     history_generation_run_id: Option<RunId>,
     runner_preference: Option<RunnerPreference>,
+    runner_preference_resolution: Option<RunnerPreferenceResolution>,
 }
 
 struct NetworkPolicyRefreshNotification {
@@ -957,12 +962,26 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
             None
         }
     };
+    let runner_preference_resolution = match parse_runner_preference_resolution(
+        msg.data.get("runnerPreferenceResolution").cloned(),
+    ) {
+        Ok(resolution) => resolution,
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                error = %error,
+                "ably: invalid runner preference resolution, omitting telemetry context"
+            );
+            None
+        }
+    };
     Some(JobNotification {
         run_id,
         profile,
         reuse_key,
         history_generation_run_id,
         runner_preference,
+        runner_preference_resolution,
     })
 }
 
@@ -1903,6 +1922,7 @@ mod tests {
                 "profile": "vm0/default",
                 "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
+                "runnerPreferenceResolution": "matching_reusable_sandbox",
                 "runnerPreference": {
                     "runnerIdentity": {
                         "runnerId": "00000000-0000-0000-0000-000000000005",
@@ -1936,6 +1956,14 @@ mod tests {
             RunnerPreferenceReason::MatchingReuseKey
         );
         assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
+        assert_eq!(
+            candidate.runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,),
+            Some(super::super::RunnerPreferenceClaimTelemetry {
+                resolution: RunnerPreferenceResolution::MatchingReusableSandbox,
+                state: super::super::RunnerPreferenceClaimState::Active,
+                targeted_self: Some(true),
+            })
+        );
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
     }
@@ -1959,6 +1987,7 @@ mod tests {
                 "runId": "00000000-0000-0000-0000-000000000011",
                 "profile": "vm0/default",
                 "reuseKey": "thread:malformed-preference",
+                "runnerPreferenceResolution": "future_resolution",
                 "runnerPreference": {
                     "runnerIdentity": {
                         "runnerId": "00000000-0000-0000-0000-000000000005",
@@ -1977,6 +2006,11 @@ mod tests {
             .into_job_candidate();
         assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
         assert!(candidate.runner_preference().is_none());
+        assert!(
+            candidate
+                .runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,)
+                .is_none()
+        );
         assert_no_direct_candidate(&direct_candidates).await;
     }
 

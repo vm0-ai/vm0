@@ -27,6 +27,7 @@ vi.stubEnv("FAL_KEY", "test-fal-key");
 vi.stubEnv("JOGGAI_API_KEY", "test-joggai-key");
 vi.stubEnv("JOGGAI_WEBHOOK_SECRET", "test-joggai-webhook-secret");
 vi.stubEnv("BYTEPLUS_API_KEY", "test-byteplus-key");
+vi.stubEnv("MINIMAX_API_KEY", "test-minimax-key");
 vi.stubEnv("BYTEPLUS_STT_API_KEY", "test-byteplus-stt-key");
 vi.stubEnv("CRON_SECRET", "test-cron-secret");
 vi.stubEnv("R2_ACCESS_KEY_ID", "test-access-key");

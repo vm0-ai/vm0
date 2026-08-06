@@ -560,6 +560,8 @@
         "label": "Filtri di tipo artefatto",
         "presentation": "Presentazioni",
         "presentationAria": "Mostra gli artefatti della presentazione",
+        "sharedConversation": "Conversazioni condivise",
+        "sharedConversationAria": "Mostra gli artefatti delle conversazioni condivise",
         "video": "Video",
         "videoAria": "Mostra artefatti video",
         "website": "Siti web",
@@ -608,6 +610,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Presentazione",
+      "sharedConversation": "Conversazione condivisa",
       "text": "Testo",
       "video": "Video"
     },
@@ -638,6 +641,7 @@
       "videoLabel": "Anteprima video per {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Apri la conversazione condivisa",
       "panelTitle": "Artefatti",
       "singularTitle": "Artefatto",
       "unavailable": "Questo artefatto non è più disponibile."
@@ -1564,6 +1568,23 @@
       "waitingIn": "In attesa",
       "worked": "Ha funzionato",
       "workedFor": "Ha lavorato per {{duration}}"
+    },
+    "sharing": {
+      "cancel": "Annulla",
+      "close": "Chiudi",
+      "copyFailed": "Impossibile copiare il link",
+      "copyLink": "Copia link",
+      "create": "Condividi",
+      "createFailed": "Impossibile creare la conversazione condivisa. Riprova.",
+      "deselectGroup": "Deseleziona il gruppo di messaggi",
+      "linkCopied": "Link copiato",
+      "selectedCount_one": "{{count}} selezionato",
+      "selectedCount_many": "{{count}} selezionati",
+      "selectedCount_other": "{{count}} selezionati",
+      "selectGroup": "Seleziona il gruppo di messaggi",
+      "shareLink": "Link alla conversazione condivisa",
+      "start": "Condividi messaggi",
+      "tooLarge": "Seleziona meno messaggi da condividere"
     },
     "shortcuts": {
       "number": "numero"
@@ -4655,6 +4676,12 @@
       "description": "La pagina che stai cercando non esiste.",
       "title": "Pagina non trovata"
     }
+  },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "Questa conversazione condivisa non esiste.",
+    "notFoundTitle": "Conversazione condivisa non trovata",
+    "tryOkou": "Prova Okou"
   },
   "usage": {
     "automations": {

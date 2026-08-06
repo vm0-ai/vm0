@@ -12,7 +12,7 @@ use sandbox::{
 use sandbox_mock::MockSandboxFactory;
 
 use super::super::telemetry::{
-    RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_reuse_result,
+    RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_to_spawn, record_reuse_result,
 };
 use super::super::{
     ExactReuseSpeculationTiming, ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnOperationTiming,
@@ -26,7 +26,7 @@ use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationSignals;
-use crate::telemetry::JobTelemetry;
+use crate::telemetry::{JobTelemetry, RunnerStartupPath};
 use crate::types::SandboxReuseResult;
 
 #[test]
@@ -48,6 +48,52 @@ fn elapsed_since_api_start_ms_rejects_seconds_shaped_start() {
     let duration = elapsed_since_api_start_ms(1_700_000_000, 1_700_000_001_250);
 
     assert_eq!(duration, None);
+}
+
+#[test]
+fn api_to_spawn_records_the_effective_startup_path_and_exact_reuse_result() {
+    for (reuse_result, reused_workspace, expected_path) in [
+        (
+            SandboxReuseResult::Reused,
+            false,
+            RunnerStartupPath::Sandbox,
+        ),
+        (
+            SandboxReuseResult::NoReuseKey,
+            true,
+            RunnerStartupPath::Workspace,
+        ),
+        (SandboxReuseResult::PoolMiss, false, RunnerStartupPath::Cold),
+        (
+            SandboxReuseResult::ProfileMismatch,
+            false,
+            RunnerStartupPath::Cold,
+        ),
+        (
+            SandboxReuseResult::DeviceLimitMismatch,
+            false,
+            RunnerStartupPath::Cold,
+        ),
+        (
+            SandboxReuseResult::UnparkFailed,
+            false,
+            RunnerStartupPath::Cold,
+        ),
+    ] {
+        let mut context = minimal_context();
+        context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
+        let mut telemetry = new_telemetry();
+
+        record_api_to_spawn(&context, &mut telemetry, reuse_result, reused_workspace);
+
+        let operations = telemetry.pending_ops_with_runner_startup_snapshot();
+        let [operation] = operations.as_slice() else {
+            panic!("expected one api_to_spawn operation, got {operations:?}");
+        };
+        assert_eq!(operation.action_type, "api_to_spawn");
+        assert_eq!(operation.runner_startup_path, Some(expected_path));
+        assert_eq!(operation.sandbox_reuse_result, Some(reuse_result));
+    }
 }
 
 // -----------------------------------------------------------------------

@@ -9,7 +9,7 @@ use guest_contracts::epoch_milliseconds::{
 use tracing::warn;
 
 use crate::guest_timezone::GuestTimezoneAssumption;
-use crate::telemetry::JobTelemetry;
+use crate::telemetry::{JobTelemetry, RunnerStartupPath};
 use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
 
@@ -318,14 +318,39 @@ pub(super) fn record_api_latency(
     context: &ExecutionContext,
     telemetry: &mut JobTelemetry,
 ) {
+    if let Some(duration) = api_latency_duration(action_type, context) {
+        telemetry.record(action_type, duration, true, None);
+    }
+}
+
+pub(super) fn record_api_to_spawn(
+    context: &ExecutionContext,
+    telemetry: &mut JobTelemetry,
+    sandbox_reuse_result: SandboxReuseResult,
+    reused_workspace: bool,
+) {
+    let runner_startup_path = if sandbox_reuse_result == SandboxReuseResult::Reused {
+        RunnerStartupPath::Sandbox
+    } else if reused_workspace {
+        RunnerStartupPath::Workspace
+    } else {
+        RunnerStartupPath::Cold
+    };
+    if let Some(duration) = api_latency_duration("api_to_spawn", context) {
+        telemetry.record_api_to_spawn(duration, runner_startup_path, sandbox_reuse_result);
+    }
+}
+
+fn api_latency_duration(action_type: &str, context: &ExecutionContext) -> Option<Duration> {
     if let Some(api_start_ms) = context.api_start_time {
         let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
         if let Some(duration) = elapsed_since_api_start_ms(api_start_ms, now_ms) {
-            telemetry.record(action_type, duration, true, None);
+            return Some(duration);
         } else {
             warn_invalid_api_start_time_once(action_type, context, api_start_ms);
         }
     }
+    None
 }
 
 pub(super) fn warn_invalid_api_start_time_once(

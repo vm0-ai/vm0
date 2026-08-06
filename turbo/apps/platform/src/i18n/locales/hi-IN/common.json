@@ -546,6 +546,8 @@
         "label": "आर्टिफ़ैक्ट प्रकार फिल्टर",
         "presentation": "प्रस्तुतियों",
         "presentationAria": "प्रस्तुति आर्टिफ़ैक्ट दिखाएँ",
+        "sharedConversation": "साझा की गई बातचीत",
+        "sharedConversationAria": "साझा बातचीत वाले आर्टिफ़ैक्ट दिखाएँ",
         "video": "वीडियो",
         "videoAria": "वीडियो आर्टिफ़ैक्ट दिखाएँ",
         "website": "वेबसाइटें",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "प्रस्तुति",
+      "sharedConversation": "साझा बातचीत",
       "text": "मूलपाठ",
       "video": "वीडियो"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "{{filename}} के लिए वीडियो पूर्वावलोकन"
     },
     "sidebar": {
+      "openSharedConversation": "साझा बातचीत खोलें",
       "panelTitle": "आर्टिफ़ैक्ट",
       "singularTitle": "आर्टिफ़ैक्ट",
       "unavailable": "यह आर्टिफ़ैक्ट अब उपलब्ध नहीं है।"
@@ -1525,6 +1529,22 @@
       "waitingIn": "प्रतीक्षा कर रहा है",
       "worked": "काम किया",
       "workedFor": "{{duration}} के लिए काम किया"
+    },
+    "sharing": {
+      "cancel": "रद्द करें",
+      "close": "बंद करें",
+      "copyFailed": "लिंक कॉपी नहीं हो सका",
+      "copyLink": "लिंक कॉपी करें",
+      "create": "शेयर करें",
+      "createFailed": "साझा बातचीत नहीं बनाई जा सकी। फिर से कोशिश करें।",
+      "deselectGroup": "संदेश समूह का चयन हटाएँ",
+      "linkCopied": "लिंक कॉपी हो गया",
+      "selectedCount_one": "{{count}} चुना गया",
+      "selectedCount_other": "{{count}} चुने गए",
+      "selectGroup": "संदेश समूह चुनें",
+      "shareLink": "साझा बातचीत का लिंक",
+      "start": "संदेश शेयर करें",
+      "tooLarge": "शेयर करने के लिए कम संदेश चुनें"
     },
     "shortcuts": {
       "number": "संख्या"
@@ -4586,6 +4606,12 @@
       "description": "आप जिस पृष्ठ की तलाश कर रहे हैं वह मौजूद नहीं है।",
       "title": "पृष्ठ नहीं मिला"
     }
+  },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "यह साझा बातचीत मौजूद नहीं है।",
+    "notFoundTitle": "साझा बातचीत नहीं मिली",
+    "tryOkou": "Okou आज़माएँ"
   },
   "usage": {
     "automations": {

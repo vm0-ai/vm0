@@ -6,11 +6,33 @@ use sha2::{Digest, Sha256};
 use crate::executor::session_history_cpu::{SessionHistoryCpuPool, SessionHistoryCpuTestGate};
 use crate::executor::tests::support::RUN_IN_SANDBOX_TEST_TIMEOUT;
 use crate::executor::{SessionHistoryRestoreFallback, SessionHistoryRestorePlan};
+use crate::telemetry::{JobTelemetry, RunnerStartupPath};
 use crate::types::{
     ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
     ResumeSessionHistoryRefKind,
 };
 use crate::workspace_image_cache::WorkspaceSessionHistorySidecarRepresentation;
+
+fn enable_api_start_telemetry(context: &mut crate::types::ExecutionContext) {
+    context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
+}
+
+fn assert_api_to_spawn_path(
+    telemetry: &JobTelemetry,
+    expected_path: RunnerStartupPath,
+    expected_reuse_result: SandboxReuseResult,
+) {
+    let operations = telemetry.pending_ops_with_runner_startup_snapshot();
+    let startup_operations: Vec<_> = operations
+        .iter()
+        .filter(|operation| operation.action_type == "api_to_spawn")
+        .collect();
+    let [operation] = startup_operations.as_slice() else {
+        panic!("expected one api_to_spawn operation, got {operations:?}");
+    };
+    assert_eq!(operation.runner_startup_path, Some(expected_path));
+    assert_eq!(operation.sandbox_reuse_result, Some(expected_reuse_result));
+}
 
 struct MaterializationObservedFactory {
     inner: MockSandboxFactory,
@@ -76,6 +98,7 @@ async fn workspace_sidecar_materialization_overlaps_sandbox_creation() {
         })
         .await;
     let mut ctx = minimal_context();
+    enable_api_start_telemetry(&mut ctx);
     set_reuse_and_session_history_ref(
         &mut ctx,
         "sess-cache-sidecar-overlap",
@@ -126,6 +149,11 @@ async fn workspace_sidecar_materialization_overlaps_sandbox_creation() {
 
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.workspace_image.is_some());
+    assert_api_to_spawn_path(
+        &telemetry,
+        RunnerStartupPath::Workspace,
+        SandboxReuseResult::PoolMiss,
+    );
     assert_eq!(overrides.create_configs().len(), 1);
     let writes = overrides.write_file_calls();
     assert_eq!(writes.len(), 1);
@@ -169,6 +197,7 @@ async fn workspace_retry_cancels_sidecar_materialization_before_cache_invalidati
         })
         .await;
     let mut ctx = minimal_context();
+    enable_api_start_telemetry(&mut ctx);
     set_reuse_and_session_history_ref(
         &mut ctx,
         "sess-cache-sidecar-retry",
@@ -225,6 +254,11 @@ async fn workspace_retry_cancels_sidecar_materialization_before_cache_invalidati
     .expect("cancelled sidecar CPU work should finish");
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.workspace_image.is_none());
+    assert_api_to_spawn_path(
+        &telemetry,
+        RunnerStartupPath::Cold,
+        SandboxReuseResult::PoolMiss,
+    );
     assert_eq!(overrides.create_configs().len(), 2);
     assert!(!expected_seed.exists());
     let writes = overrides.write_file_calls();
@@ -1043,14 +1077,20 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
     let (idle_sandbox, _lease) = make_reusable_idle_sandbox(sandbox, source_ip, session_id).await;
 
     let mut ctx = minimal_context();
+    enable_api_start_telemetry(&mut ctx);
     set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
 
     let cancel = tokio_util::sync::CancellationToken::new();
-    let (reuse_outcome, _telemetry) =
+    let (reuse_outcome, telemetry) =
         execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
 
     assert_eq!(reuse_outcome.exit_code(), 0);
     assert!(reuse_outcome.workspace_image.is_some());
+    assert_api_to_spawn_path(
+        &telemetry,
+        RunnerStartupPath::Sandbox,
+        SandboxReuseResult::Reused,
+    );
 
     let checkout = cache
         .prepare(WorkspaceImagePrepareRequest {

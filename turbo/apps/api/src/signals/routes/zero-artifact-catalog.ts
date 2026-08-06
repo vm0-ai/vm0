@@ -18,11 +18,13 @@ const listArtifactCatalogInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const query = get(queryOf(artifactCatalogContract.list));
+    const includeSharedThreads = query.includeSharedThreads === "1";
     const result = await set(
       listArtifactCatalog$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
+        includeSharedThreads,
         limit: query.limit,
         cursor: query.cursor,
         kind: query.kind,
@@ -37,7 +39,9 @@ const listArtifactCatalogInner$ = command(
       body: {
         artifacts: [...result.artifacts],
         nextCursor: result.nextCursor,
-        supportedKinds: [...ARTIFACT_CATALOG_KINDS],
+        supportedKinds: ARTIFACT_CATALOG_KINDS.filter((kind) => {
+          return includeSharedThreads || kind !== "shared-thread";
+        }),
       },
     };
   },
@@ -47,17 +51,23 @@ const getArtifactCatalogEntryInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(artifactCatalogContract.get));
+    const query = get(queryOf(artifactCatalogContract.get));
+    const includeSharedThreads = query.includeSharedThreads === "1";
     const artifact = await set(
       getArtifactCatalogEntry$,
       {
         artifactId: params.artifactId,
         orgId: auth.orgId,
         userId: auth.userId,
+        includeSharedThreads,
       },
       signal,
     );
     signal.throwIfAborted();
-    if (!artifact) {
+    if (
+      !artifact ||
+      (artifact.kind === "shared-thread" && !includeSharedThreads)
+    ) {
       return notFound("Artifact not found");
     }
 

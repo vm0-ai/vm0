@@ -249,6 +249,7 @@ export {
   webhookStripeContract,
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationBytePlusContract,
+  webhookBuiltInGenerationMiniMaxContract,
   webhookBuiltInGenerationJoggAiContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
@@ -280,6 +281,7 @@ export {
   type WebhookGoogleWorkspaceEventsContract,
   type WebhookStripeContract,
   type WebhookBuiltInGenerationFalContract,
+  type WebhookBuiltInGenerationMiniMaxContract,
   type WebhookBuiltInGenerationJoggAiContract,
 } from "./webhooks";
 export {
@@ -1842,3 +1844,10 @@ export {
   type AgentPhoneLinkStatusResponse,
   type AgentPhoneStartLinkResponse,
 } from "./zero-integrations-agentphone";
+export {
+  sharedMessageSchema,
+  sharedThreadsContract,
+  type SharedMessage,
+  type SharedThreadResponse,
+  type SharedThreadsContract,
+} from "./shared-threads";
