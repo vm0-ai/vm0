@@ -6279,10 +6279,14 @@ async function claimQueueFirstAssociationForLaunch(args: {
   if (!args.admission) {
     throw new Error("Queue-first claim requires resolved thread admission");
   }
+  if (!args.createArgs.zeroRunModelPin) {
+    throw new Error("Queue-first claim requires a run model pin");
+  }
   return await claimQueueFirstRunAssociation(args.tx, {
     ...association,
     admission: args.admission,
     runId: args.identity.runId,
+    selectedModel: args.createArgs.zeroRunModelPin.selectedModel,
     timing: args.timing,
   });
 }

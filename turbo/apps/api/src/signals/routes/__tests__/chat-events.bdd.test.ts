@@ -20,9 +20,10 @@ import {
   type ChatThreadEvent,
   type GenerationTemplateRequest,
   type ChatEvent,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
+import { CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION } from "@vm0/api-contracts/contracts/client-headers";
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
@@ -287,7 +288,7 @@ interface EntitledChatActor {
 interface ChatRunSendBody {
   readonly agentId: string;
   readonly prompt: string;
-  readonly userMessage?: UserMessageDocument;
+  readonly userMessage?: UserMessageInputDocument;
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly clientEventId?: string;
@@ -927,7 +928,7 @@ async function readThreadProjection(actor: ApiTestUser, threadId: string) {
  */
 async function requestSendEventRaw(
   actor: ApiTestUser,
-  body: ChatRunSendBody & { readonly userMessage: UserMessageDocument },
+  body: ChatRunSendBody & { readonly userMessage: UserMessageInputDocument },
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
   const app = createApp({ signal: context.signal });
@@ -948,7 +949,7 @@ async function requestSendEventWithBearer(
     readonly clientEventId?: string;
     readonly prompt: string;
     readonly threadId?: string;
-    readonly userMessage?: UserMessageDocument;
+    readonly userMessage?: UserMessageInputDocument;
   },
   statuses: readonly (201 | 400 | 401 | 403 | 409)[],
 ) {
@@ -1493,12 +1494,20 @@ describe("CHAT-02: queueing and recalling messages", () => {
       contextId: null,
     });
     for (const pendingEventId of [firstPendingEventId, secondPendingEventId]) {
-      expect(userMessages(events.events)).toContainEqual(
-        expect.objectContaining({
-          runId: active.runId,
-          revokesEventId: pendingEventId,
-        }),
-      );
+      const claimedEvent = events.events.find((event) => {
+        return (
+          event.eventType === "input.prompt" &&
+          event.runId === active.runId &&
+          event.revokesEventId === pendingEventId
+        );
+      });
+      if (!claimedEvent || claimedEvent.eventType !== "input.prompt") {
+        throw new Error("Expected the pending active input to be claimed");
+      }
+      expect(claimedEvent.userMessage.parts).toContainEqual({
+        type: "model",
+        selectedModel: "claude-sonnet-4-6",
+      });
     }
 
     const emptyControlPayloadBytes = Buffer.byteLength(
@@ -1663,15 +1672,38 @@ describe("CHAT-02: queueing and recalling messages", () => {
     ).resolves.toBe(RUN_TIME_BUDGET_MESSAGE);
 
     const publicEvents = await chat.listThreadEvents(actor, active.threadId);
+    const budgetEvent = publicEvents.events.find((event) => {
+      return (
+        event.eventType === "input.budget" &&
+        event.runId === active.runId &&
+        chatEventDisplayText(event) === RUN_TIME_BUDGET_MESSAGE
+      );
+    });
+    if (!budgetEvent || budgetEvent.eventType !== "input.budget") {
+      throw new Error("Expected the run time budget input to be claimed");
+    }
+    expect(budgetEvent.userMessage.parts).toContainEqual({
+      type: "model",
+      selectedModel: "claude-sonnet-4-6",
+    });
+
+    const legacyPublicEvents = await chat.listThreadEvents(
+      actor,
+      active.threadId,
+      {},
+      "0.636.1",
+    );
+    const legacyBudgetEvent = legacyPublicEvents.events.find((event) => {
+      return event.eventType === "input.budget" && event.runId === active.runId;
+    });
+    if (!legacyBudgetEvent || legacyBudgetEvent.eventType !== "input.budget") {
+      throw new Error("Expected the legacy run time budget input");
+    }
     expect(
-      publicEvents.events.some((event) => {
-        return (
-          event.eventType === "input.budget" &&
-          event.runId === active.runId &&
-          chatEventDisplayText(event) === RUN_TIME_BUDGET_MESSAGE
-        );
+      legacyBudgetEvent.userMessage.parts.some((part) => {
+        return part.type === "model";
       }),
-    ).toBeTruthy();
+    ).toBeFalsy();
 
     mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
     await webhooks.requestAgentEvents(
@@ -5565,7 +5597,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `> Second quote\n\nAdd supporting evidence from [Roadmap](/chats/${referencedThreadId})`;
     const prompt =
       `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` + feedbackPrompt;
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -5664,7 +5696,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(message).toMatchObject({
       content: null,
-      userMessage,
+      userMessage: {
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
@@ -5698,7 +5736,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       type: "workflow",
       selection: { workflowTemplateId: workflow.id },
     };
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         { type: "text", text: "Use " },
@@ -5773,7 +5811,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(message?.generationTemplate).toStrictEqual(illustrationTemplate);
     expect(message).toMatchObject({
       content: null,
-      userMessage,
+      userMessage: {
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
@@ -5841,6 +5885,7 @@ describe("CHAT-02: generation templates and attachments", () => {
             contentType: "text/plain",
           },
           { type: "text", text: "plain API attachment" },
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
         ],
       },
     });
@@ -6395,7 +6440,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       "queued structured text\n\n" +
       "Feedback on this part of your reply:\n\n" +
       "> Queued quote\n\nRevise after the anchor completes";
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -6458,7 +6503,16 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the structured queued message to auto-send");
     }
-    expect(promoted.userMessage).toStrictEqual(userMessage);
+    expect(promoted.userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        ...userMessage.parts,
+        {
+          type: "model",
+          selectedModel: "claude-sonnet-4-6",
+        },
+      ],
+    });
 
     const run = await api.readRun(actor, promoted.runId);
     expect(run.prompt).toBe(
@@ -6993,7 +7047,7 @@ describe("CHAT-02: shared user message queue", () => {
 
     const messageId = randomUUID();
     const referencedThreadId = randomUUID();
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         { type: "text", text: "queue-first " },
@@ -7039,7 +7093,16 @@ describe("CHAT-02: shared user message queue", () => {
     });
     expect(claimed).toMatchObject({
       content: null,
-      userMessage,
+      userMessage: {
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          {
+            type: "model",
+            selectedModel: "claude-sonnet-4-6",
+          },
+        ],
+      },
       runId,
       revokesEventId: messageId,
     });
@@ -7056,6 +7119,41 @@ describe("CHAT-02: shared user message queue", () => {
       userMessage,
     });
     expect(queued.runId).toBeUndefined();
+
+    const legacyMessages = await chat.listThreadEvents(
+      actor,
+      sent.body.threadId,
+      {},
+      "0.636.1",
+    );
+    const legacyClaimed = userMessages(legacyMessages.events).find(
+      (message): message is PromptMessage => {
+        return (
+          message.eventType === "input.prompt" &&
+          message.revokesEventId === messageId
+        );
+      },
+    );
+    expect(legacyClaimed?.userMessage).toStrictEqual(userMessage);
+
+    const modelCapableMessages = await chat.listThreadEvents(
+      actor,
+      sent.body.threadId,
+      {},
+      `0.636.1+${CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION}`,
+    );
+    const modelCapableClaimed = userMessages(modelCapableMessages.events).find(
+      (message): message is PromptMessage => {
+        return (
+          message.eventType === "input.prompt" &&
+          message.revokesEventId === messageId
+        );
+      },
+    );
+    expect(modelCapableClaimed?.userMessage.parts).toContainEqual({
+      type: "model",
+      selectedModel: "claude-sonnet-4-6",
+    });
 
     const replay = await chat.requestSendEvent(
       actor,
@@ -7778,7 +7876,7 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected a registered illustration style");
     }
     const queuedMessageId = randomUUID();
-    const queuedUserMessage: UserMessageDocument = {
+    const queuedUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         { type: "text", text: "Restyle with " },
