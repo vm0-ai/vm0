@@ -274,6 +274,20 @@
       "when": 1786012727628,
       "tag": "0846_backfill_chat_run_model_annotations",
       "breakpoints": true
+    },
+    {
+      "idx": 847,
+      "version": "7",
+      "when": 1786020407512,
+      "tag": "0847_vendor_scoped_vm0_api_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 848,
+      "version": "7",
+      "when": 1786020410733,
+      "tag": "0848_vendor_scoped_vm0_api_keys_schema",
+      "breakpoints": true
     }
   ]
 }
