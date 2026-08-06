@@ -37,7 +37,7 @@ function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
   );
 }
 
-export function pendingActiveInputPromptCondition(db: ChatQueueReadDb) {
+function pendingActiveInputPromptCondition(db: ChatQueueReadDb) {
   return and(
     chatEventTypeIn(["input.prompt"]),
     isNull(chatEvents.runId),
