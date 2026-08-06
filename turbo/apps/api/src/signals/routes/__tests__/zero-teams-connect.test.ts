@@ -20,6 +20,7 @@ import {
   teamsMessageActivityForTest,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
+import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -142,7 +143,9 @@ describe("GET /api/zero/integrations/teams/connect", () => {
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
 
     const response = await accept(client.getStatus({ headers: {} }), [401]);
 
@@ -157,7 +160,9 @@ describe("GET /api/zero/integrations/teams/connect", () => {
   it("returns uninstalled status when the org has no Teams installation", async () => {
     mocks.clerk.session("user_empty", "org_empty", "org:admin");
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -182,7 +187,9 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     mockEnv("VM0_API_BACKEND_URL", undefined);
     mocks.clerk.session("user_empty", "org_empty", "org:admin");
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -210,7 +217,9 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
@@ -251,7 +260,9 @@ describe("GET /api/zero/integrations/teams/connect", () => {
   it("returns a Teams reinstall URL to admins when the installed app id is stale", async () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
@@ -295,7 +306,9 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     await accept(
       client.connect({
@@ -347,7 +360,9 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     const response = await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
@@ -389,7 +404,9 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     const response = await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
@@ -406,7 +423,9 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     const adminUserId = `admin_${fixture.userId}`;
     const memberUserId = `member_${fixture.userId}`;
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
     await accept(
       client.connect({
@@ -437,7 +456,9 @@ describe("POST /api/zero/integrations/teams/connect", () => {
 
   it("rejects users from the wrong org with a clear error", async () => {
     const fixture = await seedTeamsInstallation(track);
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     await accept(
@@ -464,7 +485,9 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     const first = await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
@@ -489,7 +512,9 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
     const welcomeRequests = teamsWelcomeHandlers(fixture);
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     const body = {
       ...connectBody(fixture),
       conversationId: "a:personal-conversation",
@@ -562,7 +587,9 @@ describe("DELETE /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
@@ -596,7 +623,9 @@ describe("DELETE /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },

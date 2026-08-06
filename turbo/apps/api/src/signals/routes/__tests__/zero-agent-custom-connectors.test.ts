@@ -11,6 +11,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { zeroAgentsRoutes } from "../zero-agents";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -22,7 +23,9 @@ function currentSecond(): number {
 }
 
 function agentCustomConnectorsClient() {
-  return setupApp({ context })(zeroAgentCustomConnectorsContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentCustomConnectorsContract,
+  );
 }
 
 function bearerHeaders(token: string): { readonly authorization: string } {

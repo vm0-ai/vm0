@@ -48,6 +48,7 @@ import {
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
 } from "./helpers/connector-credential-storage-state";
+import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
@@ -2019,9 +2020,10 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     mockClerkMembership(context, admin, "org:admin");
     const runId = randomUUID();
     const writeToken = generateZeroToken(admin.userId, runId, admin.orgId);
-    const connectorsClient = setupApp({ context })(
-      zeroCustomConnectorsContract,
-    );
+    const connectorsClient = setupApp({
+      context,
+      routes: zeroCustomConnectorsRoutes,
+    })(zeroCustomConnectorsContract);
     const body = {
       displayName: "BDD Agent Created",
       prefixTemplates: ["https://agent-created.example.test/v1/"],

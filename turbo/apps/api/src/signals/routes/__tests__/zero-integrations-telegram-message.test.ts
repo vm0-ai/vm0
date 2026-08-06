@@ -19,6 +19,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { zeroIntegrationsTelegramMessageRoutes } from "../zero-integrations-telegram-message";
 
 const context = testContext();
 const store = createStore();
@@ -161,7 +162,10 @@ async function seedSendableContext(args: {
 
 describe("POST /api/zero/integrations/telegram/message", () => {
   it("returns 401 when no auth token is provided", async () => {
-    const client = setupApp({ context })(integrationsTelegramMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramMessageRoutes,
+    })(integrationsTelegramMessageContract);
     const response = await accept(
       client.sendMessage({
         body: {
@@ -185,7 +189,10 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     const userId = `user_${randomUUID().slice(0, 8)}`;
     const token = zeroToken({ userId, orgId, runId: "run-1" });
 
-    const client = setupApp({ context })(integrationsTelegramMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramMessageRoutes,
+    })(integrationsTelegramMessageContract);
     const response = await accept(
       client.sendMessage({
         body: {
@@ -204,7 +211,10 @@ describe("POST /api/zero/integrations/telegram/message", () => {
 
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
-    const client = setupApp({ context })(integrationsTelegramMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramMessageRoutes,
+    })(integrationsTelegramMessageContract);
 
     const response = await accept(
       client.sendMessage({
@@ -257,7 +267,10 @@ describe("POST /api/zero/integrations/telegram/message", () => {
       ),
     );
 
-    const client = setupApp({ context })(integrationsTelegramMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramMessageRoutes,
+    })(integrationsTelegramMessageContract);
     const response = await accept(
       client.sendMessage({
         body: {
@@ -325,7 +338,10 @@ describe("POST /api/zero/integrations/telegram/message", () => {
       ),
     );
 
-    const client = setupApp({ context })(integrationsTelegramMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramMessageRoutes,
+    })(integrationsTelegramMessageContract);
     const response = await accept(
       client.sendMessage({
         body: {
@@ -361,7 +377,10 @@ describe("POST /api/zero/integrations/telegram/message", () => {
       context.signal,
     );
 
-    const client = setupApp({ context })(integrationsTelegramMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramMessageRoutes,
+    })(integrationsTelegramMessageContract);
     const response = await accept(
       client.sendMessage({
         body: {
@@ -398,7 +417,10 @@ describe("POST /api/zero/integrations/telegram/message", () => {
       ),
     );
 
-    const client = setupApp({ context })(integrationsTelegramMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramMessageRoutes,
+    })(integrationsTelegramMessageContract);
     const response = await accept(
       client.sendMessage({
         body: {
@@ -438,7 +460,10 @@ describe("POST /api/zero/integrations/telegram/message", () => {
       ),
     );
 
-    const client = setupApp({ context })(integrationsTelegramMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramMessageRoutes,
+    })(integrationsTelegramMessageContract);
     const response = await accept(
       client.sendMessage({
         body: {

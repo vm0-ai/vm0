@@ -14,6 +14,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroReportErrorRoutes } from "../zero-report-error";
 
 const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
@@ -223,7 +224,9 @@ async function seedFailedReportRun(
 }
 
 function client() {
-  return setupApp({ context })(zeroReportErrorContract);
+  return setupApp({ context, routes: zeroReportErrorRoutes })(
+    zeroReportErrorContract,
+  );
 }
 
 function submitReport(body: {

@@ -10,13 +10,18 @@ import { readAgentComposeByIdFixture } from "../../../test-fixtures/agent-compos
 import { generateSandboxToken } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { testAgentComposesRoutes } from "../test-agent-composes";
+
+const TEST_APP_ROUTES = Object.freeze([...testAgentComposesRoutes]);
 
 const context = testContext();
 const bdd = createBddApi(context);
 const mocks = createZeroRouteMocks(context);
 
 function client() {
-  return setupApp({ context })(testAgentComposesContract);
+  return setupApp({ context, routes: testAgentComposesRoutes })(
+    testAgentComposesContract,
+  );
 }
 
 function authenticate(actor: ApiTestUser): {
@@ -91,7 +96,7 @@ describe("/api/test/agent-composes", () => {
   it("rejects a malformed create body", async () => {
     mockEnv("ENV", "development");
     const actor = bdd.user();
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request("/api/test/agent-composes", {
       method: "POST",
       headers: {
@@ -173,7 +178,7 @@ describe("/api/test/agent-composes", () => {
   it("does not register the retired agent-compose paths", async () => {
     mockEnv("ENV", "development");
     const actor = bdd.user();
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const headers = authenticate(actor);
 
     const [main, byId, versions] = await Promise.all([

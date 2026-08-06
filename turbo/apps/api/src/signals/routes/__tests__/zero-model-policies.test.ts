@@ -21,6 +21,15 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { zeroModelPoliciesRoutes } from "../zero-model-policies";
+import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
+import { zeroUserModelPreferenceRoutes } from "../zero-user-model-preference";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroModelPoliciesRoutes,
+  ...zeroModelProviderGatewayRoutes,
+  ...zeroUserModelPreferenceRoutes,
+]);
 
 type ModelPolicyFixture = ApiTestUser & { readonly orgId: string };
 
@@ -61,7 +70,9 @@ function makeVm0Policy(
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroModelPoliciesMainContract);
+  return setupApp({ context, routes: zeroModelPoliciesRoutes })(
+    zeroModelPoliciesMainContract,
+  );
 }
 
 function authHeaders() {
@@ -79,7 +90,7 @@ async function putRawModelPolicies(body: string): Promise<{
   readonly status: number;
   readonly body: unknown;
 }> {
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   const response = await app.request(MODEL_POLICIES_PATH, {
     method: "PUT",
     headers: {
@@ -428,9 +439,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const client = apiClient();
-    const preferenceClient = setupApp({ context })(
-      zeroUserModelPreferenceContract,
-    );
+    const preferenceClient = setupApp({
+      context,
+      routes: zeroUserModelPreferenceRoutes,
+    })(zeroUserModelPreferenceContract);
     const listResponse = await accept(
       client.list({ headers: authHeaders() }),
       [200],
@@ -473,9 +485,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const client = apiClient();
-    const preferenceClient = setupApp({ context })(
-      zeroUserModelPreferenceContract,
-    );
+    const preferenceClient = setupApp({
+      context,
+      routes: zeroUserModelPreferenceRoutes,
+    })(zeroUserModelPreferenceContract);
     const listResponse = await accept(
       client.list({ headers: authHeaders() }),
       [200],
@@ -743,9 +756,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
   it("preserves an omitted custom gateway surface and clears an explicit null", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
-    const gatewayClient = setupApp({ context })(
-      zeroModelProviderConnectionsMainContract,
-    );
+    const gatewayClient = setupApp({
+      context,
+      routes: zeroModelProviderGatewayRoutes,
+    })(zeroModelProviderConnectionsMainContract);
     const created = await accept(
       gatewayClient.create({
         headers: authHeaders(),

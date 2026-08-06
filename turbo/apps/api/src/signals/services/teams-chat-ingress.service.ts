@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import type { Tx } from "../../lib/db-types";
 
 interface TeamsChatThreadRouteKey {
   readonly connectionId: string;
@@ -23,9 +24,7 @@ interface LoadedTeamsChatThreadRoute extends TeamsChatThreadRouteBinding {
   readonly computerUseHostId: string | null;
 }
 
-type TeamsChatThreadTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
+type TeamsChatThreadTransaction = Tx;
 
 function routeWhere(key: TeamsChatThreadRouteKey) {
   return and(

@@ -48,6 +48,7 @@ import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
+import type { Tx } from "../../lib/db-types";
 
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_TENANT_NAME = "E2E Test Tenant";
@@ -61,7 +62,7 @@ const STARTER_GRANT_SOURCE = "starter_grant";
 const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
 const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
 
-type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type StarterGrantTx = Tx;
 
 function isoString(value: Date): string {
   return value.toISOString();

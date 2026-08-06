@@ -19,6 +19,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { webhooksAgentPiTranscriptRoutes } from "../webhooks-agent-pi-transcript";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -121,7 +122,9 @@ async function sendChatRun(
 
 async function readTranscript(runId: string) {
   const response = await accept(
-    setupApp({ context })(webhookPiTranscriptContract).read({
+    setupApp({ context, routes: webhooksAgentPiTranscriptRoutes })(
+      webhookPiTranscriptContract,
+    ).read({
       headers: webhooks.sandboxWebhookHeaders({ runId }),
       query: { runId },
     }),

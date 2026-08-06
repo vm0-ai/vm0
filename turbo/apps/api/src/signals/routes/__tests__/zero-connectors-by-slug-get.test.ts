@@ -13,6 +13,7 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroConnectorsRoutes } from "../zero-connectors";
 
 const context = testContext();
 const store = createStore();
@@ -53,7 +54,9 @@ async function seedSandboxJwtFixture(): Promise<AuthenticatedFixture> {
 async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorManualGrantContract).connect({
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    ).connect({
       params: { connectorSlug: "openai" },
       body: {
         authMethod: "api-token",
@@ -68,7 +71,9 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
 async function deleteOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorsBySlugContract).delete({
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    ).delete({
       params: { connectorSlug: "openai" },
       headers: authHeaders(),
     }),
@@ -89,7 +94,9 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorsBySlugContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
     const response = await accept(
       client.get({ params: { connectorSlug: "github" }, headers: {} }),
       [401],
@@ -101,7 +108,9 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroConnectorsBySlugContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "github" },
@@ -117,7 +126,9 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     const fixture = seedAuthenticatedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroConnectorsBySlugContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "github" },
@@ -135,7 +146,9 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     await connectOpenai(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroConnectorsBySlugContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "openai" },
@@ -167,7 +180,9 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
       exp: seconds + 60,
     });
 
-    const client = setupApp({ context })(zeroConnectorsBySlugContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "openai" },

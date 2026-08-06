@@ -50,6 +50,7 @@ import {
   upsertOrgPlanEntitlement,
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("WebhookStripe");
 
@@ -59,7 +60,7 @@ type BillingDowngradeCheckoutTargetTier =
   | "pro";
 const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
 
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WriteTx = Tx;
 type UsageAllowanceSubscriptionUpdateStore = Pick<Db, "select" | "update">;
 type ClerkClient = ReturnType<typeof clerk$.read>;
 type ClerkClientProvider = () => ClerkClient;

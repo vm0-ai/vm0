@@ -11,13 +11,20 @@ import apiPackage from "../../../../package.json";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { healthAuthProbeContract } from "../health-auth-probe";
+import {
+  healthAuthProbeContract,
+  healthAuthProbeRoutes,
+} from "../health-auth-probe";
 import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { buildInfoRoutes } from "../build-info";
+import { healthRoutes } from "../health";
+import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+import { zeroReportErrorRoutes } from "../zero-report-error";
 
 /*
 helper gap: HOOK-01 signed callbacks still need API-visible builders for
@@ -31,23 +38,29 @@ const api = createBddApi(context);
 const routeMocks = createZeroRouteMocks(context);
 
 function healthClient() {
-  return setupApp({ context })(healthContract);
+  return setupApp({ context, routes: healthRoutes })(healthContract);
 }
 
 function buildInfoClient() {
-  return setupApp({ context })(buildInfoContract);
+  return setupApp({ context, routes: buildInfoRoutes })(buildInfoContract);
 }
 
 function healthAuthClient() {
-  return setupApp({ context })(healthAuthProbeContract);
+  return setupApp({ context, routes: healthAuthProbeRoutes })(
+    healthAuthProbeContract,
+  );
 }
 
 function featureSwitchesClient() {
-  return setupApp({ context })(zeroFeatureSwitchesContract);
+  return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+    zeroFeatureSwitchesContract,
+  );
 }
 
 function reportErrorClient() {
-  return setupApp({ context })(zeroReportErrorContract);
+  return setupApp({ context, routes: zeroReportErrorRoutes })(
+    zeroReportErrorContract,
+  );
 }
 
 function headersFor(actor: ApiTestUser | null): {

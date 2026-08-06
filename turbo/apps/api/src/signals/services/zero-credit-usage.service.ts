@@ -6,7 +6,7 @@ import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { and, asc, eq, gt, lte, sql } from "drizzle-orm";
 
-import { writeDb$, type Db } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { usageUnderbillingFields } from "../usage-underbilling";
@@ -19,11 +19,12 @@ import {
 } from "./zero-credit-low-balance-alert.service";
 import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
 import { applyUsageAllowanceToUsageEventsInLockedTransaction } from "./usage-allowance.service";
+import type { Tx } from "../../lib/db-types";
 import { usagePackCreditGrantSchemaAvailable } from "./usage-pack-credit.service";
 
 const L = logger("CreditUsage");
 
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WriteTx = Tx;
 
 async function deductOrgCredits(
   tx: WriteTx,

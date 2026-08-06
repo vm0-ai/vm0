@@ -40,6 +40,7 @@ import {
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroUsageRunsRoutes } from "../zero-usage-runs";
 
 const context = testContext();
 const PERPLEXITY_SEARCH_URL = "https://api.perplexity.ai/search";
@@ -274,7 +275,9 @@ describe("zero web-search route", () => {
       ],
     });
     const usage = await accept(
-      setupApp({ context })(zeroUsageRunsContract).get({
+      setupApp({ context, routes: zeroUsageRunsRoutes })(
+        zeroUsageRunsContract,
+      ).get({
         headers: authenticate(actor),
         query: { runId: run.runId },
       }),

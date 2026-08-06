@@ -17,9 +17,11 @@ import { createApp } from "../app-factory";
 import { mockEnv } from "../lib/env";
 import webClientCompatibility from "../lib/web-client-compatibility.json";
 import { flushWaitUntilForTest } from "../signals/context/wait-until";
-import { ROUTES } from "../signals/route";
+import { healthRoutes } from "../signals/routes/health";
+import { zeroMailRoutes } from "../signals/routes/zero-mail";
 import { accept, testContext } from "./test-context";
 import { setupApp } from "./test-helpers";
+const TEST_APP_ROUTES = Object.freeze([...healthRoutes, ...zeroMailRoutes]);
 
 const MINIMUM_WEB_CLIENT_VERSION =
   webClientCompatibility.minimumSupportedVersion;
@@ -105,7 +107,10 @@ describe("createApp", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
     })(errorTestContract);
 
     const response = await accept(client.boom(), [500]);
@@ -121,7 +126,10 @@ describe("createApp", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
     })(errorTestContract);
 
     const response = await accept(client.boom(), [500]);
@@ -162,7 +170,10 @@ describe("createApp", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
     })(errorTestContract);
 
     const response = await accept(client.boom(), [500]);
@@ -200,7 +211,7 @@ describe("createApp", () => {
     const client = setupApp({
       context,
       routes: [
-        ...ROUTES,
+        ...TEST_APP_ROUTES,
         { route: errorTestContract.boomById, handler: handler$ },
       ],
     })(errorTestContract);
@@ -274,7 +285,10 @@ describe("createApp", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
     })(errorTestContract);
 
     await accept(client.boom(), [500]);
@@ -294,7 +308,10 @@ describe("createApp", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
     })(errorTestContract);
 
     const response = await accept(client.boom(), [500]);
@@ -328,7 +345,10 @@ describe("createApp", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
     })(errorTestContract);
 
     const response = await accept(client.boom(), [500]);
@@ -358,7 +378,10 @@ describe("createApp", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
     })(errorTestContract);
 
     const response = await accept(client.boom(), [500]);
@@ -405,7 +428,10 @@ describe("createApp", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
     })(errorTestContract);
 
     const response = await accept(client.boom(), [500]);
@@ -430,7 +456,10 @@ describe("createApp", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
     })(errorTestContract);
 
     const response = await accept(client.boom(), [500]);
@@ -465,7 +494,10 @@ describe("createApp", () => {
     });
     const client = setupApp({
       context,
-      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
     })(errorTestContract);
 
     const response = await accept(client.boom(), [500]);
@@ -489,7 +521,7 @@ describe("createApp", () => {
     const client = setupApp({
       context,
       routes: [
-        ...ROUTES,
+        ...TEST_APP_ROUTES,
         { route: errorTestContract.missing, handler: handler$ },
       ],
     })(errorTestContract);
@@ -508,7 +540,7 @@ describe("createApp", () => {
     const client = setupApp({
       context,
       routes: [
-        ...ROUTES,
+        ...TEST_APP_ROUTES,
         { route: errorTestContract.aborted, handler: handler$ },
       ],
     })(errorTestContract);
@@ -526,7 +558,7 @@ describe("createApp", () => {
     const client = setupApp({
       context,
       routes: [
-        ...ROUTES,
+        ...TEST_APP_ROUTES,
         { route: errorTestContract.unavailable, handler: handler$ },
       ],
     })(errorTestContract);
@@ -539,7 +571,10 @@ describe("createApp", () => {
   describe("not found", () => {
     it("redirects root auth pages to the configured web origin", async () => {
       mockEnv("VM0_WEB_URL", "https://pr-123-www.omby.ai");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request(
         "https://pr-123-api.vm6.ai/sign-up?redirect_url=https%3A%2F%2Fstaging-www.omby.ai%2Fconnector%2Fsuccess%3Fdomain%3Dpr-123-api.vm6.ai",
       );
@@ -551,7 +586,10 @@ describe("createApp", () => {
     });
 
     it("returns a 404 JSON response for unmatched routes", async () => {
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/api/legacy/fallthrough?limit=5", {
         method: "GET",
         headers: { authorization: "Bearer legacy" },
@@ -564,7 +602,10 @@ describe("createApp", () => {
     });
 
     it("keeps registered routes matched normally", async () => {
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", { method: "GET" });
 
       expect(response.status).toBe(200);
@@ -575,7 +616,10 @@ describe("createApp", () => {
     it("rejects preview requests without the Vercel bypass header or cookie", async () => {
       mockEnv("ENV", "preview");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
 
       const response = await app.request("/health", { method: "GET" });
 
@@ -592,7 +636,10 @@ describe("createApp", () => {
     it("allows preview requests with the matching Vercel bypass header", async () => {
       mockEnv("ENV", "preview");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
 
       const response = await app.request("/health", {
         method: "GET",
@@ -605,7 +652,10 @@ describe("createApp", () => {
     it("allows preview requests with a matching Vercel bypass cookie", async () => {
       mockEnv("ENV", "preview");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
 
       const response = await app.request("/health", {
         method: "GET",
@@ -620,7 +670,10 @@ describe("createApp", () => {
     it("rejects preview requests with the bypass secret in an unrelated cookie", async () => {
       mockEnv("ENV", "preview");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
 
       const response = await app.request("/health", {
         method: "GET",
@@ -633,7 +686,10 @@ describe("createApp", () => {
     it("allows preview requests with the matching Vercel bypass query", async () => {
       mockEnv("ENV", "preview");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
 
       const response = await app.request(
         "/health?x-vercel-protection-bypass=preview-secret",
@@ -646,7 +702,10 @@ describe("createApp", () => {
     it("exempts external webhook paths from the guard without the bypass secret", async () => {
       mockEnv("ENV", "preview");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
 
       // A non-webhook path is still rejected by the guard before route matching.
       const guarded = await app.request("/api/legacy/fallthrough", {
@@ -671,7 +730,10 @@ describe("createApp", () => {
   describe("cors", () => {
     it("echoes allowed cross-origin on registered route responses", async () => {
       mockEnv("ENV", "production");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://app.vm0.ai" },
@@ -688,7 +750,10 @@ describe("createApp", () => {
 
     it("echoes exact vm7 app origin with port on registered route responses", async () => {
       mockEnv("ENV", "production");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://app.vm7.ai:8443" },
@@ -702,7 +767,10 @@ describe("createApp", () => {
 
     it("echoes the exact okou.ai production origin", async () => {
       mockEnv("ENV", "production");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://okou.ai" },
@@ -716,7 +784,10 @@ describe("createApp", () => {
 
     it("allows https origins on okou.ai subdomains", async () => {
       mockEnv("ENV", "production");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://console.okou.ai" },
@@ -730,7 +801,10 @@ describe("createApp", () => {
 
     it("does not allow lookalike okou.ai origins", async () => {
       mockEnv("ENV", "production");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://okou.ai.evil.example" },
@@ -742,7 +816,10 @@ describe("createApp", () => {
 
     it("answers preflight without invoking the route handler", async () => {
       mockEnv("ENV", "production");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/api/zero/org", {
         method: "OPTIONS",
         headers: {
@@ -773,7 +850,10 @@ describe("createApp", () => {
     it("answers preview preflight before enforcing the automation bypass", async () => {
       mockEnv("ENV", "preview");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/api/zero/org", {
         method: "OPTIONS",
         headers: {
@@ -797,7 +877,10 @@ describe("createApp", () => {
 
     it("allows okou preview app origins", async () => {
       mockEnv("ENV", "preview");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://pr-22085-app.omby.ai" },
@@ -811,7 +894,10 @@ describe("createApp", () => {
 
     it("allows immutable okou Pages deployment origins in preview", async () => {
       mockEnv("ENV", "preview");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const origin = "https://3508a2f5.okou-app.pages.dev";
       const response = await app.request("/health", {
         method: "GET",
@@ -824,7 +910,10 @@ describe("createApp", () => {
 
     it("does not allow okou Pages deployment origins in production", async () => {
       mockEnv("ENV", "production");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://3508a2f5.okou-app.pages.dev" },
@@ -836,7 +925,10 @@ describe("createApp", () => {
 
     it("does not allow lookalike okou preview origins", async () => {
       mockEnv("ENV", "preview");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://pr-22085-app.omby.ai.evil.example" },
@@ -848,7 +940,10 @@ describe("createApp", () => {
 
     it("rejects disallowed origins by omitting the allow-origin header", async () => {
       mockEnv("ENV", "production");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://evil.example.com" },
@@ -860,7 +955,10 @@ describe("createApp", () => {
 
     it("allows vm7 origins in development", async () => {
       mockEnv("ENV", "development");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://app.vm7.ai:8443" },
@@ -873,7 +971,10 @@ describe("createApp", () => {
 
     it("allows vm7 preview origins on any https port", async () => {
       mockEnv("ENV", "preview");
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: { origin: "https://www.vm7.ai:3042" },
@@ -887,7 +988,10 @@ describe("createApp", () => {
 
   describe("web client compatibility", () => {
     it("rejects pre-connector-slug app clients before route handlers run", async () => {
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: {
@@ -904,7 +1008,10 @@ describe("createApp", () => {
     });
 
     it("upgrades retired memory viewer clients before route matching", async () => {
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/api/zero/memory", {
         method: "GET",
         headers: {
@@ -921,7 +1028,10 @@ describe("createApp", () => {
     });
 
     it("allows current app clients", async () => {
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: {
@@ -934,7 +1044,10 @@ describe("createApp", () => {
     });
 
     it("requires the current mail client version", async () => {
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const path = "/api/zero/mail/drafts/c0000000-0000-4000-a000-000000000001";
       const stale = await app.request(path, {
         method: "GET",
@@ -974,7 +1087,10 @@ describe("createApp", () => {
     });
 
     it("does not force upgrade other client types", async () => {
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", {
         method: "GET",
         headers: {
@@ -990,7 +1106,10 @@ describe("createApp", () => {
   describe("axiom request log", () => {
     it("records client headers on request log events", async () => {
       context.mocks.axiom.flush.mockResolvedValue(undefined);
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("https://api.vm0.test/health", {
         method: "GET",
         headers: {
@@ -1027,7 +1146,10 @@ describe("createApp", () => {
     });
 
     it("omits client header fields when they are absent", async () => {
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", { method: "GET" });
 
       expect(response.status).toBe(200);
@@ -1048,7 +1170,10 @@ describe("createApp", () => {
 
   describe("flush middleware", () => {
     it("calls flushLogs after a successful response", async () => {
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request("/health", { method: "GET" });
 
       expect(response.status).toBe(200);

@@ -42,6 +42,18 @@ import {
   setComputerUseHostAsPreviousApi,
 } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { cronBrowserReconcileRoutes } from "../cron-browser-reconcile";
+import { zeroBrowserRoutes } from "../zero-browser";
+import { zeroBrowserAuthorizationRoutes } from "../zero-browser-authorization";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroChatThreadComputerUseHostRoutes } from "../zero-chat-threads-computer-use-host";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronBrowserReconcileRoutes,
+  ...zeroBrowserAuthorizationRoutes,
+  ...zeroBrowserRoutes,
+  ...zeroChatThreadRoutes,
+]);
 
 const context = testContext();
 const computerUse = createComputerUseBddApi(context);
@@ -79,43 +91,53 @@ function isoAt(offsetMs: number): string {
 }
 
 function client() {
-  return setupApp({ context })(zeroBrowserContract);
+  return setupApp({ context, routes: zeroBrowserRoutes })(zeroBrowserContract);
 }
 
 function authorizationClient() {
-  return setupApp({ context })(zeroBrowserAuthorizationRequestsContract);
+  return setupApp({ context, routes: zeroBrowserAuthorizationRoutes })(
+    zeroBrowserAuthorizationRequestsContract,
+  );
 }
 
 function chatThreadsClient() {
-  return setupApp({ context })(chatThreadsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadsContract,
+  );
 }
 
 function chatThreadComputerUseHostClient() {
-  return setupApp({ context })(chatThreadComputerUseHostContract);
+  return setupApp({ context, routes: zeroChatThreadComputerUseHostRoutes })(
+    chatThreadComputerUseHostContract,
+  );
 }
 
 function chatThreadEventsClient() {
-  return setupApp({ context })(chatThreadEventsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadEventsContract,
+  );
 }
 
 function cronClient() {
-  return setupApp({ context })(cronBrowserReconcileContract);
+  return setupApp({ context, routes: cronBrowserReconcileRoutes })(
+    cronBrowserReconcileContract,
+  );
 }
 
 async function requestBrowserUse(
   headers: Readonly<Record<string, string>>,
 ): Promise<Response> {
-  return await createApp({ signal: context.signal }).request(
-    "/api/zero/browsers/use",
-    {
-      method: "POST",
-      headers: {
-        ...headers,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({}),
+  return await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/zero/browsers/use", {
+    method: "POST",
+    headers: {
+      ...headers,
+      "content-type": "application/json",
     },
-  );
+    body: JSON.stringify({}),
+  });
 }
 
 function providerBrowser(
@@ -621,6 +643,7 @@ describe("zero browser route", () => {
 
     const crossThreadResize = await createApp({
       signal: context.signal,
+      routes: TEST_APP_ROUTES,
     }).request(
       `/api/zero/chat-threads/${createdInOtherThread.body.browser.threadId}/browser/resize`,
       {
@@ -764,6 +787,7 @@ describe("zero browser route", () => {
     ]);
     const copiedToAnotherThread = await createApp({
       signal: context.signal,
+      routes: TEST_APP_ROUTES,
     }).request(`/api/zero/chat-threads/${randomUUID()}/browser`, {
       headers: first.claim.browserHeaders,
     });
@@ -1491,6 +1515,7 @@ describe("zero browser route", () => {
 
     const failedResume = await createApp({
       signal: context.signal,
+      routes: TEST_APP_ROUTES,
     }).request(`/api/zero/chat-threads/${threadId}/browser/open`, {
       method: "POST",
       headers: {
@@ -2468,6 +2493,7 @@ describe("zero browser route", () => {
 
     const legacyEventsResponse = await createApp({
       signal: context.signal,
+      routes: TEST_APP_ROUTES,
     }).request(`/api/zero/chat-threads/${first.threadId}/events?limit=50`, {
       headers: {
         authorization: "Bearer clerk-session",
@@ -2495,6 +2521,7 @@ describe("zero browser route", () => {
 
     const collided = await createApp({
       signal: context.signal,
+      routes: TEST_APP_ROUTES,
     }).request(`/api/zero/chat-threads/${first.threadId}/browser/close`, {
       method: "POST",
       headers: {

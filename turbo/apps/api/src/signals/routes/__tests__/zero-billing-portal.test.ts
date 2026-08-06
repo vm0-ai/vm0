@@ -21,6 +21,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { zeroBillingPortalRoutes } from "../zero-billing-portal";
 
 const context = testContext();
 const store = createStore();
@@ -37,7 +38,9 @@ describe("POST /api/zero/billing/portal", () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: { returnUrl: `${APP_ORIGIN}/settings` },
@@ -55,7 +58,9 @@ describe("POST /api/zero/billing/portal", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
 
     const response = await accept(
       client.create({
@@ -76,7 +81,9 @@ describe("POST /api/zero/billing/portal", () => {
   it("returns 400 when returnUrl is missing", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: {} as never,
@@ -91,7 +98,9 @@ describe("POST /api/zero/billing/portal", () => {
   it("returns 400 when returnUrl is not a valid URL", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: { returnUrl: "not-a-url" },
@@ -110,7 +119,9 @@ describe("POST /api/zero/billing/portal", () => {
       "org:member",
     );
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: { returnUrl: `${APP_ORIGIN}/settings` },
@@ -152,7 +163,9 @@ describe("POST /api/zero/billing/portal", () => {
       url: "https://billing.stripe.com/session/test",
     });
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: { returnUrl },
@@ -193,7 +206,9 @@ describe("POST /api/zero/billing/portal", () => {
     });
 
     const response = await accept(
-      setupApp({ context })(zeroBillingPortalContract).create({
+      setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      ).create({
         body: { returnUrl: `${APP_ORIGIN}/settings/billing` },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -222,7 +237,9 @@ describe("POST /api/zero/billing/portal", () => {
       "org:admin",
     );
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: { returnUrl },

@@ -17,6 +17,17 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { zeroUploadsCompleteRoutes } from "../zero-uploads-complete";
+import { zeroUploadsImportImageRoutes } from "../zero-uploads-import-image";
+import { zeroUploadsMultipartRoutes } from "../zero-uploads-multipart";
+import { zeroUploadsPrepareRoutes } from "../zero-uploads-prepare";
+
+const zeroUploadsTestRoutes = Object.freeze([
+  ...zeroUploadsCompleteRoutes,
+  ...zeroUploadsImportImageRoutes,
+  ...zeroUploadsMultipartRoutes,
+  ...zeroUploadsPrepareRoutes,
+]);
 
 const context = testContext();
 const store = createStore();
@@ -34,7 +45,9 @@ function validBody() {
 
 describe("POST /api/zero/uploads/prepare", () => {
   it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await accept(
       client.prepare({ body: validBody(), headers: {} }),
       [401],
@@ -58,7 +71,9 @@ describe("POST /api/zero/uploads/prepare", () => {
       exp: seconds + 60,
     });
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await client.prepare({
       body: validBody(),
       headers: { authorization: `Bearer ${token}` },
@@ -79,7 +94,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await accept(
       client.prepare({
         body: { filename: "" } as never,
@@ -95,7 +112,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await accept(
       client.prepare({
         body: {
@@ -115,7 +134,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await accept(
       client.prepare({
         body: {
@@ -135,7 +156,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await client.prepare({
       body: validBody(),
       headers: { authorization: "Bearer clerk-session" },
@@ -164,7 +187,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     mocks.clerk.session(peer.userId, peer.orgId);
     mocks.s3.listObjects([]);
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await client.prepare({
       body: {
         filename: "财务 报告.PDF",
@@ -218,7 +243,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     const actor = { userId: `user_${randomUUID()}`, orgId };
     mocks.clerk.session(actor.userId, actor.orgId);
 
-    const response = await setupApp({ context })(zeroUploadsContract).prepare({
+    const response = await setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    ).prepare({
       body: validBody(),
       headers: { authorization: "Bearer clerk-session" },
     });
@@ -259,7 +286,9 @@ describe("POST /api/zero/uploads/prepare", () => {
       return Promise.resolve({});
     });
 
-    const response = await setupApp({ context })(zeroUploadsContract).prepare({
+    const response = await setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    ).prepare({
       body: { ...validBody(), supportsUploadHeaders: true },
       headers: { authorization: "Bearer clerk-session" },
     });
@@ -289,7 +318,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     });
     mocks.clerk.session(actor.userId, actor.orgId);
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await accept(
       client.prepare({
         body: validBody(),
@@ -303,7 +334,9 @@ describe("POST /api/zero/uploads/prepare", () => {
 
   it("normalizes staff entitlement lifecycle statuses for suspension checks", async () => {
     const userId = `user_${randomUUID()}`;
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     mocks.clerk.session(userId, STAFF_ORG_ID);
     onTestFinished(async () => {
       await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
@@ -353,7 +386,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await client.prepare({
       body: {
         filename: "notes.txt",
@@ -381,7 +416,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     mockEnv("S3_ENDPOINT", "http://internal-s3.example.com");
     mockEnv("S3_PUBLIC_ENDPOINT", "http://public-s3.example.com");
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await client.prepare({
       body: validBody(),
       headers: { authorization: "Bearer clerk-session" },
@@ -406,7 +443,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     await client.prepare({
       body: {
         filename: "my file (1).txt",
@@ -494,7 +533,9 @@ describe("POST /api/zero/uploads/prepare", () => {
       { filename: "book.epub", contentType: "application/epub+zip" },
     ] as const;
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     for (const { filename, contentType } of cases) {
       const response = await client.prepare({
         body: { filename, contentType, size: 4096 },
@@ -522,7 +563,9 @@ describe("POST /api/zero/uploads/prepare", () => {
       exp: seconds + 60,
     });
 
-    const client = setupApp({ context })(zeroUploadsContract);
+    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
+      zeroUploadsContract,
+    );
     const response = await accept(
       client.prepare({
         body: validBody(),

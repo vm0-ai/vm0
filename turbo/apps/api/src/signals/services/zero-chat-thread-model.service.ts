@@ -20,6 +20,7 @@ import {
   resolvePersistedModelFirstRoute,
   type ModelFirstPin,
 } from "./zero-model-selection.service";
+import type { Tx } from "../../lib/db-types";
 
 export function chatThreadModelPinColumns(pin: ModelFirstPin): {
   readonly modelProviderId: null;
@@ -38,9 +39,7 @@ export function chatThreadModelPinColumns(pin: ModelFirstPin): {
 type ModelFirstProviderAdmission = Awaited<
   ReturnType<typeof resolveModelFirstProviderAdmission>
 >;
-type ChatThreadModelTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
+type ChatThreadModelTransaction = Tx;
 
 interface ResolvePersistedChatThreadModelParams {
   readonly db: Db;

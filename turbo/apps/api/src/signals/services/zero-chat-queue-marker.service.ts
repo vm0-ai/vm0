@@ -3,11 +3,11 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { and, eq, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import type { Db } from "../external/db";
 import { revokeChatEvent, insertChatEvent } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import type { Tx } from "../../lib/db-types";
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 const QUEUED_RUN_ASSISTANT_MESSAGE = "Waiting in queue...";
 

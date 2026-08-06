@@ -66,9 +66,10 @@ import {
   autonomyBudgetSchemaAvailable,
   rolloutCompatibleAutonomyBudgetColumn,
 } from "./autonomy-budget-schema.service";
+import type { Tx } from "../../lib/db-types";
 import { withRunModelAnnotation } from "./zero-chat-user-message.service";
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 const queuedUserMessageTriggerSourceSchema = z.enum([
   "web",

@@ -36,6 +36,9 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { testTelegramStateRoutes } from "../test-telegram-state";
+import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
+
+const TEST_APP_ROUTES = Object.freeze([...zeroIntegrationsTelegramRoutes]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -289,21 +292,23 @@ afterEach(() => {
 });
 
 function telegramClient() {
-  return setupApp({ context })(zeroIntegrationsTelegramContract);
+  return setupApp({ context, routes: zeroIntegrationsTelegramRoutes })(
+    zeroIntegrationsTelegramContract,
+  );
 }
 
 async function postRegisterRaw(body: unknown): Promise<Response> {
-  return await createApp({ signal: context.signal }).request(
-    "/api/telegram/register",
-    {
-      method: "POST",
-      headers: {
-        authorization: "Bearer clerk-session",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
+  return await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/telegram/register", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer clerk-session",
+      "content-type": "application/json",
     },
-  );
+    body: JSON.stringify(body),
+  });
 }
 
 async function postWebhook(args: {
@@ -311,18 +316,17 @@ async function postWebhook(args: {
   readonly secret: string;
   readonly body: unknown;
 }): Promise<Response> {
-  return await createApp({ signal: context.signal }).request(
-    `/api/telegram/webhook/${args.telegramBotId}`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-telegram-bot-api-secret-token": args.secret,
-      },
-      body:
-        typeof args.body === "string" ? args.body : JSON.stringify(args.body),
+  return await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/telegram/webhook/${args.telegramBotId}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-telegram-bot-api-secret-token": args.secret,
     },
-  );
+    body: typeof args.body === "string" ? args.body : JSON.stringify(args.body),
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -727,17 +731,17 @@ describe("POST /api/telegram/setup-status", () => {
   it("returns 400 when botToken is missing", async () => {
     mocks.clerk.session("user_missing_token", "org_missing_token");
 
-    const response = await createApp({ signal: context.signal }).request(
-      "/api/telegram/setup-status",
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer clerk-session",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({}),
+    const response = await createApp({
+      signal: context.signal,
+      routes: TEST_APP_ROUTES,
+    }).request("/api/telegram/setup-status", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({}),
+    });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({

@@ -29,7 +29,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   connectorOAuthRedirectResponse,
   clearConnectorOAuthCookies,
-} from "./connector-oauth-route-state";
+} from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
 
 const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";

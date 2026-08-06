@@ -10,6 +10,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
+import type { Tx } from "../../lib/db-types";
 
 const FEISHU_API_PREFIX = "https://open.feishu.cn/open-apis/";
 const FEISHU_AUTHORIZATION_URL =
@@ -23,7 +24,7 @@ const FEISHU_SKILL_DESCRIPTION =
 const FEISHU_AUTHORIZATION_HEADER = "Authorization";
 const FEISHU_AUTHORIZATION_TEMPLATE = "Bearer {{oauth.access_token}}";
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 interface EnsureFeishuCustomConnectorArgs {
   readonly orgId: string;

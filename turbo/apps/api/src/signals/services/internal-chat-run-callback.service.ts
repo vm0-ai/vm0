@@ -161,7 +161,7 @@ import { loadActiveGoalForThread } from "./zero-goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
-import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
+import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
 import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
@@ -200,6 +200,7 @@ import {
   loadTelegramQueuedLaunchMaterial,
   type TelegramQueuedLaunchMaterial,
 } from "./telegram-queued-launch-context.service";
+import type { Tx } from "../../lib/db-types";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -1511,7 +1512,7 @@ async function insertAssistantErrorEvent(args: {
   };
 }
 
-type ChatCallbackTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type ChatCallbackTransaction = Tx;
 
 interface CanonicalDeliveryEvent {
   readonly id: string;

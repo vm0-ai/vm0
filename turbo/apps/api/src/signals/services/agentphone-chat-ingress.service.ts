@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import type { Tx } from "../../lib/db-types";
 
 interface AgentPhoneChatThreadRouteKey {
   readonly agentphoneUserLinkId: string;
@@ -31,9 +32,7 @@ interface AgentPhoneChatThreadCreateArgs {
   readonly currentTime: Date;
 }
 
-type AgentPhoneChatThreadTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
+type AgentPhoneChatThreadTransaction = Tx;
 
 function routeWhere(key: AgentPhoneChatThreadRouteKey) {
   return and(

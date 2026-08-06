@@ -29,6 +29,7 @@ import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
+import type { Tx } from "../../lib/db-types";
 
 const actionBody$ = bodyResultOf(
   testCronMonitorChatEventQueueStateContract.action,
@@ -41,7 +42,7 @@ type FixtureKind = Extract<
   TestCronMonitorChatEventQueueStateActionBody,
   { readonly action: "seed-fixture" }
 >["fixture_kind"];
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 const STALE_CONTEXT_FIXTURES = [
   {
