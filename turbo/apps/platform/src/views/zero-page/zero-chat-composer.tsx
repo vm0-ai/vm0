@@ -1077,7 +1077,7 @@ const TEMPLATE_CARD_SHADOW =
 const TEMPLATE_TILE_WRAPPER = "group/tile relative cursor-pointer";
 const TEMPLATE_TILE_RING =
   "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
-const TEMPLATE_TILE_RING_HOVER = "ring-gray-400 hover:ring-1";
+const TEMPLATE_TILE_RING_HOVER = "ring-gray-400 group-hover/tile:ring-1";
 const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
 const TEMPLATE_TILE_MEDIA =
   "relative overflow-hidden border border-gray-200 bg-muted";
@@ -1102,14 +1102,15 @@ function VideoTemplateCard({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className={cn(
-        TEMPLATE_TILE_WRAPPER,
-        TEMPLATE_TILE_RING,
-        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
-      )}
-    >
-      <div className={cn(TEMPLATE_TILE_MEDIA, "aspect-[16/9] rounded-xl")}>
+    <div className={TEMPLATE_TILE_WRAPPER}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "aspect-[16/9]",
+          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+        )}
+      >
         <VideoTemplatePreview item={item} />
         {selected ? (
           <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
@@ -1207,12 +1208,17 @@ function WebsiteTemplateCard({
       }}
       className={cn(
         TEMPLATE_TILE_WRAPPER,
-        TEMPLATE_TILE_RING,
-        "cursor-zoom-in focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+        "cursor-zoom-in focus-visible:outline-none",
       )}
     >
-      <div className={cn(TEMPLATE_TILE_MEDIA, "aspect-[16/9] rounded-xl")}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "aspect-[16/9] group-focus-visible/tile:ring-1 group-focus-visible/tile:ring-ring",
+          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+        )}
+      >
         <img
           alt={t(
             ($) => {
@@ -3802,14 +3808,14 @@ function PptCard({
   );
 
   return (
-    <div
-      className={cn(
-        TEMPLATE_TILE_WRAPPER,
-        TEMPLATE_TILE_RING,
-        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
-      )}
-    >
-      <div className={cn(TEMPLATE_TILE_MEDIA, "rounded-xl")}>
+    <div className={TEMPLATE_TILE_WRAPPER}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+        )}
+      >
         <TemplatePreview
           item={item}
           onPreview={onPreview}
@@ -4673,7 +4679,7 @@ function TemplatePickerHeader() {
   const { t } = useTranslation();
   return (
     <header className="flex h-14 shrink-0 items-center px-5">
-      <h2 className="text-[17px] font-semibold leading-6 tracking-tight text-foreground">
+      <h2 className="text-lg font-semibold leading-6 tracking-tight text-foreground">
         {t(($) => {
           return $.artifacts.templates.template;
         })}
@@ -4864,7 +4870,7 @@ function TemplatePickerDialog({
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     skipEnterAnimation && "data-[state=open]:!animate-none",
-    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-3 [&>button]:top-3",
+    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-3 [&>button]:top-2.5",
   );
   const filteredPptItems = filterTemplatesByTitle(presentationItems, search);
   const filteredIllustrationItems = filterTemplatesByTitle(
@@ -5154,16 +5160,10 @@ function TemplatePickerDialog({
                 onChange={handleCategoryChange}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                <div className="relative flex h-14 shrink-0 items-center justify-end px-6 pr-14">
+                <div className="relative flex h-14 shrink-0 items-center px-6 pr-14">
                   <TemplatePickerSearch
                     search={search}
                     onSearchChange={handleSearchChange}
-                  />
-                  {/* Anchored to the header's own bottom edge so no seam can
-                      open between the wash and the chrome above it. */}
-                  <div
-                    aria-hidden
-                    className="pointer-events-none absolute inset-x-0 top-full z-10 h-5 bg-gradient-to-b from-card via-card/70 to-transparent backdrop-blur-[2px] [mask-image:linear-gradient(to_bottom,black,transparent)]"
                   />
                 </div>
                 {/* Cards dissolve into the header instead of being clipped by it:
@@ -5277,7 +5277,7 @@ function TemplatePickerCategoryContent({
       <div
         data-presentation-template-grid-scroll=""
         ref={onRestorePresentationScroll}
-        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto p-6"
+        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-6 pb-6"
         onScroll={(event) => {
           onPresentationScroll(event.currentTarget.scrollTop);
         }}
@@ -5302,7 +5302,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-website-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6"
       >
         {filteredWebsiteItems.length > 0 ? (
           <WebsiteTemplateGrid
@@ -5322,7 +5322,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-illustration-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6"
         onScroll={(event) => {
           prewarmIllustrationPreviewImagesNearScroll({
             items: filteredIllustrationItems,
@@ -5352,7 +5352,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-video-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6"
       >
         {filteredVideoItems.length > 0 ? (
           <VideoTemplateGrid
@@ -5392,7 +5392,7 @@ function TemplatePickerCategoryContent({
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             data-workflow-template-grid-scroll=""
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6"
           >
             {workflowCatalog.items.length > 0 ? (
               <WorkflowTemplateGrid
