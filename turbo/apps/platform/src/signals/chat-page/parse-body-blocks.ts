@@ -167,7 +167,9 @@ interface ParseBodyBlocksOptions {
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLATFORM_FILE_PATH_PATTERN = /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
+const LEGACY_PLATFORM_FILE_PATH_PATTERN =
+  /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
+const SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/[0-9a-z]{10}\.[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
@@ -407,7 +409,10 @@ function isPlatformFileUrl(url: string): boolean {
     return false;
   }
   const parsed = new URL(url, baseUrl);
-  if (!PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname)) {
+  if (
+    !LEGACY_PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname) &&
+    !SHORT_ARTIFACT_FILE_PATH_PATTERN.test(parsed.pathname)
+  ) {
     return false;
   }
   if (!hasExplicitUrlOrigin(url)) {
@@ -522,22 +527,23 @@ function renderExtractedPreviewLine(
   const { title, url } = extracted;
   const attachment = previewAttachmentFromUrl(url, title);
   const kind = classifyChatAttachment(attachment);
+  const previewable = isPreviewableChatUrl(url);
 
   if (
     extracted.source === "markdown-link" &&
-    (kind === "image" || kind === "video")
+    (kind === "image" || (kind === "video" && !previewable))
   ) {
     return { renderKind: "markdown", line };
   }
 
-  if (kind === "image" && isPreviewableChatUrl(url)) {
+  if (kind === "image" && previewable) {
     return {
       renderKind: "markdown",
       line: markdownImageLine(url, attachment.filename),
     };
   }
 
-  if (isBodyPreviewKind(kind) && isPreviewableChatUrl(url)) {
+  if (isBodyPreviewKind(kind) && previewable) {
     return {
       renderKind: "preview",
       preview: { filename: attachment.filename, url, kind },
