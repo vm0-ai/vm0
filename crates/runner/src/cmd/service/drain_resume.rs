@@ -774,6 +774,10 @@ mod tests {
         format!(r#"{{"mode":"{mode}","active_runs":[],"started_at":"{started_at}"}}"#)
     }
 
+    fn active_results(count: usize) -> VecDeque<RunnerResult<bool>> {
+        (0..count).map(|_| Ok(true)).collect()
+    }
+
     async fn write_test_status(base_dir: &Path, mode: &str, started_at: &str) {
         tokio::fs::create_dir_all(base_dir).await.unwrap();
         tokio::fs::write(
@@ -850,7 +854,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 events: Vec::new(),
-                active_results: VecDeque::from([Ok(true)]),
+                active_results: active_results(1),
                 enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::NotEnabled)]),
                 write_error: false,
                 remove_error: false,
@@ -982,7 +986,7 @@ mod tests {
         ) -> ServiceFuture<'a, bool> {
             self.events.push("is_active");
             Box::pin(std::future::ready(
-                self.active_results.pop_front().unwrap_or(Ok(true)),
+                self.active_results.pop_front().unwrap_or(Ok(false)),
             ))
         }
 
@@ -1557,6 +1561,7 @@ mod tests {
         .await
         .unwrap();
         let mut ops = FakeResumeOps {
+            active_results: active_results(2),
             status_update_on_signal: Some((
                 base_dir.join("status.json"),
                 test_status_content("running", TEST_RUNNER_STARTED_AT),
@@ -1631,7 +1636,10 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(125)).await;
             write_test_status(&status_dir, "running", TEST_RUNNER_STARTED_AT).await;
         });
-        let mut ops = FakeResumeOps::default();
+        let mut ops = FakeResumeOps {
+            active_results: active_results(2),
+            ..FakeResumeOps::default()
+        };
 
         resume_after_preflight_with_ops(&unit, dir.path(), test_started_at(), &mut ops)
             .await
@@ -1658,6 +1666,7 @@ mod tests {
         let base_dir = home.runners_dir().join(unit.suffix());
         write_test_status(&base_dir, "draining", TEST_RUNNER_STARTED_AT).await;
         let mut ops = FakeResumeOps {
+            active_results: active_results(2),
             status_update_on_signal: Some((
                 base_dir.join("status.json"),
                 test_status_content("stopping", TEST_RUNNER_STARTED_AT),
@@ -1787,7 +1796,10 @@ mod tests {
         let unit = service_unit();
         let dir = tempfile::tempdir().unwrap();
         write_test_status(dir.path(), "draining", TEST_RUNNER_STARTED_AT).await;
-        let mut ops = FakeResumeOps::default();
+        let mut ops = FakeResumeOps {
+            active_results: active_results(40),
+            ..FakeResumeOps::default()
+        };
 
         let error = resume_after_preflight_with_ops(&unit, dir.path(), test_started_at(), &mut ops)
             .await
