@@ -1,4 +1,5 @@
 import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
+import type { ExecutionEnv } from "@vm0/pi-agent-runtime";
 
 /**
  * Cycle-free Pi edge configuration shared between the launch pipeline
@@ -17,7 +18,9 @@ export interface PiEdgeTurnArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly prompt: string;
+  readonly systemPrompt: string;
   readonly model: PiEdgeModelConfig;
+  readonly executionEnv: ExecutionEnv;
   readonly skillSnapshot: RunSkillSnapshot;
   readonly apiStartTime: number;
 }

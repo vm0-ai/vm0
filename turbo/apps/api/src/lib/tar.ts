@@ -7,6 +7,11 @@ interface ExtractedTarFile {
   readonly content: string;
 }
 
+interface ExtractedBinaryTarFile {
+  readonly path: string;
+  readonly content: Buffer;
+}
+
 function normalizeTarPath(path: string): string {
   return path.replace(/^\.\//, "");
 }
@@ -29,10 +34,10 @@ function isRegularFile(typeFlag: string): boolean {
   return typeFlag === "" || typeFlag === "0";
 }
 
-export function extractFilesFromTarGz(
+export function extractBinaryFilesFromTarGz(
   gzBuffer: Buffer,
   targetPaths?: readonly string[],
-): readonly ExtractedTarFile[] {
+): readonly ExtractedBinaryTarFile[] {
   const tarBuffer = gunzipSync(gzBuffer);
   const normalizedTargets = targetPaths
     ? new Set(
@@ -41,7 +46,7 @@ export function extractFilesFromTarGz(
         }),
       )
     : null;
-  const files: ExtractedTarFile[] = [];
+  const files: ExtractedBinaryTarFile[] = [];
   let offset = 0;
   while (offset + BLOCK_SIZE <= tarBuffer.length) {
     const header = tarBuffer.subarray(offset, offset + BLOCK_SIZE);
@@ -67,13 +72,22 @@ export function extractFilesFromTarGz(
     ) {
       files.push({
         path: name,
-        content: tarBuffer.subarray(offset, offset + size).toString("utf8"),
+        content: Buffer.from(tarBuffer.subarray(offset, offset + size)),
       });
     }
 
     offset += Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
   }
   return files;
+}
+
+export function extractFilesFromTarGz(
+  gzBuffer: Buffer,
+  targetPaths?: readonly string[],
+): readonly ExtractedTarFile[] {
+  return extractBinaryFilesFromTarGz(gzBuffer, targetPaths).map((file) => {
+    return { path: file.path, content: file.content.toString("utf8") };
+  });
 }
 
 export function extractFileFromTarGz(

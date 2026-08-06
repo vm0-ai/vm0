@@ -32,12 +32,88 @@ const workflows = createWorkflowsBddApi(context);
 const MODEL = "deepseek-v4-flash";
 const COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
 
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command === "object" &&
+    command !== null &&
+    "input" in command &&
+    typeof command.input === "object" &&
+    command.input !== null
+  ) {
+    return Object.fromEntries(Object.entries(command.input));
+  }
+  return {};
+}
+
+function commandName(command: unknown): string {
+  return typeof command === "object" && command !== null
+    ? command.constructor.name
+    : "";
+}
+
+function bodyBuffer(body: unknown): Buffer {
+  if (Buffer.isBuffer(body)) {
+    return body;
+  }
+  if (typeof body === "string") {
+    return Buffer.from(body, "utf8");
+  }
+  return body instanceof Uint8Array ? Buffer.from(body) : Buffer.alloc(0);
+}
+
+function streamBody(buffer: Buffer): AsyncIterable<Uint8Array> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield buffer;
+    },
+  };
+}
+
+function acceptPiStorageObjects(): void {
+  const objects = new Map<string, Buffer>();
+  context.mocks.s3.send.mockImplementation((command: unknown) => {
+    const input = commandInput(command);
+    const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
+    const key = typeof input.Key === "string" ? input.Key : "";
+    const objectKey = `${bucket}/${key}`;
+    switch (commandName(command)) {
+      case "PutObjectCommand": {
+        objects.set(objectKey, bodyBuffer(input.Body));
+        return Promise.resolve({});
+      }
+      case "GetObjectCommand": {
+        const body = objects.get(objectKey);
+        return Promise.resolve(
+          body
+            ? { Body: streamBody(body), ContentLength: body.byteLength }
+            : { Body: undefined },
+        );
+      }
+      case "HeadObjectCommand": {
+        const body = objects.get(objectKey);
+        return body
+          ? Promise.resolve({ ContentLength: body.byteLength })
+          : Promise.reject(
+              Object.assign(new Error(`Missing S3 object ${objectKey}`), {
+                name: "NotFound",
+                $metadata: { httpStatusCode: 404 },
+              }),
+            );
+      }
+      default: {
+        return Promise.resolve({});
+      }
+    }
+  });
+}
+
 interface PiEdgeFixture {
   readonly actor: ApiTestUser;
   readonly switchOwner: ApiTestUser;
   readonly agentId: string;
   readonly orgId: string;
   readonly runnerGroup: string;
+  readonly agentInstructions: string;
   readonly workflowSkillName: string;
 }
 
@@ -48,6 +124,7 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
   chatCallbacks.acceptChatObjectStorage();
   chatCallbacks.disableVapid();
   api.acceptStorageDownloads();
+  acceptPiStorageObjects();
   api.acceptTelemetryIngest();
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   const runnerGroup = api.configureRunnerGroup();
@@ -70,7 +147,9 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
     description: "Exercises the in-API Pi edge turn.",
     visibility: "private",
   });
-  bdd.acceptAgentStorageWrites();
+  const agentInstructions =
+    "# Pinned Pi instructions\nAlways preserve the run snapshot.";
+  await bdd.updateAgentInstructions(actor, agent.agentId, agentInstructions);
   const workflowSkillName = `pi-snapshot-${randomUUID().slice(0, 8)}`;
   await workflows.createWorkflow(actor, {
     agentId: agent.agentId,
@@ -82,6 +161,7 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
     agentId: agent.agentId,
     orgId,
     runnerGroup,
+    agentInstructions,
     workflowSkillName,
   };
 }
@@ -208,6 +288,10 @@ describe("PiLoop edge turn", () => {
     if (skillSnapshot === undefined) {
       throw new Error("Expected Pi standby context to include Skill snapshot");
     }
+    const piSystemPrompt = standbyContext.piSystemPrompt;
+    if (piSystemPrompt === undefined) {
+      throw new Error("Expected Pi standby context to include system prompt");
+    }
     expect(skillSnapshot).toMatchObject({
       schemaVersion: 1,
       policyVersion: 1,
@@ -221,6 +305,15 @@ describe("PiLoop edge turn", () => {
         skillFile: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
       }),
     );
+    expect(piSystemPrompt).toContain(
+      `<name>${fixture.workflowSkillName}</name>`,
+    );
+    expect(piSystemPrompt).toContain(
+      `<location>${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md</location>`,
+    );
+    expect(piSystemPrompt).toContain(fixture.agentInstructions);
+    expect(piSystemPrompt).not.toContain("/home/user/.codex/skills/");
+    expect(piSystemPrompt).not.toContain("/home/user/.claude/skills/");
     for (const entry of skillSnapshot.entries) {
       expect(entry.logicalDir.startsWith(`${PI_SKILLS_ROOT}/`)).toBeTruthy();
       expect(entry.skillFile).toBe(`${entry.logicalDir}/SKILL.md`);
@@ -239,7 +332,10 @@ describe("PiLoop edge turn", () => {
 
     expect(completionRequest).toMatchObject({
       model: MODEL,
-      messages: [{ role: "user", content: edgePrompt }],
+      messages: [
+        { role: "system", content: piSystemPrompt },
+        { role: "user", content: edgePrompt },
+      ],
       stream: false,
     });
     expect(JSON.stringify(completionRequest)).not.toContain(legacyPrompt);

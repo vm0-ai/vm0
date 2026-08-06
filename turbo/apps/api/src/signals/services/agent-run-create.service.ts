@@ -117,6 +117,12 @@ import { variables } from "@vm0/db/schema/variable";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { PersistedStorageMount } from "@vm0/db/types";
 import {
+  formatPiUserPrompt,
+  loadPiRunSkills,
+  renderPiSystemPrompt,
+  type ExecutionEnv,
+} from "@vm0/pi-agent-runtime";
+import {
   and,
   count,
   desc,
@@ -216,6 +222,7 @@ import {
   type PiEdgeTurnArgs,
 } from "./pi-edge-config";
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
+import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
 import {
   recordSameThreadRunnerJobPersisted,
   runnerJobQueueTimestamps,
@@ -548,6 +555,9 @@ interface CustomConnectorAuthRef {
 
 interface PreparedRunnerLaunch {
   readonly piEdge?: PiEdgeModelConfig;
+  readonly piExecutionEnv?: ExecutionEnv;
+  readonly piPrompt?: string;
+  readonly piSystemPrompt?: string;
   readonly runSkillSnapshot?: RunSkillSnapshot;
   readonly runnerJobPayload: RunnerJobPayload;
   readonly runContextSnapshot: RunContextAxiomSnapshot;
@@ -5771,21 +5781,72 @@ interface BuildRunnerJobPayloadInput {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly timing?: ApiDispatchTimingCollector;
 }
+
+interface PreparedPiLaunchResources {
+  readonly executionEnv: ExecutionEnv;
+  readonly prompt: string;
+  readonly systemPrompt: string;
+  readonly snapshot: RunSkillSnapshot;
+}
+
+async function preparePiLaunchResources(args: {
+  readonly get: <T>(computedValue: Computed<T>) => T;
+  readonly db: Db;
+  readonly runId: string;
+  readonly body: CreateRunBody;
+  readonly piEdge: PiEdgeModelConfig | undefined;
+  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly additionalVolumeSources: AdditionalVolumeSources;
+  readonly persistedStorageMounts: readonly PersistedStorageMount[];
+}): Promise<PreparedPiLaunchResources | undefined> {
+  if (args.piEdge === undefined) {
+    return undefined;
+  }
+  const snapshot = buildRunSkillSnapshot({
+    additionalVolumes: args.additionalVolumes,
+    additionalVolumeSources: args.additionalVolumeSources,
+    persistedStorageMounts: args.persistedStorageMounts,
+  });
+  const resources = await loadPiLaunchStorageResources(args.get, args.db, {
+    snapshot,
+    persistedStorageMounts: args.persistedStorageMounts,
+  });
+  const skills = await loadPiRunSkills(resources.env, snapshot);
+  if (skills.diagnostics.length > 0) {
+    L.warn("Pi run Skill catalog contains diagnostics", {
+      runId: args.runId,
+      diagnostics: skills.diagnostics,
+    });
+  }
+  return {
+    executionEnv: resources.env,
+    prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
+    systemPrompt: renderPiSystemPrompt({
+      appendSystemPrompt: args.body.appendSystemPrompt,
+      agentInstructions: resources.agentInstructions,
+      skills: skills.skills,
+    }),
+    snapshot,
+  };
+}
+
+function preparedRunnerGroup(content: AgentComposeContent): string {
+  const group = runnerGroup(content) ?? optionalEnv("RUNNER_DEFAULT_GROUP");
+  if (!group) {
+    throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
+  }
+  if (!isOfficialRunnerGroup(group)) {
+    throw new Error("Only vm0/* runner groups are supported");
+  }
+  return group;
+}
+
 function buildRunnerJobPayload(
   db: Db,
   args: BuildRunnerJobPayloadInput,
 ): Computed<Promise<PreparedRunnerLaunch>> {
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
-    const group =
-      runnerGroup(args.resolved.content) ?? optionalEnv("RUNNER_DEFAULT_GROUP");
-    if (!group) {
-      throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
-    }
-    if (!isOfficialRunnerGroup(group)) {
-      throw new Error("Only vm0/* runner groups are supported");
-    }
-
-    const profile = runnerProfile(args.resolved.content);
+    const group = preparedRunnerGroup(args.resolved.content);
     const featureSwitchOverrides = args.includeZeroTokenSecret
       ? args.featureSwitchContext.overrides
       : undefined;
@@ -5856,18 +5917,24 @@ function buildRunnerJobPayload(
       preparedStoragePromise,
       builtContextDraftPromise,
     );
-    const runSkillSnapshot =
-      args.piEdge === undefined
-        ? undefined
-        : buildRunSkillSnapshot({
-            additionalVolumes: args.additionalVolumes,
-            additionalVolumeSources: args.additionalVolumeSources,
-            persistedStorageMounts: builtContext.persistedStorageMounts,
-          });
+    const piResources = await preparePiLaunchResources({
+      get,
+      db,
+      runId: args.run.id,
+      body,
+      piEdge: args.piEdge,
+      additionalVolumes: args.additionalVolumes,
+      additionalVolumeSources: args.additionalVolumeSources,
+      persistedStorageMounts: builtContext.persistedStorageMounts,
+    });
     const storedContext =
-      runSkillSnapshot === undefined
+      piResources === undefined
         ? builtContext.context
-        : { ...builtContext.context, runSkillSnapshot };
+        : {
+            ...builtContext.context,
+            runSkillSnapshot: piResources.snapshot,
+            piSystemPrompt: piResources.systemPrompt,
+          };
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
       userId: args.userId,
@@ -5877,10 +5944,17 @@ function buildRunnerJobPayload(
     const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
     return {
       ...(args.piEdge === undefined ? {} : { piEdge: args.piEdge }),
-      ...(runSkillSnapshot === undefined ? {} : { runSkillSnapshot }),
+      ...(piResources === undefined
+        ? {}
+        : {
+            piExecutionEnv: piResources.executionEnv,
+            piPrompt: piResources.prompt,
+            piSystemPrompt: piResources.systemPrompt,
+            runSkillSnapshot: piResources.snapshot,
+          }),
       runnerJobPayload: queuedRunnerJobPayload({
         runnerGroup: group,
-        profile,
+        profile: runnerProfile(args.resolved.content),
         cliAgentSessionId,
         reuseKey: runnerReuseKey(args.chatThreadId),
         executionContext: storedContext,
@@ -7949,13 +8023,22 @@ async function committedAtomicLaunchResponse(args: {
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
   const kickoffPiEdgeTurn = args.createArgs.kickoffPiEdgeTurn;
-  if (args.launch.piEdge && args.launch.runSkillSnapshot && kickoffPiEdgeTurn) {
+  if (
+    args.launch.piEdge &&
+    args.launch.piExecutionEnv &&
+    args.launch.piPrompt &&
+    args.launch.piSystemPrompt &&
+    args.launch.runSkillSnapshot &&
+    kickoffPiEdgeTurn
+  ) {
     kickoffPiEdgeTurn({
       runId: args.committed.run.id,
       userId: args.createArgs.userId,
       orgId: args.createArgs.orgId,
-      prompt: args.createArgs.body.prompt,
+      prompt: args.launch.piPrompt,
+      systemPrompt: args.launch.piSystemPrompt,
       model: args.launch.piEdge,
+      executionEnv: args.launch.piExecutionEnv,
       skillSnapshot: args.launch.runSkillSnapshot,
       apiStartTime: args.createArgs.apiStartTime,
     });

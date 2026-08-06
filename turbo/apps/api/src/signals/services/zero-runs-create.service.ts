@@ -2,7 +2,10 @@ import { PLAN_UPGRADE_CLI_HINT } from "@vm0/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunCreateBodySchema } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import type { PiEdgeTurnArgs } from "./pi-edge-config";
+import {
+  isPiEdgeCompatibleProviderType,
+  type PiEdgeTurnArgs,
+} from "./pi-edge-config";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
@@ -905,6 +908,10 @@ async function resolveThreadSessionForZeroRun(
     },
   );
   const webChatSessionPromptContext = input.command.webChatSessionPromptContext;
+  const piNoLegacyHistory =
+    isFeatureEnabled(FeatureSwitchKey.PiLoop, input.featureSwitchContext) &&
+    threadSessionRoute.modelProvider !== null &&
+    isPiEdgeCompatibleProviderType(threadSessionRoute.modelProvider);
   const appendSystemPrompt = webChatSessionPromptContext
     ? await measureZeroPreCreate(
         input.timing,
@@ -915,6 +922,7 @@ async function resolveThreadSessionForZeroRun(
             threadId,
             sessionAction: resolution.action,
             context: webChatSessionPromptContext,
+            historyPolicy: piNoLegacyHistory ? "none" : "default",
           });
         },
       )

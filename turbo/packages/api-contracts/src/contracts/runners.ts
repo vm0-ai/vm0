@@ -655,6 +655,9 @@ export const storedExecutionContextSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
+  // Complete Pi prompt rendered once before the first model call and reused
+  // byte-for-byte by the API loop and the standby Sandbox.
+  piSystemPrompt: z.string().min(1).optional(),
   runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
@@ -739,6 +742,7 @@ export const executionContextSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
+  piSystemPrompt: z.string().min(1).optional(),
   runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 

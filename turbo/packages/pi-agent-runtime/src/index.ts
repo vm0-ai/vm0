@@ -12,8 +12,13 @@ export {
 } from "./tools";
 export type {
   ExecutionEnv,
-  FileError,
   FileInfo,
   Result,
   Skill,
+} from "@earendil-works/pi-agent-core";
+export {
+  err,
+  ExecutionError,
+  FileError,
+  ok,
 } from "@earendil-works/pi-agent-core";

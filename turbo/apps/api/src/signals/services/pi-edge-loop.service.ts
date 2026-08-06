@@ -51,6 +51,7 @@ function recordOf(value: unknown): Record<string, unknown> | null {
 
 async function requestChatCompletion(
   config: PiEdgeModelConfig,
+  systemPrompt: string,
   prompt: string,
   signal: AbortSignal,
 ): Promise<AssistantCompletion> {
@@ -68,7 +69,10 @@ async function requestChatCompletion(
     },
     body: JSON.stringify({
       model: config.model,
-      messages: [{ role: "user", content: prompt }],
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt },
+      ],
       stream: false,
     }),
     signal: requestSignal,
@@ -165,6 +169,7 @@ export const runPiEdgeTurn$ = command(
         );
         const completion = await requestChatCompletion(
           args.model,
+          args.systemPrompt,
           args.prompt,
           signal,
         );

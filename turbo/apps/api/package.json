@@ -41,6 +41,7 @@
     "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",
     "@vm0/db": "workspace:*",
+    "@vm0/pi-agent-runtime": "workspace:*",
     "ably": "^2.21.0",
     "archiver": "^8.0.0",
     "ccstate": "^5.4.0",
