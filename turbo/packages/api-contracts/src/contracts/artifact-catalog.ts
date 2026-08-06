@@ -115,7 +115,6 @@ export interface ArtifactCatalogListQuery {
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
   readonly chatThreadId?: string;
-  readonly includeSharedThreads?: "1";
 }
 
 export interface ArtifactCatalogListClientQuery {
@@ -123,11 +122,6 @@ export interface ArtifactCatalogListClientQuery {
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
   readonly chatThreadId?: string;
-  readonly includeSharedThreads?: "1";
-}
-
-export interface ArtifactCatalogCapabilitiesQuery {
-  readonly includeSharedThreads?: "1";
 }
 
 export interface ArtifactIdPathParams {
@@ -137,7 +131,6 @@ export interface ArtifactIdPathParams {
 export interface ArtifactCatalogListResponse {
   artifacts: ArtifactSummary[];
   nextCursor: string | null;
-  supportedKinds?: ArtifactCatalogKind[];
 }
 
 export interface ArtifactCatalogRequestOptions {
@@ -158,13 +151,11 @@ export interface ArtifactCatalogListClientRequest extends ArtifactCatalogRequest
 export interface ArtifactCatalogGetServerRequest extends ArtifactCatalogRequestOptions {
   readonly headers: ArtifactCatalogAuthHeaders;
   readonly params: ArtifactIdPathParams;
-  readonly query: ArtifactCatalogCapabilitiesQuery;
 }
 
 export interface ArtifactCatalogGetClientRequest extends ArtifactCatalogRequestOptions {
   readonly headers?: ArtifactCatalogAuthHeaders;
   readonly params: ArtifactIdPathParams;
-  readonly query?: ArtifactCatalogCapabilitiesQuery;
 }
 
 export type ArtifactCatalogApiErrorRouteResponse<TStatus extends number> = {
@@ -232,19 +223,11 @@ const artifactCatalogListQuerySchema = z.object({
   cursor: z.string().optional(),
   kind: artifactKindSchema.optional(),
   chatThreadId: z.string().uuid().optional(),
-  includeSharedThreads: z.literal("1").optional(),
-});
-
-const artifactCatalogCapabilitiesQuerySchema = z.object({
-  includeSharedThreads: z.literal("1").optional(),
 });
 
 const artifactCatalogListResponseSchema = z.object({
   artifacts: z.array(artifactSummarySchema),
   nextCursor: z.string().nullable(),
-  // Optional while the frontend and API can be on adjacent deploys. New
-  // clients only expose filters that the serving API advertises.
-  supportedKinds: z.array(artifactKindSchema).optional(),
 });
 
 /**
@@ -352,10 +335,6 @@ const artifactCatalogRuntimeSpec: Record<"list" | "get", AppRouteSpec> = {
     path: "/api/zero/artifacts/catalog/:artifactId",
     headers: artifactCatalogAuthHeadersSchema,
     pathParams: artifactCatalogPathParamsSchema,
-    query: artifactCatalogCapabilitiesQuerySchema as unknown as ZodSchema<
-      ArtifactCatalogCapabilitiesQuery,
-      ArtifactCatalogCapabilitiesQuery
-    >,
     responses: {
       200: artifactCatalogDetailResultSchema,
       401: artifactCatalogApiErrorSchema,
@@ -388,10 +367,6 @@ export type ArtifactCatalogGetRoute = AppRoute<ArtifactCatalogGetRouteTypes> & {
   readonly headers: ZodSchema<
     ArtifactCatalogAuthHeaders,
     ArtifactCatalogAuthHeaders
-  >;
-  readonly query: ZodSchema<
-    ArtifactCatalogCapabilitiesQuery,
-    ArtifactCatalogCapabilitiesQuery
   >;
   readonly pathParams: ZodSchema<ArtifactIdPathParams, ArtifactIdPathParams>;
 };

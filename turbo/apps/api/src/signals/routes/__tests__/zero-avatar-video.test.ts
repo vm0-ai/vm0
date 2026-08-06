@@ -564,7 +564,6 @@ describe("JoggAI built-in avatar video routes", () => {
     );
     expect(catalogResponse.status).toBe(200);
     const catalog = asRecord(await catalogResponse.json());
-    expect(catalog.supportedKinds).toContain("avatar");
     if (!Array.isArray(catalog.artifacts) || catalog.artifacts.length !== 1) {
       throw new Error("Expected one avatar catalog artifact");
     }
