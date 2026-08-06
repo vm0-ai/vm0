@@ -241,14 +241,12 @@ describe("shared thread routes", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "shared-title-key");
     const titlePrompts: string[] = [];
     chatCallbacks.mockOpenRouterCompletions((body) => {
-      titlePrompts.push(
-        body.messages
-          .map((message) => {
-            return message.content;
-          })
-          .join("\n"),
-      );
-      return "**Private launch plan**";
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("for this shared conversation")) {
+        titlePrompts.push(body.messages[1]?.content ?? "");
+        return "**Private launch plan**";
+      }
+      return "Generated summary";
     });
 
     const eventIds = [
