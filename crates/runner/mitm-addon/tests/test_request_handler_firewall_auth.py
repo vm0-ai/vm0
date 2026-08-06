@@ -202,7 +202,7 @@ async def test_custom_owner_change_during_auth_discards_stale_credentials(
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
             write_owner("b")
             release_auth_resolution.set()
-            await request_task
+            await asyncio.wait_for(request_task, timeout=1)
         finally:
             release_auth_resolution.set()
             await cancel_pending_task(request_task)
