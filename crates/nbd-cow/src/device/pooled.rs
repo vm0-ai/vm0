@@ -320,6 +320,14 @@ impl PooledNbdCowDevice {
 
     /// Destroy the device while preserving COW data for snapshot persistence.
     ///
+    /// On success, returns [`KeptCow`] with the COW file and its dirty-bitmap
+    /// sidecar. Preserve both files as a pair. To restore the same logical
+    /// device, keep `KeptCow::bitmap_file` at the sidecar path derived from
+    /// `KeptCow::cow_file`, then call
+    /// [`DevicePoolHandle::create_cow_device`](crate::pool::DevicePoolHandle::create_cow_device)
+    /// with a base image containing the original unchanged-block contents,
+    /// `KeptCow::cow_file`, and the original device size.
+    ///
     /// Finalization starts immediately. Dropping the returned future does not
     /// cancel cleanup; it continues in the background and logs its result.
     /// Must be called from a Tokio runtime.
