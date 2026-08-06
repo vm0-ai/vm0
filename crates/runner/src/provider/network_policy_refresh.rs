@@ -797,10 +797,9 @@ impl NetworkPolicyRefreshCore {
             .map(|target| target.target.clone())
             .collect::<HashSet<_>>();
         let mut responses_by_target = HashMap::new();
-        let mut invalid_identity = false;
+        let mut duplicate_targets = HashSet::new();
         for result in response.results {
             if !requested_targets.contains(&result.target) {
-                invalid_identity = true;
                 warn!(
                     run_id = %run_id,
                     target = %result.target.log_identity(),
@@ -810,7 +809,7 @@ impl NetworkPolicyRefreshCore {
             }
             let target = result.target.clone();
             if responses_by_target.insert(target.clone(), result).is_some() {
-                invalid_identity = true;
+                duplicate_targets.insert(target.clone());
                 warn!(
                     run_id = %run_id,
                     target = %target.log_identity(),
@@ -819,29 +818,17 @@ impl NetworkPolicyRefreshCore {
             }
         }
 
-        if invalid_identity || responses_by_target.len() != requested_targets.len() {
-            for target in requested_targets
-                .iter()
-                .filter(|target| !responses_by_target.contains_key(*target))
-            {
-                warn!(
-                    run_id = %run_id,
-                    target = %target.log_identity(),
-                    "connector runtime sync response omitted requested target"
-                );
-            }
-            self.schedule_refresh_retries(run_id, active_targets, "invalid_response_identity")
-                .await;
-            return true;
-        }
-
         let mut retry_targets = Vec::new();
         for target in active_targets {
+            if duplicate_targets.contains(&target.target) {
+                retry_targets.push(target.clone());
+                continue;
+            }
             let Some(result) = responses_by_target.remove(&target.target) else {
                 warn!(
                     run_id = %run_id,
                     target = %target.target.log_identity(),
-                    "connector runtime sync response lost a validated target"
+                    "connector runtime sync response omitted requested target"
                 );
                 retry_targets.push(target.clone());
                 continue;
@@ -2500,6 +2487,140 @@ mod tests {
             0
         );
         assert!(active_runs[&run_id].refresh_tasks.contains_key(&target));
+        drop(active_runs);
+        core.unregister_run(run_id).await;
+    }
+
+    #[tokio::test]
+    async fn tagged_builtin_batch_isolates_invalid_result_identities() {
+        let server = MockServer::start();
+        let (core, _requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let connector_slugs = ["slack", "github", "linear"];
+        let targets = connector_slugs.map(builtin_target);
+        let unexpected_target = builtin_target("notion");
+        let runtime_sync = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
+                .json_body(json!({ "targets": targets }));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [
+                        {
+                            "target": targets[0],
+                            "state": "available",
+                            "networkPolicy": {
+                                "allow": ["chat:write", "files:write"],
+                                "deny": [],
+                                "ask": [],
+                                "unknownPolicy": "allow",
+                            },
+                            "nextSyncAt": "2999-01-01T00:00:00Z",
+                        },
+                        {
+                            "target": targets[1],
+                            "state": "available",
+                            "networkPolicy": {
+                                "allow": ["first:result"],
+                                "deny": [],
+                                "ask": [],
+                                "unknownPolicy": "allow",
+                            },
+                        },
+                        {
+                            "target": targets[1],
+                            "state": "available",
+                            "networkPolicy": {
+                                "allow": ["duplicate:result"],
+                                "deny": [],
+                                "ask": [],
+                                "unknownPolicy": "allow",
+                            },
+                        },
+                        {
+                            "target": unexpected_target,
+                            "state": "available",
+                            "networkPolicy": {
+                                "allow": ["unexpected:result"],
+                                "deny": [],
+                                "ask": [],
+                                "unknownPolicy": "allow",
+                            },
+                        },
+                    ],
+                }));
+        });
+        let firewalls = connector_slugs
+            .iter()
+            .map(|connector_slug| FirewallEntry::Builtin {
+                name: (*connector_slug).to_string(),
+                base_url_vars: None,
+            })
+            .collect::<Vec<_>>();
+        let policies = connector_slugs
+            .iter()
+            .map(|connector_slug| {
+                (
+                    (*connector_slug).to_string(),
+                    NetworkPolicy {
+                        allow: vec!["last-known-good".to_string()],
+                        deny: vec![],
+                        ask: vec![],
+                        unknown_policy: "allow".to_string(),
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let (_dir, registry, registry_path) =
+            registered_runtime_registry(run_id, &firewalls, &policies).await;
+
+        core.register_run(NetworkPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_slugs: connector_slugs.map(ToOwned::to_owned).into(),
+            targets: Some(&targets),
+            refreshes: None,
+        })
+        .await;
+        let active_targets = targets
+            .iter()
+            .cloned()
+            .map(|target| ConnectorRefreshTarget {
+                target,
+                generation: 0,
+            })
+            .collect::<Vec<_>>();
+
+        assert!(
+            core.sync_connector_runtime_batch_now(run_id, &active_targets)
+                .await
+        );
+
+        runtime_sync.assert_calls(1);
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(&registry_path)
+                .await
+                .expect("registry should be readable"),
+        )
+        .expect("registry should be valid JSON");
+        let policies = &registry_json["vms"]["10.200.0.2"]["networkPolicies"];
+        assert_eq!(
+            policies["slack"]["allow"],
+            json!(["chat:write", "files:write"])
+        );
+        assert_eq!(policies["github"]["allow"], json!(["last-known-good"]));
+        assert_eq!(policies["linear"]["allow"], json!(["last-known-good"]));
+
+        let active_runs = core.inner.active_runs.lock().await;
+        let active = &active_runs[&run_id];
+        assert_eq!(active.connectors[&targets[0]].consecutive_failures, 0);
+        assert_eq!(active.connectors[&targets[1]].consecutive_failures, 1);
+        assert_eq!(active.connectors[&targets[2]].consecutive_failures, 1);
+        assert!(active.refresh_tasks.contains_key(&targets[0]));
+        assert!(active.refresh_tasks.contains_key(&targets[1]));
+        assert!(active.refresh_tasks.contains_key(&targets[2]));
         drop(active_runs);
         core.unregister_run(run_id).await;
     }

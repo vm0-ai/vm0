@@ -159,6 +159,51 @@ pub(crate) enum CustomConnectorRuntimeRegistryState {
     Absent,
 }
 
+fn firewall_name(entry: &FirewallEntry) -> &str {
+    match entry {
+        FirewallEntry::Builtin { name, .. } => name,
+        FirewallEntry::Inline { firewall, .. } => &firewall.name,
+    }
+}
+
+fn custom_connector_owner(entry: &FirewallEntry) -> Option<&str> {
+    match entry {
+        FirewallEntry::Inline {
+            custom_connector_id: Some(custom_connector_id),
+            ..
+        } => Some(custom_connector_id),
+        FirewallEntry::Builtin { .. } | FirewallEntry::Inline { .. } => None,
+    }
+}
+
+fn validate_custom_connector_resource_ownership(firewalls: &[FirewallEntry]) -> RunnerResult<()> {
+    let mut firewall_name_counts = HashMap::new();
+    for firewall in firewalls {
+        *firewall_name_counts
+            .entry(firewall_name(firewall))
+            .or_insert(0) += 1;
+    }
+
+    let mut custom_connector_ids = HashSet::new();
+    for firewall in firewalls {
+        let Some(custom_connector_id) = custom_connector_owner(firewall) else {
+            continue;
+        };
+        if !custom_connector_ids.insert(custom_connector_id) {
+            return Err(RunnerError::Internal(format!(
+                "custom connector {custom_connector_id} owns multiple firewall entries"
+            )));
+        }
+        let name = firewall_name(firewall);
+        if firewall_name_counts.get(name) != Some(&1) {
+            return Err(RunnerError::Internal(format!(
+                "custom connector {custom_connector_id} does not exclusively own firewall {name}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn replace_first_matching_firewall(
     firewalls: &mut Vec<FirewallEntry>,
     replacement: FirewallEntry,
@@ -236,6 +281,7 @@ impl ProxyRegistryHandle {
         source_ip: &str,
         registration: &VmRegistration<'_>,
     ) -> RunnerResult<()> {
+        validate_custom_connector_resource_ownership(registration.firewalls.unwrap_or_default())?;
         let _guard = lock::acquire(self.lock_path.clone()).await?;
 
         let mut registry = read_registry(&self.registry_path).await?;
@@ -329,6 +375,14 @@ impl ProxyRegistryHandle {
                 let inline_firewall_name = inline_firewall.name.clone();
 
                 let firewalls = vm.firewalls.get_or_insert_with(Vec::new);
+                if firewalls.iter().any(|entry| {
+                    firewall_name(entry) == inline_firewall_name
+                        && custom_connector_owner(entry) != Some(custom_connector_id)
+                }) {
+                    return Err(RunnerError::Internal(format!(
+                        "custom connector {custom_connector_id} cannot claim firewall {inline_firewall_name} owned by another connector"
+                    )));
+                }
                 let removed_firewall_names = firewalls
                     .iter()
                     .filter_map(|entry| {
@@ -356,9 +410,16 @@ impl ProxyRegistryHandle {
                         false
                     }
                 });
+                let retained_firewall_names = firewalls
+                    .iter()
+                    .map(firewall_name)
+                    .map(ToOwned::to_owned)
+                    .collect::<HashSet<_>>();
                 let network_policies = vm.network_policies.get_or_insert_with(HashMap::new);
                 for firewall_name in removed_firewall_names {
-                    network_policies.remove(&firewall_name);
+                    if !retained_firewall_names.contains(&firewall_name) {
+                        network_policies.remove(&firewall_name);
+                    }
                 }
                 network_policies.insert(inline_firewall_name, network_policy);
                 vm.omitted_custom_connector_ids.remove(custom_connector_id);
@@ -380,9 +441,19 @@ impl ProxyRegistryHandle {
                         }
                     });
                 }
+                let retained_firewall_names = vm
+                    .firewalls
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(firewall_name)
+                    .map(ToOwned::to_owned)
+                    .collect::<HashSet<_>>();
                 if let Some(network_policies) = vm.network_policies.as_mut() {
                     for firewall_name in removed_firewall_names {
-                        network_policies.remove(&firewall_name);
+                        if !retained_firewall_names.contains(&firewall_name) {
+                            network_policies.remove(&firewall_name);
+                        }
                     }
                 }
                 vm.omitted_custom_connector_ids
@@ -443,25 +514,39 @@ impl ProxyRegistryHandle {
         if vm.run_id != run_id {
             return Ok(false);
         }
-        let Some(policy_name) = vm.firewalls.as_deref().and_then(|firewalls| {
-            firewalls.iter().find_map(|entry| match entry {
-                FirewallEntry::Inline {
-                    firewall,
-                    custom_connector_id: Some(existing_connector_id),
-                } if existing_connector_id == custom_connector_id => Some(firewall.name.clone()),
-                _ => None,
-            })
-        }) else {
+        let Some(firewalls) = vm.firewalls.as_deref() else {
             return Ok(false);
         };
-        let Some(policy) = vm
-            .network_policies
-            .as_mut()
-            .and_then(|policies| policies.get_mut(&policy_name))
-        else {
+        let owned_firewall_names = firewalls
+            .iter()
+            .filter(|entry| custom_connector_owner(entry) == Some(custom_connector_id))
+            .map(firewall_name)
+            .map(ToOwned::to_owned)
+            .collect::<HashSet<_>>();
+        if owned_firewall_names.is_empty() {
+            return Ok(false);
+        }
+        if firewalls.iter().any(|entry| {
+            owned_firewall_names.contains(firewall_name(entry))
+                && custom_connector_owner(entry) != Some(custom_connector_id)
+        }) {
+            return Err(RunnerError::Internal(format!(
+                "custom connector {custom_connector_id} does not exclusively own its firewall"
+            )));
+        }
+        let Some(network_policies) = vm.network_policies.as_mut() else {
             return Ok(false);
         };
-        *policy = fail_closed_policy(policy);
+        let mut changed = false;
+        for firewall_name in owned_firewall_names {
+            if let Some(policy) = network_policies.get_mut(&firewall_name) {
+                *policy = fail_closed_policy(policy);
+                changed = true;
+            }
+        }
+        if !changed {
+            return Ok(false);
+        }
         registry.updated_at = chrono::Utc::now().timestamp_millis();
         write_registry_consuming_fail_closed_capacity(&self.registry_path, &registry).await?;
         Ok(true)
@@ -990,6 +1075,107 @@ mod tests {
         assert_eq!(
             vm.omitted_custom_connector_ids,
             HashSet::from([omitted_custom_id.to_string()])
+        );
+    }
+
+    #[tokio::test]
+    async fn registration_rejects_custom_firewall_name_owned_by_builtin() {
+        let harness = RegistryHarness::new().await;
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let firewalls = vec![
+            FirewallEntry::Builtin {
+                name: "slack".to_string(),
+                base_url_vars: None,
+            },
+            custom_runtime_firewall(custom_connector_id, "slack"),
+        ];
+
+        let error = harness
+            .handle
+            .register_vm(
+                "10.200.0.2",
+                &VmRegistration {
+                    firewalls: Some(&firewalls),
+                    ..base_registration()
+                },
+            )
+            .await
+            .expect_err("custom firewall names must have exclusive owners");
+
+        assert!(
+            error
+                .to_string()
+                .contains("does not exclusively own firewall slack"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            read_registry(harness.registry_path())
+                .await
+                .unwrap()
+                .vms
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn custom_runtime_update_cannot_claim_builtin_firewall_resources() {
+        let harness = RegistryHarness::new().await;
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let custom_name = "custom_connector_original";
+        let firewalls = vec![
+            custom_runtime_firewall(custom_connector_id, custom_name),
+            FirewallEntry::Builtin {
+                name: "slack".to_string(),
+                base_url_vars: None,
+            },
+        ];
+        let network_policies = HashMap::from([
+            (
+                custom_name.to_string(),
+                policy(&["custom.read"], &[], &[], "deny"),
+            ),
+            (
+                "slack".to_string(),
+                policy(&["chat:write"], &[], &[], "allow"),
+            ),
+        ]);
+        harness
+            .handle
+            .register_vm(
+                "10.200.0.2",
+                &VmRegistration {
+                    firewalls: Some(&firewalls),
+                    network_policies: Some(&network_policies),
+                    ..base_registration()
+                },
+            )
+            .await
+            .unwrap();
+        let registry_before = tokio::fs::read(harness.registry_path()).await.unwrap();
+
+        let error = harness
+            .handle
+            .replace_custom_connector_runtime_target_if_run_matches(
+                "10.200.0.2",
+                "run-test",
+                custom_connector_id,
+                CustomConnectorRuntimeRegistryState::Available {
+                    firewall: custom_runtime_firewall(custom_connector_id, "slack"),
+                    network_policy: policy(&["custom.write"], &[], &[], "deny"),
+                },
+            )
+            .await
+            .expect_err("custom connector must not overwrite builtin resources");
+
+        assert!(
+            error
+                .to_string()
+                .contains("cannot claim firewall slack owned by another connector"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            tokio::fs::read(harness.registry_path()).await.unwrap(),
+            registry_before
         );
     }
 
