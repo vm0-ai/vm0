@@ -20,6 +20,7 @@ import {
   ensureUsagePricingRow,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -111,8 +112,11 @@ async function createSourceRun(
     triggerSource,
   });
   // Free the org's concurrent-run slot; usage attribution only needs the
-  // run row and its trigger source, not a live run.
+  // run row and its trigger source, not a live run. Wait for cancellation's
+  // background settlement before reporting fixture usage so the source query
+  // never races the route's waitUntil work.
   await api.requestCancelRun(actor, run.runId, [200]);
+  await flushWaitUntilForTest();
   return run.runId;
 }
 
