@@ -1,14 +1,7 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync } from "node:zlib";
 import AdmZip from "adm-zip";
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-  onTestFinished,
-  test as vitestTest,
-} from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import type {
   GenerationTemplateRequest,
   UserMessageDocument,
@@ -69,25 +62,11 @@ interface DeferredS3Put {
 }
 
 const context = testContext();
+const registerExportTest = it;
 const trackDeferredS3Put = createFixtureTracker<DeferredS3Put>((pendingPut) => {
   pendingPut.resolve();
   return Promise.resolve();
 });
-
-// cleanup-sandboxes sweeps threadless runs and export jobs globally. Keep each
-// past-clock export fixture under the same cross-worker ownership boundary as
-// the cron tests for its full create / execute / observe lifecycle.
-function itWithCleanupSandboxesIsolation(
-  name: string,
-  test: () => Promise<void>,
-): void {
-  vitestTest(name, async () => {
-    await withThreadlessRunCleanupTestLockFixture({
-      signal: context.signal,
-      run: test,
-    });
-  });
-}
 
 afterEach(() => {
   clearMockNow();
@@ -1164,6 +1143,15 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 });
 
 describe("OPS-01: user data export", () => {
+  function it(name: string, test: () => Promise<void>): void {
+    registerExportTest(name, async () => {
+      await withThreadlessRunCleanupTestLockFixture({
+        signal: context.signal,
+        run: test,
+      });
+    });
+  }
+
   it("rejects unauthenticated and org-less export requests", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
@@ -1184,8 +1172,7 @@ describe("OPS-01: user data export", () => {
     expect(orgless.body).toStrictEqual(expectedError);
   });
 
-  // prettier-ignore
-  itWithCleanupSandboxesIsolation("exports user data end to end with active, cooldown, refresh, and latest-job visibility", async () => {
+  it("exports user data end to end with active, cooldown, refresh, and latest-job visibility", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const actor = bdd.user();
@@ -1317,8 +1304,7 @@ describe("OPS-01: user data export", () => {
     });
   });
 
-  // prettier-ignore
-  itWithCleanupSandboxesIsolation("exports the userMessage projection", async () => {
+  it("exports the userMessage projection", async () => {
     const api = createOpsLogsApi(context);
     const chat = createChatFilesBddApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -1387,8 +1373,7 @@ describe("OPS-01: user data export", () => {
     expect(messages[0]?.content).not.toContain("stale export content");
   });
 
-  // prettier-ignore
-  itWithCleanupSandboxesIsolation("exports only agent instruction files, workflow files, and memory files", async () => {
+  it("exports only agent instruction files, workflow files, and memory files", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1509,8 +1494,7 @@ describe("OPS-01: user data export", () => {
     ).toBeFalsy();
   });
 
-  // prettier-ignore
-  itWithCleanupSandboxesIsolation("exports gzip-backed session history bytes as a jsonl conversation file", async () => {
+  it("exports gzip-backed session history bytes as a jsonl conversation file", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1611,8 +1595,7 @@ describe("OPS-01: user data export", () => {
     expect(manifest.counts.sessionHistories).toBe(1);
   });
 
-  // prettier-ignore
-  itWithCleanupSandboxesIsolation("exports zstd-backed session history bytes as a jsonl conversation file", async () => {
+  it("exports zstd-backed session history bytes as a jsonl conversation file", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1713,8 +1696,7 @@ describe("OPS-01: user data export", () => {
     expect(manifest.counts.sessionHistories).toBe(1);
   });
 
-  // prettier-ignore
-  itWithCleanupSandboxesIsolation("fails user export when gzip-backed session history does not match its hash", async () => {
+  it("fails user export when gzip-backed session history does not match its hash", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1796,8 +1778,7 @@ describe("OPS-01: user data export", () => {
     expect(failedStatus.job.error).toContain("session history hash mismatch");
   });
 
-  // prettier-ignore
-  itWithCleanupSandboxesIsolation("fails user export when zstd-backed session history does not match its hash", async () => {
+  it("fails user export when zstd-backed session history does not match its hash", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1879,8 +1860,7 @@ describe("OPS-01: user data export", () => {
     expect(failedStatus.job.error).toContain("session history hash mismatch");
   });
 
-  // prettier-ignore
-  itWithCleanupSandboxesIsolation("fails user export when gzip-backed session history exceeds its encoded size", async () => {
+  it("fails user export when gzip-backed session history exceeds its encoded size", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1962,8 +1942,7 @@ describe("OPS-01: user data export", () => {
     expect(failedStatus.job.error).toContain("S3 object is too large");
   });
 
-  // prettier-ignore
-  itWithCleanupSandboxesIsolation("surfaces failed exports and allows an immediate retry", async () => {
+  it("surfaces failed exports and allows an immediate retry", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const actor = bdd.user();
