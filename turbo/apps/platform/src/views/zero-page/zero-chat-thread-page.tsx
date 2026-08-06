@@ -6860,6 +6860,9 @@ function UserMessageTemplateReference({
   const selectAvatarTemplateForVoice = useSet(
     signals.template.selectAvatarTemplateForVoice$,
   );
+  const setAvatarTemplateFilters = useSet(
+    signals.template.setAvatarTemplateFilters$,
+  );
   return (
     <button
       type="button"
@@ -6878,6 +6881,15 @@ function UserMessageTemplateReference({
       onClick={() => {
         const avatar = avatarTemplateSelection(part.template);
         if (avatar) {
+          setAvatarTemplateFilters({
+            aspectRatio:
+              avatar.aspectRatio === "landscape" ? "landscape" : "portrait",
+            style: undefined,
+            gender: undefined,
+            age: undefined,
+            scene: undefined,
+            ethnicity: undefined,
+          });
           selectAvatarTemplateForVoice({
             id: avatar.avatarId,
             name: avatar.title,

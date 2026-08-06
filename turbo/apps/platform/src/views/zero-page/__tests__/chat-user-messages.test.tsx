@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroAvatarVideoContract } from "@vm0/api-contracts/contracts/zero-avatar-video";
 import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -8,9 +9,11 @@ import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
 import {
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { findComposerEditor } from "./chat-composer-test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -146,9 +149,17 @@ describe("user messages", () => {
         filterOptions: { languages: ["english"], useCases: [] },
       });
     });
+    let submittedTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Avatar template reference",
+      onRunCreate(body) {
+        const templatePart = body.userMessage?.parts.find((part) => {
+          return part.type === "template";
+        });
+        submittedTemplate =
+          templatePart?.type === "template" ? templatePart.template : undefined;
+      },
       chatEvents: [
         {
           id: "00000000-0000-4000-8000-000000000749",
@@ -181,6 +192,8 @@ describe("user messages", () => {
     });
 
     await screen.findByLabelText("Template");
+    const editor = await findComposerEditor();
+    await fill(editor, "Reuse this avatar template");
     await user.click(
       await screen.findByLabelText(`Message template ${avatar.name}`),
     );
@@ -195,6 +208,21 @@ describe("user messages", () => {
     expect(
       within(dialog).queryByLabelText(`Select template ${avatar.name}`),
     ).not.toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByLabelText(`Select voice ${voice.name}`),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Preview template ${avatar.name}`),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submittedTemplate).toStrictEqual(template);
+    });
   });
 
   it("renders ordered snapshots with literal Markdown text", async () => {
