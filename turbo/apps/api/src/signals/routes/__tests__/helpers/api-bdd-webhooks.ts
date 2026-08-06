@@ -38,6 +38,7 @@ import { webhooksAgentHealthUsageTelemetryRoutes } from "../../webhooks-agent-he
 import { webhooksAgentStorageRoutes } from "../../webhooks-agent-storage";
 import { webhooksBuiltInGenerationRoutes } from "../../webhooks-built-in-generations";
 import { webhooksClerkRoutes } from "../../webhooks-clerk";
+import { webhooksGithubRoutes } from "../../webhooks-github";
 import { webhooksStripeRoutes } from "../../webhooks-stripe";
 import { zeroEmailInboundRoutes } from "../../zero-email-inbound";
 
@@ -49,6 +50,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...webhooksAgentStorageRoutes,
   ...webhooksBuiltInGenerationRoutes,
   ...webhooksClerkRoutes,
+  ...webhooksGithubRoutes,
   ...webhooksStripeRoutes,
   ...zeroEmailInboundRoutes,
 ]);

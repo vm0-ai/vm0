@@ -82,7 +82,10 @@ import { zeroIntegrationsTelegramUploadInitRoutes } from "../../zero-integration
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroSlackChannelsRoutes } from "../../zero-slack-channels";
+import { zeroSlackCommandsRoutes } from "../../zero-slack-commands";
 import { zeroSlackConnectRoutes } from "../../zero-slack-connect";
+import { zeroSlackEventsRoutes } from "../../zero-slack-events";
+import { zeroSlackInteractiveRoutes } from "../../zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "../../zero-slack-oauth";
 import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
 
@@ -109,7 +112,10 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroSlackChannelsRoutes,
+  ...zeroSlackCommandsRoutes,
   ...zeroSlackConnectRoutes,
+  ...zeroSlackEventsRoutes,
+  ...zeroSlackInteractiveRoutes,
   ...zeroSlackOauthRoutes,
   ...zeroUserModelPreferenceRoutes,
 ]);
