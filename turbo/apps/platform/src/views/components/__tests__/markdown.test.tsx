@@ -351,7 +351,11 @@ describe("assistant markdown", () => {
   it("leaves mermaid blocks as code when the feature switch is off", async () => {
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
 
-    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: false },
+    });
 
     await waitFor(() => {
       expect(

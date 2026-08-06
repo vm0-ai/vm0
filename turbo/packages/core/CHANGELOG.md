@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.518.0](https://github.com/vm0-ai/vm0/compare/core-v8.517.0...core-v8.518.0) (2026-08-06)
+
+
+### Features
+
+* roll out mermaidDiagrams to all users ([#25319](https://github.com/vm0-ai/vm0/issues/25319)) ([dae43ba](https://github.com/vm0-ai/vm0/commit/dae43ba457ac8d2da48eb2727132da06ce7a5894))
+
 ## [8.517.0](https://github.com/vm0-ai/vm0/compare/core-v8.516.3...core-v8.517.0) (2026-08-05)
 
 

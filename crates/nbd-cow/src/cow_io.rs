@@ -13,6 +13,16 @@ use crate::error::{NbdCowError, Result};
 /// `CowLayer` performs synchronous positioned file I/O. `CowIo` keeps that
 /// blocking work out of async dispatch tasks while preserving one active COW
 /// operation per device.
+///
+/// # Cancellation
+///
+/// All async operations on this handle share the same cancellation boundary.
+/// Cancelling an operation while it is waiting for the per-device operation
+/// slot prevents that operation from being submitted. Once its blocking task
+/// has been submitted, dropping the operation future, including by aborting its
+/// owning task, discards only the result. The operation continues to completion
+/// and retains the operation slot while it runs, so later COW operations wait
+/// for that in-flight work even after its original awaiter is gone.
 #[derive(Clone)]
 pub struct CowIo {
     inner: Arc<CowIoInner>,
@@ -55,6 +65,12 @@ impl CowIo {
     }
 
     /// Write `data` at `offset`, flushing buffered data when the threshold is reached.
+    ///
+    /// # Cancellation
+    ///
+    /// Cancellation is not a rollback. Once submitted, this write and any
+    /// threshold-triggered flush may complete after the operation future is
+    /// dropped. See [`CowIo`] for the shared cancellation boundary.
     pub async fn write(&self, offset: u64, data: Vec<u8>) -> Result<Vec<u8>> {
         self.run("write", move |cow| {
             let needs_flush = cow.write(offset, &data)?;
@@ -67,6 +83,12 @@ impl CowIo {
     }
 
     /// Flush pending data and sync the COW file when it exists.
+    ///
+    /// # Cancellation
+    ///
+    /// Cancellation is not a rollback. Once submitted, pending data may still
+    /// be flushed and the COW file sync may complete after the operation future
+    /// is dropped. See [`CowIo`] for the shared cancellation boundary.
     pub async fn sync(&self) -> Result<()> {
         self.run("sync", CowLayer::sync).await
     }
