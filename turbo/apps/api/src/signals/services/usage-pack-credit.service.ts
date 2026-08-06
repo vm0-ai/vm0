@@ -1,12 +1,12 @@
 import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
 import { and, eq, gt, sql, sum } from "drizzle-orm";
 
-import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
+import {
+  pgBooleanDecoder,
+  pgInt8ToSafeIntegerDecoder,
+} from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
-import { settle } from "../utils";
-
-const PG_UNDEFINED_TABLE = "42P01";
 
 interface UsagePackCreditGrantArgs {
   readonly orgId: string;
@@ -22,19 +22,21 @@ interface UsagePackCreditGrantResult {
   readonly created: boolean;
 }
 
-export function isUsagePackCreditGrantTableUnavailable(
-  error: unknown,
-): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const { cause } = error;
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    cause.code === PG_UNDEFINED_TABLE
-  );
+export async function usagePackCreditGrantSchemaAvailable(
+  db: Pick<Db, "select">,
+): Promise<boolean> {
+  // Keep the API safe while it can run before migration 0844. Remove this
+  // probe after 0844 is guaranteed everywhere and the rollback window closes.
+  const [state] = await db
+    .select({
+      available:
+        sql`to_regclass('public.usage_pack_credit_grants') IS NOT NULL`.mapWith(
+          pgBooleanDecoder,
+        ),
+    })
+    .from(sql`(SELECT 1) AS schema_probe`)
+    .limit(1);
+  return state?.available ?? false;
 }
 
 export async function createUsagePackCreditGrant(
@@ -93,32 +95,25 @@ export async function getSpendableUsagePackCredits(
     readonly at?: Date;
   },
 ): Promise<number> {
-  const result = await settle(
-    db
-      .select({
-        total:
-          sql`COALESCE(${sum(usagePackCreditGrants.remainingAmount)}, 0)::bigint`
-            .mapWith(pgInt8ToSafeIntegerDecoder)
-            .as("total"),
-      })
-      .from(usagePackCreditGrants)
-      .where(
-        and(
-          eq(usagePackCreditGrants.orgId, args.orgId),
-          eq(usagePackCreditGrants.userId, args.userId),
-          gt(usagePackCreditGrants.remainingAmount, 0),
-          gt(usagePackCreditGrants.expiresAt, args.at ?? nowDate()),
-        ),
-      ),
-  );
-  if (!result.ok) {
-    // Migration 0841 runs before API promotion, but rollback and isolated
-    // probes can briefly execute this reader without the table. Remove after
-    // 0841 is present in every supported API rollback database.
-    if (isUsagePackCreditGrantTableUnavailable(result.error)) {
-      return 0;
-    }
-    throw result.error;
+  const at = args.at ?? nowDate();
+  if (!(await usagePackCreditGrantSchemaAvailable(db))) {
+    return 0;
   }
-  return result.value[0]?.total ?? 0;
+  const [row] = await db
+    .select({
+      total:
+        sql`COALESCE(${sum(usagePackCreditGrants.remainingAmount)}, 0)::bigint`
+          .mapWith(pgInt8ToSafeIntegerDecoder)
+          .as("total"),
+    })
+    .from(usagePackCreditGrants)
+    .where(
+      and(
+        eq(usagePackCreditGrants.orgId, args.orgId),
+        eq(usagePackCreditGrants.userId, args.userId),
+        gt(usagePackCreditGrants.remainingAmount, 0),
+        gt(usagePackCreditGrants.expiresAt, at),
+      ),
+    );
+  return row?.total ?? 0;
 }

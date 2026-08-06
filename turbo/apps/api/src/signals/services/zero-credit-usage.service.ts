@@ -10,7 +10,7 @@ import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { usageUnderbillingFields } from "../usage-underbilling";
-import { settle, tapError } from "../utils";
+import { tapError } from "../utils";
 import { maybeEmitRunUsageEvent$ } from "./zero-chat-usage-event.service";
 import {
   enqueueCreditLowBalanceAlert$,
@@ -19,7 +19,7 @@ import {
 } from "./zero-credit-low-balance-alert.service";
 import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
 import { applyUsageAllowanceToUsageEventsInLockedTransaction } from "./usage-allowance.service";
-import { isUsagePackCreditGrantTableUnavailable } from "./usage-pack-credit.service";
+import { usagePackCreditGrantSchemaAvailable } from "./usage-pack-credit.service";
 
 const L = logger("CreditUsage");
 
@@ -157,39 +157,32 @@ async function deductFromUsagePackCredits(
     return 0;
   }
 
-  const grantResult = await settle(
-    tx
-      .select({
-        id: usagePackCreditGrants.id,
-        remainingAmount: usagePackCreditGrants.remainingAmount,
-      })
-      .from(usagePackCreditGrants)
-      .where(
-        and(
-          eq(usagePackCreditGrants.orgId, args.orgId),
-          eq(usagePackCreditGrants.userId, args.userId),
-          gt(usagePackCreditGrants.remainingAmount, 0),
-          gt(usagePackCreditGrants.expiresAt, args.at),
-        ),
-      )
-      .orderBy(
-        sql`CASE ${usagePackCreditGrants.grantType} WHEN 'purchased' THEN 0 ELSE 1 END`,
-        asc(usagePackCreditGrants.expiresAt),
-        asc(usagePackCreditGrants.id),
-      )
-      .for("update"),
-  );
-  if (!grantResult.ok) {
-    // Preserve the old shared-credit path during the migration 0841 rollout.
-    // Remove after 0841 is present in every supported API rollback database.
-    if (isUsagePackCreditGrantTableUnavailable(grantResult.error)) {
-      return args.amount;
-    }
-    throw grantResult.error;
+  if (!(await usagePackCreditGrantSchemaAvailable(tx))) {
+    return args.amount;
   }
+  const grants = await tx
+    .select({
+      id: usagePackCreditGrants.id,
+      remainingAmount: usagePackCreditGrants.remainingAmount,
+    })
+    .from(usagePackCreditGrants)
+    .where(
+      and(
+        eq(usagePackCreditGrants.orgId, args.orgId),
+        eq(usagePackCreditGrants.userId, args.userId),
+        gt(usagePackCreditGrants.remainingAmount, 0),
+        gt(usagePackCreditGrants.expiresAt, args.at),
+      ),
+    )
+    .orderBy(
+      sql`CASE ${usagePackCreditGrants.grantType} WHEN 'purchased' THEN 0 ELSE 1 END`,
+      asc(usagePackCreditGrants.expiresAt),
+      asc(usagePackCreditGrants.id),
+    )
+    .for("update");
 
   let remainingCharge = args.amount;
-  for (const grant of grantResult.value) {
+  for (const grant of grants) {
     if (remainingCharge <= 0) {
       break;
     }
