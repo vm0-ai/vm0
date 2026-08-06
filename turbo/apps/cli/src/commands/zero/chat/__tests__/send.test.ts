@@ -328,6 +328,31 @@ describe("zero chat send command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it("rejects a server-owned model annotation before calling the API", async () => {
+    const filePath = writeUserMessageFile({
+      version: 1,
+      parts: [
+        { type: "text", text: "Continue" },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
+
+    await expect(async () => {
+      await zeroChatCommand.parseAsync([
+        "node",
+        "cli",
+        "send",
+        "--user-message-file",
+        filePath,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("is not a valid UserMessageDocument");
+    expect(stderr).toContain("parts.1.type");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   it("rejects --text together with --user-message-file", async () => {
     const filePath = writeUserMessageFile({
       version: 1,
