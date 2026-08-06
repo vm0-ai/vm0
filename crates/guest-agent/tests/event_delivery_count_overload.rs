@@ -1,4 +1,4 @@
-//! Ordinary CLI event delivery must fail without blocking stdout when the
+//! Claude Code event delivery must fail without blocking stdout when the
 //! bounded delivery queue fills behind a stalled event endpoint.
 
 mod common;

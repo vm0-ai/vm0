@@ -1,4 +1,4 @@
-//! Ordinary CLI event delivery must reject an aggregate of individually valid
+//! Claude Code event delivery must reject an aggregate of individually valid
 //! payloads that exceeds the queued-plus-in-flight byte budget.
 
 mod common;
