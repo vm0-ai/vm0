@@ -156,7 +156,10 @@ interface ValueMarker {
   readonly key: string;
 }
 
-type EncryptedCustomConnectorValue = CustomConnectorValueInput & {
+type EncryptedCustomConnectorValue = Omit<
+  CustomConnectorValueInput,
+  "value"
+> & {
   readonly encryptedValue: string;
 };
 
@@ -2019,7 +2022,11 @@ async function encryptCustomConnectorValues(args: {
       args.featureSwitchContext,
     );
     args.signal.throwIfAborted();
-    encryptedValues.push({ ...value, encryptedValue });
+    encryptedValues.push({
+      key: value.key,
+      kind: value.kind,
+      encryptedValue,
+    });
   }
   return encryptedValues;
 }
