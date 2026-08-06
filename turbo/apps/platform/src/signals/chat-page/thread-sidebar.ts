@@ -38,7 +38,16 @@ export type ArtifactRef = {
   readonly url: string;
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
+  readonly shareAvailable?: boolean;
 };
+
+export type ArtifactFileRef = {
+  readonly file: File;
+  readonly url: string;
+  readonly shareAvailable?: boolean;
+};
+
+export type ArtifactRefInput = string | ArtifactFileRef;
 
 export type ThreadSidebarArtifactSource =
   | { readonly kind: "catalog"; readonly artifactId: string }
