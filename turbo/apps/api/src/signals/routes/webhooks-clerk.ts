@@ -4,8 +4,9 @@ import { command } from "ccstate";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { request$ } from "../context/hono";
-import { verifyClerkWebhook } from "../external/clerk";
+import { type ClerkWebhookEvent, verifyClerkWebhook } from "../external/clerk";
 import { waitUntil } from "../context/wait-until";
+import { type Db, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { tapError } from "../utils";
 import { ensureOrgLimitedFreeBootstrap$ } from "../services/org-limited-free-bootstrap.service";
@@ -15,6 +16,7 @@ import {
   cleanupClerkDeletedOrg$,
   cleanupClerkDeletedUser$,
 } from "../services/webhooks-clerk-cleanup.service";
+import { handleUsagePackInvitationAccepted } from "../services/usage-pack-invitation-purchase.service";
 
 const L = logger("WebhookClerkRoute");
 
@@ -44,6 +46,13 @@ function propertyOf(value: unknown, key: string): unknown {
 function stringPropertyOf(value: unknown, key: string): string | undefined {
   const property = propertyOf(value, key);
   return typeof property === "string" ? property : undefined;
+}
+
+function numberPropertyOf(value: unknown, key: string): number | undefined {
+  const property = propertyOf(value, key);
+  return typeof property === "number" && Number.isFinite(property)
+    ? property
+    : undefined;
 }
 
 function organizationMembershipIdentity(data: unknown):
@@ -105,14 +114,84 @@ function enqueueOrgBootstrap(args: {
   );
 }
 
+function organizationInvitationAcceptedIdentity(data: unknown):
+  | {
+      readonly orgId: string;
+      readonly invitationId: string;
+      readonly userId: string;
+      readonly acceptedAt: Date;
+      readonly normalizedEmail: string;
+      readonly purchaseId?: string;
+    }
+  | undefined {
+  const orgId = stringPropertyOf(data, "organization_id");
+  const invitationId = eventDataId(data);
+  const userId = stringPropertyOf(data, "user_id");
+  const normalizedEmail = stringPropertyOf(data, "email_address");
+  const updatedAt = numberPropertyOf(data, "updated_at");
+  const purchaseId = stringPropertyOf(
+    propertyOf(data, "private_metadata"),
+    "usagePackInvitationPurchaseId",
+  );
+
+  return orgId && invitationId && userId && normalizedEmail && updatedAt
+    ? {
+        orgId,
+        invitationId,
+        userId,
+        acceptedAt: new Date(updatedAt),
+        normalizedEmail,
+        ...(purchaseId ? { purchaseId } : {}),
+      }
+    : undefined;
+}
+
+function enqueueUsagePackInvitationAcceptance(
+  identity: NonNullable<
+    ReturnType<typeof organizationInvitationAcceptedIdentity>
+  >,
+  db: Db,
+  signal: AbortSignal,
+): void {
+  waitUntil(
+    tapError(
+      handleUsagePackInvitationAccepted(db, identity, signal),
+      (error) => {
+        L.error("organizationInvitation.accepted activation failed", {
+          orgId: identity.orgId,
+          invitationId: identity.invitationId,
+          userId: identity.userId,
+          error,
+        });
+      },
+    ),
+  );
+}
+
+function handleOrganizationInvitationAcceptedWebhook(
+  data: unknown,
+  db: Db,
+  signal: AbortSignal,
+): Response {
+  const identity = organizationInvitationAcceptedIdentity(data);
+  if (!identity) {
+    L.error("organizationInvitation.accepted event missing identity", { data });
+    return new Response("OK", { status: 200 });
+  }
+  enqueueUsagePackInvitationAcceptance(identity, db, signal);
+  return new Response("OK", { status: 200 });
+}
+
+async function verifiedClerkWebhook(
+  request: Request,
+): Promise<ClerkWebhookEvent | undefined> {
+  const signingSecret = optionalEnv("CLERK_WEBHOOK_SIGNING_SECRET");
+  return await tapError(verifyClerkWebhook(request.clone(), { signingSecret }));
+}
+
 const postClerkWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
-    const request = get(request$).raw;
-    const signingSecret = optionalEnv("CLERK_WEBHOOK_SIGNING_SECRET");
-
-    const event = await tapError(
-      verifyClerkWebhook(request.clone(), { signingSecret }),
-    );
+    const event = await verifiedClerkWebhook(get(request$).raw);
     signal.throwIfAborted();
     if (!event) {
       return jsonError("Invalid webhook signature", 401);
@@ -139,6 +218,14 @@ const postClerkWebhook$ = command(
         ),
       });
       return new Response("OK", { status: 200 });
+    }
+
+    if (event.type === "organizationInvitation.accepted") {
+      return handleOrganizationInvitationAcceptedWebhook(
+        event.data,
+        set(writeDb$),
+        signal,
+      );
     }
 
     if (event.type === "organizationMembership.created") {

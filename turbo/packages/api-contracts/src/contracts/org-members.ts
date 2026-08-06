@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { usagePackUsdSchema } from "./zero-billing";
 
 /**
  * Org role enum
@@ -88,6 +89,20 @@ export const inviteOrgMemberRequestSchema = z.object({
 export type InviteOrgMemberRequest = z.infer<
   typeof inviteOrgMemberRequestSchema
 >;
+
+export const purchaseOrgInvitationRequestSchema =
+  inviteOrgMemberRequestSchema.extend({
+    usagePackUsd: usagePackUsdSchema,
+    successUrl: z.string().url().max(5000),
+    cancelUrl: z.string().url().max(5000),
+  });
+export type PurchaseOrgInvitationRequest = z.infer<
+  typeof purchaseOrgInvitationRequestSchema
+>;
+
+export const orgInvitationCheckoutResponseSchema = z.object({
+  url: z.string().url(),
+});
 
 /**
  * Remove member request schema

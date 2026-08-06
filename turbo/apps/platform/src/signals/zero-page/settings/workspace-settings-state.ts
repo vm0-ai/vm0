@@ -13,6 +13,8 @@ import {
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
 import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
+import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { org$, refreshOrg$ } from "../../org.ts";
 import { zeroClient$ } from "../../api-client.ts";
@@ -20,6 +22,11 @@ import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
+import { featureSwitch$ } from "../../external/feature-switch.ts";
+import {
+  usagePackCatalogAsync$,
+  usagePackManagementAsync$,
+} from "../billing.ts";
 
 const internalBillingScrollTarget$ = state<"buy-credits" | null>(null);
 
@@ -234,6 +241,34 @@ export const inviteRole$ = computed((get) => {
 
 export const setInviteRole$ = command(({ set }, value: OrgRole) => {
   set(internalInviteRole$, value);
+});
+
+const internalInviteUsagePackUsd$ = state<UsagePackUsd>(20);
+
+export const inviteUsagePackUsd$ = computed((get) => {
+  return get(internalInviteUsagePackUsd$);
+});
+
+export const setInviteUsagePackUsd$ = command(
+  ({ set }, value: UsagePackUsd) => {
+    set(internalInviteUsagePackUsd$, value);
+  },
+);
+
+export const invitationUsagePackCatalog$ = computed((get) => {
+  if (
+    !get(internalInviteDialogOpen$) ||
+    !get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]
+  ) {
+    return null;
+  }
+  return (async () => {
+    const management = await get(usagePackManagementAsync$);
+    if (!management) {
+      return null;
+    }
+    return await get(usagePackCatalogAsync$);
+  })();
 });
 
 // ---------------------------------------------------------------------------
@@ -463,9 +498,36 @@ export const deleteOrg$ = command(
 // ---------------------------------------------------------------------------
 
 export const inviteMember$ = command(
-  async ({ get, set }, email: string, role: OrgRole, signal: AbortSignal) => {
+  async (
+    { get, set },
+    email: string,
+    role: OrgRole,
+    usagePackUsd: UsagePackUsd | null,
+    signal: AbortSignal,
+  ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgInviteContract);
+    if (usagePackUsd !== null) {
+      const successUrl = new URL(window.location.href);
+      successUrl.searchParams.set("invitation", "payment-success");
+      const cancelUrl = new URL(window.location.href);
+      const result = await accept(
+        client.purchase({
+          body: {
+            email,
+            role,
+            usagePackUsd,
+            successUrl: successUrl.toString(),
+            cancelUrl: cancelUrl.toString(),
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+      window.location.href = result.body.url;
+      return;
+    }
     await accept(
       client.invite({
         body: { email, role },
@@ -486,6 +548,7 @@ export const inviteMember$ = command(
     set(internalInviteDialogOpen$, false);
     set(internalInviteEmail$, "");
     set(internalInviteRole$, "member");
+    set(internalInviteUsagePackUsd$, 20);
   },
 );
 

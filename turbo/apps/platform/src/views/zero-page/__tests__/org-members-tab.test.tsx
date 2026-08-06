@@ -4,6 +4,11 @@ import {
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
+import {
+  zeroBillingUsagePackCatalogContract,
+  zeroBillingUsagePackManagementContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@vm0/core";
 import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it } from "vitest";
@@ -262,6 +267,104 @@ describe("organization members settings", () => {
 
     await waitFor(() => {
       expect(screen.getByText("bob.invited@example.com")).toBeInTheDocument();
+    });
+  });
+
+  it("requires a package and starts paid invitation Checkout for a usage pack org", async () => {
+    mockMembersStory();
+    let checkoutBody: unknown;
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          tier: "pro",
+          currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+          allocations: [
+            {
+              id: "a99c2cd1-b012-4ba5-952f-3aa9b707d0c6",
+              memberId: "test-user-123",
+              usagePackUsd: 20,
+              currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+              pendingChange: null,
+            },
+          ],
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackCatalogContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          usagePacks: [
+            {
+              usagePackUsd: 20,
+              priceUsd: 20,
+              purchasedCredits: 20_000,
+              bonusCredits: 400,
+              totalCredits: 20_400,
+            },
+            {
+              usagePackUsd: 50,
+              priceUsd: 50,
+              purchasedCredits: 50_000,
+              bonusCredits: 2600,
+              totalCredits: 52_600,
+            },
+          ],
+        });
+      },
+    );
+    context.mocks.api(zeroOrgInviteContract.purchase, ({ body, respond }) => {
+      checkoutBody = body;
+      return respond(200, {
+        url: "https://checkout.stripe.test/member-invitation",
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=people",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "People" }),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText("Add member"));
+    const inviteDialog = await screen.findByRole("dialog", {
+      name: "Invite member",
+    });
+    await fill(
+      within(inviteDialog).getByPlaceholderText("email@example.com"),
+      "paid.invitee@example.com",
+    );
+    await expect(
+      within(inviteDialog).findByText("Member packages"),
+    ).resolves.toBeInTheDocument();
+    const packageSelector = within(inviteDialog).getAllByRole("combobox")[1];
+    if (!packageSelector) {
+      throw new Error("Usage pack selector not found");
+    }
+    click(packageSelector);
+    click(
+      await screen.findByRole("option", {
+        name: "$50 · 52,600 Total credits",
+      }),
+    );
+    click(buttonByText("Continue", inviteDialog));
+
+    await waitFor(() => {
+      expect(checkoutBody).toStrictEqual({
+        email: "paid.invitee@example.com",
+        role: "member",
+        usagePackUsd: 50,
+        successUrl: expect.stringContaining("invitation=payment-success"),
+        cancelUrl: expect.any(String),
+      });
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.test/member-invitation",
+      );
     });
   });
 
