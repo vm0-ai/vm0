@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.521.0](https://github.com/vm0-ai/vm0/compare/core-v8.520.0...core-v8.521.0) (2026-08-06)
+
+
+### Features
+
+* add managed translation command ([#25364](https://github.com/vm0-ai/vm0/issues/25364)) ([696da1d](https://github.com/vm0-ai/vm0/commit/696da1dce5263a45cea595da2622726df8410245))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.277.0
+
 ## [8.520.0](https://github.com/vm0-ai/vm0/compare/core-v8.519.0...core-v8.520.0) (2026-08-06)
 
 
