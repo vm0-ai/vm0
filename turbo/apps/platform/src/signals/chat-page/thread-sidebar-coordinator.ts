@@ -10,7 +10,11 @@ import {
   currentRightThread$,
 } from "./chat-thread-pane-state.ts";
 import type { ChatPanelSignals } from "./chat-panel-signals.ts";
-import type { ArtifactRef, ThreadSidebarTarget } from "./thread-sidebar.ts";
+import type {
+  ArtifactRef,
+  ArtifactRefInput,
+  ThreadSidebarTarget,
+} from "./thread-sidebar.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
@@ -134,19 +138,37 @@ export function artifactRefFromUrl(url: string): ArtifactRef {
   };
 }
 
+function materializeArtifactRef(input: ArtifactRefInput): ArtifactRef {
+  if (typeof input === "string") {
+    return artifactRefFromUrl(input);
+  }
+  return {
+    url: input.url,
+    kind: classifyChatAttachment({
+      contentType: input.file.type,
+      filename: input.file.name,
+      url: input.url,
+    }),
+    filename: input.file.name,
+    ...(input.shareAvailable === undefined
+      ? {}
+      : { shareAvailable: input.shareAvailable }),
+  };
+}
+
 /**
  * Promote a message attachment from the lightbox into split view. The lightbox
  * is page-global, so the main (left) thread hosts the sidebar.
  */
 export const openThreadArtifactSplitView$ = command(
-  ({ get, set }, url: string) => {
+  ({ get, set }, input: ArtifactRefInput) => {
     const thread = get(currentLeftThread$) ?? get(currentRightThread$);
     if (!thread) {
       return;
     }
     set(openOnThread$, thread, {
       type: "artifact",
-      source: { kind: "attachment", ref: artifactRefFromUrl(url) },
+      source: { kind: "attachment", ref: materializeArtifactRef(input) },
     });
   },
 );
@@ -157,7 +179,7 @@ export const openThreadArtifactSplitView$ = command(
  * sidebar, leaving the caller on its own preview surface.
  */
 export const openArtifactInOpenSidebar$ = command(
-  ({ get, set }, url: string): boolean => {
+  ({ get, set }, input: ArtifactRefInput): boolean => {
     if (!get(artifactSidebarInlineOpenEnabled$)) {
       return false;
     }
@@ -172,7 +194,7 @@ export const openArtifactInOpenSidebar$ = command(
     // swaps its content without closing and reopening the pane.
     set(active.thread.sidebar.open$, {
       type: "artifact",
-      source: { kind: "attachment", ref: artifactRefFromUrl(url) },
+      source: { kind: "attachment", ref: materializeArtifactRef(input) },
     });
     return true;
   },

@@ -74,6 +74,214 @@ class TestOpenAIResponsesSseUsageExtractor:
             "tokens.output": 0,
         }
 
+    @pytest.mark.parametrize(
+        ("event_type", "event_prefix"),
+        [
+            pytest.param(
+                "response.completed",
+                b"event: response.completed\n",
+                id="completed",
+            ),
+            pytest.param("response.done", b"event: response.done\n", id="done"),
+            pytest.param(
+                "response.incomplete",
+                b"event: response.incomplete\n",
+                id="incomplete",
+            ),
+            pytest.param("response.failed", b"event: response.failed\n", id="failed"),
+            pytest.param("response.completed", b"", id="eventless"),
+        ],
+    )
+    def test_reports_normalized_terminal_usage_snapshot(self, event_type, event_prefix):
+        terminal_usage: list[dict] = []
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_terminal_usage=terminal_usage.append
+        )
+        parse(
+            event_prefix
+            + b'data: {"type":"'
+            + event_type.encode()
+            + b'","response":{"id":"resp_terminal","model":"gpt-5.6-sol",'
+            b'"usage":{"input_tokens":100,"output_tokens":40,'
+            b'"input_tokens_details":{"cached_tokens":25,'
+            b'"cache_write_tokens":30}}}}\n\n'
+        )
+
+        expected = {
+            "message_id": "resp_terminal",
+            "model": "gpt-5.6-sol",
+            "tokens.input": 45,
+            "tokens.output": 40,
+            "tokens.cache_read": 25,
+            "tokens.cache_creation": 30,
+        }
+        assert usage == expected
+        assert terminal_usage == [expected]
+
+    def test_reports_named_terminal_snapshot_without_json_type(self):
+        terminal_usage: list[dict] = []
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_terminal_usage=terminal_usage.append
+        )
+        parse(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":12,"output_tokens":7}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.5",
+            "tokens.input": 12,
+            "tokens.output": 7,
+        }
+        assert terminal_usage == [usage]
+
+    @pytest.mark.parametrize(
+        ("event_name", "data_type"),
+        [
+            pytest.param(
+                "response.completed",
+                "response.failed",
+                id="conflicting-terminal",
+            ),
+            pytest.param(
+                "response.future_usage",
+                "response.future_usage",
+                id="unknown",
+            ),
+        ],
+    )
+    def test_compatibility_usage_does_not_become_terminal_snapshot(self, event_name, data_type):
+        terminal_usage: list[dict] = []
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_terminal_usage=terminal_usage.append
+        )
+        parse(
+            b"event: "
+            + event_name.encode()
+            + b"\n"
+            + b'data: {"type":"'
+            + data_type.encode()
+            + b'","response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.5",
+            "tokens.input": 9,
+            "tokens.output": 4,
+        }
+        assert terminal_usage == []
+
+    @pytest.mark.parametrize(
+        "event_prefix",
+        [
+            pytest.param(b"event: response.completed\n", id="named"),
+            pytest.param(b"", id="eventless"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "type_fields",
+        [
+            pytest.param(
+                b'"type":"response.failed","type":"response.completed",',
+                id="first-conflicts-with-last",
+            ),
+            pytest.param(
+                b'"type":"response.completed","type":"response.failed",'
+                b'"type":"response.completed",',
+                id="middle-conflicts-with-matching-ends",
+            ),
+            pytest.param(
+                b'"padding":"'
+                + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
+                + b'","type":"response.failed","type":"response.completed",',
+                id="conflict-after-prefilter-bound",
+            ),
+            pytest.param(
+                b'"padding":"'
+                + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
+                + b'","type":42,',
+                id="invalid-type-after-prefilter-bound",
+            ),
+        ],
+    )
+    def test_conflicting_duplicate_terminal_types_do_not_report_snapshot(
+        self, event_prefix, type_fields
+    ):
+        terminal_usage: list[dict] = []
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_terminal_usage=terminal_usage.append
+        )
+        parse(
+            event_prefix + b"data: {" + type_fields + b'"response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.5",
+            "tokens.input": 9,
+            "tokens.output": 4,
+        }
+        assert terminal_usage == []
+
+    @pytest.mark.parametrize(
+        "usage_json",
+        [
+            pytest.param(b'"usage":{"input_tokens":0,"output_tokens":0}', id="zero-only"),
+            pytest.param(b'"id":"resp_metadata"', id="metadata-only"),
+        ],
+    )
+    def test_terminal_event_without_positive_usage_does_not_report_snapshot(self, usage_json):
+        terminal_usage: list[dict] = []
+        parse, _usage = create_openai_responses_sse_usage_extractor(
+            on_terminal_usage=terminal_usage.append
+        )
+        parse(
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.5",'
+            + usage_json
+            + b"}}\n\n"
+        )
+
+        assert terminal_usage == []
+
+    def test_incomplete_terminal_event_does_not_report_snapshot(self):
+        terminal_usage: list[dict] = []
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_terminal_usage=terminal_usage.append
+        )
+        parse(
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":9,"output_tokens":4}'
+        )
+        parse.finish()
+
+        assert usage == {}
+        assert terminal_usage == []
+
+    def test_terminal_snapshot_excludes_earlier_unknown_usage(self):
+        terminal_usage: list[dict] = []
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_terminal_usage=terminal_usage.append
+        )
+        parse(
+            b"event: response.future_usage\n"
+            b'data: {"type":"response.future_usage","response":{"model":"gpt-5.5",'
+            b'"usage":{"output_tokens":99}}}\n\n'
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":10}}}\n\n'
+        )
+
+        assert usage == {
+            "model": "gpt-5.5",
+            "tokens.input": 10,
+            "tokens.output": 99,
+        }
+        assert terminal_usage == [{"model": "gpt-5.5", "tokens.input": 10}]
+
     def test_work_limit_discards_partial_event_and_recovers(self):
         parse_errors: list[tuple[str, str]] = []
         parse, usage = create_openai_responses_sse_usage_extractor(

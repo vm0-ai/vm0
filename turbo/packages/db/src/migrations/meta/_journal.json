@@ -236,8 +236,15 @@
     {
       "idx": 841,
       "version": "7",
-      "when": 1785993685702,
-      "tag": "0841_bright_black_bolt",
+      "when": 1786002611488,
+      "tag": "0841_jazzy_johnny_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 842,
+      "version": "7",
+      "when": 1786006301432,
+      "tag": "0842_bright_silhouette",
       "breakpoints": true
     }
   ]

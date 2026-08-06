@@ -179,7 +179,6 @@ pub async fn run_benchmark(
         .create_runtime(sandbox::RuntimeConfig {
             proxy_port: Some(mitm.port()),
             dns_port: None, // benchmark does not use custom DNS proxy
-            guest_dns_netfilter_trace: false,
         })
         .await
     {

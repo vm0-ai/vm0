@@ -121,6 +121,10 @@ export interface QueueMessageOptions {
 
 export interface ChatPanelSignals {
   readonly threadId: string;
+  /** Unique to this mounted chat panel lifetime. */
+  readonly lifecycleId: string;
+  /** Aborts when this chat panel is replaced or its page is left. */
+  readonly signal: AbortSignal;
   // -- Data signals ----------------------------------------------------------
   readonly threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   readonly threadMeta$: Computed<ThreadMeta | null>;

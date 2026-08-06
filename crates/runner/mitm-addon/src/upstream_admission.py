@@ -289,7 +289,28 @@ def handle_server_connect(
     registry_path: str,
     api_url: str,
 ) -> None:
-    """Bind privileged HTTPS upstream connections to their trusted SNI host."""
+    """Prebind an eligible privileged HTTPS upstream from trusted connection identity.
+
+    The event must expose client and server connections, a client peer IP registered in the
+    current available registry, and usable SNI. The hook prefers client SNI and falls back to
+    recorded ClientHello SNI. Any TLS admission record must identify the same client IP and a valid
+    registry VM, and its recorded run identity must match the current run. Missing, stale,
+    malformed, or untrusted inputs return without retargeting the server or creating or extending
+    a binding.
+
+    The normalized SNI host and current server destination port select one binding purpose. The
+    configured platform API host and its subdomains at the configured port qualify for
+    ``api_allow``. Every other exact HTTPS authority qualifies for ``connector_auth`` only when the
+    current VM's compiled firewall set admits ordinary credential mutation there. A matching
+    direct binding that already has the selected kind may be reused; otherwise the selected purpose
+    must currently qualify before a matching binding is extended or a new binding is recorded. A
+    nonmatching binding is preserved.
+
+    Without a matching binding, only an unconnected server may be retargeted and bound; SNI alone
+    never binds an already-connected server. This connection-phase binding records eligibility,
+    not HTTP request authorization. Request handling must still authorize the current request
+    before platform API allowance or connector credential mutation.
+    """
     client = getattr(data, "client", None)
     server = getattr(data, "server", None)
     if client is None or server is None:

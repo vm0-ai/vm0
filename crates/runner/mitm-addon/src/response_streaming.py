@@ -235,14 +235,23 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
         if "text/event-stream" in content_type:
             lifecycle_observer: _AnthropicLifecycleObserver | None = None
             anthropic_accounting_events: set[str] = set()
+            openai_recoverable_usage: dict = {}
             if uses_openai_responses_usage_protocol(flow):
                 usage_protocol = "openai_responses_sse"
                 log_parse_error = _make_model_sse_parse_error_logger(
                     flow,
                     usage_protocol=usage_protocol,
                 )
+
+                def record_openai_terminal_usage(terminal_usage: dict) -> None:
+                    usage.merge_openai_responses_usage_result(
+                        openai_recoverable_usage,
+                        terminal_usage,
+                    )
+
                 parser_fn, usage_dict = usage.create_openai_responses_sse_usage_extractor(
-                    on_parse_error=log_parse_error
+                    on_parse_error=log_parse_error,
+                    on_terminal_usage=record_openai_terminal_usage,
                 )
             else:
                 usage_protocol = _ANTHROPIC_MESSAGES_SSE_PROTOCOL
@@ -277,6 +286,15 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                         anthropic_accounting.report_incomplete(
                             flow,
                             accounting_status,
+                        )
+                    elif (
+                        usage_protocol == "openai_responses_sse"
+                        and decode_error == body_decoding.INCOMPLETE_COMPRESSED_BODY
+                    ):
+                        usage_dict.clear()
+                        usage.merge_openai_responses_usage_result(
+                            usage_dict,
+                            openai_recoverable_usage,
                         )
                     else:
                         usage_dict.clear()

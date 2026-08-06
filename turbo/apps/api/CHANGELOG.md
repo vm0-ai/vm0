@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.384.1](https://github.com/vm0-ai/vm0/compare/api-v1.384.0...api-v1.384.1) (2026-08-06)
+
+
+### Refactoring
+
+* remove chat steer feature switch ([#25369](https://github.com/vm0-ai/vm0/issues/25369)) ([7ef396a](https://github.com/vm0-ai/vm0/commit/7ef396a972b1937b2d345921d98bfca0051e3277))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.522.0
+    * @vm0/db bumped to 1.168.2
+
 ## [1.384.0](https://github.com/vm0-ai/vm0/compare/api-v1.383.0...api-v1.384.0) (2026-08-06)
 
 
