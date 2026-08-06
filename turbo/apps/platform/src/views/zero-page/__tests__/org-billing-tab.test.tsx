@@ -879,6 +879,57 @@ describe("organization billing settings", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("does not offer a second checkout when migration is unavailable", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Paid Pro Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCatalogContract.get,
+      ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.get,
+      ({ respond }) => {
+        return respond(404, {
+          error: {
+            message: "Usage pack subscription not found",
+            code: "NOT_FOUND",
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackMigrationContract.get,
+      ({ respond }) => {
+        return respond(404, {
+          error: {
+            message: "Legacy subscription migration is not available",
+            code: "NOT_FOUND",
+          },
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await screen.findByText("Pro plan");
+    click(buttonByText("Compare all plans"));
+
+    const teamPlan = await screen.findByRole("article", { name: "Team plan" });
+    expect(buttonByText("Select Team", teamPlan)).toBeDisabled();
+  });
+
   it("previews and confirms an in-place legacy Team migration", async () => {
     let migrationState = {
       tier: "team" as const,

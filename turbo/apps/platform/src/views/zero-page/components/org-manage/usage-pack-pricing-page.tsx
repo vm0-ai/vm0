@@ -127,16 +127,18 @@ function usagePackPlan(tier: UsagePackPlanTier): UsagePackPlan {
 }
 
 function canCheckoutUsagePackPlan(
+  checkoutAllowed: boolean,
   currentTier: BillingTier,
   targetTier: UsagePackPlanTier,
 ): boolean {
-  if (currentTier === "custom" || currentTier === "team") {
+  if (!checkoutAllowed || currentTier === "custom" || currentTier === "team") {
     return false;
   }
   return currentTier !== "pro" || targetTier === "team";
 }
 
 function usagePackPlanAction(
+  checkoutAllowed: boolean,
   currentTier: BillingTier,
   managedTier: UsagePackPlanTier | null,
   targetTier: UsagePackPlanTier,
@@ -150,7 +152,7 @@ function usagePackPlanAction(
   if (managedTier === "team" && targetTier === "pro") {
     return "downgrade";
   }
-  return canCheckoutUsagePackPlan(currentTier, targetTier)
+  return canCheckoutUsagePackPlan(checkoutAllowed, currentTier, targetTier)
     ? "select"
     : "disabled";
 }
@@ -1001,6 +1003,7 @@ function CheckoutOrderSummary({
 
 function PlanSelectionStep({
   catalog,
+  checkoutAllowed,
   currentTier,
   error,
   loading,
@@ -1009,6 +1012,7 @@ function PlanSelectionStep({
   onAction,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
+  readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
   readonly error: string | null;
   readonly loading: boolean;
@@ -1027,6 +1031,7 @@ function PlanSelectionStep({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {USAGE_PACK_PLANS.map((plan) => {
           const action = usagePackPlanAction(
+            checkoutAllowed,
             currentTier,
             managedTier,
             plan.tier,
@@ -2209,9 +2214,11 @@ export function UsagePackMigrationPage({
 }
 
 export function UsagePackPricingPage({
+  checkoutAllowed,
   currentTier,
   onBack,
 }: {
+  readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
   readonly onBack: () => void;
 }) {
@@ -2231,7 +2238,8 @@ export function UsagePackPricingPage({
   const selectedPlan = USAGE_PACK_PLANS.find((plan) => {
     return (
       plan.tier === selectedPlanTier &&
-      (management !== null || canCheckoutUsagePackPlan(currentTier, plan.tier))
+      (management !== null ||
+        canCheckoutUsagePackPlan(checkoutAllowed, currentTier, plan.tier))
     );
   });
   return (
@@ -2255,6 +2263,7 @@ export function UsagePackPricingPage({
       ) : (
         <PlanSelectionStep
           catalog={catalog}
+          checkoutAllowed={checkoutAllowed}
           currentTier={currentTier}
           error={null}
           loading={false}

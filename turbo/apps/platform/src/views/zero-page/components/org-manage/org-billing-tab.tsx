@@ -2246,6 +2246,7 @@ function BillingPricingPage({
   onRestore,
   periodEnd,
   scheduledChange,
+  usagePackCheckoutAllowed,
 }: {
   readonly currentTier: BillingTier;
   readonly migration: UsagePackMigrationStateResponse | null;
@@ -2254,6 +2255,7 @@ function BillingPricingPage({
   readonly onRestore: () => void;
   readonly periodEnd: string | null | undefined;
   readonly scheduledChange: ScheduledBillingChange;
+  readonly usagePackCheckoutAllowed: boolean;
 }) {
   const featureSwitches = useGet(featureSwitch$);
   const usagePackPlansEnabled =
@@ -2272,7 +2274,11 @@ function BillingPricingPage({
       ) : migration ? (
         <UsagePackMigrationPage tier={migration.tier} onBack={onBack} />
       ) : usagePackPlansEnabled ? (
-        <UsagePackPricingPage currentTier={currentTier} onBack={onBack} />
+        <UsagePackPricingPage
+          checkoutAllowed={usagePackCheckoutAllowed}
+          currentTier={currentTier}
+          onBack={onBack}
+        />
       ) : (
         <PricingPage
           currentTier={currentTier}
@@ -2297,6 +2303,11 @@ function shouldWaitForUsagePackMigration(
   loading: boolean,
 ): boolean {
   return enabled && loading;
+}
+function canStartUsagePackCheckout(
+  status: BillingStatusResponse | null,
+): boolean {
+  return status?.hasSubscription === false;
 }
 export function OrgBillingTab() {
   const { t } = useTranslation();
@@ -2385,6 +2396,7 @@ export function OrgBillingTab() {
         migrationLoading={migrationLoading}
         scheduledChange={scheduledChange}
         periodEnd={periodEnd}
+        usagePackCheckoutAllowed={canStartUsagePackCheckout(status)}
         onBack={() => {
           return setPricingOpen(false);
         }}
