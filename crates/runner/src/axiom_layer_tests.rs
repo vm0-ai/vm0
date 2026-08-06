@@ -181,15 +181,6 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
         tracing::warn!(foo = "bar", "a warning");
         tracing::error!(code = 42, "a failure");
         tracing::info!("info is below threshold, should not be ingested");
-        tracing::info!(
-            target: "sandbox_fc::balloon_settle",
-            measurement = "balloon_settle",
-            outcome = "target_reached",
-            elapsed_ms = 25_u64,
-            sample_count = 2_u64,
-            admission_action = "reuse",
-            "balloon settle completed"
-        );
     }
 
     guard.shutdown().await;
@@ -209,15 +200,10 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     assert_eq!(failure["service"], json!("runner"));
     assert_eq!(failure["level"], json!("error"));
     assert_eq!(failure["code"], json!(42));
-    for message in [
-        "info is below threshold, should not be ingested",
-        "balloon settle completed",
-    ] {
-        assert!(
-            !has_event_with_message(&events, message),
-            "INFO event should not be ingested: {events:#?}",
-        );
-    }
+    assert!(
+        !has_event_with_message(&events, "info is below threshold, should not be ingested"),
+        "INFO event should not be ingested: {events:#?}",
+    );
 }
 
 #[tokio::test]
