@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.73](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.72...nbd-cow-v0.4.73) (2026-08-06)
+
+
+### Documentation
+
+* **nbd-cow:** document pooled snapshot restore ([#25407](https://github.com/vm0-ai/vm0/issues/25407)) ([70e168a](https://github.com/vm0-ai/vm0/commit/70e168adb652e259bb727feb7b0e45c92adcb951))
+
 ## [0.4.72](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.71...nbd-cow-v0.4.72) (2026-08-06)
 
 
