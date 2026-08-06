@@ -612,8 +612,28 @@ function PendingItemsStripHeader({
   );
 }
 
+function shouldShowNextRunModelNotice({
+  enabled,
+  selectedModel,
+  runningModel,
+}: {
+  enabled: boolean;
+  selectedModel: string | undefined;
+  runningModel: string | null | undefined;
+}): boolean {
+  return (
+    enabled &&
+    selectedModel !== undefined &&
+    runningModel !== undefined &&
+    runningModel !== null &&
+    selectedModel !== runningModel
+  );
+}
+
 function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
+  const nextRunModelNoticeEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatNextRunModelNotice] ?? false;
   const pendingEvents =
     useLastResolved(signals.queue.pendingEvents$) ??
     ([] satisfies readonly ComposerPendingEvent[]);
@@ -623,11 +643,11 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
     signals.model.modelSelection$,
   )?.selectedModel;
   const runningModel = useLastResolved(signals.model.runningModel$);
-  const modelChangeAppliesNextRun =
-    selectedModel !== undefined &&
-    runningModel !== undefined &&
-    runningModel !== null &&
-    selectedModel !== runningModel;
+  const modelChangeAppliesNextRun = shouldShowNextRunModelNotice({
+    enabled: nextRunModelNoticeEnabled,
+    selectedModel,
+    runningModel,
+  });
   const activeGoalObjective = useLastResolved(
     signals.goal.activeGoalObjective$,
   );
