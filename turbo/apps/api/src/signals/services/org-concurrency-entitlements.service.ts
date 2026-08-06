@@ -2,7 +2,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { and, count, eq, gt, inArray, or, sql, sum } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, or, sql, sum } from "drizzle-orm";
 import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -182,7 +182,11 @@ export async function activeConcurrencySubscriptions(
       cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
     })
     .from(orgConcurrencySubscriptions)
-    .where(activeConcurrencySubscriptionPredicate(orgId, at));
+    .where(activeConcurrencySubscriptionPredicate(orgId, at))
+    .orderBy(
+      asc(orgConcurrencySubscriptions.createdAt),
+      asc(orgConcurrencySubscriptions.stripeSubscriptionId),
+    );
 
   return rows
     .map((row) => {

@@ -12,7 +12,7 @@ import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
   CONCURRENCY_SUBSCRIPTION_PURPOSE,
-  activeConcurrencyPriceId,
+  isConcurrencyPriceId,
 } from "./org-concurrency-entitlements.service";
 
 interface CreateCheckoutSessionArgs {
@@ -62,10 +62,12 @@ interface CreateCreditCheckoutSessionArgs {
   readonly cancelUrl: string;
 }
 
-interface CreateConcurrencyCheckoutSessionArgs {
+interface StartConcurrencyPurchaseArgs {
   readonly orgId: string;
   readonly quantity: number;
   readonly priceId: string;
+  readonly existingSubscriptionId?: string;
+  readonly portalConfigurationId?: string;
   readonly successUrl: string;
   readonly cancelUrl: string;
 }
@@ -247,8 +249,6 @@ export function checkoutTierConflictMessage(args: {
 export function activeCustomCreditUnitPriceId(): string | undefined {
   return env("ZERO_PRICE_CUSTOM_CREDIT_UNIT");
 }
-
-export { activeConcurrencyPriceId };
 
 function checkoutSessionMetadata(args: {
   readonly orgId: string;
@@ -533,12 +533,81 @@ export const createCreditCheckoutSession$ = command(
   },
 );
 
-export const createConcurrencyCheckoutSession$ = command(
+function expandedLatestInvoice(
+  subscription: Stripe.Subscription,
+): Stripe.Invoice | null {
+  return typeof subscription.latest_invoice === "string"
+    ? null
+    : subscription.latest_invoice;
+}
+
+function concurrencySubscriptionItem(subscription: Stripe.Subscription): {
+  readonly id: string;
+  readonly quantity: number;
+} {
+  const item = subscription.items.data.find((candidate) => {
+    return isConcurrencyPriceId(candidate.price.id);
+  });
+  if (!item || !item.quantity) {
+    throw new Error("Concurrency subscription has no active concurrency item");
+  }
+  return { id: item.id, quantity: item.quantity };
+}
+
+export const startConcurrencyPurchase$ = command(
   async (
     { set },
-    args: CreateConcurrencyCheckoutSessionArgs,
+    args: StartConcurrencyPurchaseArgs,
     signal: AbortSignal,
   ): Promise<string> => {
+    const stripe = getStripeClient();
+    if (args.existingSubscriptionId) {
+      const subscription = await stripe.subscriptions.retrieve(
+        args.existingSubscriptionId,
+        { expand: ["latest_invoice"] },
+      );
+      signal.throwIfAborted();
+
+      const pendingInvoice = expandedLatestInvoice(subscription);
+      if (subscription.pending_update) {
+        if (!pendingInvoice?.hosted_invoice_url) {
+          throw new Error(
+            "Pending concurrency subscription update has no hosted invoice URL",
+          );
+        }
+        return pendingInvoice.hosted_invoice_url;
+      }
+
+      const item = concurrencySubscriptionItem(subscription);
+      if (!args.portalConfigurationId) {
+        throw new Error(
+          "Concurrency billing portal configuration is not configured",
+        );
+      }
+      const customerId =
+        typeof subscription.customer === "string"
+          ? subscription.customer
+          : subscription.customer.id;
+      const session = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        configuration: args.portalConfigurationId,
+        return_url: args.cancelUrl,
+        flow_data: {
+          type: "subscription_update_confirm",
+          after_completion: {
+            type: "redirect",
+            redirect: { return_url: args.successUrl },
+          },
+          subscription_update_confirm: {
+            subscription: subscription.id,
+            items: [{ id: item.id, quantity: item.quantity + args.quantity }],
+          },
+        },
+      });
+      signal.throwIfAborted();
+      return session.url;
+    }
+
     const customerId = await set(
       getOrCreateStripeCustomer$,
       { orgId: args.orgId },
@@ -553,7 +622,6 @@ export const createConcurrencyCheckoutSession$ = command(
       quantity: String(args.quantity),
       ...stripePreviewMetadata(),
     };
-    const stripe = getStripeClient();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,

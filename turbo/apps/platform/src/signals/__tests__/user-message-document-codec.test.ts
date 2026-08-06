@@ -243,11 +243,27 @@ describe("user message document codec", () => {
           { type: "morning_brief", briefDate: "2026-08-05" },
         ],
       },
+      {
+        version: 1,
+        parts: [
+          { type: "text", text: "Keep this text" },
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
     ];
 
     for (const document of documents) {
       expect(messageDocumentToPrompt(document)).toBe("Keep this text");
       expect(messageDocumentToDisplayText(document)).toBe("Keep this text");
+      expect(messageDocumentToEditorDoc(document)).toStrictEqual({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Keep this text" }],
+          },
+        ],
+      });
     }
   });
 

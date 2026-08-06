@@ -5,7 +5,7 @@ import type {
   AttachFile,
   GenerationTemplateRequest,
   ChatEvent,
-  UserMessageDocument,
+  UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
@@ -230,7 +230,7 @@ async function startChatRun(
     readonly selectedModel?: string;
     readonly attachFiles?: readonly AttachFile[];
     readonly generationTemplate?: GenerationTemplateRequest;
-    readonly userMessage?: UserMessageDocument;
+    readonly userMessage?: UserMessageInputDocument;
     readonly revokesEventId?: string;
   },
   options?: {
@@ -1395,7 +1395,7 @@ describe("CHAT-02: completed chat callback", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const firstUserMessage: UserMessageDocument = {
+    const firstUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -1777,7 +1777,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     }
     expect(goalContinuation.userMessage).toStrictEqual({
       version: 1,
-      parts: [{ type: "goal", goalBrief }],
+      parts: [
+        { type: "goal", goalBrief },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
     });
     expect(goalContinuation.content).toBeNull();
     expect(chatEventDisplayText(goalContinuation)).toBe("");
@@ -4179,7 +4182,7 @@ describe("CHAT-02: auto-send after failures", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {

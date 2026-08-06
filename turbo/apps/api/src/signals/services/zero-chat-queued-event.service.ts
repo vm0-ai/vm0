@@ -66,6 +66,7 @@ import {
   autonomyBudgetSchemaAvailable,
   rolloutCompatibleAutonomyBudgetColumn,
 } from "./autonomy-budget-schema.service";
+import { withRunModelAnnotation } from "./zero-chat-user-message.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -344,6 +345,7 @@ export async function loadNextUnclaimedQueuedUserMessageId(
 type QueueFirstClaimArgs = QueueFirstRunAssociation & {
   readonly admission: QueueFirstRunAdmission;
   readonly runId: string;
+  readonly selectedModel: string | null;
   readonly timing: ApiDispatchTimingCollector;
 };
 
@@ -402,7 +404,10 @@ async function resolveUserQueueFirstClaimSnapshot(
     replacement: {
       chatThreadId: args.threadId,
       eventType: "input.prompt",
-      userMessage: head.userMessage,
+      userMessage:
+        args.selectedModel === null
+          ? head.userMessage
+          : withRunModelAnnotation(head.userMessage, args.selectedModel),
       runId: args.runId,
       attachFiles: head.attachFiles ? [...head.attachFiles] : null,
       generationTemplate: head.generationTemplate,
@@ -459,7 +464,10 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
     replacement: {
       chatThreadId: args.threadId,
       eventType: "input.prompt",
-      userMessage: head.userMessage,
+      userMessage:
+        args.selectedModel === null
+          ? head.userMessage
+          : withRunModelAnnotation(head.userMessage, args.selectedModel),
       runId: args.runId,
       ...(head.triggerSource ? { triggerSource: head.triggerSource } : {}),
     },
@@ -521,7 +529,10 @@ async function resolveGoalQueueFirstClaimSnapshot(
     replacement: {
       chatThreadId: args.threadId,
       eventType: "input.prompt",
-      userMessage: head.userMessage,
+      userMessage:
+        args.selectedModel === null
+          ? head.userMessage
+          : withRunModelAnnotation(head.userMessage, args.selectedModel),
       runId: args.runId,
       runGroupId: args.goalId,
       triggerSource: "workflow-event",

@@ -1,12 +1,42 @@
-import type { EventConsumerPayload } from "../../lib/event-consumer/verify";
+import type {
+  AgentEvent,
+  EventConsumerPayload,
+} from "../../lib/event-consumer/verify";
 import { getDatasetName, ingestAxiomDirect } from "../external/axiom";
-import {
-  PI_MESSAGE_COMPLETED_EVENT_TYPE,
-  redactPiEventForTelemetry,
-} from "./pi-transcript.service";
 
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const AXIOM_EVENT_INGEST_TIMEOUT_MS = 10_000;
+const LEGACY_PI_MESSAGE_COMPLETED_EVENT_TYPE = "pi.message.completed";
+
+function recordOf(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function eventDataForTelemetry(
+  event: AgentEvent,
+): AgentEvent | Record<string, unknown> {
+  if (event.type !== LEGACY_PI_MESSAGE_COMPLETED_EVENT_TYPE) {
+    return event;
+  }
+
+  // In-flight senders can outlive the transcript endpoint rollback. Preserve
+  // useful coordinates without sending the canonical model transcript.
+  const message = recordOf(event.message);
+  return {
+    type: event.type,
+    sequenceNumber: event.sequenceNumber,
+    messageId: event.messageId,
+    expectedVersion: event.expectedVersion,
+    expectedLastOrdinal: event.expectedLastOrdinal,
+    role: message?.role,
+    payloadBytes:
+      message === null
+        ? undefined
+        : Buffer.byteLength(JSON.stringify(message), "utf8"),
+  };
+}
 
 export async function ingestAxiomEvents(
   payload: EventConsumerPayload,
@@ -19,12 +49,7 @@ export async function ingestAxiomEvents(
       userId: payload.context.userId,
       sequenceNumber: event.sequenceNumber,
       eventType: event.type,
-      // The canonical Pi message payload is the model transcript; only its
-      // coordinates and size metadata may reach telemetry.
-      eventData:
-        event.type === PI_MESSAGE_COMPLETED_EVENT_TYPE
-          ? redactPiEventForTelemetry(event)
-          : event,
+      eventData: eventDataForTelemetry(event),
     };
   });
   const ingestSignal = AbortSignal.any([

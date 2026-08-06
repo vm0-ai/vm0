@@ -1,7 +1,7 @@
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
-  UserMessageDocument,
+  UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   textToMessageDocument,
@@ -9,7 +9,7 @@ import {
 } from "./user-message-document-codec.ts";
 
 export interface DraftPersistencePayload {
-  readonly userMessage: UserMessageDocument | null;
+  readonly userMessage: UserMessageInputDocument | null;
   readonly attachments: PersistedAttachment[] | null;
 }
 
@@ -31,7 +31,7 @@ export function buildDraftPersistencePayload(
     source.generationTemplate !== undefined ||
     attachments !== null;
 
-  let userMessage: UserMessageDocument | null = null;
+  let userMessage: UserMessageInputDocument | null = null;
   if (hasUserMessageDraft) {
     userMessage = source.editorDocument
       ? source.editorDocument.toMessageDocument({

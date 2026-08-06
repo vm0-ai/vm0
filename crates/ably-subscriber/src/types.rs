@@ -189,7 +189,11 @@ pub struct TimingConfig {
     /// Timeout for protocol/WebSocket close operations and the total wait in
     /// [`Subscription::close_and_wait`](crate::Subscription::close_and_wait).
     pub close_timeout: Duration,
-    /// Timeout wrapping each individual reconnect attempt.
+    /// Timeout for reconnect setup through sending the channel `ATTACH`.
+    ///
+    /// Waiting for the attach outcome is separately bounded by
+    /// [`realtime_request_timeout`](Self::realtime_request_timeout), so a
+    /// complete reconnect attempt can approach the sum of both timeouts.
     pub reconnect_timeout: Duration,
     /// Fallback `max_idle_interval` when the server omits connection details.
     /// If connection details are present but `maxIdleInterval` is zero or

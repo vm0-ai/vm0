@@ -979,8 +979,11 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 // Reconnection
 // ---------------------------------------------------------------------------
 
-/// Attempt a single reconnect (resume or fresh). Callers are responsible for
-/// applying an outer timeout (e.g. `timing.reconnect_timeout`).
+/// Attempt a single reconnect (resume or fresh).
+///
+/// Reconnect setup through sending the channel `ATTACH` is bounded by
+/// `timing.reconnect_timeout`. Waiting for the attach outcome is then separately
+/// bounded by `timing.realtime_request_timeout`.
 ///
 /// Connection mutations are deferred until the transport is connected and the
 /// channel attach attempt has produced a definitive outcome. If the server

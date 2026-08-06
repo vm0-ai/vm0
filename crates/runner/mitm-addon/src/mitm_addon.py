@@ -154,7 +154,13 @@ class _BufferedRequestBodyCheck:
 
 
 def load(loader: Loader) -> None:
-    """Register custom options for the addon."""
+    """Initialize compatibility and process-global state before addon options.
+
+    Exact-version mitmproxy and wsproto compatibility is installed first. An
+    unreviewed runtime raises ``RuntimeError`` before the process-global runner
+    usage-flush signal handler or custom options are registered. The signal
+    handler is installed next, followed by custom option registration.
+    """
     mitmproxy_compat.install_runtime_compatibility()
     signal.signal(
         runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,

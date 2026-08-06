@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { CLIENT_VERSION_HEADER } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
+import type { UserMessageInputDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -76,7 +76,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       contentType: "text/plain",
       size: 123,
     };
-    const draftUserMessage: UserMessageDocument = {
+    const draftUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {

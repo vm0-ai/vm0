@@ -4,7 +4,7 @@ import AdmZip from "adm-zip";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import type {
   GenerationTemplateRequest,
-  UserMessageDocument,
+  UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
@@ -14,6 +14,7 @@ import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext, accept } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { withThreadlessRunCleanupTestLockFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { modelStatsRoutes } from "../model-stats";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -61,6 +62,7 @@ interface DeferredS3Put {
 }
 
 const context = testContext();
+const registerExportTest = it;
 const trackDeferredS3Put = createFixtureTracker<DeferredS3Put>((pendingPut) => {
   pendingPut.resolve();
   return Promise.resolve();
@@ -1141,6 +1143,15 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 });
 
 describe("OPS-01: user data export", () => {
+  function it(name: string, test: () => Promise<void>): void {
+    registerExportTest(name, async () => {
+      await withThreadlessRunCleanupTestLockFixture({
+        signal: context.signal,
+        run: test,
+      });
+    });
+  }
+
   it("rejects unauthenticated and org-less export requests", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
@@ -1305,7 +1316,7 @@ describe("OPS-01: user data export", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -1352,7 +1363,7 @@ describe("OPS-01: user data export", () => {
     ) as {
       readonly role: string;
       readonly content: string;
-      readonly userMessage?: UserMessageDocument;
+      readonly userMessage?: UserMessageInputDocument;
     }[];
     expect(messages[0]).toMatchObject({
       role: "user",
