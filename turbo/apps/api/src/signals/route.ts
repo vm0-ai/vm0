@@ -47,6 +47,7 @@ import { webhooksAgentCheckpointsRoutes } from "./routes/webhooks-agent-checkpoi
 import { webhooksAgentCompleteRoutes } from "./routes/webhooks-agent-complete";
 import { webhooksAgentEventsRoutes } from "./routes/webhooks-agent-events";
 import { webhooksAgentFirewallAuthRoutes } from "./routes/webhooks-agent-firewall-auth";
+import { webhooksAgentPiTranscriptRoutes } from "./routes/webhooks-agent-pi-transcript";
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
 import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
@@ -231,6 +232,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksAgentCompleteRoutes,
   ...webhooksAgentEventsRoutes,
   ...webhooksAgentFirewallAuthRoutes,
+  ...webhooksAgentPiTranscriptRoutes,
   ...webhooksAgentStorageRoutes,
   ...connectorsSlugCallbackRoutes,
   ...cronAggregateInsightsRoutes,
