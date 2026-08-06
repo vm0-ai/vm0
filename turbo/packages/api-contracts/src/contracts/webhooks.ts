@@ -515,6 +515,12 @@ const piTranscriptMessageSchema = z.object({
   createdAt: z.string(),
 });
 
+export const piTranscriptResponseSchema = z.object({
+  version: z.number().int().positive(),
+  lastOrdinal: z.number().int().nonnegative(),
+  messages: z.array(piTranscriptMessageSchema),
+});
+
 /**
  * Pi transcript read contract for /api/webhooks/agent/pi-transcript.
  * Returns the latest-version Pi transcript of the chat thread the run
@@ -529,11 +535,7 @@ export const webhookPiTranscriptContract = c.router({
       runId: z.string().min(1, "runId is required"),
     }),
     responses: {
-      200: z.object({
-        version: z.number().int().positive(),
-        lastOrdinal: z.number().int().nonnegative(),
-        messages: z.array(piTranscriptMessageSchema),
-      }),
+      200: piTranscriptResponseSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
