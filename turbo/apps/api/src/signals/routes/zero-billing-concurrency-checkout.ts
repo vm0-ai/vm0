@@ -1,17 +1,19 @@
 import { command } from "ccstate";
 import { zeroBillingConcurrencyCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 
-import { optionalEnv } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { db$ } from "../external/db";
+import { db$, type ReadonlyDb } from "../external/db";
 import {
   activeConcurrencyPriceId,
-  createConcurrencyCheckoutSession$,
-} from "../services/zero-billing-checkout.service";
+  activeConcurrencySubscriptions,
+  type ActiveConcurrencySubscription,
+} from "../services/org-concurrency-entitlements.service";
+import { startConcurrencyPurchase$ } from "../services/zero-billing-checkout.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -24,6 +26,66 @@ const adminRequired = Object.freeze({
     }),
   }),
 });
+
+type ConcurrencyPurchaseTarget =
+  | {
+      readonly ok: true;
+      readonly priceId: string;
+      readonly existingSubscription: ActiveConcurrencySubscription | undefined;
+      readonly portalConfigurationId: string | undefined;
+    }
+  | { readonly ok: false; readonly message: string };
+
+async function loadConcurrencyPurchaseTarget(
+  db: ReadonlyDb,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<ConcurrencyPurchaseTarget> {
+  const capabilities = await loadOrgPlanCapabilities(db, orgId);
+  signal.throwIfAborted();
+  if (capabilities?.canBuyConcurrency !== true) {
+    return {
+      ok: false,
+      message:
+        "Additional concurrency is only available for Team or Custom workspaces",
+    };
+  }
+
+  const priceId = activeConcurrencyPriceId();
+  if (!priceId) {
+    return { ok: false, message: "Concurrency price not configured" };
+  }
+
+  const subscriptions = await activeConcurrencySubscriptions(db, orgId);
+  signal.throwIfAborted();
+  const existingSubscription = subscriptions.find((subscription) => {
+    return !subscription.cancelAtPeriodEnd;
+  });
+  if (!existingSubscription && subscriptions.length > 0) {
+    return {
+      ok: false,
+      message:
+        "Restore the existing concurrency subscription before buying more slots",
+    };
+  }
+
+  const portalConfigurationId = env(
+    "STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID",
+  );
+  if (existingSubscription && !portalConfigurationId) {
+    return {
+      ok: false,
+      message: "Concurrency billing portal configuration is not configured",
+    };
+  }
+
+  return {
+    ok: true,
+    priceId,
+    existingSubscription,
+    portalConfigurationId,
+  };
+}
 
 const concurrencyCheckoutAuthed$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -43,14 +105,6 @@ const concurrencyCheckoutAuthed$ = command(
     const { quantity, successUrl, cancelUrl } = bodyResult.data;
 
     const db = get(db$);
-    const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
-    signal.throwIfAborted();
-    if (capabilities?.canBuyConcurrency !== true) {
-      return badRequestMessage(
-        "Additional concurrency is only available for Team or Custom workspaces",
-      );
-    }
-
     if (
       !billingRedirectAllowed(successUrl) ||
       !billingRedirectAllowed(cancelUrl)
@@ -60,17 +114,19 @@ const concurrencyCheckoutAuthed$ = command(
       );
     }
 
-    const priceId = activeConcurrencyPriceId();
-    if (!priceId) {
-      return badRequestMessage("Concurrency price not configured");
+    const target = await loadConcurrencyPurchaseTarget(db, auth.orgId, signal);
+    if (!target.ok) {
+      return badRequestMessage(target.message);
     }
 
     const url = await set(
-      createConcurrencyCheckoutSession$,
+      startConcurrencyPurchase$,
       {
         orgId: auth.orgId,
         quantity,
-        priceId,
+        priceId: target.priceId,
+        existingSubscriptionId: target.existingSubscription?.id,
+        portalConfigurationId: target.portalConfigurationId,
         successUrl,
         cancelUrl,
       },

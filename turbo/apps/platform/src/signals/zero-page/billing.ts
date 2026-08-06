@@ -468,7 +468,7 @@ export const startCreditCheckout$ = command(
 
 export const startConcurrencyCheckout$ = command(
   async ({ get }, quantity: number, newTab: boolean, signal: AbortSignal) => {
-    const successUrl = checkoutReturnUrl();
+    const successUrl = new URL("/", window.location.origin);
     successUrl.searchParams.set("concurrency", "purchased");
     const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("concurrency", "canceled");

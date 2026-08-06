@@ -249,6 +249,7 @@ describe("queue drawer", () => {
 
   it("lets Team admins buy additional concurrency when the queue is full", async () => {
     let checkoutQuantity: number | null = null;
+    let checkoutSuccessUrl: string | null = null;
     mockConcurrencyCapability(true);
     context.mocks.data.org({
       id: "org_1",
@@ -268,6 +269,7 @@ describe("queue drawer", () => {
       zeroBillingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         checkoutQuantity = body.quantity;
+        checkoutSuccessUrl = body.successUrl;
         return respond(200, {
           url: `https://checkout.stripe.com/test?concurrency=${body.quantity}`,
         });
@@ -301,6 +303,12 @@ describe("queue drawer", () => {
         "https://checkout.stripe.com/test?concurrency=2",
       );
     });
+    if (!checkoutSuccessUrl) {
+      throw new Error("Concurrency checkout success URL was not captured");
+    }
+    const successUrl = new URL(checkoutSuccessUrl);
+    expect(successUrl.pathname).toBe("/");
+    expect(successUrl.searchParams.get("concurrency")).toBe("purchased");
   });
 
   it("hides additional concurrency checkout when the plan capability is disabled", async () => {
