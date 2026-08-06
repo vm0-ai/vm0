@@ -25,8 +25,8 @@ interface UsagePackCreditGrantResult {
 export async function usagePackCreditGrantSchemaAvailable(
   db: Pick<Db, "select">,
 ): Promise<boolean> {
-  // Keep the API safe while it can run before migration 0844. Remove this
-  // probe after 0844 is guaranteed everywhere and the rollback window closes.
+  // Keep the API safe while it can run before migration 0845. Remove this
+  // probe after 0845 is guaranteed everywhere and the rollback window closes.
   const [state] = await db
     .select({
       available:

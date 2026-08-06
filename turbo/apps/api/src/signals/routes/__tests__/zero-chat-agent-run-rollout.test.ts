@@ -234,7 +234,7 @@ async function runPreAgentRunContextRouteProbe(
   }
   await api.grantProEntitlement(actor);
 
-  // Migration 0844 is intentionally absent here. Settlement must probe the
+  // Migration 0845 is intentionally absent here. Settlement must probe the
   // schema without aborting its transaction, then preserve shared credits.
   const rolloutProvider = `usage-pack-rollout-${randomUUID()}`;
   await seedUsagePricingRows([
