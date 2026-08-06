@@ -4584,7 +4584,7 @@ function TemplatePickerCategoryNav({
           </SelectContent>
         </Select>
       </div>
-      <div className="hidden shrink-0 items-center gap-3 border-b border-border py-3.5 pl-6 pr-14 sm:flex">
+      <div className="hidden shrink-0 items-center gap-3 border-b border-border py-3.5 pl-6 pr-4 sm:flex">
         <nav
           role="tablist"
           aria-label={t(($) => {
