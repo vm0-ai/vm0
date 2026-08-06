@@ -185,7 +185,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const hasCredits = await set(
     checkImageCredits$,
-    { orgId: auth.orgId },
+    { orgId: auth.orgId, userId: auth.userId },
     signal,
   );
   if (!hasCredits) {

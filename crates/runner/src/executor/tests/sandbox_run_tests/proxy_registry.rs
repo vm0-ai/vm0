@@ -213,7 +213,9 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
     overrides.clear_copy_file_lifecycle_gate();
     copy_gate.release_many(overrides.copy_file_calls().len());
 
-    let outcome = run.await;
+    let outcome = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut run)
+        .await
+        .expect("post-gate proxy cleanup and finalization should complete");
 
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();
