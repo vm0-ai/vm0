@@ -1463,6 +1463,7 @@
       "loadingGoal": "目標を読み込んでいます...",
       "message_one": "{{count}} メッセージ",
       "message_other": "{{count}} メッセージ",
+      "modelChangeAppliesNextRun": "選択したモデルは次回の実行から適用されます。",
       "openGoalDetails": "目標の詳細を開く",
       "pendingAutomationEvent": "保留中のオートメーションイベント",
       "queuedMessage": "キューに入れられたメッセージ",

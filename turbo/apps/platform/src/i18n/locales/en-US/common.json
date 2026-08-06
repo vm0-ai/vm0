@@ -1463,6 +1463,7 @@
       "loadingGoal": "Loading goal...",
       "message_one": "{{count}} message",
       "message_other": "{{count}} messages",
+      "modelChangeAppliesNextRun": "Your selected model will take effect on your next run.",
       "openGoalDetails": "Open goal details",
       "pendingAutomationEvent": "Pending automation event",
       "queuedMessage": "Queued message",

@@ -1529,10 +1529,11 @@ describe("CHAT-02: queueing and recalling messages", () => {
       if (!claimedEvent || claimedEvent.eventType !== "input.prompt") {
         throw new Error("Expected the pending active input to be claimed");
       }
-      expect(claimedEvent.userMessage.parts).toContainEqual({
-        type: "model",
-        selectedModel: "claude-sonnet-4-6",
-      });
+      expect(
+        claimedEvent.userMessage.parts.some((part) => {
+          return part.type === "model";
+        }),
+      ).toBeFalsy();
     }
 
     const emptyControlPayloadBytes = Buffer.byteLength(
@@ -1707,10 +1708,11 @@ describe("CHAT-02: queueing and recalling messages", () => {
     if (!budgetEvent || budgetEvent.eventType !== "input.budget") {
       throw new Error("Expected the run time budget input to be claimed");
     }
-    expect(budgetEvent.userMessage.parts).toContainEqual({
-      type: "model",
-      selectedModel: "claude-sonnet-4-6",
-    });
+    expect(
+      budgetEvent.userMessage.parts.some((part) => {
+        return part.type === "model";
+      }),
+    ).toBeFalsy();
 
     const legacyPublicEvents = await chat.listThreadEvents(
       actor,
