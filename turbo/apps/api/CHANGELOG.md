@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.383.0](https://github.com/vm0-ai/vm0/compare/api-v1.382.0...api-v1.383.0) (2026-08-06)
+
+
+### Features
+
+* clean up inactive browser sessions after seven days ([#25368](https://github.com/vm0-ai/vm0/issues/25368)) ([e74a966](https://github.com/vm0-ai/vm0/commit/e74a96661bb7bf677e23b4984cb08599f774a8d4))
+* **connectors:** add custom credential storage generations ([#25365](https://github.com/vm0-ai/vm0/issues/25365)) ([eed5e40](https://github.com/vm0-ai/vm0/commit/eed5e407694139eb22ba96585adf5feed0f86e86))
+
+
+### Bug Fixes
+
+* **connectors:** separate custom connector creation from credentials ([#25344](https://github.com/vm0-ai/vm0/issues/25344)) ([f7e3987](https://github.com/vm0-ai/vm0/commit/f7e3987e5cefbab55e293578d03172c5cd4b1df6))
+
+
+### Performance Improvements
+
+* **python:** bound network log url serialization ([#25362](https://github.com/vm0-ai/vm0/issues/25362)) ([287c719](https://github.com/vm0-ai/vm0/commit/287c7195a97e4381ae8a15ce2555ec30c8a67177))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.276.0
+    * @vm0/core bumped to 8.520.0
+    * @vm0/db bumped to 1.168.0
+
 ## [1.382.0](https://github.com/vm0-ai/vm0/compare/api-v1.381.1...api-v1.382.0) (2026-08-06)
 
 
