@@ -1,5 +1,5 @@
 import {
-  PUBLIC_CHAT_EVENT_TYPES,
+  CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -243,7 +243,7 @@ async function getLatestRunsByThreadId(
           ),
         ),
         inArray(chatEvents.runId, runIds),
-        chatEventTypeIn(PUBLIC_CHAT_EVENT_TYPES),
+        chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
       ),
     )

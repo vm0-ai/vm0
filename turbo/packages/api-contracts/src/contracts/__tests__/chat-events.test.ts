@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHAT_EVENT_TYPES,
-  PUBLIC_CHAT_EVENT_TYPES,
   foldActiveChatGoalObjective,
   foldChatRunStates,
   foldLatestChatUsageByRunId,
@@ -71,8 +70,21 @@ const chatEvents = [
     createdAt: "2026-07-23T00:00:02.000Z",
   },
   {
-    id: "input-rejected",
+    id: "input-budget",
     seqId: 4,
+    threadId: THREAD_ID,
+    eventType: "input.budget",
+    content: null,
+    runId: "run-1",
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text: "Five minutes remain" }],
+    },
+    createdAt: "2026-07-23T00:00:03.000Z",
+  },
+  {
+    id: "input-rejected",
+    seqId: 5,
     threadId: THREAD_ID,
     eventType: "input.rejected",
     content: null,
@@ -92,7 +104,7 @@ const chatEvents = [
   },
   {
     id: "output-message",
-    seqId: 5,
+    seqId: 6,
     threadId: THREAD_ID,
     eventType: "output.message",
     content: "Done",
@@ -100,7 +112,7 @@ const chatEvents = [
   },
   {
     id: "output-error",
-    seqId: 6,
+    seqId: 7,
     threadId: THREAD_ID,
     eventType: "output.error",
     content: null,
@@ -109,7 +121,7 @@ const chatEvents = [
   },
   {
     id: "output-thinking",
-    seqId: 7,
+    seqId: 8,
     threadId: THREAD_ID,
     eventType: "output.thinking",
     content: null,
@@ -118,7 +130,7 @@ const chatEvents = [
   },
   {
     id: "output-followups",
-    seqId: 8,
+    seqId: 9,
     threadId: THREAD_ID,
     eventType: "output.followups",
     content: null,
@@ -127,7 +139,7 @@ const chatEvents = [
   },
   {
     id: "run-queued",
-    seqId: 9,
+    seqId: 10,
     threadId: THREAD_ID,
     eventType: "run.queued",
     runId: "run-1",
@@ -136,7 +148,7 @@ const chatEvents = [
   },
   {
     id: "run-dequeued",
-    seqId: 10,
+    seqId: 11,
     threadId: THREAD_ID,
     eventType: "run.dequeued",
     runId: "run-1",
@@ -146,7 +158,7 @@ const chatEvents = [
   },
   {
     id: "run-completed",
-    seqId: 11,
+    seqId: 12,
     threadId: THREAD_ID,
     eventType: "run.completed",
     runId: "run-1",
@@ -156,7 +168,7 @@ const chatEvents = [
   },
   {
     id: "run-failed",
-    seqId: 12,
+    seqId: 13,
     threadId: THREAD_ID,
     eventType: "run.failed",
     runId: "run-2",
@@ -166,7 +178,7 @@ const chatEvents = [
   },
   {
     id: "run-cancelled",
-    seqId: 13,
+    seqId: 14,
     threadId: THREAD_ID,
     eventType: "run.cancelled",
     runId: "run-3",
@@ -176,7 +188,7 @@ const chatEvents = [
   },
   {
     id: "control-interrupt",
-    seqId: 14,
+    seqId: 15,
     threadId: THREAD_ID,
     eventType: "control.interrupt",
     content: null,
@@ -185,7 +197,7 @@ const chatEvents = [
   },
   {
     id: "control-revoke",
-    seqId: 15,
+    seqId: 16,
     threadId: THREAD_ID,
     eventType: "control.revoke",
     content: null,
@@ -194,7 +206,7 @@ const chatEvents = [
   },
   {
     id: "browser-open",
-    seqId: 16,
+    seqId: 17,
     threadId: THREAD_ID,
     eventType: "browser.open",
     content: null,
@@ -202,7 +214,7 @@ const chatEvents = [
   },
   {
     id: "browser-close",
-    seqId: 17,
+    seqId: 18,
     threadId: THREAD_ID,
     eventType: "browser.close",
     content: null,
@@ -210,7 +222,7 @@ const chatEvents = [
   },
   {
     id: "goal-changed",
-    seqId: 18,
+    seqId: 19,
     threadId: THREAD_ID,
     eventType: "goal.changed",
     content: null,
@@ -223,7 +235,7 @@ const chatEvents = [
   },
   {
     id: "usage-recorded",
-    seqId: 19,
+    seqId: 20,
     threadId: THREAD_ID,
     eventType: "usage.recorded",
     runId: "run-1",
@@ -279,7 +291,7 @@ describe("ChatEvent catalog", () => {
       chatEvents.map((event) => {
         return event.eventType;
       }),
-    ).toStrictEqual([...PUBLIC_CHAT_EVENT_TYPES]);
+    ).toStrictEqual([...CHAT_EVENT_TYPES]);
     for (const event of chatEvents) {
       expect(chatEventSchema.parse(event)).toStrictEqual(event);
     }
@@ -289,10 +301,6 @@ describe("ChatEvent catalog", () => {
     const prompt = chatEvents[0];
     expect(
       chatEventSchema.safeParse({ ...prompt, eventType: "input.unknown" })
-        .success,
-    ).toBe(false);
-    expect(
-      chatEventSchema.safeParse({ ...prompt, eventType: "input.budget" })
         .success,
     ).toBe(false);
     expect(

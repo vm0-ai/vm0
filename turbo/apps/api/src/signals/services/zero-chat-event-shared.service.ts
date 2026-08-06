@@ -121,7 +121,7 @@ export function visibleChatEventCondition(
     "control.revoke",
   ]);
   return and(
-    not(chatEventTypeIn(["input.goal", "input.budget"])),
+    not(chatEventTypeIn(["input.goal"])),
     notExists(
       db
         .select({ id: revoker.id })

@@ -3,7 +3,7 @@ import { ZipArchive } from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import {
-  PUBLIC_CHAT_EVENT_TYPES,
+  CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
 } from "@vm0/api-contracts/contracts/chat-events";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
@@ -756,7 +756,7 @@ async function collectConversationMessages(
       .where(
         and(
           eq(chatEvents.chatThreadId, thread.id),
-          chatEventTypeIn(PUBLIC_CHAT_EVENT_TYPES),
+          chatEventTypeIn(CHAT_EVENT_TYPES),
         ),
       )
       .orderBy(asc(chatEvents.seqId));

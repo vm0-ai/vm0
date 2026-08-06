@@ -1,6 +1,6 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
-  PUBLIC_CHAT_EVENT_TYPES,
+  CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -252,7 +252,7 @@ async function getLatestTitleContextMessages(
       and(
         eq(chatEvents.chatThreadId, threadId),
         contextMessageContentCondition(),
-        chatEventTypeIn(PUBLIC_CHAT_EVENT_TYPES),
+        chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
         completedConversationContextMessageCondition(db),
       ),
@@ -430,7 +430,7 @@ async function getLatestFollowupContextMessages(
       and(
         eq(chatEvents.chatThreadId, threadId),
         contextMessageContentCondition(),
-        chatEventTypeIn(PUBLIC_CHAT_EVENT_TYPES),
+        chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
         completedConversationContextMessageCondition(db),
       ),

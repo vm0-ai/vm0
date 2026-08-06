@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { PUBLIC_CHAT_EVENT_TYPES, chatEventTypeSchema } from "./chat-events";
+import { CHAT_EVENT_TYPES } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
@@ -503,6 +503,14 @@ const inputGoalEventSchema = chatEventBaseSchema
   })
   .strict();
 
+const inputBudgetEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.budget"),
+    content: z.null(),
+    userMessage: userMessageDocumentSchema,
+  })
+  .strict();
+
 const inputRejectedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.rejected"),
@@ -656,6 +664,7 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   inputPromptEventSchema,
   inputAutomationEventSchema,
   inputGoalEventSchema,
+  inputBudgetEventSchema,
   inputRejectedEventSchema,
   outputMessageEventSchema,
   outputErrorEventSchema,
@@ -674,12 +683,9 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   usageRecordedEventSchema,
 ]);
 
-if (
-  PUBLIC_CHAT_EVENT_TYPES.length !== chatEventSchema.options.length ||
-  !chatEventTypeSchema.options.includes("input.budget")
-) {
+if (CHAT_EVENT_TYPES.length !== chatEventSchema.options.length) {
   throw new Error(
-    "ChatEvent schema must cover every public event catalog leaf",
+    "ChatEvent schema must cover every registered event catalog leaf",
   );
 }
 
@@ -1668,12 +1674,13 @@ export type ChatInputEvent = Extract<
       | "input.prompt"
       | "input.automation"
       | "input.goal"
+      | "input.budget"
       | "input.rejected";
   }
 >;
 export type ChatUserMessageEvent = Extract<
   ChatEvent,
-  { eventType: "input.prompt" | "input.rejected" }
+  { eventType: "input.prompt" | "input.budget" | "input.rejected" }
 >;
 export type ChatAutomationEvent = Extract<
   ChatEvent,

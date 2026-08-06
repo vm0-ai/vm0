@@ -1678,9 +1678,13 @@ describe("CHAT-02: queueing and recalling messages", () => {
     const publicEvents = await chat.listThreadEvents(actor, active.threadId);
     expect(
       publicEvents.events.some((event) => {
-        return chatEventDisplayText(event) === RUN_TIME_BUDGET_MESSAGE;
+        return (
+          event.eventType === "input.budget" &&
+          event.runId === active.runId &&
+          chatEventDisplayText(event) === RUN_TIME_BUDGET_MESSAGE
+        );
       }),
-    ).toBeFalsy();
+    ).toBeTruthy();
 
     mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
     await webhooks.requestAgentEvents(

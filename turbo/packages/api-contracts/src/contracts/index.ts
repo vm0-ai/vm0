@@ -25,7 +25,6 @@ export {
 } from "./health";
 export {
   CHAT_EVENT_TYPES,
-  PUBLIC_CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   chatEventTypeSchema,
   foldActiveChatGoalObjective,

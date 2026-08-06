@@ -2853,16 +2853,7 @@ const claimActiveInputsInner$ = command(
     if (!result) {
       return conflict("One or more active inputs are no longer pending");
     }
-    if (
-      candidates.some((candidate) => {
-        return candidate.eventType === "input.prompt";
-      })
-    ) {
-      await publishChatThreadMessageCreatedSafely(
-        auth.userId,
-        run.chatThreadId,
-      );
-    }
+    await publishChatThreadMessageCreatedSafely(auth.userId, run.chatThreadId);
     signal.throwIfAborted();
     return {
       status: 200 as const,

@@ -27,13 +27,6 @@ export const CHAT_EVENT_TYPES = [
 export const chatEventTypeSchema = z.enum(CHAT_EVENT_TYPES);
 
 export type ChatEventType = z.infer<typeof chatEventTypeSchema>;
-type PublicChatEventType = Exclude<ChatEventType, "input.budget">;
-/** Event types exposed by chat thread APIs and rendered by clients. */
-export const PUBLIC_CHAT_EVENT_TYPES = CHAT_EVENT_TYPES.filter(
-  (eventType): eventType is PublicChatEventType => {
-    return eventType !== "input.budget";
-  },
-);
 export type ChatEventCompatibilityRole = "user" | "assistant";
 export type ChatEventRunLifecycle = "completed" | "failed" | "cancelled";
 export type ChatRunFoldState = "queued" | "dequeued" | ChatEventRunLifecycle;
