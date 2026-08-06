@@ -64,7 +64,6 @@ export enum FeatureSwitchKey {
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
   ChatErrorRecovery = "chatErrorRecovery",
-  ChatSteer = "chatSteer",
   PwaChatKeyboardGestures = "pwaChatKeyboardGestures",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   TeamsIntegration = "teamsIntegration",

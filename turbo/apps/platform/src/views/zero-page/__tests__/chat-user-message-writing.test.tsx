@@ -31,7 +31,7 @@ interface SentMessageCapture {
   }[];
 }
 
-interface QueuedMessageCapture {
+interface PendingMessageCapture {
   readonly content?: string;
   readonly userMessage?: UserMessageDocument;
   readonly attachments?: readonly PersistedAttachment[];
@@ -123,8 +123,8 @@ describe("user-message writes", () => {
     });
   });
 
-  it("queues one user-message snapshot", async () => {
-    let queued: QueuedMessageCapture | null = null;
+  it("writes one active-run user-message snapshot", async () => {
+    let pending: PendingMessageCapture | null = null;
     const appendGate = context.mocks.deferred<void>();
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -147,7 +147,7 @@ describe("user-message writes", () => {
       ],
       activeRunIds: ["run-active"],
       onQueuedEventAppend: (body) => {
-        queued = body;
+        pending = body;
       },
     });
 
@@ -158,21 +158,20 @@ describe("user-message writes", () => {
 
     await screen.findByLabelText("Stop");
     const composer = await activeRunComposer();
-    await fill(composer, "排队完整内容");
+    await fill(composer, "跟进完整内容");
     fireEvent.click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
-      expect(queued).toMatchObject({
-        content: "排队完整内容",
+      expect(pending).toMatchObject({
+        content: "跟进完整内容",
         userMessage: {
           version: 1,
-          parts: [{ type: "text", text: "排队完整内容" }],
+          parts: [{ type: "text", text: "跟进完整内容" }],
         },
       });
+      expect(screen.getByText("跟进完整内容")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     });
-    expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-      "排队完整内容",
-    );
     expect(composer).toHaveTextContent("");
     appendGate.resolve();
   });
