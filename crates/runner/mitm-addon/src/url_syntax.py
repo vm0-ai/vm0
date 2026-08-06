@@ -16,6 +16,12 @@ def has_unsafe_url_codepoint(value: str) -> bool:
     excluded; pair this with has_raw_whitespace() when raw whitespace must be
     rejected.
     """
+    # ASCII non-printable code points are exactly C0 controls and DEL.
+    if value.isascii():
+        return not value.isprintable()
+    # Other non-printable code points require the narrower numeric policy below.
+    if value.isprintable():
+        return False
     return any(
         ord(char) < ASCII_CONTROL_MAX
         or ord(char) == ASCII_DELETE
@@ -29,7 +35,7 @@ def has_raw_whitespace(value: str) -> bool:
 
     This covers space, tab, LF, CR, form feed, and vertical tab.
     """
-    return any(char in RAW_WHITESPACE_CHARS for char in value)
+    return any(char in value for char in RAW_WHITESPACE_CHARS)
 
 
 def has_unsafe_runtime_url_syntax(value: str, *, allow_backslash: bool = False) -> bool:
