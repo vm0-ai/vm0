@@ -823,7 +823,7 @@ fn cargo_build_session_id() -> Option<String> {
     Some(format!("{boot_id}:{parent_pid}:{parent_start_time}"))
 }
 
-/// Test-specific values for the experimental Codex app-server backend env.
+/// Test-specific values for Codex app-server execution env.
 pub struct CodexAppServerEnvConfig<'a> {
     pub run_id: &'a str,
     pub prompt: &'a str,
@@ -865,12 +865,10 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
-        guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
         guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
         guest_contracts::env::MOCK_CODEX_PATH_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         process_control_ipc::BOOTSTRAP_ENV,
-        "MOCK_CODEX_FIXTURE",
         "MOCK_CODEX_APP_SERVER_SCENARIO",
     ] {
         unsafe {
@@ -927,7 +925,7 @@ pub unsafe fn set_user_env_file_env_for_test(
     Ok(())
 }
 
-/// Configure one test binary for the experimental Codex app-server backend.
+/// Configure one test binary for Codex app-server execution.
 ///
 /// Must be called before building a `GuestRuntime` because runtime bootstrap
 /// captures the process env snapshot.
@@ -943,7 +941,6 @@ pub unsafe fn setup_codex_app_server_env(
     unsafe {
         clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
-        std::env::set_var("VM0_CODEX_APP_SERVER_BACKEND", "1");
         std::env::set_var("VM0_MOCK_CODEX_PATH", mock_path);
         std::env::set_var("USE_MOCK_CODEX", "true");
         if let Some(scenario) = config.scenario {

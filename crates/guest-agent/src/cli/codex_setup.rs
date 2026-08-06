@@ -22,7 +22,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 ///
 /// Auth reconciliation owns `CODEX_HOME` validation and permissions. API-owned
 /// runtime provider metadata writes the model catalog only after that boundary
-/// succeeds, before `codex exec` or `codex app-server` can observe startup
+/// succeeds, before `codex app-server` can observe startup
 /// config.
 ///
 /// Three mutually-exclusive states are supported:

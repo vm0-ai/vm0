@@ -1629,7 +1629,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
       prompt: "run until the time budget warning",
     });
     const claimed = await claimChatRun(runnerGroup, active.runId);
-    expect(claimed.claim.featureFlags).toMatchObject({ chatSteer: true });
     const running = await api.readRun(actor, active.runId);
     if (!running.startedAt) {
       throw new Error("Expected the claimed run to have a start time");

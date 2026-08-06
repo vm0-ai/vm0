@@ -177,7 +177,6 @@ fn spawn_app_server_with_env(
 ) -> std::io::Result<AppServerProcess> {
     let mut cmd = Command::new(BIN);
     cmd.env("CODEX_HOME", codex_home).args(args);
-    cmd.env_remove("MOCK_CODEX_FIXTURE");
     cmd.env_remove("MOCK_CODEX_APP_SERVER_SCENARIO");
     if let Some(value) = scenario {
         cmd.env("MOCK_CODEX_APP_SERVER_SCENARIO", value);
@@ -584,29 +583,6 @@ fn app_server_rejects_non_stdio_listen_url() -> std::io::Result<()> {
         "unsupported app-server listen URL should fail clearly: {:?}",
         out.stderr
     );
-    Ok(())
-}
-
-#[test]
-fn app_server_ignores_exec_fixture_mode() -> std::io::Result<()> {
-    let dir = TempDir::new().unwrap();
-    let mut server = spawn_app_server_with_env(
-        dir.path(),
-        &["app-server", "--stdio"],
-        None,
-        &[("MOCK_CODEX_FIXTURE", "event-mapping-rich")],
-    )?;
-
-    let initialized = server.request(1, "initialize", initialize_params())?;
-
-    assert_eq!(initialized["id"], 1);
-    assert!(initialized.get("type").is_none());
-    assert!(
-        initialized["result"]["userAgent"]
-            .as_str()
-            .is_some_and(|user_agent| user_agent.starts_with("guest-mock-codex-app-server/"))
-    );
-    assert_eq!(server.close_and_wait()?, 0);
     Ok(())
 }
 

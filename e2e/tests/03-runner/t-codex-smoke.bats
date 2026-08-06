@@ -3,14 +3,12 @@
 # Codex smoke test — verifies the mock-codex pipeline end-to-end.
 #
 # Activated via USE_MOCK_CODEX=true in CI (see turbo.yml + crates.yml).
-# The mock-codex binary emits a synthetic 3-event sequence
-# (thread.started -> item.completed agent_message -> turn.completed)
-# and persists a JSONL session file, mirroring the real codex CLI's protocol.
+# The mock-codex binary serves the app-server protocol, emits normalized
+# lifecycle events, and persists a JSONL session artifact.
 #
 # Verifies:
 #   - Codex lifecycle events are exposed as structured API payloads
 #   - agent_message text is retained
-#   - --vars expansion reaches the codex subprocess environment
 
 load '../../helpers/setup'
 
@@ -59,7 +57,7 @@ teardown_file() {
     assert_success
     # init event from thread.started
     assert_output --partial '"type":"thread.started"'
-    # mock-codex synthetic mode echoes the prompt back as agent_message text
+    # app-server mock includes the prompt in its agent_message response
     assert_output --partial "echo from codex"
     # result event from turn.completed
     assert_output --partial '"type":"turn.completed"'
