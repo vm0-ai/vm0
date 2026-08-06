@@ -29,6 +29,7 @@ const SCHEMA = {
   JOGGAI_API_KEY: z.string().min(1).optional(),
   JOGGAI_WEBHOOK_SECRET: z.string().min(1).optional(),
   BYTEPLUS_API_KEY: z.string().min(1).optional(),
+  MINIMAX_API_KEY: z.string().min(1).optional(),
   BYTEPLUS_STT_API_KEY: z.string().min(1).optional(),
   ZERO_MAPS_GOOGLE_MAPS_TOKEN: z.string().min(1).optional(),
   ZERO_WEATHER_GOOGLE_WEATHER_TOKEN: z.string().min(1).optional(),
