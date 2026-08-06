@@ -218,13 +218,6 @@
       "when": 1785937642124,
       "tag": "0838_gifted_korath",
       "breakpoints": true
-    },
-    {
-      "idx": 839,
-      "version": "7",
-      "when": 1785989659757,
-      "tag": "0839_add_qwen_translation_pricing",
-      "breakpoints": true
     }
   ]
 }
