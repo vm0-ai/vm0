@@ -617,6 +617,13 @@ const networkLogEntrySchema = z.object({
   port: z.number().optional(),
   method: z.string().optional(),
   url: z.string().optional(),
+  url_truncated: z.boolean().optional(),
+  url_original_char_count: z
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .optional(),
   status: z.number().optional(),
   latency_ms: z.number().optional(),
   request_size: z.number().optional(),

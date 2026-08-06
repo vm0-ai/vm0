@@ -21,6 +21,11 @@ _PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
 # Network log size fields are consumed as JavaScript numbers downstream.
 NETWORK_LOG_MAX_SAFE_SIZE = 9_007_199_254_740_991
 
+# Keep URL-driven HTTP rows below the runner uploader's 1 MiB payload envelope.
+HTTP_NETWORK_LOG_MAX_URL_CHARACTERS = 1_000_000
+HTTP_NETWORK_LOG_MAX_JSONL_BYTES = 1_000_000
+_HTTP_NETWORK_LOG_TRUNCATED_URL = "[truncated]"
+
 
 def elapsed_ms(start_time: float | None) -> int:
     if not start_time:
@@ -32,14 +37,22 @@ def _utc_log_timestamp() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def _encode_jsonl_entry(entry: dict, log_name: str) -> bytes | None:
+    """Best-effort JSONL encoding for proxy-hook logging paths."""
+    try:
+        return (json.dumps(entry) + "\n").encode()
+    except Exception as e:
+        ctx.log.warn(f"Failed to encode {log_name} log: {type(e).__name__}: {e}")
+
+    return None
+
+
 def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
     """Best-effort JSONL write for proxy-hook logging paths."""
     if not log_path:
         return
-    try:
-        line = (json.dumps(entry) + "\n").encode()
-    except Exception as e:
-        ctx.log.warn(f"Failed to encode {log_name} log: {type(e).__name__}: {e}")
+    line = _encode_jsonl_entry(entry, log_name)
+    if line is None:
         return
 
     jsonl_writer.write_jsonl_line(log_path, line, log_name)
@@ -86,6 +99,46 @@ def log_network_entry(log_path: str, entry: dict) -> None:
         return
     log_entry = {**entry, "timestamp": _utc_log_timestamp()}
     _write_jsonl_entry(log_path, log_entry, "network")
+
+
+def _http_network_log_omission_entry(entry: dict, original_url_char_count: int) -> dict:
+    return {
+        **entry,
+        "url": _HTTP_NETWORK_LOG_TRUNCATED_URL,
+        "url_truncated": True,
+        "url_original_char_count": original_url_char_count,
+    }
+
+
+def log_http_network_entry(log_path: str, entry: dict, raw_url: str) -> None:
+    """Write an HTTP network log without unbounded URL serialization work."""
+    if not log_path:
+        return
+
+    original_url_char_count = len(raw_url)
+    log_entry = {**entry, "timestamp": _utc_log_timestamp()}
+    if original_url_char_count > HTTP_NETWORK_LOG_MAX_URL_CHARACTERS:
+        _write_jsonl_entry(
+            log_path,
+            _http_network_log_omission_entry(log_entry, original_url_char_count),
+            "network",
+        )
+        return
+
+    log_entry["url"] = network_log_sanitization.sanitize_request_url_for_network_log(raw_url)
+    line = _encode_jsonl_entry(log_entry, "network")
+    if line is None:
+        return
+
+    if len(line) > HTTP_NETWORK_LOG_MAX_JSONL_BYTES:
+        omission_line = _encode_jsonl_entry(
+            _http_network_log_omission_entry(log_entry, original_url_char_count),
+            "network",
+        )
+        if omission_line is not None and len(omission_line) <= HTTP_NETWORK_LOG_MAX_JSONL_BYTES:
+            line = omission_line
+
+    jsonl_writer.write_jsonl_line(log_path, line, "network")
 
 
 def sanitize_proxy_log_extra_value(key: str, value: object) -> object:
