@@ -89,7 +89,6 @@ import {
 import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import {
   clearRunApiStart,
-  deleteVm0ManagedDefaultModelKey,
   enableFakeKms,
   holdOrgAdmissionLock,
   mutateRunnerJobConnectorPermissionBaseline,
@@ -488,17 +487,13 @@ function findFirewallEntry(
 }
 
 async function seedVm0ManagedDefaultModelKey(): Promise<string> {
-  onTestFinished(async () => {
-    await deleteVm0ManagedDefaultModelKey(context);
-  });
-  return await seedVm0ManagedDefaultModelKeyState(context);
+  const fixture = await seedVm0ManagedDefaultModelKeyState(context);
+  return fixture.selectedModel;
 }
 
 async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
-  onTestFinished(async () => {
-    await deleteVm0ManagedDefaultModelKey(context);
-  });
-  return await seedVm0ManagedModelKeyState(context, selectedModel);
+  const fixture = await seedVm0ManagedModelKeyState(context, selectedModel);
+  return fixture.selectedModel;
 }
 
 function useSecretKmsClientForTests(args: {
