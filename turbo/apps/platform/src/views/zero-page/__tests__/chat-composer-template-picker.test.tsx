@@ -505,7 +505,7 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(tabByText("Workflow")).toHaveFocus();
       expect(tabByText("Workflow")).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
+      expect(screen.getByLabelText("Search workflows")).toBeInTheDocument();
     });
 
     fireEvent.keyDown(tabByText("Workflow"), { key: "Home" });
@@ -2484,7 +2484,7 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
-    expect(screen.queryByLabelText("Search templates")).toBeNull();
+    expect(screen.queryByLabelText("Search workflows")).toBeNull();
     click(
       screen.getByLabelText(`Select template ${illustrationTemplate.title}`),
     );
@@ -3099,7 +3099,7 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.queryByLabelText("Search templates")).toBeNull();
+    expect(screen.queryByLabelText("Search workflows")).toBeNull();
     click(screen.getByLabelText(`Select video template ${videoStyle.title}`));
 
     await waitFor(() => {
@@ -3162,16 +3162,16 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText("Search templates")).toHaveAttribute(
+    expect(screen.getByLabelText("Search workflows")).toHaveAttribute(
       "placeholder",
-      "Search templates",
+      "Search workflows",
     );
-    await fill(screen.getByLabelText("Search templates"), "no workflow match");
+    await fill(screen.getByLabelText("Search workflows"), "no workflow match");
     await waitFor(() => {
       expect(screen.getByText("No matches")).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search templates"), "auto-inbox");
+    await fill(screen.getByLabelText("Search workflows"), "auto-inbox");
     click(
       screen.getByLabelText(
         `Select workflow template ${workflowTemplate.title}`,
@@ -3261,7 +3261,7 @@ describe("chat composer templates", () => {
       expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
       expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
     });
-    expect(screen.queryByLabelText("Search templates")).toBeNull();
+    expect(screen.queryByLabelText("Search workflows")).toBeNull();
     click(
       screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
     );
