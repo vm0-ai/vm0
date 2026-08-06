@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import {
+  USAGE_PACK_ALLOCATION_STATUSES,
   usagePackAllocations,
   usagePackInvoiceFulfillments,
   usagePackSubscriptions,
@@ -583,6 +584,15 @@ function payableUsagePackAllocations(
   });
 }
 
+function invoiceEligibleUsagePackAllocations(
+  context: UsagePackContext,
+): readonly UsagePackAllocationRow[] {
+  if (context.subscription.subscriptionStatus === "canceled") {
+    return context.allocations;
+  }
+  return payableUsagePackAllocations(context);
+}
+
 function usagePackSubscriptionWillCancel(
   subscription: UsagePackSubscriptionInput,
 ): boolean {
@@ -689,7 +699,7 @@ function inspectStripeUsagePackPackages(
 function inspectAllocationQuantities(
   context: UsagePackContext,
 ): InspectedValue<ReadonlyMap<string, number>> {
-  const payableAllocations = payableUsagePackAllocations(context);
+  const payableAllocations = invoiceEligibleUsagePackAllocations(context);
   if (payableAllocations.length === 0) {
     return {
       valid: false,
@@ -1263,7 +1273,7 @@ function prepareUsagePackAllocationGrants(
       return [prepared.priceId, prepared] as const;
     }),
   );
-  return payableUsagePackAllocations(context).map((allocation) => {
+  return invoiceEligibleUsagePackAllocations(context).map((allocation) => {
     const credits = creditsByPriceId.get(allocation.stripePriceId);
     if (!credits) {
       throw new Error(
@@ -1366,7 +1376,7 @@ function usagePackGrantIdempotencyKey(
 
 async function requireCurrentFulfillmentAllocations(
   tx: WriteTx,
-  subscriptionId: string,
+  subscription: UsagePackSubscriptionRow,
   args: CommitUsagePackFulfillmentArgs,
 ): Promise<void> {
   const allocationIds = args.fulfillment.allocations.map((allocation) => {
@@ -1377,10 +1387,12 @@ async function requireCurrentFulfillmentAllocations(
     .from(usagePackAllocations)
     .where(
       and(
-        eq(usagePackAllocations.usagePackSubscriptionId, subscriptionId),
+        eq(usagePackAllocations.usagePackSubscriptionId, subscription.id),
         inArray(usagePackAllocations.id, allocationIds),
         inArray(usagePackAllocations.status, [
-          ...PAYABLE_USAGE_PACK_ALLOCATION_STATUSES,
+          ...(subscription.subscriptionStatus === "canceled"
+            ? USAGE_PACK_ALLOCATION_STATUSES
+            : PAYABLE_USAGE_PACK_ALLOCATION_STATUSES),
         ]),
       ),
     );
@@ -1436,6 +1448,9 @@ async function advanceUsagePackProjection(
   subscription: UsagePackSubscriptionRow,
   args: CommitUsagePackFulfillmentArgs,
 ): Promise<void> {
+  if (subscription.subscriptionStatus === "canceled") {
+    return;
+  }
   const updatedAt = nowDate();
   const advancesProjection =
     subscription.currentPeriodEnd === null ||
@@ -1549,7 +1564,7 @@ async function commitUsagePackFulfillmentTransaction(
     );
   }
 
-  await requireCurrentFulfillmentAllocations(tx, lockedSubscription.id, args);
+  await requireCurrentFulfillmentAllocations(tx, lockedSubscription, args);
   await createUsagePackMemberGrants(tx, lockedSubscription, args);
   await advanceUsagePackProjection(tx, lockedSubscription, args);
   await tx.insert(usagePackInvoiceFulfillments).values({

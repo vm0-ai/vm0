@@ -671,6 +671,80 @@ describe("usage pack subscription Stripe lifecycle", () => {
     await expect(grantRows(fixture)).resolves.toHaveLength(2);
   });
 
+  it("settles a paid invoice delivered after deletion without reactivating the subscription", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedUsagePackLifecycle([
+      { userId, usagePackUsd: 20 },
+    ]);
+    const quantities = new Map([[TEST_PRICE_PACK_20, 1]]);
+    const paidPeriod = period(0);
+    let currentSubscription = stripeSubscription(
+      fixture,
+      paidPeriod,
+      quantities,
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      currentSubscription,
+    );
+    await postStripeEvent(
+      stripeEvent("checkout.session.completed", {
+        id: fixture.checkoutSessionId,
+        customer: fixture.customerId,
+        subscription: fixture.subscriptionId,
+        metadata: usagePackMetadata(fixture),
+      }),
+      200,
+    );
+
+    currentSubscription = stripeSubscription(fixture, paidPeriod, quantities, {
+      status: "canceled",
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      currentSubscription,
+    );
+    await postStripeEvent(
+      stripeEvent("customer.subscription.deleted", {
+        id: fixture.subscriptionId,
+        metadata: usagePackMetadata(fixture),
+      }),
+      200,
+    );
+
+    const invoiceId = `in_${randomUUID()}`;
+    const invoice = paidInvoice(fixture, {
+      invoiceId,
+      paidPeriod,
+      quantities,
+    });
+    await postStripeEvent(stripeEvent("invoice.paid", invoice), 200);
+    await postStripeEvent(stripeEvent("invoice.paid", invoice), 200);
+
+    const state = await readUsagePackState(fixture);
+    expect(state.grants).toHaveLength(2);
+    expect(state.fulfillmentInvoiceIds).toStrictEqual([invoiceId]);
+    expect(state.subscription).toStrictEqual(
+      expect.objectContaining({
+        subscriptionStatus: "canceled",
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+      }),
+    );
+    const [allocation] = state.allocations;
+    expect(allocation).toStrictEqual(
+      expect.objectContaining({
+        status: "inactive",
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+      }),
+    );
+    expect(state.org).toStrictEqual(
+      expect.objectContaining({
+        tier: "limited-free-1",
+        stripeSubscriptionId: null,
+      }),
+    );
+  });
+
   it("reconciles an expired payment failure through the existing billing fallback", async () => {
     mockNow(new Date("2999-02-01T00:00:00.000Z"));
     onTestFinished(() => {
