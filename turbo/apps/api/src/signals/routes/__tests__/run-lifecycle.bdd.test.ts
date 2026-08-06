@@ -8140,9 +8140,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
-    });
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD OAuth 2.0 Runtime API",
       prefixTemplates: ["https://oauth-runtime.example.test/api/"],
@@ -8268,9 +8265,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
-    });
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD Revoked OAuth 2.0 Runtime API",
       prefixTemplates: ["https://revoked-oauth.example.test/api/"],

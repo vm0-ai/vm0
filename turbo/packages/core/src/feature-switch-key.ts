@@ -73,6 +73,4 @@ export enum FeatureSwitchKey {
   ThreeColumnNav = "threeColumnNav",
   ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
   ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
-  CustomConnectorCliCreate = "customConnectorCliCreate",
-  CustomConnectorOAuth2 = "customConnectorOAuth2",
 }

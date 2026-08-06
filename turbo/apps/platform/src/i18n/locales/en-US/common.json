@@ -1652,7 +1652,6 @@
       "edit": "Edit",
       "grant": "Grant",
       "reconnect": "Reconnect",
-      "rename": "Rename",
       "revoke": "Revoke",
       "save": "Save",
       "saving": "Saving...",
@@ -1902,17 +1901,12 @@
       "emptyAdmin": "No custom connectors yet. Create one to register an API for every member to use.",
       "emptyMember": "Your org hasn't registered any custom connectors yet.",
       "moreOptions": "More options",
-      "rename": {
-        "displayName": "Display name",
-        "title": "Rename custom connector"
-      },
       "statusConnected": "Connected",
       "toasts": {
         "connected": "Connected",
         "created": "Created \"{{connector}}\"",
         "deleted": "Custom connector deleted",
         "disconnected": "Disconnected",
-        "renamed": "Renamed to \"{{connector}}\"",
         "updated": "Updated \"{{connector}}\""
       },
       "updateConfirm": {

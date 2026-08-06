@@ -1691,7 +1691,6 @@
       "edit": "Editar",
       "grant": "Conceder",
       "reconnect": "Volver a conectar",
-      "rename": "Renombrar",
       "revoke": "Revocar",
       "save": "Guardar",
       "saving": "Guardando...",
@@ -1942,17 +1941,12 @@
       "emptyAdmin": "Todavía no hay conectores personalizados. Crea uno para registrar una API para que cada miembro la use.",
       "emptyMember": "Tu organización aún no ha registrado ningún conector personalizado.",
       "moreOptions": "Más opciones",
-      "rename": {
-        "displayName": "Nombre de visualización",
-        "title": "Renombrar conector personalizado"
-      },
       "statusConnected": "Conectado",
       "toasts": {
         "connected": "Conectado",
         "created": "Se ha creado \"{{connector}}\"",
         "deleted": "Conector personalizado eliminado",
         "disconnected": "Desconectado",
-        "renamed": "Se ha cambiado el nombre a \"{{connector}}\"",
         "updated": "Se ha actualizado \"{{connector}}\""
       },
       "updateConfirm": {

@@ -1691,7 +1691,6 @@
       "edit": "Modifica",
       "grant": "Concedere",
       "reconnect": "Riconnettiti",
-      "rename": "Rinominare",
       "revoke": "Revoca",
       "save": "Salva",
       "saving": "Salvataggio...",
@@ -1942,17 +1941,12 @@
       "emptyAdmin": "Nessun connettore personalizzato ancora. Creane uno per registrare un API affinché ogni membro possa utilizzarlo.",
       "emptyMember": "La tua organizzazione non ha ancora registrato alcun connettore personalizzato.",
       "moreOptions": "Più opzioni",
-      "rename": {
-        "displayName": "Nome visualizzato",
-        "title": "Rinominare il connettore personalizzato"
-      },
       "statusConnected": "Connesso",
       "toasts": {
         "connected": "Connesso",
         "created": "Creato \"{{connector}}\"",
         "deleted": "Connettore personalizzato eliminato",
         "disconnected": "Disconnesso",
-        "renamed": "Rinominato in \"{{connector}}\"",
         "updated": "Aggiornato \"{{connector}}\""
       },
       "updateConfirm": {

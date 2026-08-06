@@ -1652,7 +1652,6 @@
       "edit": "편집",
       "grant": "부여",
       "reconnect": "재연결",
-      "rename": "이름 변경",
       "revoke": "권한 취소",
       "save": "저장",
       "saving": "저장 중...",
@@ -1902,17 +1901,12 @@
       "emptyAdmin": "아직 커스텀 커넥터가 없습니다. 모든 멤버가 사용할 API를 등록하려면 새로 만드세요.",
       "emptyMember": "조직에 등록된 커스텀 커넥터가 없습니다.",
       "moreOptions": "추가 옵션",
-      "rename": {
-        "displayName": "표시 이름",
-        "title": "커스텀 커넥터 이름 변경"
-      },
       "statusConnected": "연결됨",
       "toasts": {
         "connected": "연결됨",
         "created": "\"{{connector}}\" 생성됨",
         "deleted": "커스텀 커넥터가 삭제되었습니다",
         "disconnected": "연결 해제됨",
-        "renamed": "이름이 \"{{connector}}\"(으)로 변경됨",
         "updated": "\"{{connector}}\" 업데이트됨"
       },
       "updateConfirm": {

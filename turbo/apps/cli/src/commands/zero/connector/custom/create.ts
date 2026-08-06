@@ -180,8 +180,7 @@ Notes:
     the Connect dialog.
   - OAuth app client secrets are definition-time configuration, matching UI
     creation, and should be kept in a temporary file that is never committed.
-  - Requires an organization admin and the customConnectorCliCreate feature.
-  - OAuth definitions also require the customConnectorOAuth2 feature.`,
+  - Requires an organization admin.`,
   )
   .action(
     withErrorHandler(async (options: CreateOptions) => {
