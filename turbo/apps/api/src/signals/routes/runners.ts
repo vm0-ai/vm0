@@ -16,6 +16,8 @@ import {
   type ExecutionContext,
   type HeldSandboxState,
   type HeldWorkspaceState,
+  type RunnerPreferenceClaimState,
+  type RunnerPreferenceResolution,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
@@ -111,7 +113,6 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
-  type RunnerPreferenceResolutionOutcome,
   runnerReuseKeyTelemetryKind,
   runnerReusePreferenceLookupError,
   runnerReusePreferencePollPriority,
@@ -545,7 +546,7 @@ function recordPollTimingMetrics(args: {
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
-  readonly runnerPreferenceResolution: RunnerPreferenceResolutionOutcome;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolution;
   readonly reuseKeyKind: "thread" | "session" | "none";
   readonly historyGenerationRunId: string | undefined;
   readonly queueCreatedAtMs: number;
@@ -766,6 +767,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
         runnerPreference: reusePreference.runnerPreference ?? undefined,
+        runnerPreferenceResolution: reusePreference.outcome,
       },
     },
   };
@@ -1887,6 +1889,9 @@ interface ClaimTimingTelemetry {
   readonly pollDueToJobDiscoveredMs?: number;
   readonly pollHttpRequestMs?: number;
   readonly pollReason?: string;
+  readonly runnerPreferenceResolution?: RunnerPreferenceResolution;
+  readonly runnerPreferenceClaimState?: RunnerPreferenceClaimState;
+  readonly runnerPreferenceTargetedSelf?: boolean;
 }
 
 function scheduleSuccessfulClaimSideEffects(args: {
@@ -1942,6 +1947,9 @@ function scheduleSuccessfulClaimSideEffects(args: {
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
     pollReason: args.telemetry?.pollReason,
+    runnerPreferenceResolution: args.telemetry?.runnerPreferenceResolution,
+    runnerPreferenceClaimState: args.telemetry?.runnerPreferenceClaimState,
+    runnerPreferenceTargetedSelf: args.telemetry?.runnerPreferenceTargetedSelf,
     historyGenerationRunId: historyGenerationRunIdForStoredExecutionContext(
       args.storedContext,
     ),
@@ -1970,6 +1978,9 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolution | undefined;
+  readonly runnerPreferenceClaimState: RunnerPreferenceClaimState | undefined;
+  readonly runnerPreferenceTargetedSelf: boolean | undefined;
   readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
@@ -2006,6 +2017,9 @@ interface ClaimTimingMetricArgs {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolution | undefined;
+  readonly runnerPreferenceClaimState: RunnerPreferenceClaimState | undefined;
+  readonly runnerPreferenceTargetedSelf: boolean | undefined;
   readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }
@@ -2111,16 +2125,54 @@ function claimTimingOperations(
   args: ClaimTimingMetricArgs,
   dimensions: Record<string, string>,
 ): SandboxOperationAttrs[] {
+  const successfulClaimDimensions = claimSuccessfulPreferenceDimensions(
+    args,
+    dimensions,
+  );
   return CLAIM_TIMING_METRIC_FIELDS.map(({ actionType, valueKey }) => {
     return claimTimingOperation(
       args.runId,
       actionType,
       args[valueKey],
-      dimensions,
+      actionType === "claim_request_to_running"
+        ? successfulClaimDimensions
+        : dimensions,
     );
   }).filter((operation): operation is SandboxOperationAttrs => {
     return operation !== undefined;
   });
+}
+
+function claimSuccessfulPreferenceDimensions(
+  args: ClaimTimingMetricArgs,
+  dimensions: Record<string, string>,
+): Record<string, string> {
+  if (
+    args.runnerPreferenceResolution === undefined &&
+    args.runnerPreferenceClaimState === undefined &&
+    args.runnerPreferenceTargetedSelf === undefined
+  ) {
+    return dimensions;
+  }
+
+  return {
+    ...dimensions,
+    ...(args.runnerPreferenceResolution
+      ? {
+          runner_preference_resolution: args.runnerPreferenceResolution,
+        }
+      : {}),
+    ...(args.runnerPreferenceClaimState
+      ? { runner_preference_claim_state: args.runnerPreferenceClaimState }
+      : {}),
+    ...(args.runnerPreferenceTargetedSelf !== undefined
+      ? {
+          runner_preference_targeted_self: String(
+            args.runnerPreferenceTargetedSelf,
+          ),
+        }
+      : {}),
+  };
 }
 
 function claimTimingOperation(

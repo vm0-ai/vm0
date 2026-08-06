@@ -23,7 +23,7 @@ pub(crate) use network_policy_refresh::{
 
 use chrono::{DateTime, FixedOffset, Utc};
 use sandbox::SandboxId;
-use serde::{Deserialize, Deserializer, de::Error as _};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -43,12 +43,61 @@ pub(crate) enum RunnerPreferenceReason {
     FinalizingPredecessor,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RunnerPreferenceResolution {
+    ExactHistoryGeneration,
+    FinalizingPredecessor,
+    MatchingReusableSandbox,
+    MatchingWorkspaceCache,
+    NoReuseKey,
+    Expired,
+    NoViableHolder,
+    LookupError,
+}
+
+impl RunnerPreferenceResolution {
+    fn predicts_preference(self) -> bool {
+        matches!(
+            self,
+            Self::ExactHistoryGeneration
+                | Self::FinalizingPredecessor
+                | Self::MatchingReusableSandbox
+                | Self::MatchingWorkspaceCache
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RunnerPreferenceClaimState {
+    Active,
+    Expired,
+    Cleared,
+    Absent,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RunnerPreferenceRemovalReason {
+    Expired,
+    Cleared,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct RunnerProcessIdentity {
     runner_id: Uuid,
     #[serde(deserialize_with = "deserialize_heartbeat_generation")]
     heartbeat_generation: u64,
+}
+
+impl RunnerProcessIdentity {
+    fn targets(self, runner_id: &str, heartbeat_generation: u64) -> bool {
+        runner_id
+            .parse::<Uuid>()
+            .is_ok_and(|runner_id| runner_id == self.runner_id)
+            && heartbeat_generation == self.heartbeat_generation
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,10 +133,8 @@ impl RunnerPreference {
     }
 
     pub(crate) fn targets(&self, runner_id: &str, heartbeat_generation: u64) -> bool {
-        runner_id
-            .parse::<Uuid>()
-            .is_ok_and(|runner_id| runner_id == self.runner_identity.runner_id)
-            && heartbeat_generation == self.runner_identity.heartbeat_generation
+        self.runner_identity
+            .targets(runner_id, heartbeat_generation)
     }
 
     #[cfg(test)]
@@ -106,6 +153,15 @@ impl RunnerPreference {
             deadline,
         }
     }
+}
+
+pub(crate) fn parse_runner_preference_resolution(
+    value: Option<serde_json::Value>,
+) -> Result<Option<RunnerPreferenceResolution>, serde_json::Error> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    serde_json::from_value(value).map(Some)
 }
 
 pub(crate) fn parse_runner_preference(
@@ -149,6 +205,38 @@ pub(crate) enum JobDiscoverySource {
     Poll,
 }
 
+/// Immutable API decision context used only for claim telemetry.
+///
+/// The live preference may be removed as admission progresses, but this
+/// observation must continue to follow the selected candidate and must never
+/// influence admission itself.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RunnerPreferenceObservation {
+    resolution: RunnerPreferenceResolution,
+    runner_identity: Option<RunnerProcessIdentity>,
+    removal_reason: Option<RunnerPreferenceRemovalReason>,
+}
+
+impl RunnerPreferenceObservation {
+    fn new(
+        resolution: RunnerPreferenceResolution,
+        runner_preference: Option<&RunnerPreference>,
+    ) -> Self {
+        Self {
+            resolution,
+            runner_identity: runner_preference.map(|preference| preference.runner_identity),
+            removal_reason: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct RunnerPreferenceClaimTelemetry {
+    pub(crate) resolution: RunnerPreferenceResolution,
+    pub(crate) state: RunnerPreferenceClaimState,
+    pub(crate) targeted_self: Option<bool>,
+}
+
 impl JobDiscoverySource {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
@@ -179,6 +267,7 @@ pub struct JobCandidate {
     reuse_key: Option<String>,
     history_generation_run_id: Option<RunId>,
     runner_preference: Option<RunnerPreference>,
+    runner_preference_observation: Option<RunnerPreferenceObservation>,
 }
 
 impl JobCandidate {
@@ -210,6 +299,7 @@ impl JobCandidate {
             reuse_key: None,
             history_generation_run_id: None,
             runner_preference: None,
+            runner_preference_observation: None,
         }
     }
 
@@ -307,8 +397,14 @@ impl JobCandidate {
         self.runner_preference.as_ref()
     }
 
-    pub(crate) fn without_runner_preference(mut self) -> Self {
+    pub(crate) fn without_runner_preference(
+        mut self,
+        removal_reason: RunnerPreferenceRemovalReason,
+    ) -> Self {
         self.runner_preference = None;
+        if let Some(observation) = &mut self.runner_preference_observation {
+            observation.removal_reason = Some(removal_reason);
+        }
         self
     }
 
@@ -317,12 +413,51 @@ impl JobCandidate {
         self
     }
 
-    pub(crate) fn with_runner_preference(
+    pub(crate) fn with_runner_preference_context(
         mut self,
         runner_preference: Option<RunnerPreference>,
+        resolution: Option<RunnerPreferenceResolution>,
     ) -> Self {
+        self.runner_preference_observation = resolution.map(|resolution| {
+            RunnerPreferenceObservation::new(resolution, runner_preference.as_ref())
+        });
         self.runner_preference = runner_preference;
         self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_runner_preference(
+        self,
+        runner_preference: Option<RunnerPreference>,
+    ) -> Self {
+        self.with_runner_preference_context(runner_preference, None)
+    }
+
+    pub(crate) fn runner_preference_claim_telemetry(
+        &self,
+        runner_id: &str,
+        heartbeat_generation: u64,
+    ) -> Option<RunnerPreferenceClaimTelemetry> {
+        let observation = self.runner_preference_observation?;
+        let state = match &self.runner_preference {
+            Some(preference) if preference.is_expired() => RunnerPreferenceClaimState::Expired,
+            Some(_) => RunnerPreferenceClaimState::Active,
+            None => match observation.removal_reason {
+                Some(RunnerPreferenceRemovalReason::Expired) => RunnerPreferenceClaimState::Expired,
+                Some(RunnerPreferenceRemovalReason::Cleared) => RunnerPreferenceClaimState::Cleared,
+                None if observation.resolution.predicts_preference() => {
+                    RunnerPreferenceClaimState::Cleared
+                }
+                None => RunnerPreferenceClaimState::Absent,
+            },
+        };
+        Some(RunnerPreferenceClaimTelemetry {
+            resolution: observation.resolution,
+            state,
+            targeted_self: observation
+                .runner_identity
+                .map(|identity| identity.targets(runner_id, heartbeat_generation)),
+        })
     }
 
     pub(crate) fn with_history_generation_run_id(

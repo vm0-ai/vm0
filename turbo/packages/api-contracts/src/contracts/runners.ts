@@ -113,6 +113,24 @@ export const runnerPreferenceSchema = z
   })
   .strict();
 
+export const runnerPreferenceResolutionSchema = z.enum([
+  "exact_history_generation",
+  "finalizing_predecessor",
+  "matching_reusable_sandbox",
+  "matching_workspace_cache",
+  "no_reuse_key",
+  "expired",
+  "no_viable_holder",
+  "lookup_error",
+]);
+
+export const runnerPreferenceClaimStateSchema = z.enum([
+  "active",
+  "expired",
+  "cleared",
+  "absent",
+]);
+
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
 const runnerClaimTelemetrySchema = z
   .object({
@@ -130,6 +148,9 @@ const runnerClaimTelemetrySchema = z
     pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
     pollHttpRequestMs: z.number().int().nonnegative().optional(),
     pollReason: runnerClaimPollReasonSchema.optional(),
+    runnerPreferenceResolution: runnerPreferenceResolutionSchema.optional(),
+    runnerPreferenceClaimState: runnerPreferenceClaimStateSchema.optional(),
+    runnerPreferenceTargetedSelf: z.boolean().optional(),
   })
   .catch({});
 
@@ -296,6 +317,7 @@ export const jobSchema = z.object({
   reuseKey: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
   runnerPreference: runnerPreferenceSchema.optional(),
+  runnerPreferenceResolution: runnerPreferenceResolutionSchema.optional(),
 });
 
 const heldWorkspaceCacheSchema = z.object({
@@ -889,6 +911,12 @@ export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
 export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
+export type RunnerPreferenceResolution = z.infer<
+  typeof runnerPreferenceResolutionSchema
+>;
+export type RunnerPreferenceClaimState = z.infer<
+  typeof runnerPreferenceClaimStateSchema
+>;
 export type HeldSandboxState = z.infer<typeof heldSandboxStateSchema>;
 export type HeldWorkspaceState = z.infer<typeof heldWorkspaceStateSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;

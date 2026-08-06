@@ -506,6 +506,34 @@ describe("runner resume session contract", () => {
       experimentalProfile: "vm0/default",
     });
     expect(job.runnerPreference).toBeUndefined();
+    expect(job.runnerPreferenceResolution).toBeUndefined();
+  });
+
+  it("accepts every optional runner preference resolution beside the strict preference", () => {
+    const jobInput = {
+      runId: "33333333-3333-4333-8333-333333333333",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      experimentalProfile: "vm0/default",
+    };
+
+    for (const runnerPreferenceResolution of [
+      "exact_history_generation",
+      "finalizing_predecessor",
+      "matching_reusable_sandbox",
+      "matching_workspace_cache",
+      "no_reuse_key",
+      "expired",
+      "no_viable_holder",
+      "lookup_error",
+    ] as const) {
+      expect(
+        jobSchema.parse({ ...jobInput, runnerPreferenceResolution })
+          .runnerPreferenceResolution,
+      ).toBe(runnerPreferenceResolution);
+    }
   });
 
   it("accepts one strict optional runner preference", () => {
@@ -975,6 +1003,29 @@ describe("runner claim request contract", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it("accepts optional bounded runner preference claim telemetry", () => {
+    for (const runnerPreferenceClaimState of [
+      "active",
+      "expired",
+      "cleared",
+      "absent",
+    ] as const) {
+      expect(
+        runnersJobClaimContract.claim.body.parse({
+          telemetry: {
+            runnerPreferenceResolution: "matching_workspace_cache",
+            runnerPreferenceClaimState,
+            runnerPreferenceTargetedSelf: false,
+          },
+        }).telemetry,
+      ).toStrictEqual({
+        runnerPreferenceResolution: "matching_workspace_cache",
+        runnerPreferenceClaimState,
+        runnerPreferenceTargetedSelf: false,
+      });
+    }
   });
 
   it("discards malformed diagnostic telemetry", () => {
