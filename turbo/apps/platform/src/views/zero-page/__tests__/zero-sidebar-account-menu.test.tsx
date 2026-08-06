@@ -713,6 +713,38 @@ describe("zero sidebar account menu", () => {
     expect(within(reopenedMenu).getByText("Settings")).toBeInTheDocument();
   });
 
+  it("links the production satellite to the primary hosted user profile", async () => {
+    const previousUrl = window.location.href;
+    window.location.href = "https://app.okou.ai/";
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        window.location.href = previousUrl;
+      },
+      { once: true },
+    );
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Settings"));
+
+    await screen.findByRole("dialog", { name: "Settings" });
+    expect(linkByText("Manage")).toHaveAttribute(
+      "href",
+      "https://accounts.vm0.ai/user",
+    );
+  });
+
   it("hides debug settings when ZeroDebug is disabled", async () => {
     prepareDefaultAgent();
 

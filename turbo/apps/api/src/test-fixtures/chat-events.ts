@@ -967,6 +967,71 @@ export async function holdModelPolicyReadsFixture(args: {
 }
 
 /**
+ * Holds the production per-thread goal lifecycle lock so a route test can
+ * order one user lifecycle change ahead of a concurrent queue settlement.
+ * The lock key is scoped to the test's unique thread id, so unrelated API
+ * tests cannot satisfy the waiter barrier.
+ */
+export async function holdGoalThreadLockFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly waiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const rows = await executeRawRows(
+      tx,
+      sql`
+        SELECT
+          pg_backend_pid() AS "pid",
+          pg_advisory_xact_lock(hashtext('goal:' || ${args.threadId}))
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the goal thread lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    waiterCount: async () => {
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          SELECT ${count()}::int AS "waiterCount"
+          FROM pg_locks AS waiting
+          WHERE waiting.locktype = 'advisory'
+            AND NOT waiting.granted
+            AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
+              SELECT held.classid, held.objid, held.objsubid
+              FROM pg_locks AS held
+              WHERE held.locktype = 'advisory'
+                AND held.pid = ${holderPid}
+                AND held.granted
+            )
+        `,
+        waiterCountRowSchema,
+      );
+      return rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
  * Reproduces a crash after the canonical chat callback was acknowledged but
  * before its detached terminal processing became durable. Product APIs cannot
  * delete append-only events, so this fixture removes only the exact cancelled
