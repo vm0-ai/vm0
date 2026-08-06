@@ -2601,6 +2601,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn old_api_fallback_retains_custom_last_known_good_and_retries() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let target = custom_target(custom_connector_id);
+        let tagged_route = server.mock(|when, then| {
+            when.method(POST).path(format!(
+                "/api/runners/runs/{run_id}/connector-runtime/reconcile"
+            ));
+            then.status(404);
+        });
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let firewall = custom_runtime_firewall(custom_connector_id, &digest);
+        let firewall_name = format!("custom_connector_{}", custom_connector_id.replace('-', ""));
+        let firewalls = vec![firewall];
+        let policies = HashMap::from([(
+            firewall_name,
+            NetworkPolicy {
+                allow: vec!["custom.read".to_string()],
+                deny: vec![],
+                ask: vec![],
+                unknown_policy: "deny".to_string(),
+            },
+        )]);
+        let (_dir, registry, registry_path) =
+            registered_runtime_registry(run_id, &firewalls, &policies).await;
+        let registry_before = tokio::fs::read(&registry_path).await.unwrap();
+
+        core.register_run(NetworkPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_slugs: HashSet::new(),
+            targets: Some(std::slice::from_ref(&target)),
+            firewalls: Some(&firewalls),
+            refreshes: None,
+        })
+        .await;
+        let request = recv_refresh_request(&mut requests).await;
+
+        assert!(
+            core.reconcile_connector_runtime_batch_now(run_id, &request.targets)
+                .await
+        );
+
+        tagged_route.assert_calls(1);
+        assert_eq!(
+            tokio::fs::read(&registry_path).await.unwrap(),
+            registry_before
+        );
+        let active_runs = core.inner.active_runs.lock().await;
+        let active = &active_runs[&run_id];
+        assert_eq!(active.connectors[&target].consecutive_failures, 1);
+        assert!(active.refresh_tasks.contains_key(&target));
+        drop(active_runs);
+        core.unregister_run(run_id).await;
+    }
+
+    #[tokio::test]
     async fn inactive_network_policy_notification_is_not_enqueued() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
