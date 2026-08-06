@@ -14,7 +14,7 @@ import {
   type WriteToolInput,
 } from "@earendil-works/pi-agent-core";
 
-export type PiReadTool = Omit<ReturnType<typeof createReadTool>, "execute"> & {
+type PiReadTool = Omit<ReturnType<typeof createReadTool>, "execute"> & {
   execute(
     toolCallId: string,
     params: ReadToolInput,
@@ -50,7 +50,7 @@ type PiEditTool = Omit<ReturnType<typeof createEditTool>, "execute"> & {
   ): ReturnType<ReturnType<typeof createEditTool>["execute"]>;
 };
 
-export type PiExecutionTools = readonly [
+type PiExecutionTools = readonly [
   PiReadTool,
   PiBashTool,
   PiWriteTool,
