@@ -136,6 +136,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function linkByText(text: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`${text} link not found`);
+  }
+  return link;
+}
+
 function buttonByLabel(
   label: string,
   container: ParentNode = document.body,
@@ -652,7 +662,7 @@ describe("zero sidebar account menu", () => {
       );
     });
 
-    const userProfileLink = screen.getByRole("link", { name: "Manage" });
+    const userProfileLink = linkByText("Manage");
     expect(userProfileLink).toHaveAttribute(
       "href",
       "https://accounts.example.test/user",
