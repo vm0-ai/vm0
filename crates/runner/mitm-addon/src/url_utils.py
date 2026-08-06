@@ -477,10 +477,10 @@ def build_rewrite_url(
     safe path; userinfo and fragments are not allowed. Backslashes, whitespace
     or unsafe code points, invalid ports, unsafe path syntax, malformed Unicode,
     and unsafe or invalid percent-encoded host syntax are rejected. Accepted
-    hostnames are normalized for forwarding: Unicode and percent-encoded Unicode
-    names use canonical IDNA form, IPv4 literals must already be canonical dotted
-    quads, IPv6 literals are compressed and bracketed, and explicit valid ports
-    are preserved.
+    hosts are normalized for forwarding: Unicode and safely percent-encoded
+    Unicode names use canonical IDNA form, IPv4 literals must be canonical dotted
+    quads after safe percent-decoding, IPv6 literals are compressed and bracketed,
+    and explicit valid ports are preserved.
 
     Unsafe path syntax in ``rel_path`` is rejected as an invariant; firewall
     matching should already have blocked it before auth is applied.
