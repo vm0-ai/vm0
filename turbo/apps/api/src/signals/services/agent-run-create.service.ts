@@ -116,7 +116,6 @@ import type { PersistedStorageMount } from "@vm0/db/types";
 import {
   and,
   count,
-  desc,
   eq,
   inArray,
   isNotNull,
@@ -1868,10 +1867,6 @@ function providerEnvironmentFromSecretMap(
   return environment;
 }
 
-function vm0ApiKeySelectionOrder() {
-  return sql`case when ${eq(vm0ApiKeys.label, sql`'dev-seed'`)} then 0 else 1 end`;
-}
-
 async function multiAuthModelProviderEnvironment(
   db: Db,
   args: {
@@ -1981,11 +1976,6 @@ async function vm0ModelProviderEnvironment(
     .select({ apiKey: vm0ApiKeys.apiKey })
     .from(vm0ApiKeys)
     .where(eq(vm0ApiKeys.vendor, vendor))
-    .orderBy(
-      vm0ApiKeySelectionOrder(),
-      desc(vm0ApiKeys.updatedAt),
-      sql`random()`,
-    )
     .limit(1);
   const apiKey = rows[0]?.apiKey;
   const secretName = getSecretNameForType(concreteType);

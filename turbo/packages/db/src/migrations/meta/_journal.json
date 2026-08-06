@@ -281,6 +281,20 @@
       "when": 1786020021206,
       "tag": "0847_bitter_pride",
       "breakpoints": true
+    },
+    {
+      "idx": 848,
+      "version": "7",
+      "when": 1786021157619,
+      "tag": "0848_vendor_scoped_vm0_api_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 849,
+      "version": "7",
+      "when": 1786021182597,
+      "tag": "0849_vendor_scoped_vm0_api_keys_schema",
+      "breakpoints": true
     }
   ]
 }

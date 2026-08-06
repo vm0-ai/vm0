@@ -82,7 +82,7 @@ import {
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
   deleteAgentRunFixture,
-  deleteBddVm0ApiKeys,
+  deleteBddVm0ApiKey,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
   holdChatThreadRowLockFixture,
@@ -92,7 +92,7 @@ import {
   holdThreadSessionConversationClearFixture,
   readChatEventContextFixture,
   replayPendingChatInputQueueEventFixture,
-  replaceBddVm0ApiKeys,
+  replaceBddVm0ApiKey,
   replaceThreadSessionBindingFixture,
 } from "../../../test-fixtures/chat-events";
 import { zeroChatEventsRoutes } from "../zero-chat-events";
@@ -3536,15 +3536,10 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keySuffix = randomUUID();
 
-    await replaceBddVm0ApiKeys({
+    await replaceBddVm0ApiKey({
       vendor: "moonshot",
-      model: "kimi-k2.7-code",
-      keys: [
-        {
-          apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
-          label: "dev-seed",
-        },
-      ],
+      apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
+      label: "dev-seed",
     });
 
     let runId: string | null = null;
@@ -3554,10 +3549,7 @@ describe("CHAT-02: model-first provider policies", () => {
       }
     };
     const deleteVm0KimiKeys = async () => {
-      await deleteBddVm0ApiKeys({
-        vendor: "moonshot",
-        model: "kimi-k2.7-code",
-      });
+      await deleteBddVm0ApiKey({ vendor: "moonshot" });
     };
     const cleanupRunAndKeys = async () => {
       await Promise.all([deleteVm0KimiKeys(), cancelRunIfCreated()]);
@@ -3597,36 +3589,24 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("selects vm0 managed keys by vendor instead of model", async () => {
+  it("selects a vm0 managed key by vendor", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keySuffix = randomUUID();
-    const fakeKey = `vm0-key-bdd-fake-${keySuffix}`;
-    const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
+    const apiKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
     let runId: string | null = null;
 
     onTestFinished(async () => {
       await Promise.all([
-        deleteBddVm0ApiKeys({ vendor: "zai", model: "glm-5.2" }),
-        deleteBddVm0ApiKeys({ vendor: "zai", model: "glm-5.1" }),
+        deleteBddVm0ApiKey({ vendor: "zai" }),
         ...(runId ? [api.requestCancelRun(actor, runId, [200])] : []),
       ]);
     });
 
-    await replaceBddVm0ApiKeys({
+    await replaceBddVm0ApiKey({
       vendor: "zai",
-      model: "glm-5.2",
-      keys: [
-        {
-          apiKey: fakeKey,
-          label: `bdd-fake-${keySuffix}`,
-        },
-      ],
-    });
-    await replaceBddVm0ApiKeys({
-      vendor: "zai",
-      model: "glm-5.1",
-      keys: [{ apiKey: devSeedKey, label: "dev-seed" }],
+      apiKey,
+      label: "dev-seed",
     });
 
     await api.updateOrgModelPolicies(actor, [
@@ -3676,7 +3656,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected vm0 firewall auth to resolve");
     }
     const authorization = resolved.body.headers.Authorization;
-    expect(authorization).toBe(`Bearer ${devSeedKey}`);
+    expect(authorization).toBe(`Bearer ${apiKey}`);
   }, 90_000);
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
     const fw = createFirewallApi(context);
