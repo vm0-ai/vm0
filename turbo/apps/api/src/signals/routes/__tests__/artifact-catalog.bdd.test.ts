@@ -32,10 +32,6 @@ const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const host = createHostMapsBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
-const BASE_ARTIFACT_CATALOG_KINDS = ARTIFACT_CATALOG_KINDS.filter((kind) => {
-  return kind !== "shared-thread";
-});
-
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 interface CatalogActor {
   readonly actor: ApiTestUser;
@@ -404,6 +400,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
     });
 
     const catalog = await chat.listArtifactCatalog(owner.actor);
+    expect(catalog.supportedKinds).toStrictEqual([...ARTIFACT_CATALOG_KINDS]);
     expect(catalog.artifacts).toStrictEqual([
       expect.objectContaining({
         kind: "file",
@@ -440,7 +437,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
     await expect(chat.listArtifactCatalog(owner.actor)).resolves.toStrictEqual({
       artifacts: [],
       nextCursor: null,
-      supportedKinds: BASE_ARTIFACT_CATALOG_KINDS,
+      supportedKinds: [...ARTIFACT_CATALOG_KINDS],
     });
   }, 180_000);
 
@@ -773,7 +770,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
     ).resolves.toStrictEqual({
       artifacts: [],
       nextCursor: null,
-      supportedKinds: BASE_ARTIFACT_CATALOG_KINDS,
+      supportedKinds: [...ARTIFACT_CATALOG_KINDS],
     });
     const secondCatalog = await chat.listArtifactCatalog(secondOwner.actor);
     expect(secondCatalog.artifacts).toStrictEqual([
@@ -796,7 +793,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
     ).resolves.toStrictEqual({
       artifacts: [],
       nextCursor: null,
-      supportedKinds: BASE_ARTIFACT_CATALOG_KINDS,
+      supportedKinds: [...ARTIFACT_CATALOG_KINDS],
     });
     const finalCatalog = await chat.listArtifactCatalog(firstOwner.actor);
     expect(finalCatalog.artifacts).toStrictEqual([

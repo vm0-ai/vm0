@@ -1,6 +1,4 @@
 import { sharedThreadsContract } from "@vm0/api-contracts/contracts/shared-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { command } from "ccstate";
 
 import { notFound } from "../../lib/error";
@@ -8,8 +6,6 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { db$ } from "../external/db";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   createSharedThread$,
   readSharedThread$,
@@ -18,16 +14,6 @@ import {
 import type { RouteEntry } from "../route-entry";
 
 const createBody$ = bodyResultOf(sharedThreadsContract.create);
-
-const sharingDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Shared thread creation is not enabled",
-      code: "FORBIDDEN" as const,
-    }),
-  }),
-});
 
 const noShareableMessages = Object.freeze({
   status: 400 as const,
@@ -56,17 +42,6 @@ const createSharedThreadInner$ = command(
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
-    }
-    const featureContext = await loadUserFeatureSwitchContext(
-      get(db$),
-      auth.orgId,
-      auth.userId,
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.SharedThreadSharing, featureContext)
-    ) {
-      return sharingDisabled;
     }
 
     const params = get(pathParamsOf(sharedThreadsContract.create));

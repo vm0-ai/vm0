@@ -3,19 +3,15 @@ import {
   ARTIFACT_CATALOG_KINDS,
   artifactCatalogContract,
 } from "@vm0/api-contracts/contracts/artifact-catalog";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
-import { db$ } from "../external/db";
 import {
   getArtifactCatalogEntry$,
   listArtifactCatalog$,
 } from "../services/artifact-catalog.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
 const listArtifactCatalogInner$ = command(
@@ -35,25 +31,13 @@ const listArtifactCatalogInner$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const featureContext = await loadUserFeatureSwitchContext(
-      get(db$),
-      auth.orgId,
-      auth.userId,
-    );
-    signal.throwIfAborted();
-    const sharedThreadSharingEnabled = isFeatureEnabled(
-      FeatureSwitchKey.SharedThreadSharing,
-      featureContext,
-    );
 
     return {
       status: 200 as const,
       body: {
         artifacts: [...result.artifacts],
         nextCursor: result.nextCursor,
-        supportedKinds: ARTIFACT_CATALOG_KINDS.filter((kind) => {
-          return kind !== "shared-thread" || sharedThreadSharingEnabled;
-        }),
+        supportedKinds: [...ARTIFACT_CATALOG_KINDS],
       },
     };
   },

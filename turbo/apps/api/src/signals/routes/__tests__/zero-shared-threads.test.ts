@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { sharedThreadsContract } from "@vm0/api-contracts/contracts/shared-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -12,7 +11,6 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -140,25 +138,6 @@ describe("shared thread routes", () => {
       throw new Error("Expected prompt and assistant events");
     }
 
-    const disabled = await accept(
-      sharedThreadsClient().create({
-        headers: authenticate(owner.actor),
-        params: { threadId: run.threadId },
-        body: { eventIds: [promptEvent.id] },
-      }),
-      [403],
-    );
-    expect(disabled.body.error.code).toBe("FORBIDDEN");
-
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      { [FeatureSwitchKey.SharedThreadSharing]: true },
-    );
     mockOptionalEnv("OPENROUTER_API_KEY", "shared-title-key");
     const titlePrompts: string[] = [];
     chatCallbacks.mockOpenRouterCompletions((body) => {
@@ -259,4 +238,36 @@ describe("shared thread routes", () => {
     );
     expect(afterSourceDeletion.body).toStrictEqual(publicSnapshot.body);
   }, 180_000);
+
+  it("allows API creation while the entry feature switch is disabled", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "shared-title-key");
+    const owner = await createActor();
+    const run = await sendRun(owner);
+    const events = await chat.listThreadEvents(owner.actor, run.threadId);
+    const promptEvent = events.events.find((event) => {
+      return event.eventType === "input.prompt" && event.runId === run.runId;
+    });
+    if (!promptEvent) {
+      throw new Error("Expected an associated prompt event");
+    }
+    chatCallbacks.mockOpenRouterCompletions(() => {
+      return "Private launch plan";
+    });
+
+    const created = await accept(
+      sharedThreadsClient().create({
+        headers: authenticate(owner.actor),
+        params: { threadId: run.threadId },
+        body: { eventIds: [promptEvent.id] },
+      }),
+      [201],
+    );
+
+    await expect(
+      sharedThreadsClient().get({ params: { id: created.body.id } }),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: { title: "Private launch plan" },
+    });
+  });
 });
