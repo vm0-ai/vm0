@@ -5,14 +5,20 @@ import { Button } from "@vm0/ui/components/ui/button";
 import {
   clerkInstance$,
   currentUserInfo$,
+  resolveClerkSatelliteConfig,
 } from "../../../../../signals/auth.ts";
+
+// Clerk satellite domains do not receive their own hosted Account Portal.
+const CLERK_PRIMARY_USER_PROFILE_URL = "https://accounts.vm0.ai/user";
 
 export function AccountSection() {
   const { t } = useTranslation();
   const clerk = useGet(clerkInstance$);
   const userLoadable = useLoadable(currentUserInfo$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
-  const userProfileUrl = clerk.buildUrlWithAuth(clerk.buildUserProfileUrl());
+  const userProfileUrl = resolveClerkSatelliteConfig()
+    ? CLERK_PRIMARY_USER_PROFILE_URL
+    : clerk.buildUrlWithAuth(clerk.buildUserProfileUrl());
 
   const displayName = user?.fullName ?? user?.firstName ?? "";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
