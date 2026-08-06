@@ -1777,7 +1777,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     }
     expect(goalContinuation.userMessage).toStrictEqual({
       version: 1,
-      parts: [{ type: "goal", goalBrief }],
+      parts: [
+        { type: "goal", goalBrief },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
     });
     expect(goalContinuation.content).toBeNull();
     expect(chatEventDisplayText(goalContinuation)).toBe("");
