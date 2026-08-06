@@ -1,9 +1,5 @@
 import type { EventConsumerPayload } from "../../lib/event-consumer/verify";
 import { getDatasetName, ingestAxiomDirect } from "../external/axiom";
-import {
-  PI_MESSAGE_COMPLETED_EVENT_TYPE,
-  redactPiEventForTelemetry,
-} from "./pi-transcript.service";
 
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const AXIOM_EVENT_INGEST_TIMEOUT_MS = 10_000;
@@ -19,12 +15,7 @@ export async function ingestAxiomEvents(
       userId: payload.context.userId,
       sequenceNumber: event.sequenceNumber,
       eventType: event.type,
-      // The canonical Pi message payload is the model transcript; only its
-      // coordinates and size metadata may reach telemetry.
-      eventData:
-        event.type === PI_MESSAGE_COMPLETED_EVENT_TYPE
-          ? redactPiEventForTelemetry(event)
-          : event,
+      eventData: event,
     };
   });
   const ingestSignal = AbortSignal.any([
