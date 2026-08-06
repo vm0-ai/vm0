@@ -2605,6 +2605,10 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       headerName: "Authorization",
       headerTemplate: "Bearer {{secret}}",
     });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "customConnectorListChanged",
+      null,
+    );
     expect(autoSlug.slug).toMatch(
       new RegExp(`^_api-bdd${rand}-example-test-[a-z0-9]{6}$`),
     );
@@ -2691,6 +2695,35 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await expect(
       connectorsApi.listCustomConnectors(admin),
     ).resolves.toStrictEqual([]);
+  });
+
+  it("keeps a created custom connector when realtime publishing fails", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("Ably channel rate limit exceeded"),
+    );
+
+    const created = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Realtime Failure",
+      prefixes: [`https://realtime-${rand}.example.test/v1/`],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+
+    await expect(
+      connectorsApi.listCustomConnectors(admin),
+    ).resolves.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: created.id,
+          displayName: "BDD Realtime Failure",
+        }),
+      ]),
+    );
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
   });
 
   it("persists permission bundles and skill markdown with security-sensitive revisions", async () => {
