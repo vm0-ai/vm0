@@ -1,7 +1,7 @@
 //! Bounded CPU execution for resume-session history materialization.
 
 use std::fmt;
-use std::io::{self, BufRead, BufReader, Read};
+use std::io::{self, BufReader, Read};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -21,6 +21,7 @@ use crate::restored_session_identity::RestoredSessionHistoryPrefixAttribution;
 
 const CPU_CHUNK_BYTES: usize = 64 * 1024;
 const DECODER_BUFFER_BYTES: usize = 8 * 1024;
+const CODEX_TIMESTAMP_RECORD_MAX_BYTES: usize = 1024 * 1024;
 const CPU_CANCELLED: &str = "session history materialization cancelled";
 
 #[derive(Clone)]
@@ -35,6 +36,14 @@ struct SessionHistoryCpuHooks {
     cpu_gate: Option<SessionHistoryCpuTestGate>,
     #[cfg(test)]
     reader_gate: Option<SessionHistoryCpuTestGate>,
+    #[cfg(test)]
+    codex_timestamp_record_max_bytes: Option<usize>,
+}
+
+struct CodexTimestampRecordScanner {
+    record: Vec<u8>,
+    max_record_bytes: usize,
+    record_too_large: bool,
 }
 
 struct SessionHistoryCpuTaskGuard {
@@ -170,6 +179,22 @@ impl SessionHistoryCpuPool {
             hooks: SessionHistoryCpuHooks {
                 cpu_gate,
                 reader_gate,
+                codex_timestamp_record_max_bytes: None,
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::executor) fn with_test_codex_timestamp_record_max_bytes(
+        capacity: usize,
+        max_record_bytes: usize,
+    ) -> Self {
+        Self {
+            permits: Arc::new(Semaphore::new(capacity.max(1))),
+            hooks: SessionHistoryCpuHooks {
+                cpu_gate: None,
+                reader_gate: None,
+                codex_timestamp_record_max_bytes: Some(max_record_bytes),
             },
         }
     }
@@ -275,6 +300,14 @@ impl SessionHistoryCpuHooks {
         }
         let _ = cancel;
         Ok(())
+    }
+
+    fn codex_timestamp_record_max_bytes(&self) -> usize {
+        #[cfg(test)]
+        if let Some(max_record_bytes) = self.codex_timestamp_record_max_bytes {
+            return max_record_bytes;
+        }
+        CODEX_TIMESTAMP_RECORD_MAX_BYTES
     }
 }
 
@@ -878,17 +911,18 @@ fn verify_codex_zstd(
         }
     };
     let decoded = decoder.take(expected_raw_size.saturating_add(1));
-    let output = CancellationReader::new(decoded, cancel.clone(), hooks.clone());
-    let mut reader = BufReader::with_capacity(DECODER_BUFFER_BYTES, output);
+    let mut output = CancellationReader::new(decoded, cancel.clone(), hooks.clone());
     let mut observer = SessionHistoryHashObserver::new(prefix_attribution);
     let mut decoded_bytes = 0u64;
     let mut timestamp = None;
-    let mut line = Vec::new();
+    let mut timestamp_scanner = Some(CodexTimestampRecordScanner::new(
+        hooks.codex_timestamp_record_max_bytes(),
+    ));
+    let mut buffer = [0u8; DECODER_BUFFER_BYTES];
 
     loop {
         check_cancelled(cancel)?;
-        line.clear();
-        let read = match reader.read_until(b'\n', &mut line) {
+        let read = match output.read(&mut buffer) {
             Ok(read) => read,
             Err(error) => {
                 timings.record_decompression(decompression_started.elapsed(), false);
@@ -911,10 +945,19 @@ fn verify_codex_zstd(
                 "session history is too large after decompression: {decoded_bytes} bytes exceeds {expected_raw_size} bytes"
             )));
         }
-        observer.update(&line, cancel)?;
-        if timestamp.is_none() {
-            timestamp = parse_codex_timestamp_line(strip_jsonl_line_ending(&line), cancel, hooks)?;
+        let chunk = buffer.get(..read).ok_or_else(|| {
+            RunnerError::Internal("invalid zstd session history read chunk length".into())
+        })?;
+        observer.update(chunk, cancel)?;
+        if let Some(scanner) = &mut timestamp_scanner
+            && let Some(discovered) = scanner.scan(chunk, cancel, hooks)?
+        {
+            timestamp = Some(discovered);
+            timestamp_scanner = None;
         }
+    }
+    if let Some(scanner) = &mut timestamp_scanner {
+        timestamp = scanner.finish(cancel, hooks)?;
     }
     timings.record_decompression(decompression_started.elapsed(), true);
 
@@ -935,6 +978,88 @@ fn verify_codex_zstd(
     timings.record_hash_verification(hash_started.elapsed(), hash_result.is_ok());
     let prefix_outcome = hash_result?;
     Ok((timestamp, prefix_outcome))
+}
+
+impl CodexTimestampRecordScanner {
+    fn new(max_record_bytes: usize) -> Self {
+        Self {
+            record: Vec::with_capacity(DECODER_BUFFER_BYTES.min(max_record_bytes)),
+            max_record_bytes,
+            record_too_large: false,
+        }
+    }
+
+    fn scan(
+        &mut self,
+        mut bytes: &[u8],
+        cancel: &CancellationToken,
+        hooks: &SessionHistoryCpuHooks,
+    ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+        while let Some(newline) = bytes.iter().position(|byte| *byte == b'\n') {
+            let (record_bytes, remaining) = bytes.split_at(newline);
+            self.extend_record(record_bytes);
+            if let Some(timestamp) = self.finish_record(cancel, hooks)? {
+                return Ok(Some(timestamp));
+            }
+            bytes = remaining.get(1..).unwrap_or_default();
+        }
+        self.extend_record(bytes);
+        Ok(None)
+    }
+
+    fn finish(
+        &mut self,
+        cancel: &CancellationToken,
+        hooks: &SessionHistoryCpuHooks,
+    ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+        if self.record.is_empty() && !self.record_too_large {
+            return Ok(None);
+        }
+        self.finish_record(cancel, hooks)
+    }
+
+    fn extend_record(&mut self, bytes: &[u8]) {
+        if self.record_too_large {
+            return;
+        }
+        let record_len = self.record.len() + bytes.len();
+        if record_len > self.max_record_bytes {
+            self.mark_record_too_large();
+            return;
+        }
+        if record_len > self.record.capacity() {
+            let target_capacity = self
+                .record
+                .capacity()
+                .saturating_mul(2)
+                .max(record_len)
+                .min(self.max_record_bytes);
+            self.record
+                .reserve_exact(target_capacity - self.record.len());
+        }
+        self.record.extend_from_slice(bytes);
+    }
+
+    fn finish_record(
+        &mut self,
+        cancel: &CancellationToken,
+        hooks: &SessionHistoryCpuHooks,
+    ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+        let timestamp = if self.record_too_large {
+            None
+        } else {
+            let record = self.record.strip_suffix(b"\r").unwrap_or(&self.record);
+            parse_codex_timestamp_line(record, cancel, hooks)?
+        };
+        self.record.clear();
+        self.record_too_large = false;
+        Ok(timestamp)
+    }
+
+    fn mark_record_too_large(&mut self) {
+        self.record.clear();
+        self.record_too_large = true;
+    }
 }
 
 fn scan_raw_codex_history(
@@ -1095,11 +1220,6 @@ fn validate_utf8(bytes: &[u8], cancel: &CancellationToken) -> RunnerResult<bool>
 
 fn is_utf8_continuation(byte: u8) -> bool {
     byte & 0b1100_0000 == 0b1000_0000
-}
-
-fn strip_jsonl_line_ending(line: &[u8]) -> &[u8] {
-    let line = line.strip_suffix(b"\n").unwrap_or(line);
-    line.strip_suffix(b"\r").unwrap_or(line)
 }
 
 fn parse_codex_rollout_timestamp(raw: &str) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -1314,6 +1434,60 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), future)
             .await
             .expect("test synchronization should complete")
+    }
+
+    fn padded_codex_timestamp_record(record_len: usize) -> Vec<u8> {
+        let prefix =
+            br#"{"type":"session_meta","payload":{"timestamp":"2026-07-13T01:02:03Z","padding":""#;
+        let suffix = br#""}}"#;
+        assert!(prefix.len() + suffix.len() <= record_len);
+        let mut record = Vec::with_capacity(record_len);
+        record.extend_from_slice(prefix);
+        record.resize(record_len - suffix.len(), b'x');
+        record.extend_from_slice(suffix);
+        record
+    }
+
+    #[test]
+    fn codex_timestamp_scanner_bounds_candidates_and_recovers_at_record_boundaries() {
+        const RECORD_LIMIT: usize = 128;
+
+        let cancel = CancellationToken::new();
+        let hooks = SessionHistoryCpuHooks::default();
+        let exact_record = padded_codex_timestamp_record(RECORD_LIMIT);
+        let mut scanner = CodexTimestampRecordScanner::new(RECORD_LIMIT);
+        for chunk in exact_record.chunks(17) {
+            assert!(scanner.scan(chunk, &cancel, &hooks).unwrap().is_none());
+            assert!(scanner.record.len() <= RECORD_LIMIT);
+            assert!(scanner.record.capacity() <= RECORD_LIMIT);
+        }
+        let timestamp = scanner.finish(&cancel, &hooks).unwrap().unwrap();
+        assert_eq!(timestamp.to_rfc3339(), "2026-07-13T01:02:03+00:00");
+
+        let mut scanner = CodexTimestampRecordScanner::new(RECORD_LIMIT);
+        let oversized_record = vec![b'x'; RECORD_LIMIT + 1];
+        assert!(
+            scanner
+                .scan(&oversized_record, &cancel, &hooks)
+                .unwrap()
+                .is_none()
+        );
+        assert!(scanner.record_too_large);
+        assert!(scanner.record.is_empty());
+        assert!(scanner.record.capacity() <= RECORD_LIMIT);
+
+        let mut next_record = b"\r\n".to_vec();
+        next_record.extend_from_slice(
+            br#"{"type":"session_meta","payload":{"timestamp":"2026-07-13T01:02:03Z"}}"#,
+        );
+        next_record.extend_from_slice(b"\r\n");
+        let timestamp = scanner
+            .scan(&next_record, &cancel, &hooks)
+            .unwrap()
+            .unwrap();
+        assert_eq!(timestamp.to_rfc3339(), "2026-07-13T01:02:03+00:00");
+        assert!(scanner.record.is_empty());
+        assert!(scanner.record.capacity() <= RECORD_LIMIT);
     }
 
     #[tokio::test(flavor = "current_thread")]
