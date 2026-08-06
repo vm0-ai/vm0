@@ -2472,7 +2472,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalizer_notifies_after_replaced_idle_workspace_cache_promotion() {
+    async fn finalizer_notifies_after_replaced_idle_promotion_despite_destroy_panic() {
         let fixture = FinalizeTestFixture::new().await;
         let session_id = "sess-replaced-cache";
         let dir = tempfile::tempdir().unwrap();
@@ -2501,6 +2501,7 @@ mod tests {
         let existing_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
         add_healthy_reuse_preparation_matcher(&existing_overrides);
         existing_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+        existing_overrides.push_destroy_panic("simulated replaced idle destroy panic");
         let existing_factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
             MockSandboxFactory::with_overrides(Arc::clone(&existing_overrides)),
         ));
