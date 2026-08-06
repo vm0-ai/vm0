@@ -28,15 +28,20 @@ reload an open page.
 
 The current force-upgrade mechanism is driven by API responses. Standard app
 API clients send `X-Client-Type: App` and a build-time `X-Client-Version`. Before
-route matching, the API compares a parseable advertised version with the floor
-in `turbo/apps/api/src/lib/web-client-compatibility.json`. An older client
-receives `426 Upgrade Required` with `Cache-Control: no-store`. The shared
-contract client and fetch wrapper turn that response into a global UI state
-that displays a non-dismissible update dialog. The dialog's only action calls
-`window.location.reload()`. The app therefore forces the user to choose a
-refresh before continuing; it does not force the reload without user action,
-and an idle page does not discover the requirement until it makes a handled API
-request.
+route handlers run, the API rejects an app request whose parseable advertised
+version is below the floor in
+`turbo/apps/api/src/lib/web-client-compatibility.json`. The general floor does
+not reject a missing or unparseable `X-Client-Version`. Endpoint-specific
+protocol gates can produce the same response; Zero Mail currently requires the
+exact `X-Zero-Mail-Client-Version` on `/api/zero/mail/*` requests.
+
+An incompatible request receives `426 Upgrade Required` with `Cache-Control:
+no-store`. The shared contract client and fetch wrapper turn that response into
+a global UI state that displays a non-dismissible update dialog. The dialog's
+only action calls `window.location.reload()`. The app therefore forces the user
+to choose a refresh before continuing; it does not force the reload without
+user action, and an idle page does not discover the requirement until it makes
+a handled API request.
 
 The platform app also registers a service worker. Service-worker code is a
 browser-resident deployable surface, so changes to its behavior must account for
