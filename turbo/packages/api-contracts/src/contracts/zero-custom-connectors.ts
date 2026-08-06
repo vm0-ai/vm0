@@ -207,13 +207,6 @@ export type SetCustomConnectorValuesBody = z.infer<
   typeof setCustomConnectorValuesBodySchema
 >;
 
-export const patchCustomConnectorBodySchema = z.object({
-  displayName: z.string().min(1).max(128),
-});
-export type PatchCustomConnectorBody = z.infer<
-  typeof patchCustomConnectorBodySchema
->;
-
 export const customConnectorProposalSchema = z.object({
   operation: z.enum(["create", "update"]),
   connectorId: z.string().uuid().optional(),
@@ -282,7 +275,6 @@ export type ZeroCustomConnectorsContract = typeof zeroCustomConnectorsContract;
 /**
  * Zero custom connector by id contract for /api/zero/custom-connectors/[id]
  * DELETE: delete a custom connector (admin only — cascades secrets)
- * PATCH: rename a custom connector (admin only; retained for old clients)
  * PUT: update a custom connector definition (admin only)
  */
 export const zeroCustomConnectorByIdContract = c.router({
@@ -313,22 +305,6 @@ export const zeroCustomConnectorByIdContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Delete an org custom connector",
-  },
-  patch: {
-    method: "PATCH",
-    path: "/api/zero/custom-connectors/:id",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string().uuid() }),
-    body: patchCustomConnectorBodySchema,
-    responses: {
-      200: customConnectorResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Rename an org custom connector",
   },
   update: {
     method: "PUT",

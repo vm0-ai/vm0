@@ -1931,20 +1931,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       hasSecret: true,
     });
 
-    await connectorsApi.patchCustomConnector(admin, created.id, {
-      displayName: "BDD Custom Connector Renamed",
-    });
-
-    const listAfterPatch = await connectorsApi.listCustomConnectors(admin);
-    expect(
-      listAfterPatch.find((connector) => {
-        return connector.id === created.id;
-      }),
-    ).toMatchObject({
-      displayName: "BDD Custom Connector Renamed",
-      hasSecret: true,
-    });
-
     const agent = await bdd.createAgent(admin, {
       displayName: "BDD Connector Agent",
     });
@@ -2546,15 +2532,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       expectApiError(create.body);
       expect(create.body.error.code).toBe("UNAUTHORIZED");
 
-      const patch = await connectorsApi.requestPatchCustomConnector(
-        actor,
-        connectorId,
-        { displayName: "Renamed" },
-        [401],
-      );
-      expectApiError(patch.body);
-      expect(patch.body.error.code).toBe("UNAUTHORIZED");
-
       const remove = await connectorsApi.requestDeleteCustomConnector(
         actor,
         connectorId,
@@ -2853,7 +2830,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, created.body.id);
   });
 
-  it("scopes custom connector rename and delete to org admins and same-org ids", async () => {
+  it("scopes custom connector deletion to org admins and same-org ids", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user();
     const member = bdd.user({ orgId: admin.orgId, orgRole: "org:member" });
@@ -2868,17 +2845,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       displayName: "OtherOrg",
     });
 
-    const memberPatch = await connectorsApi.requestPatchCustomConnector(
-      member,
-      mine.id,
-      { displayName: "Hacked" },
-      [403],
-    );
-    expectApiError(memberPatch.body);
-    expect(memberPatch.body.error.message).toBe(
-      "Only org admins can rename custom connectors",
-    );
-
     const memberDelete = await connectorsApi.requestDeleteCustomConnector(
       member,
       mine.id,
@@ -2888,42 +2854,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(memberDelete.body.error.message).toBe(
       "Only org admins can delete custom connectors",
     );
-
-    const unknownPatch = await connectorsApi.requestPatchCustomConnector(
-      admin,
-      randomUUID(),
-      { displayName: "Renamed" },
-      [404],
-    );
-    expectApiError(unknownPatch.body);
-    expect(unknownPatch.body.error.message).toBe("Custom connector not found");
-
-    const crossOrgPatch = await connectorsApi.requestPatchCustomConnector(
-      admin,
-      foreign.id,
-      { displayName: "Hijacked" },
-      [404],
-    );
-    expectApiError(crossOrgPatch.body);
-    expect(crossOrgPatch.body.error.code).toBe("NOT_FOUND");
-
-    const emptyName = await connectorsApi.requestPatchCustomConnector(
-      admin,
-      mine.id,
-      { displayName: "" },
-      [400],
-    );
-    expectApiError(emptyName.body);
-    expect(emptyName.body.error.code).toBe("BAD_REQUEST");
-
-    const blankName = await connectorsApi.requestPatchCustomConnector(
-      admin,
-      mine.id,
-      { displayName: " " },
-      [400],
-    );
-    expectApiError(blankName.body);
-    expect(blankName.body.error.message).toContain("between 1 and 128");
 
     const myList = await connectorsApi.listCustomConnectors(admin);
     expect(
