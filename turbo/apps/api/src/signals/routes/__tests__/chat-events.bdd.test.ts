@@ -1419,6 +1419,10 @@ describe("CHAT-02: queueing and recalling messages", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(active.runId);
+    // The runner release before #25369 defaults a missing chatSteer field to
+    // false. Keep this wire assertion until that runner cannot drain or roll
+    // back against the current API.
+    expect(claim.featureFlags).toMatchObject({ chatSteer: true });
 
     const firstPendingEventId = randomUUID();
     const secondPendingEventId = randomUUID();
