@@ -497,7 +497,7 @@ describe("zero attachment chips", () => {
       );
     });
 
-    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    click(screen.getByLabelText("Reset zoom"));
     await waitFor(() => {
       expect(screen.getByText("100%")).toBeInTheDocument();
       expect(transformContent.style.transform).toBe(
@@ -527,6 +527,50 @@ describe("zero attachment chips", () => {
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("resets a transformed uploaded image preview with double-click", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(screen.getByText("115%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toContain("scale(1.15)");
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
     });
   });
 
