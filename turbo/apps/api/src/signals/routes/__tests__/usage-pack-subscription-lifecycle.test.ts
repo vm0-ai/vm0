@@ -10,12 +10,14 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { mockStripeClient } from "../../external/stripe-client";
+import { cronReconcileBillingEntitlementsRoutes } from "../cron-reconcile-billing-entitlements";
 import {
   testUsagePackSubscriptionStateContract,
   testUsagePackSubscriptionStateRoutes,
   type TestUsagePackSubscriptionStateAction,
   type TestUsagePackSubscriptionStateResponse,
 } from "../test-usage-pack-subscription-state";
+import { webhooksStripeRoutes } from "../webhooks-stripe";
 
 const context = testContext();
 
@@ -221,26 +223,26 @@ async function postStripeEvent(
   expectedStatus: 200 | 500,
 ): Promise<void> {
   context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/stripe",
-    {
-      method: "POST",
-      body: JSON.stringify(event),
-      headers: { "stripe-signature": "t=1,v1=usage-pack-lifecycle" },
-    },
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: webhooksStripeRoutes,
+  }).request("/api/webhooks/stripe", {
+    method: "POST",
+    body: JSON.stringify(event),
+    headers: { "stripe-signature": "t=1,v1=usage-pack-lifecycle" },
+  });
   expect(response.status).toBe(expectedStatus);
 }
 
 async function runBillingReconciliationCron(): Promise<unknown> {
   mockEnv("CRON_SECRET", "usage-pack-cron-secret");
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/cron/reconcile-billing-entitlements",
-    {
-      method: "GET",
-      headers: { authorization: "Bearer usage-pack-cron-secret" },
-    },
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: cronReconcileBillingEntitlementsRoutes,
+  }).request("/api/cron/reconcile-billing-entitlements", {
+    method: "GET",
+    headers: { authorization: "Bearer usage-pack-cron-secret" },
+  });
   expect(response.status).toBe(200);
   return await response.json();
 }

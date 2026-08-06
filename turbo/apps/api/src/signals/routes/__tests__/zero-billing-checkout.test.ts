@@ -1150,7 +1150,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     authenticateOrg(fixture);
 
     const response = await accept(
-      setupApp({ context })(zeroBillingUsagePackCatalogContract).get({
+      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingUsagePackCatalogContract,
+      ).get({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [403],
@@ -1173,7 +1175,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     });
 
     const response = await accept(
-      setupApp({ context })(zeroBillingUsagePackCatalogContract).get({
+      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingUsagePackCatalogContract,
+      ).get({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
