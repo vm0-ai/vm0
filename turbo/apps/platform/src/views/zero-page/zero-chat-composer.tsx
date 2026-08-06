@@ -5,7 +5,6 @@ import type {
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
-  ReactNode,
 } from "react";
 import {
   useGet,
@@ -3465,7 +3464,7 @@ function TemplatePreviewPage({
     <>
       <DialogHeader
         data-presentation-template-detail-header=""
-        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none sm:pr-16"
+        className="flex h-[68px] shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none"
       >
         <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
@@ -4481,7 +4480,6 @@ function resolveTemplatePickerCategory({
 }
 
 function TemplatePickerCategoryNav({
-  searchSlot,
   selectedCategory,
   hasPptTab,
   hasIllustrationTab,
@@ -4490,7 +4488,6 @@ function TemplatePickerCategoryNav({
   hasWorkflowTab,
   onChange,
 }: {
-  searchSlot?: ReactNode;
   selectedCategory: string;
   hasPptTab: boolean;
   hasIllustrationTab: boolean;
@@ -4584,73 +4581,75 @@ function TemplatePickerCategoryNav({
           </SelectContent>
         </Select>
       </div>
-      <div className="hidden shrink-0 items-center gap-3 border-b border-border py-3.5 pl-6 pr-4 sm:flex">
-        <nav
-          role="tablist"
-          aria-label={t(($) => {
-            return $.artifacts.templates.categories;
-          })}
-          aria-orientation="horizontal"
-          data-template-picker-sidebar=""
-          className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
-        >
-          {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
-            const selected = value === selectedCategory;
-            return (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => {
-                  onChange(value);
-                }}
-                onKeyDown={(event) => {
-                  let nextIndex: number | null = null;
-                  if (event.key === "ArrowRight") {
-                    nextIndex = (categoryIndex + 1) % categoryOptions.length;
-                  } else if (event.key === "ArrowLeft") {
-                    nextIndex =
-                      (categoryIndex - 1 + categoryOptions.length) %
-                      categoryOptions.length;
-                  } else if (event.key === "Home") {
-                    nextIndex = 0;
-                  } else if (event.key === "End") {
-                    nextIndex = categoryOptions.length - 1;
-                  }
-                  if (nextIndex === null) {
-                    return;
-                  }
-                  event.preventDefault();
-                  const nextTab = event.currentTarget.parentElement
-                    ?.querySelectorAll<HTMLElement>("[role=tab]")
-                    .item(nextIndex);
-                  nextTab?.focus();
-                  onChange(categoryOptions[nextIndex]?.value ?? value);
-                }}
-                className={cn(
-                  "group inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border bg-transparent px-3.5 text-[13.5px] leading-[18px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-500",
-                  selected
-                    ? "border-foreground text-foreground"
-                    : "border-gray-400 text-gray-800 hover:border-gray-500 hover:bg-gray-50 hover:text-foreground",
-                )}
-              >
-                <Icon
+      <div className="hidden shrink-0 sm:flex">
+        <div className="flex w-56 shrink-0 flex-col border-r border-border bg-card">
+          <TemplatePickerHeader />
+          <nav
+            role="tablist"
+            aria-label={t(($) => {
+              return $.artifacts.templates.categories;
+            })}
+            aria-orientation="vertical"
+            data-template-picker-sidebar=""
+            className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3"
+          >
+            {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
+              const selected = value === selectedCategory;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => {
+                    onChange(value);
+                  }}
+                  onKeyDown={(event) => {
+                    let nextIndex: number | null = null;
+                    if (event.key === "ArrowRight") {
+                      nextIndex = (categoryIndex + 1) % categoryOptions.length;
+                    } else if (event.key === "ArrowLeft") {
+                      nextIndex =
+                        (categoryIndex - 1 + categoryOptions.length) %
+                        categoryOptions.length;
+                    } else if (event.key === "Home") {
+                      nextIndex = 0;
+                    } else if (event.key === "End") {
+                      nextIndex = categoryOptions.length - 1;
+                    }
+                    if (nextIndex === null) {
+                      return;
+                    }
+                    event.preventDefault();
+                    const nextTab = event.currentTarget.parentElement
+                      ?.querySelectorAll<HTMLElement>("[role=tab]")
+                      .item(nextIndex);
+                    nextTab?.focus();
+                    onChange(categoryOptions[nextIndex]?.value ?? value);
+                  }}
                   className={cn(
-                    "h-[15px] w-[15px] shrink-0 transition-colors",
+                    "group flex h-9 w-full shrink-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                     selected
-                      ? "text-foreground"
-                      : "text-gray-700 group-hover:text-gray-800",
+                      ? "bg-gray-50 font-medium text-foreground"
+                      : "text-gray-800 hover:bg-gray-50 hover:text-foreground",
                   )}
-                  stroke={1.8}
-                />
-                <span className="truncate">{label}</span>
-              </button>
-            );
-          })}
-        </nav>
-        {searchSlot}
+                >
+                  <Icon
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-colors",
+                      selected
+                        ? "text-foreground"
+                        : "text-gray-700 group-hover:text-gray-800",
+                    )}
+                    stroke={1.8}
+                  />
+                  <span className="truncate">{label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
       </div>
     </>
   );
@@ -4659,7 +4658,7 @@ function TemplatePickerCategoryNav({
 function TemplatePickerHeader() {
   const { t } = useTranslation();
   return (
-    <header className="hidden shrink-0 flex-col gap-0.5 px-6 pr-14 pt-[18px] sm:flex">
+    <header className="flex shrink-0 flex-col gap-0.5 px-5 pb-3 pt-[18px]">
       <h2 className="text-[17px] font-semibold leading-6 tracking-tight text-foreground">
         {t(($) => {
           return $.artifacts.templates.template;
@@ -4861,9 +4860,7 @@ function TemplatePickerDialog({
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     skipEnterAnimation && "data-[state=open]:!animate-none",
-    isPreviewing
-      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button]:top-[7px]"
-      : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:top-[7px] sm:[&>button]:top-[19px]",
+    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:top-4",
   );
   const filteredPptItems = presentationItems;
   const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
@@ -5133,16 +5130,8 @@ function TemplatePickerDialog({
                 })}
               </DialogTitle>
             </DialogHeader>
-            <div className="flex min-h-0 flex-1 flex-col">
-              <TemplatePickerHeader />
+            <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
               <TemplatePickerCategoryNav
-                searchSlot={
-                  <TemplatePickerWorkflowSearch
-                    selectedCategory={selectedCategory}
-                    search={search}
-                    onSearchChange={handleSearchChange}
-                  />
-                }
                 selectedCategory={selectedCategory}
                 hasPptTab={hasPptTab}
                 hasIllustrationTab={hasIllustrationTab}
@@ -5152,6 +5141,13 @@ function TemplatePickerDialog({
                 onChange={handleCategoryChange}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="flex h-[68px] shrink-0 items-center justify-end px-6 pr-14">
+                  <TemplatePickerWorkflowSearch
+                    selectedCategory={selectedCategory}
+                    search={search}
+                    onSearchChange={handleSearchChange}
+                  />
+                </div>
                 <TemplatePickerCategoryContent
                   signals={signals}
                   selectedCategory={selectedCategory}

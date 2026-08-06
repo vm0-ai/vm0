@@ -447,10 +447,10 @@ describe("chat composer templates", () => {
     ).toBeFalsy();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
-    expect(tabByText("Presentation")).toHaveClass("border-foreground");
+    expect(tabByText("Presentation")).toHaveClass("bg-gray-50");
     expect(tabByText("Presentation")).toHaveClass("text-foreground");
-    expect(tabByText("Illustration")).toHaveClass("border-gray-400");
-    expect(tabByText("Illustration")).not.toHaveClass("border-foreground");
+    expect(tabByText("Illustration")).toHaveClass("text-gray-800");
+    expect(tabByText("Illustration")).not.toHaveClass("bg-gray-50");
     const categorySelect = screen.getByRole("combobox", {
       name: "Template category",
     });
@@ -460,13 +460,11 @@ describe("chat composer templates", () => {
       name: "Template categories",
     });
     expect(categorySidebar).toBeInstanceOf(HTMLElement);
-    expect(categorySidebar).toHaveAttribute("aria-orientation", "horizontal");
-    expect(categorySidebar).toHaveClass("flex-wrap");
-    // The tab row and the workflow search share one row, so the responsive
-    // and divider classes live on the wrapper around the tablist.
-    expect(categorySidebar.parentElement).toHaveClass("hidden");
-    expect(categorySidebar.parentElement).toHaveClass("sm:flex");
-    expect(categorySidebar.parentElement).toHaveClass("border-b");
+    expect(categorySidebar).toHaveAttribute("aria-orientation", "vertical");
+    expect(categorySidebar).toHaveClass("flex-col");
+    // The rail wraps the title block and the tablist, and carries the divider.
+    expect(categorySidebar.parentElement).toHaveClass("border-r");
+    expect(categorySidebar.parentElement).toHaveClass("bg-card");
 
     await user.click(categorySelect);
     await user.click(
@@ -483,7 +481,7 @@ describe("chat composer templates", () => {
     });
 
     tabByText("Illustration").focus();
-    fireEvent.keyDown(tabByText("Illustration"), { key: "ArrowRight" });
+    fireEvent.keyDown(tabByText("Illustration"), { key: "ArrowDown" });
     await waitFor(() => {
       expect(tabByText("Video")).toHaveFocus();
       expect(tabByText("Video")).toHaveAttribute("aria-selected", "true");
@@ -492,7 +490,7 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    fireEvent.keyDown(tabByText("Video"), { key: "ArrowLeft" });
+    fireEvent.keyDown(tabByText("Video"), { key: "ArrowUp" });
     await waitFor(() => {
       expect(tabByText("Illustration")).toHaveFocus();
       expect(tabByText("Illustration")).toHaveAttribute(
