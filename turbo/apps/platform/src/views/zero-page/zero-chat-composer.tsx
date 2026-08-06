@@ -4607,9 +4607,9 @@ function TemplatePickerCategoryNav({
                   }}
                   onKeyDown={(event) => {
                     let nextIndex: number | null = null;
-                    if (event.key === "ArrowRight") {
+                    if (event.key === "ArrowDown") {
                       nextIndex = (categoryIndex + 1) % categoryOptions.length;
-                    } else if (event.key === "ArrowLeft") {
+                    } else if (event.key === "ArrowUp") {
                       nextIndex =
                         (categoryIndex - 1 + categoryOptions.length) %
                         categoryOptions.length;
