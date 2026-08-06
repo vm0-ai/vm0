@@ -985,6 +985,7 @@ export const zeroMapsOsmDownload$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
+        userId: args.auth.userId,
         provider: PROVIDER,
         category: DOWNLOAD_CATEGORY,
       },
@@ -1043,7 +1044,12 @@ export const zeroMapsOsmRender$ = command(
     }
     const creditError = await set(
       checkMapsCredits$,
-      { orgId: args.auth.orgId, provider: PROVIDER, category: RENDER_CATEGORY },
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        provider: PROVIDER,
+        category: RENDER_CATEGORY,
+      },
       signal,
     );
     if (creditError) {

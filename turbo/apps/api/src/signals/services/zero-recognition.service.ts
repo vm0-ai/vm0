@@ -178,7 +178,7 @@ export const zeroRecognition$ = command(
     }
     const hasCredits = await set(
       checkBillableOperationCredits$,
-      { orgId: args.auth.orgId },
+      { orgId: args.auth.orgId, userId: args.auth.userId },
       requestSignal,
     );
     signal.throwIfAborted();

@@ -14,6 +14,7 @@ import {
 } from "../../lib/db-structured-result";
 import { writeDb$ } from "../external/db";
 import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
+import { getSpendableUsagePackCredits } from "./usage-pack-credit.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
 export interface ManagedUsageErrorResponse {
@@ -85,6 +86,7 @@ export const checkManagedCredits$ = command(
     { set },
     args: {
       readonly orgId: string;
+      readonly userId: string;
       readonly resource: ManagedUsageResource;
       readonly label: string;
     },
@@ -150,7 +152,17 @@ export const checkManagedCredits$ = command(
       quantity,
     );
     const spendableCredits = credits - row.unsettledExpired;
-    if (spendableCredits >= requiredCredits) {
+    const usagePackCredits = BigInt(
+      await getSpendableUsagePackCredits(writeDb, {
+        orgId: args.orgId,
+        userId: args.userId,
+      }),
+    );
+    signal.throwIfAborted();
+    if (
+      usagePackCredits + (spendableCredits > 0n ? spendableCredits : 0n) >=
+      requiredCredits
+    ) {
       return null;
     }
 
@@ -159,10 +171,13 @@ export const checkManagedCredits$ = command(
       args.orgId,
     );
     signal.throwIfAborted();
-    const spendableUnits =
+    const sharedSpendableUnits =
       (spendableCredits > 0n ? spendableCredits : 0n) +
       BigInt(allowance?.remainingUnits ?? 0) -
       (spendableCredits < 0n ? -spendableCredits : 0n);
+    const spendableUnits =
+      usagePackCredits +
+      (sharedSpendableUnits > 0n ? sharedSpendableUnits : 0n);
     return spendableUnits >= requiredCredits ? null : insufficientCredits();
   },
 );

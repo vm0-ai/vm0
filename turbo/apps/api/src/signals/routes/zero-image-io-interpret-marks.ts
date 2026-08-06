@@ -41,7 +41,7 @@ const postInterpretMarksInner$ = command(
     if (shouldCallModel) {
       const hasCredits = await set(
         checkBillableOperationCredits$,
-        { orgId: auth.orgId },
+        { orgId: auth.orgId, userId: auth.userId },
         signal,
       );
       signal.throwIfAborted();
