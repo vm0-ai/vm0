@@ -23,6 +23,8 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroGoalsRoutes } from "../zero-goals";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -50,7 +52,7 @@ function currentSecond(): number {
 }
 
 function goalsClient() {
-  return setupApp({ context })(zeroGoalsContract);
+  return setupApp({ context, routes: zeroGoalsRoutes })(zeroGoalsContract);
 }
 
 function zeroToken(
@@ -698,7 +700,9 @@ describe("zero goals", () => {
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const unreads = await accept(
-      setupApp({ context })(chatThreadsContract).unreads({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).unreads({
         headers: { authorization: "Bearer clerk-session" },
         query: { agentId: fixture.agentId },
       }),

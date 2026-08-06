@@ -23,6 +23,8 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { zeroTranslationRoutes } from "../zero-translation";
+import { zeroUsageRunsRoutes } from "../zero-usage-runs";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -120,7 +122,9 @@ function requestTranslation(args: {
       ? { "x-vm0-client-request-id": args.clientRequestId }
       : {}),
   };
-  return setupApp({ context })(zeroTranslationContract).translate({
+  return setupApp({ context, routes: zeroTranslationRoutes })(
+    zeroTranslationContract,
+  ).translate({
     headers,
     body: {
       text: args.text ?? "Hello, world",
@@ -145,7 +149,9 @@ async function readRunUsage(actor: TranslationActor) {
   context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
   mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
   const response = await accept(
-    setupApp({ context })(zeroUsageRunsContract).get({
+    setupApp({ context, routes: zeroUsageRunsRoutes })(
+      zeroUsageRunsContract,
+    ).get({
       headers: { authorization: "Bearer clerk-session" },
       query: { runId: actor.runId },
     }),

@@ -7,6 +7,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroArtifactsRoutes } from "../zero-artifacts";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -18,7 +19,7 @@ const IMAGE_FILENAME = "source.png";
 const EDITED_IMAGE_URL = "https://cdn.vm7.io/artifacts/test/image-edit.png";
 
 function client() {
-  return setupApp({ context })(artifactsContract);
+  return setupApp({ context, routes: zeroArtifactsRoutes })(artifactsContract);
 }
 
 async function seedVisibleImage(): Promise<{

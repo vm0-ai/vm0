@@ -8,7 +8,7 @@ import type {
 } from "@vm0/db/schema/chat-event";
 
 import type { Db } from "../external/db";
-import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
+import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
 import { loadAgentPhoneQueuedLaunchMaterial } from "./agentphone-queued-launch-context.service";
 import { loadFeishuQueuedLaunchMaterial } from "./feishu-queued-launch-context.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";

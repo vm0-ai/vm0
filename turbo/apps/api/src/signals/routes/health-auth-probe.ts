@@ -14,7 +14,7 @@ import { rawQuery$ } from "../context/hono";
 
 const c = initContract();
 
-const probeRoute = c.router({
+export const healthAuthProbeContract = c.router({
   check: {
     method: "GET" as const,
     path: "/health/auth",
@@ -90,7 +90,5 @@ const probe$ = command(
 );
 
 export const healthAuthProbeRoutes: readonly RouteEntry[] = [
-  { route: probeRoute.check, handler: probe$ },
+  { route: healthAuthProbeContract.check, handler: probe$ },
 ];
-
-export const healthAuthProbeContract = probeRoute;

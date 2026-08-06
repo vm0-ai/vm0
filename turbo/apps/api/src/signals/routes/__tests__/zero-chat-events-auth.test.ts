@@ -7,11 +7,14 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { zeroChatEventsRoutes } from "../zero-chat-events";
 
 const context = testContext();
 
 function client() {
-  return setupApp({ context })(chatEventsContract);
+  return setupApp({ context, routes: zeroChatEventsRoutes })(
+    chatEventsContract,
+  );
 }
 
 describe("POST /api/zero/chat/events authorization", () => {

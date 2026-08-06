@@ -19,6 +19,13 @@ import {
   mockGoogleCalendarConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { webhooksGoogleCalendarRoutes } from "../webhooks-google-calendar";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...webhooksGoogleCalendarRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -59,7 +66,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -233,14 +242,14 @@ async function postGoogleCalendarWebhook(headers: HeadersInit): Promise<{
   readonly status: number;
   readonly body: unknown;
 }> {
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/google-calendar",
-    {
-      method: "POST",
-      headers,
-      body: "",
-    },
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/webhooks/google-calendar", {
+    method: "POST",
+    headers,
+    body: "",
+  });
   return {
     status: response.status,
     body: await response.json(),

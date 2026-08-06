@@ -16,6 +16,16 @@ import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventAutomationPart } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+import { zeroStrapiIntegrationsRoutes } from "../zero-strapi-integrations";
+import { zeroStrapiEventsRoutes } from "../zero-strapi-events";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...testWorkflowAutomationExecutionRoutes,
+  ...zeroStrapiEventsRoutes,
+  ...zeroStrapiIntegrationsRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -96,11 +106,15 @@ function authHeaders() {
 }
 
 function integrationsClient() {
-  return setupApp({ context })(zeroStrapiIntegrationsContract);
+  return setupApp({ context, routes: zeroStrapiIntegrationsRoutes })(
+    zeroStrapiIntegrationsContract,
+  );
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function workflowAutomationExecutionClient() {
@@ -116,18 +130,18 @@ async function postStrapiEvent(args: {
   readonly payload: unknown;
   readonly eventHeader?: string;
 }): Promise<{ readonly status: number; readonly body: unknown }> {
-  const response = await createApp({ signal: context.signal }).request(
-    args.webhookUrl,
-    {
-      method: "POST",
-      headers: {
-        authorization: args.authorizationHeader,
-        "content-type": "application/json",
-        ...(args.eventHeader ? { "x-strapi-event": args.eventHeader } : {}),
-      },
-      body: JSON.stringify(args.payload),
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(args.webhookUrl, {
+    method: "POST",
+    headers: {
+      authorization: args.authorizationHeader,
+      "content-type": "application/json",
+      ...(args.eventHeader ? { "x-strapi-event": args.eventHeader } : {}),
     },
-  );
+    body: JSON.stringify(args.payload),
+  });
   return { status: response.status, body: await response.json() };
 }
 

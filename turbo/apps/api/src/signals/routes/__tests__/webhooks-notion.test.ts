@@ -22,6 +22,14 @@ import { chatEventAutomationPart } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+import { webhooksNotionRoutes } from "../webhooks-notion";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...testWorkflowAutomationExecutionRoutes,
+  ...webhooksNotionRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -80,7 +88,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function workflowAutomationExecutionClient() {
@@ -324,17 +334,17 @@ async function postNotionWebhook(args: {
   readonly rawBody: string;
   readonly signature?: string;
 }): Promise<{ readonly status: number; readonly body: unknown }> {
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/notion",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(args.signature ? { "X-Notion-Signature": args.signature } : {}),
-      },
-      body: args.rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/webhooks/notion", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(args.signature ? { "X-Notion-Signature": args.signature } : {}),
     },
-  );
+    body: args.rawBody,
+  });
   return { status: response.status, body: await response.json() };
 }
 

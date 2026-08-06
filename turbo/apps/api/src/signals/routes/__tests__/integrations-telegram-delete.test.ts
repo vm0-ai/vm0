@@ -17,6 +17,7 @@ import {
 } from "./helpers/zero-telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
 
 const context = testContext();
 const store = createStore();
@@ -197,7 +198,9 @@ describe("DELETE /api/integrations/telegram", () => {
   }
 
   function client() {
-    return setupApp({ context })(zeroIntegrationsTelegramContract);
+    return setupApp({ context, routes: zeroIntegrationsTelegramRoutes })(
+      zeroIntegrationsTelegramContract,
+    );
   }
 
   async function linkCustomBot(args: {

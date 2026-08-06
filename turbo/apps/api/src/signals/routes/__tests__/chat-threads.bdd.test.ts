@@ -69,6 +69,17 @@ import {
   insertUsageEvent$,
   materializeHourlyUsage$,
 } from "./helpers/zero-usage-insight";
+import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
+import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroGoalsRoutes } from "../zero-goals";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronCleanupSandboxesRoutes,
+  ...cronCompactChatThreadSnapshotsRoutes,
+  ...zeroChatThreadRoutes,
+  ...zeroGoalsRoutes,
+]);
 
 /**
  * CHAT-01 / CHAT-03: chat thread lifecycle beyond the mutation chain that
@@ -135,7 +146,10 @@ function it(name: string, test: () => Promise<void>, timeout?: number): void {
 }
 
 async function compactChatThreadSnapshots() {
-  const client = setupApp({ context })(cronCompactChatThreadSnapshotsContract);
+  const client = setupApp({
+    context,
+    routes: cronCompactChatThreadSnapshotsRoutes,
+  })(cronCompactChatThreadSnapshotsContract);
   const response = await accept(
     client.compact({
       headers: {
@@ -440,7 +454,7 @@ const CHAT_THREAD_READ_CAPABILITIES = [
 ] as const satisfies readonly ZeroCapability[];
 
 function goalsClient() {
-  return setupApp({ context })(zeroGoalsContract);
+  return setupApp({ context, routes: zeroGoalsRoutes })(zeroGoalsContract);
 }
 
 function zeroCapabilityHeaders(
@@ -548,7 +562,7 @@ const malformedChatThreadIdRequests = [
 
 describe("CHAT-01 thread detail, create, and delete cascades", () => {
   it("rejects malformed thread ids before auth and unauthenticated clerk bearers", async () => {
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     for (const request of malformedChatThreadIdRequests) {
       const response = await app.request(request.path, {
@@ -595,7 +609,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         },
       ],
     });
-    const zeroClient = setupApp({ context })(chatThreadsContract);
+    const zeroClient = setupApp({ context, routes: zeroChatThreadRoutes })(
+      chatThreadsContract,
+    );
     const zeroHeaders = zeroCapabilityHeaders(
       actor,
       randomUUID(),
@@ -1444,7 +1460,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     mockNow(cleanupAt);
     onTestFinished(clearMockNow);
     const cleanup = await accept(
-      setupApp({ context })(cronCleanupSandboxesContract).cleanup({
+      setupApp({ context, routes: cronCleanupSandboxesRoutes })(
+        cronCleanupSandboxesContract,
+      ).cleanup({
         headers: {
           authorization: `Bearer ${SANDBOX_CLEANUP_CRON_SECRET}`,
         },

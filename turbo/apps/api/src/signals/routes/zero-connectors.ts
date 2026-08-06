@@ -55,7 +55,7 @@ import {
 import {
   connectorOAuthRedirectResponse,
   CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-} from "./connector-oauth-route-state";
+} from "../../lib/connector-oauth-state";
 import {
   buildConnectorAuthCodeAuthUrlWithMethod,
   prepareConnectorAuthCodeStartWithMethod,

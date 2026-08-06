@@ -3,7 +3,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { sql } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
-import type { Db } from "../external/db";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("onboarding-credit-grants.service");
 
@@ -13,7 +13,7 @@ const ONBOARDING_CREDIT_SOURCE = "onboarding";
 const ONBOARDING_CREDIT_IDEMPOTENCY_KEY = "limited-free-onboarding";
 const ONBOARDING_CREDIT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 export function onboardingCreditsExpiresAt(grantedAt: Date): Date {
   return new Date(grantedAt.getTime() + ONBOARDING_CREDIT_TTL_MS);

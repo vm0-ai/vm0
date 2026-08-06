@@ -20,6 +20,7 @@ import {
   seedTelegramInstallation$,
   type TelegramFixture,
 } from "./helpers/zero-telegram";
+import { zeroIntegrationsTelegramUploadCompleteRoutes } from "../zero-integrations-telegram-upload-complete";
 
 const context = testContext();
 const store = createStore();
@@ -193,9 +194,10 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
       ),
     );
 
-    const client = setupApp({ context })(
-      integrationsTelegramUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramUploadCompleteRoutes,
+    })(integrationsTelegramUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: {
@@ -254,9 +256,10 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
       context.signal,
     );
 
-    const client = setupApp({ context })(
-      integrationsTelegramUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramUploadCompleteRoutes,
+    })(integrationsTelegramUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: {
@@ -280,9 +283,10 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
     context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
       data: [],
     });
-    const client = setupApp({ context })(
-      integrationsTelegramUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramUploadCompleteRoutes,
+    })(integrationsTelegramUploadCompleteContract);
 
     const response = await accept(
       client.complete({
@@ -328,9 +332,10 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
       ),
     );
 
-    const client = setupApp({ context })(
-      integrationsTelegramUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramUploadCompleteRoutes,
+    })(integrationsTelegramUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: {

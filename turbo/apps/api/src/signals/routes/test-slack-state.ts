@@ -45,6 +45,7 @@ import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
+import type { Tx } from "../../lib/db-types";
 
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_WORKSPACE_NAME = "E2E Test Workspace";
@@ -75,7 +76,7 @@ const SLACK_E2E_FIXTURES = {
 } as const;
 const slackStateQueueRevoker = alias(chatEvents, "slack_state_queue_revoker");
 
-type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type StarterGrantTx = Tx;
 
 function isoString(value: Date): string {
   return value.toISOString();

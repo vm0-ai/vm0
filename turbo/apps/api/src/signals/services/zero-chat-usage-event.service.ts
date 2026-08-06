@@ -18,7 +18,7 @@ import {
   pgTextDecoder,
 } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
-import { writeDb$, type Db } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { insertChatEvent } from "./zero-chat-event.service";
@@ -26,9 +26,10 @@ import {
   buildFinalizedUsageRelation,
   type FinalizedUsageRelation,
 } from "./finalized-usage-relation";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("ChatUsageMessage");
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WriteTx = Tx;
 
 const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const;
 const USAGE_CONTEXT_GROUP_BY_COLUMNS = [

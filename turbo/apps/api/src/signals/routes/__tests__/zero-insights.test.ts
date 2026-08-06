@@ -4,6 +4,7 @@ import { zeroInsightsContract } from "@vm0/api-contracts/contracts/zero-insights
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroInsightsRoutes } from "../zero-insights";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -22,7 +23,9 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroInsightsContract);
+  return setupApp({ context, routes: zeroInsightsRoutes })(
+    zeroInsightsContract,
+  );
 }
 
 describe("GET /api/zero/insights", () => {

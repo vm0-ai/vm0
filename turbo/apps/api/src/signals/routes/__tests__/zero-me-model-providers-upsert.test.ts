@@ -13,6 +13,20 @@ import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { readUserSecrets } from "./helpers/user-config-state";
+import { zeroMeModelProvidersDeleteRoutes } from "../zero-me-model-providers-delete";
+import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
+import { zeroMeModelProvidersResetSubscriptionRoutes } from "../zero-me-model-providers-reset-subscription";
+import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
+
+const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+  ...zeroMeModelProvidersListRoutes,
+  ...zeroMeModelProvidersUpsertRoutes,
+]);
+
+const zeroPersonalModelProvidersByTypeTestRoutes = Object.freeze([
+  ...zeroMeModelProvidersDeleteRoutes,
+  ...zeroMeModelProvidersResetSubscriptionRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -87,9 +101,10 @@ function makeAuthJson(overrides?: { planType?: string }): string {
 
 describe("POST /api/zero/me/model-providers (upsert)", () => {
   it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "anthropic-api-key", secret: "sk-ant-test" },
@@ -102,9 +117,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
 
   it("returns 401 when authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "anthropic-api-key", secret: "sk-ant-test" },
@@ -119,9 +135,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-single-create");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token", secret: "sk-ant-test" },
@@ -154,9 +171,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-single-update");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token", secret: "first" },
@@ -178,9 +196,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-missing-secret");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token" },
@@ -195,9 +214,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-anthropic-rejected");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "anthropic-api-key", secret: "sk-ant-test" },
@@ -217,9 +237,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-vm0-with-secret");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "vm0", secret: "any-value" },
@@ -234,9 +255,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-vm0-no-secret");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "vm0" },
@@ -251,9 +273,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-openai-rejected");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {
@@ -302,9 +325,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       }),
     );
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {
@@ -386,9 +410,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       ),
     );
 
-    const mainClient = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const mainClient = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     await accept(
       mainClient.upsert({
         body: {
@@ -401,9 +426,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       [201],
     );
 
-    const byTypeClient = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
+    const byTypeClient = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersByTypeTestRoutes,
+    })(zeroPersonalModelProvidersByTypeContract);
     const response = await accept(
       byTypeClient.resetSubscriptionUsage({
         params: { type: "codex-oauth-token" },
@@ -420,9 +446,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-codex-malformed");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {
@@ -452,9 +479,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       },
     });
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {
@@ -475,9 +503,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-codex-free");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {
@@ -498,9 +527,10 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     const fixture = uniqueOrgUser("zmmp-codex-no-blob");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {

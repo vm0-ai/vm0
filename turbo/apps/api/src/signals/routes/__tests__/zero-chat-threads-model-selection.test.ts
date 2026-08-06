@@ -16,6 +16,8 @@ import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
+import { zeroChatThreadModelSelectionRoutes } from "../zero-chat-threads-model-selection";
 
 const context = testContext();
 const store = createStore();
@@ -97,11 +99,15 @@ function zeroToken(args: {
 }
 
 function modelSelectionClient() {
-  return setupApp({ context })(chatThreadModelSelectionContract);
+  return setupApp({ context, routes: zeroChatThreadModelSelectionRoutes })(
+    chatThreadModelSelectionContract,
+  );
 }
 
 function metadataClient() {
-  return setupApp({ context })(chatThreadMetadataContract);
+  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+    chatThreadMetadataContract,
+  );
 }
 
 describe("POST /api/zero/chat-threads/:id/model-selection", () => {

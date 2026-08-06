@@ -95,6 +95,19 @@ import {
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
 } from "../../../test-fixtures/chat-events";
+import { zeroChatEventsRoutes } from "../zero-chat-events";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroMailRoutes } from "../zero-mail";
+import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
+import { zeroModelProvidersRoutes } from "../zero-model-providers";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroChatEventsRoutes,
+  ...zeroChatThreadRoutes,
+  ...zeroMailRoutes,
+  ...zeroModelProviderGatewayRoutes,
+  ...zeroModelProvidersRoutes,
+]);
 
 /**
  * CHAT-02 / RUN-01 / CHAIN-CHAT: the web chat send route end to end.
@@ -790,27 +803,39 @@ function modelProviderSecretPlaceholder(
 }
 
 function modelProvidersClient() {
-  return setupApp({ context })(zeroModelProvidersMainContract);
+  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+    zeroModelProvidersMainContract,
+  );
 }
 
 function modelProviderConnectionsClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsMainContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsMainContract,
+  );
 }
 
 function modelProviderConnectionsByIdClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsByIdContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsByIdContract,
+  );
 }
 
 function chatEventsClient() {
-  return setupApp({ context })(chatEventsContract);
+  return setupApp({ context, routes: zeroChatEventsRoutes })(
+    chatEventsContract,
+  );
 }
 
 function chatThreadsClient() {
-  return setupApp({ context })(chatThreadsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadsContract,
+  );
 }
 
 function chatThreadEventsClient() {
-  return setupApp({ context })(chatThreadEventsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadEventsContract,
+  );
 }
 
 describe("CHAT-02: thread run admission invariant", () => {
@@ -931,7 +956,7 @@ async function requestSendEventRaw(
   body: ChatRunSendBody & { readonly userMessage: UserMessageInputDocument },
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   const response = await app.request("/api/zero/chat/events", {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
@@ -2567,16 +2592,18 @@ describe("CHAT-02: Zero Mail link delivery", () => {
     );
 
     const linked = await accept(
-      setupApp({ context })(zeroMailContract).linkDraft({
-        headers: {
-          authorization: `Bearer ${zeroTokenFromClaim(claim)}`,
+      setupApp({ context, routes: zeroMailRoutes })(zeroMailContract).linkDraft(
+        {
+          headers: {
+            authorization: `Bearer ${zeroTokenFromClaim(claim)}`,
+          },
+          body: {
+            threadId: run.threadId,
+            agentId,
+            gmailDraftId,
+          },
         },
-        body: {
-          threadId: run.threadId,
-          agentId,
-          gmailDraftId,
-        },
-      }),
+      ),
       [200],
     );
     const beforeReply = await chat.listThreadEvents(actor, run.threadId);

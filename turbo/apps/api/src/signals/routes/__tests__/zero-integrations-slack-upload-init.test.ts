@@ -14,6 +14,7 @@ import {
   seedSlackOrgInstallation$,
   type SlackIntegrationFixture,
 } from "./helpers/zero-integrations-slack";
+import { zeroIntegrationsSlackUploadInitRoutes } from "../zero-integrations-slack-upload-init";
 
 const context = testContext();
 const store = createStore();
@@ -98,7 +99,10 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
   }
 
   it("returns 401 when no auth token is provided", async () => {
-    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
         body: { filename: "report.pdf", length: 100 },
@@ -115,7 +119,10 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
     const runId = `run_${randomUUID()}`;
     const token = sandboxToken({ userId, orgId, runId });
 
-    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
         body: { filename: "report.pdf", length: 100 },
@@ -139,7 +146,10 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
     );
     const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
-    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
         body: { filename: "report.pdf", length: 100 },
@@ -157,7 +167,10 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
     const { orgId, userId } = await seedWithInstallation();
     const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
-    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
         body: { filename: "", length: 0 },
@@ -176,7 +189,10 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
     const { orgId, userId } = await seedWithInstallation();
     const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
-    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
         body: { filename: "quarterly.csv", length: 4096 },
@@ -198,7 +214,10 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
     const { orgId, userId } = await seedWithInstallation();
     const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
-    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
         body: {
@@ -234,7 +253,10 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
       error: "invalid_length",
     });
 
-    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
         body: { filename: "bad.csv", length: 1 },
@@ -256,7 +278,10 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
       file_id: "F-missing-upload-url",
     });
 
-    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
         body: { filename: "missing-url.csv", length: 1 },
@@ -279,7 +304,10 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
       }),
     );
 
-    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const response = await accept(
       client.init({
         body: { filename: "../bad.exe", length: 1 },

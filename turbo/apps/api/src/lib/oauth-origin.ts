@@ -1,4 +1,4 @@
-import { env } from "../../lib/env";
+import { env } from "./env";
 
 const WEB_ORIGIN_HEADER = "x-vm0-web-origin";
 

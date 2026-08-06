@@ -11,6 +11,9 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { testAgentRunsRoutes } from "../test-agent-runs";
+
+const TEST_APP_ROUTES = Object.freeze([...testAgentRunsRoutes]);
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -19,7 +22,9 @@ const runs = createRunsApi(context);
 const mocks = createZeroRouteMocks(context);
 
 function client() {
-  return setupApp({ context })(testAgentRunsContract);
+  return setupApp({ context, routes: testAgentRunsRoutes })(
+    testAgentRunsContract,
+  );
 }
 
 function authenticate(actor: ApiTestUser): {
@@ -59,7 +64,7 @@ describe("POST /api/test/agent-runs", () => {
   it("rejects a malformed request body", async () => {
     mockEnv("ENV", "development");
     const actor = bdd.user();
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request("/api/test/agent-runs", {
       method: "POST",
       headers: {

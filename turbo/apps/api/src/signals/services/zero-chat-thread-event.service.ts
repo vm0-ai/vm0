@@ -14,13 +14,12 @@ import {
 } from "@vm0/db/schema/chat-thread-event";
 import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
 
-import type { Db, ReadonlyDb } from "../external/db";
+import type { ReadonlyDb } from "../external/db";
+import type { Tx } from "../../lib/db-types";
 
 // The sequence row lock must remain held until its event becomes visible.
 // Requiring a transaction prevents callers from splitting those two commits.
-export type ChatThreadEventTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
+export type ChatThreadEventTransaction = Tx;
 const CHAT_THREAD_EVENTS_PAGE_SIZE = 1000;
 const cursorChatThreadEvent = alias(
   chatThreadEvents,

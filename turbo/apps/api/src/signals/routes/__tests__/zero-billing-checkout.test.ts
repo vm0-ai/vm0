@@ -31,6 +31,12 @@ import { createBddApi } from "./helpers/api-bdd";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { webhooksStripeRoutes } from "../webhooks-stripe";
+import { zeroBillingCheckoutRoutes } from "../zero-billing-checkout";
+import { zeroBillingConcurrencyCheckoutRoutes } from "../zero-billing-concurrency-checkout";
+import { zeroBillingConcurrencySubscriptionRoutes } from "../zero-billing-concurrency-subscriptions";
+import { zeroBillingCreditCheckoutRoutes } from "../zero-billing-credit-checkout";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
 
 const context = testContext();
 const store = createStore();
@@ -134,7 +140,9 @@ async function readBillingStatus(
 ): Promise<BillingStatusResponse> {
   authenticateOrg(fixture);
   const response = await accept(
-    setupApp({ context })(zeroBillingStatusContract).get({
+    setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    ).get({
       headers: { authorization: "Bearer clerk-session" },
     }),
     [200],
@@ -176,7 +184,9 @@ async function createStripeCustomerOrgForFixture(
   });
 
   await accept(
-    setupApp({ context })(zeroBillingCheckoutContract).create({
+    setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    ).create({
       headers: { authorization: "Bearer clerk-session" },
       body: {
         tier: "pro",
@@ -258,7 +268,9 @@ async function createSubscriptionOrg(args: {
   };
   context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
   await accept(
-    setupApp({ context })(webhookStripeContract).post({
+    setupApp({ context, routes: webhooksStripeRoutes })(
+      webhookStripeContract,
+    ).post({
       body: JSON.stringify(event),
       extraHeaders: { "stripe-signature": "t=1,v1=checkout-test" },
     }),
@@ -326,7 +338,9 @@ async function createConcurrencySubscriptionOrg(args: {
   };
   context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
   await accept(
-    setupApp({ context })(webhookStripeContract).post({
+    setupApp({ context, routes: webhooksStripeRoutes })(
+      webhookStripeContract,
+    ).post({
       body: JSON.stringify(event),
       extraHeaders: { "stripe-signature": "t=1,v1=checkout-test" },
     }),
@@ -400,7 +414,9 @@ describe("POST /api/zero/billing/checkout", () => {
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -423,7 +439,9 @@ describe("POST /api/zero/billing/checkout", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -444,7 +462,9 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await client.create({
       body: {
@@ -463,7 +483,9 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
     const oversizedSuccessUrl = `${APP_ORIGIN}/billing?state=`.padEnd(
       5001,
       "x",
@@ -492,7 +514,9 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -524,7 +548,9 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/test",
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -579,7 +605,9 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/preview",
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -635,7 +663,9 @@ describe("POST /api/zero/billing/checkout", () => {
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -670,7 +700,9 @@ describe("POST /api/zero/billing/checkout", () => {
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -700,7 +732,9 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedCustomSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     for (const tier of ["pro", "team"] as const) {
       const response = await accept(
@@ -737,7 +771,9 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/attributed",
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -804,7 +840,9 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/trial",
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -849,7 +887,9 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -876,7 +916,9 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedPendingSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -903,7 +945,9 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -935,7 +979,9 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/so-trial",
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -959,7 +1005,9 @@ describe("POST /api/zero/billing/checkout", () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -984,7 +1032,9 @@ describe("POST /api/zero/billing/checkout", () => {
     // undefined and the route falls into the "Price not configured" branch.
     mockEnv("ZERO_PRICE_PRO", undefined);
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.create({
@@ -1019,7 +1069,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     authenticateOrg(fixture);
 
     const response = await accept(
-      setupApp({ context })(zeroBillingUsagePackCheckoutContract).create({
+      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingUsagePackCheckoutContract,
+      ).create({
         body: {
           tier: "pro",
           memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
@@ -1050,7 +1102,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     });
 
     const response = await accept(
-      setupApp({ context })(zeroBillingUsagePackCheckoutContract).create({
+      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingUsagePackCheckoutContract,
+      ).create({
         body: {
           tier: "pro",
           memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
@@ -1130,7 +1184,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     });
 
     const response = await accept(
-      setupApp({ context })(zeroBillingUsagePackCheckoutContract).create({
+      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingUsagePackCheckoutContract,
+      ).create({
         body: {
           tier: "team",
           memberUsagePacks: [
@@ -1217,7 +1273,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     );
 
     const response = await accept(
-      setupApp({ context })(zeroBillingUsagePackCheckoutContract).create({
+      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingUsagePackCheckoutContract,
+      ).create({
         body: {
           tier: "pro",
           memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
@@ -1312,7 +1370,9 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.complete({
@@ -1362,7 +1422,9 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.complete({
@@ -1414,7 +1476,9 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.complete({
@@ -1460,7 +1524,9 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.complete({
@@ -1500,7 +1566,9 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       subscription: null,
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.complete({
@@ -1528,7 +1596,9 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       subscription: `sub_${randomUUID().slice(0, 8)}`,
     });
 
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
 
     const response = await accept(
       client.complete({
@@ -1570,9 +1640,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       url: "https://checkout.stripe.com/session/concurrency",
     });
 
-    const client = setupApp({ context })(
-      zeroBillingConcurrencyCheckoutContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencyCheckoutRoutes,
+    })(zeroBillingConcurrencyCheckoutContract);
 
     const response = await accept(
       client.create({
@@ -1643,9 +1714,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       url: "https://billing.stripe.test/concurrency-update",
     });
 
-    const client = setupApp({ context })(
-      zeroBillingConcurrencyCheckoutContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencyCheckoutRoutes,
+    })(zeroBillingConcurrencyCheckoutContract);
     const successUrl = `${APP_ORIGIN}/billing?concurrency=success`;
     const cancelUrl = `${APP_ORIGIN}/billing?concurrency=canceled`;
     const response = await accept(
@@ -1707,7 +1779,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     mockEnv("STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED", "false");
 
     const response = await accept(
-      setupApp({ context })(zeroBillingConcurrencyCheckoutContract).create({
+      setupApp({
+        context,
+        routes: zeroBillingConcurrencyCheckoutRoutes,
+      })(zeroBillingConcurrencyCheckoutContract).create({
         body: {
           quantity: 1,
           successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
@@ -1742,7 +1817,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     mockEnv("STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID", undefined);
 
     const response = await accept(
-      setupApp({ context })(zeroBillingConcurrencyCheckoutContract).create({
+      setupApp({
+        context,
+        routes: zeroBillingConcurrencyCheckoutRoutes,
+      })(zeroBillingConcurrencyCheckoutContract).create({
         body: {
           quantity: 1,
           successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
@@ -1784,7 +1862,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     });
 
     const response = await accept(
-      setupApp({ context })(zeroBillingConcurrencyCheckoutContract).create({
+      setupApp({
+        context,
+        routes: zeroBillingConcurrencyCheckoutRoutes,
+      })(zeroBillingConcurrencyCheckoutContract).create({
         body: {
           quantity: 1,
           successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
@@ -1814,7 +1895,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       id: subscriptionId,
     });
     await accept(
-      setupApp({ context })(zeroBillingConcurrencySubscriptionContract).cancel({
+      setupApp({
+        context,
+        routes: zeroBillingConcurrencySubscriptionRoutes,
+      })(zeroBillingConcurrencySubscriptionContract).cancel({
         params: { subscriptionId },
         body: {},
         headers: { authorization: "Bearer clerk-session" },
@@ -1824,7 +1908,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     context.mocks.stripe.subscriptions.update.mockClear();
 
     const response = await accept(
-      setupApp({ context })(zeroBillingConcurrencyCheckoutContract).create({
+      setupApp({
+        context,
+        routes: zeroBillingConcurrencyCheckoutRoutes,
+      })(zeroBillingConcurrencyCheckoutContract).create({
         body: {
           quantity: 1,
           successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
@@ -1901,7 +1988,9 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
 
     await accept(
-      setupApp({ context })(webhookStripeContract).post({
+      setupApp({ context, routes: webhooksStripeRoutes })(
+        webhookStripeContract,
+      ).post({
         body: JSON.stringify(event),
         extraHeaders: { "stripe-signature": "t=1,v1=checkout-test" },
       }),
@@ -1933,9 +2022,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       capabilities: ["billing:write"],
     });
 
-    const client = setupApp({ context })(
-      zeroBillingConcurrencyCheckoutContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencyCheckoutRoutes,
+    })(zeroBillingConcurrencyCheckoutContract);
 
     const response = await accept(
       client.create({
@@ -1965,9 +2055,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const fixture = await trackedSeed("pro");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(
-      zeroBillingConcurrencyCheckoutContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencyCheckoutRoutes,
+    })(zeroBillingConcurrencyCheckoutContract);
     const response = await accept(
       client.create({
         body: {
@@ -1997,9 +2088,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     mockEnv("ZERO_PRICE_CONCURRENCY", undefined);
 
-    const client = setupApp({ context })(
-      zeroBillingConcurrencyCheckoutContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencyCheckoutRoutes,
+    })(zeroBillingConcurrencyCheckoutContract);
 
     const response = await accept(
       client.create({
@@ -2034,9 +2126,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       id: subscriptionId,
     });
 
-    const client = setupApp({ context })(
-      zeroBillingConcurrencySubscriptionContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencySubscriptionRoutes,
+    })(zeroBillingConcurrencySubscriptionContract);
 
     const response = await accept(
       client.cancel({
@@ -2078,9 +2171,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       id: subscriptionId,
     });
 
-    const client = setupApp({ context })(
-      zeroBillingConcurrencySubscriptionContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencySubscriptionRoutes,
+    })(zeroBillingConcurrencySubscriptionContract);
 
     await accept(
       client.cancel({
@@ -2125,9 +2219,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(
-      zeroBillingConcurrencySubscriptionContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencySubscriptionRoutes,
+    })(zeroBillingConcurrencySubscriptionContract);
 
     const response = await accept(
       client.restore({
@@ -2146,9 +2241,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(
-      zeroBillingConcurrencySubscriptionContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencySubscriptionRoutes,
+    })(zeroBillingConcurrencySubscriptionContract);
 
     const response = await accept(
       client.cancel({
@@ -2180,7 +2276,10 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+    const client = setupApp({
+      context,
+      routes: zeroBillingCreditCheckoutRoutes,
+    })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
       client.create({
@@ -2209,7 +2308,10 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       capabilities: ["billing:read"],
     });
 
-    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+    const client = setupApp({
+      context,
+      routes: zeroBillingCreditCheckoutRoutes,
+    })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
       client.create({
@@ -2239,7 +2341,10 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       url: "https://checkout.stripe.com/session/credit",
     });
 
-    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+    const client = setupApp({
+      context,
+      routes: zeroBillingCreditCheckoutRoutes,
+    })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
       client.create({
@@ -2302,7 +2407,9 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     });
 
     const response = await accept(
-      setupApp({ context })(zeroBillingCreditCheckoutContract).create({
+      setupApp({ context, routes: zeroBillingCreditCheckoutRoutes })(
+        zeroBillingCreditCheckoutContract,
+      ).create({
         body: {
           credits: 20_000,
           successUrl: `${APP_ORIGIN}/billing?credit=success`,
@@ -2348,7 +2455,9 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const response = await accept(
-      setupApp({ context })(zeroBillingCreditCheckoutContract).create({
+      setupApp({ context, routes: zeroBillingCreditCheckoutRoutes })(
+        zeroBillingCreditCheckoutContract,
+      ).create({
         body: {
           credits: 20_000,
           successUrl: `${APP_ORIGIN}/billing?credit=success`,
@@ -2387,7 +2496,10 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       capabilities: ["billing:write"],
     });
 
-    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+    const client = setupApp({
+      context,
+      routes: zeroBillingCreditCheckoutRoutes,
+    })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
       client.create({
@@ -2422,7 +2534,10 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       url: "https://checkout.stripe.com/session/custom-credit",
     });
 
-    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+    const client = setupApp({
+      context,
+      routes: zeroBillingCreditCheckoutRoutes,
+    })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
       client.create({
@@ -2483,7 +2598,10 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     mockEnv("ZERO_PRICE_CUSTOM_CREDIT_UNIT", undefined);
 
-    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+    const client = setupApp({
+      context,
+      routes: zeroBillingCreditCheckoutRoutes,
+    })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
       client.create({

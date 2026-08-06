@@ -16,7 +16,7 @@ import {
 } from "../services/zero-teams-connect.service";
 import { safeJsonParse, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
-import { getOAuthApiOrigin } from "./oauth-web-origin";
+import { getOAuthApiOrigin } from "../../lib/oauth-origin";
 
 const L = logger("TeamsOAuth");
 const MICROSOFT_AUTHORIZATION_URL =

@@ -20,6 +20,13 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { webhooksGoogleFormsRoutes } from "../webhooks-google-forms";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...webhooksGoogleFormsRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -50,7 +57,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function encodeJwtPart(value: unknown): string {
@@ -205,17 +214,17 @@ async function postWebhook(rawBody: string): Promise<{
   readonly status: number;
   readonly body: unknown;
 }> {
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/google-forms",
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${signedGoogleIdToken()}`,
-        "Content-Type": "application/json",
-      },
-      body: rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/webhooks/google-forms", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${signedGoogleIdToken()}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: rawBody,
+  });
   return { status: response.status, body: await response.json() };
 }
 

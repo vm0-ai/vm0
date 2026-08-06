@@ -8,7 +8,10 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { seedPrivateRegistryResourceVersionFixture } from "../../../test-fixtures/private-registry-resource";
-import { resolvePrivateRegistryResourceArchive } from "../registry-resources-download";
+import {
+  resolvePrivateRegistryResourceArchive,
+  registryResourceDownloadRoutes,
+} from "../registry-resources-download";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -22,7 +25,9 @@ function authHeaders() {
 }
 
 function client() {
-  return setupApp({ context })(registryResourceDownloadContract);
+  return setupApp({ context, routes: registryResourceDownloadRoutes })(
+    registryResourceDownloadContract,
+  );
 }
 
 describe("registry resource download", () => {
