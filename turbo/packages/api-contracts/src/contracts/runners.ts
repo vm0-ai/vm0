@@ -556,6 +556,35 @@ export const secretConnectorMetadataMapSchema = z.record(
   secretConnectorMetadataSchema,
 );
 
+export const PI_SKILLS_ROOT = "/home/user/.pi/agent/skills";
+
+export const runSkillSnapshotEntrySchema = z
+  .object({
+    logicalDir: z.string().min(1),
+    skillFile: z.string().min(1),
+    orgId: z.string().min(1),
+    userId: z.string().min(1),
+    storageName: z.string().min(1),
+    storageId: z.string().min(1),
+    versionId: z.string().min(1),
+  })
+  .readonly();
+
+/**
+ * Immutable, exact-version Skill view resolved once for a Pi run. The ordered
+ * entries are a typed projection of the run's persisted Storage mounts; the
+ * digest deliberately excludes expiring archive URLs.
+ */
+export const runSkillSnapshotSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    policyVersion: z.literal(1),
+    root: z.literal(PI_SKILLS_ROOT),
+    digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    entries: z.array(runSkillSnapshotEntrySchema).readonly(),
+  })
+  .readonly();
+
 /**
  * Stored execution context (subset stored in database for late routing)
  * Contains prepared context without runtime-generated fields
@@ -626,6 +655,7 @@ export const storedExecutionContextSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
+  runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
 /**
@@ -709,6 +739,7 @@ export const executionContextSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
+  runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
 /**
@@ -923,6 +954,8 @@ export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
 >;
+export type RunSkillSnapshot = z.infer<typeof runSkillSnapshotSchema>;
+export type RunSkillSnapshotEntry = z.infer<typeof runSkillSnapshotEntrySchema>;
 export type CompatibleStoredExecutionContext = z.infer<
   typeof compatibleStoredExecutionContextSchema
 >;

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { PI_SKILLS_ROOT } from "@vm0/api-contracts/contracts/runners";
 import { webhookPiTranscriptContract } from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -16,6 +17,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
@@ -24,6 +26,7 @@ const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const webhooks = createWebhookCallbackApi(context);
+const workflows = createWorkflowsBddApi(context);
 
 const MODEL = "deepseek-v4-flash";
 const COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
@@ -34,6 +37,7 @@ interface PiEdgeFixture {
   readonly agentId: string;
   readonly orgId: string;
   readonly runnerGroup: string;
+  readonly workflowSkillName: string;
 }
 
 async function piEdgeFixture(): Promise<PiEdgeFixture> {
@@ -65,12 +69,19 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
     description: "Exercises the in-API Pi edge turn.",
     visibility: "private",
   });
+  bdd.acceptAgentStorageWrites();
+  const workflowSkillName = `pi-snapshot-${randomUUID().slice(0, 8)}`;
+  await workflows.createWorkflow(actor, {
+    agentId: agent.agentId,
+    name: workflowSkillName,
+  });
   return {
     actor,
     switchOwner,
     agentId: agent.agentId,
     orgId,
     runnerGroup,
+    workflowSkillName,
   };
 }
 
@@ -189,6 +200,36 @@ describe("PiLoop edge turn", () => {
       runId: edge.runId,
       experimentalProfile: "vm0/pi-standby",
     });
+    const standbyContext = await api.claimRunnerJob(edge.runId);
+    const skillSnapshot = standbyContext.runSkillSnapshot;
+    if (skillSnapshot === undefined) {
+      throw new Error("Expected Pi standby context to include Skill snapshot");
+    }
+    expect(skillSnapshot).toMatchObject({
+      schemaVersion: 1,
+      policyVersion: 1,
+      root: PI_SKILLS_ROOT,
+    });
+    expect(skillSnapshot.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(skillSnapshot.entries.length).toBeGreaterThan(0);
+    expect(skillSnapshot.entries).toContainEqual(
+      expect.objectContaining({
+        logicalDir: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}`,
+        skillFile: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
+      }),
+    );
+    for (const entry of skillSnapshot.entries) {
+      expect(entry.logicalDir.startsWith(`${PI_SKILLS_ROOT}/`)).toBeTruthy();
+      expect(entry.skillFile).toBe(`${entry.logicalDir}/SKILL.md`);
+      expect(standbyContext.storageManifest?.storageMounts).toContainEqual(
+        expect.objectContaining({
+          name: entry.storageName,
+          storageId: entry.storageId,
+          versionId: entry.versionId,
+          mountPath: entry.logicalDir,
+        }),
+      );
+    }
 
     releaseModel.resolve();
     await flushWaitUntilForTest();

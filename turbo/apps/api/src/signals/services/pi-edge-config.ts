@@ -1,3 +1,5 @@
+import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
+
 /**
  * Cycle-free Pi edge configuration shared between the launch pipeline
  * (agent-run-create) and the edge turn runner (pi-edge-loop.service). This
@@ -16,6 +18,7 @@ export interface PiEdgeTurnArgs {
   readonly orgId: string;
   readonly prompt: string;
   readonly model: PiEdgeModelConfig;
+  readonly skillSnapshot: RunSkillSnapshot;
   readonly apiStartTime: number;
 }
 
