@@ -983,7 +983,35 @@
         "name": "Team"
       },
       "upgrade": "Fazer upgrade",
-      "upgradeTo": "Fazer upgrade para {{plan}}"
+      "upgradeTo": "Fazer upgrade para {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} créditos bônus",
+        "changePlan": "Alterar plano",
+        "checkoutComingSoon": "Checkout em breve",
+        "choosePlan": "Escolha um plano",
+        "choosePlanDescription": "Escolha primeiro o plano do workspace. Os pacotes dos membros são configurados em seguida.",
+        "configurePackages": "Configurar pacotes dos membros",
+        "configurePackagesDescription": "Escolha um pacote obrigatório para cada membro e revise o total mensal combinado.",
+        "currentMember": "Membro atual",
+        "description": "Escolha um pacote mensal de uso para cada membro.",
+        "discountBonusCredits": "Créditos bônus do desconto",
+        "memberExclusive": "Cada pacote pertence a um membro e não pode ser compartilhado. Quando um pacote acaba, o uso volta para créditos pagos conforme o uso. Você pode fazer upgrade para um novo pacote depois.",
+        "memberPackages": "Pacotes dos membros",
+        "memberUsage": "Uso do membro",
+        "memberUsageTotal": "Total dos pacotes mensais",
+        "minimumPackageBreakdown": "Plano de {{base}} + pacote obrigatório de {{package}} para um membro",
+        "monthlyTotal": "Total mensal",
+        "orderSummary": "Resumo do pedido",
+        "packagesStep": "Pacotes",
+        "packOption": "{{price}} · {{credits}} créditos · {{discount}}% de desconto",
+        "planStep": "Plano",
+        "purchaseSteps": "Etapas da compra",
+        "selectedPlan": "Plano selecionado",
+        "selectPlan": "Selecionar {{plan}}",
+        "selectUsage": "Uso de {{name}}",
+        "startingAt": "A partir de",
+        "totalCredits": "Total de créditos"
+      }
     },
     "restore": {
       "cancellationDescription": "Isso desfará o cancelamento agendado do seu plano {{plan}}.",

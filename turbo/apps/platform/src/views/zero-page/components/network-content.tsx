@@ -744,6 +744,9 @@ const networkLogDetailFields = {
   action: detailField("action", "action"),
   method: detailField("method", "method"),
   url: detailField("url", "url"),
+  // The URL cell already displays the omission sentinel.
+  url_truncated: null,
+  url_original_char_count: null,
   host: detailField("host", "host"),
   port: detailField("port", "port"),
   status: detailField("status", "status"),

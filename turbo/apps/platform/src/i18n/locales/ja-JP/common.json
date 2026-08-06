@@ -962,7 +962,35 @@
         "name": "チーム"
       },
       "upgrade": "アップグレード",
-      "upgradeTo": "{{plan}} にアップグレードする"
+      "upgradeTo": "{{plan}} にアップグレードする",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} ボーナスクレジット",
+        "changePlan": "プランを変更",
+        "checkoutComingSoon": "チェックアウトは近日公開",
+        "choosePlan": "プランを選択",
+        "choosePlanDescription": "最初にワークスペースプランを選択します。メンバーパッケージは次に設定します。",
+        "configurePackages": "メンバーパッケージを設定",
+        "configurePackagesDescription": "各メンバーに必須のパッケージを選択し、月額合計を確認します。",
+        "currentMember": "現在のメンバー",
+        "description": "各メンバーに月額利用パックを選択します。",
+        "discountBonusCredits": "割引によるボーナスクレジット",
+        "memberExclusive": "各パッケージは1人のメンバー専用で共有できません。パッケージを使い切ると、従量課金クレジットに切り替わります。後から新しいパッケージにアップグレードできます。",
+        "memberPackages": "メンバーパッケージ",
+        "memberUsage": "メンバーの利用設定",
+        "memberUsageTotal": "月額パック合計",
+        "minimumPackageBreakdown": "{{base}} のプラン + {{package}} の必須メンバーパッケージ",
+        "monthlyTotal": "月額合計",
+        "orderSummary": "注文内容",
+        "packagesStep": "パッケージ",
+        "packOption": "{{price}} · {{credits}} クレジット · {{discount}}%オフ",
+        "planStep": "プラン",
+        "purchaseSteps": "購入手順",
+        "selectedPlan": "選択したプラン",
+        "selectPlan": "{{plan}} を選択",
+        "selectUsage": "{{name}} の利用設定",
+        "startingAt": "最低料金",
+        "totalCredits": "合計クレジット"
+      }
     },
     "restore": {
       "cancellationDescription": "これにより、{{plan}} プランの予定されたキャンセルが取り消されます。",

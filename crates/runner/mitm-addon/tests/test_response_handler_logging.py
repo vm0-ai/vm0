@@ -1,5 +1,6 @@
 """Response hook integration tests for network and proxy logging."""
 
+import json
 import time
 import tracemalloc
 import urllib.parse
@@ -19,6 +20,7 @@ from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
+    read_jsonl_text_after_flush,
 )
 from tests.request_handler_helpers import (
     _vm_without_firewalls,
@@ -317,6 +319,72 @@ def test_network_log_preserves_large_url_without_caching_runtime_url(tmp_path, r
 
     [entry] = read_jsonl_entries_after_flush(Path(log_path))
     assert entry["url"] == raw_url
+    assert "url_truncated" not in entry
+    assert "url_original_char_count" not in entry
+
+
+def test_network_log_omits_url_above_processing_limit(tmp_path, real_flow, mitm_ctx):
+    secret_userinfo = "network-log-user:network-log-password"
+    raw_url = f"https://{secret_userinfo}@target.example.com/path?payload={'x' * 1_000_000}"
+    flow = real_flow(with_response=False, host="target.example.com")
+    log_path = tmp_path / "network.jsonl"
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+    http_network_log.set_target(
+        flow,
+        url=raw_url,
+        host="target.example.com",
+        port=443,
+    )
+    flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    serialized = read_jsonl_text_after_flush(log_path)
+    entry = json.loads(serialized)
+    assert entry["url"] == "[truncated]"
+    assert entry["url_truncated"] is True
+    assert entry["url_original_char_count"] == len(raw_url)
+    assert secret_userinfo not in serialized
+    assert len(serialized.encode()) <= 1_000_000
+
+
+def test_network_log_does_not_attribute_non_url_oversize_to_url(tmp_path, real_flow, mitm_ctx):
+    raw_url = "https://target.example.com/path"
+    oversized_headers = http.Headers(
+        [(f"x-{index:04d}-{'a' * 249}".encode(), b"redacted") for index in range(4_000)]
+    )
+    flow = real_flow(
+        with_response=False,
+        host="target.example.com",
+        request_headers=oversized_headers,
+    )
+    log_path = tmp_path / "network.jsonl"
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+    flow.metadata[metadata_keys.CAPTURE_BODY] = True
+    http_network_log.set_target(
+        flow,
+        url=raw_url,
+        host="target.example.com",
+        port=443,
+    )
+    flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    serialized = read_jsonl_text_after_flush(log_path)
+    entry = json.loads(serialized)
+    assert len(serialized.encode()) > 1_000_000
+    assert entry["url"] == raw_url
+    assert "url_truncated" not in entry
+    assert "url_original_char_count" not in entry
 
 
 def test_proxy_log_discards_large_query_before_url_processing(tmp_path, real_flow, mitm_ctx):

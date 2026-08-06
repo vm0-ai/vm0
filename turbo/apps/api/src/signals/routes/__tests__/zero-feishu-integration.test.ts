@@ -53,6 +53,10 @@ import {
   expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  readCustomConnectorCredentialStorageParent,
+  readCustomConnectorOAuthStorageState,
+} from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -1352,6 +1356,7 @@ describe("Feishu integration", () => {
         },
       ],
       authMode: "oauth",
+      storageVersion: 1,
       permissionBundleRef: "builtin:feishu@1",
       connected: false,
       oauthConfig: {
@@ -1425,6 +1430,14 @@ describe("Feishu integration", () => {
       customAuthorizationUrl.searchParams.get("state"),
       "Expected custom connector Feishu OAuth state",
     );
+    await expect(
+      readCustomConnectorOAuthStorageState(context, customOAuthState),
+    ).resolves.toMatchObject({
+      custom_oauth_state: {
+        storage_version: 1,
+        context_storage_version: 1,
+      },
+    });
     const oauthApp = createAppWithRoutes({
       signal: context.signal,
       routes: zeroFeishuOauthRoutes,
@@ -1450,6 +1463,18 @@ describe("Feishu integration", () => {
     expect(connectedFromCustomConnector.body.connectors[0]).toMatchObject({
       id: managedConnector.id,
       connected: true,
+    });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requireValue(
+          admin.orgId,
+          "Expected Feishu admin to have an organization",
+        ),
+        userId: admin.userId,
+        customConnectorId: managedConnector.id,
+      }),
+    ).resolves.toMatchObject({
+      connector: { storage_version: 1 },
     });
     const adminFeishuStatus = await accept(
       client.getStatus({
