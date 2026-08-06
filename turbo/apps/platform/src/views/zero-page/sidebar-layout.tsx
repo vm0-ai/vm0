@@ -158,6 +158,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const phase = useGet(thread.sharing.phase$);
   const start = useSet(thread.sharing.start$);
+  const pageSignal = useGet(pageSignal$);
   const enabled =
     useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
   if (!enabled || phase !== "idle") {
@@ -166,7 +167,13 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
   return (
     <button
       type="button"
-      onClick={start}
+      onClick={() => {
+        detach(
+          start(pageSignal),
+          Reason.DomCallback,
+          "start shared thread selection",
+        );
+      }}
       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
       aria-label={t(($) => {
         return $.chat.sharing.start;
@@ -189,6 +196,7 @@ function MobileSharingOverlayInner({ thread }: { thread: ChatPanelSignals }) {
   const phase = useGet(thread.sharing.phase$);
   const selectedCount = useGet(thread.sharing.selectedCount$);
   const close = useSet(thread.sharing.close$);
+  const pageSignal = useGet(pageSignal$);
   if (phase === "idle") {
     return null;
   }
@@ -202,7 +210,17 @@ function MobileSharingOverlayInner({ thread }: { thread: ChatPanelSignals }) {
           { count: selectedCount },
         )}
       </span>
-      <Button variant="ghost" size="sm" onClick={close}>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          detach(
+            close(pageSignal),
+            Reason.DomCallback,
+            "close shared thread selection",
+          );
+        }}
+      >
         {t(($) => {
           return $.chat.sharing.cancel;
         })}

@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { ARTIFACT_CATALOG_KINDS } from "@vm0/api-contracts/contracts/artifact-catalog";
 import { describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -542,7 +541,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     });
 
     const catalog = await chat.listArtifactCatalog(owner.actor);
-    expect(catalog.supportedKinds).toStrictEqual([...ARTIFACT_CATALOG_KINDS]);
     expect(catalog.artifacts).toStrictEqual([
       expect.objectContaining({
         kind: "file",
@@ -579,7 +577,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     await expect(chat.listArtifactCatalog(owner.actor)).resolves.toStrictEqual({
       artifacts: [],
       nextCursor: null,
-      supportedKinds: [...ARTIFACT_CATALOG_KINDS],
     });
   }, 180_000);
 
@@ -912,7 +909,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     ).resolves.toStrictEqual({
       artifacts: [],
       nextCursor: null,
-      supportedKinds: [...ARTIFACT_CATALOG_KINDS],
     });
     const secondCatalog = await chat.listArtifactCatalog(secondOwner.actor);
     expect(secondCatalog.artifacts).toStrictEqual([
@@ -935,7 +931,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     ).resolves.toStrictEqual({
       artifacts: [],
       nextCursor: null,
-      supportedKinds: [...ARTIFACT_CATALOG_KINDS],
     });
     const finalCatalog = await chat.listArtifactCatalog(firstOwner.actor);
     expect(finalCatalog.artifacts).toStrictEqual([
@@ -1237,29 +1232,24 @@ describe("shared thread routes", () => {
     const detail = await chat.getArtifactCatalogEntry(owner.actor, artifactId);
     expect(detail.kind).toBe("shared-thread");
 
-    const legacyCatalogResponse = await sharedThreadTestApp().request(
+    const directCatalogResponse = await sharedThreadTestApp().request(
       "/api/zero/artifacts/catalog",
       { headers: authenticateSharedThread(owner.actor) },
     );
-    expect(legacyCatalogResponse.status).toBe(200);
-    const legacyCatalog = asRecord(await legacyCatalogResponse.json());
-    expect(legacyCatalog.supportedKinds).toStrictEqual(
-      ARTIFACT_CATALOG_KINDS.filter((kind) => {
-        return kind !== "shared-thread";
-      }),
-    );
-    expect(legacyCatalog.artifacts).not.toStrictEqual(
+    expect(directCatalogResponse.status).toBe(200);
+    const directCatalog = asRecord(await directCatalogResponse.json());
+    expect(directCatalog.artifacts).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "shared-thread" }),
       ]),
     );
-    const legacyDetailResponse = await sharedThreadTestApp().request(
+    const directDetailResponse = await sharedThreadTestApp().request(
       `/api/zero/artifacts/catalog/${artifactId}`,
       { headers: authenticateSharedThread(owner.actor) },
     );
-    expect(legacyDetailResponse.status).toBe(404);
-    const legacyDetail = asRecord(await legacyDetailResponse.json());
-    expect(asRecord(legacyDetail.error).code).toBe("NOT_FOUND");
+    expect(directDetailResponse.status).toBe(200);
+    const directDetail = asRecord(await directDetailResponse.json());
+    expect(directDetail.kind).toBe("shared-thread");
 
     await chat.deleteThread(owner.actor, run.threadId);
     const afterSourceDeletion = await readSharedThreadSnapshot(first.id);

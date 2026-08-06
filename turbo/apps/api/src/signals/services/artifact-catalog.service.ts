@@ -729,7 +729,6 @@ export const syncArtifactCatalogForFile$ = command(
 interface ListArtifactCatalogArgs {
   readonly orgId: string;
   readonly userId: string;
-  readonly includeSharedThreads: boolean;
   readonly limit?: number;
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
@@ -834,31 +833,19 @@ function sharedThreadChatThreadFilter(db: Db, chatThreadId: string): SQL {
   return filter;
 }
 
-function chatThreadFilter(
-  db: Db,
-  chatThreadId: string,
-  includeSharedThreads: boolean,
-): SQL {
+function chatThreadFilter(db: Db, chatThreadId: string): SQL {
   const fileFilter = fileChatThreadFilter(db, chatThreadId);
-  if (!includeSharedThreads) {
-    return fileFilter;
-  }
   return sql`(${fileFilter} OR ${sharedThreadChatThreadFilter(
     db,
     chatThreadId,
   )})`;
 }
 
-function artifactCatalogOwnerFilter(
-  userId: string,
-  includeSharedThreads: boolean,
-): SQL {
-  return includeSharedThreads
-    ? inArray(artifacts.authorUserId, [
-        userId,
-        sharedThreadArtifactAuthorUserId(userId),
-      ])
-    : eq(artifacts.authorUserId, userId);
+function artifactCatalogOwnerFilter(userId: string): SQL {
+  return inArray(artifacts.authorUserId, [
+    userId,
+    sharedThreadArtifactAuthorUserId(userId),
+  ]);
 }
 
 export const listArtifactCatalog$ = command(
@@ -891,10 +878,10 @@ export const listArtifactCatalog$ = command(
       .where(
         and(
           eq(artifacts.orgId, args.orgId),
-          artifactCatalogOwnerFilter(args.userId, args.includeSharedThreads),
+          artifactCatalogOwnerFilter(args.userId),
           args.kind ? artifactCatalogKindFilter(args.kind) : undefined,
           args.chatThreadId
-            ? chatThreadFilter(db, args.chatThreadId, args.includeSharedThreads)
+            ? chatThreadFilter(db, args.chatThreadId)
             : undefined,
           cursor
             ? lt(
@@ -928,7 +915,6 @@ interface GetArtifactCatalogEntryArgs {
   readonly artifactId: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly includeSharedThreads: boolean;
 }
 
 async function fileDetail(
@@ -1076,7 +1062,7 @@ export const getArtifactCatalogEntry$ = command(
         and(
           eq(artifacts.id, args.artifactId),
           eq(artifacts.orgId, args.orgId),
-          artifactCatalogOwnerFilter(args.userId, args.includeSharedThreads),
+          artifactCatalogOwnerFilter(args.userId),
         ),
       )
       .limit(1);

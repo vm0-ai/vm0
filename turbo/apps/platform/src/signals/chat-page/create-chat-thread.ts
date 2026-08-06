@@ -3735,7 +3735,6 @@ function createChatPanelSignalsWithDraft(
     draft,
   );
   const feedback = createChatThreadFeedbackSignals(threadId, composer.feedback);
-  const sharing = createChatThreadSharingSignals(threadId);
   const messages: MessageListSignals = {
     ...createChatThreadMessagePipeline({
       threadId,
@@ -3746,6 +3745,7 @@ function createChatPanelSignalsWithDraft(
     }),
     ...artifact,
   };
+  const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,
