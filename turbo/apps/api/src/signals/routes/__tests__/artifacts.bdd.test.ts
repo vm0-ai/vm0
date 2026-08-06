@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
+import type { ArtifactSummary } from "@vm0/api-contracts/contracts/artifact-catalog";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -215,9 +216,7 @@ async function createHostedArtifact(args: {
   readonly site: string;
   readonly artifactKind?: "hosted-site" | "presentation-html";
 }): Promise<{
-  readonly runId: string;
   readonly threadId: string;
-  readonly fileId: string;
   readonly url: string;
   readonly aliasUrl: string;
   readonly deploymentId: string;
@@ -244,9 +243,7 @@ async function createHostedArtifact(args: {
   await chat.completeHostedSiteWithBearer(bearer, prepared.deploymentId);
   await completeChatRunOk(run.runId, sandboxHeaders);
   return {
-    runId: run.runId,
     threadId: run.threadId,
-    fileId: prepared.deploymentId,
     url: prepared.artifactUrl,
     aliasUrl: prepared.url,
     deploymentId: prepared.deploymentId,
@@ -259,13 +256,7 @@ async function createRunUploadedFile(args: {
   readonly prompt: string;
   readonly filename: string;
   readonly contentType: string;
-  readonly sizeBytes?: number;
-}): Promise<{
-  readonly runId: string;
-  readonly threadId: string;
-  readonly fileId: string;
-  readonly url: string;
-}> {
+}): Promise<{ readonly url: string }> {
   const run = await sendChatRun(args.owner.actor, {
     agentId: args.owner.agentId,
     prompt: args.prompt,
@@ -279,7 +270,7 @@ async function createRunUploadedFile(args: {
   args.owner.objectStore.addObject({
     bucket: "test-user-artifacts",
     key: `artifacts/${args.owner.actor.userId}/${fileId}/${args.filename}`,
-    size: args.sizeBytes ?? 1024,
+    size: 1024,
   });
   const completed = await chat.completeUploadWithBearer(
     bearer,
@@ -290,12 +281,17 @@ async function createRunUploadedFile(args: {
     throw new Error("Expected run upload completion to succeed");
   }
   await completeChatRunOk(run.runId, sandboxHeaders);
-  return {
-    runId: run.runId,
-    threadId: run.threadId,
-    fileId,
-    url: completed.body.url,
-  };
+  return { url: completed.body.url };
+}
+
+async function findCatalogArtifact(
+  actor: ApiTestUser,
+  title: string,
+): Promise<ArtifactSummary | undefined> {
+  const catalog = await chat.listArtifactCatalog(actor);
+  return catalog.artifacts.find((artifact) => {
+    return artifact.title === title;
+  });
 }
 
 describe("artifact key compatibility", () => {
@@ -398,11 +394,11 @@ describe("video Artifact previews", () => {
       ifNoneMatch: "*",
     });
 
-    const response = await chat.listArtifacts(owner.actor);
-    const previewedArtifact = response.artifacts.find((item) => {
-      return item.fileId === videoArtifact.fileId;
-    });
-    expect(previewedArtifact?.previewImageUrl).toMatch(
+    const previewedArtifact = await findCatalogArtifact(
+      owner.actor,
+      "reference-footage.mp4",
+    );
+    expect(previewedArtifact?.thumbnail?.url).toMatch(
       /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
     );
   }, 180_000);
@@ -414,7 +410,7 @@ describe("video Artifact previews", () => {
     mockCloudflareVideoFrame(owner.actor.userId);
     owner.objectStore.rejectNextImmutablePutAsExisting();
 
-    const videoArtifact = await createRunUploadedFile({
+    await createRunUploadedFile({
       owner,
       prompt: "upload video with concurrent poster generation",
       filename: "concurrent-poster.mp4",
@@ -422,11 +418,11 @@ describe("video Artifact previews", () => {
     });
     await flushWaitUntilForTest();
 
-    const response = await chat.listArtifacts(owner.actor);
-    const previewedArtifact = response.artifacts.find((item) => {
-      return item.fileId === videoArtifact.fileId;
-    });
-    expect(previewedArtifact?.previewImageUrl).toMatch(
+    const previewedArtifact = await findCatalogArtifact(
+      owner.actor,
+      "concurrent-poster.mp4",
+    );
+    expect(previewedArtifact?.thumbnail?.url).toMatch(
       /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
     );
   }, 180_000);
@@ -435,7 +431,7 @@ describe("video Artifact previews", () => {
     const owner = await artifactActor("Artifacts API video preview fail agent");
     const frameRequests = mockCloudflareVideoFrame(owner.actor.userId, 415);
 
-    const videoArtifact = await createRunUploadedFile({
+    await createRunUploadedFile({
       owner,
       prompt: "create unsupported video artifact",
       filename: "unsupported-video.webm",
@@ -450,16 +446,16 @@ describe("video Artifact previews", () => {
       }),
     ).toBeFalsy();
 
-    const response = await chat.listArtifacts(owner.actor);
-    const failedArtifact = response.artifacts.find((item) => {
-      return item.fileId === videoArtifact.fileId;
-    });
-    expect(failedArtifact).toBeDefined();
-    expect(failedArtifact).not.toHaveProperty("previewImageUrl");
+    const failedArtifact = await findCatalogArtifact(
+      owner.actor,
+      "unsupported-video.webm",
+    );
+    expect(failedArtifact).toMatchObject({ kind: "file" });
+    expect(failedArtifact?.thumbnail).toBeNull();
   }, 180_000);
 });
 
-describe("GET /api/zero/artifacts", () => {
+describe("artifact upload provenance", () => {
   it.each(["workflow-schedule", "workflow-event"] as const)(
     "attributes run uploads to the %s source",
     async (triggerSource) => {
@@ -492,107 +488,11 @@ describe("GET /api/zero/artifacts", () => {
       ).resolves.toStrictEqual([triggerSource]);
     },
   );
+});
 
-  it("lists chat-thread artifacts for the active organization and hides uploads shadowed by hosted artifacts", async () => {
-    const userId = `user_${randomUUID()}`;
-    const actor = bdd.user({ userId, orgId: `org_${randomUUID()}` });
-    const otherOrgActor = bdd.user({
-      userId,
-      orgId: `org_${randomUUID()}`,
-    });
-    const current = await artifactActor("Artifacts API org agent", actor);
-    const standaloneUpload = await createRunUploadedFile({
-      owner: current,
-      prompt: "upload standalone artifact",
-      filename: "standalone-notes.txt",
-      contentType: "text/plain",
-      sizeBytes: 256,
-    });
-    const otherOrg = await artifactActor(
-      "Artifacts API other org agent",
-      otherOrgActor,
-    );
-    const objectStore = chatCallbacks.acceptChatObjectStorage();
-
-    const run = await sendChatRun(actor, {
-      agentId: current.agentId,
-      prompt: "create artifact with ordinary upload",
-    });
-    const { claim } = await claimChatRun(current.runnerGroup, run.runId);
-    const bearer = `Bearer ${zeroTokenFromClaim(claim)}`;
-    const ordinaryUploadId = randomUUID();
-    objectStore.addObject({
-      bucket: "test-user-artifacts",
-      key: `artifacts/${actor.userId}/${ordinaryUploadId}/notes.txt`,
-      size: 128,
-    });
-    await chat.completeUploadWithBearer(
-      bearer,
-      { id: ordinaryUploadId, contentType: "text/plain" },
-      [200],
-    );
-    const hostedFile = hostedTextFile("/index.html", "<main>active org</main>");
-    const prepared = await chat.prepareHostedSiteWithBearer(bearer, {
-      site: `active-org-${randomUUID().slice(0, 8)}`,
-      artifactKind: "hosted-site",
-      spaFallback: false,
-      files: [hostedFile],
-    });
-    await chat.completeHostedSiteWithBearer(bearer, prepared.deploymentId);
-
-    const otherOrgArtifact = await createHostedArtifact({
-      actor: otherOrg.actor,
-      agentId: otherOrg.agentId,
-      runnerGroup: otherOrg.runnerGroup,
-      site: `other-org-${randomUUID().slice(0, 8)}`,
-    });
-
-    const response = await chat.listArtifacts(actor);
-    expect(response.artifacts).toHaveLength(2);
-    expect(response.artifacts).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          threadId: run.threadId,
-          runId: run.runId,
-          fileId: prepared.deploymentId,
-          url: prepared.artifactUrl,
-          size: hostedFile.size,
-          updatedAt: expect.any(String),
-          artifactKind: "hosted-site",
-        }),
-        expect.objectContaining({
-          threadId: standaloneUpload.threadId,
-          runId: standaloneUpload.runId,
-          fileId: standaloneUpload.fileId,
-          url: standaloneUpload.url,
-          size: 256,
-          contentType: "text/plain",
-          updatedAt: expect.any(String),
-        }),
-      ]),
-    );
-    const hostedArtifact = response.artifacts.find((artifact) => {
-      return artifact.fileId === prepared.deploymentId;
-    });
-    expect(hostedArtifact).not.toHaveProperty("previewImageUrl");
-    expect(
-      response.artifacts.some((artifact) => {
-        return artifact.fileId === ordinaryUploadId;
-      }),
-    ).toBeFalsy();
-    expect(
-      response.artifacts.some((artifact) => {
-        return artifact.fileId === otherOrgArtifact.fileId;
-      }),
-    ).toBeFalsy();
-    expect(response.truncated).toBeFalsy();
-  }, 120_000);
-
+describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
   it("keeps every hosted-site version as a separate immutable artifact", async () => {
     const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("Expected hosted artifact actor to have an org");
-    }
     const owner = await artifactActor(
       "Artifacts API hosted versions agent",
       actor,
@@ -630,27 +530,6 @@ describe("GET /api/zero/artifacts", () => {
     });
     expect(second.artifactUrl).not.toBe(first.artifactUrl);
 
-    const response = await chat.listArtifacts(actor);
-    const versionArtifacts = response.artifacts.filter((artifact) => {
-      return artifact.runId === run.runId;
-    });
-    expect(versionArtifacts).toHaveLength(2);
-    expect(versionArtifacts).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          fileId: first.deploymentId,
-          filename: `${site}-v1.html`,
-          url: first.artifactUrl,
-          artifactKind: "hosted-site",
-        }),
-        expect.objectContaining({
-          fileId: second.deploymentId,
-          filename: `${site}-v2.html`,
-          url: second.artifactUrl,
-          artifactKind: "hosted-site",
-        }),
-      ]),
-    );
     const threadArtifacts = await chat.listThreadArtifacts(actor, run.threadId);
     expect(threadArtifacts.runs).toHaveLength(1);
     expect(threadArtifacts.runs[0]?.files).toStrictEqual(
@@ -666,29 +545,26 @@ describe("GET /api/zero/artifacts", () => {
       ]),
     );
   }, 120_000);
+});
 
+describe("hosted Artifact previews", () => {
   it("generates deploy-time preview images once per deployment", async () => {
     const owner = await artifactActor("Artifacts API preview image agent");
-    if (!owner.actor.orgId) {
-      throw new Error("Expected preview image test actor to have an org");
-    }
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
     const snapshotRequests = mockCloudflareSnapshot();
+    const site = `preview-artifact-${randomUUID().slice(0, 8)}`;
 
     const artifact = await createHostedArtifact({
       actor: owner.actor,
       agentId: owner.agentId,
       runnerGroup: owner.runnerGroup,
-      site: `preview-artifact-${randomUUID().slice(0, 8)}`,
+      site,
     });
     await flushWaitUntilForTest();
 
-    const firstResponse = await chat.listArtifacts(owner.actor);
-    const firstArtifact = firstResponse.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    expect(firstArtifact?.previewImageUrl).toMatch(
+    const firstArtifact = await findCatalogArtifact(owner.actor, site);
+    expect(firstArtifact?.thumbnail?.url).toMatch(
       /\/artifacts\/[0-9a-z]{10}\.webp$/u,
     );
     const threadArtifacts = await chat.listThreadArtifacts(
@@ -700,7 +576,7 @@ describe("GET /api/zero/artifacts", () => {
         expect.objectContaining({
           url: artifact.url,
           aliasUrl: artifact.aliasUrl,
-          previewImageUrl: firstArtifact?.previewImageUrl,
+          previewImageUrl: firstArtifact?.thumbnail?.url,
         }),
       ]),
     );
@@ -739,9 +615,6 @@ describe("GET /api/zero/artifacts", () => {
       contentType: "image/webp",
       ifNoneMatch: "*",
     });
-    if (!firstResponse.syncUntil) {
-      throw new Error("Expected artifact sync timestamp");
-    }
 
     await chat.completeHostedSiteWithBearer(
       artifact.bearer,
@@ -749,21 +622,13 @@ describe("GET /api/zero/artifacts", () => {
     );
     await flushWaitUntilForTest();
 
-    const retriedResponse = await chat.listArtifacts(owner.actor);
-    const retriedArtifact = retriedResponse.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    expect(retriedArtifact?.previewImageUrl).toBe(
-      firstArtifact?.previewImageUrl,
-    );
+    const retriedArtifact = await findCatalogArtifact(owner.actor, site);
+    expect(retriedArtifact?.thumbnail?.url).toBe(firstArtifact?.thumbnail?.url);
     expect(snapshotRequests).toHaveLength(1);
   }, 120_000);
 
   it("rejects page errors and Cloudflare challenges instead of saving them as previews", async () => {
     const owner = await artifactActor("Artifacts API challenge preview agent");
-    if (!owner.actor.orgId) {
-      throw new Error("Expected challenge preview test actor to have an org");
-    }
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
     const pageErrorRequests = mockCloudflareSnapshot({
@@ -771,12 +636,13 @@ describe("GET /api/zero/artifacts", () => {
       title: "Forbidden",
       content: "<!doctype html><html><body>forbidden</body></html>",
     });
+    const pageErrorSite = `error-preview-${randomUUID().slice(0, 8)}`;
 
     const pageErrorArtifact = await createHostedArtifact({
       actor: owner.actor,
       agentId: owner.agentId,
       runnerGroup: owner.runnerGroup,
-      site: `error-preview-${randomUUID().slice(0, 8)}`,
+      site: pageErrorSite,
     });
     await flushWaitUntilForTest();
 
@@ -785,200 +651,39 @@ describe("GET /api/zero/artifacts", () => {
       content:
         "<!doctype html><html><body><h1>Performing security verification</h1><p>Incompatible browser extension or network configuration</p><script>window.__cf_chl_opt={}</script></body></html>",
     });
+    const challengeSite = `challenge-preview-${randomUUID().slice(0, 8)}`;
 
     const challengeArtifact = await createHostedArtifact({
       actor: owner.actor,
       agentId: owner.agentId,
       runnerGroup: owner.runnerGroup,
-      site: `challenge-preview-${randomUUID().slice(0, 8)}`,
+      site: challengeSite,
     });
     await flushWaitUntilForTest();
 
-    const response = await chat.listArtifacts(owner.actor);
-    for (const artifact of [pageErrorArtifact, challengeArtifact]) {
-      const rejectedArtifact = response.artifacts.find((item) => {
-        return item.fileId === artifact.fileId;
-      });
-      expect(rejectedArtifact).toBeDefined();
-      expect(rejectedArtifact).not.toHaveProperty("previewImageUrl");
+    for (const rejected of [
+      {
+        site: pageErrorSite,
+        deploymentId: pageErrorArtifact.deploymentId,
+      },
+      {
+        site: challengeSite,
+        deploymentId: challengeArtifact.deploymentId,
+      },
+    ]) {
+      const rejectedArtifact = await findCatalogArtifact(
+        owner.actor,
+        rejected.site,
+      );
+      expect(rejectedArtifact).toMatchObject({ kind: "hosted-site" });
+      expect(rejectedArtifact?.thumbnail).toBeNull();
       expect(
         owner.objectStore.puts.some((put) => {
-          return put.key.endsWith(`/preview-v3-${artifact.deploymentId}.webp`);
+          return put.key.endsWith(`/preview-v3-${rejected.deploymentId}.webp`);
         }),
       ).toBeFalsy();
     }
     expect(pageErrorRequests).toHaveLength(1);
     expect(challengeRequests).toHaveLength(1);
   }, 180_000);
-
-  it("returns every artifact for the org in one bulk response", async () => {
-    const first = await artifactActor("Artifacts API bulk agent");
-    const secondAgent = await bdd.createAgent(first.actor, {
-      displayName: "Artifacts API bulk second agent",
-      visibility: "private",
-    });
-
-    const firstArtifact = await createHostedArtifact({
-      actor: first.actor,
-      agentId: first.agentId,
-      runnerGroup: first.runnerGroup,
-      site: `alpha-artifact-${randomUUID().slice(0, 8)}`,
-    });
-    const secondArtifact = await createHostedArtifact({
-      actor: first.actor,
-      agentId: secondAgent.agentId,
-      runnerGroup: first.runnerGroup,
-      site: `deck-artifact-${randomUUID().slice(0, 8)}`,
-      artifactKind: "presentation-html",
-    });
-    const thirdArtifact = await createHostedArtifact({
-      actor: first.actor,
-      agentId: first.agentId,
-      runnerGroup: first.runnerGroup,
-      site: `beta-artifact-${randomUUID().slice(0, 8)}`,
-    });
-
-    const response = await chat.listArtifacts(first.actor);
-    expect(response.truncated).toBeFalsy();
-    expect(
-      new Set(
-        response.artifacts.map((artifact) => {
-          return artifact.fileId;
-        }),
-      ),
-    ).toStrictEqual(
-      new Set([
-        firstArtifact.fileId,
-        secondArtifact.fileId,
-        thirdArtifact.fileId,
-      ]),
-    );
-  }, 120_000);
-
-  it("walks the full set via keyset pagination with a small page size", async () => {
-    const owner = await artifactActor("Artifacts API paging agent");
-
-    const created: string[] = [];
-    for (const label of ["one", "two", "three"]) {
-      const artifact = await createHostedArtifact({
-        actor: owner.actor,
-        agentId: owner.agentId,
-        runnerGroup: owner.runnerGroup,
-        site: `page-${label}-${randomUUID().slice(0, 8)}`,
-      });
-      created.push(artifact.fileId);
-    }
-
-    const collected: string[] = [];
-    let cursor: string | undefined;
-    let pages = 0;
-    do {
-      const page = await chat.listArtifacts(owner.actor, { limit: 1, cursor });
-      expect(page.artifacts.length).toBeLessThanOrEqual(1);
-      for (const artifact of page.artifacts) {
-        collected.push(artifact.fileId);
-      }
-      cursor = page.nextCursor ?? undefined;
-      pages += 1;
-      expect(pages).toBeLessThanOrEqual(10);
-    } while (cursor);
-
-    // Every visible artifact row surfaced exactly once across pages with no
-    // cursor drift, repeated rows, or skips.
-    expect(collected).toHaveLength(created.length);
-    expect(new Set(collected)).toStrictEqual(new Set(created));
-  }, 120_000);
-
-  it("paginates caller-scoped artifacts across the incremental replay window", async () => {
-    const owner = await artifactActor("Artifacts API incremental agent");
-    await createHostedArtifact({
-      actor: owner.actor,
-      agentId: owner.agentId,
-      runnerGroup: owner.runnerGroup,
-      site: `existing-${randomUUID().slice(0, 8)}`,
-    });
-    const baseline = await chat.listArtifacts(owner.actor);
-    const syncUntil = baseline.syncUntil;
-    if (!syncUntil) {
-      throw new Error("Expected artifact sync timestamp");
-    }
-
-    const created = [];
-    for (const label of ["first", "second"]) {
-      created.push(
-        await createHostedArtifact({
-          actor: owner.actor,
-          agentId: owner.agentId,
-          runnerGroup: owner.runnerGroup,
-          site: `incremental-${label}-${randomUUID().slice(0, 8)}`,
-        }),
-      );
-    }
-    const outsider = await artifactActor("Artifacts API incremental outsider");
-    const outsideArtifact = await createHostedArtifact({
-      actor: outsider.actor,
-      agentId: outsider.agentId,
-      runnerGroup: outsider.runnerGroup,
-      site: `incremental-outside-${randomUUID().slice(0, 8)}`,
-    });
-
-    const collected: string[] = [];
-    let cursor: string | undefined;
-    let responseSyncUntil: string | undefined;
-    do {
-      const page = await chat.listArtifacts(owner.actor, {
-        limit: 1,
-        cursor,
-        // Move the requested watermark one minute ahead. The replay overlap
-        // must still recover rows that committed just behind that watermark.
-        updatedAfter: new Date(Date.parse(syncUntil) + 60_000).toISOString(),
-      });
-      responseSyncUntil ??= page.syncUntil;
-      expect(page.syncUntil).toBe(responseSyncUntil);
-      collected.push(
-        ...page.artifacts.map((artifact) => {
-          return artifact.fileId;
-        }),
-      );
-      cursor = page.nextCursor ?? undefined;
-    } while (cursor);
-
-    expect(collected).toHaveLength(new Set(collected).size);
-    for (const artifact of created) {
-      expect(collected).toContain(artifact.fileId);
-    }
-    expect(collected).not.toContain(outsideArtifact.fileId);
-  }, 120_000);
-
-  it("returns updated thread metadata in incremental mode", async () => {
-    const owner = await artifactActor("Artifacts API metadata sync agent");
-    const artifact = await createHostedArtifact({
-      actor: owner.actor,
-      agentId: owner.agentId,
-      runnerGroup: owner.runnerGroup,
-      site: `metadata-${randomUUID().slice(0, 8)}`,
-    });
-    const baseline = await chat.listArtifacts(owner.actor);
-    if (!baseline.syncUntil) {
-      throw new Error("Expected artifact sync timestamp");
-    }
-
-    const title = `Renamed artifact thread ${randomUUID().slice(0, 8)}`;
-    await chat.renameThread(owner.actor, artifact.threadId, title);
-
-    const changed = await chat.listArtifacts(owner.actor, {
-      // Combined with the five-minute overlap, this makes the effective lower
-      // bound the baseline itself, excluding the older file timestamp.
-      updatedAfter: new Date(
-        Date.parse(baseline.syncUntil) + 5 * 60_000,
-      ).toISOString(),
-    });
-    const changedArtifact = changed.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    if (!changedArtifact) {
-      throw new Error("Expected renamed artifact to be incrementally listed");
-    }
-    expect(changedArtifact.threadTitle).toBe(title);
-  }, 120_000);
 });
