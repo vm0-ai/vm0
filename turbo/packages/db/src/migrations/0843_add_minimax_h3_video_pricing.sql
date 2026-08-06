@@ -1,3 +1,4 @@
+-- Custom SQL migration file, put your code below! --
 -- MiniMax H3 official PAYG rates with the 2x built-in markup:
 -- 768P output/input video $0.16/s, 2K output/input video $0.26/s, and each
 -- reference image after the first five $0.08. Reference audio is free.

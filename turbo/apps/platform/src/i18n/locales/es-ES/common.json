@@ -983,7 +983,6 @@
       "usagePacks": {
         "bonusCredits": "+{{value}} créditos extra",
         "changePlan": "Cambiar plan",
-        "checkoutComingSoon": "Pago próximamente",
         "choosePlan": "Elige un plan",
         "choosePlanDescription": "Elige primero el plan del espacio de trabajo. Los paquetes de miembros se configuran después.",
         "configurePackages": "Configurar paquetes de miembros",

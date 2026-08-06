@@ -1,7 +1,7 @@
 import { pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 
 /**
- * Provenance for an input.prompt sent by one chat agent run to another thread.
+ * Provenance for an input event attributed to a chat agent run.
  *
  * The primary key is the source run id, so one source run context can be
  * shared by every target chat event it triggers. The source ids intentionally

@@ -2926,6 +2926,126 @@ describe("chat event action cards", () => {
     );
   });
 
+  it("cancels stale permission loading when a confirmed grant reloads cards", async () => {
+    mockNow();
+    const user = userEvent.setup({ delay: null });
+    const requestStarted = context.mocks.deferred<void>();
+    const requestAborted = context.mocks.deferred<void>();
+    const threadId = "b0000000-0000-4000-a000-000000000951";
+    const reloadedAgentId = "c0000000-0000-4000-a000-000000000002";
+    const gmailPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow`;
+    const youtubePermissionUrl = `https://app.vm0.ai/agents/${reloadedAgentId}/permissions?connectorSlug=youtube&permission=videos.write&action=allow`;
+    let pendingRequest = true;
+    let abortObserved = false;
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
+        agentId: params.id,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: null,
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.list,
+      ({ query, signal, never, respond }) => {
+        if (query.agentId !== reloadedAgentId) {
+          return respond(200, []);
+        }
+        if (!pendingRequest) {
+          return respond(200, []);
+        }
+        pendingRequest = false;
+        requestStarted.resolve();
+        signal.addEventListener(
+          "abort",
+          () => {
+            if (!abortObserved) {
+              abortObserved = true;
+              requestAborted.resolve();
+            }
+          },
+          { once: true },
+        );
+        return never();
+      },
+    );
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.apply,
+      ({ body, respond }) => {
+        const grant = body.grants[0];
+        if (!grant) {
+          throw new Error("Expected a permission grant");
+        }
+        return respond(200, [
+          {
+            agentId: body.agentId,
+            connectorSlug: body.connectorSlug,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt: isoFromNowMs(60 * 60 * 1000),
+            createdAt: "2026-06-09T11:00:00Z",
+            updatedAt: "2026-06-09T11:01:00Z",
+          },
+        ]);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Permission load owner",
+      chatEvents: [
+        {
+          id: "msg-user-permission-load-owner",
+          role: "user",
+          content: "Check Gmail permission",
+          runId: "run-permission-load-owner",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-permission-load-owner",
+          role: "assistant",
+          content: `${gmailPermissionUrl}\n${youtubePermissionUrl}`,
+          runId: "run-permission-load-owner",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await requestStarted.promise;
+    const permissionCards = await screen.findAllByTestId(
+      "permission-action-card",
+    );
+    expect(permissionCards).toHaveLength(2);
+    const [gmailCard, youtubeCard] = permissionCards;
+    if (!gmailCard || !youtubeCard) {
+      throw new Error("Expected two permission cards");
+    }
+    await waitForButtonByText("Confirm", gmailCard);
+
+    await confirmPermissionAction(user, gmailCard);
+
+    await requestAborted.promise;
+    await waitFor(() => {
+      expect(
+        within(gmailCard).getByText("Permissions updated"),
+      ).toBeInTheDocument();
+      expect(
+        within(youtubeCard).getByText("Allow videos.write"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Confirm", youtubeCard)).toBeEnabled();
+    });
+  });
+
   it("automatically retries permission action loading before showing an error", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });

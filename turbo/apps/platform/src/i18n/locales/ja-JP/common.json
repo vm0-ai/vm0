@@ -962,7 +962,6 @@
       "usagePacks": {
         "bonusCredits": "+{{value}} ボーナスクレジット",
         "changePlan": "プランを変更",
-        "checkoutComingSoon": "チェックアウトは近日公開",
         "choosePlan": "プランを選択",
         "choosePlanDescription": "最初にワークスペースプランを選択します。メンバーパッケージは次に設定します。",
         "configurePackages": "メンバーパッケージを設定",

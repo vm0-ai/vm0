@@ -558,6 +558,18 @@ const chatEventBuilders = {
       createdAt: event.createdAt,
     };
   },
+  "input.budget": (row, event) => {
+    return {
+      ...event,
+      eventType: "input.budget",
+      content: null,
+      userMessage: requiredChatEventField(
+        row.userMessage,
+        row.eventType,
+        "userMessage",
+      ),
+    };
+  },
   "input.rejected": (row, event, attachFiles) => {
     return {
       ...event,

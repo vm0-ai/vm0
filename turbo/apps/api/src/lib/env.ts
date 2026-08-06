@@ -100,6 +100,12 @@ const SCHEMA = {
   VM0_MACHINE_SECRET_KEY: z.string().min(1).optional(),
   ZERO_PRICE_PRO: priceIdsSchema,
   ZERO_PRICE_TEAM: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_PLAN_PRO: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_PLAN_TEAM: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_20: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_50: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_100: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_200: priceIdsSchema,
   ZERO_PRICE_CUSTOM_CREDIT_UNIT: z.string().min(1).optional(),
   ZERO_PRICE_CONCURRENCY: priceIdsSchema,
   ZERO_ONE_TIME_CAMPAIGN: z

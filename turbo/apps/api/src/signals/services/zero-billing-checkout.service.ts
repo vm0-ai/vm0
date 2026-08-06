@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 import type { Stripe } from "stripe";
@@ -19,6 +20,21 @@ interface CreateCheckoutSessionArgs {
   readonly tier: SubscriptionCheckoutTier;
   readonly priceId: string;
   readonly trialDays?: 7;
+  readonly successUrl: string;
+  readonly cancelUrl: string;
+  readonly adAttribution?: Readonly<Record<string, string | undefined>>;
+}
+
+interface UsagePackLineItem {
+  readonly priceId: string;
+  readonly quantity: number;
+}
+
+interface CreateUsagePackCheckoutSessionArgs {
+  readonly orgId: string;
+  readonly tier: SubscriptionCheckoutTier;
+  readonly planPriceId: string;
+  readonly usagePackLineItems: readonly UsagePackLineItem[];
   readonly successUrl: string;
   readonly cancelUrl: string;
   readonly adAttribution?: Readonly<Record<string, string | undefined>>;
@@ -55,11 +71,12 @@ interface CreateConcurrencyCheckoutSessionArgs {
 }
 
 const CREDITS_PER_DOLLAR = 1000;
+const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
 
-function priceIdsForTier(
+function legacyPriceIdsForTier(
   tier: SubscriptionCheckoutTier,
 ): readonly string[] | undefined {
   switch (tier) {
@@ -72,22 +89,91 @@ function priceIdsForTier(
   }
 }
 
+function usagePackPlanPriceIdsForTier(
+  tier: SubscriptionCheckoutTier,
+): readonly string[] | undefined {
+  switch (tier) {
+    case "pro": {
+      return env("ZERO_PRICE_USAGE_PACK_PLAN_PRO");
+    }
+    case "team": {
+      return env("ZERO_PRICE_USAGE_PACK_PLAN_TEAM");
+    }
+  }
+}
+
+function knownPriceIdsForTier(
+  tier: SubscriptionCheckoutTier,
+): readonly string[] {
+  return [
+    ...(legacyPriceIdsForTier(tier) ?? []),
+    ...(usagePackPlanPriceIdsForTier(tier) ?? []),
+  ];
+}
+
 /** Returns the active (first) price ID for a given tier. */
 export function activePriceId(
   tier: SubscriptionCheckoutTier,
 ): string | undefined {
-  return priceIdsForTier(tier)?.[0];
+  return legacyPriceIdsForTier(tier)?.[0];
+}
+
+export function activeUsagePackPlanPriceId(
+  tier: SubscriptionCheckoutTier,
+): string | undefined {
+  return usagePackPlanPriceIdsForTier(tier)?.[0];
+}
+
+function usagePackPriceIds(usagePackUsd: UsagePackUsd): readonly string[] {
+  switch (usagePackUsd) {
+    case 20: {
+      return env("ZERO_PRICE_USAGE_PACK_20") ?? [];
+    }
+    case 50: {
+      return env("ZERO_PRICE_USAGE_PACK_50") ?? [];
+    }
+    case 100: {
+      return env("ZERO_PRICE_USAGE_PACK_100") ?? [];
+    }
+    case 200: {
+      return env("ZERO_PRICE_USAGE_PACK_200") ?? [];
+    }
+  }
+}
+
+export function activeUsagePackPriceId(
+  usagePackUsd: UsagePackUsd,
+): string | undefined {
+  return usagePackPriceIds(usagePackUsd)[0];
+}
+
+export function isUsagePackPlanPriceId(priceId: string): boolean {
+  return STRIPE_SUBSCRIPTION_PRICE_TIERS.some((tier) => {
+    return usagePackPlanPriceIdsForTier(tier)?.includes(priceId) ?? false;
+  });
 }
 
 export function tierForKnownPriceId(
   priceId: string,
 ): SubscriptionCheckoutTier | null {
   for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
-    if (priceIdsForTier(tier)?.includes(priceId)) {
+    if (knownPriceIdsForTier(tier).includes(priceId)) {
       return tier;
     }
   }
   return null;
+}
+
+interface PlanPriceItem {
+  readonly price: { readonly id: string };
+}
+
+export function knownPlanPriceItem<T extends PlanPriceItem>(
+  items: readonly T[],
+): T | undefined {
+  return items.find((item) => {
+    return tierForKnownPriceId(item.price.id) !== null;
+  });
 }
 
 export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
@@ -248,6 +334,53 @@ export const createCheckoutSession$ = command(
   },
 );
 
+export const createUsagePackCheckoutSession$ = command(
+  async (
+    { set },
+    args: CreateUsagePackCheckoutSessionArgs,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const metadata: Stripe.MetadataParam = {
+      ...checkoutSessionMetadata({
+        orgId: args.orgId,
+        tier: args.tier,
+        priceId: args.planPriceId,
+        adAttribution: args.adAttribution,
+      }),
+      purpose: USAGE_PACK_SUBSCRIPTION_PURPOSE,
+    };
+    const customerId = await set(
+      getOrCreateStripeCustomer$,
+      { orgId: args.orgId, metadata: args.adAttribution },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const stripe = getStripeClient();
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      line_items: [
+        { price: args.planPriceId, quantity: 1 },
+        ...args.usagePackLineItems.map((lineItem) => {
+          return { price: lineItem.priceId, quantity: lineItem.quantity };
+        }),
+      ],
+      allow_promotion_codes: true,
+      success_url: args.successUrl,
+      cancel_url: args.cancelUrl,
+      metadata,
+      subscription_data: { metadata },
+    });
+    signal.throwIfAborted();
+
+    if (!session.url) {
+      throw new Error("Stripe checkout session did not return a URL");
+    }
+    return session.url;
+  },
+);
+
 export const completeCheckoutSession$ = command(
   async (
     { set },
@@ -287,7 +420,7 @@ export const completeCheckoutSession$ = command(
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     signal.throwIfAborted();
 
-    const priceId = subscription.items.data[0]?.price?.id;
+    const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
     if (!priceId) {
       return { status: "pending" };
     }

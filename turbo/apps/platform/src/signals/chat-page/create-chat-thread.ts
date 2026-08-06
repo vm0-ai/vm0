@@ -46,7 +46,6 @@ import {
   type ChatEvent as PersistedChatEvent,
   type ChatPromptEvent,
   type ChatThreadArtifactRun,
-  type ChatUserMessageEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
@@ -205,7 +204,7 @@ function isInputChatEvent(
   event: ChatEvent,
 ): event is Extract<
   ChatEvent,
-  { eventType: ChatUserMessageEvent["eventType"] }
+  { eventType: "input.prompt" | "input.rejected" }
 > {
   return (
     event.eventType === "input.prompt" || event.eventType === "input.rejected"

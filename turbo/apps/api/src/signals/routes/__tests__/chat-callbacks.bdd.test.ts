@@ -23,7 +23,7 @@ import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
-  holdChatThreadRowLockFixture,
+  holdGoalThreadLockFixture,
   holdModelPolicyReadsFixture,
   insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
@@ -2019,58 +2019,49 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       "revoke the goal invalidated at final settlement",
     );
     await misc.deleteOrgModelProvider(actor, "anthropic-api-key", [204]);
-    const modelPolicyReads = await holdModelPolicyReadsFixture({
+    const goalThreadLock = await holdGoalThreadLockFixture({
+      threadId: first.threadId,
       signal: context.signal,
     });
     onTestFinished(async () => {
-      modelPolicyReads.release();
-      await modelPolicyReads.done;
+      goalThreadLock.release();
+      await goalThreadLock.done;
     });
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "completed before the final goal launch failure"),
     ]);
 
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await expect
-      .poll(modelPolicyReads.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(1);
-
     let goalEventId: string | undefined;
-    await expect
-      .poll(async () => {
-        const [eventId] = await goalQueueEventIds(first.threadId);
-        goalEventId = eventId;
-        return eventId;
-      })
-      .toBeDefined();
+    const [paused] = await Promise.all([
+      accept(
+        goalsClient().pause({
+          headers: zeroGoalHeaders(actor, first.runId),
+        }),
+        [200],
+      ),
+      (async () => {
+        await expect.poll(goalThreadLock.waiterCount).toBe(1);
+        await completeChatRunOk(first.runId, sandboxHeaders, {
+          lastEventSequence: 0,
+        });
+        await expect
+          .poll(async () => {
+            const [eventId] = await goalQueueEventIds(first.threadId);
+            goalEventId = eventId;
+            return eventId;
+          })
+          .toBeDefined();
+        await expect.poll(goalThreadLock.waiterCount).toBeGreaterThanOrEqual(2);
+        goalThreadLock.release();
+        await goalThreadLock.done;
+      })(),
+    ]);
+    expect(paused.body.status).toBe("paused");
+    await flushWaitUntilForTest();
+
     if (!goalEventId) {
       throw new Error("Expected the final-boundary goal queue event");
     }
-    const threadLock = await holdChatThreadRowLockFixture({
-      threadId: first.threadId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      threadLock.release();
-      await threadLock.done;
-    });
-
-    const pauseRequest = goalsClient().pause({
-      headers: zeroGoalHeaders(actor, first.runId),
-    });
-    await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
-
-    modelPolicyReads.release();
-    await modelPolicyReads.done;
-    await expect.poll(threadLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
-    threadLock.release();
-
-    const paused = await accept(pauseRequest, [200]);
-    expect(paused.body.status).toBe("paused");
-    await threadLock.done;
-    await flushWaitUntilForTest();
 
     const events = await waitForThreadMessages(
       actor,

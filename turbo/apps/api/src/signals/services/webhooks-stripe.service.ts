@@ -22,6 +22,7 @@ import { getCampaign } from "./one-time-products";
 import {
   checkoutTierConflictMessage,
   checkoutWouldReplaceWithSameOrLowerTier,
+  knownPlanPriceItem,
   type SubscriptionCheckoutTier,
   tierForKnownPriceId,
   tierFromPriceId,
@@ -2377,7 +2378,9 @@ async function bindSubscriptionToCustomerOrg(
     return [];
   }
 
-  const priceId = args.subscription.items.data[0]?.price?.id;
+  const priceId =
+    knownPlanPriceItem(args.subscription.items.data)?.price.id ??
+    args.subscription.items.data[0]?.price.id;
   if (!priceId) {
     L.warn("subscription has no price ID", {
       subscriptionId: args.subscription.id,
@@ -2460,7 +2463,7 @@ function replacedProSubscriptionId(args: {
 }
 
 function tierFromSubscription(subscription: Stripe.Subscription) {
-  const priceId = subscription.items.data[0]?.price?.id;
+  const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
   if (!priceId) {
     return null;
   }
@@ -2761,7 +2764,7 @@ async function subscriptionInvoiceDetails(
 ): Promise<SubscriptionInvoiceDetails | null> {
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(args.subscriptionId);
-  const priceId = subscription.items.data[0]?.price?.id;
+  const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
   if (!priceId) {
     L.warn("subscription has no price ID for credit grant", {
       subscriptionId: args.subscriptionId,

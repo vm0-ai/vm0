@@ -5,6 +5,8 @@ const RECOMMENDED_FOLLOWUPS_EVENT_ID_NAMESPACE =
   "45a94d31-ad63-42d4-8d7c-6597042c93cf";
 const INTEGRATION_COMPLETION_FALLBACK_EVENT_ID_NAMESPACE =
   "d1cbb152-c744-432a-8cbe-ff7846ef11b7";
+const RUN_TIME_BUDGET_EVENT_ID_NAMESPACE =
+  "354e77a2-8a0a-48f3-9414-97a5ea08727f";
 
 export function assistantEventIdForRunEvent(
   runId: string,
@@ -21,4 +23,8 @@ export function integrationCompletionFallbackEventIdForRun(
   runId: string,
 ): string {
   return uuidv5(runId, INTEGRATION_COMPLETION_FALLBACK_EVENT_ID_NAMESPACE);
+}
+
+export function runTimeBudgetEventIdForRun(runId: string): string {
+  return uuidv5(runId, RUN_TIME_BUDGET_EVENT_ID_NAMESPACE);
 }

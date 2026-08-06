@@ -347,7 +347,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -375,12 +374,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PwaChatKeyboardGestures]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Keep the PWA chat composer pinned above the software keyboard and support swipe-to-dismiss gestures.",
-    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
     maintainer: "ethan@vm0.ai",

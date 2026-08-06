@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.158.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.16...runner-rs-v0.158.17) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** remove resolved dns diagnostics ([#25426](https://github.com/vm0-ai/vm0/issues/25426)) ([a301c42](https://github.com/vm0-ai/vm0/commit/a301c42affa3da95dc3cec1b0c456acf16af2a5c))
+
 ## [0.158.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.15...runner-rs-v0.158.16) (2026-08-06)
 
 
