@@ -376,6 +376,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Open an artifact clicked in a chat thread inside the already-open artifact sidebar instead of stacking the page-global lightbox over it.",
     enabled: true,
   },
+  [FeatureSwitchKey.CjkFriendlyMarkdown]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Close markdown emphasis (`*`, `**`, `***`, `~~`) that sits directly against CJK punctuation, which plain CommonMark leaves as literal asterisks. Turn off to fall back to stock CommonMark parsing.",
+    enabled: true,
+  },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
     description:

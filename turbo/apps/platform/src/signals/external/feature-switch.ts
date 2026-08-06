@@ -77,6 +77,10 @@ export const artifactSidebarInlineOpenEnabled$ = computed((get): boolean => {
   );
 });
 
+export const cjkFriendlyMarkdownEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.CjkFriendlyMarkdown] ?? false;
+});
+
 export const chatThreadSidebarAutoOpenEnabled$ = computed((get): boolean => {
   return (
     get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarAutoOpen] ?? false

@@ -72,4 +72,5 @@ export enum FeatureSwitchKey {
   ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
   ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
   SharedThreadSharing = "sharedThreadSharing",
+  CjkFriendlyMarkdown = "cjkFriendlyMarkdown",
 }
