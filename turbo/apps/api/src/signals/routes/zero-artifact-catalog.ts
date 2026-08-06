@@ -1,15 +1,12 @@
 import { command } from "ccstate";
 import {
   ARTIFACT_CATALOG_KINDS,
-  ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_HEADER,
-  ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_VALUE,
   artifactCatalogContract,
 } from "@vm0/api-contracts/contracts/artifact-catalog";
 
 import { notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { request$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import {
   getArtifactCatalogEntry$,
@@ -17,20 +14,11 @@ import {
 } from "../services/artifact-catalog.service";
 import type { RouteEntry } from "../route-entry";
 
-function supportsSharedThreads(request: {
-  readonly header: (name: string) => string | undefined;
-}) {
-  return (
-    request.header(ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_HEADER) ===
-    ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_VALUE
-  );
-}
-
 const listArtifactCatalogInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const query = get(queryOf(artifactCatalogContract.list));
-    const includeSharedThreads = supportsSharedThreads(get(request$));
+    const includeSharedThreads = query.includeSharedThreads === "1";
     const result = await set(
       listArtifactCatalog$,
       {
@@ -63,13 +51,15 @@ const getArtifactCatalogEntryInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(artifactCatalogContract.get));
-    const includeSharedThreads = supportsSharedThreads(get(request$));
+    const query = get(queryOf(artifactCatalogContract.get));
+    const includeSharedThreads = query.includeSharedThreads === "1";
     const artifact = await set(
       getArtifactCatalogEntry$,
       {
         artifactId: params.artifactId,
         orgId: auth.orgId,
         userId: auth.userId,
+        includeSharedThreads,
       },
       signal,
     );

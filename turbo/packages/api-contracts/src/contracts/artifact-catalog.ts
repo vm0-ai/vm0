@@ -22,10 +22,6 @@ export const ARTIFACT_CATALOG_KINDS = [
   "shared-thread",
 ] as const;
 
-export const ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_HEADER =
-  "x-vm0-artifact-catalog-shared-threads";
-export const ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_VALUE = "1";
-
 export type ArtifactCatalogKind = (typeof ARTIFACT_CATALOG_KINDS)[number];
 
 interface ArtifactThumbnail {
@@ -119,6 +115,7 @@ export interface ArtifactCatalogListQuery {
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
   readonly chatThreadId?: string;
+  readonly includeSharedThreads?: "1";
 }
 
 export interface ArtifactCatalogListClientQuery {
@@ -126,6 +123,11 @@ export interface ArtifactCatalogListClientQuery {
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
   readonly chatThreadId?: string;
+  readonly includeSharedThreads?: "1";
+}
+
+export interface ArtifactCatalogCapabilitiesQuery {
+  readonly includeSharedThreads?: "1";
 }
 
 export interface ArtifactIdPathParams {
@@ -156,11 +158,13 @@ export interface ArtifactCatalogListClientRequest extends ArtifactCatalogRequest
 export interface ArtifactCatalogGetServerRequest extends ArtifactCatalogRequestOptions {
   readonly headers: ArtifactCatalogAuthHeaders;
   readonly params: ArtifactIdPathParams;
+  readonly query: ArtifactCatalogCapabilitiesQuery;
 }
 
 export interface ArtifactCatalogGetClientRequest extends ArtifactCatalogRequestOptions {
   readonly headers?: ArtifactCatalogAuthHeaders;
   readonly params: ArtifactIdPathParams;
+  readonly query?: ArtifactCatalogCapabilitiesQuery;
 }
 
 export type ArtifactCatalogApiErrorRouteResponse<TStatus extends number> = {
@@ -228,6 +232,11 @@ const artifactCatalogListQuerySchema = z.object({
   cursor: z.string().optional(),
   kind: artifactKindSchema.optional(),
   chatThreadId: z.string().uuid().optional(),
+  includeSharedThreads: z.literal("1").optional(),
+});
+
+const artifactCatalogCapabilitiesQuerySchema = z.object({
+  includeSharedThreads: z.literal("1").optional(),
 });
 
 const artifactCatalogListResponseSchema = z.object({
@@ -343,6 +352,10 @@ const artifactCatalogRuntimeSpec: Record<"list" | "get", AppRouteSpec> = {
     path: "/api/zero/artifacts/catalog/:artifactId",
     headers: artifactCatalogAuthHeadersSchema,
     pathParams: artifactCatalogPathParamsSchema,
+    query: artifactCatalogCapabilitiesQuerySchema as unknown as ZodSchema<
+      ArtifactCatalogCapabilitiesQuery,
+      ArtifactCatalogCapabilitiesQuery
+    >,
     responses: {
       200: artifactCatalogDetailResultSchema,
       401: artifactCatalogApiErrorSchema,
@@ -375,6 +388,10 @@ export type ArtifactCatalogGetRoute = AppRoute<ArtifactCatalogGetRouteTypes> & {
   readonly headers: ZodSchema<
     ArtifactCatalogAuthHeaders,
     ArtifactCatalogAuthHeaders
+  >;
+  readonly query: ZodSchema<
+    ArtifactCatalogCapabilitiesQuery,
+    ArtifactCatalogCapabilitiesQuery
   >;
   readonly pathParams: ZodSchema<ArtifactIdPathParams, ArtifactIdPathParams>;
 };

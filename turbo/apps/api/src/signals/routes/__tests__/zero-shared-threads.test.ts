@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -351,6 +352,25 @@ describe("shared thread routes", () => {
     await chat.deleteThread(owner.actor, run.threadId);
     const afterSourceDeletion = await readSharedThreadSnapshot(first.body.id);
     expect(afterSourceDeletion.body).toStrictEqual(publicSnapshot.body);
+
+    webhooks.configureClerkWebhookSecret();
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+    webhooks.verifyNextClerkWebhook({
+      type: "organization.deleted",
+      data: { id: owner.actor.orgId },
+    });
+    await webhooks.requestClerkWebhook("{}", {}, [200]);
+    await flushWaitUntilForTest();
+
+    const afterOrgDeletion = await accept(
+      sharedThreadsClient().get({ params: { id: first.body.id } }),
+      [404],
+    );
+    expect(afterOrgDeletion.body.error.code).toBe("NOT_FOUND");
   }, 180_000);
 
   it("allows API creation while the entry feature switch is disabled", async () => {

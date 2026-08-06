@@ -8,6 +8,10 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { command } from "ccstate";
 
 import { nowDate } from "../../lib/time";
+import {
+  sharedThreadArtifactAuthorUserId,
+  sharedThreadArtifactLogicalKey,
+} from "../../lib/shared-thread-artifact";
 import { db$, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { publishArtifactCatalogChanged } from "./artifact-realtime.service";
@@ -153,10 +157,10 @@ export const createSharedThread$ = command(
       }
       await transaction.insert(artifacts).values({
         orgId: args.orgId,
-        authorUserId: args.userId,
-        kind: "shared-thread",
+        authorUserId: sharedThreadArtifactAuthorUserId(args.userId),
+        kind: "file",
         entityId: sharedThread.id,
-        logicalKey: `shared-thread:${sharedThread.id}`,
+        logicalKey: sharedThreadArtifactLogicalKey(sharedThread.id),
         projectionFileId: null,
         projectionCreatedAt: createdAt,
         title,
