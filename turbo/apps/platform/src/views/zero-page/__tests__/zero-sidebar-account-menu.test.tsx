@@ -1010,6 +1010,48 @@ describe("zero sidebar account menu", () => {
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
 
+  it("keeps the app open when auth recovery remains unauthorized in the background", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+
+    let modelProviderRequests = 0;
+    context.mocks.api(
+      zeroPersonalModelProvidersMainContract.list,
+      ({ respond }) => {
+        modelProviderRequests += 1;
+        return respond(401, {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        });
+      },
+    );
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    await waitFor(() => {
+      expect(modelProviderRequests).toBe(2);
+    });
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+    expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
+  });
+
   it("suppresses global sign-in redirects during add-account auth transitions", async () => {
     mockNow(new Date("2026-01-01T00:00:00.000Z"));
     mockAdminAccountSidebar();
