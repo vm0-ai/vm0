@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.13](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.12...ably-subscriber-v1.0.13) (2026-08-06)
+
+
+### Documentation
+
+* **ably-subscriber:** clarify reconnect timeout scope ([#25481](https://github.com/vm0-ai/vm0/issues/25481)) ([c8fb351](https://github.com/vm0-ai/vm0/commit/c8fb35128b7ed786657e3d5a2489e9adf190153f))
+
 ## [1.0.12](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.11...ably-subscriber-v1.0.12) (2026-08-05)
 
 
