@@ -21,7 +21,10 @@ type MarkdownNodeProp = { node?: unknown };
 type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & MarkdownNodeProp;
 type MarkdownDivProps = ComponentPropsWithoutRef<"div"> &
-  MarkdownNodeProp & { "data-mermaid-code"?: string };
+  MarkdownNodeProp & {
+    "data-mermaid-code"?: string;
+    "data-mermaid-scope"?: string;
+  };
 
 type RewriteArgs = Parameters<
   NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
@@ -363,7 +366,12 @@ function MarkdownDivRenderer(props: MarkdownDivProps) {
   const { children, ...rest } = props;
   const mermaidCode = props["data-mermaid-code"];
   if (typeof mermaidCode === "string") {
-    return <MermaidDiagram code={mermaidCode} />;
+    return (
+      <MermaidDiagram
+        code={mermaidCode}
+        scope={props["data-mermaid-scope"] ?? ""}
+      />
+    );
   }
   return <div {...omitMarkdownNodeProp(rest)}>{children}</div>;
 }
@@ -397,12 +405,16 @@ type RehypePlugins = MarkdownPreviewProps["rehypePlugins"];
 function buildRehypePlugins(args: {
   mathEnabled: boolean;
   mermaidEnabled: boolean;
+  mermaidScope: string;
   rehypePlugins: RehypePlugins;
 }): RehypePlugins {
+  const mermaidPlugins: NonNullable<RehypePlugins> = args.mermaidEnabled
+    ? [[rehypeMermaid, { scope: args.mermaidScope }]]
+    : [];
   const plugins = [
     ...(args.mathEnabled ? [rehypeKatex] : []),
     ...(args.rehypePlugins ?? []),
-    ...(args.mermaidEnabled ? [rehypeMermaid] : []),
+    ...mermaidPlugins,
   ];
   return plugins.length > 0 ? plugins : undefined;
 }
@@ -411,6 +423,7 @@ export function Markdown({
   className,
   style,
   mediaPreview = false,
+  mermaidScope = "",
   mathEnabled = false,
   escapeHtml = false,
   source,
@@ -419,6 +432,7 @@ export function Markdown({
   ...rest
 }: MarkdownPreviewProps & {
   mediaPreview?: boolean;
+  mermaidScope?: string;
   mathEnabled?: boolean;
   escapeHtml?: boolean;
 }) {
@@ -452,6 +466,7 @@ export function Markdown({
       rehypePlugins={buildRehypePlugins({
         mathEnabled,
         mermaidEnabled,
+        mermaidScope,
         rehypePlugins,
       })}
       components={components}

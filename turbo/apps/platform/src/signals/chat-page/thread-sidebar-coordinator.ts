@@ -134,16 +134,14 @@ function materializeArtifactRef(input: ArtifactRefInput): ArtifactRef {
   if (typeof input === "string") {
     return artifactRefFromUrl(input);
   }
-  const url = URL.createObjectURL(input.file);
   return {
-    url,
+    url: input.url,
     kind: classifyChatAttachment({
       contentType: input.file.type,
       filename: input.file.name,
-      url,
+      url: input.url,
     }),
     filename: input.file.name,
-    ownsObjectUrl: true,
     ...(input.shareAvailable === undefined
       ? {}
       : { shareAvailable: input.shareAvailable }),

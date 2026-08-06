@@ -3721,8 +3721,10 @@ export function createThreadComposerSignals(
 function createChatPanelSignalsWithDraft(
   chatEvents: ChatEventSignals,
   draft: DraftSignals,
+  signal: AbortSignal,
 ): ChatPanelSignals {
   const threadId = chatEvents.threadId;
+  const lifecycleId = crypto.randomUUID();
   const artifact = createArtifacts(threadId);
   const threadDraft$ = createRemoteChatThreadDraft(threadId);
   const threadMeta$ = createThreadMeta(threadId);
@@ -3764,6 +3766,8 @@ function createChatPanelSignalsWithDraft(
   });
   return {
     threadId,
+    lifecycleId,
+    signal,
     threadDraft$,
     threadMeta$,
     ...threadTitle,
@@ -3798,15 +3802,20 @@ function createChatPanelSignalsWithDraft(
  */
 export function createChatPanelSignals(
   chatEvents: ChatEventSignals,
+  signal: AbortSignal,
 ): ChatPanelSignals {
-  return createChatPanelSignalsWithDraft(chatEvents, createDraftSignals());
+  return createChatPanelSignalsWithDraft(
+    chatEvents,
+    createDraftSignals(),
+    signal,
+  );
 }
 
 export const createCachedChatPanelSignals$ = command(
-  ({ set }, chatEvents: ChatEventSignals) => {
+  ({ set }, chatEvents: ChatEventSignals, signal: AbortSignal) => {
     const { draft, isNew } = set(ensureDraft$, chatEvents.threadId);
     return {
-      thread: createChatPanelSignalsWithDraft(chatEvents, draft),
+      thread: createChatPanelSignalsWithDraft(chatEvents, draft, signal),
       isNew,
     };
   },

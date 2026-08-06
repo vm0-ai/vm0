@@ -13,6 +13,8 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
+import { detach, Reason } from "../../../signals/utils.ts";
 import { Markdown } from "../markdown.tsx";
 
 const context = testContext();
@@ -250,7 +252,9 @@ describe("assistant markdown", () => {
     await expect(
       renderedDiagramMarkup(screen.getByAltText("Diagram"), objectUrls),
     ).resolves.toContain('data-mermaid-theme="redux-dark"');
-    expect(objectUrls.revokedUrls).toContain(lightUrl);
+    // Theme changes replace the rendered entry, but the panel still owns both
+    // object URLs until its lifetime signal aborts.
+    expect(objectUrls.revokedUrls).not.toContain(lightUrl);
   });
 
   it("moves a rendered mermaid diagram from the lightbox into split view", async () => {
@@ -277,7 +281,7 @@ describe("assistant markdown", () => {
     );
     const lightboxUrl = lightboxImage.getAttribute("src") ?? "";
     expect(lightboxUrl).toContain("blob:mock-download-");
-    expect(lightboxUrl).not.toBe(inlineUrl);
+    expect(lightboxUrl).toBe(inlineUrl);
     const lightbox = screen.getByTestId("attachment-lightbox");
     expect(
       within(lightbox).getByLabelText("Open in split view"),
@@ -293,17 +297,15 @@ describe("assistant markdown", () => {
     const sidebarUrl = sidebarImage.getAttribute("src") ?? "";
     expect(sidebarImage).toHaveAttribute("alt", "diagram.svg");
     expect(sidebarUrl).toContain("blob:mock-download-");
-    expect(sidebarUrl).not.toBe(lightboxUrl);
+    expect(sidebarUrl).toBe(inlineUrl);
     expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
-    await waitFor(() => {
-      expect(objectUrls.revokedUrls).toContain(lightboxUrl);
-    });
     expect(objectUrls.revokedUrls).not.toContain(inlineUrl);
 
     click(within(sidebar).getByTestId("artifact-sidebar-close"));
     await waitFor(() => {
-      expect(objectUrls.revokedUrls).toContain(sidebarUrl);
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
+    expect(objectUrls.revokedUrls).not.toContain(sidebarUrl);
   });
 
   it("opens a mermaid diagram directly in an existing artifact sidebar", async () => {
@@ -336,6 +338,7 @@ describe("assistant markdown", () => {
     });
 
     const expand = await screen.findByLabelText("Expand diagram");
+    const inlineUrl = screen.getByAltText("Diagram").getAttribute("src") ?? "";
     await waitFor(() => {
       expect(expand).toBeEnabled();
     });
@@ -349,13 +352,46 @@ describe("assistant markdown", () => {
     const sidebarUrl = sidebarImage.getAttribute("src") ?? "";
     expect(sidebarImage).toHaveAttribute("alt", "diagram.svg");
     expect(sidebarUrl).toContain("blob:mock-download-");
+    expect(sidebarUrl).toBe(inlineUrl);
     expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
     expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
 
     click(within(sidebar).getByTestId("artifact-sidebar-close"));
     await waitFor(() => {
-      expect(objectUrls.revokedUrls).toContain(sidebarUrl);
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
+    expect(objectUrls.revokedUrls).not.toContain(sidebarUrl);
+  });
+
+  it("revokes a mermaid object URL when its chat panel signal aborts", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    const diagram = await screen.findByAltText("Diagram");
+    const url = diagram.getAttribute("src") ?? "";
+    expect(objectUrls.revokedUrls).not.toContain(url);
+
+    // Resetting the pane aborts the old chat panel before replacing it.
+    detach(
+      context.store.set(setupLeftThread$, "thread-markdown", context.signal),
+      Reason.Entrance,
+      "replace chat panel",
+    );
+
+    await waitFor(() => {
+      expect(objectUrls.revokedUrls).toContain(url);
+    });
+
+    const replacementDiagram = await screen.findByAltText("Diagram");
+    const replacementUrl = replacementDiagram.getAttribute("src") ?? "";
+    expect(replacementUrl).not.toBe(url);
+    expect(objectUrls.revokedUrls).not.toContain(replacementUrl);
   });
 
   it("leaves a streaming mermaid fence as code until it closes", async () => {

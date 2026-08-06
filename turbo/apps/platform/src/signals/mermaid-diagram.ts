@@ -1,5 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { onRef, settle } from "./utils.ts";
+import {
+  currentLeftThread$,
+  currentRightThread$,
+} from "./chat-page/chat-thread-pane-state.ts";
 
 export type MermaidDiagramResult =
   | { readonly status: "rendering" }
@@ -19,11 +23,16 @@ export const mermaidDiagramResultByKey$ = computed((get) => {
 });
 
 /**
- * Diagrams are identified by their source and theme: identical diagrams share a
- * result entry, and a theme switch renders a new one.
+ * Diagrams are identified by their panel lifetime, source, and theme. Identical
+ * diagrams within one panel share a result, while a panel or theme switch
+ * renders a new one.
  */
-export function mermaidDiagramKey(code: string, theme: string): string {
-  return `${theme}:${code}`;
+export function mermaidDiagramKey(
+  code: string,
+  theme: string,
+  scope: string,
+): string {
+  return `${scope}:${theme}:${code}`;
 }
 
 const setMermaidDiagramResult$ = command(
@@ -34,8 +43,9 @@ const setMermaidDiagramResult$ = command(
   },
 );
 
-// A rendered entry owns an object URL, so entries are refcounted by mounted
-// canvases and released once the last one detaches.
+// Rendered entries are refcounted by mounted canvases and dropped once the last
+// one detaches. Their object URLs belong to the containing chat panel instead:
+// a sidebar or lightbox can keep using the same URL after the message unmounts.
 const internalMermaidDiagramRefCountByKey$ = state<Record<string, number>>({});
 
 const retainMermaidDiagramResult$ = command(({ get, set }, key: string) => {
@@ -73,10 +83,6 @@ const releaseMermaidDiagramResult$ = command(({ get, set }, key: string) => {
   set(internalMermaidDiagramRefCountByKey$, (current) => {
     return withoutKey(current, key);
   });
-  const result = get(internalMermaidDiagramResultByKey$)[key];
-  if (result?.status === "rendered") {
-    URL.revokeObjectURL(result.url);
-  }
   set(internalMermaidDiagramResultByKey$, (current) => {
     return withoutKey(current, key);
   });
@@ -179,8 +185,8 @@ function sizeDiagramAndSerialize(svg: SVGSVGElement): string {
 }
 
 /**
- * Keep the rendered SVG as a browser-native file. Each surface creates its own
- * object URL from this file so its lifetime is independent from the message.
+ * Keep the rendered SVG as a browser-native file. The containing chat panel
+ * owns its object URL, while preview surfaces reuse that URL with File metadata.
  */
 function svgFile(markup: string): File {
   return new File([markup], "diagram.svg", { type: "image/svg+xml" });
@@ -198,7 +204,8 @@ const renderMermaidDiagram$ = command(
   async ({ get, set }, el: HTMLElement, signal: AbortSignal) => {
     const code = el.dataset.mermaidCode ?? "";
     const theme = el.dataset.mermaidTheme === "dark" ? "dark" : "light";
-    const key = mermaidDiagramKey(code, theme);
+    const scope = el.dataset.mermaidScope ?? "";
+    const key = mermaidDiagramKey(code, theme, scope);
 
     set(retainMermaidDiagramResult$, key);
     signal.addEventListener(
@@ -243,10 +250,26 @@ const renderMermaidDiagram$ = command(
     }
 
     const file = svgFile(sizeDiagramAndSerialize(svg));
+    const panelSignal = [
+      get(currentLeftThread$),
+      get(currentRightThread$),
+    ].find((thread) => {
+      return thread?.lifecycleId === scope;
+    })?.signal;
+    const objectUrlSignal = panelSignal ?? signal;
+    objectUrlSignal.throwIfAborted();
+    const url = URL.createObjectURL(file);
+    objectUrlSignal.addEventListener(
+      "abort",
+      () => {
+        URL.revokeObjectURL(url);
+      },
+      { once: true },
+    );
     set(setMermaidDiagramResult$, key, {
       status: "rendered",
       file,
-      url: URL.createObjectURL(file),
+      url,
     });
   },
 );

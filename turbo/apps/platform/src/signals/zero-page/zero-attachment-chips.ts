@@ -79,7 +79,6 @@ function isAttachmentTextDocumentLightboxInput(
 
 type AttachmentImageLightboxState = AttachmentImageLightboxInput & {
   readonly kind: "image";
-  readonly ownsObjectUrl?: boolean;
 };
 
 export type AttachmentLightboxState =
@@ -100,22 +99,6 @@ const internalLightboxDialogVisible$ = state(false);
 const internalLightboxDialogFullscreen$ = state(false);
 const internalLightboxDialogCloseToken$ = state(0);
 const resetLightboxDialogCloseSignal$ = resetSignal();
-
-function releaseLightboxObjectUrl(value: AttachmentLightboxState | null): void {
-  if (value?.kind === "image" && value.ownsObjectUrl) {
-    URL.revokeObjectURL(value.url);
-  }
-}
-
-const replaceLightboxState$ = command(
-  ({ get, set }, value: AttachmentLightboxState | null) => {
-    const current = get(internalLightboxState$);
-    if (current !== value) {
-      releaseLightboxObjectUrl(current);
-    }
-    set(internalLightboxState$, value);
-  },
-);
 
 export const lightboxUrl$ = computed((get) => {
   return get(internalLightboxState$);
@@ -143,7 +126,7 @@ const closeLightboxForDialogExitToken$ = command(
     }
     set(internalLightboxDialogVisible$, false);
     set(internalLightboxDialogFullscreen$, false);
-    set(replaceLightboxState$, null);
+    set(internalLightboxState$, null);
   },
 );
 
@@ -171,8 +154,8 @@ export const closeLightboxWithDialogExit$ = command(
  * This is opt-out: a new lightbox caller is routed unless it sets
  * `splitViewAvailable: false`. Set it for previews that do not belong in the
  * thread sidebar, such as a pending composer upload. File-backed previews pass
- * the File itself so the sidebar can preserve its name and content type while
- * owning a separate object URL.
+ * the panel-owned object URL with the File metadata so the sidebar can preserve
+ * its name and content type.
  */
 type AttachmentSidebarPreviewInput = {
   readonly url: string;
@@ -189,7 +172,7 @@ export function attachmentSidebarRef(
       ? {}
       : { shareAvailable: value.shareAvailable };
   if (value.file) {
-    return { file: value.file, ...share };
+    return { file: value.file, url: value.url, ...share };
   }
   return value.url;
 }
@@ -212,9 +195,7 @@ function imageLightboxState(
   return {
     kind: "image",
     ...input,
-    url: URL.createObjectURL(input.file),
     filename: input.filename ?? input.file.name,
-    ownsObjectUrl: true,
   };
 }
 
@@ -229,7 +210,7 @@ export const openImageLightbox$ = command(
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    set(replaceLightboxState$, imageLightboxState(input));
+    set(internalLightboxState$, imageLightboxState(input));
   },
 );
 
@@ -252,7 +233,7 @@ export const navigateImageLightbox$ = command(
       splitViewAvailable?: boolean;
     },
   ) => {
-    set(replaceLightboxState$, { kind: "image", ...value });
+    set(internalLightboxState$, { kind: "image", ...value });
   },
 );
 
@@ -267,13 +248,13 @@ export const openDocumentLightbox$ = command(
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
     if (isAttachmentTextDocumentLightboxInput(value)) {
-      set(replaceLightboxState$, {
+      set(internalLightboxState$, {
         ...value,
         text$: value.text$ ?? createTextPreviewComputed(value.url),
       });
       return;
     }
-    set(replaceLightboxState$, value);
+    set(internalLightboxState$, value);
   },
 );
 
@@ -297,7 +278,7 @@ export const openVideoLightbox$ = command(
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    set(replaceLightboxState$, { kind: "video", ...value });
+    set(internalLightboxState$, { kind: "video", ...value });
   },
 );
 
@@ -321,7 +302,7 @@ export const openAudioLightbox$ = command(
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    set(replaceLightboxState$, { kind: "audio", ...value });
+    set(internalLightboxState$, { kind: "audio", ...value });
   },
 );
 
