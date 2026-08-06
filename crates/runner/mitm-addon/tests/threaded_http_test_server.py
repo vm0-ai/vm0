@@ -40,7 +40,6 @@ class ThreadedHttpTestServer[Request]:
         self._responses: deque[_QueuedResponse] = deque()
         self._release_events: list[threading.Event] = []
         self._server: ThreadingHTTPServer | None = None
-        self._thread: threading.Thread | None = None
 
     @property
     def api_url(self) -> str:
@@ -83,7 +82,7 @@ class ThreadedHttpTestServer[Request]:
             return self._condition.wait_for(lambda: len(self._requests) >= count, timeout)
 
     @contextlib.contextmanager
-    def run(self) -> Iterator[ThreadedHttpTestServer[Request]]:
+    def run(self) -> Iterator[None]:
         server_ref = self
 
         class _Handler(BaseHTTPRequestHandler):
@@ -102,15 +101,14 @@ class ThreadedHttpTestServer[Request]:
         def serve_forever() -> None:
             server.serve_forever(poll_interval=0.01)
 
-        self._thread = threading.Thread(
+        thread = threading.Thread(
             target=serve_forever,
             name=self._thread_name,
             daemon=True,
         )
-        thread = self._thread
         thread.start()
         try:
-            yield self
+            yield
         finally:
             with self._condition:
                 release_events = tuple(self._release_events)
@@ -121,7 +119,6 @@ class ThreadedHttpTestServer[Request]:
             thread.join(timeout=2.0)
             server.server_close()
             self._server = None
-            self._thread = None
 
     def _record_request_and_reserve_response(self, request: Request) -> _QueuedResponse:
         with self._condition:

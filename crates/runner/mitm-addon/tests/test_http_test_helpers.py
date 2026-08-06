@@ -158,17 +158,22 @@ def _start_post(
     return thread
 
 
-def _assert_response_alignment(
-    *,
-    server: ThreadedHttpTestServer[_CapturedRequest],
-    gate: _PauseFirstHandlerReacquire,
-) -> None:
+def test_threaded_http_server_aligns_responses_with_recorded_order():
+    server = ThreadedHttpTestServer(
+        request_factory=_CapturedRequest,
+        default_status=503,
+        default_body=b"default",
+        thread_name="shared-http-test-server",
+    )
+    server.queue_response(201, body=b"first")
+    server.queue_response(202, body=b"second")
     responses: dict[str, _Response] = {}
     responses_lock = threading.Lock()
-    first = None
-    second = None
+    gate = _PauseFirstHandlerReacquire()
     with patch.object(threading, "RLock", return_value=gate):
         condition = threading.Condition()
+    first = None
+    second = None
 
     with patch.object(server, "_condition", condition), server.run():
         try:
@@ -204,18 +209,6 @@ def _assert_response_alignment(
             "second": (202, b"second"),
         }
         assert _post(f"{server.api_url}/default") == (503, b"default")
-
-
-def test_threaded_http_server_aligns_responses_with_recorded_order():
-    server = ThreadedHttpTestServer(
-        request_factory=_CapturedRequest,
-        default_status=503,
-        default_body=b"default",
-        thread_name="shared-http-test-server",
-    )
-    server.queue_response(201, body=b"first")
-    server.queue_response(202, body=b"second")
-    _assert_response_alignment(server=server, gate=_PauseFirstHandlerReacquire())
 
 
 def test_fake_auth_endpoint_preserves_capture_and_default_response():
