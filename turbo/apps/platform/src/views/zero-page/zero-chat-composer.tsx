@@ -5277,7 +5277,7 @@ function TemplatePickerCategoryContent({
       <div
         data-presentation-template-grid-scroll=""
         ref={onRestorePresentationScroll}
-        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-6 pb-6"
+        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-6 pb-6 pt-0.5"
         onScroll={(event) => {
           onPresentationScroll(event.currentTarget.scrollTop);
         }}
@@ -5302,7 +5302,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-website-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
         {filteredWebsiteItems.length > 0 ? (
           <WebsiteTemplateGrid
@@ -5322,7 +5322,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-illustration-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
         onScroll={(event) => {
           prewarmIllustrationPreviewImagesNearScroll({
             items: filteredIllustrationItems,
@@ -5352,7 +5352,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-video-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
         {filteredVideoItems.length > 0 ? (
           <VideoTemplateGrid
@@ -5369,7 +5369,7 @@ function TemplatePickerCategoryContent({
 
   if (selectedCategory === "avatar" && hasAvatarTab) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4">
         <AvatarTemplatePickerContent
           signals={signals}
           value={value}
