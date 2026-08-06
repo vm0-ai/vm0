@@ -135,6 +135,33 @@ class TestRegistryBuiltinBaseUrlVars:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.zendesk.com"
 
+    def test_builtin_trailing_authority_fragment_resolves_with_provider_policy(self, tmp_path):
+        name = "audit"
+        install_test_builtin_firewall(
+            name=name,
+            base="https://api-${{ vars.HOST }}/v1",
+            host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
+        )
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id=f"run-{name}",
+            name=name,
+            base_url_vars={"HOST": "tenant.example.com"},
+        )
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        api = vm_info["firewalls"][0]["apis"][0]
+        assert api["base"] == "https://api-tenant.example.com/v1"
+        assert isinstance(
+            api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER],
+            builtin_host_policy.CompiledBuiltinHostPolicy,
+        )
+
     def test_builtin_firewall_entry_resolves_ecmascript_whitespace_template(self, tmp_path):
         name = "ecmascript-whitespace"
         install_test_builtin_firewall(

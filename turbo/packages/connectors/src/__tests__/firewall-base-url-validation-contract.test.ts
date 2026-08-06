@@ -6,8 +6,17 @@ import { z } from "zod";
 import { FIREWALL_HOSTNAME_POLICY_VERSION } from "../firewall-hostname-policy";
 import {
   canonicalizeFirewallBaseUrl,
+  resolveFirewallBaseUrlTemplate,
   validateBaseUrl,
 } from "../firewall-types";
+
+const baseUrlTemplateResolutionCaseSchema = z.object({
+  name: z.string(),
+  category: z.string().optional(),
+  base: z.string(),
+  vars: z.record(z.string(), z.string()),
+  expectedResolvedBase: z.string().nullable(),
+});
 
 const baseUrlValidationCaseSchema = z.object({
   name: z.string(),
@@ -21,23 +30,37 @@ const baseUrlValidationCaseSchema = z.object({
 const contractSchema = z
   .object({
     hostnamePolicy: z.literal(FIREWALL_HOSTNAME_POLICY_VERSION),
+    baseUrlTemplateResolutionCases: z
+      .array(baseUrlTemplateResolutionCaseSchema)
+      .min(1),
     baseUrlValidationCases: z.array(baseUrlValidationCaseSchema).min(1),
   })
   .superRefine((contract, ctx) => {
-    const seenNames = new Set<string>();
-    for (const [index, testCase] of contract.baseUrlValidationCases.entries()) {
-      if (seenNames.has(testCase.name)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["baseUrlValidationCases", index, "name"],
-          message: `duplicate case name "${testCase.name}"`,
-        });
+    for (const [collectionName, testCases] of [
+      [
+        "baseUrlTemplateResolutionCases",
+        contract.baseUrlTemplateResolutionCases,
+      ],
+      ["baseUrlValidationCases", contract.baseUrlValidationCases],
+    ] as const) {
+      const seenNames = new Set<string>();
+      for (const [index, testCase] of testCases.entries()) {
+        if (seenNames.has(testCase.name)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [collectionName, index, "name"],
+            message: `duplicate case name "${testCase.name}"`,
+          });
+        }
+        seenNames.add(testCase.name);
       }
-      seenNames.add(testCase.name);
     }
   });
 
 type BaseUrlValidationCase = z.infer<typeof baseUrlValidationCaseSchema>;
+type BaseUrlTemplateResolutionCase = z.infer<
+  typeof baseUrlTemplateResolutionCaseSchema
+>;
 
 function loadContract(): z.infer<typeof contractSchema> {
   const rawContract: unknown = JSON.parse(
@@ -70,12 +93,39 @@ function assertValidationResult(testCase: BaseUrlValidationCase): void {
   expect(validate).toThrow();
 }
 
+function assertTemplateResolutionResult(
+  testCase: BaseUrlTemplateResolutionCase,
+): void {
+  const resolve = (): string => {
+    return resolveFirewallBaseUrlTemplate({
+      serviceName: "contract",
+      base: testCase.base,
+      vars: testCase.vars,
+    });
+  };
+
+  if (testCase.expectedResolvedBase === null) {
+    expect(resolve).toThrow();
+    return;
+  }
+
+  expect(resolve()).toBe(testCase.expectedResolvedBase);
+}
+
 const contract = loadContract();
 
 describe("firewall base URL validation contract", () => {
   for (const testCase of contract.baseUrlValidationCases) {
     it(testCase.name, () => {
       assertValidationResult(testCase);
+    });
+  }
+});
+
+describe("firewall base URL template resolution contract", () => {
+  for (const testCase of contract.baseUrlTemplateResolutionCases) {
+    it(testCase.name, () => {
+      assertTemplateResolutionResult(testCase);
     });
   }
 });

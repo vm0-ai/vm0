@@ -1,5 +1,49 @@
 {
   "hostnamePolicy": "vm0-uts46-16.0-v1",
+  "baseUrlTemplateResolutionCases": [
+    {
+      "category": "authority-fragment",
+      "name": "trailing authority fragment before path resolves",
+      "base": "https://api-${{ vars.HOST }}/v1",
+      "vars": { "HOST": "tenant.example.com" },
+      "expectedResolvedBase": "https://api-tenant.example.com/v1"
+    },
+    {
+      "category": "authority-fragment",
+      "name": "trailing authority fragment at end resolves",
+      "base": "https://api-${{ vars.HOST }}",
+      "vars": { "HOST": "tenant.example.com" },
+      "expectedResolvedBase": "https://api-tenant.example.com"
+    },
+    {
+      "category": "query-fragment",
+      "name": "trailing authority fragment before query is invalid",
+      "base": "https://api-${{ vars.HOST }}?page=1",
+      "vars": { "HOST": "tenant.example.com" },
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "query-fragment",
+      "name": "trailing authority fragment before fragment is invalid",
+      "base": "https://api-${{ vars.HOST }}#section",
+      "vars": { "HOST": "tenant.example.com" },
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "authority-fragment",
+      "name": "trailing authority fragment rejects raw structure",
+      "base": "https://api-${{ vars.HOST }}/v1",
+      "vars": { "HOST": "tenant.example.com/capture" },
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "authority-fragment",
+      "name": "trailing authority fragment rejects encoded structure",
+      "base": "https://api-${{ vars.HOST }}/v1",
+      "vars": { "HOST": "tenant.example.com%2fcapture" },
+      "expectedResolvedBase": null
+    }
+  ],
   "baseUrlValidationCases": [
     {
       "category": "valid",

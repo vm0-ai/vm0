@@ -302,13 +302,6 @@ def _prefix_is_inside_path(prefix: str) -> bool:
     return "/" in after_scheme
 
 
-def _suffix_authority_prefix(suffix: str) -> str:
-    delimiter = _URL_COMPONENT_DELIMITER_PATTERN.search(suffix)
-    if delimiter is None:
-        return suffix
-    return suffix[: delimiter.start()]
-
-
 def _validate_base_url_template_variable(
     *,
     firewall_name: str,
@@ -354,7 +347,7 @@ def _validate_base_url_template_variable(
             value=value,
         )
         return
-    if _prefix_is_inside_authority(prefix) and _suffix_authority_prefix(suffix) != "":
+    if _prefix_is_inside_authority(prefix):
         _validate_base_url_authority_fragment_variable(
             firewall_name=firewall_name,
             base=base,
