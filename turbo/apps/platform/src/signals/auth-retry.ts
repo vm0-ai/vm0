@@ -107,7 +107,12 @@ export function handleUnauthorizedRedirect(
   clerk: ClerkLike,
   suppressionUntil: number,
 ) {
-  if (isUnauthorizedRedirectSuppressed(suppressionUntil)) {
+  // A hidden PWA can receive 401s before Clerk finishes resuming its session.
+  // Leave navigation to the next visible request's recovery attempt.
+  if (
+    document.visibilityState !== "visible" ||
+    isUnauthorizedRedirectSuppressed(suppressionUntil)
+  ) {
     return;
   }
   // confirmed by ethan@vm0.ai
