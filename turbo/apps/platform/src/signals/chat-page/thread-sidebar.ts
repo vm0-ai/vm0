@@ -38,7 +38,16 @@ export type ArtifactRef = {
   readonly url: string;
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
+  readonly ownsObjectUrl?: boolean;
+  readonly shareAvailable?: boolean;
 };
+
+export type ArtifactFileRef = {
+  readonly file: File;
+  readonly shareAvailable?: boolean;
+};
+
+export type ArtifactRefInput = string | ArtifactFileRef;
 
 export type ThreadSidebarArtifactSource =
   | { readonly kind: "catalog"; readonly artifactId: string }
@@ -119,6 +128,16 @@ export function createThreadSidebarSignals(
     },
   );
 
+  const releaseTargetObjectUrl = (target: ThreadSidebarTarget | null): void => {
+    if (
+      target?.type === "artifact" &&
+      target.source.kind === "attachment" &&
+      target.source.ref.ownsObjectUrl
+    ) {
+      URL.revokeObjectURL(target.source.ref.url);
+    }
+  };
+
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);
     if (current === null) {
@@ -130,13 +149,17 @@ export function createThreadSidebarSignals(
     if (target.type === "artifact" && target.source.kind === "catalog") {
       set(artifactCatalog.selectArtifact$, target.source.artifactId);
     }
+    if (current !== target) {
+      releaseTargetObjectUrl(current);
+    }
     set(internalTarget$, target);
   });
 
-  const close$ = command(({ set }) => {
+  const close$ = command(({ get, set }) => {
     // Abort session resources (realtime subscription, background refresh)
     // while keeping the cached catalog pages for the next open.
     set(resetSession$);
+    releaseTargetObjectUrl(get(internalTarget$));
     set(internalTarget$, null);
     set(internalAnimateEntry$, false);
     set(internalFullscreen$, false);

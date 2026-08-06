@@ -52,12 +52,12 @@ export function MermaidDiagram({ code }: { code: string }) {
           if (result.status !== "rendered") {
             return;
           }
-          // A rendered diagram is an inline data URL, not a stored artifact,
-          // so it stays in the lightbox instead of moving to the sidebar.
+          // The lightbox and sidebar each create an object URL from the file,
+          // so they remain valid independently from this message surface.
           openImageLightbox({
             url: result.url,
-            filename: "diagram.svg",
-            splitViewAvailable: false,
+            file: result.file,
+            shareAvailable: false,
           });
         }}
       >

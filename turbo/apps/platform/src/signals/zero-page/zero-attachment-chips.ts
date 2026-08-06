@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { timeout } from "signal-timers";
 import { openArtifactInOpenSidebar$ } from "../chat-page/thread-sidebar-coordinator.ts";
+import type { ArtifactRefInput } from "../chat-page/thread-sidebar.ts";
 import {
   createTextPreviewComputed,
   isTextPreviewKind,
@@ -52,6 +53,17 @@ type AttachmentDocumentLightboxInput =
   | AttachmentTextDocumentLightboxInput
   | AttachmentFramedDocumentLightboxInput;
 
+type AttachmentImageLightboxInput = {
+  readonly url: string;
+  readonly file?: File;
+  readonly filename?: string;
+  readonly threadId?: string;
+  readonly artifact?: AttachmentArtifactMetadata;
+  readonly shareAvailable?: boolean;
+  readonly showSizeInSubtitle?: boolean;
+  readonly splitViewAvailable?: boolean;
+};
+
 export type AttachmentDocumentLightboxState =
   | (AttachmentDocumentLightboxBase & {
       readonly kind: TextPreviewKind;
@@ -65,17 +77,13 @@ function isAttachmentTextDocumentLightboxInput(
   return isTextPreviewKind(value.kind);
 }
 
+type AttachmentImageLightboxState = AttachmentImageLightboxInput & {
+  readonly kind: "image";
+  readonly ownsObjectUrl?: boolean;
+};
+
 export type AttachmentLightboxState =
-  | {
-      kind: "image";
-      url: string;
-      filename?: string;
-      threadId?: string;
-      artifact?: AttachmentArtifactMetadata;
-      shareAvailable?: boolean;
-      showSizeInSubtitle?: boolean;
-      splitViewAvailable?: boolean;
-    }
+  | AttachmentImageLightboxState
   | AttachmentDocumentLightboxState
   | {
       kind: "audio" | "video";
@@ -92,6 +100,22 @@ const internalLightboxDialogVisible$ = state(false);
 const internalLightboxDialogFullscreen$ = state(false);
 const internalLightboxDialogCloseToken$ = state(0);
 const resetLightboxDialogCloseSignal$ = resetSignal();
+
+function releaseLightboxObjectUrl(value: AttachmentLightboxState | null): void {
+  if (value?.kind === "image" && value.ownsObjectUrl) {
+    URL.revokeObjectURL(value.url);
+  }
+}
+
+const replaceLightboxState$ = command(
+  ({ get, set }, value: AttachmentLightboxState | null) => {
+    const current = get(internalLightboxState$);
+    if (current !== value) {
+      releaseLightboxObjectUrl(current);
+    }
+    set(internalLightboxState$, value);
+  },
+);
 
 export const lightboxUrl$ = computed((get) => {
   return get(internalLightboxState$);
@@ -119,7 +143,7 @@ const closeLightboxForDialogExitToken$ = command(
     }
     set(internalLightboxDialogVisible$, false);
     set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, null);
+    set(replaceLightboxState$, null);
   },
 );
 
@@ -145,36 +169,57 @@ export const closeLightboxWithDialogExit$ = command(
  * Previews that cannot move into the sidebar keep the lightbox.
  *
  * This is opt-out: a new lightbox caller is routed unless it sets
- * `splitViewAvailable: false`. Set it whenever the preview is not a stored
- * thread artifact — a pending composer upload, or a synthetic `data:`/`blob:`
- * URL such as a rendered mermaid diagram — because the sidebar derives its
- * title and kind from the URL and offers artifact-only share, download, and
- * Drive-sync actions.
+ * `splitViewAvailable: false`. Set it for previews that do not belong in the
+ * thread sidebar, such as a pending composer upload. File-backed previews pass
+ * the File itself so the sidebar can preserve its name and content type while
+ * owning a separate object URL.
  */
+type AttachmentSidebarPreviewInput = {
+  readonly url: string;
+  readonly file?: File;
+  readonly shareAvailable?: boolean;
+  readonly splitViewAvailable?: boolean;
+};
+
+export function attachmentSidebarRef(
+  value: AttachmentSidebarPreviewInput,
+): ArtifactRefInput {
+  const share =
+    value.shareAvailable === undefined
+      ? {}
+      : { shareAvailable: value.shareAvailable };
+  if (value.file) {
+    return { file: value.file, ...share };
+  }
+  return value.url;
+}
+
 const routeToOpenArtifactSidebar$ = command(
-  ({ set }, value: { url: string; splitViewAvailable?: boolean }): boolean => {
+  ({ set }, value: AttachmentSidebarPreviewInput): boolean => {
     if (value.splitViewAvailable === false) {
       return false;
     }
-    return set(openArtifactInOpenSidebar$, value.url);
+    return set(openArtifactInOpenSidebar$, attachmentSidebarRef(value));
   },
 );
 
+function imageLightboxState(
+  input: AttachmentImageLightboxInput,
+): AttachmentImageLightboxState {
+  if (!input.file) {
+    return { kind: "image", ...input };
+  }
+  return {
+    kind: "image",
+    ...input,
+    url: URL.createObjectURL(input.file),
+    filename: input.filename ?? input.file.name,
+    ownsObjectUrl: true,
+  };
+}
+
 export const openImageLightbox$ = command(
-  (
-    { set },
-    value:
-      | string
-      | {
-          url: string;
-          filename?: string;
-          threadId?: string;
-          artifact?: AttachmentArtifactMetadata;
-          shareAvailable?: boolean;
-          showSizeInSubtitle?: boolean;
-          splitViewAvailable?: boolean;
-        },
-  ) => {
+  ({ set }, value: string | AttachmentImageLightboxInput) => {
     const input = typeof value === "string" ? { url: value } : value;
     if (set(routeToOpenArtifactSidebar$, input)) {
       return;
@@ -184,7 +229,7 @@ export const openImageLightbox$ = command(
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, { kind: "image", ...input });
+    set(replaceLightboxState$, imageLightboxState(input));
   },
 );
 
@@ -207,7 +252,7 @@ export const navigateImageLightbox$ = command(
       splitViewAvailable?: boolean;
     },
   ) => {
-    set(internalLightboxState$, { kind: "image", ...value });
+    set(replaceLightboxState$, { kind: "image", ...value });
   },
 );
 
@@ -222,13 +267,13 @@ export const openDocumentLightbox$ = command(
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
     if (isAttachmentTextDocumentLightboxInput(value)) {
-      set(internalLightboxState$, {
+      set(replaceLightboxState$, {
         ...value,
         text$: value.text$ ?? createTextPreviewComputed(value.url),
       });
       return;
     }
-    set(internalLightboxState$, value);
+    set(replaceLightboxState$, value);
   },
 );
 
@@ -252,7 +297,7 @@ export const openVideoLightbox$ = command(
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, { kind: "video", ...value });
+    set(replaceLightboxState$, { kind: "video", ...value });
   },
 );
 
@@ -276,7 +321,7 @@ export const openAudioLightbox$ = command(
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, { kind: "audio", ...value });
+    set(replaceLightboxState$, { kind: "audio", ...value });
   },
 );
 

@@ -3,7 +3,11 @@ import { onRef, settle } from "./utils.ts";
 
 export type MermaidDiagramResult =
   | { readonly status: "rendering" }
-  | { readonly status: "rendered"; readonly url: string }
+  | {
+      readonly status: "rendered";
+      readonly file: File;
+      readonly url: string;
+    }
   | { readonly status: "error" };
 
 const internalMermaidDiagramResultByKey$ = state<
@@ -30,8 +34,8 @@ const setMermaidDiagramResult$ = command(
   },
 );
 
-// A rendered entry holds the whole diagram as a data URL, so entries are
-// refcounted by mounted canvas and dropped once the last one detaches.
+// A rendered entry owns an object URL, so entries are refcounted by mounted
+// canvases and released once the last one detaches.
 const internalMermaidDiagramRefCountByKey$ = state<Record<string, number>>({});
 
 const retainMermaidDiagramResult$ = command(({ get, set }, key: string) => {
@@ -69,6 +73,10 @@ const releaseMermaidDiagramResult$ = command(({ get, set }, key: string) => {
   set(internalMermaidDiagramRefCountByKey$, (current) => {
     return withoutKey(current, key);
   });
+  const result = get(internalMermaidDiagramResultByKey$)[key];
+  if (result?.status === "rendered") {
+    URL.revokeObjectURL(result.url);
+  }
   set(internalMermaidDiagramResultByKey$, (current) => {
     return withoutKey(current, key);
   });
@@ -127,12 +135,12 @@ async function renderDiagramSvg(
 }
 
 /**
- * Intrinsic width of the serialized copy. The lightbox fits an image into the
- * stage but never scales it above 100%, so a diagram serialized at chat size
- * would open as a thumbnail. SVG is vector, so the enlarged copy stays sharp
- * and the lightbox scales it down to fit the viewport like any other image.
+ * Intrinsic width of the serialized copy. Expanded preview surfaces fit an
+ * image into their stage but never scale it above 100%, so a diagram serialized
+ * at chat size would open as a thumbnail. SVG is vector, so the enlarged copy
+ * stays sharp while the preview scales it down to fit like any other image.
  */
-const LIGHTBOX_SVG_WIDTH = 1600;
+const EXPANDED_SVG_WIDTH = 1600;
 
 function viewBoxSize(
   svg: SVGSVGElement,
@@ -153,10 +161,10 @@ function setSvgSize(svg: SVGSVGElement, width: number, height: number): void {
 
 /**
  * mermaid sizes its SVG with `width="100%"` plus an inline `max-width`, which an
- * <img> cannot resolve — the lightbox would stretch the diagram to the stage
- * width. The markup therefore gets an explicit pixel size at lightbox scale.
+ * <img> cannot resolve — an expanded preview would stretch the diagram to the
+ * stage width. The markup therefore gets an explicit preview-scale pixel size.
  * SVG is vector, so the same copy serves the box in the message, which scales
- * it down, and the lightbox, which shows it at full size.
+ * it down, and the lightbox or sidebar, which shows it at full size.
  */
 function sizeDiagramAndSerialize(svg: SVGSVGElement): string {
   svg.style.maxWidth = "";
@@ -165,22 +173,21 @@ function sizeDiagramAndSerialize(svg: SVGSVGElement): string {
     return new XMLSerializer().serializeToString(svg);
   }
 
-  const scale = Math.max(1, LIGHTBOX_SVG_WIDTH / size.width);
+  const scale = Math.max(1, EXPANDED_SVG_WIDTH / size.width);
   setSvgSize(svg, size.width * scale, size.height * scale);
   return new XMLSerializer().serializeToString(svg);
 }
 
 /**
- * The lightbox reuses the attachment image preview, which takes a URL. The
- * rendered SVG never leaves the browser, so it is inlined as a data URL instead
- * of being uploaded.
+ * Keep the rendered SVG as a browser-native file. Each surface creates its own
+ * object URL from this file so its lifetime is independent from the message.
  */
-function svgDataUrl(markup: string): string {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
+function svgFile(markup: string): File {
+  return new File([markup], "diagram.svg", { type: "image/svg+xml" });
 }
 
 /**
- * Renders one diagram into a data URL. mermaid 11 isolates concurrent `render`
+ * Renders one diagram into an SVG file. mermaid 11 isolates concurrent `render`
  * calls, so several diagrams in one message can render in parallel.
  *
  * `el` carries the source and theme to render and anchors the render to the
@@ -225,7 +232,7 @@ const renderMermaidDiagram$ = command(
     }
 
     // Parsed in a detached element. The markup never reaches the document, so
-    // the only thing that ever shows it is an <img>, where a data URL SVG
+    // the only thing that ever shows it is an <img>, where an object URL SVG
     // cannot run scripts or resolve page-level CSS custom properties.
     const host = document.createElement("div");
     host.innerHTML = rendered.value;
@@ -235,9 +242,11 @@ const renderMermaidDiagram$ = command(
       return;
     }
 
+    const file = svgFile(sizeDiagramAndSerialize(svg));
     set(setMermaidDiagramResult$, key, {
       status: "rendered",
-      url: svgDataUrl(sizeDiagramAndSerialize(svg)),
+      file,
+      url: URL.createObjectURL(file),
     });
   },
 );
