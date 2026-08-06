@@ -310,12 +310,19 @@ function canonicalSlackInputResult(
   asset: CanonicalAssetRow,
   position: number,
 ): CanonicalSlackInputAsset {
-  const status = asset.materializationStatus ?? "failed";
+  if (
+    asset.filename === null ||
+    asset.contentType === null ||
+    asset.materializationStatus === null
+  ) {
+    throw new Error("Canonical Slack input asset is missing required metadata");
+  }
+  const status = asset.materializationStatus;
   return {
     assetId: asset.id,
     position,
-    filename: asset.filename ?? asset.id,
-    contentType: asset.contentType ?? inferMimetype(asset.filename ?? asset.id),
+    filename: asset.filename,
+    contentType: asset.contentType,
     size: asset.sizeBytes ?? 0,
     status,
     ...(status === "failed" && asset.materializationError
