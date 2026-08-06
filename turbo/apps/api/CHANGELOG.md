@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.381.0](https://github.com/vm0-ai/vm0/compare/api-v1.380.1...api-v1.381.0) (2026-08-06)
+
+
+### Features
+
+* **api:** adopt connector catalog v3 ([#25313](https://github.com/vm0-ai/vm0/issues/25313)) ([30940f4](https://github.com/vm0-ai/vm0/commit/30940f4a011a08ccc575e7184b1feb273c8f77dc))
+
 ## [1.380.1](https://github.com/vm0-ai/vm0/compare/api-v1.380.0...api-v1.380.1) (2026-08-05)
 
 

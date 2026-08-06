@@ -817,7 +817,11 @@ describe("chat scroll position", () => {
     });
     const resizeObserver = installResizeObserver();
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: false },
+    });
 
     const container = await waitFor(() => {
       expect(
