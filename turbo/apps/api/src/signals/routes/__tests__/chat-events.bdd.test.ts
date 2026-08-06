@@ -1412,16 +1412,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
   it("lets a running runner claim pending input prompts for steer", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped chat actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ChatSteer]: true,
-      },
-    );
 
     const active = await sendChatRun(actor, {
       agentId,
@@ -1429,7 +1419,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(active.runId);
-    expect(claim.featureFlags?.[FeatureSwitchKey.ChatSteer]).toBeTruthy();
 
     const firstPendingEventId = randomUUID();
     const secondPendingEventId = randomUUID();
@@ -5170,22 +5159,6 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(appended).toContain("- RELATIVE_INDEX: 0");
     expect(appended).not.toContain("follow-up question");
 
-    const blockedRecommendedFollowup = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        prompt: "do not queue this recommended follow-up",
-        revokesEventId: recommender.id,
-        clientEventId: randomUUID(),
-      },
-      [400],
-    );
-    expectApiError(blockedRecommendedFollowup.body);
-    expect(blockedRecommendedFollowup.body.error.message).toBe(
-      "Recommended follow-up cannot be queued",
-    );
-
     await cancelChatRun(actor, second.runId);
 
     await chat.renameThread(actor, first.threadId, "Manual Migration Title");
@@ -5248,10 +5221,10 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     await cancelChatRun(actor, normalFollowupRunId);
   }, 90_000);
 
-  it("steers an active-run recommended follow-up only when chat steer is enabled", async () => {
+  it("steers an active-run recommended follow-up", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    mockOptionalEnv("OPENROUTER_API_KEY", "followup-gate-key");
+    mockOptionalEnv("OPENROUTER_API_KEY", "followup-steer-key");
     server.use(
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -5264,9 +5237,12 @@ describe("CHAT-02: prior rounds and thread titles", () => {
                 message: {
                   content: systemContent.includes("concise follow-up prompts")
                     ? JSON.stringify([
-                        { prompt: "Use the gated follow-up", kind: "talk" },
+                        {
+                          prompt: "Use the recommended follow-up",
+                          kind: "talk",
+                        },
                       ])
-                    : "Follow-up gate",
+                    : "Follow-up steer",
                 },
               },
             ],
@@ -5307,107 +5283,65 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       throw new Error("Expected a recommended follow-ups event");
     }
 
-    const disabledActive = await sendChatRun(actor, {
+    const active = await sendChatRun(actor, {
       agentId,
       threadId: completed.threadId,
-      prompt: "keep the feature disabled",
+      prompt: "keep working while the follow-up is steered",
     });
-    const disabledEventId = randomUUID();
-    const disabledFollowup = await chat.requestSendEvent(
+    const activeClaim = await claimChatRun(runnerGroup, active.runId);
+    const eventId = randomUUID();
+    const followup = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: completed.threadId,
-        prompt: "do not steer while disabled",
+        prompt: "steer the recommended follow-up",
         revokesEventId: recommender.id,
-        clientEventId: disabledEventId,
-      },
-      [400],
-    );
-    expectApiError(disabledFollowup.body);
-    expect(disabledFollowup.body.error.message).toBe(
-      "Recommended follow-up cannot be queued",
-    );
-    const afterDisabledFollowup = await chat.listThreadEvents(
-      actor,
-      completed.threadId,
-    );
-    expect(afterDisabledFollowup.events).not.toContainEqual(
-      expect.objectContaining({ id: disabledEventId }),
-    );
-    await cancelChatRun(actor, disabledActive.runId);
-
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped chat actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatSteer]: true },
-    );
-    const enabledActive = await sendChatRun(actor, {
-      agentId,
-      threadId: completed.threadId,
-      prompt: "enable the recommended follow-up steer",
-    });
-    const enabledClaim = await claimChatRun(runnerGroup, enabledActive.runId);
-    const enabledEventId = randomUUID();
-    const enabledFollowup = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: completed.threadId,
-        prompt: "steer while enabled",
-        revokesEventId: recommender.id,
-        clientEventId: enabledEventId,
+        clientEventId: eventId,
       },
       [201],
     );
-    if (enabledFollowup.status !== 201) {
-      throw new Error("Expected the enabled recommended follow-up to succeed");
+    if (followup.status !== 201) {
+      throw new Error("Expected the recommended follow-up to succeed");
     }
-    expect(enabledFollowup.body.runId).toBeNull();
+    expect(followup.body.runId).toBeNull();
     await expect(
-      api.listRunnerActiveInputs(
-        enabledClaim.claim.sandboxToken,
-        enabledActive.runId,
-      ),
-    ).resolves.toStrictEqual([enabledEventId]);
+      api.listRunnerActiveInputs(activeClaim.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([eventId]);
     await expect(
       api.claimRunnerActiveInputs(
-        enabledClaim.claim.sandboxToken,
-        enabledActive.runId,
-        [enabledEventId],
+        activeClaim.claim.sandboxToken,
+        active.runId,
+        [eventId],
       ),
-    ).resolves.toBe("steer while enabled");
+    ).resolves.toBe("steer the recommended follow-up");
 
-    const afterEnabledFollowup = await waitForThreadMessages(
+    const afterFollowup = await waitForThreadMessages(
       actor,
       completed.threadId,
       (events) => {
         return userMessages(events).some((event) => {
           return (
-            event.revokesEventId === enabledEventId &&
-            event.runId === enabledActive.runId
+            event.revokesEventId === eventId && event.runId === active.runId
           );
         });
       },
     );
-    expect(afterEnabledFollowup.events).toContainEqual(
+    expect(afterFollowup.events).toContainEqual(
       expect.objectContaining({
-        id: enabledEventId,
+        id: eventId,
         eventType: "input.prompt",
         revokesEventId: recommender.id,
       }),
     );
-    expect(afterEnabledFollowup.events).toContainEqual(
+    expect(afterFollowup.events).toContainEqual(
       expect.objectContaining({
         eventType: "input.prompt",
-        revokesEventId: enabledEventId,
-        runId: enabledActive.runId,
+        revokesEventId: eventId,
+        runId: active.runId,
       }),
     );
-    await cancelChatRun(actor, enabledActive.runId);
+    await cancelChatRun(actor, active.runId);
   }, 90_000);
 });
 

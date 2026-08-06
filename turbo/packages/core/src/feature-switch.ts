@@ -362,13 +362,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatSteer]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Steer pending chat prompts into active runs and render them inline.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.PwaChatKeyboardGestures]: {
     maintainer: "bingjie@vm0.ai",
     description:
