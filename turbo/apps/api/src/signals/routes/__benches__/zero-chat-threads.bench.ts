@@ -607,6 +607,7 @@ async function seedTargetThreadRuns(
     chatThreadId: string;
     runId: string;
     eventType: "input.prompt" | "output.message";
+    contextType?: "web";
     content?: string;
     sequenceNumber: number;
     seqId: number;
@@ -647,7 +648,10 @@ async function seedTargetThreadRuns(
         // Input events carry their text in user_message only; chat_events
         // rejects a non-null content projection for them.
         ...(m === 0
-          ? { userMessage: benchUserMessage(content, attachmentId) }
+          ? {
+              contextType: "web",
+              userMessage: benchUserMessage(content, attachmentId),
+            }
           : { content }),
         ...(attachmentId ? { attachFiles: [attachmentId] } : {}),
         createdAt: new Date(now + i * 1000 + m),

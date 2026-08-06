@@ -113,6 +113,7 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
+  "google-forms-response-submitted",
   "google-meet-transcript-generated",
   "notion-child-page-created",
   "notion-database-item-created",
@@ -506,6 +507,43 @@ export type GoogleMeetTranscriptGeneratedEventConfig = z.infer<
 export type GoogleMeetWorkflowEventConfig =
   GoogleMeetTranscriptGeneratedEventConfig;
 
+export const googleFormsFormReferenceSchema = z
+  .object({
+    id: z.string().trim().min(1).max(255),
+    title: z.string().trim().min(1).max(512),
+    url: z.url(),
+  })
+  .strict();
+export type GoogleFormsFormReference = z.infer<
+  typeof googleFormsFormReferenceSchema
+>;
+
+export const googleFormsResponseSubmittedEventConfigSchema = z
+  .object({
+    provider: z.literal("google-forms"),
+    event: z.literal("response_submitted"),
+    connectorId: z.string().uuid(),
+    form: googleFormsFormReferenceSchema,
+  })
+  .strict();
+export type GoogleFormsResponseSubmittedEventConfig = z.infer<
+  typeof googleFormsResponseSubmittedEventConfigSchema
+>;
+
+export const googleFormsResponseSubmittedEventCreateConfigSchema = z
+  .object({
+    provider: z.literal("google-forms"),
+    event: z.literal("response_submitted"),
+    formUrl: z.string().trim().min(1).max(2048),
+  })
+  .strict();
+export type GoogleFormsResponseSubmittedEventCreateConfig = z.infer<
+  typeof googleFormsResponseSubmittedEventCreateConfigSchema
+>;
+
+export type GoogleFormsWorkflowEventConfig =
+  GoogleFormsResponseSubmittedEventConfig;
+
 export const notionPageReferenceSchema = z
   .object({
     id: z.string().uuid(),
@@ -799,6 +837,16 @@ export const zeroWorkflowGoogleCalendarEventCancelledAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowGoogleFormsResponseSubmittedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-forms-response-submitted"),
+    eventConfig: googleFormsResponseSubmittedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+    warning: z.string().optional(),
+  });
+
 export const zeroWorkflowGoogleMeetTranscriptGeneratedAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -873,6 +921,7 @@ export const zeroWorkflowEventAutomationSummarySchema = z.discriminatedUnion(
     zeroWorkflowGoogleCalendarEventCreatedAutomationSummarySchema,
     zeroWorkflowGoogleCalendarEventUpdatedAutomationSummarySchema,
     zeroWorkflowGoogleCalendarEventCancelledAutomationSummarySchema,
+    zeroWorkflowGoogleFormsResponseSubmittedAutomationSummarySchema,
     zeroWorkflowGoogleMeetTranscriptGeneratedAutomationSummarySchema,
     zeroWorkflowNotionChildPageCreatedAutomationSummarySchema,
     zeroWorkflowNotionDatabaseItemCreatedAutomationSummarySchema,
@@ -1020,6 +1069,15 @@ export const chatThreadWorkflowGoogleCalendarEventCancelledAutomationSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowGoogleFormsResponseSubmittedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-forms-response-submitted"),
+    eventConfig: googleFormsResponseSubmittedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowGoogleMeetTranscriptGeneratedAutomationSchema =
   chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
@@ -1086,6 +1144,7 @@ export const chatThreadWorkflowAutomationSchema = z.union([
   chatThreadWorkflowGoogleCalendarEventCreatedAutomationSchema,
   chatThreadWorkflowGoogleCalendarEventUpdatedAutomationSchema,
   chatThreadWorkflowGoogleCalendarEventCancelledAutomationSchema,
+  chatThreadWorkflowGoogleFormsResponseSubmittedAutomationSchema,
   chatThreadWorkflowGoogleMeetTranscriptGeneratedAutomationSchema,
   chatThreadWorkflowNotionChildPageCreatedAutomationSchema,
   chatThreadWorkflowNotionDatabaseItemCreatedAutomationSchema,
@@ -1217,6 +1276,14 @@ export const zeroWorkflowGoogleCalendarEventCancelledAutomationCreateRequestSche
     enabled: z.boolean().optional(),
   });
 
+export const zeroWorkflowGoogleFormsResponseSubmittedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("google-forms-response-submitted"),
+    eventConfig: googleFormsResponseSubmittedEventCreateConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowGoogleMeetTranscriptGeneratedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
@@ -1285,6 +1352,7 @@ export const zeroWorkflowAutomationCreateRequestSchema = z.union([
   zeroWorkflowGoogleCalendarEventCreatedAutomationCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventUpdatedAutomationCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventCancelledAutomationCreateRequestSchema,
+  zeroWorkflowGoogleFormsResponseSubmittedAutomationCreateRequestSchema,
   zeroWorkflowGoogleMeetTranscriptGeneratedAutomationCreateRequestSchema,
   zeroWorkflowNotionChildPageCreatedAutomationCreateRequestSchema,
   zeroWorkflowNotionDatabaseItemCreatedAutomationCreateRequestSchema,

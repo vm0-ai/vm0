@@ -46,7 +46,8 @@ mod workspace_session_history_materializer;
 pub(crate) use crate::restored_session_identity::RestoredSessionIdentity;
 pub(crate) use cli_framework::effective_cli_framework;
 pub(crate) use guest_state::{
-    is_shell_safe_guest_timezone_name, restore_guest_state_with_timezone,
+    is_shell_safe_guest_timezone_name, restore_guest_state_with_intent,
+    restore_guest_state_with_timezone, try_sync_guest_timezone_intent,
 };
 pub(crate) use session_history_cpu::SessionHistoryCpuPool;
 pub(crate) use session_history_download::{SessionHistoryMaterializer, SessionHistoryProbe};
@@ -62,7 +63,10 @@ pub(crate) use env::validate_resume_session_id;
 use sandbox_run::{
     NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
 };
-pub(crate) use telemetry::{RunnerPreSpawnPhase, RunnerPreSpawnTiming};
+pub(crate) use telemetry::{
+    ExactReuseSpeculationTiming, RunnerPreSpawnOperationTiming, RunnerPreSpawnPhase,
+    RunnerPreSpawnTiming,
+};
 use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};
 
 use crate::ids::RunId;
@@ -702,6 +706,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         storage_fingerprints: prev_storage,
         restored_session_identity: _restored_session_identity,
         workspace_promotion,
+        guest_state_prepared,
     } = idle_sandbox.into_parts();
 
     let resume_session_error = validate_resume_session_id(&context).err();
@@ -787,7 +792,8 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             &mut telemetry,
             RunControls::from_cancellation(cancellation, active_input_source)
                 .with_spawn_timing(spawn_timing)
-                .with_session_history_restore_plan(session_history_restore_plan),
+                .with_session_history_restore_plan(session_history_restore_plan)
+                .with_guest_state_prepared(guest_state_prepared),
         )
         .await;
         outcome.workspace_image = workspace_image;

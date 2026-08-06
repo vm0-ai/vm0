@@ -870,12 +870,13 @@ function createInlineTemplateNodeView(
     "flex h-full min-w-0 items-center gap-1.5 rounded-md text-orange-600 " +
     "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-orange-500/40 " +
     "dark:text-orange-300 dark:focus-visible:ring-orange-300/40";
+  // Mirrors IconColorSwatch from @tabler/icons-react, which the composer
+  // template picker button and sent-message template chips also use.
   const icon = createComposerIcon(13, 1.7, [
-    "M4 4m-2 0a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2z",
-    "M4 14m-2 0a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2z",
-    "M16 14l6 0",
-    "M16 18l6 0",
-    "M16 22l6 0",
+    "M19 3h-4a2 2 0 0 0 -2 2v12a4 4 0 0 0 8 0v-12a2 2 0 0 0 -2 -2",
+    "M13 7.35l-2 -2a2 2 0 0 0 -2.828 0l-2.828 2.828a2 2 0 0 0 0 2.828l9 9",
+    "M7.3 13h-2.3a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h12",
+    "M17 17l0 .01",
   ]);
   icon.setAttribute("class", "shrink-0");
   const title = document.createElement("span");

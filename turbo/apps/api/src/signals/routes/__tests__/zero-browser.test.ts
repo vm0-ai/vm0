@@ -15,7 +15,6 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, test as vitestTest } from "vitest";
 import { z } from "zod";
@@ -42,7 +41,6 @@ import {
   setBrowserTabSnapshotAsPreviousApi,
   setComputerUseHostAsPreviousApi,
 } from "./helpers/runtime-state";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -287,9 +285,6 @@ async function reconcileBrowsers() {
 describe("zero browser route", () => {
   it("keeps managed browser access off for a default chat thread", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.ZeroBrowser]: true,
-    });
     const sent = await chat.requestSendEvent(
       actor,
       {
@@ -325,9 +320,6 @@ describe("zero browser route", () => {
 
   it("advertises managed browser access for an enabled chat thread", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.ZeroBrowser]: true,
-    });
     const sent = await chat.requestSendEvent(
       actor,
       {

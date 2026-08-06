@@ -75,6 +75,7 @@ interface AddOptions extends GmailAutomationOptions {
   readonly app?: string;
   readonly commentPrefix?: string;
   readonly calendarId?: string;
+  readonly formUrl?: string;
   readonly pageUrl?: string;
   readonly parentPageUrl?: string;
   readonly databaseUrl?: string;
@@ -123,6 +124,7 @@ const EVENT_KINDS = [
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
+  "google-forms-response-submitted",
   "google-meet-transcript-generated",
   "notion-child-page-created",
   "notion-database-item-created",
@@ -218,7 +220,7 @@ function githubWebhookEventKind(
   });
 }
 const EXACTLY_ONE_FLAG_MESSAGE =
-  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --page-url, --parent-page-url, or --database-url";
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --form-url, --page-url, --parent-page-url, or --database-url";
 
 function addGmailAutomationOptions(command: Command): Command {
   return command
@@ -624,6 +626,10 @@ function hasCalendarAutomationOptions(options: AddOptions): boolean {
   return options.calendarId !== undefined;
 }
 
+function hasGoogleFormsAutomationOptions(options: AddOptions): boolean {
+  return options.formUrl !== undefined;
+}
+
 function hasNotionAutomationOptions(options: AddOptions): boolean {
   return (
     options.pageUrl !== undefined ||
@@ -654,6 +660,7 @@ function hasEventAddOptions(options: AddOptions): boolean {
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasNotionAutomationOptions(options) ||
     hasStrapiAutomationOptions(options) ||
     hasChatRunFinishedAutomationOptions(options)
@@ -681,6 +688,14 @@ function assertNoCalendarAutomationOptions(options: AddOptions): void {
   if (hasCalendarAutomationOptions(options)) {
     throw new Error(
       "Google Calendar automation flags only apply to Google Calendar event automations",
+    );
+  }
+}
+
+function assertNoGoogleFormsAutomationOptions(options: AddOptions): void {
+  if (hasGoogleFormsAutomationOptions(options)) {
+    throw new Error(
+      "--form-url only applies to google-forms-response-submitted automations",
     );
   }
 }
@@ -1112,6 +1127,7 @@ function buildGmailNewMessageCreateRequest(
   }
   assertNoGithubAutomationOptions(options);
   assertNoCalendarAutomationOptions(options);
+  assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
   return {
@@ -1132,6 +1148,7 @@ function buildGmailLabelAppliedCreateRequest(
   }
   assertNoGithubAutomationOptions(options);
   assertNoCalendarAutomationOptions(options);
+  assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
   return {
@@ -1151,6 +1168,7 @@ function buildGithubLabelAppliedCreateRequest(
     );
   }
   assertNoCalendarAutomationOptions(options);
+  assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
   if (hasGithubWorkflowRunSpecificOptions(options)) {
@@ -1189,6 +1207,7 @@ function buildGithubWorkflowRunCompletedCreateRequest(
     "actor",
   ]);
   assertNoCalendarAutomationOptions(options);
+  assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
   return {
@@ -1209,6 +1228,7 @@ function assertGithubWebhookCreateOptions(
     );
   }
   assertNoCalendarAutomationOptions(options);
+  assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
   assertOnlyGithubAutomationOptions(options, allowed);
@@ -1297,6 +1317,7 @@ function buildGoogleCalendarEventCreateRequest(
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasNotionAutomationOptions(options) ||
     hasStrapiAutomationOptions(options)
   ) {
@@ -1338,6 +1359,40 @@ function buildGoogleCalendarEventCreateRequest(
   };
 }
 
+function buildGoogleFormsResponseSubmittedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options) ||
+    hasCalendarAutomationOptions(options) ||
+    hasNotionAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options) ||
+    hasChatRunFinishedAutomationOptions(options)
+  ) {
+    throw new Error(
+      "Only --form-url applies to google-forms-response-submitted automations",
+    );
+  }
+  const formUrl = options.formUrl?.trim();
+  if (!formUrl) {
+    throw new Error(
+      'google-forms-response-submitted automations require --form-url "https://docs.google.com/forms/d/.../edit"',
+    );
+  }
+  return {
+    kind: "event",
+    eventType: "google-forms-response-submitted",
+    eventConfig: {
+      provider: "google-forms",
+      event: "response_submitted",
+      formUrl,
+    },
+  };
+}
+
 function buildGoogleMeetTranscriptGeneratedCreateRequest(
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
@@ -1367,10 +1422,11 @@ function buildNotionChildPageCreatedCreateRequest(
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, Google Forms, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1406,10 +1462,11 @@ function buildNotionDatabaseItemCreatedCreateRequest(
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, Google Forms, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1445,10 +1502,11 @@ function buildNotionPageContentUpdatedCreateRequest(
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, Google Forms, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1528,6 +1586,7 @@ function buildChatRunFinishedCreateRequest(
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasNotionAutomationOptions(options) ||
     hasStrapiAutomationOptions(options)
   ) {
@@ -1586,6 +1645,7 @@ function buildStrapiEntryPublishedCreateRequest(
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasNotionAutomationOptions(options)
   ) {
     throw new Error(
@@ -1650,6 +1710,8 @@ function buildCreateRequest(
       return buildGoogleCalendarEventCreateRequest(kind, options);
     case "google-calendar-event-cancelled":
       return buildGoogleCalendarEventCreateRequest(kind, options);
+    case "google-forms-response-submitted":
+      return buildGoogleFormsResponseSubmittedCreateRequest(options);
     case "google-meet-transcript-generated":
       return buildGoogleMeetTranscriptGeneratedCreateRequest(options);
     case "notion-child-page-created":
@@ -1812,6 +1874,12 @@ function buildEventUpdate(
     throw new Error("Google Calendar event automations cannot be updated");
   }
 
+  if (existing.eventType === "google-forms-response-submitted") {
+    throw new Error(
+      "this trigger has no updatable fields; delete it and create a new one",
+    );
+  }
+
   if (existing.eventType === "github-label-applied") {
     if (hasGmailOptions) {
       throw new Error(
@@ -1948,6 +2016,10 @@ const addCommand = addGithubAutomationOptions(
     "Google Calendar ID for Google Calendar event automations (default: primary)",
   )
   .option(
+    "--form-url <url>",
+    "Google Form edit-page URL or bare form ID for response automations",
+  )
+  .option(
     "--page-url <url>",
     "Notion page URL for notion-page-content-updated automations",
   )
@@ -1996,6 +2068,7 @@ Examples:
   zero workflow automation add triage --agent <agent-id> google-calendar-event-created
   zero workflow automation add triage --agent <agent-id> google-calendar-event-updated
   zero workflow automation add triage --agent <agent-id> google-calendar-event-cancelled
+  zero workflow trigger add triage --agent <agent-id> google-forms-response-submitted --form-url "https://docs.google.com/forms/d/<form-id>/edit"
   zero workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated
   zero workflow automation add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
   zero workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
@@ -2201,6 +2274,7 @@ const disableCommand = new Command()
 
 export const automationCommand = new Command()
   .name("automation")
+  .alias("trigger")
   .description("Manage a workflow's automations")
   .addCommand(addCommand)
   .addCommand(updateCommand)

@@ -194,8 +194,36 @@
     {
       "idx": 835,
       "version": "7",
-      "when": 1785931738040,
-      "tag": "0835_large_miss_america",
+      "when": 1785923683369,
+      "tag": "0835_slippery_newton_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 836,
+      "version": "7",
+      "when": 1785932023032,
+      "tag": "0836_supreme_tony_stark",
+      "breakpoints": true
+    },
+    {
+      "idx": 837,
+      "version": "7",
+      "when": 1785934876501,
+      "tag": "0837_bizarre_the_enforcers",
+      "breakpoints": true
+    },
+    {
+      "idx": 838,
+      "version": "7",
+      "when": 1785937642124,
+      "tag": "0838_gifted_korath",
+      "breakpoints": true
+    },
+    {
+      "idx": 839,
+      "version": "7",
+      "when": 1785976237883,
+      "tag": "0839_groovy_red_ghost",
       "breakpoints": true
     }
   ]

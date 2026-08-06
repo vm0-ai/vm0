@@ -1158,6 +1158,7 @@
         "googleCalendarCancelled": "Google Calendar इवेंट रद्द कर दिया गया",
         "googleCalendarCreated": "Google Calendar इवेंट बनाया गया",
         "googleCalendarUpdated": "Google Calendar इवेंट अपडेट किया गया",
+        "googleFormsResponseSubmitted": "Google Forms जवाब सबमिट हुआ",
         "googleMeetTranscript": "Google मीट ट्रांस्क्रिप्ट तैयार",
         "notionChildPage": "नया Notion चाइल्ड पेज",
         "notionDatabaseItem": "नया Notion डेटाबेस आइटम",
@@ -4761,6 +4762,11 @@
         "second_one": "{{count}} सेकंड",
         "second_other": "{{count}} सेकंड"
       },
+      "forms": {
+        "responseSubmittedTitle": "Google Forms जवाब सबमिट हुआ",
+        "rule": "जब {{form}} को कोई जवाब मिले",
+        "summary": "फ़ॉर्म {{form}}"
+      },
       "github": {
         "accountConnect": "GitHub कनेक्ट करें",
         "accountRequired": "मेरा उपयोग करने के लिए अपना GitHub खाता कनेक्ट करें।",
@@ -5083,6 +5089,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google मिलें",
         "notion": "Notion",
         "strapi": "Strapi",

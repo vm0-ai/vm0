@@ -3,13 +3,17 @@ import {
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
 import { storages } from "@vm0/db/schema/storage";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import {
+  zeroWorkflowAutomations,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
+import { reconcileWorkflowEventWatches } from "./workflow-event-watch-lifecycle.service";
 
 interface DeleteZeroWorkflowInput {
   readonly orgId: string;
@@ -40,6 +44,16 @@ export const deleteZeroWorkflow$ = command(
         return { deleted: false as const };
       }
 
+      const automations = await tx
+        .select({
+          orgId: zeroWorkflowAutomations.orgId,
+          ownerUserId: zeroWorkflowAutomations.ownerUserId,
+          eventType: zeroWorkflowAutomations.eventType,
+          eventConfig: zeroWorkflowAutomations.eventConfig,
+        })
+        .from(zeroWorkflowAutomations)
+        .where(eq(zeroWorkflowAutomations.workflowId, workflow.id));
+
       await tx.delete(zeroWorkflows).where(eq(zeroWorkflows.id, workflow.id));
 
       const storageName = getCustomSkillStorageName(workflow.id);
@@ -62,6 +76,7 @@ export const deleteZeroWorkflow$ = command(
       return {
         deleted: true as const,
         s3Prefix: storage?.s3Prefix ?? null,
+        automations,
       };
     });
     signal.throwIfAborted();
@@ -69,6 +84,13 @@ export const deleteZeroWorkflow$ = command(
     if (!result.deleted) {
       return false;
     }
+
+    await reconcileWorkflowEventWatches({
+      db: writeDb,
+      automations: result.automations,
+      signal,
+    });
+    signal.throwIfAborted();
 
     if (result.s3Prefix) {
       const bucket = env("R2_USER_STORAGES_BUCKET_NAME");

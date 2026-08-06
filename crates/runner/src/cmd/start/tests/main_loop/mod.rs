@@ -1,5 +1,6 @@
 mod admission;
 mod drain_resume;
+mod exact_reuse_speculation;
 mod heartbeat;
 mod job_flow;
 mod shutdown;

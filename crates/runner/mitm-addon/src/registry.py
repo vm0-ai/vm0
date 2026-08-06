@@ -39,6 +39,7 @@ class _RegistrySnapshot:
     invalid_vms: dict[str, InvalidVmEntry]
     compiled_firewalls: dict[str, matching.CompiledFirewallSet]
     compiled_network_policies: dict[str, matching.CompiledNetworkPolicies]
+    omitted_builtin_firewalls: dict[str, frozenset[str]]
     builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
     loaded_key: _RegistryFileKey | None
 
@@ -55,7 +56,7 @@ RegistryState = _RegistrySnapshot | RegistryUnavailable
 
 
 def _empty_snapshot() -> _RegistrySnapshot:
-    return _RegistrySnapshot({}, {}, {}, {}, None, None)
+    return _RegistrySnapshot({}, {}, {}, {}, {}, None, None)
 
 
 @dataclass
@@ -208,6 +209,7 @@ def _classify_registry_vms(
     dict,
     dict[str, InvalidVmEntry],
     dict[str, tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...]],
+    dict[str, frozenset[str]],
     registry_firewalls.BuiltinFirewallCatalogSnapshot | None,
 ]:
     new_registry: dict = {}
@@ -216,6 +218,7 @@ def _classify_registry_vms(
         str,
         tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...],
     ] = {}
+    omitted_builtin_firewalls: dict[str, frozenset[str]] = {}
     builtin_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None = None
     for client_ip, vm in raw_registry.items():
         if not isinstance(vm, dict):
@@ -287,6 +290,8 @@ def _classify_registry_vms(
             vm["firewalls"] = resolved_firewalls.firewalls
             if resolved_firewalls.builtin_cache_keys is not None:
                 builtin_cache_keys_by_client_ip[client_ip] = resolved_firewalls.builtin_cache_keys
+            if resolved_firewalls.omitted_builtin_names:
+                omitted_builtin_firewalls[client_ip] = resolved_firewalls.omitted_builtin_names
 
         new_registry[client_ip] = vm
 
@@ -294,6 +299,7 @@ def _classify_registry_vms(
         new_registry,
         invalid_vms,
         builtin_cache_keys_by_client_ip,
+        omitted_builtin_firewalls,
         builtin_catalog_snapshot,
     )
 
@@ -387,6 +393,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
         new_registry,
         invalid_vms,
         builtin_cache_keys,
+        omitted_builtin_firewalls,
         builtin_catalog_snapshot,
     ) = _classify_registry_vms(
         raw_registry,
@@ -409,6 +416,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
         invalid_vms,
         new_compiled_registry,
         new_compiled_policy_registry,
+        omitted_builtin_firewalls,
         builtin_catalog_snapshot,
         key,
     )

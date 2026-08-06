@@ -106,6 +106,7 @@ export async function admitGoalQueueEvent(
       chatThreadId: args.chatThreadId,
       eventType: "input.goal",
       content: null,
+      contextType: "goal",
       runId: null,
       runGroupId: args.goalId,
       userMessage: createUserMessageDocument({

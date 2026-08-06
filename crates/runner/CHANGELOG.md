@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.158.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.11...runner-rs-v0.158.12) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** treat removed catalog connectors as absent ([#25307](https://github.com/vm0-ai/vm0/issues/25307)) ([603597b](https://github.com/vm0-ai/vm0/commit/603597bc0c1774807f66b5976f1b56d2a468f3e8))
+
+## [0.158.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.10...runner-rs-v0.158.11) (2026-08-05)
+
+
+### Performance Improvements
+
+* **runner:** overlap exact reuse restore with claim ([#25286](https://github.com/vm0-ai/vm0/issues/25286)) ([bb4463d](https://github.com/vm0-ai/vm0/commit/bb4463d2d86e77b9bae948b367ee60fddc52fb83))
+
 ## [0.158.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.9...runner-rs-v0.158.10) (2026-08-05)
 
 

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
+use crate::guest_timezone::GuestTimezoneIntent;
 use crate::ids::RunId;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
@@ -28,6 +29,7 @@ pub(crate) struct ParkedIdleCandidateBuilder {
     storage_fingerprints: StorageFingerprints,
     restored_session_identity: Option<RestoredSessionIdentity>,
     history_generation_run_id: Option<RunId>,
+    guest_timezone_intent: GuestTimezoneIntent,
     last_completed_at: Option<String>,
     workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
@@ -49,6 +51,7 @@ impl ParkedIdleCandidateBuilder {
             storage_fingerprints: StorageFingerprints::default(),
             restored_session_identity: None,
             history_generation_run_id: None,
+            guest_timezone_intent: GuestTimezoneIntent::Unknown,
             last_completed_at: None,
             workspace_promotion: None,
         }
@@ -97,6 +100,14 @@ impl ParkedIdleCandidateBuilder {
         self
     }
 
+    pub(crate) fn with_guest_timezone_intent(
+        mut self,
+        guest_timezone_intent: GuestTimezoneIntent,
+    ) -> Self {
+        self.guest_timezone_intent = guest_timezone_intent;
+        self
+    }
+
     pub(crate) fn with_workspace_promotion(
         mut self,
         workspace_promotion: WorkspaceImagePromotionContext,
@@ -118,6 +129,7 @@ impl ParkedIdleCandidateBuilder {
             storage_fingerprints,
             restored_session_identity,
             history_generation_run_id,
+            guest_timezone_intent,
             last_completed_at,
             workspace_promotion,
         } = self;
@@ -130,6 +142,7 @@ impl ParkedIdleCandidateBuilder {
             storage_fingerprints,
             restored_session_identity,
             history_generation_run_id,
+            guest_timezone_intent,
             last_completed_at,
         };
         ParkedIdleCandidate {

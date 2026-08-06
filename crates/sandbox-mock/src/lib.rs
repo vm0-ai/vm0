@@ -12,8 +12,8 @@
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
 //! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
 //! results, shared read-file results, shared lifecycle behavior queues, custom
-//! `wait_process` exits, and durable [`MockLifecycleGate`] gates for lifecycle
-//! and cancellation testing.
+//! `wait_process` exits, and durable [`MockLifecycleGate`] gates for exec,
+//! lifecycle, and cancellation testing.
 //!
 //! ```toml
 //! [dev-dependencies]

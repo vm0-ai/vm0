@@ -24,10 +24,17 @@ class TestRegistryBuiltinCatalogResolution:
 
         registry_firewalls.ResolvedFirewallEntries(None, None)
         registry_firewalls.ResolvedFirewallEntries([], ())
+        registry_firewalls.ResolvedFirewallEntries([], (), frozenset({"omitted"}))
         registry_firewalls.ResolvedFirewallEntries([inline_firewall], (None,))
 
         with pytest.raises(ValueError, match="absent when firewalls are absent"):
             registry_firewalls.ResolvedFirewallEntries(None, (None,))
+        with pytest.raises(ValueError, match="omitted builtin names must be absent"):
+            registry_firewalls.ResolvedFirewallEntries(
+                None,
+                None,
+                frozenset({"omitted"}),
+            )
         with pytest.raises(ValueError, match="present when firewalls are present"):
             registry_firewalls.ResolvedFirewallEntries([inline_firewall], None)
         with pytest.raises(ValueError, match="align with resolved firewalls"):

@@ -228,6 +228,7 @@ type InputPromptEvent = ChatEventIdentity &
   ChatEventInputPayload & {
     readonly eventType: "input.prompt";
     readonly content?: null;
+    readonly contextType?: "web";
     readonly triggerSource?: TriggerSource;
   };
 
@@ -247,6 +248,7 @@ type InputGoalEvent = ChatEventIdentity &
   Pick<ChatEventInputPayload, "userMessage"> & {
     readonly eventType: "input.goal";
     readonly content?: null;
+    readonly contextType: "goal";
     readonly runGroupId: string;
   };
 
@@ -711,7 +713,7 @@ function replacementContext(
   readonly pointer: ChatEventContextPointer | undefined;
   readonly displayContext: NewDisplayContext | undefined;
 } {
-  if (target.contextType !== null && target.contextId !== null) {
+  if (target.contextType !== null) {
     return {
       pointer: {
         contextType: target.contextType,

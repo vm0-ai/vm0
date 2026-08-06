@@ -34,6 +34,7 @@ import {
   IconCopy,
   IconDeviceDesktop,
   IconCheck,
+  IconColorSwatch,
   IconArrowDown,
   IconArrowUpRight,
   IconChevronRight,
@@ -46,7 +47,6 @@ import {
   IconSearch,
   IconSunrise,
   IconTarget,
-  IconTemplate,
   IconX,
   IconClock,
   IconCoins,
@@ -493,7 +493,6 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const sidebarTarget = useGet(thread.sidebar.target$);
   const openBrowserSidebar = useSet(openThreadBrowserSession$);
-  const enabled = useGet(featureSwitch$)[FeatureSwitchKey.ZeroBrowser] ?? false;
 
   const open = sidebarTarget?.type === "browser";
   return (
@@ -502,22 +501,18 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
         <TooltipTrigger asChild>
           <button
             type="button"
-            disabled={!enabled}
             className={cn(
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
               open
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
-              !enabled && "cursor-not-allowed opacity-50",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openBrowser;
             })}
             aria-pressed={open}
             onClick={() => {
-              if (enabled) {
-                openBrowserSidebar(thread.threadId);
-              }
+              openBrowserSidebar(thread.threadId);
             }}
           >
             <IconWorld size={18} stroke={1.5} />
@@ -7179,7 +7174,7 @@ function UserMessageTemplateReference({
         setTemplatePickerOpen(true);
       }}
     >
-      <IconTemplate size={13} stroke={1.7} className="shrink-0" />
+      <IconColorSwatch size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
     </button>
   );

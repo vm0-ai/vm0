@@ -90,6 +90,7 @@ pub struct MockJobProvider {
     /// `wait_completion` so a heartbeat that lands mid-check is still observed.
     heartbeat_notify: Arc<Notify>,
     heartbeat_control: Arc<MockHeartbeatControl>,
+    claim_control: Arc<MockClaimControl>,
 }
 
 /// Test-side handle for driving the mock provider.
@@ -111,6 +112,7 @@ pub struct MockProviderHandle {
     /// See [`MockJobProvider::heartbeat_notify`].
     heartbeat_notify: Arc<Notify>,
     heartbeat_control: Arc<MockHeartbeatControl>,
+    claim_control: Arc<MockClaimControl>,
 }
 
 #[derive(Clone)]
@@ -137,6 +139,14 @@ struct MockHeartbeatControl {
     state_changed: Notify,
 }
 
+#[derive(Default)]
+struct MockClaimControl {
+    blocked: AtomicBool,
+    in_flight: AtomicUsize,
+    release: Notify,
+    state_changed: Notify,
+}
+
 impl MockHeartbeatControl {
     fn enter(&self) -> MockHeartbeatInFlight<'_> {
         let in_flight = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
@@ -155,11 +165,39 @@ impl MockHeartbeatControl {
     }
 }
 
+impl MockClaimControl {
+    fn enter(&self) -> MockClaimInFlight<'_> {
+        self.in_flight.fetch_add(1, Ordering::SeqCst);
+        self.state_changed.notify_waiters();
+        MockClaimInFlight { control: self }
+    }
+
+    fn block(&self) {
+        self.blocked.store(true, Ordering::SeqCst);
+    }
+
+    fn unblock(&self) {
+        self.blocked.store(false, Ordering::SeqCst);
+        self.release.notify_waiters();
+    }
+}
+
 struct MockHeartbeatInFlight<'a> {
     control: &'a MockHeartbeatControl,
 }
 
+struct MockClaimInFlight<'a> {
+    control: &'a MockClaimControl,
+}
+
 impl Drop for MockHeartbeatInFlight<'_> {
+    fn drop(&mut self) {
+        self.control.in_flight.fetch_sub(1, Ordering::SeqCst);
+        self.control.state_changed.notify_waiters();
+    }
+}
+
+impl Drop for MockClaimInFlight<'_> {
     fn drop(&mut self) {
         self.control.in_flight.fetch_sub(1, Ordering::SeqCst);
         self.control.state_changed.notify_waiters();
@@ -258,6 +296,7 @@ impl MockJobProvider {
         let discover_started_count = Arc::new(AtomicUsize::new(0));
         let heartbeat_notify = Arc::new(Notify::new());
         let heartbeat_control = Arc::new(MockHeartbeatControl::default());
+        let claim_control = Arc::new(MockClaimControl::default());
         let provider = Arc::new(Self {
             startup_readiness: Arc::clone(&startup_readiness),
             discovery: Mutex::new(rx),
@@ -275,6 +314,7 @@ impl MockJobProvider {
             discover_started_count: Arc::clone(&discover_started_count),
             heartbeat_notify: Arc::clone(&heartbeat_notify),
             heartbeat_control: Arc::clone(&heartbeat_control),
+            claim_control: Arc::clone(&claim_control),
         });
         let handle = MockProviderHandle {
             startup_readiness,
@@ -290,6 +330,7 @@ impl MockJobProvider {
             discover_started_count,
             heartbeat_notify,
             heartbeat_control,
+            claim_control,
         };
         (provider, handle)
     }
@@ -446,6 +487,35 @@ impl MockProviderHandle {
             .clone()
     }
 
+    pub fn block_claims(&self) {
+        self.claim_control.block();
+    }
+
+    pub fn unblock_claims(&self) {
+        self.claim_control.unblock();
+    }
+
+    pub async fn wait_claim_in_flight(&self, expected: usize, timeout: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let changed = self.claim_control.state_changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+
+            if self.claim_control.in_flight.load(Ordering::SeqCst) == expected {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, changed).await.is_err() {
+                return false;
+            }
+        }
+    }
+
     pub fn deferred_poll_deadlines(&self) -> Vec<Instant> {
         self.deferred_poll_deadlines
             .lock()
@@ -528,6 +598,13 @@ impl JobProvider for MockJobProvider {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(candidate.clone());
+        let release = self.claim_control.release.notified();
+        tokio::pin!(release);
+        release.as_mut().enable();
+        let _in_flight = self.claim_control.enter();
+        if self.claim_control.blocked.load(Ordering::SeqCst) {
+            release.await;
+        }
         let context = self
             .claim_results
             .lock()

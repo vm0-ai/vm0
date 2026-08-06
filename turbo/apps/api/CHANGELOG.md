@@ -1,5 +1,74 @@
 # Changelog
 
+## [1.380.1](https://github.com/vm0-ai/vm0/compare/api-v1.380.0...api-v1.380.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* **api:** seed chat event input context in benchmark ([#25310](https://github.com/vm0-ai/vm0/issues/25310)) ([dc97df8](https://github.com/vm0-ai/vm0/commit/dc97df81221a00293105e0029f37211f7f0129f5))
+
+
+### Refactoring
+
+* reduce fallback slop in internal contracts ([#25314](https://github.com/vm0-ai/vm0/issues/25314)) ([ba302ae](https://github.com/vm0-ai/vm0/commit/ba302aec452be2be47ac292c4f96efcdb0d81325))
+
+## [1.380.0](https://github.com/vm0-ai/vm0/compare/api-v1.379.4...api-v1.380.0) (2026-08-05)
+
+
+### Features
+
+* add google forms response trigger ([#25308](https://github.com/vm0-ai/vm0/issues/25308)) ([463f489](https://github.com/vm0-ai/vm0/commit/463f48920b56866b11363f5bf5f2ddd0dbe5529a))
+
+
+### Refactoring
+
+* **api:** own connector auth-method feature switches ([#25298](https://github.com/vm0-ai/vm0/issues/25298)) ([6670ff6](https://github.com/vm0-ai/vm0/commit/6670ff6f17ad06757fe6ff7778b7b48a2dcd914e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.275.0
+    * @vm0/core bumped to 8.517.0
+    * @vm0/db bumped to 1.167.0
+
+## [1.379.4](https://github.com/vm0-ai/vm0/compare/api-v1.379.3...api-v1.379.4) (2026-08-05)
+
+
+### Refactoring
+
+* **db:** require queued input source discriminators ([#25305](https://github.com/vm0-ai/vm0/issues/25305)) ([8ff0ade](https://github.com/vm0-ai/vm0/commit/8ff0ade1831b4092d2828beb78f18a3c57735229))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.166.6
+
+## [1.379.3](https://github.com/vm0-ai/vm0/compare/api-v1.379.2...api-v1.379.3) (2026-08-05)
+
+
+### Refactoring
+
+* **api:** reconcile gmail and calendar watch lifecycles ([#25237](https://github.com/vm0-ai/vm0/issues/25237)) ([1ed2af6](https://github.com/vm0-ai/vm0/commit/1ed2af6cf8b915c598d1685b7c1ecf22e9a784e6))
+* **db:** add chat input source discriminators ([#25294](https://github.com/vm0-ai/vm0/issues/25294)) ([9e8fc83](https://github.com/vm0-ai/vm0/commit/9e8fc83b090bf6aa4bb874be9c279e78295d8182))
+* remove zero browser feature switch ([#25289](https://github.com/vm0-ai/vm0/issues/25289)) ([3b859f1](https://github.com/vm0-ai/vm0/commit/3b859f1f8ed2886f2298c31d8042b7f413e6f8bd))
+
+
+### Performance Improvements
+
+* **api:** remove typescript program from database lint rules ([#25277](https://github.com/vm0-ai/vm0/issues/25277)) ([59fcbb8](https://github.com/vm0-ai/vm0/commit/59fcbb81d006162f77eb337a6a2afe3a7ebbf59a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.516.3
+    * @vm0/db bumped to 1.166.5
+
 ## [1.379.2](https://github.com/vm0-ai/vm0/compare/api-v1.379.1...api-v1.379.2) (2026-08-05)
 
 

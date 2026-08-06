@@ -103,15 +103,17 @@ export const chatEvents = pgTable(
     runGroupId: uuid("run_group_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
     /**
-     * Optional polymorphic trigger-context pointer.
+     * Input source discriminator and optional polymorphic context pointer.
      *
-     * context_id is not unique: when a pending event is claimed, the revoke +
-     * insert replacement reuses it. A context row belongs to one trigger, not
-     * one event row. The pointer has no foreign key because context_type
-     * selects its table. Legal (event_type, context_type) combinations are
-     * enforced by the NewChatEvent TypeScript write union, not by SQL.
+     * `web` and `goal` identify sources without context rows, so contextId is
+     * null for those values. For other values, contextId selects the row in the
+     * table named by contextType. contextId is not unique: when a pending event
+     * is claimed, the revoke + insert replacement reuses it. Legal
+     * (eventType, contextType) combinations are enforced by the NewChatEvent
+     * TypeScript write union, not by SQL.
      */
     contextType: text("context_type").$type<
+      | "web"
       | "slack"
       | "feishu"
       | "teams"
@@ -231,11 +233,12 @@ export const chatEvents = pgTable(
       ),
       check(
         "chat_events_context_pair_check",
-        sql`(${table.contextType} IS NULL) = (${table.contextId} IS NULL)`,
+        sql`${table.contextId} IS NULL OR ${table.contextType} IS NOT NULL`,
       ),
       check(
         "chat_events_context_type_check",
         sql`${table.contextType} IN (
+          'web',
           'slack',
           'feishu',
           'teams',
@@ -247,6 +250,11 @@ export const chatEvents = pgTable(
           'morning_brief',
           'agent_run'
         )`,
+      ),
+      check(
+        "chat_events_input_context_type_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.automation', 'input.goal')
+          OR ${table.contextType} IS NOT NULL`,
       ),
     ];
   },

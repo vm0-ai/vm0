@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
@@ -64,6 +63,7 @@ export async function insertQueuedWebUserMessageFixture(args: {
     const inserted = await insertChatEvent(tx, {
       id: messageId,
       chatThreadId: args.threadId,
+      contextType: "web",
       eventType: "input.prompt",
       userMessage: createUserMessageDocument({ text: args.content }),
       runId: null,

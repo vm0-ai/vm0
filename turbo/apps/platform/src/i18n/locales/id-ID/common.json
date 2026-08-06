@@ -1158,6 +1158,7 @@
         "googleCalendarCancelled": "Acara Google Calendar dibatalkan",
         "googleCalendarCreated": "Acara Google Calendar dibuat",
         "googleCalendarUpdated": "Acara Google Calendar diperbarui",
+        "googleFormsResponseSubmitted": "Respons Google Forms dikirim",
         "googleMeetTranscript": "Transkrip Google Meet siap",
         "notionChildPage": "Halaman anak baru Notion",
         "notionDatabaseItem": "Item database baru Notion",
@@ -4760,6 +4761,11 @@
         "second_one": "{{count}} detik",
         "second_other": "{{count}} detik"
       },
+      "forms": {
+        "responseSubmittedTitle": "Respons Google Forms dikirim",
+        "rule": "Saat {{form}} menerima respons",
+        "summary": "Formulir {{form}}"
+      },
       "github": {
         "accountConnect": "Hubungkan GitHub",
         "accountRequired": "Hubungkan akun GitHub Anda untuk menggunakan Me.",
@@ -5082,6 +5088,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",

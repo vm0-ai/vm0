@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 
+use crate::guest_timezone::GuestTimezoneIntent;
 use crate::ids::RunId;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
@@ -33,6 +34,7 @@ pub(super) struct IdleSandboxMetadata {
     /// was parked. Missing means reuse must fall back to materialize+restore.
     pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
     pub(super) history_generation_run_id: Option<RunId>,
+    pub(super) guest_timezone_intent: GuestTimezoneIntent,
     /// Local terminal timestamp for this parked sandbox.
     ///
     /// `None` is reserved for synthetic test entries and means the VM is not
@@ -60,7 +62,10 @@ pub(super) struct IdleSandboxResources {
 }
 
 impl IdleSandboxResources {
-    fn into_destroy_payload(self, policy: WorkspacePromotionPolicy) -> IdleDestroyPayload {
+    pub(super) fn into_destroy_payload(
+        self,
+        policy: WorkspacePromotionPolicy,
+    ) -> IdleDestroyPayload {
         IdleDestroyPayload {
             resources: self,
             workspace_promotion_policy: policy,
@@ -192,6 +197,7 @@ pub struct ReusableIdleSandbox {
     sandbox: Box<dyn Sandbox>,
     metadata: IdleSandboxMetadata,
     workspace_promotion: Option<WorkspaceImagePromotionContext>,
+    guest_state_prepared: bool,
 }
 
 pub struct ReusableIdleSandboxParts {
@@ -201,6 +207,22 @@ pub struct ReusableIdleSandboxParts {
     pub storage_fingerprints: StorageFingerprints,
     pub restored_session_identity: Option<RestoredSessionIdentity>,
     pub workspace_promotion: Option<WorkspaceImagePromotionContext>,
+    pub guest_state_prepared: bool,
+}
+
+/// An exact-generation idle sandbox that has been unparked for claim-time
+/// preparation but has not yet been committed to a claimed job.
+#[must_use = "speculatively active sandboxes must be committed, re-parked, or destroyed"]
+pub(crate) struct SpeculativeIdleSandbox {
+    pub(super) entry: IdleEntry,
+}
+
+pub(crate) enum SpeculativeIdleUnparkResult {
+    Ready(Box<SpeculativeIdleSandbox>),
+    Failed {
+        destroy_job: Box<IdleDestroyJob>,
+        error: String,
+    },
 }
 
 impl ReusableIdleSandbox {
@@ -217,6 +239,7 @@ impl ReusableIdleSandbox {
             sandbox,
             metadata,
             workspace_promotion,
+            guest_state_prepared,
         } = self;
         let IdleSandboxMetadata {
             reuse_key,
@@ -227,6 +250,7 @@ impl ReusableIdleSandbox {
             storage_fingerprints,
             restored_session_identity,
             history_generation_run_id: _,
+            guest_timezone_intent: _,
             last_completed_at: _,
         } = metadata;
 
@@ -237,6 +261,7 @@ impl ReusableIdleSandbox {
             storage_fingerprints,
             restored_session_identity,
             workspace_promotion,
+            guest_state_prepared,
         }
     }
 }
@@ -495,6 +520,7 @@ impl IdleEntry {
                 sandbox,
                 metadata,
                 workspace_promotion,
+                guest_state_prepared: false,
             },
             budget_lease,
         )
@@ -568,6 +594,10 @@ impl ReservedIdleSandbox {
         self.entry.reuse_key()
     }
 
+    pub(crate) fn guest_timezone_intent(&self) -> &GuestTimezoneIntent {
+        &self.entry.metadata.guest_timezone_intent
+    }
+
     pub fn validate_workspace_promotion_identity(
         &self,
         cache: &WorkspaceImageCache,
@@ -582,6 +612,38 @@ impl ReservedIdleSandbox {
         self.entry.try_unpark_for_run(run_id).await
     }
 
+    pub(crate) async fn try_unpark_for_speculation(
+        mut self,
+        run_id: RunId,
+    ) -> SpeculativeIdleUnparkResult {
+        let activation = async {
+            self.entry
+                .resources
+                .sandbox
+                .bind_run_control(&run_id.to_string())?;
+            self.entry.resources.sandbox.unpark().await
+        };
+        match AssertUnwindSafe(activation).catch_unwind().await {
+            Ok(Ok(())) => SpeculativeIdleUnparkResult::Ready(Box::new(SpeculativeIdleSandbox {
+                entry: self.entry,
+            })),
+            Ok(Err(error)) => SpeculativeIdleUnparkResult::Failed {
+                destroy_job: Box::new(
+                    self.entry.into_destroy_job_abandoning_workspace_promotion(
+                        "speculative_unpark_failed",
+                    ),
+                ),
+                error: error.to_string(),
+            },
+            Err(_) => SpeculativeIdleUnparkResult::Failed {
+                destroy_job: Box::new(self.entry.into_destroy_job_abandoning_workspace_promotion(
+                    "speculative_unpark_panicked",
+                )),
+                error: "sandbox unpark panicked".into(),
+            },
+        }
+    }
+
     pub fn into_destroy_job(self) -> IdleDestroyJob {
         self.entry.into_destroy_job()
     }
@@ -589,5 +651,54 @@ impl ReservedIdleSandbox {
     pub fn into_destroy_job_without_workspace_promotion_for_mismatch(self) -> IdleDestroyJob {
         self.entry
             .into_destroy_job_without_workspace_promotion_for_mismatch()
+    }
+}
+
+impl SpeculativeIdleSandbox {
+    pub(crate) fn sandbox(&self) -> &dyn Sandbox {
+        self.entry.resources.sandbox.as_ref()
+    }
+
+    pub(crate) fn reuse_key(&self) -> &str {
+        self.entry.reuse_key()
+    }
+
+    pub(crate) fn guest_timezone_intent(&self) -> &GuestTimezoneIntent {
+        &self.entry.metadata.guest_timezone_intent
+    }
+
+    pub(crate) fn validate_workspace_promotion_identity(
+        &self,
+        cache: &WorkspaceImageCache,
+        working_dir: &str,
+        image_size_bytes: u64,
+    ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
+        self.entry
+            .validate_workspace_promotion_identity(cache, working_dir, image_size_bytes)
+    }
+
+    pub(crate) fn commit(self, guest_state_prepared: bool) -> (ReusableIdleSandbox, BudgetLease) {
+        let Self { entry } = self;
+        let IdleEntry {
+            resources,
+            metadata,
+            budget_lease,
+            ..
+        } = entry;
+        let (sandbox, workspace_promotion) = resources.into_reuse_parts();
+        (
+            ReusableIdleSandbox {
+                sandbox,
+                metadata,
+                workspace_promotion,
+                guest_state_prepared,
+            },
+            budget_lease,
+        )
+    }
+
+    pub(crate) fn into_destroy_job(self, reason: &'static str) -> IdleDestroyJob {
+        self.entry
+            .into_destroy_job_abandoning_workspace_promotion(reason)
     }
 }

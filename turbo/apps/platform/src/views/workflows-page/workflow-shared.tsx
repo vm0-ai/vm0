@@ -517,6 +517,11 @@ export function gmailAutomationTitle(
       return $.workflows.automations.calendar.cancelledTitle;
     });
   }
+  if (automation.eventType === "google-forms-response-submitted") {
+    return i18n.t(($) => {
+      return $.workflows.automations.forms.responseSubmittedTitle;
+    });
+  }
   if (automation.eventType === "google-meet-transcript-generated") {
     return i18n.t(($) => {
       return $.workflows.automations.meet.transcriptReadyTitle;
@@ -641,6 +646,14 @@ export function gmailAutomationSummary(
         return $.workflows.automations.calendar.summary;
       },
       { calendar: quote(automation.eventConfig.calendarId) },
+    );
+  }
+  if (automation.eventType === "google-forms-response-submitted") {
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.forms.summary;
+      },
+      { form: quote(automation.eventConfig.form.title) },
     );
   }
   if (automation.eventType === "google-meet-transcript-generated") {

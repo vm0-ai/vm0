@@ -217,6 +217,23 @@ const cases: readonly WorkflowAutomationContextCase[] = [
     policy: eventPolicy,
   },
   {
+    eventType: "google-forms-response-submitted",
+    payload: {
+      responseId: "response-123",
+      changeType: "created",
+      formId: "form-123",
+      formTitle: "Customer feedback",
+      lastSubmittedTime: "2026-08-05T10:00:00.654321Z",
+      respondentEmail: null,
+    },
+    trigger:
+      "Google Forms response response-123 from an anonymous respondent was created on Customer feedback (submitted 2026-08-05T10:00:00.654321Z).",
+    notes: [
+      "Response answers are not included below. Use GET /v1/forms/{formId}/responses/{responseId} for answers, then GET /v1/forms/{formId} to map questionId values to question text.",
+    ],
+    policy: eventPolicy,
+  },
+  {
     eventType: "google-meet-transcript-generated",
     payload: {
       transcriptName: "conferenceRecords/123/transcripts/456",

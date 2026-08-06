@@ -173,6 +173,34 @@ async fn reserved_restore_rejects_after_parking_closes() {
     assert_eq!(pool.len(), 0);
 }
 
+#[tokio::test]
+async fn reserved_restore_rejects_an_entry_with_expired_original_age() {
+    let mut pool = IdlePool::new(pool_config(0));
+    let now = Instant::now();
+    let candidate = make_candidate_for("session-expired-reservation", 2, 2048);
+    assert!(matches!(
+        park_at(
+            &mut pool,
+            "session-expired-reservation",
+            candidate,
+            now - Duration::from_secs(301),
+            Duration::from_secs(300),
+        ),
+        ParkResult::Parked
+    ));
+    let reservation = ReservedIdleSandbox {
+        entry: pool
+            .take("session-expired-reservation")
+            .expect("expired entry should still be available for ownership testing"),
+    };
+
+    let RestoreReservedIdleResult::Rejected(rejected) = pool.restore_reserved(reservation) else {
+        panic!("originally expired reservation must not be restored");
+    };
+    rejected.run().await;
+    assert_eq!(pool.len(), 0);
+}
+
 #[test]
 fn park_uses_candidate_reuse_key_as_pool_key() {
     let mut pool = IdlePool::new(pool_config(0));

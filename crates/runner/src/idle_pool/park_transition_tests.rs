@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use guest_contracts::reuse_preparation::ReusePreparationRequest;
 use guest_contracts::session_history_identity::{
@@ -64,6 +64,7 @@ async fn make_idle_park_request(
         storage_fingerprints: StorageFingerprints::default(),
         restored_session_identity: None,
         history_generation_run_id: None,
+        guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
         workspace_image_size_bytes: 0,
         workspace_promotion: None,
     })
@@ -233,6 +234,7 @@ async fn idle_park_request_success_preserves_reuse_metadata() {
         storage_fingerprints,
         restored_session_identity: Some(restored_session_identity.clone()),
         history_generation_run_id: Some(history_generation_run_id),
+        guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
         workspace_image_size_bytes: 0,
         workspace_promotion: None,
     });
@@ -291,6 +293,57 @@ async fn idle_park_request_success_preserves_reuse_metadata() {
     );
     assert_eq!(budget_lease.vcpu(), 2);
     assert_eq!(budget_lease.memory_mb(), 2048);
+}
+
+#[tokio::test]
+async fn speculative_repark_preserves_original_idle_age_and_metadata() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let history_generation_run_id = RunId::new_v4();
+    let mut request = make_idle_park_request(
+        Arc::clone(&overrides),
+        "session-speculative-repark",
+        make_budget_lease(2, 2048),
+    )
+    .await;
+    request.parts.history_generation_run_id = Some(history_generation_run_id);
+    request.parts.guest_timezone_intent =
+        crate::guest_timezone::GuestTimezoneIntent::Configured("Asia/Shanghai".into());
+    let candidate = match request.park_for_idle().await {
+        Ok(outcome) => outcome.expect_reusable(),
+        Err(_) => panic!("initial park should succeed"),
+    };
+    add_healthy_reuse_preparation_matcher(&overrides);
+
+    let original_parked_at = Instant::now() - Duration::from_secs(120);
+    let original_timeout = Duration::from_secs(300);
+    let reservation = ReservedIdleSandbox {
+        entry: candidate.into_idle_entry(original_parked_at, original_timeout),
+    };
+    let SpeculativeIdleUnparkResult::Ready(speculative) = reservation
+        .try_unpark_for_speculation(RunId::new_v4())
+        .await
+    else {
+        panic!("speculative unpark should succeed");
+    };
+    let SpeculativeReparkResult::Reparked(restored) = speculative
+        .repark_for_claim_rollback(RunId::new_v4(), 0)
+        .await
+    else {
+        panic!("speculative repark should succeed");
+    };
+
+    assert_eq!(restored.entry.parked_at, original_parked_at);
+    assert_eq!(restored.entry.idle_timeout, original_timeout);
+    assert_eq!(
+        restored.entry.metadata.history_generation_run_id,
+        Some(history_generation_run_id)
+    );
+    assert_eq!(
+        restored.guest_timezone_intent(),
+        &crate::guest_timezone::GuestTimezoneIntent::Configured("Asia/Shanghai".into())
+    );
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.park_call_count(), 2);
 }
 
 #[tokio::test]

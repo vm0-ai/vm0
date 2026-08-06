@@ -126,7 +126,6 @@ function setupChatPage({
     },
     featureSwitches: {
       [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
-      [FeatureSwitchKey.ZeroBrowser]: true,
     },
   });
 }

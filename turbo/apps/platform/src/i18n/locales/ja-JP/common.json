@@ -1158,6 +1158,7 @@
         "googleCalendarCancelled": "Google Calendar イベントがキャンセルされました",
         "googleCalendarCreated": "Google Calendar イベントが作成されました",
         "googleCalendarUpdated": "Google Calendar イベントが更新されました",
+        "googleFormsResponseSubmitted": "Google Forms の回答が送信されました",
         "googleMeetTranscript": "Google 会議記録の準備が完了しました",
         "notionChildPage": "新しい Notion 子ページ",
         "notionDatabaseItem": "新しい Notion データベース項目",
@@ -4760,6 +4761,11 @@
         "second_one": "{{count}} 秒",
         "second_other": "{{count}} 秒"
       },
+      "forms": {
+        "responseSubmittedTitle": "Google Forms の回答が送信されました",
+        "rule": "{{form}} に回答が送信されたとき",
+        "summary": "フォーム {{form}}"
+      },
       "github": {
         "accountConnect": "GitHub を接続します",
         "accountRequired": "Me を使用するには、GitHub アカウントを接続します。",
@@ -5082,6 +5088,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google 会う",
         "notion": "Notion",
         "strapi": "Strapi",

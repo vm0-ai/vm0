@@ -1476,6 +1476,7 @@ function appendUnassociatedUserMessage(params: {
       userMessage: params.userMessage,
       runId: null,
       triggerSource: params.triggerSource,
+      ...(params.triggerSource === "web" ? { contextType: "web" } : {}),
       ...(params.agentRunSource
         ? {
             agentRunContext: {
@@ -1606,6 +1607,7 @@ async function appendAssociatedUserMessage(params: {
       eventType: "input.prompt",
       userMessage: params.userMessage,
       runId: params.runId,
+      contextType: "web",
       attachFiles: fileIds,
       generationTemplate: params.generationTemplate,
     };

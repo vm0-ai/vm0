@@ -98,6 +98,13 @@ const googleCalendarWebhookResponseSchema = z.object({
   duplicates: z.number(),
 });
 
+const googleFormsWebhookResponseSchema = z.object({
+  success: z.literal(true),
+  watchStates: z.number(),
+  dispatched: z.number(),
+  duplicates: z.number(),
+});
+
 const googleWorkspaceEventsWebhookResponseSchema = z.object({
   success: z.literal(true),
   watchStates: z.number(),
@@ -135,6 +142,25 @@ export const webhookGmailContract = c.router({
       503: thirdPartyWebhookErrorSchema,
     },
     summary: "Handle Gmail Pub/Sub push notifications",
+  },
+});
+
+/**
+ * Google Forms Pub/Sub push webhook contract.
+ */
+export const webhookGoogleFormsContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/google-forms",
+    body: c.type<string>(),
+    responses: {
+      200: googleFormsWebhookResponseSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Google Forms Pub/Sub push notifications",
   },
 });
 
@@ -814,6 +840,7 @@ export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookClerkContract = typeof webhookClerkContract;
 export type WebhookGithubContract = typeof webhookGithubContract;
 export type WebhookGmailContract = typeof webhookGmailContract;
+export type WebhookGoogleFormsContract = typeof webhookGoogleFormsContract;
 export type WebhookGoogleCalendarContract =
   typeof webhookGoogleCalendarContract;
 export type WebhookGoogleWorkspaceEventsContract =

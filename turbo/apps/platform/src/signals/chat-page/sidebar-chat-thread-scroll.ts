@@ -89,7 +89,7 @@ export const sidebarChatThreadWindow$ = computed(
       scrollMetrics.clientHeight ||
       scrollViewport?.clientHeight ||
       CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
-    const scrollTop = scrollMetrics.scrollTop ?? scrollViewport?.scrollTop ?? 0;
+    const scrollTop = scrollMetrics.scrollTop;
     const { startIndex, endIndex } = getFixedVirtualRange({
       itemCount: chatThreads.length,
       scrollMargin,

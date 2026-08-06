@@ -1903,11 +1903,11 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     const admittedContext = await readChatEventContextFixture(goalEventId);
     const revokedContext = await readChatEventContextFixture(revoked.id);
     expect(admittedContext).toMatchObject({
-      contextType: null,
+      contextType: "goal",
       contextId: null,
     });
     expect(revokedContext).toMatchObject({
-      contextType: null,
+      contextType: "goal",
       contextId: null,
     });
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);

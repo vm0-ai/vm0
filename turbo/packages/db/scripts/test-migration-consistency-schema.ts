@@ -580,6 +580,7 @@ async function validateCanonicalChatMessageStorage(
   };
   const message = await client.query<{
     content: string | null;
+    contextType: string | null;
     id: string;
     seqId: string;
     userMessage: unknown;
@@ -588,6 +589,7 @@ async function validateCanonicalChatMessageStorage(
       INSERT INTO "chat_events" (
         "chat_thread_id",
         "content",
+        "context_type",
         "event_type",
         "seq_id",
         "user_message"
@@ -595,6 +597,7 @@ async function validateCanonicalChatMessageStorage(
       VALUES (
         $1,
         NULL,
+        'web',
         'input.prompt',
         $2,
         $3::jsonb
@@ -603,6 +606,7 @@ async function validateCanonicalChatMessageStorage(
         "id",
         "seq_id" AS "seqId",
         "content",
+        "context_type" AS "contextType",
         "user_message" AS "userMessage"
     `,
     [threadId, firstSeqId, JSON.stringify(userMessage)],
@@ -613,6 +617,7 @@ async function validateCanonicalChatMessageStorage(
   }
   assert.equal(messageRow.seqId, String(firstSeqId));
   assert.equal(messageRow.content, null);
+  assert.equal(messageRow.contextType, "web");
   assert.deepEqual(messageRow.userMessage, userMessage);
 
   const nextMessage = await client.query<{ seqId: string }>(
@@ -894,6 +899,7 @@ async function validateChatEventContextPointerConstraints(
           "event_type",
           "context_type",
           "context_id",
+          "user_message",
           "seq_id"
         )
         VALUES
@@ -901,6 +907,7 @@ async function validateChatEventContextPointerConstraints(
             '00000000-0000-4000-8000-000000074510',
             $1,
             'output.message',
+            NULL,
             NULL,
             NULL,
             1
@@ -911,7 +918,26 @@ async function validateChatEventContextPointerConstraints(
             'output.message',
             'slack',
             '00000000-0000-4000-8000-000000074503',
+            NULL,
             2
+          ),
+          (
+            '00000000-0000-4000-8000-000000074512',
+            $1,
+            'input.prompt',
+            'web',
+            NULL,
+            '{"version":1,"parts":[{"type":"text","text":"web discriminator"}]}'::jsonb,
+            3
+          ),
+          (
+            '00000000-0000-4000-8000-000000074515',
+            $1,
+            'input.rejected',
+            NULL,
+            NULL,
+            '{"version":1,"parts":[{"type":"text","text":"rejected input"}]}'::jsonb,
+            4
           )
         RETURNING
           "context_type" AS "contextType",
@@ -925,29 +951,10 @@ async function validateChatEventContextPointerConstraints(
         contextId: "00000000-0000-4000-8000-000000074503",
         contextType: "slack",
       },
+      { contextId: null, contextType: "web" },
+      { contextId: null, contextType: null },
     ]);
 
-    await expectDatabaseError(client, {
-      code: "23514",
-      messageIncludes: "chat_events_context_pair_check",
-      query: `
-        INSERT INTO "chat_events" (
-          "id",
-          "chat_thread_id",
-          "event_type",
-          "context_type",
-          "seq_id"
-        )
-        VALUES (
-          '00000000-0000-4000-8000-000000074512',
-          $1,
-          'output.message',
-          'slack',
-          3
-        )
-      `,
-      values: [threadId],
-    });
     await expectDatabaseError(client, {
       code: "23514",
       messageIncludes: "chat_events_context_pair_check",
@@ -992,9 +999,34 @@ async function validateChatEventContextPointerConstraints(
       `,
       values: [threadId],
     });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chat_events_input_context_type_check",
+      query: `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_type",
+          "context_id",
+          "user_message",
+          "seq_id"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000074516',
+          $1,
+          'input.prompt',
+          NULL,
+          NULL,
+          '{"version":1,"parts":[{"type":"text","text":"missing discriminator"}]}'::jsonb,
+          5
+        )
+      `,
+      values: [threadId],
+    });
 
     console.log(
-      "   ✅ Chat event context pointers are paired and reject unknown types\n",
+      "   ✅ Chat event contexts require input discriminators while allowing context-less rejected inputs\n",
     );
   } finally {
     await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [

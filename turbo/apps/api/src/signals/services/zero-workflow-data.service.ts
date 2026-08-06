@@ -434,7 +434,7 @@ export async function loadWorkflowOwnerProfile(
 
   if (cachedRow?.name || cachedRow?.email || cachedRow?.imageUrl) {
     return {
-      displayName: cachedRow.name ?? cachedRow.email ?? null,
+      displayName: cachedRow.name ?? cachedRow.email,
       imageUrl: cachedRow.imageUrl ?? null,
     };
   }

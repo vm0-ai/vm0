@@ -978,6 +978,36 @@ const connectors = [
     ]),
   }),
   connector({
+    connectorSlug: "google-forms",
+    label: "Google Forms",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "google-forms",
+        prefix: "GOOGLE_FORMS",
+        tokenEnvironmentNames: ["GOOGLE_FORMS_TOKEN"],
+        scopes: [
+          "https://www.googleapis.com/auth/forms.body.readonly",
+          "https://www.googleapis.com/auth/forms.responses.readonly",
+        ],
+      }),
+    ],
+    firewall: generatedFirewall(
+      [
+        bearerApi("https://forms.googleapis.com", "GOOGLE_FORMS_TOKEN", [
+          { name: "forms.read", rules: ["GET /v1/forms/{formId}"] },
+          {
+            name: "responses.read",
+            rules: ["GET /v1/forms/{formId}/responses"],
+          },
+        ]),
+      ],
+      {
+        defaultAllowed: ["forms.read", "responses.read"],
+        defaultUnknownPolicy: "deny",
+      },
+    ),
+  }),
+  connector({
     connectorSlug: "google-maps",
     label: "Google Maps",
     authMethods: [

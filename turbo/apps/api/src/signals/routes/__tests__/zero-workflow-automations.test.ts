@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  cronRenewGmailWatchesContract,
+  cronRenewGoogleCalendarWatchesContract,
+  cronRenewGoogleFormsWatchesContract,
+} from "@vm0/api-contracts/contracts/cron";
+import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -10,19 +15,21 @@ import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import {
   readRunAutonomyBudgetFixture,
   readWorkflowAutomationAutonomyFixture,
   setRunAutonomyBudgetFixture,
 } from "./helpers/runtime-state";
-import type { ApiTestUser } from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import {
   createConnectorBddApi,
   mockGmailConnectorOAuth,
+  mockGoogleFormsConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -40,6 +47,7 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
+const bdd = createBddApi(context);
 const gh = createGithubBddApi(context);
 const runs = createRunsApi(context);
 const webhookCallbacks = createWebhookCallbackApi(context);
@@ -54,6 +62,18 @@ function automationsClient() {
 
 function detailClient() {
   return setupApp({ context })(zeroWorkflowsDetailContract);
+}
+
+function renewGmailWatchesClient() {
+  return setupApp({ context })(cronRenewGmailWatchesContract);
+}
+
+function renewGoogleCalendarWatchesClient() {
+  return setupApp({ context })(cronRenewGoogleCalendarWatchesContract);
+}
+
+function renewGoogleFormsWatchesClient() {
+  return setupApp({ context })(cronRenewGoogleFormsWatchesContract);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -79,6 +99,14 @@ const WORKFLOW_NAME = "automation-workflow";
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_EMAIL = "workflow-user@example.com";
 const GOOGLE_CALENDAR_EMAIL = "calendar-user@example.com";
+const GOOGLE_FORMS_TOPIC_NAME = "projects/vm0-ai-488909/topics/forms-events";
+const GOOGLE_FORMS_PUSH_AUDIENCE =
+  "https://api.vm0.ai/api/webhooks/google-forms";
+const GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT =
+  "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
+const GOOGLE_FORM_ID = "1FAIpQLScGoogleFormsAutomationTest";
+const GOOGLE_FORM_URL = `https://docs.google.com/forms/d/${GOOGLE_FORM_ID}/edit`;
+const GOOGLE_FORM_SEED_CURSOR = "2026-08-05T09:30:00.123456Z";
 const NOTION_PARENT_PAGE_ID = "11111111-1111-4111-8111-111111111111";
 const NOTION_PARENT_PAGE_URL =
   "https://www.notion.so/Roadmap-11111111111141118111111111111111";
@@ -88,6 +116,7 @@ const NOTION_DATABASE_URL =
   "https://www.notion.so/22222222222242228222222222222222?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa&source=copy_link";
 const NOTION_DATA_SOURCE_URL =
   "https://www.notion.so/Bug-Bash-33333333333343338333333333333333";
+const CRON_SECRET = "workflow-watch-lifecycle-cron-secret";
 
 interface WorkflowsFixture {
   readonly orgId: string;
@@ -115,11 +144,104 @@ async function enableNotionWorkflowAutomations(
   });
 }
 
+async function enableGoogleFormsWorkflowAutomations(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+  });
+}
+
+interface GoogleFormsWatchRecorder {
+  readonly watchIds: string[];
+  createCalls: number;
+}
+
+function configureGoogleFormsCreationMock(args?: {
+  readonly unpublished?: boolean;
+  readonly expireTime?: string;
+}): GoogleFormsWatchRecorder {
+  const recorder: GoogleFormsWatchRecorder = {
+    watchIds: [],
+    createCalls: 0,
+  };
+  mockOptionalEnv("GOOGLE_FORMS_PUBSUB_TOPIC_NAME", GOOGLE_FORMS_TOPIC_NAME);
+  mockOptionalEnv(
+    "GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE",
+    GOOGLE_FORMS_PUSH_AUDIENCE,
+  );
+  mockOptionalEnv(
+    "GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL",
+    GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT,
+  );
+  server.use(
+    http.get(
+      "https://forms.googleapis.com/v1/forms/:formId",
+      ({ request, params }) => {
+        expect(params.formId).toBe(GOOGLE_FORM_ID);
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer google-forms-access-token",
+        );
+        return HttpResponse.json({
+          formId: GOOGLE_FORM_ID,
+          info: { title: "Customer survey" },
+          publishSettings: args?.unpublished
+            ? {}
+            : { publishState: "PUBLISHED" },
+        });
+      },
+    ),
+    http.get(
+      "https://forms.googleapis.com/v1/forms/:formId/responses",
+      ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("pageSize")).toBe("1");
+        expect(url.searchParams.get("fields")).toBe(
+          "responses(responseId,createTime,lastSubmittedTime,respondentEmail),nextPageToken",
+        );
+        return HttpResponse.json({
+          responses: [
+            {
+              responseId: "seed-response",
+              createTime: GOOGLE_FORM_SEED_CURSOR,
+              lastSubmittedTime: GOOGLE_FORM_SEED_CURSOR,
+            },
+          ],
+        });
+      },
+    ),
+    http.post(
+      "https://forms.googleapis.com/v1/forms/:formId/watches",
+      async ({ request }) => {
+        recorder.createCalls += 1;
+        await expect(request.json()).resolves.toStrictEqual({
+          watch: {
+            target: { topic: { topicName: GOOGLE_FORMS_TOPIC_NAME } },
+            eventType: "RESPONSES",
+          },
+        });
+        const watchId = `forms-watch-${randomUUID()}`;
+        recorder.watchIds.push(watchId);
+        return HttpResponse.json({
+          id: watchId,
+          createTime: "2026-08-05T10:00:00Z",
+          expireTime: args?.expireTime ?? "2099-08-12T10:00:00Z",
+          eventType: "RESPONSES",
+          target: { topic: { topicName: GOOGLE_FORMS_TOPIC_NAME } },
+        });
+      },
+    ),
+  );
+  return recorder;
+}
+
 interface WatchCallRecorder {
   calls: number;
 }
 
-function configureGmailWatchMock(historyId = "100"): WatchCallRecorder {
+function configureGmailWatchMock(
+  historyIds: string | readonly string[] = "100",
+): WatchCallRecorder {
   const recorder: WatchCallRecorder = { calls: 0 };
   mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
   server.use(
@@ -134,9 +256,40 @@ function configureGmailWatchMock(historyId = "100"): WatchCallRecorder {
           topicName: GMAIL_TOPIC_NAME,
         });
         return HttpResponse.json({
-          historyId,
+          historyId:
+            typeof historyIds === "string"
+              ? historyIds
+              : historyIds[Math.min(recorder.calls - 1, historyIds.length - 1)],
           expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
         });
+      },
+    ),
+  );
+  return recorder;
+}
+
+interface StopCallRecorder {
+  calls: number;
+}
+
+function configureGmailStopMock(
+  statuses: readonly number[] = [204],
+): StopCallRecorder {
+  const recorder: StopCallRecorder = { calls: 0 };
+  server.use(
+    http.post(
+      "https://gmail.googleapis.com/gmail/v1/users/me/stop",
+      async ({ request }) => {
+        recorder.calls += 1;
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer gmail-access-token",
+        );
+        await expect(request.json()).resolves.toStrictEqual({});
+        const status =
+          statuses[Math.min(recorder.calls - 1, statuses.length - 1)] ?? 204;
+        return status === 204
+          ? new HttpResponse(null, { status })
+          : HttpResponse.json({ error: "stop failed" }, { status });
       },
     ),
   );
@@ -146,13 +299,65 @@ function configureGmailWatchMock(historyId = "100"): WatchCallRecorder {
 interface CalendarWatchRecorder {
   watchCalls: number;
   baselineCalls: number;
+  incrementalCalls: number;
+  readonly channelIds: string[];
+}
+
+interface CalendarWatchRegistration {
+  readonly channelId: string;
+  readonly channelToken: string;
+  readonly resourceId: string;
+}
+
+interface CalendarStopRecorder extends StopCallRecorder {
+  readonly requests: {
+    readonly id: string;
+    readonly resourceId: string;
+  }[];
+}
+
+function configureGoogleCalendarStopMock(
+  statuses: readonly number[] = [204],
+): CalendarStopRecorder {
+  const recorder: CalendarStopRecorder = { calls: 0, requests: [] };
+  server.use(
+    http.post(
+      "https://www.googleapis.com/calendar/v3/channels/stop",
+      async ({ request }) => {
+        recorder.calls += 1;
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer calendar-access-token",
+        );
+        const body = (await request.json()) as {
+          readonly id: string;
+          readonly resourceId: string;
+        };
+        recorder.requests.push(body);
+        const status =
+          statuses[Math.min(recorder.calls - 1, statuses.length - 1)] ?? 204;
+        return status === 204
+          ? new HttpResponse(null, { status })
+          : HttpResponse.json({ error: "stop failed" }, { status });
+      },
+    ),
+  );
+  return recorder;
 }
 
 function configureGoogleCalendarWatchMock(args?: {
   readonly calendarId?: string;
   readonly baselineItems?: readonly Record<string, unknown>[];
+  readonly incrementalItems?: readonly Record<string, unknown>[];
+  readonly onWatchRegistered?: (
+    registration: CalendarWatchRegistration,
+  ) => Promise<void>;
 }): CalendarWatchRecorder {
-  const recorder: CalendarWatchRecorder = { watchCalls: 0, baselineCalls: 0 };
+  const recorder: CalendarWatchRecorder = {
+    watchCalls: 0,
+    baselineCalls: 0,
+    incrementalCalls: 0,
+    channelIds: [],
+  };
   const calendarId = args?.calendarId ?? "primary";
   mockOptionalEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
@@ -178,9 +383,18 @@ function configureGoogleCalendarWatchMock(args?: {
         });
         expect(body.id).toBeTruthy();
         expect(body.token).toBeTruthy();
+        const channelId = String(body.id);
+        const channelToken = String(body.token);
+        const resourceId = `calendar-resource-${recorder.watchCalls}`;
+        recorder.channelIds.push(channelId);
+        await args?.onWatchRegistered?.({
+          channelId,
+          channelToken,
+          resourceId,
+        });
         return HttpResponse.json({
           id: body.id,
-          resourceId: "calendar-resource-1",
+          resourceId,
           resourceUri: `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`,
           expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
         });
@@ -189,7 +403,6 @@ function configureGoogleCalendarWatchMock(args?: {
     http.get(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
       ({ request, params }) => {
-        recorder.baselineCalls += 1;
         expect(params.calendarId).toBe(calendarId);
         expect(request.headers.get("authorization")).toBe(
           "Bearer calendar-access-token",
@@ -197,7 +410,16 @@ function configureGoogleCalendarWatchMock(args?: {
         const url = new URL(request.url);
         expect(url.searchParams.get("showDeleted")).toBe("true");
         expect(url.searchParams.get("maxResults")).toBe("2500");
-        expect(url.searchParams.get("syncToken")).toBeNull();
+        const syncToken = url.searchParams.get("syncToken");
+        if (syncToken) {
+          recorder.incrementalCalls += 1;
+          expect(syncToken).toBe("calendar-sync-baseline");
+          return HttpResponse.json({
+            items: args?.incrementalItems ?? [],
+            nextSyncToken: "calendar-sync-incremental",
+          });
+        }
+        recorder.baselineCalls += 1;
         return HttpResponse.json({
           items: args?.baselineItems ?? [],
           nextSyncToken: "calendar-sync-baseline",
@@ -372,8 +594,15 @@ describe("zero workflow automations", () => {
     return { agentId: agent.agentId, workflowId };
   }
 
-  async function connectGmail(scenario: AutomationScenario): Promise<string> {
-    mockGmailConnectorOAuth({ email: GMAIL_EMAIL });
+  async function connectGmail(
+    scenario: AutomationScenario,
+    email = GMAIL_EMAIL,
+    oauth?: {
+      readonly accessToken?: string;
+      readonly refreshToken?: string;
+    },
+  ): Promise<string> {
+    mockGmailConnectorOAuth({ email, ...oauth });
     await wf.connectConnector(scenario.actor, "gmail");
     const connector = await connectorsApi.readConnectorBySlug(
       scenario.actor,
@@ -395,6 +624,23 @@ describe("zero workflow automations", () => {
     const connector = await connectorsApi.readConnectorBySlug(
       scenario.actor,
       "google-calendar",
+    );
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+    return connector.id;
+  }
+
+  async function connectGoogleForms(
+    scenario: AutomationScenario,
+  ): Promise<string> {
+    mockGoogleFormsConnectorOAuth();
+    await wf.connectConnector(scenario.actor, "google-forms");
+    const connector = await connectorsApi.readConnectorBySlug(
+      scenario.actor,
+      "google-forms",
     );
     mocks.clerk.session(
       scenario.fixture.userId,
@@ -1159,6 +1405,469 @@ describe("zero workflow automations", () => {
     );
   });
 
+  it("rejects Google Forms response automation creation when the feature is disabled", async () => {
+    const { workflowId } = await setupFixture();
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: GOOGLE_FORM_URL,
+          },
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toBe(
+      "Google Forms workflow automations are not enabled",
+    );
+  });
+
+  it("rejects Google Forms creation when Pub/Sub push is not configured", async () => {
+    const scenario = await setupFixture();
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    await connectGoogleForms(scenario);
+
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: GOOGLE_FORM_URL,
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Google Forms Pub/Sub push is not configured",
+    );
+  });
+
+  it("rejects Google Forms respondent links with edit-page guidance", async () => {
+    const scenario = await setupFixture();
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    await connectGoogleForms(scenario);
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl:
+              "https://docs.google.com/forms/d/e/1FAIpQLSfPublic/viewform",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toBe(
+      "Please open the form's edit page and copy the link from the address bar",
+    );
+  });
+
+  it("explains inaccessible or missing Google Forms", async () => {
+    const scenario = await setupFixture();
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    await connectGoogleForms(scenario);
+    configureGoogleFormsCreationMock();
+    server.use(
+      http.get("https://forms.googleapis.com/v1/forms/:formId", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: 403,
+              status: "PERMISSION_DENIED",
+              message: "The caller does not have permission",
+            },
+          },
+          { status: 403 },
+        );
+      }),
+    );
+
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: GOOGLE_FORM_URL,
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "You do not have access to this form, or it does not exist",
+    );
+  });
+
+  it("validates Google Forms, seeds the raw cursor, creates a watch, and warns for unpublished forms", async () => {
+    const scenario = await setupFixture();
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    const connectorId = await connectGoogleForms(scenario);
+    configureGoogleFormsCreationMock({ unpublished: true });
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: GOOGLE_FORM_URL,
+          },
+        },
+      }),
+      [201],
+    );
+    expect(created.body).toMatchObject({
+      kind: "event",
+      eventType: "google-forms-response-submitted",
+      eventConfig: {
+        provider: "google-forms",
+        event: "response_submitted",
+        connectorId,
+        form: {
+          id: GOOGLE_FORM_ID,
+          title: "Customer survey",
+          url: GOOGLE_FORM_URL,
+        },
+      },
+      warning:
+        "This Google Form is not accepting responses yet. Publish it before expecting response events.",
+      enabled: true,
+    });
+  });
+
+  it("shares one Google Forms watch until the last same-user consumer is disabled", async () => {
+    const scenario = await setupFixture();
+    const second = await createAgentWithWorkflow(scenario, {
+      workflowName: `second-${WORKFLOW_NAME}`,
+    });
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    await connectGoogleForms(scenario);
+    const watch = configureGoogleFormsCreationMock();
+    const createAutomation = async (workflowId: string) => {
+      return await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          params: { workflowId },
+          body: {
+            kind: "event",
+            eventType: "google-forms-response-submitted",
+            eventConfig: {
+              provider: "google-forms",
+              event: "response_submitted",
+              formUrl: GOOGLE_FORM_URL,
+            },
+          },
+        }),
+        [201],
+      );
+    };
+    const firstAutomation = await createAutomation(scenario.workflowId);
+    const secondAutomation = await createAutomation(second.workflowId);
+    let deleteCalls = 0;
+    server.use(
+      http.delete(
+        /^https:\/\/forms\.googleapis\.com\/v1\/forms\/[^/]+\/watches\/[^/]+$/,
+        () => {
+          deleteCalls += 1;
+          return HttpResponse.json({});
+        },
+      ),
+    );
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: firstAutomation.body.id },
+      }),
+      [200],
+    );
+    expect(deleteCalls).toBe(0);
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: secondAutomation.body.id },
+      }),
+      [200],
+    );
+
+    expect(watch.createCalls).toBe(1);
+    expect(deleteCalls).toBe(1);
+  });
+
+  it("adopts the matching Google Forms watch after a create conflict", async () => {
+    const scenario = await setupFixture();
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    await connectGoogleForms(scenario);
+    configureGoogleFormsCreationMock();
+    const adoptedWatchId = `forms-watch-adopted-${randomUUID()}`;
+    let listCalls = 0;
+    server.use(
+      http.post("https://forms.googleapis.com/v1/forms/:formId/watches", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: 400,
+              status: "FAILED_PRECONDITION",
+              message:
+                "A watch for the given end user, project, form, and event type already exists.",
+            },
+          },
+          { status: 400 },
+        );
+      }),
+      http.get("https://forms.googleapis.com/v1/forms/:formId/watches", () => {
+        listCalls += 1;
+        return HttpResponse.json({
+          watches: [
+            {
+              id: adoptedWatchId,
+              createTime: "2026-08-05T10:00:00Z",
+              expireTime: "2099-08-12T10:00:00Z",
+              eventType: "RESPONSES",
+              target: {
+                topic: { topicName: GOOGLE_FORMS_TOPIC_NAME },
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: GOOGLE_FORM_URL,
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body.enabled).toBeTruthy();
+    expect(listCalls).toBe(1);
+  });
+
+  it("renews a Google Forms watch in place", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const startedAt = Date.parse("2026-08-05T10:00:00.000Z");
+    mockNow(startedAt);
+    const scenario = await setupFixture();
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    await connectGoogleForms(scenario);
+    const watch = configureGoogleFormsCreationMock({
+      expireTime: "2026-08-12T10:00:00Z",
+    });
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: GOOGLE_FORM_URL,
+          },
+        },
+      }),
+      [201],
+    );
+    const originalWatchId = watch.watchIds[0];
+    if (!originalWatchId) {
+      throw new Error("Expected the Google Forms watch id");
+    }
+    let renewCalls = 0;
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        return HttpResponse.json({
+          access_token: "google-forms-access-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+      }),
+      http.post(
+        /^https:\/\/forms\.googleapis\.com\/v1\/forms\/[^/]+\/watches\/[^/]+:renew$/,
+        async ({ request }) => {
+          renewCalls += 1;
+          expect(request.url).toContain(`/watches/${originalWatchId}:renew`);
+          await expect(request.json()).resolves.toStrictEqual({});
+          return HttpResponse.json({
+            id: originalWatchId,
+            createTime: "2026-08-05T10:00:00Z",
+            expireTime: "2026-08-18T10:00:00Z",
+            eventType: "RESPONSES",
+            target: { topic: { topicName: GOOGLE_FORMS_TOPIC_NAME } },
+          });
+        },
+      ),
+    );
+    mockNow(startedAt + 6 * 24 * 60 * 60 * 1000);
+
+    const renewed = await accept(
+      renewGoogleFormsWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    const unchanged = await accept(
+      renewGoogleFormsWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+
+    expect(renewed.body).toStrictEqual({
+      success: true,
+      renewed: 1,
+      failed: 0,
+    });
+    expect(unchanged.body).toStrictEqual({
+      success: true,
+      renewed: 0,
+      failed: 0,
+    });
+    expect(renewCalls).toBe(1);
+    expect(watch.createCalls).toBe(1);
+  });
+
+  it("treats the Google Forms missing-watch 403 as successful teardown", async () => {
+    const scenario = await setupFixture();
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    await connectGoogleForms(scenario);
+    const watch = configureGoogleFormsCreationMock();
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: GOOGLE_FORM_URL,
+          },
+        },
+      }),
+      [201],
+    );
+    let deleteCalls = 0;
+    server.use(
+      http.delete(
+        /^https:\/\/forms\.googleapis\.com\/v1\/forms\/[^/]+\/watches\/[^/]+$/,
+        () => {
+          deleteCalls += 1;
+          return HttpResponse.json(
+            {
+              error: {
+                code: 403,
+                status: "PERMISSION_DENIED",
+                message: "Watch not found or permission denied.",
+              },
+            },
+            { status: 403 },
+          );
+        },
+      ),
+    );
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    const enabled = await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+
+    expect(deleteCalls).toBe(1);
+    expect(watch.createCalls).toBe(2);
+    expect(enabled.body.enabled).toBeTruthy();
+  });
+
+  it("rejects updates to a Google Forms trigger with explicit guidance", async () => {
+    const scenario = await setupFixture();
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    await connectGoogleForms(scenario);
+    configureGoogleFormsCreationMock();
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: GOOGLE_FORM_URL,
+          },
+        },
+      }),
+      [201],
+    );
+
+    const rejected = await accept(
+      automationsClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: {
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "this trigger has no updatable fields; delete it and create a new one",
+    );
+  });
+
   it("rejects Notion child page automations when Notion automation creation is disabled", async () => {
     const { workflowId } = await setupFixture();
     const rejected = await accept(
@@ -1695,6 +2404,938 @@ describe("zero workflow automations", () => {
     // covered by webhooks-google-calendar.test.ts.
     expect(watchRecorder.watchCalls).toBe(1);
     expect(watchRecorder.baselineCalls).toBe(1);
+  });
+
+  it("catches up Calendar changes from the channel startup sync", async () => {
+    const runnerGroup = runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const notifications: { readonly status: number; readonly body: unknown }[] =
+      [];
+    const watch = configureGoogleCalendarWatchMock({
+      baselineItems: [],
+      incrementalItems: [
+        {
+          id: "registration-window-event",
+          etag: '"version-1"',
+          status: "confirmed",
+          summary: "Created between baseline and channel registration",
+        },
+      ],
+      onWatchRegistered: async ({ channelId, channelToken, resourceId }) => {
+        const response = await createApp({ signal: context.signal }).request(
+          "/api/webhooks/google-calendar",
+          {
+            method: "POST",
+            headers: {
+              "x-goog-channel-id": channelId,
+              "x-goog-channel-token": channelToken,
+              "x-goog-resource-id": resourceId,
+              "x-goog-resource-state": "sync",
+              "x-goog-message-number": "1",
+            },
+          },
+        );
+        notifications.push({
+          status: response.status,
+          body: await response.json(),
+        });
+      },
+    });
+
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+
+    expect(notifications).toStrictEqual([
+      {
+        status: 200,
+        body: {
+          success: true,
+          watchStates: 1,
+          dispatched: 1,
+          duplicates: 0,
+        },
+      },
+    ]);
+    expect(watch.baselineCalls).toBe(1);
+    expect(watch.incrementalCalls).toBe(1);
+    await runs.heartbeatRunner(runnerGroup);
+    const job = await runs.pollRunner(runnerGroup);
+    expect(job.body.job?.runId).toStrictEqual(expect.any(String));
+  });
+
+  it("does not create provider watches for disabled Gmail or Calendar automations", async () => {
+    const scenario = await setupFixture();
+    await connectGmail(scenario);
+    await connectGoogleCalendar(scenario);
+    const gmailWatch = configureGmailWatchMock();
+    const calendarWatch = configureGoogleCalendarWatchMock();
+
+    const gmail = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+          enabled: false,
+        },
+      }),
+      [201],
+    );
+    const calendar = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+          enabled: false,
+        },
+      }),
+      [201],
+    );
+
+    expect(gmail.body.enabled).toBeFalsy();
+    expect(calendar.body.enabled).toBeFalsy();
+    expect(gmailWatch.calls).toBe(0);
+    expect(calendarWatch.watchCalls).toBe(0);
+    expect(calendarWatch.baselineCalls).toBe(0);
+  });
+
+  it("keeps a shared Gmail watch until the last consumer and refreshes it for label re-enable", async () => {
+    const scenario = await setupFixture();
+    await connectGmail(
+      scenario,
+      `shared-consumer-${scenario.fixture.userId}@example.com`,
+    );
+    configureGmailLabelsMock([{ id: "Label_support", name: "Support" }]);
+    const watch = configureGmailWatchMock(["history-1", "history-2"]);
+    const stop = configureGmailStopMock();
+
+    const messageAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    const labelAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-label-applied",
+          eventConfig: {
+            provider: "gmail",
+            event: "label_applied",
+            labelName: "Support",
+          },
+        },
+      }),
+      [201],
+    );
+    expect(watch.calls).toBe(1);
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: labelAutomation.body.id },
+      }),
+      [200],
+    );
+    expect(stop.calls).toBe(0);
+
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: messageAutomation.body.id },
+      }),
+      [204],
+    );
+    expect(stop.calls).toBe(1);
+
+    const enabled = await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: labelAutomation.body.id },
+      }),
+      [200],
+    );
+    expect(enabled.body.enabled).toBeTruthy();
+    expect(watch.calls).toBe(2);
+  });
+
+  it("does not stop a Gmail mailbox while another VM0 identity consumes it", async () => {
+    const first = await setupFixture();
+    const sharedEmail = `cross-identity-${first.fixture.userId}@example.com`;
+    await connectGmail(first, sharedEmail);
+    const second = await setupFixture();
+    await connectGmail(second, sharedEmail);
+    const watch = configureGmailWatchMock();
+    const stop = configureGmailStopMock();
+
+    mocks.clerk.session(
+      first.fixture.userId,
+      first.fixture.orgId,
+      "org:member",
+    );
+    const firstAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: first.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    mocks.clerk.session(
+      second.fixture.userId,
+      second.fixture.orgId,
+      "org:member",
+    );
+    const secondAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: second.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    expect(watch.calls).toBe(2);
+
+    mocks.clerk.session(
+      first.fixture.userId,
+      first.fixture.orgId,
+      "org:member",
+    );
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: firstAutomation.body.id },
+      }),
+      [200],
+    );
+    expect(stop.calls).toBe(0);
+
+    mocks.clerk.session(
+      second.fixture.userId,
+      second.fixture.orgId,
+      "org:member",
+    );
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: secondAutomation.body.id },
+      }),
+      [200],
+    );
+    expect(stop.calls).toBe(1);
+  });
+
+  it("renews a shared Gmail mailbox through another healthy identity", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const startedAt = Date.parse("2026-08-05T08:00:00.000Z");
+    mockNow(startedAt);
+    const first = await setupFixture();
+    const sharedEmail = `renew-fallback-${first.fixture.userId}@example.com`;
+    await connectGmail(first, sharedEmail, {
+      refreshToken: "gmail-first-refresh-token",
+    });
+    mockNow(startedAt + 1000);
+    const second = await setupFixture();
+    await connectGmail(second, sharedEmail, {
+      refreshToken: "gmail-second-refresh-token",
+    });
+    const watch = configureGmailWatchMock([
+      "history-first",
+      "history-second",
+      "history-renewed",
+    ]);
+
+    for (const scenario of [first, second]) {
+      mocks.clerk.session(
+        scenario.fixture.userId,
+        scenario.fixture.orgId,
+        "org:member",
+      );
+      await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          params: { workflowId: scenario.workflowId },
+          body: {
+            kind: "event",
+            eventType: "gmail-new-message",
+            eventConfig: { provider: "gmail", event: "new_message" },
+          },
+        }),
+        [201],
+      );
+    }
+    expect(watch.calls).toBe(2);
+
+    const refreshTokens: string[] = [];
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        expect(body.get("grant_type")).toBe("refresh_token");
+        const refreshToken = body.get("refresh_token");
+        if (!refreshToken) {
+          throw new Error("Expected a Gmail refresh token");
+        }
+        refreshTokens.push(refreshToken);
+        if (refreshTokens.length === 1) {
+          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+        }
+        return HttpResponse.json({
+          access_token: "gmail-access-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+      }),
+    );
+    mockNow(startedAt + 6 * 24 * 60 * 60 * 1000 + 2000);
+
+    const renewed = await accept(
+      renewGmailWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+
+    expect(renewed.body).toStrictEqual({
+      success: true,
+      renewed: 1,
+      failed: 0,
+    });
+    expect(new Set(refreshTokens)).toStrictEqual(
+      new Set(["gmail-first-refresh-token", "gmail-second-refresh-token"]),
+    );
+    expect(watch.calls).toBe(3);
+  });
+
+  it("stops Calendar with the persisted channel pair after the last consumer", async () => {
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const watch = configureGoogleCalendarWatchMock();
+    const stop = configureGoogleCalendarStopMock();
+
+    const createdAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+    const updatedAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-updated",
+        },
+      }),
+      [201],
+    );
+    expect(watch.watchCalls).toBe(1);
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: createdAutomation.body.id },
+      }),
+      [200],
+    );
+    expect(stop.calls).toBe(0);
+
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: updatedAutomation.body.id },
+      }),
+      [204],
+    );
+    expect(stop.requests).toStrictEqual([
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+    ]);
+
+    await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: createdAutomation.body.id },
+      }),
+      [200],
+    );
+    expect(watch.watchCalls).toBe(2);
+    expect(watch.baselineCalls).toBe(2);
+  });
+
+  it("keeps a concurrent Calendar disable authoritative during registration", async () => {
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const registrationStarted = createDeferredPromise<void>(context.signal);
+    const releaseRegistration = createDeferredPromise<void>(context.signal);
+    let blockRegistration = true;
+    const watch = configureGoogleCalendarWatchMock({
+      onWatchRegistered: async () => {
+        if (!blockRegistration) {
+          return;
+        }
+        blockRegistration = false;
+        registrationStarted.resolve(undefined);
+        await releaseRegistration.promise;
+      },
+    });
+    const stop = configureGoogleCalendarStopMock();
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+          enabled: false,
+        },
+      }),
+      [201],
+    );
+
+    const enabling = accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200, 400],
+    );
+    await registrationStarted.promise;
+    const disabled = await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    releaseRegistration.resolve(undefined);
+
+    expect(disabled.body.enabled).toBeFalsy();
+    const supersededEnable = await enabling;
+    expect(supersededEnable.status).toBe(400);
+    expect(stop.requests).toStrictEqual([
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+    ]);
+    await expect(wf.readAutomation(created.body.id)).resolves.toMatchObject({
+      enabled: false,
+    });
+
+    const enabled = await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(enabled.body.enabled).toBeTruthy();
+    expect(watch.watchCalls).toBe(2);
+  });
+
+  it("recovers after Calendar registration outlives its connector state", async () => {
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    let deleteConnector = true;
+    const watch = configureGoogleCalendarWatchMock({
+      onWatchRegistered: async () => {
+        if (!deleteConnector) {
+          return;
+        }
+        deleteConnector = false;
+        await connectorsApi.deleteConnectorBySlug(
+          scenario.actor,
+          "google-calendar",
+        );
+      },
+    });
+    const stop = configureGoogleCalendarStopMock();
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+          enabled: false,
+        },
+      }),
+      [201],
+    );
+
+    const failedEnable = await createApp({ signal: context.signal }).request(
+      `/api/zero/workflow-automations/${created.body.id}/enable`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+      },
+    );
+    expect(failedEnable.status).toBe(500);
+    expect(stop.requests).toStrictEqual([
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+    ]);
+    await expect(wf.readAutomation(created.body.id)).resolves.toMatchObject({
+      enabled: false,
+    });
+
+    await connectGoogleCalendar(scenario);
+    const enabled = await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(enabled.body.enabled).toBeTruthy();
+    expect(watch.watchCalls).toBe(2);
+  });
+
+  it("does not create a Calendar channel when baseline setup fails", async () => {
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const watch = configureGoogleCalendarWatchMock();
+    const stop = configureGoogleCalendarStopMock();
+    server.use(
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
+        () => {
+          return HttpResponse.json(
+            { error: "baseline failed" },
+            { status: 500 },
+          );
+        },
+      ),
+    );
+
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [400],
+    );
+
+    expect(watch.watchCalls).toBe(0);
+    expect(stop.calls).toBe(0);
+    const listed = await accept(
+      automationsClient().list({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+      }),
+      [200],
+    );
+    expect(listed.body).toHaveLength(0);
+  });
+
+  it("keeps a failed Gmail stop retryable and repairs it in the renewal pass", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const scenario = await setupFixture();
+    await connectGmail(
+      scenario,
+      `retry-stop-${scenario.fixture.userId}@example.com`,
+    );
+    const watch = configureGmailWatchMock(["history-1", "history-2"]);
+    const stop = configureGmailStopMock([500, 500, 204]);
+
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(stop.calls).toBe(1);
+
+    await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(watch.calls).toBe(2);
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(stop.calls).toBe(2);
+
+    const reconciled = await accept(
+      renewGmailWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(reconciled.body).toStrictEqual({
+      success: true,
+      renewed: 0,
+      failed: 0,
+    });
+    expect(stop.calls).toBe(3);
+  });
+
+  it("retries an inactive Calendar stop without renewing the channel", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const watch = configureGoogleCalendarWatchMock();
+    const stop = configureGoogleCalendarStopMock([500, 204]);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(stop.calls).toBe(1);
+
+    const reconciled = await accept(
+      renewGoogleCalendarWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(reconciled.body).toStrictEqual({
+      success: true,
+      renewed: 0,
+      failed: 0,
+    });
+    expect(stop.calls).toBe(2);
+    expect(watch.watchCalls).toBe(1);
+    expect(stop.requests[1]).toStrictEqual({
+      id: watch.channelIds[0],
+      resourceId: "calendar-resource-1",
+    });
+  });
+
+  it("retains a replaced Calendar channel until its stop succeeds", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const startedAt = Date.parse("2026-08-05T08:00:00.000Z");
+    mockNow(startedAt);
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const watch = configureGoogleCalendarWatchMock();
+    const stop = configureGoogleCalendarStopMock([500, 204]);
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        return HttpResponse.json({
+          access_token: "calendar-access-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+      }),
+    );
+    mockNow(startedAt + 6 * 24 * 60 * 60 * 1000);
+    const renewed = await accept(
+      renewGoogleCalendarWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(renewed.body).toStrictEqual({
+      success: true,
+      renewed: 1,
+      failed: 0,
+    });
+    expect(watch.watchCalls).toBe(2);
+    expect(watch.baselineCalls).toBe(1);
+    expect(stop.requests).toStrictEqual([
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+    ]);
+
+    const reconciled = await accept(
+      renewGoogleCalendarWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(reconciled.body).toStrictEqual({
+      success: true,
+      renewed: 0,
+      failed: 0,
+    });
+    expect(watch.watchCalls).toBe(2);
+    expect(stop.requests).toStrictEqual([
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+    ]);
+  });
+
+  it("leaves a Gmail automation disabled when watch setup fails", async () => {
+    const scenario = await setupFixture();
+    await connectGmail(
+      scenario,
+      `watch-failure-${scenario.fixture.userId}@example.com`,
+    );
+    mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
+    server.use(
+      http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
+        return HttpResponse.json({ error: "watch failed" }, { status: 500 });
+      }),
+    );
+
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+          enabled: false,
+        },
+      }),
+      [201],
+    );
+    await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [400],
+    );
+
+    await expect(wf.readAutomation(created.body.id)).resolves.toMatchObject({
+      enabled: false,
+    });
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [400],
+    );
+    const listed = await accept(
+      automationsClient().list({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+      }),
+      [200],
+    );
+    expect(listed.body).toMatchObject([
+      { id: created.body.id, enabled: false },
+    ]);
+  });
+
+  it("serializes last-consumer disable with re-enable", async () => {
+    const scenario = await setupFixture();
+    await connectGmail(
+      scenario,
+      `concurrent-lifecycle-${scenario.fixture.userId}@example.com`,
+    );
+    const watch = configureGmailWatchMock(["history-1", "history-2"]);
+    const stopStarted = createDeferredPromise<void>(context.signal);
+    const releaseStop = createDeferredPromise<void>(context.signal);
+    let stopCalls = 0;
+    server.use(
+      http.post(
+        "https://gmail.googleapis.com/gmail/v1/users/me/stop",
+        async () => {
+          stopCalls += 1;
+          stopStarted.resolve(undefined);
+          await releaseStop.promise;
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+
+    const disabling = accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    await stopStarted.promise;
+    const enabling = accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    releaseStop.resolve(undefined);
+
+    await disabling;
+    const enabled = await enabling;
+    expect(enabled.body.enabled).toBeTruthy();
+    expect(stopCalls).toBe(1);
+    expect(watch.calls).toBe(2);
+    await expect(wf.readAutomation(created.body.id)).resolves.toMatchObject({
+      enabled: true,
+    });
+  });
+
+  it("reconciles Gmail watches after workflow and agent cascade deletion", async () => {
+    const workflowScenario = await setupFixture();
+    await connectGmail(
+      workflowScenario,
+      `workflow-cascade-${workflowScenario.fixture.userId}@example.com`,
+    );
+    const watch = configureGmailWatchMock();
+    const stop = configureGmailStopMock();
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: workflowScenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    await accept(
+      detailClient().delete({
+        headers: authHeaders(),
+        params: { workflowId: workflowScenario.workflowId },
+      }),
+      [204],
+    );
+    expect(stop.calls).toBe(1);
+
+    const agentScenario = await setupFixture();
+    await connectGmail(
+      agentScenario,
+      `agent-cascade-${agentScenario.fixture.userId}@example.com`,
+    );
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: agentScenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    await bdd.deleteAgent(agentScenario.actor, agentScenario.agentId);
+    expect(watch.calls).toBe(2);
+    expect(stop.calls).toBe(2);
+  });
+
+  it("stops a provider watch before connector credentials are removed", async () => {
+    const scenario = await setupFixture();
+    await connectGmail(
+      scenario,
+      `connector-cleanup-${scenario.fixture.userId}@example.com`,
+    );
+    configureGmailWatchMock();
+    const stop = configureGmailStopMock();
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+
+    await connectorsApi.deleteConnectorBySlug(scenario.actor, "gmail");
+    expect(stop.calls).toBe(1);
   });
 
   it("creates and updates Gmail label applied automations by label name", async () => {

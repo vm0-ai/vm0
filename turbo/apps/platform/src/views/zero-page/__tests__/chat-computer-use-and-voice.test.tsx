@@ -4,7 +4,6 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -85,7 +84,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await waitFor(() => {
@@ -170,7 +168,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await waitFor(() => {
@@ -212,7 +209,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await screen.findByPlaceholderText(PLACEHOLDER);
@@ -252,7 +248,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -285,7 +280,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -301,38 +295,6 @@ describe("chat lifecycle", () => {
     await user.keyboard("{Escape}");
 
     await sendMessageInUI(user, textarea, "Keep the cloud browser closed");
-
-    await waitFor(() => {
-      expect(sentCloudBrowserEnabled).toBeUndefined();
-    });
-  });
-
-  it("hides Cloud browser from a new chat thread when the feature is disabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    let sentCloudBrowserEnabled: boolean | undefined;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
-      },
-    });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
-      return respond(200, { hosts: [] });
-    });
-
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
-
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(await screen.findByLabelText("Connectors"));
-    expect(screen.getByText("Your computer")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("switch", { name: "Disable Cloud browser" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("switch", { name: "Enable Cloud browser" }),
-    ).not.toBeInTheDocument();
-    await user.keyboard("{Escape}");
-
-    await sendMessageInUI(user, textarea, "No cloud browser here");
 
     await waitFor(() => {
       expect(sentCloudBrowserEnabled).toBeUndefined();
@@ -371,7 +333,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);

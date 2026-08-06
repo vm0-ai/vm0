@@ -959,6 +959,7 @@ enum SignalSource {
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     IdleCleanupProcessed { expired_count: usize },
+    ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
     VmParkedForReuse { run_id: RunId, reuse_key: String },
     UsageFlushRequested,
@@ -1064,6 +1065,26 @@ impl StartLoopTestObserver {
 
     fn notify_before_idle_pool_ownership_transfer(&self, run_id: RunId) {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
+    }
+
+    fn notify_active_run_status_published(&self, run_id: RunId) {
+        self.record(StartLoopEvent::ActiveRunStatusPublished { run_id });
+    }
+
+    fn active_run_status_was_published(&self, run_id: RunId) -> bool {
+        self.inner
+            .events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .any(|event| {
+                matches!(
+                    event,
+                    StartLoopEvent::ActiveRunStatusPublished {
+                        run_id: observed_run_id
+                    } if *observed_run_id == run_id
+                )
+            })
     }
 
     fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
