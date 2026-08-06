@@ -209,6 +209,38 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.hasSubscription).toBeTruthy();
   });
 
+  it.each(["canceled", "incomplete_expired"])(
+    "does not report a %s plan as a subscription",
+    async (status) => {
+      const fixture = await track(
+        store.set(
+          seedBillingStatusOrg$,
+          {
+            subscription: {
+              tier: "pro",
+              status,
+              currentPeriodEnd: new Date("2099-04-20T00:00:00Z"),
+              stripeCustomerId: `cus_${randomUUID()}`,
+              stripeSubscriptionId: `sub_${randomUUID()}`,
+            },
+          },
+          context.signal,
+        ),
+      );
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+
+      const response = await accept(
+        setupApp({ context })(zeroBillingStatusContract).get({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body.subscriptionStatus).toBe(status);
+      expect(response.body.hasSubscription).toBeFalsy();
+    },
+  );
+
   it("returns custom tier status without subscription plan credits", async () => {
     const fixture = await track(
       store.set(seedBillingStatusOrg$, { credits: 0 }, context.signal),
@@ -233,6 +265,76 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.concurrencyLimit).toBe(10);
     expect(response.body.creditBreakdown).toStrictEqual([]);
   });
+
+  it.each([
+    { status: "active", hasSubscription: true },
+    { status: "canceled", hasSubscription: false },
+  ])(
+    "reports $status usage allowance subscription availability",
+    async ({ status, hasSubscription }) => {
+      const fixture = await track(
+        store.set(
+          seedBillingStatusOrg$,
+          {
+            usageAllowance: {
+              status,
+              shortWindowSeconds: 18_000,
+              shortWindowUnits: 5000,
+              weeklyWindowUnits: 50_000,
+              expiresAt: new Date("2099-04-20T00:00:00Z"),
+            },
+          },
+          context.signal,
+        ),
+      );
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+
+      const response = await accept(
+        setupApp({ context })(zeroBillingStatusContract).get({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body.hasSubscription).toBe(hasSubscription);
+    },
+  );
+
+  it.each([
+    { status: "active", hasSubscription: true },
+    { status: "canceled", hasSubscription: false },
+  ])(
+    "reports $status concurrency subscription availability",
+    async ({ status, hasSubscription }) => {
+      const fixture = await track(
+        store.set(
+          seedBillingStatusOrg$,
+          {
+            concurrencyEntitlements: [
+              {
+                stripeSubscriptionId: `sub_${randomUUID()}`,
+                slots: 2,
+                startsAt: new Date("2026-01-01T00:00:00Z"),
+                expiresAt: new Date("2099-04-20T00:00:00Z"),
+                subscriptionStatus: status,
+              },
+            ],
+          },
+          context.signal,
+        ),
+      );
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+
+      const response = await accept(
+        setupApp({ context })(zeroBillingStatusContract).get({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body.hasSubscription).toBe(hasSubscription);
+    },
+  );
 
   it("returns finite concurrency limit when the concurrency cap is disabled", async () => {
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
@@ -656,6 +758,7 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.cancelAtPeriodEnd).toBeTruthy();
+    expect(response.body.hasSubscription).toBeTruthy();
     expect(response.body.scheduledChange).toStrictEqual({
       type: "cancel",
       targetTier: "limited-free-1",
