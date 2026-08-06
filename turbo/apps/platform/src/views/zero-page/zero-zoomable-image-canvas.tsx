@@ -264,7 +264,7 @@ export function ZoomableArtifactImageCanvas({
               style={{ touchAction: "none" }}
             >
               <TransformComponent
-                contentClass="min-h-full min-w-full"
+                contentStyle={{ height: "100%", width: "100%" }}
                 wrapperClass="h-full min-h-0 w-full"
                 wrapperStyle={{
                   height: "100%",
@@ -274,7 +274,7 @@ export function ZoomableArtifactImageCanvas({
               >
                 <div
                   className={cn(
-                    "flex min-h-full min-w-full items-start justify-center",
+                    "flex h-full w-full items-center justify-center",
                     contentClassName,
                   )}
                   data-testid={`${canvasTestId}-content`}

@@ -17,6 +17,7 @@
 
 #![allow(dead_code)] // consumed across multiple test binaries
 
+mod process_session;
 mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
@@ -41,9 +42,13 @@ use tokio::net::TcpListener;
 use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot};
 
+use process_session::CommandSession;
+
 pub type SystemLogOverrideGuard = system_log::SystemLogOverrideGuard;
 
 static UNIQUE_TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+const COMMAND_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// 128 + SIGTERM(15). Rust / glibc's default signal handler maps a
 /// SIGTERM-terminated process to this exit code.
@@ -97,22 +102,21 @@ pub async fn command_output_with_timeout(
     timeout: Duration,
     timeout_context: &str,
 ) -> io::Result<Output> {
+    CommandSession::configure(command);
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()?;
+    let session = CommandSession::from_child(&child)?;
     let (Some(mut stdout), Some(mut stderr)) = (child.stdout.take(), child.stderr.take()) else {
-        return match child.kill().await {
-            Ok(()) => Err(io::Error::other(
+        return match terminate_command(&mut child, &session).await {
+            Ok(_) => Err(io::Error::other(
                 "captured child omitted its stdout or stderr pipe",
             )),
-            Err(error) => Err(io::Error::new(
-                error.kind(),
-                format!(
-                    "captured child omitted its stdout or stderr pipe; failed to terminate and reap child: {error}"
-                ),
-            )),
+            Err(error) => Err(io::Error::other(format!(
+                "captured child omitted its stdout or stderr pipe; cleanup failed: {error}"
+            ))),
         };
     };
     let mut stdout_bytes = Vec::new();
@@ -120,12 +124,11 @@ pub async fn command_output_with_timeout(
 
     let output = {
         let wait_with_output = async {
-            let (status, stdout_result, stderr_result) = tokio::join!(
-                child.wait(),
+            let (stdout_result, stderr_result) = tokio::join!(
                 stdout.read_to_end(&mut stdout_bytes),
                 stderr.read_to_end(&mut stderr_bytes),
             );
-            let status = status?;
+            let status = child.wait().await?;
             stdout_result?;
             stderr_result?;
             Ok(Output {
@@ -139,17 +142,79 @@ pub async fn command_output_with_timeout(
 
     match output {
         Ok(output) => output,
-        Err(_) => match child.kill().await {
-            Ok(()) => Err(io::Error::new(
+        Err(_) => match terminate_command(&mut child, &session).await {
+            Ok(_) => Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 timeout_context.to_string(),
             )),
-            Err(error) => Err(io::Error::new(
-                error.kind(),
-                format!("{timeout_context}; failed to terminate and reap timed-out child: {error}"),
-            )),
+            Err(error) => Err(io::Error::other(format!(
+                "{timeout_context}; timed-out command cleanup failed: {error}"
+            ))),
         },
     }
+}
+
+async fn terminate_command(
+    child: &mut tokio::process::Child,
+    session: &CommandSession,
+) -> Result<std::process::ExitStatus, String> {
+    let direct_kill_error = child.start_kill().err();
+    let deadline = tokio::time::Instant::now() + COMMAND_CLEANUP_TIMEOUT;
+    let session_error = session
+        .kill_members(deadline, COMMAND_CLEANUP_TIMEOUT)
+        .await
+        .err();
+    let wait_result = wait_for_child_until(child, deadline).await;
+
+    match (session_error, wait_result) {
+        (None, Ok(status)) => Ok(status),
+        (Some(session_error), Ok(status)) => Err(command_cleanup_error(
+            direct_kill_error,
+            Some(session_error),
+            format!("killed child status: {status}"),
+        )),
+        (session_error, Err(wait_error)) => Err(command_cleanup_error(
+            direct_kill_error,
+            session_error,
+            wait_error,
+        )),
+    }
+}
+
+async fn wait_for_child_until(
+    child: &mut tokio::process::Child,
+    deadline: tokio::time::Instant,
+) -> Result<std::process::ExitStatus, String> {
+    match child.try_wait() {
+        Ok(Some(status)) => return Ok(status),
+        Ok(None) => {}
+        Err(error) => return Err(format!("wait after kill failed: {error}")),
+    }
+
+    match tokio::time::timeout_at(deadline, child.wait()).await {
+        Ok(Ok(status)) => Ok(status),
+        Ok(Err(error)) => Err(format!("wait after kill failed: {error}")),
+        Err(_) => Err(format!(
+            "wait after kill timed out after {}ms",
+            COMMAND_CLEANUP_TIMEOUT.as_millis()
+        )),
+    }
+}
+
+fn command_cleanup_error(
+    direct_kill_error: Option<io::Error>,
+    session_error: Option<String>,
+    wait_result: String,
+) -> String {
+    let mut errors = Vec::new();
+    if let Some(direct_kill_error) = direct_kill_error {
+        errors.push(format!("start kill failed: {direct_kill_error}"));
+    }
+    if let Some(session_error) = session_error {
+        errors.push(format!("session cleanup failed: {session_error}"));
+    }
+    errors.push(wait_result);
+    errors.join("; ")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

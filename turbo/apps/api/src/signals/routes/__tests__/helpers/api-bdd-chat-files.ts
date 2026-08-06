@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-  artifactsContract,
   canonicalChatEvent,
   chatEventsContract,
   chatSearchContract,
@@ -17,7 +16,6 @@ import {
   chatThreadUnpinContract,
   chatThreadsContract,
   type AttachFile,
-  type ArtifactsListResponse,
   type ChatEvent,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
@@ -285,10 +283,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadArtifactsClient() {
     return chatFilesApp(context)(chatThreadArtifactsContract);
-  }
-
-  function artifactsClient() {
-    return chatFilesApp(context)(artifactsContract);
   }
 
   function artifactCatalogClient() {
@@ -998,24 +992,6 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         statuses,
       );
-    },
-
-    async listArtifacts(
-      actor: ApiTestUser,
-      query: {
-        readonly limit?: number;
-        readonly cursor?: string;
-        readonly updatedAfter?: string;
-      } = {},
-    ): Promise<ArtifactsListResponse> {
-      const response = await accept(
-        artifactsClient().list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        [200],
-      );
-      return response.body;
     },
 
     async listArtifactCatalog(

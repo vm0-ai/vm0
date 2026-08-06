@@ -80,10 +80,13 @@ async fn park_failure_promotes_workspace_cache_before_destroy() {
 }
 
 #[tokio::test]
-async fn non_reusable_park_promotes_workspace_cache_through_parked_path() {
+async fn non_reusable_park_destroy_panic_preserves_workspace_cache_and_cleanup() {
     assert_workspace_cache_after_park_cleanup(
-        "sess-severe-retention-cache",
-        |overrides| overrides.push_park_result(Ok(severe_memory_retention())),
+        "sess-severe-retention-destroy-panic-cache",
+        |overrides| {
+            overrides.push_park_result(Ok(severe_memory_retention()));
+            overrides.push_destroy_panic("simulated non-reusable destroy panic");
+        },
         true,
         1,
     )
@@ -160,6 +163,7 @@ async fn assert_workspace_cache_after_park_cleanup(
         .await
         .expect("job should complete normally after park cleanup destroy");
     assert_eq!(completion.exit_code, 0);
+    assert!(completion.error.is_none());
 
     wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
     assert_eq!(idle_pool.lock().await.len(), 0);
@@ -288,45 +292,6 @@ async fn repeated_non_reusable_parks_use_fresh_sandboxes() {
     assert_eq!(counter.park_call_count(), 2);
     assert_eq!(counter.unpark_call_count(), 0);
     assert_eq!(counter.destroy_call_count(), 2);
-
-    shutdown(&env, run_handle).await;
-}
-
-#[tokio::test(start_paused = true)]
-async fn non_reusable_park_destroy_panic_still_completes_and_releases_budget() {
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_park_result(Ok(severe_memory_retention()));
-    overrides.push_destroy_panic("simulated non-reusable destroy panic");
-    let counter = Arc::clone(&overrides);
-    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.capacity.budget);
-    let idle_pool = Arc::clone(&config.shared.idle_pool);
-    let run_handle = tokio::spawn(run(config));
-
-    let run_id = RunId::new_v4();
-    push_job(
-        &env,
-        run_id,
-        "vm0/default",
-        Some(context_with_session(run_id, "sess-severe-destroy-panic")),
-    );
-
-    let completion = env
-        .handle
-        .wait_completion(run_id, Duration::from_secs(5))
-        .await
-        .expect("destroy uncertainty must not rewrite or skip provider completion");
-    assert_eq!(completion.exit_code, 0);
-    assert!(completion.error.is_none());
-    wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
-    assert_idle_pool_len(
-        &idle_pool,
-        0,
-        "destroy uncertainty must not publish a non-reusable VM as idle",
-    )
-    .await;
-    assert_eq!(counter.park_call_count(), 1);
-    assert_eq!(counter.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
 }

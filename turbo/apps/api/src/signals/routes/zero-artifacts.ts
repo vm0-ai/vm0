@@ -8,7 +8,6 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
-import { zeroArtifacts$ } from "../services/zero-chat-thread.service";
 import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
@@ -56,36 +55,6 @@ async function deleteImageEditSnapshotRow(
       ),
     );
 }
-
-const listArtifactsInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const query = get(queryOf(artifactsContract.list));
-
-    const result = await set(
-      zeroArtifacts$,
-      {
-        userId: auth.userId,
-        orgId: auth.orgId,
-        limit: query.limit,
-        cursor: query.cursor,
-        updatedAfter: query.updatedAfter,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    return {
-      status: 200 as const,
-      body: {
-        artifacts: result.artifacts,
-        truncated: result.truncated,
-        nextCursor: result.nextCursor,
-        syncUntil: result.syncUntil,
-      },
-    };
-  },
-);
 
 // Compatibility for browser bundles shipped before image editing was retired.
 // Remove these snapshot routes and their table after the rollback window closes.
@@ -228,17 +197,6 @@ const deleteImageEditSnapshotInner$ = command(
 );
 
 export const zeroArtifactsRoutes: readonly RouteEntry[] = [
-  {
-    route: artifactsContract.list,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "chat-event:read",
-      },
-      listArtifactsInner$,
-    ),
-  },
   {
     route: artifactsContract.getImageEditSnapshot,
     handler: authRoute(

@@ -159,4 +159,10 @@ export const customConnectorCommand = new Command()
   .description("Create and inspect org custom connectors")
   .addCommand(createCustomConnectorCommand)
   .addCommand(listCommand)
-  .addCommand(statusCommand);
+  .addCommand(statusCommand)
+  .addHelpText(
+    "after",
+    `
+To add a custom connector:
+  Run "zero connector custom create -h" and follow the definition-only creation workflow.`,
+  );

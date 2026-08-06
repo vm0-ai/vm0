@@ -22,6 +22,9 @@ describe("isFeatureEnabled", () => {
       true,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.MermaidDiagrams, {})).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
+    ).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -36,9 +39,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
-    ).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
@@ -124,9 +124,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(
-      staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
-    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
@@ -152,9 +149,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(
-      otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );

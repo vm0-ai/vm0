@@ -30,7 +30,6 @@ import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import {
   isAdminOnlySettingsSection,
-  setSettingsClerkProfilePortalContainer$,
   settingsActiveSection$,
   setSettingsActiveSection$,
   type SettingsSection,
@@ -98,9 +97,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { t } = useTranslation();
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
-  const setClerkProfilePortalContainer = useSet(
-    setSettingsClerkProfilePortalContainer$,
-  );
   const features = useGet(featureSwitch$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
@@ -269,7 +265,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        ref={setClerkProfilePortalContainer}
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
