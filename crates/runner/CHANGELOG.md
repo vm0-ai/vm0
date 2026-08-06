@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.158.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.14...runner-rs-v0.158.15) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** retire pre-park handoff observation ([#25379](https://github.com/vm0-ai/vm0/issues/25379)) ([2ef8c8c](https://github.com/vm0-ai/vm0/commit/2ef8c8cb338e0951667d86f8014e1373cab1ea54))
+* **sandbox-fc:** retire balloon settle summary ([#25380](https://github.com/vm0-ai/vm0/issues/25380)) ([ec2b177](https://github.com/vm0-ai/vm0/commit/ec2b177f7908e4bf61a9eab9c7217257578b3872))
+
+
+### Performance Improvements
+
+* **runner:** bound codex zstd timestamp buffering ([#25383](https://github.com/vm0-ai/vm0/issues/25383)) ([1cd62f8](https://github.com/vm0-ai/vm0/commit/1cd62f8733310973339c7549d4e28a0cd0e21275))
+
 ## [0.158.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.13...runner-rs-v0.158.14) (2026-08-06)
 
 
