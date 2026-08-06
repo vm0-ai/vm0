@@ -1383,3 +1383,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "codex/property_tests.rs"]
+mod property_tests;
