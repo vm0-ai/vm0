@@ -3463,7 +3463,7 @@ function TemplatePreviewPage({
     <>
       <DialogHeader
         data-presentation-template-detail-header=""
-        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left duration-200 animate-in fade-in slide-in-from-right-6 motion-reduce:animate-none sm:pr-16"
+        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none sm:pr-16"
       >
         <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
@@ -3481,7 +3481,7 @@ function TemplatePreviewPage({
           </span>
         </DialogTitle>
       </DialogHeader>
-      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 duration-200 animate-in fade-in slide-in-from-right-6 motion-reduce:animate-none sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
@@ -4582,7 +4582,7 @@ function TemplatePickerCategoryNav({
           </SelectContent>
         </Select>
       </div>
-      <div className="hidden shrink-0 items-center gap-3 border-b border-border px-6 py-3.5 sm:flex">
+      <div className="hidden shrink-0 items-center gap-3 border-b border-border py-3.5 pl-6 pr-14 sm:flex">
         <nav
           role="tablist"
           aria-label={t(($) => {
