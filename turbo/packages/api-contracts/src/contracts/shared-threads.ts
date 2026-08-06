@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { apiErrorSchema, type ApiErrorResponse } from "./errors";
 import { authHeadersSchema, initContract } from "./base";
-import type { ZodLikeSchema } from "./trpc-contract";
+import type { ZodLikeSchema, ZodSchema } from "./trpc-contract";
 
 const c = initContract();
 
@@ -18,6 +18,22 @@ export interface SharedThreadResponse {
   readonly id: string;
   readonly title: string;
   readonly messages: readonly SharedMessage[];
+}
+
+interface SharedThreadIdPathParams {
+  readonly id: string;
+}
+
+interface SharedThreadAuthHeaders {
+  readonly authorization?: string;
+}
+
+interface CreateSharedThreadPathParams {
+  readonly threadId: string;
+}
+
+interface CreateSharedThreadBody {
+  readonly eventIds: readonly string[];
 }
 
 interface CreateSharedThreadResponse {
@@ -40,15 +56,24 @@ const sharedMessageZodSchema = z
 export const sharedMessageSchema: ZodLikeSchema<SharedMessage> =
   sharedMessageZodSchema;
 
-const sharedThreadIdPathParamsSchema = z.object({
+const sharedThreadIdPathParamsSchema: ZodSchema<
+  SharedThreadIdPathParams,
+  SharedThreadIdPathParams
+> = z.object({
   id: z.string().uuid(),
 });
 
-const createSharedThreadPathParamsSchema = z.object({
+const createSharedThreadPathParamsSchema: ZodSchema<
+  CreateSharedThreadPathParams,
+  CreateSharedThreadPathParams
+> = z.object({
   threadId: z.string().uuid(),
 });
 
-const createSharedThreadBodySchema = z.object({
+const createSharedThreadBodySchema: ZodSchema<
+  CreateSharedThreadBody,
+  CreateSharedThreadBody
+> = z.object({
   eventIds: z.array(z.string().uuid()).min(1),
 });
 
@@ -71,12 +96,16 @@ const sharedThreadMetaResponseSchema: ZodLikeSchema<SharedThreadMetaResponse> =
 
 const sharedThreadApiErrorSchema: ZodLikeSchema<ApiErrorResponse> =
   apiErrorSchema;
+const sharedThreadAuthHeadersSchema: ZodSchema<
+  SharedThreadAuthHeaders,
+  SharedThreadAuthHeaders
+> = authHeadersSchema;
 
 export const sharedThreadsContract = c.router({
   create: {
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/shared-threads",
-    headers: authHeadersSchema,
+    headers: sharedThreadAuthHeadersSchema,
     pathParams: createSharedThreadPathParamsSchema,
     body: createSharedThreadBodySchema,
     responses: {
