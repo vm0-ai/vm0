@@ -34,11 +34,6 @@ export interface FeatureSwitchContext {
   readonly overrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 }
 
-const CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES = [
-  ...STAFF_ORG_ID_HASHES,
-  "a6e60503", // geo rollout workspace
-] as const;
-
 /**
  * Registry of all feature switches
  */
@@ -327,13 +322,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable multiple inline artifact templates in structured chat prompts.",
     enabled: true,
-  },
-  [FeatureSwitchKey.CustomModelGateways]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable admin-defined Anthropic Messages and OpenAI Responses model gateway connections.",
-    enabled: false,
-    enabledOrgIdHashes: CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",

@@ -18,11 +18,6 @@ export const featureSwitchesResponseSchema = z.object({
    */
   supportsCustomConnectorOAuth2: z.boolean().optional(),
   /**
-   * Optional capability handshake for admin-defined model gateways.
-   * Older API deployments omit this field.
-   */
-  supportsCustomModelGateways: z.boolean().optional(),
-  /**
    * Optional capability handshake for managed image recognition.
    * Older API deployments omit this field.
    */

@@ -58,14 +58,12 @@ import {
   type ModelProviderConnectionResponse,
   type ModelProviderSurfaceProtocol,
 } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   orgModelPolicies$,
   updateOrgModelPolicies$,
 } from "../../../../signals/external/org-model-policies.ts";
+import { modelProviderConnections$ } from "../../../../signals/external/model-provider-connections.ts";
 import { orgConfiguredProviders$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
-import { availableModelProviderConnections$ } from "../../../../signals/zero-page/settings/model-provider-connections.ts";
 import {
   closeModelPolicyDialog$,
   modelPolicyApiKey$,
@@ -1199,7 +1197,6 @@ function ProviderRouteChoices({
   apiTypes,
   oauthTypes,
   gatewayCount,
-  customGatewaysEnabled,
   supportByok,
   onChoose,
 }: {
@@ -1207,7 +1204,6 @@ function ProviderRouteChoices({
   apiTypes: ModelProviderType[];
   oauthTypes: ModelProviderType[];
   gatewayCount: number;
-  customGatewaysEnabled: boolean;
   supportByok: boolean;
   onChoose: (routeKind: ModelPolicyRouteKind) => void;
 }) {
@@ -1253,22 +1249,20 @@ function ProviderRouteChoices({
             onChoose("api-key");
           }}
         />
-        {customGatewaysEnabled && (
-          <RouteChoiceButton
-            active={routeKind === "gateway"}
-            disabled={gatewayCount === 0}
-            pro={!supportByok}
-            title={t(($) => {
-              return $.settings.models.policies.gateway;
-            })}
-            description={t(($) => {
-              return $.settings.models.policies.gatewayDescription;
-            })}
-            onClick={() => {
-              onChoose("gateway");
-            }}
-          />
-        )}
+        <RouteChoiceButton
+          active={routeKind === "gateway"}
+          disabled={gatewayCount === 0}
+          pro={!supportByok}
+          title={t(($) => {
+            return $.settings.models.policies.gateway;
+          })}
+          description={t(($) => {
+            return $.settings.models.policies.gatewayDescription;
+          })}
+          onClick={() => {
+            onChoose("gateway");
+          }}
+        />
         {oauthTypes.length > 0 && (
           <RouteChoiceButton
             active={routeKind === "oauth"}
@@ -1367,7 +1361,6 @@ function ModelPolicyRouteDialog({
   addableModels,
   providers,
   connections,
-  customGatewaysEnabled,
   saving,
   modelCapabilities,
   onUpgrade,
@@ -1377,7 +1370,6 @@ function ModelPolicyRouteDialog({
   addableModels: SupportedRunModel[];
   providers: ModelProviderResponse[];
   connections: ModelProviderConnectionResponse[];
-  customGatewaysEnabled: boolean;
   saving: boolean;
   modelCapabilities: ModelPlanCapabilities;
   onUpgrade: () => void;
@@ -1597,7 +1589,6 @@ function ModelPolicyRouteDialog({
             apiTypes={apiTypes}
             oauthTypes={oauthTypes}
             gatewayCount={gatewayOptions.length}
-            customGatewaysEnabled={customGatewaysEnabled}
             supportByok={modelCapabilities.supportByok}
             onChoose={chooseRoute}
           />
@@ -1656,7 +1647,6 @@ function resolveModelPolicySectionData(params: {
   lastConnections: ModelProviderConnectionResponse[] | undefined;
   modelCapabilitiesLoadable: Loadable<ModelPlanCapabilities>;
   lastModelCapabilities: ModelPlanCapabilities | undefined;
-  customGatewaysEnabled: boolean;
 }) {
   const data =
     params.policiesLoadable.state === "hasData"
@@ -1674,7 +1664,6 @@ function resolveModelPolicySectionData(params: {
       ? params.connectionsLoadable.data
       : (params.lastConnections ?? []);
   const connectionsReady =
-    !params.customGatewaysEnabled ||
     params.connectionsLoadable.state === "hasData" ||
     params.lastConnections !== undefined;
   const modelCapabilities =
@@ -1705,14 +1694,11 @@ export function OrgModelPoliciesSection() {
   const lastPolicies = useLastResolved(orgModelPolicies$);
   const providersLoadable = useLoadable(orgConfiguredProviders$);
   const lastProviders = useLastResolved(orgConfiguredProviders$);
-  const connectionsLoadable = useLoadable(availableModelProviderConnections$);
-  const lastConnections = useLastResolved(availableModelProviderConnections$);
+  const connectionsLoadable = useLoadable(modelProviderConnections$);
+  const lastConnections = useLastResolved(modelProviderConnections$);
   const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
   const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
   const pageSignal = useGet(pageSignal$);
-  const featureSwitches = useGet(featureSwitch$);
-  const customGatewaysEnabled =
-    featureSwitches[FeatureSwitchKey.CustomModelGateways] ?? false;
   const openAddModelDialog = useSet(openAddModelPolicyDialog$);
   const openEditModelDialog = useSet(openEditModelPolicyDialog$);
   const openSettingsBillingPlans = useSet(openSettingsBillingPlans$);
@@ -1732,7 +1718,6 @@ export function OrgModelPoliciesSection() {
       lastConnections,
       modelCapabilitiesLoadable,
       lastModelCapabilities,
-      customGatewaysEnabled,
     });
 
   if (showSkeleton) {
@@ -1857,7 +1842,6 @@ export function OrgModelPoliciesSection() {
         addableModels={addableModels}
         providers={providers}
         connections={connections}
-        customGatewaysEnabled={customGatewaysEnabled}
         saving={saving}
         modelCapabilities={modelCapabilities}
         onUpgrade={openComparePlans}
