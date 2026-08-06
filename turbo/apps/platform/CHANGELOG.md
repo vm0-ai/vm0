@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.686.2](https://github.com/vm0-ai/vm0/compare/app-v0.686.1...app-v0.686.2) (2026-08-06)
+
+
+### Bug Fixes
+
+* **auth:** skip sign-in redirects while app is hidden ([#25316](https://github.com/vm0-ai/vm0/issues/25316)) ([390c041](https://github.com/vm0-ai/vm0/commit/390c0417000ef7f78a7a460b9ef8c1be9776f452))
+
 ## [0.686.1](https://github.com/vm0-ai/vm0/compare/app-v0.686.0...app-v0.686.1) (2026-08-05)
 
 
