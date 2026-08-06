@@ -2,7 +2,13 @@ import { z } from "zod";
 
 import { apiErrorSchema, type ApiErrorResponse } from "./errors";
 import { authHeadersSchema, initContract } from "./base";
-import type { ZodLikeSchema, ZodSchema } from "./trpc-contract";
+import type {
+  AnyRouteTypeSlots,
+  AppRoute,
+  AppRouteSpec,
+  ZodLikeSchema,
+  ZodSchema,
+} from "./trpc-contract";
 
 const c = initContract();
 
@@ -42,6 +48,66 @@ interface CreateSharedThreadResponse {
 
 interface SharedThreadMetaResponse {
   readonly title: string;
+}
+
+interface SharedThreadRequestOptions {
+  readonly extraHeaders?: Record<string, string>;
+  readonly fetchOptions?: RequestInit;
+}
+
+interface CreateSharedThreadServerRequest extends SharedThreadRequestOptions {
+  readonly params: CreateSharedThreadPathParams;
+  readonly body: CreateSharedThreadBody;
+  readonly headers: SharedThreadAuthHeaders;
+}
+
+interface CreateSharedThreadClientRequest extends SharedThreadRequestOptions {
+  readonly params: CreateSharedThreadPathParams;
+  readonly body: CreateSharedThreadBody;
+  readonly headers?: SharedThreadAuthHeaders;
+}
+
+interface ReadSharedThreadRequest extends SharedThreadRequestOptions {
+  readonly params: SharedThreadIdPathParams;
+}
+
+type ApiErrorRouteResponse<TStatus extends number> = {
+  readonly status: TStatus;
+  readonly body: ApiErrorResponse;
+};
+
+type CreateSharedThreadRouteResponse =
+  | { readonly status: 201; readonly body: CreateSharedThreadResponse }
+  | ApiErrorRouteResponse<400>
+  | ApiErrorRouteResponse<401>
+  | ApiErrorRouteResponse<403>
+  | ApiErrorRouteResponse<404>
+  | ApiErrorRouteResponse<413>;
+
+type ReadSharedThreadRouteResponse =
+  | { readonly status: 200; readonly body: SharedThreadResponse }
+  | ApiErrorRouteResponse<404>;
+
+type ReadSharedThreadMetaRouteResponse =
+  | { readonly status: 200; readonly body: SharedThreadMetaResponse }
+  | ApiErrorRouteResponse<404>;
+
+interface CreateSharedThreadRouteTypes extends AnyRouteTypeSlots {
+  readonly serverRequest: CreateSharedThreadServerRequest;
+  readonly clientRequest: CreateSharedThreadClientRequest;
+  readonly response: CreateSharedThreadRouteResponse;
+}
+
+interface ReadSharedThreadRouteTypes extends AnyRouteTypeSlots {
+  readonly serverRequest: ReadSharedThreadRequest;
+  readonly clientRequest: ReadSharedThreadRequest;
+  readonly response: ReadSharedThreadRouteResponse;
+}
+
+interface ReadSharedThreadMetaRouteTypes extends AnyRouteTypeSlots {
+  readonly serverRequest: ReadSharedThreadRequest;
+  readonly clientRequest: ReadSharedThreadRequest;
+  readonly response: ReadSharedThreadMetaRouteResponse;
 }
 
 const sharedMessageZodSchema = z
@@ -101,7 +167,10 @@ const sharedThreadAuthHeadersSchema: ZodSchema<
   SharedThreadAuthHeaders
 > = authHeadersSchema;
 
-export const sharedThreadsContract = c.router({
+const sharedThreadsRuntimeSpec: Record<
+  "create" | "get" | "meta",
+  AppRouteSpec
+> = {
   create: {
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/shared-threads",
@@ -138,6 +207,46 @@ export const sharedThreadsContract = c.router({
     },
     summary: "Read public metadata for a shared chat snapshot",
   },
-});
+};
 
-export type SharedThreadsContract = typeof sharedThreadsContract;
+const sharedThreadsRuntimeContract = c.router(sharedThreadsRuntimeSpec);
+
+type CreateSharedThreadRoute = AppRoute<CreateSharedThreadRouteTypes> & {
+  readonly method: "POST";
+  readonly path: "/api/zero/chat-threads/:threadId/shared-threads";
+  readonly headers: ZodSchema<SharedThreadAuthHeaders, SharedThreadAuthHeaders>;
+  readonly pathParams: ZodSchema<
+    CreateSharedThreadPathParams,
+    CreateSharedThreadPathParams
+  >;
+  readonly body: ZodSchema<CreateSharedThreadBody, CreateSharedThreadBody>;
+};
+
+type ReadSharedThreadRoute = AppRoute<ReadSharedThreadRouteTypes> & {
+  readonly method: "GET";
+  readonly path: "/api/zero/shared-threads/:id";
+  readonly pathParams: ZodSchema<
+    SharedThreadIdPathParams,
+    SharedThreadIdPathParams
+  >;
+};
+
+type ReadSharedThreadMetaRoute = AppRoute<ReadSharedThreadMetaRouteTypes> & {
+  readonly method: "GET";
+  readonly path: "/api/zero/shared-threads/:id/meta";
+  readonly pathParams: ZodSchema<
+    SharedThreadIdPathParams,
+    SharedThreadIdPathParams
+  >;
+};
+
+export type SharedThreadsContract = {
+  readonly create: CreateSharedThreadRoute;
+  readonly get: ReadSharedThreadRoute;
+  readonly meta: ReadSharedThreadMetaRoute;
+};
+
+// Keep runtime validation from the Zod-backed router while exposing compact,
+// explicit request and response slots to downstream API and app typechecks.
+export const sharedThreadsContract =
+  sharedThreadsRuntimeContract as unknown as SharedThreadsContract;
