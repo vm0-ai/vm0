@@ -70,6 +70,7 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
@@ -203,6 +204,13 @@ import {
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import {
+  PI_STANDBY_PROFILE,
+  resolvePiEdgeModelConfig,
+  type PiEdgeModelConfig,
+  type PiEdgeTurnArgs,
+} from "./pi-edge-config";
 import {
   recordSameThreadRunnerJobPersisted,
   runnerJobQueueTimestamps,
@@ -533,6 +541,7 @@ interface CustomConnectorAuthRef {
 }
 
 interface PreparedRunnerLaunch {
+  readonly piEdge?: PiEdgeModelConfig;
   readonly runnerJobPayload: RunnerJobPayload;
   readonly runContextSnapshot: RunContextAxiomSnapshot;
   readonly runStorageMounts: readonly PersistedStorageMount[];
@@ -773,6 +782,7 @@ export interface CreateAgentRunArgs {
   readonly orgId: string;
   readonly body: CreateRunBody;
   readonly apiStartTime: number;
+  readonly kickoffPiEdgeTurn?: (turnArgs: PiEdgeTurnArgs) => void;
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
@@ -6073,7 +6083,9 @@ async function persistPendingAtomicLaunch(
       .values({
         runId: returnedCteId(context.insertedRun),
         runnerGroup: args.payload.runnerGroup,
-        profile: args.payload.profile,
+        profile: args.commit.launch.piEdge
+          ? PI_STANDBY_PROFILE
+          : args.payload.profile,
         cliAgentSessionId: args.payload.cliAgentSessionId,
         reuseKey: args.payload.reuseKey,
         executionContext: args.payload.executionContext,
@@ -7802,6 +7814,7 @@ async function committedAtomicLaunchResponse(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
+  readonly launch: PreparedRunnerLaunch;
 }): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
   if (args.committed.threadSessionBinding) {
     recordThreadSessionBindingTelemetry({
@@ -7852,16 +7865,28 @@ async function committedAtomicLaunchResponse(args: {
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
-  await notifyRunnerJob(args.db, {
-    runnerGroup: args.committed.runnerJobPayload.runnerGroup,
-    runId: args.committed.run.id,
-    profile: args.committed.runnerJobPayload.profile,
-    reuseKey: args.committed.runnerJobPayload.reuseKey,
-    cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
-    historyGenerationRunId:
-      args.committed.runnerJobPayload.historyGenerationRunId,
-    createdAt: args.committed.runnerJobCreatedAt,
-  });
+  const kickoffPiEdgeTurn = args.createArgs.kickoffPiEdgeTurn;
+  if (args.launch.piEdge && kickoffPiEdgeTurn) {
+    kickoffPiEdgeTurn({
+      runId: args.committed.run.id,
+      userId: args.createArgs.userId,
+      orgId: args.createArgs.orgId,
+      prompt: args.createArgs.body.prompt,
+      model: args.launch.piEdge,
+      apiStartTime: args.createArgs.apiStartTime,
+    });
+  } else {
+    await notifyRunnerJob(args.db, {
+      runnerGroup: args.committed.runnerJobPayload.runnerGroup,
+      runId: args.committed.run.id,
+      profile: args.committed.runnerJobPayload.profile,
+      reuseKey: args.committed.runnerJobPayload.reuseKey,
+      cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
+      historyGenerationRunId:
+        args.committed.runnerJobPayload.historyGenerationRunId,
+      createdAt: args.committed.runnerJobCreatedAt,
+    });
+  }
   args.timing.flush({
     runId: args.committed.run.id,
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
@@ -7951,6 +7976,7 @@ async function finalizeAtomicLaunchCommit(args: {
     createArgs: args.input.args,
     committed: args.committed,
     timing: args.input.timing,
+    launch: args.launch,
   });
 }
 
@@ -8067,6 +8093,18 @@ function createAtomicLaunchRun(
       });
     }
 
+    const piEdge =
+      input.args.chatThreadId !== undefined &&
+      input.args.kickoffPiEdgeTurn !== undefined &&
+      isFeatureEnabled(
+        FeatureSwitchKey.PiLoop,
+        input.context.featureSwitchContext,
+      )
+        ? resolvePiEdgeModelConfig(input.context.modelProvider)
+        : null;
+    const launch: PreparedRunnerLaunch =
+      piEdge === null ? launchResult.value : { ...launchResult.value, piEdge };
+
     const commitLaunch: CommitAtomicLaunch = async (
       encryptedQueuedParams: string | undefined,
     ) => {
@@ -8080,7 +8118,7 @@ function createAtomicLaunchRun(
             context: input.context,
             identity,
             callbackRows,
-            launch: launchResult.value,
+            launch,
             encryptedQueuedParams,
             timing: input.timing,
           });
@@ -8092,7 +8130,7 @@ function createAtomicLaunchRun(
     const finalized = await finalizeAtomicLaunchCommit({
       input,
       identity,
-      launch: launchResult.value,
+      launch,
       committed,
     });
     if (isQueuePayloadRequiredResult(finalized)) {
@@ -8100,7 +8138,7 @@ function createAtomicLaunchRun(
         input,
         identity,
         callbackRows,
-        launch: launchResult.value,
+        launch,
         commitLaunch,
       });
     }

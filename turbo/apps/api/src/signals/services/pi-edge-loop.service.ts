@@ -14,26 +14,12 @@ import {
   completeAgentRun$,
   dispatchCompleteSideEffects$,
 } from "./agent-webhook-complete.service";
+import type { PiEdgeModelConfig, PiEdgeTurnArgs } from "./pi-edge-config";
 import { PI_MESSAGE_COMPLETED_EVENT_TYPE } from "./pi-transcript.service";
 
 const L = logger("pi:edge");
 
 const CHAT_COMPLETION_TIMEOUT_MS = 120_000;
-
-export interface PiEdgeModelConfig {
-  readonly baseUrl: string;
-  readonly apiKey: string;
-  readonly model: string;
-}
-
-export interface PiEdgeTurnArgs {
-  readonly runId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly prompt: string;
-  readonly model: PiEdgeModelConfig;
-  readonly apiStartTime: number;
-}
 
 interface PiContentBlock {
   readonly type: "text" | "thinking";
