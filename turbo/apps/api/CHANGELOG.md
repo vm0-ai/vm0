@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.387.0](https://github.com/vm0-ai/vm0/compare/api-v1.386.0...api-v1.387.0) (2026-08-06)
+
+
+### Features
+
+* **chat:** share selected conversation messages ([#25304](https://github.com/vm0-ai/vm0/issues/25304)) ([dcb3ace](https://github.com/vm0-ai/vm0/commit/dcb3acef66984b6f76c58ba04cc607bb119726c8))
+
+
+### Performance Improvements
+
+* **runner:** correlate preference reuse outcomes ([#25443](https://github.com/vm0-ai/vm0/issues/25443)) ([1314003](https://github.com/vm0-ai/vm0/commit/1314003df53a575df0b20a1c4c67cc3304486199))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.280.0
+    * @vm0/core bumped to 8.524.0
+    * @vm0/db bumped to 1.171.0
+
 ## [1.386.0](https://github.com/vm0-ai/vm0/compare/api-v1.385.0...api-v1.386.0) (2026-08-06)
 
 
