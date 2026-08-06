@@ -38,6 +38,20 @@ def test_rejects_invalid_scalar_field_config_value():
         JsonSelectiveExtractor(scalar_fields=json.loads('{"model": "string"}'))
 
 
+def test_rejects_consistency_path_without_scalar_field():
+    with pytest.raises(ValueError, match="must reference scalar fields"):
+        JsonSelectiveExtractor(scalar_consistency_paths={("type",)})
+
+
+def test_consistency_query_requires_configured_path():
+    extractor = JsonSelectiveExtractor()
+    extractor.feed(b"{}")
+    assert extractor.finish().complete is True
+
+    with pytest.raises(ValueError, match="was not configured"):
+        extractor.selected_scalar_values_are_consistent(("type",))
+
+
 @pytest.mark.parametrize(
     ("bound", "value"),
     [
