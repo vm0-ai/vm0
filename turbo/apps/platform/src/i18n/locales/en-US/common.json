@@ -704,7 +704,8 @@
       "useThisTemplate": "Use this template",
       "website": "Website",
       "websitePreview": "{{title}} website template preview",
-      "workflow": "Workflow"
+      "workflow": "Workflow",
+      "subtitle": "Pick a starting point — you can change everything later"
     },
     "title": "Artifacts",
     "toasts": {

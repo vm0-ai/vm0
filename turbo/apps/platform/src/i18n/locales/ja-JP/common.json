@@ -704,7 +704,8 @@
       "useThisTemplate": "このテンプレートを使用してください",
       "website": "ウェブサイト",
       "websitePreview": "{{title}} Web サイト テンプレートのプレビュー",
-      "workflow": "ワークフロー"
+      "workflow": "ワークフロー",
+      "subtitle": "出発点を選んでください。あとからすべて変更できます"
     },
     "title": "アーティファクト",
     "toasts": {

@@ -721,7 +721,8 @@
       "useThisTemplate": "Usar este modelo",
       "website": "Site",
       "websitePreview": "Visualização do modelo de site {{title}}",
-      "workflow": "Fluxo de trabalho"
+      "workflow": "Fluxo de trabalho",
+      "subtitle": "Escolha um ponto de partida — você pode mudar tudo depois"
     },
     "title": "Artefatos",
     "toasts": {

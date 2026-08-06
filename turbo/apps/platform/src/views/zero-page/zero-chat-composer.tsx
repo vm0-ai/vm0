@@ -1074,7 +1074,7 @@ const TEMPLATE_TILE_USE =
   "absolute bottom-2 right-2 z-20 h-[30px] rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground opacity-0 transition-opacity duration-150 hover:bg-primary-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/tile:opacity-100";
 // Caption metrics track the illustration card: same text size, and enough
 // breathing room under the artwork that the title never crowds it.
-const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-0.5 pb-1 pt-3";
+const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-2 pb-2 pt-2";
 const TEMPLATE_TILE_NAME =
   "min-w-0 truncate text-sm font-medium leading-5 text-foreground";
 
@@ -4659,12 +4659,17 @@ function TemplatePickerCategoryNav({
 function TemplatePickerHeader() {
   const { t } = useTranslation();
   return (
-    <header className="hidden shrink-0 items-center px-6 pr-14 pt-[18px] sm:flex">
+    <header className="hidden shrink-0 flex-col gap-0.5 px-6 pr-14 pt-[18px] sm:flex">
       <h2 className="text-[17px] font-semibold leading-6 tracking-tight text-foreground">
         {t(($) => {
           return $.artifacts.templates.template;
         })}
       </h2>
+      <p className="text-[13px] leading-[18px] text-gray-800">
+        {t(($) => {
+          return $.artifacts.templates.subtitle;
+        })}
+      </p>
     </header>
   );
 }

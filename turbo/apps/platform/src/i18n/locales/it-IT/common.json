@@ -721,7 +721,8 @@
       "useThisTemplate": "Usa questo modello",
       "website": "Sito web",
       "websitePreview": "{{title}} anteprima del modello di sito web",
-      "workflow": "Flusso di lavoro"
+      "workflow": "Flusso di lavoro",
+      "subtitle": "Scegli un punto di partenza: potrai cambiare tutto dopo"
     },
     "title": "Artefatti",
     "toasts": {

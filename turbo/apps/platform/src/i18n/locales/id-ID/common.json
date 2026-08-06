@@ -704,7 +704,8 @@
       "useThisTemplate": "Gunakan template ini",
       "website": "Website",
       "websitePreview": "pratinjau template website {{title}}",
-      "workflow": "Alur kerja"
+      "workflow": "Alur kerja",
+      "subtitle": "Pilih titik awal — semuanya masih bisa diubah nanti"
     },
     "title": "Artefak",
     "toasts": {

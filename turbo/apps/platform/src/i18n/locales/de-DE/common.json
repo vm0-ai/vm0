@@ -704,7 +704,8 @@
       "useThisTemplate": "Verwenden Sie diese Vorlage",
       "website": "Webseite",
       "websitePreview": "{{title}} Vorschau der Website-Vorlage",
-      "workflow": "Workflow"
+      "workflow": "Workflow",
+      "subtitle": "Wähle einen Startpunkt — alles lässt sich später ändern"
     },
     "title": "Artefakte",
     "toasts": {
