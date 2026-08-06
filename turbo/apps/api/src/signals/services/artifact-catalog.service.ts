@@ -801,41 +801,52 @@ function toArtifactSummary(row: {
  * file directly or its run, while shared threads retain their nullable source
  * thread ID after snapshot creation.
  */
-function chatThreadFilter(db: Db, chatThreadId: string): SQL | undefined {
-  return or(
-    inArray(
-      artifacts.projectionFileId,
-      db
-        .select({ id: runUploadedFiles.id })
-        .from(runUploadedFiles)
-        .where(
-          or(
-            eq(runUploadedFiles.chatThreadId, chatThreadId),
-            inArray(
-              runUploadedFiles.runId,
-              db
-                .select({ id: zeroRuns.id })
-                .from(zeroRuns)
-                .where(eq(zeroRuns.chatThreadId, chatThreadId)),
-            ),
-          ),
-        ),
-    ),
-    and(
-      eq(artifacts.kind, "file"),
-      like(
-        artifacts.logicalKey,
-        `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+function fileChatThreadFilter(db: Db, chatThreadId: string): SQL {
+  const runIds = db
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.chatThreadId, chatThreadId));
+  const fileIds = db
+    .select({ id: runUploadedFiles.id })
+    .from(runUploadedFiles)
+    .where(
+      or(
+        eq(runUploadedFiles.chatThreadId, chatThreadId),
+        inArray(runUploadedFiles.runId, runIds),
       ),
-      inArray(
-        artifacts.entityId,
-        db
-          .select({ id: sharedThreads.id })
-          .from(sharedThreads)
-          .where(eq(sharedThreads.sourceChatThreadId, chatThreadId)),
-      ),
-    ),
+    );
+  return inArray(artifacts.projectionFileId, fileIds);
+}
+
+function sharedThreadChatThreadFilter(db: Db, chatThreadId: string): SQL {
+  const sharedThreadIds = db
+    .select({ id: sharedThreads.id })
+    .from(sharedThreads)
+    .where(eq(sharedThreads.sourceChatThreadId, chatThreadId));
+  const filter = and(
+    eq(artifacts.kind, "file"),
+    like(artifacts.logicalKey, `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`),
+    inArray(artifacts.entityId, sharedThreadIds),
   );
+  if (!filter) {
+    throw new Error("Shared-thread catalog filter is unavailable");
+  }
+  return filter;
+}
+
+function chatThreadFilter(
+  db: Db,
+  chatThreadId: string,
+  includeSharedThreads: boolean,
+): SQL {
+  const fileFilter = fileChatThreadFilter(db, chatThreadId);
+  if (!includeSharedThreads) {
+    return fileFilter;
+  }
+  return sql`(${fileFilter} OR ${sharedThreadChatThreadFilter(
+    db,
+    chatThreadId,
+  )})`;
 }
 
 function artifactCatalogOwnerFilter(
@@ -883,7 +894,7 @@ export const listArtifactCatalog$ = command(
           artifactCatalogOwnerFilter(args.userId, args.includeSharedThreads),
           args.kind ? artifactCatalogKindFilter(args.kind) : undefined,
           args.chatThreadId
-            ? chatThreadFilter(db, args.chatThreadId)
+            ? chatThreadFilter(db, args.chatThreadId, args.includeSharedThreads)
             : undefined,
           cursor
             ? lt(
