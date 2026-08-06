@@ -987,7 +987,7 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("rejects pre-connector-slug app clients before route handlers run", async () => {
+    it("rejects pre-run-model-annotation app clients before route handlers run", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -996,7 +996,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.670.0",
+          [CLIENT_VERSION_HEADER]: "0.695.0",
         },
       });
 
