@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   check,
   integer,
@@ -75,6 +76,9 @@ export const orgCustomConnectors = pgTable(
     mcpResource: text("mcp_resource"),
     skillMarkdown: text("skill_markdown"),
     revision: integer("revision").notNull().default(1),
+    storageVersion: bigint("storage_version", { mode: "number" })
+      .notNull()
+      .default(1),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -108,6 +112,10 @@ export const orgCustomConnectors = pgTable(
       check(
         "chk_org_custom_connectors_revision_positive",
         sql`${table.revision} > 0`,
+      ),
+      check(
+        "chk_org_custom_connectors_storage_version_positive",
+        sql`${table.storageVersion} > 0`,
       ),
       check(
         "chk_org_custom_connectors_skill_size",

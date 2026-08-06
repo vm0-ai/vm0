@@ -43,6 +43,11 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { readUserSecrets } from "./helpers/user-config-state";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
+import {
+  downgradeCustomConnectorOAuthStorageState,
+  readCustomConnectorCredentialStorageParent,
+  readCustomConnectorOAuthStorageState,
+} from "./helpers/connector-credential-storage-state";
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
@@ -77,6 +82,13 @@ function stateFromAuthorizationUrl(authorizationUrl: string): string {
     throw new Error("Expected connector authorization URL to include state");
   }
   return state;
+}
+
+function requiredOrgId(user: ApiTestUser): string {
+  if (!user.orgId) {
+    throw new Error("Expected test user to have an organization");
+  }
+  return user.orgId;
 }
 
 function expectNoVisibleSecret(value: unknown, secret: string): void {
@@ -1558,6 +1570,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     expect(created).toMatchObject({
       authMode: "oauth",
+      storageVersion: 1,
       oauthConfig: {
         clientId,
         scopes: ["read", "write"],
@@ -1602,10 +1615,20 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(redirectUri).toBe("https://app.vm0.test/connectors/custom/callback");
     expectNoVisibleSecret(authorizationUrl, clientSecret);
 
+    const oauthState = stateFromAuthorizationUrl(authorizationUrl);
+    await expect(
+      readCustomConnectorOAuthStorageState(context, oauthState),
+    ).resolves.toMatchObject({
+      custom_oauth_state: {
+        storage_version: 1,
+        context_storage_version: 1,
+      },
+    });
+
     const callback =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
         code: "bdd-custom-oauth-code",
-        state: stateFromAuthorizationUrl(authorizationUrl),
+        state: oauthState,
       });
     expect(callback.body).toStrictEqual({
       status: "success",
@@ -1625,6 +1648,35 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(context.mocks.nodeRequest.pinnedAddresses).toContain(
       "93.184.216.34",
     );
+
+    const legacyAuthorizationUrl =
+      await connectorsApi.startCustomConnectorOAuth2(member, created.id);
+    const legacyState = stateFromAuthorizationUrl(legacyAuthorizationUrl);
+    await downgradeCustomConnectorOAuthStorageState(context, legacyState);
+    await expect(
+      readCustomConnectorOAuthStorageState(context, legacyState),
+    ).resolves.toMatchObject({
+      custom_oauth_state: {
+        storage_version: null,
+        context_storage_version: null,
+      },
+    });
+    await connectorsApi.completeCustomConnectorOAuth2Callback({
+      code: "bdd-custom-oauth-legacy-state-code",
+      state: legacyState,
+    });
+
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(member),
+        userId: member.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({
+      connector: {
+        storage_version: 1,
+      },
+    });
 
     const oauthConnected = await connectorsApi.listCustomConnectors(member);
     expect(
@@ -2150,6 +2202,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       queryInjections: [],
       authMode: "manual",
     });
+    expect(created.storageVersion).toBe(1);
 
     await connectorsApi.updateFeatureSwitches(admin, {
       [FeatureSwitchKey.CustomConnectorCliCreate]: false,
@@ -2189,6 +2242,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     });
     expectNoVisibleSecret(configured, "configured-secret");
 
+    const parent = await readCustomConnectorCredentialStorageParent(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId: created.id,
+    });
+    expect(parent.connector).toMatchObject({ storage_version: 1 });
+    await connectorsApi.setCustomConnectorValues(admin, created.id, [
+      { key: "api_key", kind: "secret", value: "updated-secret" },
+    ]);
+    const updatedParent = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      },
+    );
+    expect(updatedParent.connector).toStrictEqual(parent.connector);
+
     const listed = await connectorsApi.listCustomConnectors(admin);
     expect(
       listed.find((connector) => {
@@ -2199,6 +2271,15 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       configuredFieldKeys: ["api_key", "subdomain"],
     });
     expectNoVisibleSecret(listed, "configured-secret");
+
+    await connectorsApi.deleteCustomConnectorSecret(admin, created.id);
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({ connector: parent.connector });
 
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });

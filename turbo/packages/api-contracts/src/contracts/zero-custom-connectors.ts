@@ -123,6 +123,7 @@ export const customConnectorResponseSchema = z.object({
     .optional(),
   skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
   revision: z.number().int().positive().optional(),
+  storageVersion: z.number().int().positive().optional(),
   connected: z.boolean(),
   missingRequiredFields: z.array(z.string()),
   configuredFieldKeys: z.array(z.string()),
