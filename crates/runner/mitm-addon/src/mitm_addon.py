@@ -55,7 +55,6 @@ import http_local_responses
 import http_network_log
 import matching
 import mitmproxy_compat
-import network_log_sanitization
 import platform_api
 import registry
 import request_classification
@@ -97,6 +96,7 @@ from logging_utils import (
     elapsed_ms,
     log_http_network_entry,
     log_proxy_entry,
+    project_url_for_proxy_log,
     shutdown_log_writer,
 )
 from url_utils import AuthorityValidationError, TrustedAuthority, get_trusted_authority
@@ -154,7 +154,13 @@ class _BufferedRequestBodyCheck:
 
 
 def load(loader: Loader) -> None:
-    """Register custom options for the addon."""
+    """Initialize compatibility and process-global state before addon options.
+
+    Exact-version mitmproxy and wsproto compatibility is installed first. An
+    unreviewed runtime raises ``RuntimeError`` before the process-global runner
+    usage-flush signal handler or custom options are registered. The signal
+    handler is installed next, followed by custom option registration.
+    """
     mitmproxy_compat.install_runtime_compatibility()
     signal.signal(
         runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
@@ -1819,13 +1825,14 @@ def _finish_response_handling(
 
     # Log errors to per-job proxy log and mitmproxy console
     if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:
-        safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+        url_projection = project_url_for_proxy_log(original_url)
         log_proxy_entry(
             proxy_log_path,
             "warn",
-            f"Response {flow.response.status_code}: {safe_url}",
+            f"Response {flow.response.status_code}: {url_projection.value}",
             type="http_error",
             status=flow.response.status_code,
+            **url_projection.truncation_fields(),
         )
 
 
@@ -1885,13 +1892,14 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     if response_streaming.finalize_interrupted_connector_response_state(flow):
         usage.report_connector_usage(flow, run_id)
 
-    safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+    url_projection = project_url_for_proxy_log(original_url)
     log_proxy_entry(
         proxy_log_path,
         "warn",
-        f"Error: {error_msg}: {safe_url}",
+        f"Error: {error_msg}: {url_projection.value}",
         type="connection_error",
         error=error_msg,
+        **url_projection.truncation_fields(),
     )
 
 
