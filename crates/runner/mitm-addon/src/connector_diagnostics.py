@@ -47,10 +47,9 @@ import connector_intent
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import matching
-import network_log_sanitization
 import request_classification
 import runtime_url_parsing
-from logging_utils import log_proxy_entry
+from logging_utils import log_proxy_entry, project_url_for_proxy_log
 
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_FORBIDDEN = 403
@@ -788,7 +787,7 @@ def _log_proxy_entry(
     candidate = _candidate_from_flow(flow)
     if candidate is None:
         return
-    safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+    url_projection = project_url_for_proxy_log(original_url)
     extra: dict[str, object] = {}
     ownership_reason = flow.metadata.get(_CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON)
     if isinstance(ownership_reason, str) and ownership_reason:
@@ -801,15 +800,16 @@ def _log_proxy_entry(
     ownership_hint_status = flow.metadata.get(_CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS)
     if isinstance(ownership_hint_status, str) and ownership_hint_status:
         extra["ownership_hint_status"] = ownership_hint_status
+    extra.update(url_projection.truncation_fields())
     log_proxy_entry(
         flow_metadata.proxy_log_path(flow.metadata),
         "warn",
-        f"{candidate.connector_slug} is not configured for this run: {safe_url}",
+        f"{candidate.connector_slug} is not configured for this run: {url_projection.value}",
         type="connector_diagnostic",
         connector=candidate.connector_slug,
         reason=candidate.reason,
         upstream_status=upstream_status,
-        url=original_url,
+        url=url_projection,
         **extra,
     )
     flow.metadata[_CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED] = True

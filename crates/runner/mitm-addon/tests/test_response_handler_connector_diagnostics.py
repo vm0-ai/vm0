@@ -87,6 +87,45 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
     assert proxy_entry["type"] == "connector_diagnostic"
     assert proxy_entry["connector"] == "fal"
     assert proxy_entry["upstream_status"] == 401
+    assert proxy_entry["url"] == flow.metadata[metadata_keys.ORIGINAL_URL]
+    assert proxy_entry["message"].endswith(f": {proxy_entry['url']}")
+    assert "url_truncated" not in proxy_entry
+    assert "url_original_char_count" not in proxy_entry
+
+
+async def test_omits_oversized_connector_diagnostic_url_once(tmp_path, real_flow, mitm_ctx):
+    reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path=f"/fal-ai/{'x' * 1_000_000}",
+        method="POST",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        record_connector_diagnostic_requestheaders_context(flow)
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-type": "text/plain", "content-length": "8"}),
+            content=b"upstream",
+        )
+        mitm_addon.response(flow)
+
+    raw_url = flow.metadata[metadata_keys.ORIGINAL_URL]
+    proxy_entries = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert [entry["type"] for entry in proxy_entries] == ["connector_diagnostic", "http_error"]
+    connector_entry, http_error_entry = proxy_entries
+    assert connector_entry["message"].endswith(": [truncated]")
+    assert connector_entry["url"] == "[truncated]"
+    assert connector_entry["url_truncated"] is True
+    assert connector_entry["url_original_char_count"] == len(raw_url)
+    assert http_error_entry["message"] == "Response 401: [truncated]"
+    assert http_error_entry["url_truncated"] is True
+    assert http_error_entry["url_original_char_count"] == len(raw_url)
+    serialized_entries = json.dumps(proxy_entries)
+    assert "x" * 100 not in serialized_entries
+    assert len(serialized_entries.encode()) < 2_000
 
 
 async def test_replaces_buffered_head_401_with_bodyless_diagnostic(tmp_path, real_flow, mitm_ctx):
