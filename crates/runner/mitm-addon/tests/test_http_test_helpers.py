@@ -5,17 +5,26 @@ from __future__ import annotations
 import http.client
 import threading
 import urllib.parse
-from collections.abc import Callable
-from contextlib import AbstractContextManager
+from collections.abc import Mapping
+from dataclasses import dataclass
 from types import TracebackType
 from unittest.mock import patch
 
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
+from tests.threaded_http_test_server import ThreadedHttpTestServer
 from tests.usage_helpers import UsageWebhookServer
 
 _THREAD_TIMEOUT_SECONDS = 2.0
 _Response = tuple[int, bytes]
+
+
+@dataclass(frozen=True)
+class _CapturedRequest:
+    method: str
+    path: str
+    headers: dict[str, str]
+    body: bytes
 
 
 class _PauseFirstHandlerReacquire:
@@ -100,7 +109,13 @@ class _PauseFirstHandlerReacquire:
         self.release()
 
 
-def _post(url: str) -> _Response:
+def _request(
+    method: str,
+    url: str,
+    *,
+    body: bytes | None = None,
+    headers: Mapping[str, str] | None = None,
+) -> _Response:
     parsed = urllib.parse.urlsplit(url)
     assert parsed.scheme == "http"
     assert parsed.hostname is not None
@@ -110,11 +125,20 @@ def _post(url: str) -> _Response:
         timeout=_THREAD_TIMEOUT_SECONDS,
     )
     try:
-        connection.request("POST", parsed.path, body=b"{}")
+        connection.request(
+            method,
+            parsed.path,
+            body=body,
+            headers={} if headers is None else headers,
+        )
         response = connection.getresponse()
         return response.status, response.read()
     finally:
         connection.close()
+
+
+def _post(url: str) -> _Response:
+    return _request("POST", url, body=b"{}")
 
 
 def _start_post(
@@ -136,21 +160,20 @@ def _start_post(
 
 def _assert_response_alignment(
     *,
+    server: ThreadedHttpTestServer[_CapturedRequest],
     gate: _PauseFirstHandlerReacquire,
-    gate_context: AbstractContextManager[object],
-    url: Callable[[str], str],
-    recorded_paths: Callable[[], list[str]],
-    default_response: _Response,
 ) -> None:
     responses: dict[str, _Response] = {}
     responses_lock = threading.Lock()
     first = None
     second = None
+    with patch.object(threading, "RLock", return_value=gate):
+        condition = threading.Condition()
 
-    with gate_context:
+    with patch.object(server, "_condition", condition), server.run():
         try:
             first = _start_post(
-                url("/first"),
+                f"{server.api_url}/first",
                 key="first",
                 responses=responses,
                 responses_lock=responses_lock,
@@ -161,7 +184,7 @@ def _assert_response_alignment(
                 threads=(first,),
             )
             second = _start_post(
-                url("/second"),
+                f"{server.api_url}/second",
                 key="second",
                 responses=responses,
                 responses_lock=responses_lock,
@@ -175,43 +198,62 @@ def _assert_response_alignment(
             if second is not None:
                 second.join(timeout=_THREAD_TIMEOUT_SECONDS)
 
-    assert recorded_paths()[:2] == ["/first", "/second"]
-    assert responses == {
-        "first": (201, b"first"),
-        "second": (202, b"second"),
-    }
-    assert _post(url("/default")) == default_response
+        assert [request.path for request in server.requests[:2]] == ["/first", "/second"]
+        assert responses == {
+            "first": (201, b"first"),
+            "second": (202, b"second"),
+        }
+        assert _post(f"{server.api_url}/default") == (503, b"default")
 
 
-def test_usage_webhook_server_aligns_responses_with_recorded_order():
-    server = UsageWebhookServer()
+def test_threaded_http_server_aligns_responses_with_recorded_order():
+    server = ThreadedHttpTestServer(
+        request_factory=_CapturedRequest,
+        default_status=503,
+        default_body=b"default",
+        thread_name="shared-http-test-server",
+    )
     server.queue_response(201, body=b"first")
     server.queue_response(202, body=b"second")
-    gate = _PauseFirstHandlerReacquire()
-
-    with server.run():
-        _assert_response_alignment(
-            gate=gate,
-            gate_context=patch.object(server, "_lock", gate),
-            url=server.url,
-            recorded_paths=lambda: [request.path for request in server.requests],
-            default_response=(204, b""),
-        )
+    _assert_response_alignment(server=server, gate=_PauseFirstHandlerReacquire())
 
 
-def test_fake_auth_endpoint_aligns_responses_with_recorded_order():
+def test_fake_auth_endpoint_preserves_capture_and_default_response():
     endpoint = FakeAuthEndpoint()
-    endpoint.queue_response(201, body=b"first")
-    endpoint.queue_response(202, body=b"second")
-    gate = _PauseFirstHandlerReacquire()
-    with patch.object(threading, "RLock", return_value=gate):
-        condition = threading.Condition()
 
     with endpoint.run():
-        _assert_response_alignment(
-            gate=gate,
-            gate_context=patch.object(endpoint, "_condition", condition),
-            url=lambda path: f"{endpoint.api_url}{path}",
-            recorded_paths=lambda: [request.path for request in endpoint.requests],
-            default_response=(500, b"unexpected auth request"),
+        response = _request(
+            "GET",
+            f"{endpoint.api_url}/auth-default",
+            headers={"X-Test-Header": "auth"},
         )
+
+    assert response == (500, b"unexpected auth request")
+    assert endpoint.request_count == 1
+    [request] = endpoint.requests
+    assert request.method == "GET"
+    assert request.path == "/auth-default"
+    assert request.headers["x-test-header"] == "auth"
+    assert "X-Test-Header" not in request.headers
+    assert request.body == b""
+
+
+def test_usage_webhook_server_preserves_capture_and_default_response():
+    server = UsageWebhookServer()
+
+    with server.run():
+        response = _request(
+            "POST",
+            server.url("/usage-default"),
+            body=b"usage-body",
+            headers={"X-Test-Header": "usage"},
+        )
+
+    assert response == (204, b"")
+    assert server.request_count == 1
+    [request] = server.requests
+    assert request.method == "POST"
+    assert request.path == "/usage-default"
+    assert request.headers["x-test-header"] == "usage"
+    assert "X-Test-Header" not in request.headers
+    assert request.body == b"usage-body"
