@@ -315,6 +315,10 @@ export const setupBillingRealtime$ = command(
   },
 );
 
+function checkoutReturnUrl(): URL {
+  return new URL(window.location.pathname, window.location.origin);
+}
+
 export const startCheckout$ = command(
   async (
     { get },
@@ -323,8 +327,7 @@ export const startCheckout$ = command(
     options: { readonly trialDays?: 7 } | undefined,
     signal: AbortSignal,
   ) => {
-    const currentUrl = window.location.href;
-    const successUrl = new URL(currentUrl);
+    const successUrl = checkoutReturnUrl();
     successUrl.searchParams.set("billing", tier);
     successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
     applyStoredAdAttribution(successUrl);
@@ -334,7 +337,7 @@ export const startCheckout$ = command(
         "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
         "billing_session_id={CHECKOUT_SESSION_ID}",
       );
-    const cancelUrl = new URL(currentUrl);
+    const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("billing", "canceled");
     applyStoredAdAttribution(cancelUrl);
     const adAttribution = getStoredAdAttributionMetadata();
@@ -373,8 +376,7 @@ export const startCreditCheckout$ = command(
     newTab: boolean,
     signal: AbortSignal,
   ) => {
-    const currentUrl = window.location.href;
-    const successUrl = new URL(currentUrl);
+    const successUrl = checkoutReturnUrl();
     successUrl.searchParams.set("credits", "purchased");
     successUrl.searchParams.set(
       "credit_checkout_session_id",
@@ -386,7 +388,7 @@ export const startCreditCheckout$ = command(
         "credit_checkout_session_id=%7BCHECKOUT_SESSION_ID%7D",
         "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
       );
-    const cancelUrl = new URL(currentUrl);
+    const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("credits", "canceled");
 
     const createClient = get(zeroClient$);
@@ -414,10 +416,9 @@ export const startCreditCheckout$ = command(
 
 export const startConcurrencyCheckout$ = command(
   async ({ get }, quantity: number, newTab: boolean, signal: AbortSignal) => {
-    const currentUrl = window.location.href;
-    const successUrl = new URL(currentUrl);
+    const successUrl = checkoutReturnUrl();
     successUrl.searchParams.set("concurrency", "purchased");
-    const cancelUrl = new URL(currentUrl);
+    const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("concurrency", "canceled");
 
     const createClient = get(zeroClient$);

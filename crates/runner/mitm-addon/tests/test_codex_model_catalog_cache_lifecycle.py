@@ -59,6 +59,14 @@ async def test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions(real_fl
             catalog_cache.handle_error(flow)
 
 
+async def test_distinct_credential_tuples_with_equal_concatenation_are_partitioned(real_flow):
+    await install_catalog(catalog_flow(real_flow, auth_value="a", account="bc"))
+
+    distinct_tuple = catalog_flow(real_flow, auth_value="ab", account="c")
+    await prepare_miss(distinct_tuple)
+    catalog_cache.handle_error(distinct_tuple)
+
+
 async def test_transport_error_after_expiry_never_serves_old_entry(real_flow):
     with patch.object(catalog_cache.time, "monotonic", return_value=100.0) as monotonic:
         await install_catalog(catalog_flow(real_flow))

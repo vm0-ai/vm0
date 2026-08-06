@@ -42,6 +42,9 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ImageCanvasDoubleClickZoom, {}),
+    ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(false);
   });
 
@@ -119,8 +122,10 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ChatSteer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
+      true,
+    );
+    expect(staffOrgStates[FeatureSwitchKey.ImageCanvasDoubleClickZoom]).toBe(
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
@@ -144,8 +149,10 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatSteer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.ImageCanvasDoubleClickZoom]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);

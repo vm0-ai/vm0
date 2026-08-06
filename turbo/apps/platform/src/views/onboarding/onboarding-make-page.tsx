@@ -4,6 +4,7 @@ import { cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import { completeOnboarding$ } from "../../signals/onboarding/onboarding-actions.ts";
 import {
+  ONBOARDING_CHECKOUT_STATE_PARAM,
   onboardingDraft$,
   updateOnboardingDraft$,
   type OnboardingChoice,
@@ -25,6 +26,7 @@ const BRANCH_STATE_PARAMS = [
   "onboarding_billing_session_id",
   "onboarding_note",
   "onboarding_template",
+  ONBOARDING_CHECKOUT_STATE_PARAM,
 ] as const;
 
 function choicePath(choice: OnboardingChoice) {

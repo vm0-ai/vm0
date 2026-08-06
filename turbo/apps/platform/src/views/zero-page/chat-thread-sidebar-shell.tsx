@@ -2,6 +2,7 @@ import type {
   CSSProperties,
   PointerEvent as ReactPointerEvent,
   ReactNode,
+  TransitionEvent as ReactTransitionEvent,
 } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
@@ -15,6 +16,7 @@ import {
   startChatThreadSidebarResize$,
 } from "../../signals/chat-page/chat-thread-sidebar-layout.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { syncActiveBrowserFitAction$ } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 
 function chatThreadSidebarLayout(
   width: number | null,
@@ -77,11 +79,24 @@ export function ChatThreadSidebarShell({
   readonly open: boolean;
   readonly sidebar: ReactNode;
 }) {
+  const syncActiveBrowserFitAction = useSet(syncActiveBrowserFitAction$);
   const { style, transition } = chatThreadSidebarLayout(
     useGet(chatThreadSidebarWidth$),
     useGet(chatThreadSidebarResizing$),
     animateEntry,
   );
+
+  function handleSidebarTransitionEnd(
+    event: ReactTransitionEvent<HTMLDivElement>,
+  ): void {
+    if (
+      event.target !== event.currentTarget ||
+      (event.propertyName !== "width" && event.propertyName !== "flex-basis")
+    ) {
+      return;
+    }
+    syncActiveBrowserFitAction();
+  }
 
   return (
     // Keep this structure stable across sidebar open/close so the chat thread
@@ -99,6 +114,7 @@ export function ChatThreadSidebarShell({
       {open && <ChatThreadSidebarResizeHandle />}
       <div
         data-testid="chat-thread-sidebar-pane"
+        onTransitionEnd={handleSidebarTransitionEnd}
         className={cn(
           "flex min-h-0 min-w-0 overflow-hidden",
           transition,

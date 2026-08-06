@@ -1745,7 +1745,7 @@ export function OrgBillingTab() {
   );
   const showBuyCredits = capabilities.canBuyCredits;
   const showConcurrency = capabilities.canBuyConcurrency;
-  const canManageBilling = isPaid && status?.hasSubscription === true;
+  const canManageBilling = status?.hasSubscription === true;
   const openBillingPortal = () => {
     return detach(portal(pageSignal), Reason.DomCallback);
   };

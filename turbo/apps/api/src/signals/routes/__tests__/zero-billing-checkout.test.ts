@@ -420,6 +420,35 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 400 before calling Stripe for an oversized return URL", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+    const oversizedSuccessUrl = `${APP_ORIGIN}/billing?state=`.padEnd(
+      5001,
+      "x",
+    );
+    expect(oversizedSuccessUrl).toHaveLength(5001);
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          successUrl: oversizedSuccessUrl,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.status).toBe(400);
+    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
   it("returns 403 for non-admin org member", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");

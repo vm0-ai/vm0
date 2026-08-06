@@ -36,6 +36,8 @@ import {
 import {
   hydrateOnboardingRoute$,
   onboardingDraft$,
+  ONBOARDING_CHECKOUT_STATE_PARAM,
+  readOnboardingCheckoutDraft,
   type OnboardingDraft,
   type OnboardingRouteStep,
 } from "./onboarding-state.ts";
@@ -56,6 +58,7 @@ const ONBOARDING_TRANSIENT_PARAMS = [
   "onboarding_billing_session_id",
   "onboarding_note",
   "onboarding_template",
+  ONBOARDING_CHECKOUT_STATE_PARAM,
   "redeemCode",
 ] as const;
 
@@ -103,19 +106,23 @@ function createOnboardingPageSetup(
     const searchParams = get(searchParams$);
 
     if (config.step === "video-run") {
+      const checkoutDraft = readOnboardingCheckoutDraft(searchParams);
       const checkoutSessionId = searchParams.get(
         "onboarding_billing_session_id",
       );
-      const checkoutPrompt = searchParams.get("prompt")?.trim();
-      if (checkoutSessionId && checkoutPrompt) {
+      const checkoutPrompt =
+        searchParams.get("prompt") ?? checkoutDraft?.prompt ?? null;
+      if (checkoutSessionId && checkoutPrompt?.trim()) {
         await set(completeOnboardingCheckoutReturn$, checkoutSessionId, signal);
         await set(
           completeOnboarding$,
           searchParams.get("redeemCode")?.trim() || null,
           signal,
         );
+        const handoffParams = promptHandoffParams(searchParams);
+        handoffParams.set("prompt", checkoutPrompt);
         set(detachedNavigateTo$, ROUTES.prompt, {
-          searchParams: promptHandoffParams(searchParams),
+          searchParams: handoffParams,
           replace: true,
         });
         return;

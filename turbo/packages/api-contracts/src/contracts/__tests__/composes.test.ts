@@ -40,8 +40,8 @@ describe("agentDefinitionSchema strips unknown experimental_capabilities", () =>
 });
 
 describe("ZERO_CAPABILITIES", () => {
-  it("should have exactly 39 capabilities", () => {
-    expect(ZERO_CAPABILITIES).toHaveLength(39);
+  it("should have exactly 40 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(40);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -117,6 +117,10 @@ describe("ZERO_CAPABILITIES", () => {
 
   it("should include managed image recognition capability", () => {
     expect(ZERO_CAPABILITIES).toContain("image-recognition:write");
+  });
+
+  it("should include managed translation capability", () => {
+    expect(ZERO_CAPABILITIES).toContain("translation:write");
   });
 
   it("should include managed finance read capability", () => {

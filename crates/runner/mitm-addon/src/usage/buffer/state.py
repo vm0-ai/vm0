@@ -461,13 +461,23 @@ class _UsageBufferState:
                 retained_batches.append(
                     _PendingBatch(
                         batch=pending_batch.batch,
+                        flush_batch_index=pending_batch.flush_batch_index,
                         retained_retry_count=pending_batch.retained_retry_count + 1,
                     )
                 )
         if retained_batches:
             retained_flush = _pending_flush_from_pending_batches(flush_sequence, retained_batches)
             retained_flush.retry_after_flush_generation = flush_generation
-            self._pending_flushes.append(retained_flush)
+            retained_batch_index = retained_flush.batches[0].flush_batch_index
+            for index, pending_flush in enumerate(self._pending_flushes):
+                if (
+                    pending_flush.flush_sequence == retained_flush.flush_sequence
+                    and pending_flush.batches[0].flush_batch_index > retained_batch_index
+                ):
+                    self._pending_flushes.insert(index, retained_flush)
+                    break
+            else:
+                self._pending_flushes.append(retained_flush)
         return _RetainBatchesResult(
             retained_batches=retained_batches,
             dropped_batches=dropped_batches,

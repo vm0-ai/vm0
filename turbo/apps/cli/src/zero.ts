@@ -2,6 +2,7 @@
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
+import { zeroTranslateCommand } from "./commands/zero/translate";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import {
   decodeZeroTokenPayload,
@@ -65,11 +66,12 @@ const COMMAND_CAPABILITY_MAP: Record<
   "people-search": "people-search:read",
   "web-search": "web-search:read",
   recognize: "image-recognition:write",
+  translate: "translation:write",
   finance: "finance:read",
   banking: "banking:read",
 };
 
-const RUN_ONLY_COMMANDS = new Set(["recognize"]);
+const RUN_ONLY_COMMANDS = new Set(["recognize", "translate"]);
 
 const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
@@ -327,6 +329,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "translate",
+    description: "Translate text through a managed translation model",
+    load: async () => {
+      return zeroTranslateCommand;
+    },
+  },
+  {
     name: "finance",
     description: "Query financial instruments through managed zero finance",
     load: async () => {
@@ -513,6 +522,11 @@ export function buildZeroHelpText(
     ...commandExampleIfVisible(
       "recognize",
       '  Recognize an image?    zero recognize --file ./image.png --prompt "Describe it"',
+      payload,
+    ),
+    ...commandExampleIfVisible(
+      "translate",
+      '  Translate text?        zero translate "Hello" --to Chinese',
       payload,
     ),
     ...commandExampleIfVisible(
