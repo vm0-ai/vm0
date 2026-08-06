@@ -734,6 +734,39 @@ describe("thread-owned utility sidebar", () => {
     expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
   });
 
+  it("syncs browser fit after the sidebar entry transition", async () => {
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    const browser = browserSession();
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser });
+    });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, { browser: { ...browser, liveUrl: null } });
+    });
+    setupChatThread();
+
+    click(await screen.findByLabelText("Open browser"));
+    const frame = await screen.findByTitle("Live browser: Thread browser");
+    const viewport = frame.closest("[data-browser-session-viewport]");
+    if (!(viewport instanceof HTMLDivElement)) {
+      throw new Error("Expected a live browser viewport");
+    }
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ width: 720, height: 900 }),
+    );
+    expect(screen.getByLabelText("Fit browser to window")).not.toBeVisible();
+
+    const transitionEnd = new Event("transitionend", { bubbles: true });
+    Object.defineProperty(transitionEnd, "propertyName", { value: "width" });
+    fireEvent(screen.getByTestId("chat-thread-sidebar-pane"), transitionEnd);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Fit browser to window")).toBeVisible();
+    });
+  });
+
   it("auto-opens the thread browser while its latest lifecycle event is open", async () => {
     const liveUrl = "https://live.browser-use.com/?wss=auto-open-browser";
     const requestStarted = context.mocks.deferred<void>();
