@@ -1,7 +1,7 @@
 import { runnerRealtimeTokenContract } from "../contracts/realtime";
 import {
   runnersActiveInputsContract,
-  runnersConnectorRuntimeReconcileContract,
+  runnersConnectorRuntimeSyncContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -58,15 +58,15 @@ export const rustRouteBindings = [
     rustConstName: "REFRESH",
   },
   {
-    route: runnersConnectorRuntimeReconcileContract.reconcile,
+    route: runnersConnectorRuntimeSyncContract.sync,
     rustModulePath: [
       "runners",
       "runs",
       "by_run_id",
       "connector_runtime",
-      "reconcile",
+      "sync",
     ],
-    rustConstName: "RECONCILE",
+    rustConstName: "SYNC",
   },
   {
     route: runnersBuiltinFirewallsResolveContract.resolve,

@@ -13,9 +13,9 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
-  type ConnectorRuntimeReconcileResult,
+  type ConnectorRuntimeSyncResult,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -565,12 +565,12 @@ function inlineFirewallApis(
 }
 
 type AvailableCustomConnectorRuntime = Extract<
-  ConnectorRuntimeReconcileResult,
+  ConnectorRuntimeSyncResult,
   { readonly state: "available"; readonly target: { readonly kind: "custom" } }
 >;
 
 function availableCustomConnectorRuntime(
-  result: ConnectorRuntimeReconcileResult | undefined,
+  result: ConnectorRuntimeSyncResult | undefined,
 ): AvailableCustomConnectorRuntime {
   if (
     !result ||
@@ -589,7 +589,7 @@ function customConnectorRuntimeAuthBody(
 ) {
   const api = runtime.firewall.firewall.apis[0];
   if (!api) {
-    throw new Error("Expected the reconciled custom firewall API");
+    throw new Error("Expected the synced custom firewall API");
   }
   return {
     api,
@@ -8170,7 +8170,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     const target = { kind: "custom" as const, customConnectorId: custom.id };
-    const [initialRuntime] = await api.reconcileConnectorRuntime(run.runId, {
+    const [initialRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
     const initialAvailable = availableCustomConnectorRuntime(initialRuntime);
@@ -8207,7 +8207,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expiresAt: null,
     });
 
-    const [updatedRuntime] = await api.reconcileConnectorRuntime(run.runId, {
+    const [updatedRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
     const updatedAvailable = availableCustomConnectorRuntime(updatedRuntime);
@@ -8226,7 +8226,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     await connectors.updateAgentCustomConnectors(actor, agentId, []);
-    const [absentRuntime] = await api.reconcileConnectorRuntime(run.runId, {
+    const [absentRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
     expect(absentRuntime).toMatchObject({
@@ -8236,7 +8236,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
-    const [restoredRuntime] = await api.reconcileConnectorRuntime(run.runId, {
+    const [restoredRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
     expect(restoredRuntime).toMatchObject({
@@ -9507,7 +9507,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(sameUserRefresh.body.refreshes[0]).toMatchObject({
       connectorSlug: "slack",
     });
-    const sameUserRuntime = await api.requestReconcileConnectorRuntimeAs(
+    const sameUserRuntime = await api.requestSyncConnectorRuntimeAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
       {
@@ -9533,7 +9533,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(otherUserRefresh.body.error.message).toBe(
       "Run does not belong to user",
     );
-    const otherUserRuntime = await api.requestReconcileConnectorRuntimeAs(
+    const otherUserRuntime = await api.requestSyncConnectorRuntimeAs(
       `Bearer ${memberRunnerKey.token}`,
       snapshotRun.runId,
       {
@@ -9592,7 +9592,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelledRefresh.body.error.code).toBe(
       NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
     );
-    const cancelledRuntime = await api.requestReconcileConnectorRuntimeAs(
+    const cancelledRuntime = await api.requestSyncConnectorRuntimeAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
       {
@@ -9601,7 +9601,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       [409],
     );
     expect(cancelledRuntime.body.error.code).toBe(
-      CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE,
+      CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
     );
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);

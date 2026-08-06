@@ -1,6 +1,6 @@
 import type {
   ConnectorRuntimeAbsentReason,
-  ConnectorRuntimeReconcileResult,
+  ConnectorRuntimeSyncResult,
   ConnectorRuntimeTarget,
 } from "@vm0/api-contracts/contracts/runners";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
@@ -31,7 +31,7 @@ import {
   type StoredValueRow,
 } from "./zero-custom-connector.service";
 
-const PERIODIC_RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
+const PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 interface ConnectorRuntimeScope {
   readonly orgId: string;
@@ -60,7 +60,7 @@ interface CustomTargetSnapshot {
 }
 
 export interface ConnectorRuntimeResolution {
-  readonly result: ConnectorRuntimeReconcileResult;
+  readonly result: ConnectorRuntimeSyncResult;
   readonly customAuthRefs?: readonly CustomConnectorAuthRef[];
   readonly customAuthExpiresAt?: string;
 }
@@ -71,13 +71,8 @@ function targetKey(target: ConnectorRuntimeTarget): string {
     : `custom:${target.customConnectorId}`;
 }
 
-function periodicReconcileAt(
-  checkedAt: Date,
-  semanticAt?: string | null,
-): string {
-  const periodicAt = new Date(
-    checkedAt.getTime() + PERIODIC_RECONCILE_INTERVAL_MS,
-  );
+function periodicSyncAt(checkedAt: Date, semanticAt?: string | null): string {
+  const periodicAt = new Date(checkedAt.getTime() + PERIODIC_SYNC_INTERVAL_MS);
   if (!semanticAt) {
     return periodicAt.toISOString();
   }
@@ -95,7 +90,7 @@ function absentResult(
       target,
       state: "absent",
       reason,
-      nextReconcileAt: periodicReconcileAt(checkedAt),
+      nextSyncAt: periodicSyncAt(checkedAt),
     },
   };
 }
@@ -388,7 +383,7 @@ async function resolveCustomTarget(args: {
     state: "available" as const,
     firewall: state.firewall,
     networkPolicy: state.networkPolicy,
-    nextReconcileAt: periodicReconcileAt(args.checkedAt),
+    nextSyncAt: periodicSyncAt(args.checkedAt),
   };
   return {
     result: {
@@ -440,10 +435,7 @@ export async function resolveConnectorRuntimeTargets(args: {
               target,
               state: "available",
               networkPolicy: refresh.networkPolicy,
-              nextReconcileAt: periodicReconcileAt(
-                checkedAt,
-                refresh.nextRefreshAt,
-              ),
+              nextSyncAt: periodicSyncAt(checkedAt, refresh.nextRefreshAt),
             },
           }
         : absentResult(target, "connector-unavailable", checkedAt),

@@ -40,9 +40,8 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX = 256;
 export const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
-export const CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX = 256;
-export const CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE =
-  "RUN_TERMINAL";
+export const CONNECTOR_RUNTIME_SYNC_TARGETS_MAX = 256;
+export const CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
 export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
 export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS + 30_000;
@@ -224,9 +223,9 @@ const connectorRuntimeTargetsSchema = z
   .array(connectorRuntimeTargetSchema)
   .superRefine(uniqueConnectorRuntimeTargets);
 
-const connectorRuntimeReconcileTargetsSchema = connectorRuntimeTargetsSchema
+const connectorRuntimeSyncTargetsSchema = connectorRuntimeTargetsSchema
   .min(1)
-  .max(CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX);
+  .max(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX);
 
 export const connectorRuntimeAbsentReasonSchema = z.enum([
   "connector-unavailable",
@@ -237,7 +236,7 @@ export const connectorRuntimeAbsentReasonSchema = z.enum([
 ]);
 
 const connectorRuntimeResultBaseSchema = z.object({
-  nextReconcileAt: z.string().datetime({ offset: true }),
+  nextSyncAt: z.string().datetime({ offset: true }),
 });
 
 export const connectorRuntimeBuiltinAvailableResultSchema =
@@ -271,7 +270,7 @@ export const connectorRuntimeAbsentResultSchema =
     reason: connectorRuntimeAbsentReasonSchema,
   });
 
-export const connectorRuntimeReconcileResultSchema = z.union([
+export const connectorRuntimeSyncResultSchema = z.union([
   connectorRuntimeBuiltinAvailableResultSchema,
   connectorRuntimeCustomAvailableResultSchema,
   connectorRuntimeAbsentResultSchema,
@@ -936,20 +935,20 @@ export const runnersNetworkPolicyRefreshContract = c.router({
   },
 });
 
-export const runnersConnectorRuntimeReconcileContract = c.router({
-  reconcile: {
+export const runnersConnectorRuntimeSyncContract = c.router({
+  sync: {
     method: "POST",
-    path: "/api/runners/runs/:runId/connector-runtime/reconcile",
+    path: "/api/runners/runs/:runId/connector-runtime/sync",
     headers: authHeadersSchema,
     pathParams: z.object({
       runId: z.uuid(),
     }),
     body: z.object({
-      targets: connectorRuntimeReconcileTargetsSchema,
+      targets: connectorRuntimeSyncTargetsSchema,
     }),
     responses: {
       200: z.object({
-        results: z.array(connectorRuntimeReconcileResultSchema),
+        results: z.array(connectorRuntimeSyncResultSchema),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -957,12 +956,12 @@ export const runnersConnectorRuntimeReconcileContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema.extend({
         error: apiErrorSchema.shape.error.extend({
-          code: z.literal(CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE),
+          code: z.literal(CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE),
         }),
       }),
       500: apiErrorSchema,
     },
-    summary: "Reconcile active run connector runtime targets",
+    summary: "Sync active run connector runtime targets",
   },
 });
 
@@ -1046,8 +1045,8 @@ export type RunnersJobClaimContract = typeof runnersJobClaimContract;
 export type RunnersActiveInputsContract = typeof runnersActiveInputsContract;
 export type RunnersNetworkPolicyRefreshContract =
   typeof runnersNetworkPolicyRefreshContract;
-export type RunnersConnectorRuntimeReconcileContract =
-  typeof runnersConnectorRuntimeReconcileContract;
+export type RunnersConnectorRuntimeSyncContract =
+  typeof runnersConnectorRuntimeSyncContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
@@ -1078,8 +1077,8 @@ export type ConnectorRuntimeTarget = z.infer<
 export type ConnectorRuntimeAbsentReason = z.infer<
   typeof connectorRuntimeAbsentReasonSchema
 >;
-export type ConnectorRuntimeReconcileResult = z.infer<
-  typeof connectorRuntimeReconcileResultSchema
+export type ConnectorRuntimeSyncResult = z.infer<
+  typeof connectorRuntimeSyncResultSchema
 >;
 export type RunnerBuiltinFirewallsResolveBody = z.infer<
   typeof runnerBuiltinFirewallsResolveBodySchema

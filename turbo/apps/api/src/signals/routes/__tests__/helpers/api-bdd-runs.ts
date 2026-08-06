@@ -32,7 +32,7 @@ import {
 } from "@vm0/api-contracts/contracts/cron";
 import {
   runnersActiveInputsContract,
-  runnersConnectorRuntimeReconcileContract,
+  runnersConnectorRuntimeSyncContract,
   runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
@@ -106,17 +106,10 @@ type RunnerNetworkPolicyRefreshRequest = z.input<
   (typeof runnersNetworkPolicyRefreshContract.refresh)["body"]
 >;
 type RunnerNetworkPolicyRefreshStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
-type RunnerConnectorRuntimeReconcileRequest = z.input<
-  (typeof runnersConnectorRuntimeReconcileContract.reconcile)["body"]
+type RunnerConnectorRuntimeSyncRequest = z.input<
+  (typeof runnersConnectorRuntimeSyncContract.sync)["body"]
 >;
-type RunnerConnectorRuntimeReconcileStatus =
-  | 200
-  | 400
-  | 401
-  | 403
-  | 404
-  | 409
-  | 500;
+type RunnerConnectorRuntimeSyncStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 type OrgModelPolicyRequest = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
@@ -609,16 +602,16 @@ export function createRunsApi(context: TestContext) {
       );
     },
 
-    async requestReconcileConnectorRuntimeAs<
-      TStatus extends RunnerConnectorRuntimeReconcileStatus,
+    async requestSyncConnectorRuntimeAs<
+      TStatus extends RunnerConnectorRuntimeSyncStatus,
     >(
       authorization: string | undefined,
       runId: string,
-      body: RunnerConnectorRuntimeReconcileRequest,
+      body: RunnerConnectorRuntimeSyncRequest,
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        runApp(context)(runnersConnectorRuntimeReconcileContract).reconcile({
+        runApp(context)(runnersConnectorRuntimeSyncContract).sync({
           headers: authorization === undefined ? {} : { authorization },
           params: { runId },
           body,
@@ -627,12 +620,12 @@ export function createRunsApi(context: TestContext) {
       );
     },
 
-    async reconcileConnectorRuntime(
+    async syncConnectorRuntime(
       runId: string,
-      body: RunnerConnectorRuntimeReconcileRequest,
+      body: RunnerConnectorRuntimeSyncRequest,
     ) {
       const response = await accept(
-        runApp(context)(runnersConnectorRuntimeReconcileContract).reconcile({
+        runApp(context)(runnersConnectorRuntimeSyncContract).sync({
           headers: runnerHeaders(true),
           params: { runId },
           body,

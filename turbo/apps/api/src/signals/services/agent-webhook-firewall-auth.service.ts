@@ -9,7 +9,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
-  ConnectorRuntimeReconcileResult,
+  ConnectorRuntimeSyncResult,
   SecretConnectorMetadata,
 } from "@vm0/api-contracts/contracts/runners";
 import type {
@@ -112,7 +112,7 @@ import { CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY } from "./zero-custom-c
 import {
   resolveConnectorRuntimeTargets,
   type ConnectorRuntimeResolution,
-} from "./connector-runtime-reconcile.service";
+} from "./connector-runtime-sync.service";
 
 type AccessSecretSource = SecretConnectorMetadata["sourceType"];
 type StorageSecretSource = Exclude<AccessSecretSource, "platform-secret">;
@@ -4142,7 +4142,7 @@ function optionalRecordEquals(
 }
 
 type AvailableCustomConnectorRuntimeResult = Extract<
-  ConnectorRuntimeReconcileResult,
+  ConnectorRuntimeSyncResult,
   { readonly state: "available"; readonly target: { readonly kind: "custom" } }
 >;
 

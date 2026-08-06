@@ -108,19 +108,19 @@ pub mod runners {
     /// The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.
     pub const CANCELLATION_RECOVERY_STALE_AFTER_MS: u64 = 120000;
 
-    /// API error code returned when connector runtime reconciliation targets a terminal run.
-    pub const CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE: &str = "RUN_TERMINAL";
+    /// API error code returned when connector runtime synchronization targets a terminal run.
+    pub const CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE: &str = "RUN_TERMINAL";
 
-    /// Maximum connector runtime targets accepted by the reconciliation endpoint.
+    /// Maximum connector runtime targets accepted by the sync endpoint.
     /// Rust runners use this shared contract value to split target batches before calling the API.
-    pub const CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX: u64 = 256;
+    pub const CONNECTOR_RUNTIME_SYNC_TARGETS_MAX: u64 = 256;
 
     /// Maximum connector slugs accepted by the runner network policy refresh endpoint.
     /// Rust runners use this shared contract value to split refresh requests before calling the API.
     pub const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX: u64 = 256;
 
     /// API error code returned when network policy refresh targets a terminal run.
-    /// Rust runners use this shared contract value to distinguish terminal reconciliation from ambiguous refresh failures.
+    /// Rust runners use this shared contract value to distinguish terminal sync from ambiguous refresh failures.
     pub const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE: &str = "RUN_TERMINAL";
 
     /// Maximum resume session history blob size accepted by the API, runner, and guest verifier.

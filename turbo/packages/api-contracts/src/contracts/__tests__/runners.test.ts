@@ -6,8 +6,8 @@ import { z } from "zod";
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   compatibleStoredExecutionContextSchema,
-  CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX,
-  connectorRuntimeReconcileResultSchema,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
+  connectorRuntimeSyncResultSchema,
   elapsedSinceApiStartMs,
   executionContextSchema,
   heartbeatBodySchema,
@@ -23,7 +23,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
   runnersBuiltinFirewallsResolveContract,
-  runnersConnectorRuntimeReconcileContract,
+  runnersConnectorRuntimeSyncContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
   runnersPollContract,
@@ -112,15 +112,15 @@ describe("runner claim response contract", () => {
   });
 });
 
-describe("connector runtime reconciliation contract", () => {
+describe("connector runtime synchronization contract", () => {
   const customConnectorId = "00000000-0000-4000-8000-000000000001";
 
-  it("limits reconciliation batches without limiting run targets", () => {
+  it("limits sync batches without limiting run targets", () => {
     const fixture = executionContextSchema.parse(
       loadRunnerClaimResponseFixture(),
     );
     const targets = Array.from(
-      { length: CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX + 1 },
+      { length: CONNECTOR_RUNTIME_SYNC_TARGETS_MAX + 1 },
       (_, index) => {
         return {
           kind: "builtin" as const,
@@ -136,7 +136,7 @@ describe("connector runtime reconciliation contract", () => {
       }).success,
     ).toBe(true);
     expect(
-      runnersConnectorRuntimeReconcileContract.reconcile.body.safeParse({
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
         targets,
       }).success,
     ).toBe(false);
@@ -149,7 +149,7 @@ describe("connector runtime reconciliation contract", () => {
     };
 
     expect(
-      runnersConnectorRuntimeReconcileContract.reconcile.body.safeParse({
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
         targets: [target, target],
       }).success,
     ).toBe(false);
@@ -159,7 +159,7 @@ describe("connector runtime reconciliation contract", () => {
     const result = {
       target: { kind: "custom" as const, customConnectorId },
       state: "available" as const,
-      nextReconcileAt: "2026-08-06T00:00:00.000Z",
+      nextSyncAt: "2026-08-06T00:00:00.000Z",
       firewall: {
         kind: "inline" as const,
         firewall: {
@@ -182,11 +182,11 @@ describe("connector runtime reconciliation contract", () => {
       },
     };
 
+    expect(connectorRuntimeSyncResultSchema.safeParse(result).success).toBe(
+      true,
+    );
     expect(
-      connectorRuntimeReconcileResultSchema.safeParse(result).success,
-    ).toBe(true);
-    expect(
-      connectorRuntimeReconcileResultSchema.safeParse({
+      connectorRuntimeSyncResultSchema.safeParse({
         ...result,
         firewall: {
           ...result.firewall,

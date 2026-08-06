@@ -34,15 +34,15 @@ const expectedBindings = [
   },
   {
     method: "POST",
-    path: "/api/runners/runs/:runId/connector-runtime/reconcile",
+    path: "/api/runners/runs/:runId/connector-runtime/sync",
     rustModulePath: [
       "runners",
       "runs",
       "by_run_id",
       "connector_runtime",
-      "reconcile",
+      "sync",
     ],
-    rustConstName: "RECONCILE",
+    rustConstName: "SYNC",
   },
   {
     method: "POST",

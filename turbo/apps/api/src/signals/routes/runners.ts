@@ -2,12 +2,12 @@ import { command } from "ccstate";
 import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   compatibleStoredExecutionContextSchema,
-  CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersActiveInputsContract,
-  runnersConnectorRuntimeReconcileContract,
+  runnersConnectorRuntimeSyncContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -100,7 +100,7 @@ import {
 } from "../services/chat-event-queue.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
-import { resolveConnectorRuntimeTargets } from "../services/connector-runtime-reconcile.service";
+import { resolveConnectorRuntimeTargets } from "../services/connector-runtime-sync.service";
 import { replaceLoadedChatEvent } from "../services/zero-chat-event.service";
 import { withRunModelAnnotation } from "../services/zero-chat-user-message.service";
 import {
@@ -782,8 +782,8 @@ const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
 const networkPolicyRefreshBody$ = bodyResultOf(
   runnersNetworkPolicyRefreshContract.refresh,
 );
-const connectorRuntimeReconcileBody$ = bodyResultOf(
-  runnersConnectorRuntimeReconcileContract.reconcile,
+const connectorRuntimeSyncBody$ = bodyResultOf(
+  runnersConnectorRuntimeSyncContract.sync,
 );
 const builtinFirewallsResolveBody$ = bodyResultOf(
   runnersBuiltinFirewallsResolveContract.resolve,
@@ -2600,7 +2600,7 @@ const networkPolicyRefreshInner$ = command(
   },
 );
 
-const connectorRuntimeReconcileInner$ = command(
+const connectorRuntimeSyncInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = await set(runnerAuth$, get(authorization$), signal);
     signal.throwIfAborted();
@@ -2608,14 +2608,14 @@ const connectorRuntimeReconcileInner$ = command(
       return unauthorizedAuthenticationRequired;
     }
 
-    const body = await get(connectorRuntimeReconcileBody$);
+    const body = await get(connectorRuntimeSyncBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
 
     const runId = get(
-      pathParamsOf(runnersConnectorRuntimeReconcileContract.reconcile),
+      pathParamsOf(runnersConnectorRuntimeSyncContract.sync),
     ).runId;
     const db = set(writeDb$);
     const run = await getRunNetworkPolicyScope(db, runId, signal);
@@ -2632,7 +2632,7 @@ const connectorRuntimeReconcileInner$ = command(
         status: 409 as const,
         body: {
           error: {
-            code: CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE,
+            code: CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
             message: "Run is terminal",
           },
         },
@@ -3061,8 +3061,8 @@ export const runnersRoutes: readonly RouteEntry[] = [
     handler: networkPolicyRefreshInner$,
   },
   {
-    route: runnersConnectorRuntimeReconcileContract.reconcile,
-    handler: connectorRuntimeReconcileInner$,
+    route: runnersConnectorRuntimeSyncContract.sync,
+    handler: connectorRuntimeSyncInner$,
   },
   {
     route: runnersBuiltinFirewallsResolveContract.resolve,

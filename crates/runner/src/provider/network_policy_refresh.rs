@@ -1,4 +1,4 @@
-//! Connector runtime reconciliation for active API-backed runs.
+//! Connector runtime synchronization for active API-backed runs.
 //!
 //! Tagged builtin and custom connector targets share one scheduler, bounded
 //! queue, generation model, retry policy, and registry publication boundary.
@@ -8,7 +8,7 @@
 //! contract limit. Untagged execution contexts continue through the legacy
 //! builtin network-policy endpoint during rolling deployment.
 //!
-//! A tagged reconciliation response must contain each requested target exactly
+//! A tagged sync response must contain each requested target exactly
 //! once. Available results atomically replace the target's firewall and policy;
 //! authoritative absence removes them while retaining the target schedule so a
 //! later grant or configuration restore can reactivate the same run. Transport,
@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::{
-    CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX, NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
+    CONNECTOR_RUNTIME_SYNC_TARGETS_MAX, NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
 };
 use chrono::{DateTime, Utc};
 use tokio::sync::{
@@ -43,20 +43,18 @@ use tokio::sync::{
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::api::{ApiClient, ConnectorRuntimeReconcileOutcome, NetworkPolicyRefreshOutcome};
+use super::api::{ApiClient, ConnectorRuntimeSyncOutcome, NetworkPolicyRefreshOutcome};
 use crate::error::RunnerError;
 use crate::ids::RunId;
 use crate::proxy::{ConnectorRuntimeRegistryState, ProxyRegistryHandle};
 use crate::types::{
-    ConnectorRuntimeReconcileBatchResponse, ConnectorRuntimeReconcileResult,
-    ConnectorRuntimeReconcileState, ConnectorRuntimeTarget, FirewallEntry, NetworkPolicy,
-    NetworkPolicyRefresh,
+    ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeSyncResult, ConnectorRuntimeSyncState,
+    ConnectorRuntimeTarget, FirewallEntry, NetworkPolicy, NetworkPolicyRefresh,
 };
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
 const NETWORK_POLICY_REFRESH_BATCH_MAX: usize = NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX as usize;
-const CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX: usize =
-    CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX as usize;
+const CONNECTOR_RUNTIME_SYNC_BATCH_MAX: usize = CONNECTOR_RUNTIME_SYNC_TARGETS_MAX as usize;
 const EXPIRED_REFRESH_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
 const SCHEDULED_REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 const REFRESH_RETRY_INITIAL_DELAY: Duration = Duration::from_secs(1);
@@ -183,7 +181,7 @@ impl NetworkPolicyRefreshHandle {
         connector_slug: String,
     ) {
         self.core
-            .notify_connector_runtime_reconcile(
+            .notify_connector_runtime_sync(
                 run_id,
                 ConnectorRuntimeTarget::Builtin { connector_slug },
             )
@@ -197,7 +195,7 @@ impl NetworkPolicyRefreshHandle {
         cancel: &CancellationToken,
     ) {
         self.core
-            .notify_connector_runtime_reconcile_until_cancelled(
+            .notify_connector_runtime_sync_until_cancelled(
                 run_id,
                 ConnectorRuntimeTarget::Builtin { connector_slug },
                 cancel,
@@ -205,24 +203,24 @@ impl NetworkPolicyRefreshHandle {
             .await;
     }
 
-    pub(crate) async fn notify_connector_runtime_reconcile(
+    pub(crate) async fn notify_connector_runtime_sync(
         &self,
         run_id: RunId,
         target: ConnectorRuntimeTarget,
     ) {
         self.core
-            .notify_connector_runtime_reconcile(run_id, target)
+            .notify_connector_runtime_sync(run_id, target)
             .await;
     }
 
-    pub(crate) async fn notify_connector_runtime_reconcile_until_cancelled(
+    pub(crate) async fn notify_connector_runtime_sync_until_cancelled(
         &self,
         run_id: RunId,
         target: ConnectorRuntimeTarget,
         cancel: &CancellationToken,
     ) {
         self.core
-            .notify_connector_runtime_reconcile_until_cancelled(run_id, target, cancel)
+            .notify_connector_runtime_sync_until_cancelled(run_id, target, cancel)
             .await;
     }
 
@@ -390,7 +388,7 @@ impl NetworkPolicyRefreshCore {
 
     #[cfg(test)]
     async fn notify_network_policy_refresh(&self, run_id: RunId, connector_slug: String) {
-        self.notify_connector_runtime_reconcile(
+        self.notify_connector_runtime_sync(
             run_id,
             ConnectorRuntimeTarget::Builtin { connector_slug },
         )
@@ -404,7 +402,7 @@ impl NetworkPolicyRefreshCore {
         connector_slug: String,
         cancel: &CancellationToken,
     ) {
-        self.notify_connector_runtime_reconcile_until_cancelled(
+        self.notify_connector_runtime_sync_until_cancelled(
             run_id,
             ConnectorRuntimeTarget::Builtin { connector_slug },
             cancel,
@@ -412,26 +410,22 @@ impl NetworkPolicyRefreshCore {
         .await;
     }
 
-    async fn notify_connector_runtime_reconcile(
-        &self,
-        run_id: RunId,
-        target: ConnectorRuntimeTarget,
-    ) {
-        self.notify_connector_runtime_reconcile_inner(run_id, target, None)
+    async fn notify_connector_runtime_sync(&self, run_id: RunId, target: ConnectorRuntimeTarget) {
+        self.notify_connector_runtime_sync_inner(run_id, target, None)
             .await;
     }
 
-    async fn notify_connector_runtime_reconcile_until_cancelled(
+    async fn notify_connector_runtime_sync_until_cancelled(
         &self,
         run_id: RunId,
         target: ConnectorRuntimeTarget,
         cancel: &CancellationToken,
     ) {
-        self.notify_connector_runtime_reconcile_inner(run_id, target, Some(cancel))
+        self.notify_connector_runtime_sync_inner(run_id, target, Some(cancel))
             .await;
     }
 
-    async fn notify_connector_runtime_reconcile_inner(
+    async fn notify_connector_runtime_sync_inner(
         &self,
         run_id: RunId,
         target: ConnectorRuntimeTarget,
@@ -514,7 +508,7 @@ impl NetworkPolicyRefreshCore {
         }
 
         let batch_max = if self.run_is_tagged(run_id).await {
-            CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX
+            CONNECTOR_RUNTIME_SYNC_BATCH_MAX
         } else {
             NETWORK_POLICY_REFRESH_BATCH_MAX
         };
@@ -539,7 +533,7 @@ impl NetworkPolicyRefreshCore {
     ) -> bool {
         if self.run_is_tagged(run_id).await {
             return self
-                .reconcile_connector_runtime_batch_now(run_id, active_targets)
+                .sync_connector_runtime_batch_now(run_id, active_targets)
                 .await;
         }
         self.refresh_legacy_network_policy_batch_now(run_id, active_targets)
@@ -721,7 +715,7 @@ impl NetworkPolicyRefreshCore {
         true
     }
 
-    async fn reconcile_connector_runtime_batch_now(
+    async fn sync_connector_runtime_batch_now(
         &self,
         run_id: RunId,
         active_targets: &[ConnectorRefreshTarget],
@@ -735,7 +729,7 @@ impl NetworkPolicyRefreshCore {
             let response = self
                 .inner
                 .api
-                .reconcile_connector_runtime(run_id, &requested_targets)
+                .sync_connector_runtime(run_id, &requested_targets)
                 .await;
             if !transport_retry_attempted && let Err(RunnerError::ApiTransport(error)) = &response {
                 transport_retry_attempted = true;
@@ -746,7 +740,7 @@ impl NetworkPolicyRefreshCore {
                     attempt = 1,
                     max_attempts = 2,
                     will_retry = true,
-                    "connector runtime reconcile transport failed, retrying"
+                    "connector runtime sync transport failed, retrying"
                 );
                 continue;
             }
@@ -754,12 +748,12 @@ impl NetworkPolicyRefreshCore {
         };
 
         let response = match response {
-            Ok(ConnectorRuntimeReconcileOutcome::Reconciled(response)) => response,
-            Ok(ConnectorRuntimeReconcileOutcome::RunTerminal) => {
+            Ok(ConnectorRuntimeSyncOutcome::Synced(response)) => response,
+            Ok(ConnectorRuntimeSyncOutcome::RunTerminal) => {
                 self.reconcile_terminal_run(run_id).await;
                 return false;
             }
-            Ok(ConnectorRuntimeReconcileOutcome::RouteUnavailable) => {
+            Ok(ConnectorRuntimeSyncOutcome::RouteUnavailable) => {
                 let builtin_targets = active_targets
                     .iter()
                     .filter(|target| target.target.builtin_connector_slug().is_some())
@@ -791,7 +785,7 @@ impl NetworkPolicyRefreshCore {
                     targets = ?target_identities(active_targets),
                     error = %error,
                     transport_retry_attempted,
-                    "connector runtime reconcile failed; retaining last-known-good state"
+                    "connector runtime sync failed; retaining last-known-good state"
                 );
                 self.schedule_refresh_retries(run_id, active_targets, "api_error")
                     .await;
@@ -807,7 +801,7 @@ impl NetworkPolicyRefreshCore {
         &self,
         run_id: RunId,
         active_targets: &[ConnectorRefreshTarget],
-        response: ConnectorRuntimeReconcileBatchResponse,
+        response: ConnectorRuntimeSyncBatchResponse,
     ) -> bool {
         let requested_targets = active_targets
             .iter()
@@ -821,7 +815,7 @@ impl NetworkPolicyRefreshCore {
                 warn!(
                     run_id = %run_id,
                     target = %result.target.log_identity(),
-                    "connector runtime reconcile returned unexpected target"
+                    "connector runtime sync returned unexpected target"
                 );
                 continue;
             }
@@ -831,7 +825,7 @@ impl NetworkPolicyRefreshCore {
                 warn!(
                     run_id = %run_id,
                     target = %target.log_identity(),
-                    "connector runtime reconcile returned duplicate target"
+                    "connector runtime sync returned duplicate target"
                 );
             }
         }
@@ -844,7 +838,7 @@ impl NetworkPolicyRefreshCore {
                 warn!(
                     run_id = %run_id,
                     target = %target.log_identity(),
-                    "connector runtime reconcile response omitted requested target"
+                    "connector runtime sync response omitted requested target"
                 );
             }
             self.schedule_refresh_retries(run_id, active_targets, "invalid_response_identity")
@@ -858,12 +852,12 @@ impl NetworkPolicyRefreshCore {
                 warn!(
                     run_id = %run_id,
                     target = %target.target.log_identity(),
-                    "connector runtime reconcile response lost a validated target"
+                    "connector runtime sync response lost a validated target"
                 );
                 retry_targets.push(target.clone());
                 continue;
             };
-            let deadline = match parse_refresh_deadline(&result.next_reconcile_at) {
+            let deadline = match parse_refresh_deadline(&result.next_sync_at) {
                 Ok(deadline) => deadline,
                 Err(()) => {
                     retry_targets.push(target.clone());
@@ -880,13 +874,13 @@ impl NetworkPolicyRefreshCore {
                         run_id = %run_id,
                         target = %target.target.log_identity(),
                         error,
-                        "invalid connector runtime reconcile result; retaining last-known-good state"
+                        "invalid connector runtime sync result; retaining last-known-good state"
                     );
                     retry_targets.push(target.clone());
                     continue;
                 }
             };
-            if let ConnectorRuntimeReconcileState::Absent { reason } = &result.state {
+            if let ConnectorRuntimeSyncState::Absent { reason } = &result.state {
                 info!(
                     run_id = %run_id,
                     target = %target.target.log_identity(),
@@ -913,7 +907,7 @@ impl NetworkPolicyRefreshCore {
                             run_id = %run_id,
                             target = %target.target.log_identity(),
                             generation = target.generation,
-                            "reconciled connector runtime target"
+                            "synced connector runtime target"
                         );
                     }
                 }
@@ -1320,16 +1314,14 @@ async fn patch_network_policy(
 }
 
 fn connector_runtime_registry_state(
-    result: &ConnectorRuntimeReconcileResult,
+    result: &ConnectorRuntimeSyncResult,
     snapshot: &ActiveRunNetworkPolicySnapshot,
 ) -> Result<ConnectorRuntimeRegistryState, &'static str> {
     match (&result.target, &result.state) {
-        (_, ConnectorRuntimeReconcileState::Absent { .. }) => {
-            Ok(ConnectorRuntimeRegistryState::Absent)
-        }
+        (_, ConnectorRuntimeSyncState::Absent { .. }) => Ok(ConnectorRuntimeRegistryState::Absent),
         (
             ConnectorRuntimeTarget::Builtin { connector_slug },
-            ConnectorRuntimeReconcileState::Available {
+            ConnectorRuntimeSyncState::Available {
                 network_policy,
                 firewall,
             },
@@ -1350,7 +1342,7 @@ fn connector_runtime_registry_state(
             ConnectorRuntimeTarget::Custom {
                 custom_connector_id,
             },
-            ConnectorRuntimeReconcileState::Available {
+            ConnectorRuntimeSyncState::Available {
                 network_policy,
                 firewall:
                     Some(
@@ -1375,7 +1367,7 @@ fn connector_runtime_registry_state(
         }
         (
             ConnectorRuntimeTarget::Custom { .. },
-            ConnectorRuntimeReconcileState::Available { network_policy, .. },
+            ConnectorRuntimeSyncState::Available { network_policy, .. },
         ) => {
             validate_connector_runtime_network_policy(network_policy)?;
             Err("custom available result must include an inline firewall")
@@ -2306,17 +2298,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tagged_custom_target_registers_while_absent_and_restores_from_reconcile() {
+    async fn tagged_custom_target_registers_while_absent_and_restores_from_sync() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
         let target = custom_target(custom_connector_id);
-        let absent_reconcile = server.mock(|when, then| {
+        let absent_sync = server.mock(|when, then| {
             when.method(POST)
-                .path(format!(
-                    "/api/runners/runs/{run_id}/connector-runtime/reconcile"
-                ))
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
                 .json_body(json!({ "targets": [target.clone()] }));
             then.status(200)
                 .header("content-type", "application/json")
@@ -2325,7 +2315,7 @@ mod tests {
                         "target": target.clone(),
                         "state": "absent",
                         "reason": "grant-unavailable",
-                        "nextReconcileAt": "2999-01-01T00:00:00Z",
+                        "nextSyncAt": "2999-01-01T00:00:00Z",
                     }],
                 }));
         });
@@ -2349,10 +2339,10 @@ mod tests {
         assert_eq!(request.targets[0].target, target);
 
         assert!(
-            core.reconcile_connector_runtime_batch_now(run_id, &request.targets)
+            core.sync_connector_runtime_batch_now(run_id, &request.targets)
                 .await
         );
-        absent_reconcile.assert_calls(1);
+        absent_sync.assert_calls(1);
         let absent_registry: serde_json::Value = serde_json::from_str(
             &tokio::fs::read_to_string(&registry_path)
                 .await
@@ -2369,12 +2359,10 @@ mod tests {
                 .contains_key(&target)
         );
 
-        absent_reconcile.delete_async().await;
-        let available_reconcile = server.mock(|when, then| {
+        absent_sync.delete_async().await;
+        let available_sync = server.mock(|when, then| {
             when.method(POST)
-                .path(format!(
-                    "/api/runners/runs/{run_id}/connector-runtime/reconcile"
-                ))
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
                 .json_body(json!({ "targets": [target.clone()] }));
             then.status(200)
                 .header("content-type", "application/json")
@@ -2389,19 +2377,19 @@ mod tests {
                             "ask": [],
                             "unknownPolicy": "deny",
                         },
-                        "nextReconcileAt": "2999-01-01T00:00:00Z",
+                        "nextSyncAt": "2999-01-01T00:00:00Z",
                     }],
                 }));
         });
-        core.notify_connector_runtime_reconcile(run_id, target.clone())
+        core.notify_connector_runtime_sync(run_id, target.clone())
             .await;
         let request = recv_refresh_request(&mut requests).await;
         assert!(
-            core.reconcile_connector_runtime_batch_now(run_id, &request.targets)
+            core.sync_connector_runtime_batch_now(run_id, &request.targets)
                 .await
         );
 
-        available_reconcile.assert_calls(1);
+        available_sync.assert_calls(1);
         let registry_json: serde_json::Value = serde_json::from_str(
             &tokio::fs::read_to_string(&registry_path)
                 .await
@@ -2441,9 +2429,8 @@ mod tests {
         )]);
         let invalid_firewall = custom_runtime_firewall("550e8400-e29b-41d4-a716-446655440001");
         server.mock(|when, then| {
-            when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-runtime/reconcile"
-            ));
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"));
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -2457,7 +2444,7 @@ mod tests {
                             "ask": [],
                             "unknownPolicy": "allow",
                         },
-                        "nextReconcileAt": "2999-01-01T00:00:00Z",
+                        "nextSyncAt": "2999-01-01T00:00:00Z",
                     }],
                 }));
         });
@@ -2479,7 +2466,7 @@ mod tests {
         let request = recv_refresh_request(&mut requests).await;
 
         assert!(
-            core.reconcile_connector_runtime_batch_now(run_id, &request.targets)
+            core.sync_connector_runtime_batch_now(run_id, &request.targets)
                 .await
         );
 
@@ -2502,9 +2489,8 @@ mod tests {
         let run_id = RunId::nil();
         let target = builtin_target("slack");
         let tagged_route = server.mock(|when, then| {
-            when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-runtime/reconcile"
-            ));
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"));
             then.status(404);
         });
         let legacy_route = server.mock(|when, then| {
@@ -2555,7 +2541,7 @@ mod tests {
         let request = recv_refresh_request(&mut requests).await;
 
         assert!(
-            core.reconcile_connector_runtime_batch_now(run_id, &request.targets)
+            core.sync_connector_runtime_batch_now(run_id, &request.targets)
                 .await
         );
 
@@ -2583,9 +2569,8 @@ mod tests {
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
         let target = custom_target(custom_connector_id);
         let tagged_route = server.mock(|when, then| {
-            when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-runtime/reconcile"
-            ));
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"));
             then.status(404);
         });
         let firewall = custom_runtime_firewall(custom_connector_id);
@@ -2617,7 +2602,7 @@ mod tests {
         let request = recv_refresh_request(&mut requests).await;
 
         assert!(
-            core.reconcile_connector_runtime_batch_now(run_id, &request.targets)
+            core.sync_connector_runtime_batch_now(run_id, &request.targets)
                 .await
         );
 
@@ -3956,45 +3941,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn connector_runtime_reconcile_splits_batches_without_limiting_run_targets() {
+    async fn connector_runtime_sync_splits_batches_without_limiting_run_targets() {
         let server = MockServer::start();
         let run_id = RunId::nil();
-        let connector_slugs = (0..=CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX)
+        let connector_slugs = (0..=CONNECTOR_RUNTIME_SYNC_BATCH_MAX)
             .map(|index| format!("connector-{index}"))
             .collect::<Vec<_>>();
         let targets = connector_slugs
             .iter()
             .map(|connector_slug| builtin_target(connector_slug))
             .collect::<Vec<_>>();
-        let first_batch = targets[..CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX].to_vec();
-        let second_batch = targets[CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX..].to_vec();
+        let first_batch = targets[..CONNECTOR_RUNTIME_SYNC_BATCH_MAX].to_vec();
+        let second_batch = targets[CONNECTOR_RUNTIME_SYNC_BATCH_MAX..].to_vec();
         let first_mock = server.mock(|when, then| {
             when.method(POST)
-                .path(format!(
-                    "/api/runners/runs/{run_id}/connector-runtime/reconcile"
-                ))
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
                 .json_body(json!({ "targets": first_batch }));
             then.status(500)
                 .header("content-type", "application/json")
                 .json_body(json!({
                     "error": {
                         "code": "INTERNAL_SERVER_ERROR",
-                        "message": "reconcile failed",
+                        "message": "sync failed",
                     },
                 }));
         });
         let second_mock = server.mock(|when, then| {
             when.method(POST)
-                .path(format!(
-                    "/api/runners/runs/{run_id}/connector-runtime/reconcile"
-                ))
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
                 .json_body(json!({ "targets": second_batch }));
             then.status(500)
                 .header("content-type", "application/json")
                 .json_body(json!({
                     "error": {
                         "code": "INTERNAL_SERVER_ERROR",
-                        "message": "reconcile failed",
+                        "message": "sync failed",
                     },
                 }));
         });

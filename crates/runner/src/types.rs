@@ -255,7 +255,7 @@ impl Firewall {
 pub struct FirewallApi {
     /// Stable API identifier used as one component of mitm-addon auth cache keys.
     /// Builtin catalogs leave this empty for the Python registry loader to
-    /// assign. Reconciled custom connector firewalls provide a stable ID.
+    /// assign. Synced custom connector firewalls provide a stable ID.
     #[serde(default)]
     pub id: String,
     pub base: String,
@@ -1238,11 +1238,11 @@ impl ConnectorRuntimeTarget {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectorRuntimeReconcileResult {
+pub struct ConnectorRuntimeSyncResult {
     pub target: ConnectorRuntimeTarget,
-    pub next_reconcile_at: String,
+    pub next_sync_at: String,
     #[serde(flatten)]
-    pub state: ConnectorRuntimeReconcileState,
+    pub state: ConnectorRuntimeSyncState,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1251,7 +1251,7 @@ pub struct ConnectorRuntimeReconcileResult {
     rename_all = "lowercase",
     rename_all_fields = "camelCase"
 )]
-pub enum ConnectorRuntimeReconcileState {
+pub enum ConnectorRuntimeSyncState {
     Available {
         network_policy: NetworkPolicy,
         #[serde(default)]
@@ -1278,8 +1278,8 @@ pub enum ConnectorRuntimeAbsentReason {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectorRuntimeReconcileBatchResponse {
-    pub results: Vec<ConnectorRuntimeReconcileResult>,
+pub struct ConnectorRuntimeSyncBatchResponse {
+    pub results: Vec<ConnectorRuntimeSyncResult>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
