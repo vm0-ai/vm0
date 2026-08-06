@@ -1,13 +1,10 @@
 import { command, type Command } from "ccstate";
 import type {
   ChatThreadDraft,
-  GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { currentChatThreadId$ } from "../agent-chat.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import {
   detachedNavigateTo$,
@@ -72,7 +69,6 @@ interface PaneSpec {
 interface RestoredDraftState {
   readonly content: string;
   readonly userMessage: UserMessageDocument | null;
-  readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: PersistedAttachment[];
 }
 
@@ -96,33 +92,18 @@ function userMessageDraftAttachments(
 
 function userMessageDraftState(
   threadDraft: ChatThreadDraft,
-  inlineTemplatesEnabled: boolean,
 ): RestoredDraftState | null {
   const document = threadDraft.draftUserMessage;
-  if (
-    !document ||
-    messageDocumentToEditorDoc(document, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }) === null
-  ) {
+  if (!document || messageDocumentToEditorDoc(document) === null) {
     return null;
   }
-  const content = messageDocumentToPrompt(document, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  const content = messageDocumentToPrompt(document);
   if (content === null) {
     return null;
   }
-  const generationTemplate = document.parts.find((part) => {
-    return part.type === "template";
-  });
   return {
     content,
     userMessage: document,
-    generationTemplate:
-      !inlineTemplatesEnabled && generationTemplate?.type === "template"
-        ? generationTemplate.template
-        : undefined,
     attachments: userMessageDraftAttachments(
       document,
       threadDraft.draftAttachments ?? [],
@@ -144,13 +125,7 @@ const loadDraft$ = command(
       return;
     }
 
-    const features = get(featureSwitch$);
-    const inlineTemplatesEnabled =
-      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
-    const restoredDraft = userMessageDraftState(
-      threadDraft,
-      inlineTemplatesEnabled,
-    );
+    const restoredDraft = userMessageDraftState(threadDraft);
     if (!restoredDraft) {
       return;
     }
@@ -165,7 +140,7 @@ const loadDraft$ = command(
       set(thread.composer.draft.seed$, {
         content: restoredDraft.content,
         userMessage: restoredDraft.userMessage,
-        generationTemplate: restoredDraft.generationTemplate,
+        generationTemplate: undefined,
         attachments: restoredAttachments,
       });
     }

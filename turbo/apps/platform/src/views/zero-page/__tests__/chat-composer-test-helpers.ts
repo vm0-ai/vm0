@@ -7,7 +7,6 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   type PresentationTemplateItem,
 } from "@vm0/core";
 import {
@@ -644,45 +643,6 @@ export async function findComposerModel(label: string): Promise<HTMLElement> {
 
 export async function expectComposerModel(label: string): Promise<void> {
   await expect(findComposerModel(label)).resolves.toBeInTheDocument();
-}
-
-export async function openTemplatePicker(
-  user: ReturnType<typeof userEvent.setup>,
-  template: PresentationTemplateItem = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!,
-): Promise<void> {
-  click(
-    await waitFor(() => {
-      return screen.getByLabelText("Template");
-    }),
-  );
-  await waitFor(() => {
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-  });
-  expect(screen.queryByLabelText("Search connectors")).toBeNull();
-  await waitFor(() => {
-    expect(screen.getByText(template.title)).toBeInTheDocument();
-  });
-
-  click(screen.getByLabelText(`Preview ${template.title} at current slide`));
-  await waitFor(() => {
-    expect(
-      screen.getByTestId(`${template.title} detail HTML preview`),
-    ).toBeInTheDocument();
-  });
-  expect(screen.getByLabelText("Select style Funfair")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  expect(screen.getByLabelText("Select style Award night")).toBeInTheDocument();
-
-  await user.click(screen.getByLabelText(`Select template ${template.title}`));
-  await waitFor(() => {
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Template")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-  });
 }
 
 export async function selectTemplate(

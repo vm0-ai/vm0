@@ -429,7 +429,6 @@ describe("organization model providers settings", () => {
         effectiveSwitches: {
           [FeatureSwitchKey.CustomModelGateways]: true,
         },
-        supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
       });
     });

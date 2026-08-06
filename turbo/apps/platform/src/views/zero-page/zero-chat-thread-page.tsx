@@ -114,11 +114,9 @@ import type {
 } from "../../signals/connector-domain.ts";
 import { emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  featureSwitch$,
   mermaidDiagramsEnabled$,
   pwaChatKeyboardGesturesEnabled$,
 } from "../../signals/external/feature-switch.ts";
@@ -7301,14 +7299,12 @@ function UserMessageView({
   document,
   attachments,
   elevatedFileIds,
-  inlineTemplatesEnabled,
   agentReferenceSignalsForId,
   composerSignals,
 }: {
   document: UserMessageDocument;
   attachments: readonly ResolvedAttachFile[];
   elevatedFileIds: ReadonlySet<string>;
-  inlineTemplatesEnabled: boolean;
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }) {
@@ -7317,11 +7313,7 @@ function UserMessageView({
     (part): part is UserMessageContentPart => {
       return (
         !isUserMessageNonContentPart(part) &&
-        !isElevatedUserMessagePart(
-          part,
-          elevatedFileIds,
-          inlineTemplatesEnabled,
-        )
+        !isElevatedUserMessagePart(part, elevatedFileIds)
       );
     },
   );
@@ -7384,12 +7376,8 @@ function UserMessageView({
 function isElevatedUserMessagePart(
   part: UserMessagePart,
   elevatedFileIds: ReadonlySet<string>,
-  inlineTemplatesEnabled: boolean,
 ): boolean {
-  return (
-    (!inlineTemplatesEnabled && part.type === "template") ||
-    (part.type === "file" && elevatedFileIds.has(part.fileId))
-  );
+  return part.type === "file" && elevatedFileIds.has(part.fileId);
 }
 
 function UserMessageContent({
@@ -7397,7 +7385,6 @@ function UserMessageContent({
   attachments,
   referenceAttachments,
   onImageClick,
-  inlineTemplatesEnabled,
   agentReferenceSignalsForId,
   composerSignals,
 }: {
@@ -7405,7 +7392,6 @@ function UserMessageContent({
   attachments: ReturnType<typeof resolveAttachments>;
   referenceAttachments: readonly ResolvedAttachFile[];
   onImageClick: (url: string) => void;
-  inlineTemplatesEnabled: boolean;
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }) {
@@ -7420,33 +7406,15 @@ function UserMessageContent({
       return attachment.id ? [attachment.id] : [];
     }),
   );
-  const templateParts = inlineTemplatesEnabled
-    ? []
-    : document.parts.filter((part) => {
-        return part.type === "template";
-      });
   const hasBody = document.parts.some((part) => {
     return (
       !isUserMessageNonContentPart(part) &&
-      !isElevatedUserMessagePart(part, elevatedFileIds, inlineTemplatesEnabled)
+      !isElevatedUserMessagePart(part, elevatedFileIds)
     );
   });
 
   return (
     <>
-      {templateParts.length > 0 ? (
-        <div className="mb-1.5 flex max-w-[85%] flex-wrap justify-end gap-1.5">
-          {templateParts.map((part) => {
-            return (
-              <UserMessageTemplateReference
-                key={`${part.template.type}:${part.titleSnapshot}`}
-                part={part}
-                signals={composerSignals}
-              />
-            );
-          })}
-        </div>
-      ) : null}
       <UserMessageAttachments
         attachments={elevatedAttachments}
         onImageClick={onImageClick}
@@ -7458,7 +7426,6 @@ function UserMessageContent({
               document={document}
               attachments={referenceAttachments}
               elevatedFileIds={elevatedFileIds}
-              inlineTemplatesEnabled={inlineTemplatesEnabled}
               agentReferenceSignalsForId={agentReferenceSignalsForId}
               composerSignals={composerSignals}
             />
@@ -7567,25 +7534,14 @@ function GoalUserMessage({
   );
 }
 
-function useUserMessageRendering() {
-  const featureSwitches = useGet(featureSwitch$);
-  return {
-    inlineTemplates:
-      featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
-      false,
-  };
-}
-
 function resolvePagedUserMessageRendering({
   event,
   inputEvent,
   userMessage,
-  inlineTemplates,
 }: {
   event: EnrichedChatEvent;
   inputEvent: ChatInputEvent | undefined;
   userMessage: UserMessageDocument | undefined;
-  inlineTemplates: boolean;
 }) {
   const legacyContent = event.content ?? "";
   const { cleanContent, parsed } = parseInlineAttachments(
@@ -7597,9 +7553,7 @@ function resolvePagedUserMessageRendering({
       ? inputEvent.attachFiles
       : undefined;
   const copyText = canonicalUserMessage
-    ? (messageDocumentToPrompt(canonicalUserMessage, {
-        inlineTemplates,
-      }) ?? "")
+    ? (messageDocumentToPrompt(canonicalUserMessage) ?? "")
     : cleanContent;
   const legacyClipboardAttachments = clipboardAttachmentsFromEvent(
     event,
@@ -7643,7 +7597,6 @@ function PagedUserMessage({
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
 }) {
-  const { inlineTemplates } = useUserMessageRendering();
   const inputEvent = asInputChatEvent(event);
   const userMessage = visibleUserMessage(inputEvent);
   const {
@@ -7656,7 +7609,6 @@ function PagedUserMessage({
     event,
     inputEvent,
     userMessage,
-    inlineTemplates,
   });
   const bodyBlocks = event.blocks;
   const pageSignal = useGet(pageSignal$);
@@ -7733,7 +7685,6 @@ function PagedUserMessage({
               attachments={allAttachments}
               referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
-              inlineTemplatesEnabled={inlineTemplates}
               agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
               composerSignals={thread.composer}
             />

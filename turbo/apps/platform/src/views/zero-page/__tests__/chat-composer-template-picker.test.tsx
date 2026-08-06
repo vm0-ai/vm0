@@ -41,7 +41,6 @@ import {
   mockActiveTemplateThread,
   trackTemplatePreviewImagePreloads,
   mockImmediateIdleCallback,
-  openTemplatePicker,
   selectTemplate,
   selectIllustrationTemplate,
   composerElementFrom,
@@ -89,9 +88,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -164,9 +160,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -907,117 +900,6 @@ describe("chat composer templates", () => {
       playSpy.mockRestore();
       pauseSpy.mockRestore();
     }
-  });
-
-  it("selects a presentation template from the picker", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await openTemplatePicker(user, template);
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
-    });
-    await expectTemplateAttachedToComposer(`Remove template ${template.title}`);
-
-    click(screen.getByLabelText(`Remove template ${template.title}`));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-      expect(
-        screen.queryByLabelText(`Remove template ${template.title}`),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("activates an embedded template control with Enter without sending the draft", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await selectTemplate(user, template);
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Keep this draft");
-
-    const removeTemplate = screen.getByLabelText(
-      `Remove template ${template.title}`,
-    );
-    removeTemplate.focus();
-    expect(removeTemplate).toHaveFocus();
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText(`Remove template ${template.title}`),
-      ).not.toBeInTheDocument();
-      expect(editor).toHaveTextContent("Keep this draft");
-    });
-  });
-
-  it("keeps a selected template attached when replacing all prompt text", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    let submittedPrompt: string | undefined;
-    let submittedTemplate: GenerationTemplateRequest | undefined;
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      onRunCreate: (body) => {
-        submittedPrompt = body.prompt;
-        submittedTemplate = body.generationTemplate;
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await selectTemplate(user, template);
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Initial prompt");
-    await fill(editor, "Replacement prompt");
-
-    await waitFor(() => {
-      expect(
-        editor.querySelectorAll("[data-composer-template-attachment]"),
-      ).toHaveLength(1);
-      expect(editor).toHaveTextContent("Replacement prompt");
-      expect(editor).not.toHaveTextContent("Initial prompt");
-    });
-
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => {
-      expect(submittedPrompt).toBe("Replacement prompt");
-      expect(submittedTemplate).toMatchObject({
-        type: "presentation",
-        selection: { templateId: template.templateId },
-      });
-      expect(
-        editor.querySelectorAll("[data-composer-template-attachment]"),
-      ).toHaveLength(0);
-      expect(
-        screen.queryByLabelText(`Remove template ${template.title}`),
-      ).not.toBeInTheDocument();
-    });
   });
 
   it("keeps the draft visible while send waits for draft attachments", async () => {
@@ -3404,117 +3286,5 @@ describe("chat composer templates", () => {
         ),
       ).not.toBeInTheDocument();
     });
-  });
-
-  it("reopens the picker on the presentation tab from the selected chip", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await selectTemplate(user, template);
-
-    click(await screen.findByLabelText(`Preview template ${template.title}`));
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-      expect(tabByText("Presentation")).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
-    });
-  });
-
-  it("reopens on the illustration tab from the chip after the last-used tab changed", async () => {
-    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    // Select an illustration style, which leaves the picker on the
-    // Illustration tab.
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-    await waitFor(() => {
-      expect(tabByText("Illustration")).toBeInTheDocument();
-    });
-    click(tabByText("Illustration"));
-    click(
-      await screen.findByLabelText(
-        `Select template ${illustrationTemplate.title}`,
-      ),
-    );
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(
-        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
-      ).toBeInTheDocument();
-    });
-
-    // Move the last-used tab back to Presentation, then close without changing
-    // the selection so the persisted tab no longer matches the selection.
-    click(screen.getByLabelText("Template"));
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-    click(tabByText("Presentation"));
-    await waitFor(() => {
-      expect(tabByText("Presentation")).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
-    });
-    click(screen.getByLabelText("Close"));
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-
-    // Clicking the chip reopens on the tab matching the selection's type.
-    click(
-      screen.getByLabelText(`Preview template ${illustrationTemplate.title}`),
-    );
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-      expect(tabByText("Illustration")).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
-    });
-  });
-
-  it("removes the selected template from the chip without opening the picker", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await selectTemplate(user, template);
-
-    click(screen.getByLabelText(`Remove template ${template.title}`));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-    });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText(`Preview template ${template.title}`),
-    ).not.toBeInTheDocument();
   });
 });

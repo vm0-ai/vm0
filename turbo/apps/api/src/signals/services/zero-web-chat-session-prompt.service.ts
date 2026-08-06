@@ -49,7 +49,6 @@ interface WebChatPriorRun {
 }
 
 export interface WebChatSessionPromptContext {
-  readonly inlineTemplatesEnabled: boolean;
   readonly generationTemplatePrompt: string;
   readonly computerUseHostDisplayName: string | null;
 }
@@ -110,19 +109,14 @@ function formatAttachFileIds(
     .join("\n");
 }
 
-function formatPriorRunEvent(
-  event: WebChatPriorRunEvent,
-  inlineTemplatesEnabled: boolean,
-): string {
+function formatPriorRunEvent(event: WebChatPriorRunEvent): string {
   const roleLabel = event.role === "user" ? "User" : "Assistant";
   const userMessage = requiredUserMessageForEvent(
     event.eventType,
     event.userMessage,
   );
   if (userMessage) {
-    const prompt = projectUserMessage(userMessage, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }).agentPrompt;
+    const prompt = projectUserMessage(userMessage).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
   const attach = formatAttachFileIds(event.attachFiles);
@@ -136,7 +130,6 @@ function formatPriorRunEvent(
 
 function buildWebChatPriorRunsContext(
   runs: readonly WebChatPriorRun[],
-  inlineTemplatesEnabled: boolean,
 ): string {
   if (runs.length === 0) {
     return "";
@@ -145,7 +138,7 @@ function buildWebChatPriorRunsContext(
   const blocks = runs.map((run, index) => {
     const relativeIndex = index - total + 1;
     const renderedEvents = run.events.map((event) => {
-      return formatPriorRunEvent(event, inlineTemplatesEnabled);
+      return formatPriorRunEvent(event);
     });
     const hasUserEvent = run.events.some((event) => {
       return event.role === "user";
@@ -290,7 +283,6 @@ export async function resolveWebChatSessionPrompt(args: {
       ? ""
       : buildWebChatPriorRunsContext(
           await getLatestRunsByThreadId(args.db, args.threadId),
-          args.context.inlineTemplatesEnabled,
         );
   return buildWebChatAppendSystemPrompt({
     incompleteContext,

@@ -129,14 +129,6 @@ export async function setupPage(options: {
   const featureSwitchOverrides = {
     ...options.featureSwitches,
   };
-  // Keep structured inline templates off by default in tests unless the test
-  // explicitly opts in. The switch is globally enabled in production after the
-  // rollout, but most composer tests predate it and would otherwise see a
-  // transient true -> false clamp once `reloadFeatureSwitch$` applies the API
-  // mock, which recreates the agent composer editor mid-test. Template tests
-  // enable the switch explicitly through `featureSwitches`.
-  featureSwitchOverrides[FeatureSwitchKey.StructuredPromptInlineTemplates] ??=
-    false;
   if (options.featureSwitches) {
     setMockFeatureSwitches(featureSwitchOverrides);
   }

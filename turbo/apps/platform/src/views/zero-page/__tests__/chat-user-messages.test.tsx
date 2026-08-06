@@ -70,9 +70,6 @@ describe("user messages", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
     });
 
     const userMessageElement = await waitFor(() => {
@@ -187,7 +184,6 @@ describe("user messages", () => {
       path: `/chats/${threadId}`,
       featureSwitches: {
         [FeatureSwitchKey.JoggAiBuiltIn]: true,
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
       },
     });
 

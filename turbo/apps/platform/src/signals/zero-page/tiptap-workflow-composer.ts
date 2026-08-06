@@ -1675,17 +1675,13 @@ function workflowComposerDocumentForValue(
 function workflowComposerDocumentForUserMessage(
   editor: Editor,
   value: Parameters<DraftInputSyncTarget["syncUserMessage"]>[0],
-  inlineTemplatesEnabled: boolean,
 ): ProseMirrorNode | null {
-  const document = messageDocumentToEditorDoc(value, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  const document = messageDocumentToEditorDoc(value);
   return document ? editor.schema.nodeFromJSON(document) : null;
 }
 
 function workflowComposerDocumentForDraft(
   editor: Editor,
-  inlineTemplatesEnabled: boolean,
   draft: {
     readonly input: string;
     readonly userMessage:
@@ -1698,11 +1694,7 @@ function workflowComposerDocumentForDraft(
     return editor.state.doc;
   }
   const userMessageDocument = draft.userMessage
-    ? workflowComposerDocumentForUserMessage(
-        editor,
-        draft.userMessage,
-        inlineTemplatesEnabled,
-      )
+    ? workflowComposerDocumentForUserMessage(editor, draft.userMessage)
     : null;
   const restoredEditorDocument = draft.editorDocument
     ? editor.schema.nodeFromJSON(draft.editorDocument.toEditorDocument())
@@ -1874,7 +1866,6 @@ interface MountEditorOptions {
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
   syncAgentMentionAvatars$: AgentMentionAvatarsSyncCommand;
-  inlineTemplatesEnabled$: Computed<boolean>;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }
@@ -1883,10 +1874,6 @@ interface WorkflowComposerMountOptions {
   readonly autoFocus?: boolean;
   readonly singleLineOnMobile?: boolean;
 }
-
-const inlineTemplatesDisabled$ = computed((): boolean => {
-  return false;
-});
 
 function focusMountedEditorAtEnd(editor: Editor): void {
   editor.view.dispatch(
@@ -1907,13 +1894,11 @@ function createMountEditorCommand({
   compositionGate,
   syncWorkflowNames$,
   syncAgentMentionAvatars$,
-  inlineTemplatesEnabled$,
   autoFocus,
   singleLineOnMobile,
 }: MountEditorOptions) {
   return onRef(
     command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
-      const inlineTemplatesEnabled = get(inlineTemplatesEnabled$);
       runtime.update = (updatedEditor) => {
         runtime.replaceFeedbackItems(
           feedbackItemsFromWorkflowComposer(updatedEditor),
@@ -1948,7 +1933,7 @@ function createMountEditorCommand({
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
         editor,
-        workflowComposerDocumentForDraft(editor, inlineTemplatesEnabled, {
+        workflowComposerDocumentForDraft(editor, {
           input: get(draft.input$),
           userMessage: set(draft.takeRestoredUserMessage$),
           editorDocument: set(draft.readEditorDocument$),
@@ -1984,7 +1969,6 @@ function createMountEditorCommand({
           const document = workflowComposerDocumentForUserMessage(
             editor,
             value,
-            inlineTemplatesEnabled,
           );
           if (!document) {
             return;
@@ -2310,31 +2294,24 @@ function createTemplateInsertionCommands(editor: Editor) {
   };
 }
 
-function createInsertUserMessageCommand(
-  editor: Editor,
-  inlineTemplatesEnabled$: Computed<boolean>,
-) {
-  return command(({ get }, value: UserMessageDocument) => {
-    const inlineTemplatesEnabled = get(inlineTemplatesEnabled$);
+function createInsertUserMessageCommand(editor: Editor) {
+  return command((_context, value: UserMessageDocument) => {
     const insertableParts = value.parts.filter((part) => {
       return (
         part.type === "text" ||
         part.type === "chat_thread" ||
         part.type === "agent" ||
         part.type === "feedback" ||
-        (inlineTemplatesEnabled && part.type === "template")
+        part.type === "template"
       );
     });
     if (insertableParts.length === 0) {
       return;
     }
-    const restored = messageDocumentToEditorDoc(
-      {
-        version: 1,
-        parts: insertableParts,
-      },
-      { inlineTemplates: inlineTemplatesEnabled },
-    );
+    const restored = messageDocumentToEditorDoc({
+      version: 1,
+      parts: insertableParts,
+    });
     if (!restored?.content) {
       return;
     }
@@ -2437,7 +2414,6 @@ export function createWorkflowComposerSignals<
 >(
   draft: DraftSignals,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
-  inlineTemplatesEnabled$: Computed<boolean> = inlineTemplatesDisabled$,
   mountOptions: WorkflowComposerMountOptions = {},
   feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
 ): WorkflowComposerSignals {
@@ -2511,7 +2487,6 @@ export function createWorkflowComposerSignals<
     compositionGate,
     syncWorkflowNames$,
     syncAgentMentionAvatars$,
-    inlineTemplatesEnabled$,
     autoFocus: mountOptions.autoFocus ?? false,
     singleLineOnMobile: mountOptions.singleLineOnMobile ?? false,
   });
@@ -2522,10 +2497,7 @@ export function createWorkflowComposerSignals<
   );
   const textCommands = createInsertTextCommands(editor);
   const templateCommands = createTemplateInsertionCommands(editor);
-  const insertUserMessage$ = createInsertUserMessageCommand(
-    editor,
-    inlineTemplatesEnabled$,
-  );
+  const insertUserMessage$ = createInsertUserMessageCommand(editor);
   const readInputForSubmission$ = createReadInputForSubmissionCommand(
     editor,
     compositionGate,

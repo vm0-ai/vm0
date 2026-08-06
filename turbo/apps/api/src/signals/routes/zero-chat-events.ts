@@ -221,7 +221,6 @@ interface PreparedNormalSend {
   readonly agent: AgentForChatSend;
   readonly thread: ResolvedThread;
   readonly body: RuntimeNormalSendBody;
-  readonly userMessageInlineTemplatesEnabled: boolean;
   readonly generationTemplatePrompt: string;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
@@ -377,7 +376,6 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly userMessageInlineTemplatesEnabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<NormalSendBody, "userMessage"> {
@@ -686,11 +684,8 @@ function generateCallbackSecret(): string {
 
 function resolveRuntimeNormalSendBody(
   body: NormalSendBody,
-  inlineTemplatesEnabled: boolean,
 ): RuntimeNormalSendBody {
-  const projection = projectUserMessage(body.userMessage, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  const projection = projectUserMessage(body.userMessage);
   const generationTemplate =
     projection.generationTemplate ?? body.generationTemplate;
   return {
@@ -905,10 +900,6 @@ async function resolveNormalSendFeatureSwitches(
   return {
     codexFastModeEnabled: isFeatureEnabled(
       FeatureSwitchKey.CodexFastMode,
-      context,
-    ),
-    userMessageInlineTemplatesEnabled: isFeatureEnabled(
-      FeatureSwitchKey.StructuredPromptInlineTemplates,
       context,
     ),
   };
@@ -2281,7 +2272,6 @@ const prepareNormalSend$ = command(
 
     const runtimeBody = resolveRuntimeNormalSendBody(
       normalSendBodyWithAgentRunSource(args.body, agentRunSource),
-      featureSwitches.userMessageInlineTemplatesEnabled,
     );
     const generationTemplateError = validateGenerationTemplatePrompt(
       runtimeBody.generationTemplate,
@@ -2325,11 +2315,7 @@ const prepareNormalSend$ = command(
 
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: runtimeBody.generationTemplate,
-      explicitTemplates:
-        featureSwitches.userMessageInlineTemplatesEnabled &&
-        runtimeBody.userMessageGenerationTemplates.length > 0
-          ? runtimeBody.userMessageGenerationTemplates
-          : undefined,
+      explicitTemplates: runtimeBody.userMessageGenerationTemplates,
     });
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(args, db);
@@ -2355,8 +2341,6 @@ const prepareNormalSend$ = command(
       agent,
       thread,
       body: runtimeBody,
-      userMessageInlineTemplatesEnabled:
-        featureSwitches.userMessageInlineTemplatesEnabled,
       generationTemplatePrompt,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
@@ -2879,7 +2863,6 @@ function buildCreateZeroRunArgs(params: {
   const { modelPin, providerAdmission, codexServiceTier } =
     prepared.runConfiguration;
   const webChatSessionPromptContext: WebChatSessionPromptContext = {
-    inlineTemplatesEnabled: prepared.userMessageInlineTemplatesEnabled,
     generationTemplatePrompt: prepared.generationTemplatePrompt,
     computerUseHostDisplayName:
       prepared.computerUseHostGrant?.displayName ?? null,

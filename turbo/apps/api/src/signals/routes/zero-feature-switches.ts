@@ -24,7 +24,6 @@ function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly switches: Record<string, boolean>;
-  readonly supportsStructuredInlineTemplates: boolean;
   readonly supportsCustomConnectorOAuth2: boolean;
   readonly supportsCustomModelGateways: boolean;
   readonly supportsImageRecognition: boolean;
@@ -46,7 +45,6 @@ function featureSwitchResponseBody(params: {
   return {
     switches: params.switches,
     effectiveSwitches,
-    supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
     supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
     supportsCustomModelGateways: params.supportsCustomModelGateways,
     supportsImageRecognition: params.supportsImageRecognition,
@@ -68,7 +66,6 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       orgId: auth.orgId,
       userId: auth.userId,
       switches,
-      supportsStructuredInlineTemplates: true,
       supportsCustomConnectorOAuth2: true,
       supportsCustomModelGateways,
       supportsImageRecognition: true,
@@ -109,7 +106,6 @@ const updateFeatureSwitchesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         switches,
-        supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways,
         supportsImageRecognition: true,

@@ -1,7 +1,5 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type {
   ChatEventGenerationTemplate,
   ChatEventUserMessage,
@@ -11,7 +9,6 @@ import type { Db } from "../external/db";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 import { loadAgentPhoneQueuedLaunchMaterial } from "./agentphone-queued-launch-context.service";
 import { loadFeishuQueuedLaunchMaterial } from "./feishu-queued-launch-context.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { loadSlackQueuedLaunchMaterial } from "./slack-queued-launch-context.service";
 import { loadTeamsQueuedLaunchMaterial } from "./teams-queued-launch-context.service";
 import { loadTelegramQueuedLaunchMaterial } from "./telegram-queued-launch-context.service";
@@ -106,15 +103,6 @@ export async function materializeActiveInputPrompt(
     readonly userId: string;
   },
 ): Promise<string> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    args.orgId,
-    args.userId,
-  );
-  const inlineTemplatesEnabled = isFeatureEnabled(
-    FeatureSwitchKey.StructuredPromptInlineTemplates,
-    featureSwitchContext,
-  );
   const userMessage = requiredUserMessageForEvent(
     "input.prompt",
     args.event.userMessage,
@@ -122,9 +110,7 @@ export async function materializeActiveInputPrompt(
   if (!userMessage) {
     throw new Error("Active input event is missing userMessage");
   }
-  const projection = projectUserMessage(userMessage, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  const projection = projectUserMessage(userMessage);
   const integration = await loadIntegrationPromptMaterial(db, args.event, args);
   if (isContextBackedTriggerSource(args.event.triggerSource) && !integration) {
     throw new Error(
@@ -133,9 +119,7 @@ export async function materializeActiveInputPrompt(
   }
   const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
     explicit: projection.generationTemplate ?? args.event.generationTemplate,
-    explicitTemplates: inlineTemplatesEnabled
-      ? projection.generationTemplates
-      : undefined,
+    explicitTemplates: projection.generationTemplates,
   });
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [

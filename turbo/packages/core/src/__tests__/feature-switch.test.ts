@@ -22,9 +22,6 @@ describe("isFeatureEnabled", () => {
       true,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.MermaidDiagrams, {})).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
-    ).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {

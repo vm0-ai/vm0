@@ -40,7 +40,6 @@ describe("bootstrap feature switch hydration", () => {
         effectiveSwitches: {
           [FeatureSwitchKey.CustomConnectorOAuth2]: true,
         },
-        supportsStructuredInlineTemplates: true,
       });
     });
 
@@ -62,7 +61,6 @@ describe("bootstrap feature switch hydration", () => {
         effectiveSwitches: {
           [FeatureSwitchKey.CustomModelGateways]: true,
         },
-        supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
       });
     });
@@ -83,7 +81,6 @@ describe("bootstrap feature switch hydration", () => {
       return respond(200, {
         switches: {},
         effectiveSwitches: {},
-        supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
         supportsImageRecognition: true,
@@ -104,7 +101,6 @@ describe("bootstrap feature switch hydration", () => {
       return respond(200, {
         switches: {},
         effectiveSwitches: {},
-        supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
       });
@@ -124,7 +120,6 @@ describe("bootstrap feature switch hydration", () => {
       return respond(200, {
         switches: {},
         effectiveSwitches: {},
-        supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
         supportsImageRecognition: false,
