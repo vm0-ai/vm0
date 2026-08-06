@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, asc, desc, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
 import type {
   ArtifactCatalogKind,
   ArtifactDetail,
@@ -692,6 +692,7 @@ export const syncArtifactCatalogForFile$ = command(
 interface ListArtifactCatalogArgs {
   readonly orgId: string;
   readonly userId: string;
+  readonly includeSharedThreads: boolean;
   readonly limit?: number;
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
@@ -825,6 +826,9 @@ export const listArtifactCatalog$ = command(
         and(
           eq(artifacts.orgId, args.orgId),
           eq(artifacts.authorUserId, args.userId),
+          args.includeSharedThreads
+            ? undefined
+            : ne(artifacts.kind, "shared-thread"),
           args.kind ? artifactCatalogKindFilter(args.kind) : undefined,
           args.chatThreadId
             ? chatThreadFilter(db, args.chatThreadId)

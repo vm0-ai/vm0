@@ -7,6 +7,8 @@ import {
   type State,
 } from "ccstate";
 import {
+  ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_HEADER,
+  ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_VALUE,
   artifactCatalogContract,
   type ArtifactCatalogKind,
   type ArtifactDetail,
@@ -22,6 +24,13 @@ import { onRejection } from "../utils.ts";
 // orders by `(createdAt, id)` and never reorders on update, so a cursor stays
 // valid for the whole scroll session.
 const ARTIFACT_CATALOG_PAGE_SIZE = 60;
+
+function sharedThreadCapabilityHeaders(): Record<string, string> {
+  return {
+    [ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_HEADER]:
+      ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_VALUE,
+  };
+}
 
 export interface ArtifactCatalogPage {
   readonly artifacts: readonly ArtifactSummary[];
@@ -62,6 +71,7 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
       const client = get(zeroClient$)(artifactCatalogContract);
       const result = await accept(
         client.list({
+          extraHeaders: sharedThreadCapabilityHeaders(),
           query: {
             limit: ARTIFACT_CATALOG_PAGE_SIZE,
             ...(kind ? { kind } : {}),
@@ -117,6 +127,7 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
       const result = await onRejection(
         accept(
           client.list({
+            extraHeaders: sharedThreadCapabilityHeaders(),
             query: {
               limit: ARTIFACT_CATALOG_PAGE_SIZE,
               cursor,
@@ -223,6 +234,7 @@ export function createArtifactCatalogSignals(
       const client = get(zeroClient$)(artifactCatalogContract);
       const result = await accept(
         client.get({
+          extraHeaders: sharedThreadCapabilityHeaders(),
           params: { artifactId },
           fetchOptions: { signal },
         }),

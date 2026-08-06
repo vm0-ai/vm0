@@ -6,6 +6,7 @@ const API_ORIGIN_MARKER_PATTERN =
   /<meta\s+name=["']vm0-api-origin["']\s+content=["']([^"']*)["']\s*\/?>/iu;
 const PRODUCTION_APP_HOSTS = new Set(["app.okou.ai", "app.vm0.ai"]);
 const PRODUCTION_API_ORIGIN = "https://api.vm0.ai";
+const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
 const SHARED_DESCRIPTION = "A conversation shared from Okou";
 const SHARED_IMAGE = "https://static.vm0.io/web/og-image.png";
 
@@ -110,6 +111,17 @@ function gatewayResponse(status) {
   });
 }
 
+function metaRequestHeaders(requestUrl, origin) {
+  const headers = new Headers({ Accept: "application/json" });
+  if (PREVIEW_API_ORIGIN_PATTERN.test(origin)) {
+    const bypass = requestUrl.searchParams.get(VERCEL_PROTECTION_BYPASS);
+    if (bypass) {
+      headers.set(VERCEL_PROTECTION_BYPASS, bypass);
+    }
+  }
+  return headers;
+}
+
 export default {
   async fetch(request, env) {
     const requestUrl = new URL(request.url);
@@ -136,7 +148,7 @@ export default {
     let metaResponse;
     try {
       metaResponse = await fetch(metaUrl, {
-        headers: { Accept: "application/json" },
+        headers: metaRequestHeaders(requestUrl, origin),
         cf: { cacheEverything: true },
       });
     } catch {

@@ -22,6 +22,10 @@ export const ARTIFACT_CATALOG_KINDS = [
   "shared-thread",
 ] as const;
 
+export const ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_HEADER =
+  "x-vm0-artifact-catalog-shared-threads";
+export const ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_VALUE = "1";
+
 export type ArtifactCatalogKind = (typeof ARTIFACT_CATALOG_KINDS)[number];
 
 interface ArtifactThumbnail {

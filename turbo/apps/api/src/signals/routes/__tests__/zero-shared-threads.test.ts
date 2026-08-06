@@ -4,6 +4,10 @@ import {
   sharedThreadsContract,
   type SharedThreadResponse,
 } from "@vm0/api-contracts/contracts/shared-threads";
+import {
+  ARTIFACT_CATALOG_KINDS,
+  artifactCatalogContract,
+} from "@vm0/api-contracts/contracts/artifact-catalog";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -103,12 +107,26 @@ async function createActor(): Promise<SharedThreadActor> {
 async function sendRun(owner: SharedThreadActor): Promise<{
   readonly runId: string;
   readonly threadId: string;
+}>;
+async function sendRun(
+  owner: SharedThreadActor,
+  prompt: string,
+): Promise<{
+  readonly runId: string;
+  readonly threadId: string;
+}>;
+async function sendRun(
+  owner: SharedThreadActor,
+  prompt = "Prepare the private launch plan",
+): Promise<{
+  readonly runId: string;
+  readonly threadId: string;
 }> {
   const sent = await chat.requestSendEvent(
     owner.actor,
     {
       agentId: owner.agentId,
-      prompt: "Prepare the private launch plan",
+      prompt,
       clientEventId: randomUUID(),
     },
     [201],
@@ -182,8 +200,29 @@ describe("shared thread routes", () => {
     const assistantEvent = events.events.find((event) => {
       return event.eventType === "output.message";
     });
-    if (!promptEvent || !assistantEvent) {
-      throw new Error("Expected prompt and assistant events");
+    const nonShareableEvent = events.events.find((event) => {
+      return event.eventType === "run.completed";
+    });
+    const otherRun = await sendRun(
+      owner,
+      "This other thread must stay private",
+    );
+    const otherEvents = await chat.listThreadEvents(
+      owner.actor,
+      otherRun.threadId,
+    );
+    const otherPromptEvent = otherEvents.events.find((event) => {
+      return event.eventType === "input.prompt";
+    });
+    if (
+      !promptEvent ||
+      !assistantEvent ||
+      !nonShareableEvent ||
+      !otherPromptEvent
+    ) {
+      throw new Error(
+        "Expected shareable, non-shareable, and cross-thread events",
+      );
     }
 
     mockOptionalEnv("OPENROUTER_API_KEY", "shared-title-key");
@@ -201,6 +240,8 @@ describe("shared thread routes", () => {
 
     const eventIds = [
       randomUUID(),
+      otherPromptEvent.id,
+      nonShareableEvent.id,
       assistantEvent.id,
       promptEvent.id,
       assistantEvent.id,
@@ -219,6 +260,9 @@ describe("shared thread routes", () => {
     expect(titlePrompts).toHaveLength(2);
     expect(titlePrompts[0]).toContain("Prepare the private launch plan");
     expect(titlePrompts[0]).toContain(assistantText);
+    expect(titlePrompts[0]).not.toContain(
+      "This other thread must stay private",
+    );
 
     const publicSnapshot = await readSharedThreadSnapshot(first.body.id);
     expect(publicSnapshot.headers.get("cache-control")).toBe("no-store");
@@ -266,6 +310,32 @@ describe("shared thread routes", () => {
     }
     const detail = await chat.getArtifactCatalogEntry(owner.actor, artifactId);
     expect(detail.kind).toBe("shared-thread");
+
+    const legacyCatalog = await accept(
+      setupApp({ context })(artifactCatalogContract).list({
+        headers: authenticate(owner.actor),
+        query: {},
+      }),
+      [200],
+    );
+    expect(legacyCatalog.body.supportedKinds).toStrictEqual(
+      ARTIFACT_CATALOG_KINDS.filter((kind) => {
+        return kind !== "shared-thread";
+      }),
+    );
+    expect(
+      legacyCatalog.body.artifacts.some((artifact) => {
+        return artifact.kind === "shared-thread";
+      }),
+    ).toBeFalsy();
+    const legacyDetail = await accept(
+      setupApp({ context })(artifactCatalogContract).get({
+        headers: authenticate(owner.actor),
+        params: { artifactId },
+      }),
+      [404],
+    );
+    expect(legacyDetail.body.error.code).toBe("NOT_FOUND");
 
     await chat.deleteThread(owner.actor, run.threadId);
     const afterSourceDeletion = await readSharedThreadSnapshot(first.body.id);
