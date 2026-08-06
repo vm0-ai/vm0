@@ -2066,7 +2066,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("connects Stripe OAuth from a legacy event for all visible agents", async () => {
+  it("ignores unscoped changes before completing Stripe OAuth", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
@@ -2156,6 +2156,9 @@ describe("connectors page", () => {
         context.mocks.ably.hasSubscription("connector:changed"),
       ).toBeTruthy();
     });
+
+    context.mocks.ably.trigger("connector:changed", null);
+    expect(authorizedAgentIds).toStrictEqual([]);
 
     context.mocks.ably.trigger("connector:changed", {
       connectorSlug: "github",
