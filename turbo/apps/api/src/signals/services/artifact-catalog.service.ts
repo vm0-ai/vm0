@@ -11,6 +11,7 @@ import {
   notLike,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import type {
   ArtifactCatalogKind,
@@ -132,7 +133,7 @@ function catalogArtifactKind(
     : kind;
 }
 
-function artifactCatalogKindFilter(kind: ArtifactCatalogKind) {
+function artifactCatalogKindFilter(kind: ArtifactCatalogKind): SQL | undefined {
   const generatedBy = sql`${runUploadedFiles.metadata} ->> 'generatedBy'`;
   if (kind === "shared-thread") {
     return and(
@@ -800,7 +801,7 @@ function toArtifactSummary(row: {
  * file directly or its run, while shared threads retain their nullable source
  * thread ID after snapshot creation.
  */
-function chatThreadFilter(db: Db, chatThreadId: string) {
+function chatThreadFilter(db: Db, chatThreadId: string): SQL | undefined {
   return or(
     inArray(
       artifacts.projectionFileId,
@@ -840,7 +841,7 @@ function chatThreadFilter(db: Db, chatThreadId: string) {
 function artifactCatalogOwnerFilter(
   userId: string,
   includeSharedThreads: boolean,
-) {
+): SQL {
   return includeSharedThreads
     ? inArray(artifacts.authorUserId, [
         userId,
