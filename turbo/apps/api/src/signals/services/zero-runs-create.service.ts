@@ -2,6 +2,7 @@ import { PLAN_UPGRADE_CLI_HINT } from "@vm0/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunCreateBodySchema } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { PiEdgeTurnArgs } from "./pi-edge-config";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
@@ -146,6 +147,7 @@ interface CreateZeroRunCommandArgs {
   readonly auth: AuthContext & { readonly orgId: string };
   readonly body: ZeroRunCreateBody;
   readonly apiStartTime: number;
+  readonly kickoffPiEdgeTurn?: (turnArgs: PiEdgeTurnArgs) => void;
   readonly triggerSource?: TriggerSource;
   readonly appendSystemPrompt?: string;
   readonly userInfoExtras?: Pick<
@@ -814,6 +816,7 @@ function buildZeroCreateAgentRunArgs(args: {
       cloudBrowserEnabled: args.cloudBrowserEnabled,
     }),
     apiStartTime: command.apiStartTime,
+    kickoffPiEdgeTurn: command.kickoffPiEdgeTurn,
     modelProviderId: command.modelProviderId ?? agentModelProviderId,
     modelProviderCredentialScope: command.modelProviderCredentialScope,
     modelProviderType: command.body.modelProvider,

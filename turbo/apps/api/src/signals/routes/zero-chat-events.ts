@@ -27,6 +27,8 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
+import type { PiEdgeTurnArgs } from "../services/pi-edge-config";
+import { runPiEdgeTurn$ } from "../services/pi-edge-loop.service";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishThreadListChanged,
@@ -3043,6 +3045,21 @@ async function buildNormalChatRunArgs(
   return createRunArgs;
 }
 
+function piEdgeKickoff(
+  run: (turnArgs: PiEdgeTurnArgs) => Promise<unknown>,
+): (turnArgs: PiEdgeTurnArgs) => void {
+  return (turnArgs) => {
+    waitUntil(
+      tapError(run(turnArgs), (error) => {
+        L.error("Pi edge turn dispatch failed", {
+          runId: turnArgs.runId,
+          error,
+        });
+      }),
+    );
+  };
+}
+
 const createNormalChatRun$ = command(
   async (
     { set },
@@ -3120,6 +3137,9 @@ const createNormalChatRun$ = command(
       createQueueFirstZeroRun$,
       {
         ...createRunArgs,
+        kickoffPiEdgeTurn: piEdgeKickoff((turnArgs) => {
+          return set(runPiEdgeTurn$, turnArgs, signal);
+        }),
         apiStartTime: queuedMessage.createdAt.getTime(),
         zeroRunMetadata: {
           autonomyBudget: queuedMessage.autonomyBudget.autonomyBudget,
