@@ -2901,7 +2901,9 @@ describe("Feishu integration", () => {
       });
     expect(completedQuotedReply?.replyInThread).toBeFalsy();
 
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
