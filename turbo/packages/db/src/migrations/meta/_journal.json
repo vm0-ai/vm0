@@ -246,6 +246,13 @@
       "when": 1786006786420,
       "tag": "0842_slim_matthew_murdock",
       "breakpoints": true
+    },
+    {
+      "idx": 843,
+      "version": "7",
+      "when": 1786008191487,
+      "tag": "0843_add_minimax_h3_video_pricing",
+      "breakpoints": true
     }
   ]
 }

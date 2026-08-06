@@ -654,6 +654,14 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_video_tokens.audio", usd(2.4), 1_000_000],
     ["output_video_tokens.silent", usd(1.2), 1_000_000],
   ]),
+  // MiniMax H3 official PAYG rates with the 2x built-in markup.
+  ...usageGroup("video", "MiniMax-H3", [
+    ["output_video_seconds.768p", usd(0.16), 1],
+    ["output_video_seconds.2k", usd(0.26), 1],
+    ["input_video_seconds.768p", usd(0.16), 1],
+    ["input_video_seconds.2k", usd(0.26), 1],
+    ["input_image.additional", usd(0.08), 1],
+  ]),
   // JoggAI Professional API cost: $399 / 800 credits, with one provider
   // credit consumed per started two minutes of talking-avatar output. Apply
   // the standard 20% vm0 markup.
