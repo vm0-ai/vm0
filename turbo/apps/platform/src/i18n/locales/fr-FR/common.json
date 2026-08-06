@@ -1712,7 +1712,6 @@
       "edit": "Modifier",
       "grant": "Accorder",
       "reconnect": "Reconnecter",
-      "rename": "Renommer",
       "revoke": "Révoquer",
       "save": "Enregistrer",
       "saving": "Enregistrement...",
@@ -1963,17 +1962,12 @@
       "emptyAdmin": "Pas encore de connecteurs personnalisés. Créez-en un pour enregistrer une API que tous les membres pourront utiliser.",
       "emptyMember": "Votre organisation n'a pas encore enregistré de connecteurs personnalisés.",
       "moreOptions": "Plus d'options",
-      "rename": {
-        "displayName": "Nom d'affichage",
-        "title": "Renommer le connecteur personnalisé"
-      },
       "statusConnected": "Connecté",
       "toasts": {
         "connected": "Connecté",
         "created": "Créé \"{{connector}}\"",
         "deleted": "Connecteur personnalisé supprimé",
         "disconnected": "Déconnecté",
-        "renamed": "Renommé en \"{{connector}}\"",
         "updated": "Mis à jour \"{{connector}}\""
       },
       "updateConfirm": {

@@ -3,19 +3,27 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, Read, Write};
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::panic;
 use std::path::{Path, PathBuf};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use vsock_proto::{MSG_ERROR, MSG_READY, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, RawMessage};
+use vsock_proto::{
+    ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
+    ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_CANCEL,
+    MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED, MSG_READY, MSG_WRITE_FILE,
+    MSG_WRITE_FILE_RESULT, RawMessage,
+};
 
 const SANDBOX_UID: u32 = 42_420;
 const SANDBOX_GID: u32 = 42_420;
 const SANDBOX_SUPPLEMENTARY_GID: u32 = 42_421;
 const SANDBOX_HOME: &str = "/home/user";
 const PRIVILEGED_REPORT_DIR: &str = "/root";
+const ENV_SCRIPT_ROOT: &str = "/run/vm0-exec";
+const ENV_SCRIPT_PREFIX: &str = "vm0-env-";
 const GUEST_CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
 const GUEST_COMPLETION_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -96,6 +104,80 @@ fn production_write_file_identity_matches_sudo_policy() {
     join_guest_connection(handle);
 }
 
+#[test]
+#[ignore = "requires root and a production sandbox account; executed explicitly by Rust CI"]
+fn production_env_script_remains_until_operation_cleanup() {
+    require_production_configuration();
+    assert_eq!(current_identity().uid, 0, "test must run as root");
+
+    let entries_before = env_script_entries();
+    let (handle, mut stream) = start_guest_connection();
+    send_supervised_env_exec(&mut stream, 3);
+
+    let started = read_message(&mut stream);
+    if started.msg_type == MSG_EXEC_RESULT {
+        let result = vsock_proto::decode_exec_result(&started.payload)
+            .expect("decode exec result received before exec-started");
+        panic!(
+            "exec operation completed before exec-started: termination={:?}, diagnostic={:?}",
+            result.termination, result.diagnostic
+        );
+    }
+    assert_eq!(started.msg_type, MSG_EXEC_STARTED);
+    assert_eq!(started.seq, 3);
+    assert!(
+        vsock_proto::decode_exec_started(&started.payload)
+            .expect("decode exec-started response")
+            .pid
+            > 0
+    );
+
+    let output = read_message(&mut stream);
+    assert_eq!(output.msg_type, MSG_EXEC_OUTPUT);
+    assert_eq!(output.seq, 3);
+    let output = vsock_proto::decode_exec_output(&output.payload).expect("decode exec output");
+    assert_eq!(output.stream, ExecOutputStream::Stdout);
+    assert_eq!(output.chunk, b"ready");
+    assert!(!output.truncated);
+
+    let entries_after = env_script_entries();
+    let new_entries: Vec<PathBuf> = entries_after.difference(&entries_before).cloned().collect();
+    assert_eq!(
+        new_entries.len(),
+        1,
+        "expected one active production env-script directory: {new_entries:?}"
+    );
+    let script_dir = &new_entries[0];
+    let script_path = script_dir.join("run.sh");
+    let directory_metadata = fs::symlink_metadata(script_dir)
+        .unwrap_or_else(|error| panic!("read env-script metadata {script_dir:?}: {error}"));
+    assert!(directory_metadata.file_type().is_dir());
+    assert_eq!(directory_metadata.uid(), 0);
+    assert_eq!(directory_metadata.gid(), SANDBOX_GID);
+    assert_eq!(directory_metadata.permissions().mode() & 0o777, 0o710);
+
+    let script_metadata = fs::symlink_metadata(&script_path)
+        .unwrap_or_else(|error| panic!("read env-script metadata {script_path:?}: {error}"));
+    assert!(script_metadata.file_type().is_file());
+    assert_eq!(script_metadata.uid(), 0);
+    assert_eq!(script_metadata.gid(), SANDBOX_GID);
+    assert_eq!(script_metadata.permissions().mode() & 0o777, 0o440);
+    let script = fs::read_to_string(&script_path)
+        .unwrap_or_else(|error| panic!("read active env script {script_path:?}: {error}"));
+    assert!(script.contains("export VM0_ENV_SCRIPT_READY='ready'"));
+
+    send_exec_cancel(&mut stream, 3);
+    let result = read_message(&mut stream);
+    assert_eq!(result.msg_type, MSG_EXEC_RESULT);
+    assert_eq!(result.seq, 3);
+    let result = vsock_proto::decode_exec_result(&result.payload).expect("decode exec result");
+    assert_eq!(result.termination, ExecTermination::Cancelled);
+    wait_for_path_removal(script_dir);
+
+    drop(stream);
+    join_guest_connection(handle);
+}
+
 fn require_production_configuration() {
     #[cfg(debug_assertions)]
     panic!("test requires debug assertions off");
@@ -109,7 +191,9 @@ fn start_guest_connection() -> (JoinHandle<std::io::Result<()>>, UnixStream) {
     host_stream
         .set_read_timeout(Some(GUEST_CONNECTION_TIMEOUT))
         .expect("set host read timeout");
-    let handle = thread::spawn(move || vsock_guest::handle_connection(guest_stream));
+    let handle = thread::spawn(move || {
+        vsock_guest::handle_connection_with_test_process_containment(guest_stream)
+    });
 
     let ready = read_message(&mut host_stream);
     assert_eq!(ready.msg_type, MSG_READY);
@@ -161,6 +245,66 @@ fn send_write_file(stream: &mut UnixStream, sequence: u32, path: &str, sudo: boo
     let (success, error) =
         vsock_proto::decode_write_file_result(&response.payload).expect("decode write-file result");
     assert!(success, "write-file child failed: {error}");
+}
+
+fn send_supervised_env_exec(stream: &mut UnixStream, sequence: u32) {
+    let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
+        lifecycle: ExecLifecyclePolicy::Supervised,
+        timeout: ExecTimeoutPolicy::None,
+        command: "printf '%s' \"$VM0_ENV_SCRIPT_READY\"; sleep 60",
+        env: &[("VM0_ENV_SCRIPT_READY", "ready")],
+        sudo: false,
+        label: "production-env-script-cleanup",
+        stdout: ExecOutputPolicy::Stream {
+            limit_bytes: 64,
+            chunk_limit_bytes: 64,
+        },
+        stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
+    })
+    .expect("encode exec-start payload");
+    let frame = vsock_proto::encode(MSG_EXEC_START, sequence, &payload).expect("frame exec start");
+    stream.write_all(&frame).expect("send exec-start request");
+}
+
+fn send_exec_cancel(stream: &mut UnixStream, sequence: u32) {
+    let payload = vsock_proto::encode_exec_cancel();
+    let frame =
+        vsock_proto::encode(MSG_EXEC_CANCEL, sequence, &payload).expect("frame exec cancel");
+    stream.write_all(&frame).expect("send exec-cancel request");
+}
+
+fn env_script_entries() -> BTreeSet<PathBuf> {
+    let entries = match fs::read_dir(ENV_SCRIPT_ROOT) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return BTreeSet::new(),
+        Err(error) => panic!("read env-script root {ENV_SCRIPT_ROOT:?}: {error}"),
+    };
+
+    entries
+        .map(|entry| entry.expect("read env-script entry").path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(ENV_SCRIPT_PREFIX))
+        })
+        .collect()
+}
+
+fn wait_for_path_removal(path: &Path) {
+    let deadline = Instant::now()
+        .checked_add(GUEST_CONNECTION_TIMEOUT)
+        .expect("env-script cleanup timeout overflowed");
+    while path.exists() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        assert!(
+            !remaining.is_zero(),
+            "env-script path remained after operation cleanup: {path:?}"
+        );
+        thread::sleep(std::cmp::min(remaining, GUEST_COMPLETION_POLL_INTERVAL));
+    }
 }
 
 fn read_message(stream: &mut UnixStream) -> RawMessage {

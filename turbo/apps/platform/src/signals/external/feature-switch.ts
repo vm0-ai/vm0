@@ -127,9 +127,6 @@ export const reloadFeatureSwitch$ = command(
     if (result.body.supportsStructuredInlineTemplates !== true) {
       combined[FeatureSwitchKey.StructuredPromptInlineTemplates] = false;
     }
-    if (result.body.supportsCustomConnectorOAuth2 !== true) {
-      combined[FeatureSwitchKey.CustomConnectorOAuth2] = false;
-    }
     if (result.body.supportsCustomModelGateways !== true) {
       combined[FeatureSwitchKey.CustomModelGateways] = false;
     }

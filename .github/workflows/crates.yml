@@ -387,6 +387,10 @@ jobs:
             cargo test -p vsock-guest --release --no-default-features \
               --test production_identity -- \
               --ignored --exact production_write_file_identity_matches_sudo_policy
+          HOME=/root USER=root LOGNAME=root \
+            cargo test -p vsock-guest --release --no-default-features \
+              --test production_identity -- \
+              --ignored --exact production_env_script_remains_until_operation_cleanup
 
   coverage:
     runs-on: ubuntu-latest-8-cores

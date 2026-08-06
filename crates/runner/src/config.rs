@@ -336,19 +336,6 @@ async fn check_path_exists(path: &Path, label: &str) -> RunnerResult<()> {
     Ok(())
 }
 
-async fn check_snapshot_complete_marker(path: &Path, label: &str) -> RunnerResult<()> {
-    let content = tokio::fs::read(path)
-        .await
-        .map_err(|e| RunnerError::Config(format!("read {label}: {e}")))?;
-    if content != sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT {
-        return Err(RunnerError::Config(format!(
-            "{label} is invalid: {}",
-            path.display()
-        )));
-    }
-    Ok(())
-}
-
 // This intentionally does not acquire resource locks. Runtime callers that
 // consume image files must use `lock_and_validate_*_image_artifacts` instead.
 async fn validate_profile_image_artifacts(
@@ -379,15 +366,15 @@ async fn validate_profile_snapshot_artifacts(
     rootfs_paths: &RootfsPaths,
 ) -> RunnerResult<SnapshotPaths> {
     let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
-    for path in snapshot_paths.expected_files() {
-        check_path_exists(&path, &format!("profile {name} snapshot")).await?;
+    match sandbox_fc::validate_snapshot_output(&snapshot_paths).await {
+        Ok(sandbox_fc::SnapshotOutputValidation::Complete) => Ok(snapshot_paths),
+        Ok(validation) => Err(RunnerError::Config(format!(
+            "profile {name} snapshot is incomplete: {validation}"
+        ))),
+        Err(error) => Err(RunnerError::Config(format!(
+            "validate profile {name} snapshot: {error}"
+        ))),
     }
-    check_snapshot_complete_marker(
-        &snapshot_paths.complete_marker(),
-        &format!("profile {name} snapshot complete marker"),
-    )
-    .await?;
-    Ok(snapshot_paths)
 }
 
 pub(crate) struct LockedProfileImageArtifacts {

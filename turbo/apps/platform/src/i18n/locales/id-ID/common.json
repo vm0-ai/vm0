@@ -1671,7 +1671,6 @@
       "edit": "Edit",
       "grant": "Berikan",
       "reconnect": "Hubungkan ulang",
-      "rename": "Ganti nama",
       "revoke": "Cabut",
       "save": "Simpan",
       "saving": "Menyimpan...",
@@ -1921,17 +1920,12 @@
       "emptyAdmin": "Belum ada konektor kustom. Buat satu untuk mendaftarkan API agar bisa digunakan semua anggota.",
       "emptyMember": "Org Anda belum mendaftarkan konektor kustom apa pun.",
       "moreOptions": "Opsi lainnya",
-      "rename": {
-        "displayName": "Nama tampilan",
-        "title": "Ganti nama konektor kustom"
-      },
       "statusConnected": "Terhubung",
       "toasts": {
         "connected": "Terhubung",
         "created": "Membuat \"{{connector}}\"",
         "deleted": "Konektor kustom dihapus",
         "disconnected": "Terputus",
-        "renamed": "Diubah namanya menjadi \"{{connector}}\"",
         "updated": "Diperbarui \"{{connector}}\""
       },
       "updateConfirm": {

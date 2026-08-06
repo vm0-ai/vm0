@@ -125,7 +125,7 @@ pub async fn run_benchmark(
 
     // Block until memory.bin is in page cache so benchmark numbers are stable.
     {
-        let path = resource_locks.snapshot_paths().memory_bin();
+        let path = resource_locks.snapshot_paths().memory();
         let _ = tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path)).await;
     }
 

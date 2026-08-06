@@ -326,7 +326,6 @@ describe("zero connector custom create", () => {
     expect(createHelp).toContain("end-user access token or refresh token");
     expect(createHelp).toContain("does not store a");
     expect(createHelp).toContain("start OAuth authorization");
-    expect(createHelp).toContain("customConnectorOAuth2");
 
     let customHelp = "";
     customConnectorCommand.configureOutput({

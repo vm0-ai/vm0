@@ -377,11 +377,24 @@ function mockCustomConnectorStory(): void {
   context.mocks.api(
     zeroCustomConnectorsContract.create,
     ({ body, respond }) => {
+      const prefixTemplates = body.prefixTemplates ?? body.prefixes ?? [];
+      const fields = body.fields ?? [];
+      const headerInjections = body.headerInjections ?? [];
+      const firstHeader = headerInjections[0];
       const created = customConnector({
         displayName: body.displayName,
-        prefixes: body.prefixes,
-        headerName: body.headerName,
-        headerTemplate: body.headerTemplate,
+        prefixes: prefixTemplates,
+        prefixTemplates,
+        fields,
+        headerInjections,
+        queryInjections: body.queryInjections ?? [],
+        authMode: body.authMode ?? "manual",
+        headerName: firstHeader?.name ?? body.headerName,
+        headerTemplate:
+          firstHeader?.valueTemplate.replaceAll(
+            "{{secrets.secret}}",
+            "{{secret}}",
+          ) ?? body.headerTemplate,
       });
       connectors = [...connectors, created];
       return respond(201, created);
@@ -419,22 +432,6 @@ function mockCustomConnectorStory(): void {
           : connector;
       });
       return respond(204);
-    },
-  );
-  context.mocks.api(
-    zeroCustomConnectorByIdContract.patch,
-    ({ params, body, respond }) => {
-      let renamed = connectors.find((connector) => {
-        return connector.id === params.id;
-      });
-      connectors = connectors.map((connector) => {
-        if (connector.id !== params.id) {
-          return connector;
-        }
-        renamed = { ...connector, displayName: body.displayName };
-        return renamed;
-      });
-      return respond(200, renamed ?? customConnector({}));
     },
   );
   context.mocks.api(
@@ -3373,9 +3370,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors?tab=custom",
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorOAuth2]: true,
-      },
     });
 
     await waitFor(() => {
@@ -3853,9 +3847,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorOAuth2]: false,
-      },
     });
 
     click(await screen.findByText("Custom"));
@@ -3877,6 +3868,8 @@ describe("connectors page", () => {
       within(createDialog).getByLabelText(/Prefixes/u),
       "https://api.acme.test/v1/",
     );
+    click(buttonByText("Add authentication", createDialog));
+    click(menuItemByText("API authentication"));
     click(buttonByText("Create", createDialog));
 
     await waitFor(() => {
@@ -3917,17 +3910,19 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
 
     click(screen.getByLabelText("More options"));
-    click(await screen.findByText("Rename"));
+    click(await screen.findByText("Edit"));
 
-    const renameDialog = await screen.findByRole("dialog");
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
     await waitFor(() => {
-      expect(renameDialog).toHaveStyle({ pointerEvents: "auto" });
+      expect(editDialog).toHaveStyle({ pointerEvents: "auto" });
     });
     await fill(
-      within(renameDialog).getByLabelText("Display name"),
+      within(editDialog).getByLabelText("Display name"),
       "Acme Billing API",
     );
-    click(buttonByText("Save", renameDialog));
+    click(buttonByText("Save", editDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Acme Billing API")).toBeInTheDocument();
