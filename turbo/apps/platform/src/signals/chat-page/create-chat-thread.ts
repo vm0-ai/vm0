@@ -46,7 +46,7 @@ import {
   type ChatEvent as PersistedChatEvent,
   type ChatPromptEvent,
   type ChatThreadArtifactRun,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import {
@@ -2433,7 +2433,7 @@ function userMessageForSend({
   readonly editorDocument: SendMessageOptions["editorDocument"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: ChatPromptEvent["attachFiles"];
-}): UserMessageDocument {
+}): UserMessageInputDocument {
   const userMessage = editorDocument
     ? editorDocument.toMessageDocument({
         generationTemplate,
@@ -2449,7 +2449,7 @@ function userMessageForSend({
 function queueUserMessage(
   options: QueueMessageOptions,
   result: PreparedSendMessageResult,
-): UserMessageDocument {
+): UserMessageInputDocument {
   return userMessageForSend({
     prompt: result.prompt,
     editorDocument: options.editorDocument,

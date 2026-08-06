@@ -57,6 +57,7 @@ import {
 } from "../external/realtime";
 import { downloadS3Buffer, putS3Object } from "../external/s3";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import type { Tx } from "../../lib/db-types";
 
 const COMPUTER_USE_HOST_CLOSED_AFTER_MS = 90 * 1000;
 const COMPUTER_USE_RUNNING_COMMAND_DEFAULT_TIMEOUT_MS = 120 * 1000;
@@ -101,7 +102,7 @@ const DEFAULT_COMPUTER_USE_AUTOMATION_PERMISSIONS = {
   },
 } as const;
 
-type ComputerUseTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type ComputerUseTx = Tx;
 type ComputerUseHostRow = typeof computerUseHosts.$inferSelect;
 type ComputerUseCommandRow = typeof computerUseCommands.$inferSelect;
 

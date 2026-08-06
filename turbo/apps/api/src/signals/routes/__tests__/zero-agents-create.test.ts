@@ -14,6 +14,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroAgentsRoutes } from "../zero-agents";
 
 const context = testContext();
 const authOrgApi = createAuthOrgAgentsBddApi(context);
@@ -40,11 +41,15 @@ function authHeaders() {
 }
 
 function agentsClient() {
-  return setupApp({ context })(zeroAgentsMainContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsMainContract,
+  );
 }
 
 function agentsByIdClient() {
-  return setupApp({ context })(zeroAgentsByIdContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsByIdContract,
+  );
 }
 
 function currentSecond(): number {

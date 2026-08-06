@@ -27,6 +27,7 @@ import {
   type GenerationTemplateRequest,
   type PersistedAttachment,
   type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   artifactCatalogContract,
@@ -39,6 +40,7 @@ import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contr
 import {
   addClientCapabilityToVersion,
   CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
+  CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION,
   CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
@@ -89,8 +91,11 @@ interface AuthHeaders {
 
 const LEGACY_BDD_CLIENT_VERSION = "0.636.1";
 const BDD_CLIENT_VERSION = addClientCapabilityToVersion(
-  LEGACY_BDD_CLIENT_VERSION,
-  CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
+  addClientCapabilityToVersion(
+    LEGACY_BDD_CLIENT_VERSION,
+    CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
+  ),
+  CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION,
 );
 
 interface BddCompose {
@@ -109,7 +114,7 @@ type BddSendEventBody =
       readonly clientThreadId?: string;
       readonly model?: string;
       readonly runOptions?: ChatRunOptionsRequest;
-      readonly userMessage?: UserMessageDocument;
+      readonly userMessage?: UserMessageInputDocument;
       readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
       readonly attachFiles?: readonly AttachFile[];
@@ -627,7 +632,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       body: {
-        readonly draftUserMessage: UserMessageDocument | null;
+        readonly draftUserMessage: UserMessageInputDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
     ): Promise<void> {
@@ -656,7 +661,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       body: {
-        readonly draftUserMessage: UserMessageDocument | null;
+        readonly draftUserMessage: UserMessageInputDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
       statuses: readonly (204 | 400 | 401 | 404)[],

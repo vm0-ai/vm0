@@ -7,7 +7,7 @@ import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector
 import { buildConnectorAuthCodeAuthorizationUrlWithMethod } from "@vm0/connectors/auth-providers";
 import type { AuthUrlResult } from "@vm0/connectors/auth-providers/provider-flow-types";
 
-import { generateConnectorOAuthState } from "./connector-oauth-route-state";
+import { generateConnectorOAuthState } from "../../lib/connector-oauth-state";
 
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;

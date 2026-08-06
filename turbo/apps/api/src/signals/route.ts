@@ -1,6 +1,3 @@
-import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
-import { healthContract } from "@vm0/api-contracts/contracts/health";
-
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import { E2E_ROUTES } from "./e2e-routes";
@@ -33,8 +30,8 @@ import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
 import { zeroMorningBriefRoutes } from "./routes/zero-morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
-import { apiHealth$ } from "./routes/health";
-import { apiBuildInfo$ } from "./routes/build-info";
+import { healthRoutes } from "./routes/health";
+import { buildInfoRoutes } from "./routes/build-info";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { modelStatsRoutes } from "./routes/model-stats";
@@ -200,14 +197,8 @@ import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
 
 export const ROUTES: readonly RouteEntry[] = [
-  {
-    route: healthContract.check,
-    handler: apiHealth$,
-  },
-  {
-    route: buildInfoContract.get,
-    handler: apiBuildInfo$,
-  },
+  ...healthRoutes,
+  ...buildInfoRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...desktopAuthRoutes,

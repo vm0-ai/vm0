@@ -33,6 +33,7 @@ import {
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
 import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("CronBillingEntitlements");
 const PAID_TIERS = ["pro", "team", "custom"] as const;
@@ -127,7 +128,7 @@ interface ReconcileBillingContext {
   readonly signal: AbortSignal;
 }
 
-type ReconcileTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type ReconcileTx = Tx;
 
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;

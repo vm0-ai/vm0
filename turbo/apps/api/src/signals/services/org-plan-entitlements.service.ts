@@ -4,10 +4,10 @@ import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
-import type { Db } from "../external/db";
 import { ORG_PLAN_ENTITLEMENT_TIER_VALUES } from "./org-plan-entitlement-tier-values";
+import type { Tx } from "../../lib/db-types";
 
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WriteTx = Tx;
 
 interface UpsertOrgPlanEntitlementArgs {
   readonly orgId: string;

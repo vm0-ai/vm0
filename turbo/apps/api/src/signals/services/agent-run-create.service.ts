@@ -276,6 +276,7 @@ import {
   normalizeSessionHistoryBlobEncoding,
   type CompressedSessionHistoryBlobEncoding,
 } from "./session-history-blobs";
+import type { Tx } from "../../lib/db-types";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const LEGACY_CHAT_STEER_RUNNER_FLAG = "chatSteer";
@@ -319,7 +320,7 @@ type CreateRunBody = Omit<
 > & {
   readonly triggerSource: TriggerSource;
 };
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
@@ -6279,10 +6280,14 @@ async function claimQueueFirstAssociationForLaunch(args: {
   if (!args.admission) {
     throw new Error("Queue-first claim requires resolved thread admission");
   }
+  if (!args.createArgs.zeroRunModelPin) {
+    throw new Error("Queue-first claim requires a run model pin");
+  }
   return await claimQueueFirstRunAssociation(args.tx, {
     ...association,
     admission: args.admission,
     runId: args.identity.runId,
+    selectedModel: args.createArgs.zeroRunModelPin.selectedModel,
     timing: args.timing,
   });
 }

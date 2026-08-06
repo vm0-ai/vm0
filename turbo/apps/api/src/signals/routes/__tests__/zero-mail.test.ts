@@ -27,6 +27,9 @@ import {
   setConnectorCredentialStorageState,
   setConnectorSecretOwner,
 } from "./helpers/connector-credential-storage-state";
+import { zeroMailRoutes } from "../zero-mail";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { zeroWorkflowsRoutes } from "../zero-workflows";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -279,7 +282,7 @@ async function seedGmailMailCardFixture() {
 }
 
 function client() {
-  return setupApp({ context })(zeroMailContract);
+  return setupApp({ context, routes: zeroMailRoutes })(zeroMailContract);
 }
 
 function stateClient() {
@@ -797,7 +800,9 @@ describe("POST /api/zero/mail/drafts/link", () => {
     });
 
     const automations = await accept(
-      setupApp({ context })(zeroWorkflowAutomationsContract).listForChatThread({
+      setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+        zeroWorkflowAutomationsContract,
+      ).listForChatThread({
         headers: authHeaders(),
         params: { threadId: fixture.thread.id },
       }),
@@ -880,7 +885,9 @@ describe("POST /api/zero/mail/drafts/link", () => {
     );
 
     const workflow = await accept(
-      setupApp({ context })(zeroWorkflowsCollectionContract).create({
+      setupApp({ context, routes: zeroWorkflowsRoutes })(
+        zeroWorkflowsCollectionContract,
+      ).create({
         headers: authHeaders(),
         body: {
           agentId: fixture.agent.agentId,
@@ -891,9 +898,10 @@ describe("POST /api/zero/mail/drafts/link", () => {
       }),
       [201],
     );
-    const automationsClient = setupApp({ context })(
-      zeroWorkflowAutomationsContract,
-    );
+    const automationsClient = setupApp({
+      context,
+      routes: zeroWorkflowAutomationsRoutes,
+    })(zeroWorkflowAutomationsContract);
     const existing = await accept(
       automationsClient.create({
         headers: authHeaders(),

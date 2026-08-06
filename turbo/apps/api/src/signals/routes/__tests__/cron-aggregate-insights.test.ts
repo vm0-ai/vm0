@@ -25,6 +25,9 @@ import {
   materializeHourlyUsage$,
   readInsightsDailyPermissions$,
 } from "./helpers/zero-usage-insight";
+import { cronAggregateInsightsRoutes } from "../cron-aggregate-insights";
+
+const TEST_APP_ROUTES = Object.freeze([...cronAggregateInsightsRoutes]);
 
 /**
  * The aggregation cron sweeps all activity within a 25h lookback of "now".
@@ -53,7 +56,9 @@ function previousDayCompletedAt(): Date {
 }
 
 function apiClient() {
-  return setupApp({ context })(cronAggregateInsightsContract);
+  return setupApp({ context, routes: cronAggregateInsightsRoutes })(
+    cronAggregateInsightsContract,
+  );
 }
 
 function cronHeaders(secret = "test-cron-secret") {
@@ -63,7 +68,7 @@ function cronHeaders(secret = "test-cron-secret") {
 async function rawCronRequest(
   headers: Record<string, string> = {},
 ): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   return await app.request("/api/cron/aggregate-insights", {
     method: "GET",
     headers,

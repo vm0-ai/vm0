@@ -27,7 +27,7 @@ import { nowDate } from "../../lib/time";
 import {
   CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
   generateConnectorOAuthState,
-} from "../routes/connector-oauth-route-state";
+} from "../../lib/connector-oauth-state";
 import { createDeferredPromise, safeJsonParse, settle } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import {

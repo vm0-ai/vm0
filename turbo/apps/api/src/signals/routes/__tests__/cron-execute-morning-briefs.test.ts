@@ -11,7 +11,7 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
   type GenerationTemplateRequest,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -52,6 +52,23 @@ import {
   setMorningBriefTriggeredAtFixture,
 } from "../../../test-fixtures/morning-brief";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
+import { cronDrainEmailOutboxRoutes } from "../cron-drain-email-outbox";
+import { cronExecuteMorningBriefsRoutes } from "../cron-execute-morning-briefs";
+import { emailMorningBriefUnsubscribeRoutes } from "../email-morning-brief-unsubscribe";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroModelProvidersRoutes } from "../zero-model-providers";
+import { zeroMorningBriefRoutes } from "../zero-morning-brief";
+import { zeroUserPreferencesRoutes } from "../zero-user-preferences";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronDrainEmailOutboxRoutes,
+  ...cronExecuteMorningBriefsRoutes,
+  ...emailMorningBriefUnsubscribeRoutes,
+  ...zeroChatThreadRoutes,
+  ...zeroModelProvidersRoutes,
+  ...zeroMorningBriefRoutes,
+  ...zeroUserPreferencesRoutes,
+]);
 
 /**
  * MORNING-BRIEF: the daily 7:00 local-time brief end to end.
@@ -207,23 +224,33 @@ function actorHeaders() {
 }
 
 function morningBriefCronClient() {
-  return setupApp({ context })(cronExecuteMorningBriefsContract);
+  return setupApp({ context, routes: cronExecuteMorningBriefsRoutes })(
+    cronExecuteMorningBriefsContract,
+  );
 }
 
 function drainOutboxClient() {
-  return setupApp({ context })(cronDrainEmailOutboxContract);
+  return setupApp({ context, routes: cronDrainEmailOutboxRoutes })(
+    cronDrainEmailOutboxContract,
+  );
 }
 
 function preferencesClient() {
-  return setupApp({ context })(zeroUserPreferencesContract);
+  return setupApp({ context, routes: zeroUserPreferencesRoutes })(
+    zeroUserPreferencesContract,
+  );
 }
 
 function morningBriefTriggerClient() {
-  return setupApp({ context })(zeroMorningBriefContract);
+  return setupApp({ context, routes: zeroMorningBriefRoutes })(
+    zeroMorningBriefContract,
+  );
 }
 
 function modelProvidersByTypeClient() {
-  return setupApp({ context })(zeroModelProvidersByTypeContract);
+  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+    zeroModelProvidersByTypeContract,
+  );
 }
 
 // Counts cover every due member in the shared test database, so assertions
@@ -473,7 +500,9 @@ async function findMorningBriefThreadIdOrNull(
 ): Promise<string | null> {
   routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
   const threadEvents = await accept(
-    setupApp({ context })(chatThreadsContract).events({
+    setupApp({ context, routes: zeroChatThreadRoutes })(
+      chatThreadsContract,
+    ).events({
       headers: actorHeaders(),
       query: {},
     }),
@@ -493,7 +522,9 @@ async function readMorningBriefThreadEvents(
   threadId: string,
 ) {
   const messages = await accept(
-    setupApp({ context })(chatThreadEventsContract).list({
+    setupApp({ context, routes: zeroChatThreadRoutes })(
+      chatThreadEventsContract,
+    ).list({
       headers: actorHeaders(),
       params: { threadId },
       query: { limit: 50 },
@@ -885,6 +916,7 @@ describe("cron execute morning briefs", () => {
 
     const unsubscribeResponse = await createApp({
       signal: context.signal,
+      routes: TEST_APP_ROUTES,
     }).request(`/api/email/morning-brief/unsubscribe?token=${token}`, {
       method: "POST",
     });
@@ -992,7 +1024,7 @@ describe("cron execute morning briefs", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {

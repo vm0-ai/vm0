@@ -27,6 +27,7 @@ import {
   readChatAgentRunContextSchemaAvailable,
   resetDatabasePool,
 } from "./helpers/runtime-state";
+import { zeroChatEventsRoutes } from "../zero-chat-events";
 
 const context = testContext();
 const store = createStore();
@@ -307,7 +308,9 @@ async function runPreAgentRunContextRouteProbe(
   });
   const targetEventId = randomUUID();
   const delegated = await accept(
-    setupApp({ context })(chatEventsContract).send({
+    setupApp({ context, routes: zeroChatEventsRoutes })(
+      chatEventsContract,
+    ).send({
       headers: { authorization: `Bearer ${zeroToken}` },
       body: {
         agentId: agent.agentId,

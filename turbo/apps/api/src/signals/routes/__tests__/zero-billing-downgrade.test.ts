@@ -19,6 +19,8 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { zeroBillingDowngradeRoutes } from "../zero-billing-downgrade";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
 
 const context = testContext();
 const store = createStore();
@@ -32,7 +34,9 @@ const TEST_USAGE_PACK_50 = "price_test_usage_pack_50";
 
 async function readBillingStatus() {
   return await accept(
-    setupApp({ context })(zeroBillingStatusContract).get({
+    setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    ).get({
       headers: { authorization: "Bearer clerk-session" },
     }),
     [200],
@@ -52,7 +56,9 @@ describe("POST /api/zero/billing/downgrade", () => {
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "limited-free-1" },
@@ -70,7 +76,9 @@ describe("POST /api/zero/billing/downgrade", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "limited-free-1" },
@@ -88,7 +96,9 @@ describe("POST /api/zero/billing/downgrade", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "limited-free-1" },
@@ -111,7 +121,9 @@ describe("POST /api/zero/billing/downgrade", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await client.create({
       body: { targetTier: "team" as "pro" },
       headers: { authorization: "Bearer clerk-session" },
@@ -126,7 +138,9 @@ describe("POST /api/zero/billing/downgrade", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "limited-free-1" },
@@ -158,7 +172,9 @@ describe("POST /api/zero/billing/downgrade", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "pro" },
@@ -225,7 +241,9 @@ describe("POST /api/zero/billing/downgrade", () => {
       id: scheduleId,
     });
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "pro" },
@@ -334,7 +352,9 @@ describe("POST /api/zero/billing/downgrade", () => {
       id: scheduleId,
     });
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "pro" },
@@ -416,7 +436,9 @@ describe("POST /api/zero/billing/downgrade", () => {
       id: scheduleId,
     });
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "pro" },
@@ -513,7 +535,9 @@ describe("POST /api/zero/billing/downgrade", () => {
       url: checkoutUrl,
     });
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "pro", returnUrl },
@@ -595,7 +619,9 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "limited-free-1" },
@@ -665,7 +691,9 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "limited-free-1" },
@@ -724,7 +752,9 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "limited-free-1" },
@@ -797,7 +827,9 @@ describe("POST /api/zero/billing/downgrade", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "limited-free-1" },
@@ -879,7 +911,9 @@ describe("POST /api/zero/billing/downgrade", () => {
       id: scheduleId,
     });
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "limited-free-1" },
@@ -957,7 +991,9 @@ describe("POST /api/zero/billing/downgrade", () => {
       id: scheduleId,
     });
 
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
     const response = await accept(
       client.create({
         body: { targetTier: "limited-free-1" },

@@ -6,7 +6,7 @@ import {
   type AttachFile,
   type GenerationTemplateRequest,
   type ChatPromptEvent,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
 import type { UserModelPreferenceResponse } from "@vm0/api-contracts/contracts/zero-user-model-preference";
@@ -92,7 +92,7 @@ interface PreparedNewThreadPayload {
 function userMessageForNewThread(
   request: SendNewThreadMessageRequest,
   prepared: PreparedNewThreadPayload,
-): UserMessageDocument {
+): UserMessageInputDocument {
   const generationTemplate = request.generationTemplate;
   if (
     generationTemplate &&
@@ -133,7 +133,7 @@ function createNewThreadOptimisticEventEntry({
   clientEventId: string;
   prepared: PreparedNewThreadPayload;
   generationTemplate: GenerationTemplateRequest | undefined;
-  userMessage: UserMessageDocument;
+  userMessage: UserMessageInputDocument;
 }): OptimisticChatEventInput {
   return {
     threadId,
@@ -172,7 +172,7 @@ function newThreadSendBody({
   codexFastModeEnabled: boolean;
   realAgentInPreviewEnabled: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
-  userMessage: UserMessageDocument;
+  userMessage: UserMessageInputDocument;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
 }) {

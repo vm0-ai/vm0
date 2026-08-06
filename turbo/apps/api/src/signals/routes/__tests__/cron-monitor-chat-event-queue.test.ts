@@ -12,6 +12,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { testCronMonitorChatEventQueueStateRoutes } from "../test-cron-monitor-chat-event-queue-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { cronMonitorChatEventQueueRoutes } from "../cron-monitor-chat-event-queue";
 
 const context = testContext();
 const CRON_SECRET = "test-cron-secret";
@@ -23,7 +24,9 @@ interface MonitorFixture {
 }
 
 function apiClient() {
-  return setupApp({ context })(cronMonitorChatEventQueueContract);
+  return setupApp({ context, routes: cronMonitorChatEventQueueRoutes })(
+    cronMonitorChatEventQueueContract,
+  );
 }
 
 function stateClient() {

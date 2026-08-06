@@ -16,6 +16,8 @@ import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { seedRun$ } from "./helpers/zero-usage-insight";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
 
 const context = testContext();
 const store = createStore();
@@ -96,11 +98,15 @@ function zeroToken(args: {
 }
 
 function threadsClient() {
-  return setupApp({ context })(chatThreadsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadsContract,
+  );
 }
 
 function metadataClient() {
-  return setupApp({ context })(chatThreadMetadataContract);
+  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+    chatThreadMetadataContract,
+  );
 }
 
 describe("POST /api/zero/chat-threads", () => {

@@ -6,8 +6,8 @@ import "./instrument";
 
 import { serve } from "@hono/node-server";
 
-import { createApp } from "./app-factory";
 import { logger } from "./lib/log";
+import { createProductionApp } from "./production-bootstrap";
 
 function main(): void {
   const L = logger("Server");
@@ -19,7 +19,7 @@ function main(): void {
     instanceAbortController.abort(error);
   });
 
-  const app = createApp({ signal: instanceAbortController.signal });
+  const app = createProductionApp(instanceAbortController.signal);
 
   serve(
     {

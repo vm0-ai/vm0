@@ -19,6 +19,7 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroWeatherRoutes } from "../zero-weather";
 
 const context = testContext();
 const GOOGLE_WEATHER_CURRENT_URL =
@@ -42,7 +43,7 @@ function authenticate(actor: ApiTestUser): { readonly authorization: string } {
 }
 
 function client() {
-  return setupApp({ context })(zeroWeatherContract);
+  return setupApp({ context, routes: zeroWeatherRoutes })(zeroWeatherContract);
 }
 
 function configureProvider(): void {

@@ -48,6 +48,7 @@ import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
+import type { Tx } from "../../lib/db-types";
 
 const testTelegramStateQuery$ = queryOf(testTelegramStateContract.get);
 const deleteTestTelegramStateQuery$ = queryOf(testTelegramStateContract.delete);
@@ -64,7 +65,7 @@ const TELEGRAM_E2E_FIXTURES = {
   webhookSecret: "e2e-telegram-webhook-secret",
 } as const;
 
-type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type StarterGrantTx = Tx;
 
 interface SeedDefaultAgentInput {
   readonly orgId: string;
