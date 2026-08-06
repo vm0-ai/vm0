@@ -35,6 +35,53 @@ afterEach(async () => {
 });
 
 describe("chat lifecycle", () => {
+  it("keeps budget inputs out of the visible transcript", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-budget-input-visibility",
+      chatEvents: [
+        {
+          id: "msg-budget-input-user",
+          role: "user",
+          eventType: "input.prompt",
+          content: "Start the long-running task",
+          runId: "run-budget-input",
+          createdAt: "2026-08-06T00:00:00Z",
+        },
+        {
+          id: "msg-budget-input-warning",
+          role: "user",
+          eventType: "input.budget",
+          content: "The runner has five minutes remaining",
+          runId: "run-budget-input",
+          createdAt: "2026-08-06T01:55:00Z",
+        },
+        {
+          id: "msg-budget-input-assistant",
+          role: "assistant",
+          eventType: "output.message",
+          content: "The task summary is ready",
+          runId: "run-budget-input",
+          createdAt: "2026-08-06T01:55:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-budget-input-visibility",
+    });
+
+    await expect(
+      screen.findByText("Start the long-running task"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("The task summary is ready"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("The runner has five minutes remaining"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows run credit usage with friendly popover details", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-usage-chip",

@@ -26,7 +26,7 @@ import {
 import { expiredCancellationRecoveryThreads } from "./zero-chat-active-run.service";
 import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import { pendingActiveInputPromptCondition } from "./chat-event-queue.service";
+import { pendingActiveInputCondition } from "./chat-event-queue.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
 export const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
@@ -57,7 +57,7 @@ interface DrainChatThreadQueueInput {
   };
 }
 
-async function notifyRunningChatRunOfPendingInput(
+export async function notifyRunningChatRunOfPendingInput(
   db: Db,
   chatThreadId: string,
 ): Promise<boolean> {
@@ -84,7 +84,7 @@ async function notifyRunningChatRunOfPendingInput(
     .where(
       and(
         eq(chatEvents.chatThreadId, chatThreadId),
-        pendingActiveInputPromptCondition(db),
+        pendingActiveInputCondition(db, run.id),
       ),
     )
     .limit(1);

@@ -149,6 +149,7 @@ export function semanticChatEventsFromChatEvents(
       isRecallControlEvent(event) ||
       isQueueMarkerEvent(event) ||
       isGoalQueueEvent(event) ||
+      event.eventType === "input.budget" ||
       isGoalMarkerEvent(event) ||
       isBrowserLifecycleEventType(event.eventType) ||
       isInterruptedAssistantCancellation(event, interruptedRunIds) ||
