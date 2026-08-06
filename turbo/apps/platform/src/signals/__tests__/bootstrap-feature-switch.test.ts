@@ -33,29 +33,6 @@ describe("bootstrap feature switch hydration", () => {
     ).toBeTruthy();
   });
 
-  it("keeps custom model gateways disabled when the API lacks support", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: { [FeatureSwitchKey.CustomModelGateways]: true },
-        effectiveSwitches: {
-          [FeatureSwitchKey.CustomModelGateways]: true,
-        },
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-      });
-    });
-
-    await setupPage({
-      context,
-      path: "/error",
-      withoutRender: true,
-    });
-
-    expect(
-      context.store.get(featureSwitch$)[FeatureSwitchKey.CustomModelGateways],
-    ).toBeFalsy();
-  });
-
   it("enables image recognition from the stable API capability", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
@@ -63,7 +40,6 @@ describe("bootstrap feature switch hydration", () => {
         effectiveSwitches: {},
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways: true,
         supportsImageRecognition: true,
       });
     });
@@ -84,7 +60,6 @@ describe("bootstrap feature switch hydration", () => {
         effectiveSwitches: {},
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways: true,
       });
     });
 
@@ -104,7 +79,6 @@ describe("bootstrap feature switch hydration", () => {
         effectiveSwitches: {},
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways: true,
         supportsImageRecognition: false,
       });
     });

@@ -1,48 +1,12 @@
-//! Mock Codex CLI for testing.
+//! Mock Codex app-server for testing.
 //!
-//! Supports test-only Codex `exec --json` and `app-server` surfaces. Exec mode
-//! emits JSONL protocol events on stdout and persists a JSONL session file under
-//! Codex's date-partitioned session tree
-//! (`$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`). App-server mode speaks
-//! newline-delimited JSON-RPC over stdio.
-//!
-//! Resume can also append to runner-restored rollout filenames, matching the
-//! real Codex CLI's filesystem resume candidates.
-//!
-//! Activated in guest VMs via `USE_MOCK_CODEX=true` (handled by guest-agent).
-//! This binary itself runs whenever it's invoked — the env-var dispatch lives
-//! in the consumer.
-//!
-//! Usage (mirrors real Codex CLI):
-//! ```text
-//!   guest-mock-codex [-c <config>] exec [--json] [--sandbox <mode>] [--skip-git-repo-check]
-//!                          [-C <dir>] [-m <model>]
-//!                          [--append-system-prompt <s>] [--last]
-//!                          [-- <prompt|->]
-//!   guest-mock-codex [-c <config>] exec resume <canonical-uuid-thread-id> [-- <prompt|->]
-//!   guest-mock-codex [-c <config>] app-server --listen stdio://
-//!   guest-mock-codex [-c <config>] app-server --stdio
-//! ```
-//!
-//! Fixture mode: when `MOCK_CODEX_FIXTURE=<name>` is set in the env, the
-//! synthetic 3-event sequence is replaced with a baked JSONL fixture by
-//! that name. The thread id is taken from the fixture's
-//! `thread.started` event; the fixture events are emitted to stdout and
-//! persisted to the session file. Used by
-//! `e2e/tests/03-runner/t-codex-event-mapping.bats` to exercise the
-//! codex-event-parser branches that the synthetic sequence cannot reach.
-//!
-//! App-server mode speaks the Codex app-server newline-delimited JSON
-//! request/response protocol on stdio. Failure scenarios are selected with
+//! The binary speaks newline-delimited JSON-RPC over stdio and persists mock
+//! session artifacts under `$CODEX_HOME`. Behavior is selected with
 //! `MOCK_CODEX_APP_SERVER_SCENARIO`.
 
 use clap::{Parser, Subcommand};
-use guest_mock_codex::{
-    join_prompt_cow, lookup_fixture, run_app_server, run_fixture, run_new, run_resume,
-};
-use std::borrow::Cow;
-use std::io::{self, Read};
-use std::path::PathBuf;
+use guest_mock_codex::run_app_server;
+use std::io;
 
 #[derive(Parser, Debug)]
 #[command(name = "guest-mock-codex", version)]
@@ -52,67 +16,13 @@ struct Cli {
     config: Vec<String>,
 
     #[command(subcommand)]
-    command: Cmd,
+    command: Command,
 }
 
 #[derive(Subcommand, Debug)]
-enum Cmd {
-    /// Mirrors `codex exec`.
-    Exec(ExecArgs),
+enum Command {
     /// Mirrors `codex app-server`.
     AppServer(AppServerArgs),
-}
-
-#[derive(clap::Args, Debug)]
-struct ExecArgs {
-    #[command(subcommand)]
-    sub: Option<ExecSub>,
-
-    /// Emit JSONL output (accepted, mock always emits JSONL).
-    #[arg(long)]
-    json: bool,
-
-    /// Sandbox mode (accepted, ignored).
-    #[arg(long)]
-    sandbox: Option<String>,
-
-    /// Skip git-repo check (accepted, ignored).
-    #[arg(long = "skip-git-repo-check")]
-    skip_git_repo_check: bool,
-
-    /// Working directory (accepted, ignored — mock writes session file under
-    /// `$CODEX_HOME` regardless).
-    #[arg(short = 'C', long = "cd")]
-    cwd: Option<PathBuf>,
-
-    /// Model override (accepted, ignored).
-    #[arg(short = 'm', long)]
-    model: Option<String>,
-
-    /// Append-system-prompt (accepted, ignored).
-    #[arg(long = "append-system-prompt")]
-    append_system_prompt: Option<String>,
-
-    /// Resume the most recent session (accepted, ignored — mock requires an
-    /// explicit id via `resume <id>`).
-    #[arg(long)]
-    last: bool,
-
-    /// Trailing positional prompt (everything after `--`, or after recognised
-    /// flags). May be empty.
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-    prompt: Vec<String>,
-}
-
-#[derive(Subcommand, Debug)]
-enum ExecSub {
-    /// Mirrors `codex exec resume <thread_id>`. The id must be a canonical UUID.
-    Resume {
-        thread_id: String,
-
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        prompt: Vec<String>,
-    },
 }
 
 #[derive(clap::Args, Debug)]
@@ -130,56 +40,6 @@ fn main() -> io::Result<()> {
     let Cli { command, config: _ } = Cli::parse();
 
     match command {
-        Cmd::AppServer(AppServerArgs { listen, stdio: _ }) => run_app_server(&listen),
-        Cmd::Exec(ExecArgs {
-            sub: Some(ExecSub::Resume { thread_id, prompt }),
-            ..
-        }) => {
-            let prompt = resolve_exec_prompt(&prompt)?;
-            if maybe_run_fixture()? {
-                return Ok(());
-            }
-            run_resume(&thread_id, prompt.as_ref())
-        }
-        Cmd::Exec(ExecArgs { prompt, .. }) => {
-            let prompt = resolve_exec_prompt(&prompt)?;
-            if maybe_run_fixture()? {
-                return Ok(());
-            }
-            run_new(prompt.as_ref())
-        }
+        Command::AppServer(AppServerArgs { listen, stdio: _ }) => run_app_server(&listen),
     }
-}
-
-fn resolve_exec_prompt(parts: &[String]) -> io::Result<Cow<'_, str>> {
-    let prompt = join_prompt_cow(parts);
-    if prompt != "-" {
-        return Ok(prompt);
-    }
-
-    let mut stdin_prompt = String::new();
-    io::stdin().read_to_string(&mut stdin_prompt)?;
-    if stdin_prompt.trim().is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "No prompt provided via stdin.",
-        ));
-    }
-    Ok(Cow::Owned(stdin_prompt))
-}
-
-fn maybe_run_fixture() -> io::Result<bool> {
-    // Fixture mode is specific to the one-shot `exec --json` event stream.
-    if let Ok(fixture_name) = std::env::var("MOCK_CODEX_FIXTURE")
-        && !fixture_name.is_empty()
-    {
-        if let Some(content) = lookup_fixture(&fixture_name) {
-            run_fixture(content)?;
-            return Ok(true);
-        }
-        eprintln!(
-            "warning: MOCK_CODEX_FIXTURE={fixture_name:?} not found, falling through to synthetic events"
-        );
-    }
-    Ok(false)
 }

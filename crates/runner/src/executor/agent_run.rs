@@ -1607,7 +1607,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         prepared_guest_runtime,
         guest_state_prepared,
     } = controls;
-    let has_active_input_source = active_input_source.is_some();
     let pre_spawn_started = Instant::now();
 
     // Complete cancellation-aware guest runtime and storage preparation while
@@ -2087,7 +2086,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         &config.api_url,
         sandbox.id(),
         start.reuse_result,
-        has_active_input_source,
     ) {
         Ok(env_map) => env_map,
         Err(error) => {

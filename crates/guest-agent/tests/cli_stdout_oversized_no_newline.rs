@@ -1,4 +1,4 @@
-//! An oversized newline-free ordinary CLI stdout record must fail before it is
+//! An oversized newline-free Claude Code stdout record must fail before it is
 //! retained or logged and must trigger bounded cleanup of a live child.
 
 mod common;

@@ -40,7 +40,6 @@ export enum FeatureSwitchKey {
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
   Banking = "banking",
-  Translation = "translation",
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",
   GoogleFormsWorkflowAutomations = "googleFormsWorkflowAutomations",
@@ -57,7 +56,6 @@ export enum FeatureSwitchKey {
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
   StructuredPromptInlineTemplates = "structuredPromptInlineTemplates",
-  CustomModelGateways = "customModelGateways",
   UsagePackPlans = "usagePackPlans",
 
   ZapierConnector = "zapierConnector",
@@ -75,4 +73,5 @@ export enum FeatureSwitchKey {
   ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
+  CjkFriendlyMarkdown = "cjkFriendlyMarkdown",
 }

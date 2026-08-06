@@ -34,11 +34,6 @@ export interface FeatureSwitchContext {
   readonly overrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 }
 
-const CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES = [
-  ...STAFF_ORG_ID_HASHES,
-  "a6e60503", // geo rollout workspace
-] as const;
-
 /**
  * Registry of all feature switches
  */
@@ -228,13 +223,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.Translation]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable the managed Zero translation command and translation:write ZERO_TOKEN capability.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Lab page for toggling experimental features",
@@ -341,13 +329,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable multiple inline artifact templates in structured chat prompts.",
     enabled: true,
   },
-  [FeatureSwitchKey.CustomModelGateways]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable admin-defined Anthropic Messages and OpenAI Responses model gateway connections.",
-    enabled: false,
-    enabledOrgIdHashes: CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -399,6 +380,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Open an artifact clicked in a chat thread inside the already-open artifact sidebar instead of stacking the page-global lightbox over it.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.CjkFriendlyMarkdown]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Close markdown emphasis (`*`, `**`, `***`, `~~`) that sits directly against CJK punctuation, which plain CommonMark leaves as literal asterisks. Turn off to fall back to stock CommonMark parsing.",
     enabled: true,
   },
   [FeatureSwitchKey.ThreeColumnNav]: {

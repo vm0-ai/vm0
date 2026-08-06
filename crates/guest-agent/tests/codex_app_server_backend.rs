@@ -1,4 +1,4 @@
-//! Integration coverage for the experimental Codex app-server backend.
+//! Integration coverage for Codex app-server execution.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
@@ -99,6 +99,10 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
             "item.completed",
             "turn.completed",
         ],
+    );
+    assert_eq!(
+        events[2].pointer("/item/text").and_then(Value::as_str),
+        Some("guest-mock-codex app-server response: drive the app-server backend")
     );
 
     let sandbox_ops = read_sandbox_ops(&runtime.paths)?;
