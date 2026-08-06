@@ -49,6 +49,11 @@ const OPEN_CHANGE_STATUSES = [
   "scheduled",
   "applied",
 ] as const;
+const PROJECTED_USAGE_PACK_ALLOCATION_STATUSES = [
+  "pending_payment",
+  "active",
+  "pending_invitation",
+] as const;
 const TERMINAL_SUBSCRIPTION_STATUSES = [
   "canceled",
   "incomplete_expired",
@@ -74,6 +79,14 @@ interface UsagePackChangeContext {
 interface UsagePackPeriod {
   readonly start: number;
   readonly end: number;
+}
+
+function isProjectedUsagePackAllocation(
+  allocation: UsagePackAllocationRow,
+): boolean {
+  return PROJECTED_USAGE_PACK_ALLOCATION_STATUSES.some((status) => {
+    return allocation.status === status;
+  });
 }
 
 interface UsagePackChangePreviewArgs {
@@ -402,7 +415,7 @@ function packageQuantitiesForAllocations(
 ): ReadonlyMap<string, number> {
   const quantities = new Map<string, number>();
   for (const allocation of allocations) {
-    if (allocation.status === "inactive") {
+    if (!isProjectedUsagePackAllocation(allocation)) {
       continue;
     }
     quantities.set(
@@ -868,7 +881,7 @@ function projectedPackageQuantities(
 ): ReadonlyMap<string, number> {
   const packageByOwner = new Map<string, string>();
   for (const allocation of context.allocations) {
-    if (allocation.status === "inactive") {
+    if (!isProjectedUsagePackAllocation(allocation)) {
       continue;
     }
     packageByOwner.set(
@@ -1460,7 +1473,7 @@ function projectedQuantitiesAfterChanges(
 ): ReadonlyMap<string, number> {
   const packageByOwner = new Map<string, string>();
   for (const allocation of context.allocations) {
-    if (allocation.status !== "inactive") {
+    if (isProjectedUsagePackAllocation(allocation)) {
       packageByOwner.set(
         allocationOwnerKey(allocation),
         allocation.stripePriceId,

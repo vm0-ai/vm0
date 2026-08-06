@@ -60,6 +60,12 @@ const PAYABLE_USAGE_PACK_ALLOCATION_STATUSES = [
   "active",
   "pending_invitation",
 ] as const;
+const CANCELED_USAGE_PACK_ALLOCATION_STATUSES = [
+  "pending_payment",
+  "active",
+  "pending_invitation",
+  "inactive",
+] as const;
 const USAGE_PACK_RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
 const TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES = [
   "canceled",
@@ -590,7 +596,9 @@ function payableUsagePackAllocations(
   context: UsagePackContext,
 ): readonly UsagePackAllocationRow[] {
   return context.allocations.filter((allocation) => {
-    return allocation.status !== "inactive";
+    return PAYABLE_USAGE_PACK_ALLOCATION_STATUSES.some((status) => {
+      return allocation.status === status;
+    });
   });
 }
 
@@ -598,7 +606,11 @@ function invoiceEligibleUsagePackAllocations(
   context: UsagePackContext,
 ): readonly UsagePackAllocationRow[] {
   if (context.subscription.subscriptionStatus === "canceled") {
-    return context.allocations;
+    return context.allocations.filter((allocation) => {
+      return CANCELED_USAGE_PACK_ALLOCATION_STATUSES.some((status) => {
+        return allocation.status === status;
+      });
+    });
   }
   return payableUsagePackAllocations(context);
 }
