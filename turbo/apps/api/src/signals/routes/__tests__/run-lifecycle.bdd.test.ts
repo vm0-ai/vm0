@@ -10001,6 +10001,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",
       "for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help`",
       "zero connector status <slug>",
+      "when the user wants to add their own custom connector",
+      "zero connector custom -h",
       "zero connector check --help",
       "An attached generation template takes precedence",
       "Without an attached generation template",
