@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.695.0](https://github.com/vm0-ai/vm0/compare/app-v0.694.1...app-v0.695.0) (2026-08-06)
+
+
+### Features
+
+* **billing:** update concurrency slots in existing subscription ([#25473](https://github.com/vm0-ai/vm0/issues/25473)) ([061b9ad](https://github.com/vm0-ai/vm0/commit/061b9ad443dc09738005ac3d9a8f6393449f361a))
+
+
+### Bug Fixes
+
+* **billing:** show checkout return toast after toaster mounts ([#25483](https://github.com/vm0-ai/vm0/issues/25483)) ([cbe9cd8](https://github.com/vm0-ai/vm0/commit/cbe9cd8f404bf339e2d4fdabe1b425f60bc9c879))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.282.0
+    * @vm0/core bumped to 8.524.2
+
 ## [0.694.1](https://github.com/vm0-ai/vm0/compare/app-v0.694.0...app-v0.694.1) (2026-08-06)
 
 
