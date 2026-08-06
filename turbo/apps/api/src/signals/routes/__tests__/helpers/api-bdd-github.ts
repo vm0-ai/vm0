@@ -26,10 +26,12 @@ import type { ApiTestUser } from "./api-bdd";
 import { mockClerkMembership } from "./api-bdd-clerk";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { integrationsGithubRoutes } from "../../integrations-github";
+import { githubOauthRoutes } from "../../github-oauth";
 import { zeroConnectorsRoutes } from "../../zero-connectors";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 
 const TEST_APP_ROUTES = Object.freeze([
+  ...githubOauthRoutes,
   ...integrationsGithubRoutes,
   ...zeroConnectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
