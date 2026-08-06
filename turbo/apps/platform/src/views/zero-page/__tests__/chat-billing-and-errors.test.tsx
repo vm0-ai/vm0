@@ -855,7 +855,7 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("keeps the thinking marker visible while later messages are queued", async () => {
+  it("keeps the thinking marker visible while a later Morning Brief is queued", async () => {
     const threadId = "thread-initial-thinking-with-queue";
     mockChatLifecycle(context, {
       threadId,
@@ -878,7 +878,14 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-queued-followup",
           eventType: "input.prompt" as const,
-          content: "Also include owners",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Also include owners" },
+              { type: "morning_brief", briefDate: "2026-03-10" },
+            ],
+          },
           runId: undefined,
           createdAt: "2026-03-10T00:00:02Z",
         },

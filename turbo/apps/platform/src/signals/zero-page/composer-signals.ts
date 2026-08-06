@@ -14,7 +14,6 @@ import {
 import {
   featureSwitch$,
   imageRecognitionAvailable$,
-  chatSteerEnabled$,
 } from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
@@ -542,10 +541,7 @@ export function createComposerSignals(
 
 function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   const semanticEvents$ = computed((get) => {
-    return semanticChatEventsFromChatEvents(
-      get(chatEvents$),
-      get(chatSteerEnabled$),
-    );
+    return semanticChatEventsFromChatEvents(get(chatEvents$));
   });
   const semanticGroups$ = computed((get) => {
     return groupSemanticChatEvents(get(semanticEvents$));
