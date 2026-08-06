@@ -37,7 +37,10 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const APP_ORIGIN = "http://localhost:3002";
-const TEST_STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+// This unshared test tenant collides with the staff-org identity hash so the
+// route exercises the real authorization gate without mutating shared staff
+// billing state used by other integration files.
+const TEST_STAFF_ORG_ID = "org_usage_pack_checkout_test_lgD7Q3";
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
 const TEST_PRICE_USAGE_PACK_PLAN_PRO = "price_test_usage_pack_plan_pro";
@@ -1062,6 +1065,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
       return index === 0 ? fixture.userId : `user_${randomUUID()}`;
     });
     const invitationId = `inv_${randomUUID()}`;
+    const customerId = `cus_${randomUUID()}`;
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
     });
@@ -1104,6 +1108,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
         ],
       },
     );
+    context.mocks.stripe.customers.create.mockResolvedValueOnce({
+      id: customerId,
+    });
     context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
       url: "https://checkout.stripe.com/session/usage-pack",
     });
