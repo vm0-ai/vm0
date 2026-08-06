@@ -2325,6 +2325,11 @@ describe("zero attachment chips", () => {
   it("opens only the dialog download menu when the same artifact is in split view", async () => {
     const user = userEvent.setup({ delay: null });
     setupHostedSiteArtifactPreview({
+      // Stacking a dialog over the sidebar for the same artifact only happens
+      // with inline open off; the on path is covered by the next test.
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: false,
+      },
       filename: "split-dialog-download.html",
       htmlUrl: "https://split-dialog-download.sites.vm7.io",
       label: "Split dialog download",
