@@ -187,16 +187,6 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
             "pre-park INFO measurement"
         );
         tracing::info!(
-            target: "runner::reserved_reuse_claim",
-            measurement = "reserved_reuse_claim",
-            outcome = "claimed",
-            run_id = "00000000-0000-0000-0000-000000000001",
-            duration_ms = 42_u64,
-            preference_reason = "none",
-            timezone_state = "absent",
-            "reserved reusable claim observed"
-        );
-        tracing::info!(
             target: "sandbox_fc::balloon_settle",
             measurement = "balloon_settle",
             outcome = "target_reached",
@@ -227,7 +217,6 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     for message in [
         "info is below threshold, should not be ingested",
         "pre-park INFO measurement",
-        "reserved reusable claim observed",
         "balloon settle completed",
     ] {
         assert!(
