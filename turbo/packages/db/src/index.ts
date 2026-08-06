@@ -39,6 +39,7 @@ import * as connectorOauthDeviceAuthorizationSessionSchema from "./schema/connec
 import * as connectorOauthStateSchema from "./schema/connector-oauth-state";
 import * as usageEventSchema from "./schema/usage-event";
 import * as usageEventHourlyRollupSchema from "./schema/usage-event-hourly-rollup";
+import * as usagePackCreditGrantSchema from "./schema/usage-pack-credit-grant";
 import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as githubInstallationSchema from "./schema/github-installation";
@@ -185,6 +186,7 @@ export const schema = {
   ...connectorOauthStateSchema,
   ...usageEventSchema,
   ...usageEventHourlyRollupSchema,
+  ...usagePackCreditGrantSchema,
   ...runBuiltInAdmissionSchema,
   ...usageDailySchema,
   ...githubInstallationSchema,
