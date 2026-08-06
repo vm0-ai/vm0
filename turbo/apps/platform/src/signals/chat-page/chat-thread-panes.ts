@@ -208,7 +208,11 @@ const setupPaneThread$ = command(
     L.debug("setupPaneThread$ start", { threadId });
 
     const chatEvents = createChatEventSignals(threadId);
-    const { thread, isNew } = set(createCachedChatPanelSignals$, chatEvents);
+    const { thread, isNew } = set(
+      createCachedChatPanelSignals$,
+      chatEvents,
+      signal,
+    );
     set(spec.setPaneThread$, thread);
 
     await set(
