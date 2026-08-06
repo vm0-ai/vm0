@@ -594,7 +594,6 @@ async fn run_start_with_home(
             .create_runtime(sandbox::RuntimeConfig {
                 proxy_port: Some(mitm.port()),
                 dns_port: Some(dns_port),
-                guest_dns_netfilter_trace: args.local,
             })
             .await
             .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
