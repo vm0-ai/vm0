@@ -1451,14 +1451,20 @@ mod tests {
                 let telemetry =
                     Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http);
 
-                stop_background_and_flush_final_telemetry(
-                    shutdown,
-                    None,
-                    metrics_handle,
-                    heartbeat_handle,
-                    telemetry,
+                tokio::time::timeout(
+                    Duration::from_secs(5),
+                    stop_background_and_flush_final_telemetry(
+                        shutdown,
+                        None,
+                        metrics_handle,
+                        heartbeat_handle,
+                        telemetry,
+                    ),
                 )
-                .await;
+                .await
+                .expect(
+                    "final telemetry producer shutdown and final upload completion should finish within 5 seconds",
+                );
 
                 telemetry_mock.assert_calls_async(1).await;
                 telemetry_mock.delete_async().await;

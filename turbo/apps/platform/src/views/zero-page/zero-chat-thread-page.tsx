@@ -117,10 +117,7 @@ import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import {
-  featureSwitch$,
-  pwaChatKeyboardGesturesEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -3554,8 +3551,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
   const scrollContainerOnRef = useSet(thread.scrollContainerOnRef$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
-  const pwaChatKeyboardGesturesEnabled =
-    useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
+  const standalonePwa = isStandalonePwa();
 
   const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
     if (
@@ -3575,7 +3571,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
         onScroll={handleScroll}
         className={cn(
           "absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]",
-          pwaChatKeyboardGesturesEnabled && "overscroll-contain",
+          standalonePwa && "overscroll-contain",
         )}
       >
         <ChatThreadEventsMain
@@ -3911,8 +3907,7 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
 }
 
 function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
-  const pwaChatKeyboardGesturesEnabled =
-    useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
+  const standalonePwa = isStandalonePwa();
 
   return (
     <footer
@@ -3923,7 +3918,7 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
       <div
         className={cn(
           "overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6",
-          pwaChatKeyboardGesturesEnabled && "overscroll-contain",
+          standalonePwa && "overscroll-contain",
         )}
       >
         <div className="mx-auto max-w-[900px]">

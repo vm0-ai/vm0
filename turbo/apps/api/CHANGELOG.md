@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.385.0](https://github.com/vm0-ai/vm0/compare/api-v1.384.1...api-v1.385.0) (2026-08-06)
+
+
+### Features
+
+* ingest pi.message.completed events into thread transcript and chat ([#25421](https://github.com/vm0-ai/vm0/issues/25421)) ([d4ebf45](https://github.com/vm0-ai/vm0/commit/d4ebf45973915c1022249c2cbc827baae057f7b8))
+
+
+### CI
+
+* increase lint-types-apps heap limit ([#25418](https://github.com/vm0-ai/vm0/issues/25418)) ([96ce111](https://github.com/vm0-ai/vm0/commit/96ce1119428393517cf4ff4dae24f20457f73633))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.278.0
+    * @vm0/core bumped to 8.522.1
+    * @vm0/db bumped to 1.169.0
+
 ## [1.384.1](https://github.com/vm0-ai/vm0/compare/api-v1.384.0...api-v1.384.1) (2026-08-06)
 
 
