@@ -68,5 +68,6 @@ pub use paths::{
 pub use runtime::{FirecrackerRuntime, FirecrackerRuntimeProvider};
 pub use sandbox::FirecrackerSandbox;
 pub use snapshot::{
-    FirecrackerSnapshotProvider, SNAPSHOT_COMPLETE_MARKER_CONTENT, SnapshotError, create_snapshot,
+    FirecrackerSnapshotProvider, SNAPSHOT_COMPLETE_MARKER_CONTENT, SnapshotError,
+    SnapshotOutputValidation, create_snapshot, validate_snapshot_output,
 };

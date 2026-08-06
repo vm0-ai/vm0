@@ -346,13 +346,7 @@ async fn cleanup_kept_cow_paths_after_publish_cancellation(paths: &KeptCowCleanu
 
 fn cleanup_uncommitted_snapshot_output_artifacts(output: &SnapshotOutputPaths) -> bool {
     let mut cleaned = true;
-    for path in [
-        output.complete_marker(),
-        output.snapshot(),
-        output.memory(),
-        output.cow(),
-        output.cow_bitmap(),
-    ] {
+    for path in std::iter::once(output.complete_marker()).chain(output.required_artifacts()) {
         match remove_file_if_exists_sync(&path) {
             Ok(()) => {}
             Err(e) => {
