@@ -116,7 +116,6 @@ import type { PersistedStorageMount } from "@vm0/db/types";
 import {
   and,
   count,
-  desc,
   eq,
   inArray,
   isNotNull,
@@ -167,7 +166,6 @@ import {
   compileModelProviderGatewayRuntime,
   GATEWAY_RUNTIME_SECRET_NAME,
 } from "./model-provider-gateway-runtime";
-import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 import {
   autonomyBudgetSchemaAvailable,
   insertRolloutCompatibleZeroRun,
@@ -279,7 +277,6 @@ import {
 import type { Tx } from "../../lib/db-types";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
-const LEGACY_CHAT_STEER_RUNNER_FLAG = "chatSteer";
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
 type ArtifactMissingRootPolicy = NonNullable<
   StorageMountEntry["missingRootPolicy"]
@@ -1869,10 +1866,6 @@ function providerEnvironmentFromSecretMap(
   return environment;
 }
 
-function vm0ApiKeySelectionOrder() {
-  return sql`case when ${eq(vm0ApiKeys.label, sql`'dev-seed'`)} then 0 else 1 end`;
-}
-
 async function multiAuthModelProviderEnvironment(
   db: Db,
   args: {
@@ -1982,11 +1975,6 @@ async function vm0ModelProviderEnvironment(
     .select({ apiKey: vm0ApiKeys.apiKey })
     .from(vm0ApiKeys)
     .where(eq(vm0ApiKeys.vendor, vendor))
-    .orderBy(
-      vm0ApiKeySelectionOrder(),
-      desc(vm0ApiKeys.updatedAt),
-      sql`random()`,
-    )
     .limit(1);
   const apiKey = rows[0]?.apiKey;
   const secretName = getSecretNameForType(concreteType);
@@ -2027,9 +2015,6 @@ async function customGatewayModelProviderEnvironment(
   args: ResolveModelProviderEnvironmentArgs,
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (!args.modelProviderId || !args.selectedModelOverride) {
-    return null;
-  }
-  if (!(await modelProviderGatewaySchemaAvailable(db))) {
     return null;
   }
   const [row] = await db
@@ -5270,13 +5255,7 @@ async function buildStoredExecutionContextDraft(args: {
       disallowedTools: args.body.disallowedTools,
       tools: args.body.tools,
       settings: args.body.settings,
-      // API promotion precedes runner promotion. The runner release before
-      // #25369 requires this protocol field to attach active input to thread
-      // runs. Remove it only after that runner can no longer drain or roll back.
-      featureFlags: {
-        ...getAllFeatureStates(args.featureSwitchContext),
-        [LEGACY_CHAT_STEER_RUNNER_FLAG]: true,
-      },
+      featureFlags: getAllFeatureStates(args.featureSwitchContext),
       billableFirewalls: [...args.billableFirewalls],
       modelUsageProvider: args.modelUsageProvider,
       codexRuntimeConfig: args.modelProvider?.codexRuntimeConfig ?? null,

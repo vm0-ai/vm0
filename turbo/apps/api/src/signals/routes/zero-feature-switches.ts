@@ -5,14 +5,12 @@ import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import {
   deleteUserFeatureSwitches$,
   updateUserFeatureSwitches$,
   userFeatureSwitchOverrides,
 } from "../services/feature-switches.service";
-import { modelProviderGatewaySchemaAvailable } from "../services/model-provider-gateway-schema.service";
 
 const featureSwitchesAuthOptions = {
   requireOrganization: true,
@@ -27,7 +25,6 @@ function featureSwitchResponseBody(params: {
   readonly switches: Record<string, boolean>;
   readonly supportsStructuredInlineTemplates: boolean;
   readonly supportsCustomConnectorOAuth2: boolean;
-  readonly supportsCustomModelGateways: boolean;
   readonly supportsImageRecognition: boolean;
   readonly supportsAvatarTemplates: boolean;
 }) {
@@ -53,7 +50,6 @@ function featureSwitchResponseBody(params: {
     effectiveSwitches,
     supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
     supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
-    supportsCustomModelGateways: params.supportsCustomModelGateways,
     supportsImageRecognition: params.supportsImageRecognition,
     supportsAvatarTemplates: params.supportsAvatarTemplates,
   };
@@ -64,9 +60,6 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
   const switches = await get(
     userFeatureSwitchOverrides(auth.orgId, auth.userId),
   );
-  const supportsCustomModelGateways = await modelProviderGatewaySchemaAvailable(
-    get(db$),
-  );
   return {
     status: 200 as const,
     body: featureSwitchResponseBody({
@@ -75,7 +68,6 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       switches,
       supportsStructuredInlineTemplates: true,
       supportsCustomConnectorOAuth2: true,
-      supportsCustomModelGateways,
       supportsImageRecognition: true,
       supportsAvatarTemplates: true,
     }),
@@ -104,9 +96,6 @@ const updateFeatureSwitchesInner$ = command(
       },
       signal,
     );
-    const supportsCustomModelGateways =
-      await modelProviderGatewaySchemaAvailable(get(db$));
-    signal.throwIfAborted();
 
     return {
       status: 200 as const,
@@ -116,7 +105,6 @@ const updateFeatureSwitchesInner$ = command(
         switches,
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways,
         supportsImageRecognition: true,
         supportsAvatarTemplates: true,
       }),

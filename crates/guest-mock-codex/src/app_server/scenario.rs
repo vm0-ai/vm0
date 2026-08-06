@@ -28,6 +28,7 @@ pub(super) enum Scenario {
     NoActiveTurn,
     ExitOnTurnSteer,
     RuntimeTurnComplete,
+    RuntimeTurnFailed,
     RuntimeTurnCompleteAfterSteer,
     RuntimeTurnCompleteBeforeSteerResponse,
     RuntimeTurnStartedBeforeSteer,
@@ -79,6 +80,7 @@ impl Scenario {
                 "no-active-turn" => Ok(Self::NoActiveTurn),
                 "exit-on-turn-steer" => Ok(Self::ExitOnTurnSteer),
                 "runtime-turn-complete" => Ok(Self::RuntimeTurnComplete),
+                "runtime-turn-failed" => Ok(Self::RuntimeTurnFailed),
                 "runtime-turn-complete-after-steer" => Ok(Self::RuntimeTurnCompleteAfterSteer),
                 "runtime-turn-complete-before-steer-response" => {
                     Ok(Self::RuntimeTurnCompleteBeforeSteerResponse)

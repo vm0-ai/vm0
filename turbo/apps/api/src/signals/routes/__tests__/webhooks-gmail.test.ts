@@ -36,7 +36,7 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { chatEventAutomationPart } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { replaceBddVm0ApiKeys } from "../../../test-fixtures/chat-events";
+import { replaceBddVm0ApiKey } from "../../../test-fixtures/chat-events";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { webhooksGmailRoutes } from "../webhooks-gmail";
 
@@ -410,15 +410,10 @@ async function configureWorkspaceModelProvider(
 
 async function configureVm0ManagedModelKey(): Promise<void> {
   const keySuffix = randomUUID();
-  await replaceBddVm0ApiKeys({
+  await replaceBddVm0ApiKey({
     vendor: GMAIL_WORKSPACE_MODEL_VENDOR,
-    model: GMAIL_WORKSPACE_MODEL,
-    keys: [
-      {
-        apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
-        label: "dev-seed",
-      },
-    ],
+    apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
+    label: "dev-seed",
   });
 }
 

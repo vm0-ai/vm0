@@ -2,7 +2,7 @@
 //!
 //! The guest-agent owns the complete local Codex auth state because sandboxes
 //! can be reused across runs. Each run must therefore write the desired auth
-//! mode or remove stale auth from a previous run before `codex exec` starts.
+//! mode or remove stale auth from a previous run before Codex starts.
 //!
 //! Codex (`openai/codex`) decides between API-key mode and ChatGPT mode at
 //! load time from `auth.json` contents. By writing an `auth.json` with

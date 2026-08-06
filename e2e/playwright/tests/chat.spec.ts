@@ -154,7 +154,6 @@ test("selected avatar and voice cards keep a single border", async ({
         effectiveSwitches: { joggAiBuiltIn: true },
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways: true,
         supportsImageRecognition: true,
         supportsAvatarTemplates: true,
       },

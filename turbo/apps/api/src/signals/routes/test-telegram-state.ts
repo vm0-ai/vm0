@@ -3,7 +3,6 @@ import { command, computed } from "ccstate";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getProviderRuntimeModel,
   getVm0Vendor,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -897,35 +896,26 @@ async function seedTelegramPostModelKeys(
   seed: TelegramPostFixtureSeed,
   signal: AbortSignal,
 ): Promise<void> {
-  await db.insert(vm0ApiKeys).values([
-    {
-      vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      model: getProviderRuntimeModel(
-        "vm0",
-        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      ),
-      apiKey: `vm0-key-default-${seed.composeId}`,
-      label: seed.composeId,
-    },
-    {
-      vendor: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKey: `vm0-key-anthropic-${seed.composeId}`,
-      label: seed.composeId,
-    },
-    {
-      vendor: "deepseek",
-      model: "deepseek-v4-flash",
-      apiKey: `vm0-key-deepseek-${seed.composeId}`,
-      label: seed.composeId,
-    },
-    {
-      vendor: "moonshot",
-      model: "kimi-k2.7-code",
-      apiKey: `vm0-key-moonshot-${seed.composeId}`,
-      label: seed.composeId,
-    },
-  ]);
+  await db
+    .insert(vm0ApiKeys)
+    .values([
+      {
+        vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+        apiKey: `vm0-key-default-${seed.composeId}`,
+        label: seed.composeId,
+      },
+      {
+        vendor: "anthropic",
+        apiKey: `vm0-key-anthropic-${seed.composeId}`,
+        label: seed.composeId,
+      },
+      {
+        vendor: "moonshot",
+        apiKey: `vm0-key-moonshot-${seed.composeId}`,
+        label: seed.composeId,
+      },
+    ])
+    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
   signal.throwIfAborted();
 }
 
@@ -1478,20 +1468,14 @@ async function seedModelPoliciesForAction(
     },
   ]);
   signal.throwIfAborted();
-  await db.insert(vm0ApiKeys).values([
-    {
+  await db
+    .insert(vm0ApiKeys)
+    .values({
       vendor: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKey: "vm0-key-claude-sonnet-4-6",
+      apiKey: "vm0-key-anthropic",
       label: required.compose_id!,
-    },
-    {
-      vendor: "anthropic",
-      model: "claude-opus-4-7",
-      apiKey: "vm0-key-claude-opus-4-7",
-      label: required.compose_id!,
-    },
-  ]);
+    })
+    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
   signal.throwIfAborted();
   await db
     .insert(orgMembersMetadata)
