@@ -541,7 +541,11 @@ describe("assistant markdown", () => {
       ].join("\n"),
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.CjkFriendlyMarkdown]: true },
+    });
 
     await waitFor(() => {
       expect(
@@ -564,13 +568,37 @@ describe("assistant markdown", () => {
   it("strikes through text that touches cjk punctuation", async () => {
     mockThread("~~删除线（test）~~后面");
 
-    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.CjkFriendlyMarkdown]: true },
+    });
 
     await waitFor(() => {
       expect(
         screen.getByText("删除线（test）", { selector: "del, s" }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("falls back to stock commonmark when the cjk switch is off", async () => {
+    mockThread("**加粗（x）**后面\n\n~~删除线（test）~~后面");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.CjkFriendlyMarkdown]: false },
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector(".wmde-markdown")?.textContent).toContain(
+        "**加粗（x）**后面",
+      );
+    });
+    expect(document.querySelector(".wmde-markdown")?.textContent).toContain(
+      "~~删除线（test）~~后面",
+    );
+    expect(document.querySelector(".wmde-markdown del")).toBeNull();
   });
 
   it("keeps ascii markdown rendering unchanged", async () => {

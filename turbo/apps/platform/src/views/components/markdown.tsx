@@ -11,6 +11,7 @@ import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethroug
 import remarkMath from "remark-math";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { rehypeMermaid } from "../../lib/rehype-mermaid.ts";
+import { cjkFriendlyMarkdownEnabled$ } from "../../signals/external/feature-switch.ts";
 import { pageLifecycleId$ } from "../../signals/page-signal.ts";
 import { theme$ } from "../../signals/theme.ts";
 import {
@@ -433,17 +434,16 @@ const reorderCjkStrikethrough: PluginsFilter = (type, plugins) => {
 
 function buildRemarkPlugins(args: {
   mathEnabled: boolean;
+  cjkFriendlyEnabled: boolean;
   remarkPlugins: MarkdownPreviewProps["remarkPlugins"];
 }): RemarkPlugins {
   const mathPlugins: RemarkPlugins = args.mathEnabled
     ? [[remarkMath, { singleDollarTextMath: false }]]
     : [];
-  return [
-    ...mathPlugins,
-    remarkCjkFriendly,
-    remarkCjkFriendlyStrikethrough,
-    ...(args.remarkPlugins ?? []),
-  ];
+  const cjkPlugins: RemarkPlugins = args.cjkFriendlyEnabled
+    ? [remarkCjkFriendly, remarkCjkFriendlyStrikethrough]
+    : [];
+  return [...mathPlugins, ...cjkPlugins, ...(args.remarkPlugins ?? [])];
 }
 
 // The mermaid plugin has to stay ahead of `rehype-prism-plus`, which
@@ -482,6 +482,7 @@ export function Markdown({
 }) {
   const theme = useGet(theme$);
   const pageLifecycleId = useGet(pageLifecycleId$);
+  const cjkFriendlyEnabled = useGet(cjkFriendlyMarkdownEnabled$);
   const components = mediaPreview
     ? MEDIA_MARKDOWN_COMPONENTS
     : PLAIN_MARKDOWN_COMPONENTS;
@@ -499,8 +500,12 @@ export function Markdown({
       }}
       wrapperElement={{ "data-color-mode": theme }}
       rehypeRewrite={rehypeRewriteHandler}
-      pluginsFilter={reorderCjkStrikethrough}
-      remarkPlugins={buildRemarkPlugins({ mathEnabled, remarkPlugins })}
+      pluginsFilter={cjkFriendlyEnabled ? reorderCjkStrikethrough : undefined}
+      remarkPlugins={buildRemarkPlugins({
+        mathEnabled,
+        cjkFriendlyEnabled,
+        remarkPlugins,
+      })}
       rehypePlugins={buildRehypePlugins({
         mathEnabled,
         mermaidScope: mermaidScope ?? pageLifecycleId,
