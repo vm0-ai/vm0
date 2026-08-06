@@ -5722,7 +5722,7 @@ function CreateWorkflowPromptButton({
           <button
             type="button"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
+              "hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:inline-flex sm:h-9 sm:w-9",
               COMPOSER_CONTROL_FOCUS_CLASS,
             )}
             aria-label={t(($) => {
@@ -5785,11 +5785,17 @@ function ConnectorTriggerIcons({
   }
   return (
     <span className="flex items-center -space-x-2 sm:-space-x-1.5">
-      {enabled.map((item) => {
+      {enabled.map((item, index) => {
         const key =
           item.kind === "builtin" ? item.connector.slug : item.connector.id;
         return (
-          <span key={key} className="relative shrink-0">
+          <span
+            key={key}
+            className={cn(
+              "relative shrink-0",
+              index === 2 && "hidden sm:block",
+            )}
+          >
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
               {item.kind === "builtin" ? (
                 <ConnectorIcon icon={item.connector.icon} size={16} />
@@ -8035,14 +8041,14 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerTemplateAttachmentSync signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} />
-          <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-3 pt-1">
+          <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
             <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
               <ComposerUploadControl signals={signals} />
               <ComposerTemplatePickerSlot signals={signals} />
               <ComposerWorkflowPromptSlot signals={signals} />
               <ComposerConnectorsSlot signals={signals} />
             </div>
-            <div className="ml-auto flex items-center gap-1 sm:gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <ComposerModelPickerSlot signals={signals} />
               <MicButton signals={signals} />
               <ComposerSendControl signals={signals} />
