@@ -74,6 +74,7 @@ export enum FeatureSwitchKey {
   ThreeColumnNav = "threeColumnNav",
   ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
   ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
+  ImageCanvasDoubleClickZoom = "imageCanvasDoubleClickZoom",
   CustomConnectorCliCreate = "customConnectorCliCreate",
   CustomConnectorOAuth2 = "customConnectorOAuth2",
   MermaidDiagrams = "mermaidDiagrams",

@@ -179,6 +179,14 @@ class _LiteralState:
     offset: int = 0
 
 
+@dataclass
+class _ScalarConsistency:
+    occurrences: int = 0
+    valid_occurrences: int = 0
+    first_value: object | None = None
+    conflicting: bool = False
+
+
 class JsonSelectiveExtractor:
     """Streaming, bounded JSON extractor for a fixed observation set.
 
@@ -204,6 +212,7 @@ class JsonSelectiveExtractor:
         array_count_paths: set[Path] | None = None,
         wildcard_array_count_paths: set[WildcardPath] | None = None,
         object_presence_paths: set[Path] | None = None,
+        scalar_consistency_paths: set[Path] | None = None,
         max_depth: int = _DEFAULT_MAX_DEPTH,
         max_key_bytes: int = 1024,
         max_number_bytes: int = 128,
@@ -220,6 +229,8 @@ class JsonSelectiveExtractor:
         wildcard keys and fails with ``"max wildcard keys exceeded"``.
         ``max_work_units`` optionally bounds total parser work across all
         chunks and fails with ``"work limit exceeded"``.
+        ``scalar_consistency_paths`` tracks whether every occurrence of a
+        selected scalar path has the expected kind and the same value.
         """
         self.scalar_fields = dict(scalar_fields) if scalar_fields is not None else {}
         self.array_count_paths = set(array_count_paths) if array_count_paths is not None else set()
@@ -228,6 +239,9 @@ class JsonSelectiveExtractor:
         )
         self.object_presence_paths = (
             set(object_presence_paths) if object_presence_paths is not None else set()
+        )
+        self._scalar_consistency_paths = (
+            set(scalar_consistency_paths) if scalar_consistency_paths is not None else set()
         )
         self.max_depth = max_depth
         self.max_key_bytes = max_key_bytes
@@ -239,6 +253,7 @@ class JsonSelectiveExtractor:
             self.array_count_paths,
             self.wildcard_array_count_paths,
             self.object_presence_paths,
+            self._scalar_consistency_paths,
             max_depth=self.max_depth,
             max_key_bytes=self.max_key_bytes,
             max_number_bytes=self.max_number_bytes,
@@ -265,6 +280,7 @@ class JsonSelectiveExtractor:
         self.array_counts: dict[Path, int] = {}
         self.wildcard_array_counts: dict[WildcardPath, dict[str, int]] = {}
         self.object_present: set[Path] = set()
+        self._scalar_consistency: dict[Path, _ScalarConsistency] = {}
 
         self._stack: list[_Frame] = []
         self._root_done = False
@@ -327,6 +343,22 @@ class JsonSelectiveExtractor:
         remains the authoritative complete-document result.
         """
         return self.values.get(path)
+
+    def selected_scalar_values_are_consistent(self, path: Path) -> bool:
+        """Return whether every occurrence is a valid, identical selected scalar.
+
+        An absent field is consistent. Callers must use this only after a
+        complete extraction result; it intentionally considers overwritten
+        duplicate object keys so identity checks can reject conflicting input.
+        """
+        if path not in self._scalar_consistency_paths:
+            raise ValueError("scalar consistency path was not configured")
+        consistency = self._scalar_consistency.get(path)
+        if consistency is None:
+            return True
+        return (
+            consistency.valid_occurrences == consistency.occurrences and not consistency.conflicting
+        )
 
     def finish(self) -> JsonExtractionResult:
         """Finalize the current document and return the extraction result.
@@ -462,6 +494,9 @@ class JsonSelectiveExtractor:
         return i + 1
 
     def _start_value(self, path: Path, chunk: bytes, i: int, *, from_array: bool = False) -> int:
+        if path in self._scalar_consistency_paths:
+            consistency = self._scalar_consistency.setdefault(path, _ScalarConsistency())
+            consistency.occurrences += 1
         b = chunk[i]
         if b == ord("{"):
             self._start_object(path, from_array=from_array)
@@ -782,6 +817,7 @@ class JsonSelectiveExtractor:
         if _contains_surrogate(value):
             self._value_complete()
             return
+        self._record_scalar_consistency(state.path, value)
         self.values[state.path] = value
         self._value_complete()
 
@@ -908,8 +944,19 @@ class JsonSelectiveExtractor:
             self._error = "invalid number"
             return
         if state.selected and isinstance(value, int) and not isinstance(value, bool):
+            self._record_scalar_consistency(state.path, value)
             self.values[state.path] = value
         self._value_complete()
+
+    def _record_scalar_consistency(self, path: Path, value: object) -> None:
+        consistency = self._scalar_consistency.get(path)
+        if consistency is None:
+            return
+        if consistency.valid_occurrences == 0:
+            consistency.first_value = value
+        elif consistency.first_value != value:
+            consistency.conflicting = True
+        consistency.valid_occurrences += 1
 
     def _consume_literal(self, chunk: bytes, i: int) -> int:
         state = self._literal
@@ -1002,6 +1049,7 @@ def _validate_extractor_config(
     array_count_paths: set[Path],
     wildcard_array_count_paths: set[WildcardPath],
     object_presence_paths: set[Path],
+    scalar_consistency_paths: set[Path],
     *,
     max_depth: int,
     max_key_bytes: int,
@@ -1026,6 +1074,9 @@ def _validate_extractor_config(
     _validate_exact_paths("scalar field paths", set(scalar_fields))
     _validate_exact_paths("array count paths", array_count_paths)
     _validate_exact_paths("object presence paths", object_presence_paths)
+    _validate_exact_paths("scalar consistency paths", scalar_consistency_paths)
+    if not scalar_consistency_paths <= set(scalar_fields):
+        raise ValueError("scalar consistency paths must reference scalar fields")
 
     for path in wildcard_array_count_paths:
         _validate_path("wildcard array count paths", path)

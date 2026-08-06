@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.158.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.15...runner-rs-v0.158.16) (2026-08-06)
+
+
+### Documentation
+
+* **python:** document server-connect prebinding contract ([#25406](https://github.com/vm0-ai/vm0/issues/25406)) ([9e37d23](https://github.com/vm0-ai/vm0/commit/9e37d230db7b4921ac7f8334b474756c43b10fe7))
+
+
+### Refactoring
+
+* remove chat steer feature switch ([#25369](https://github.com/vm0-ai/vm0/issues/25369)) ([7ef396a](https://github.com/vm0-ai/vm0/commit/7ef396a972b1937b2d345921d98bfca0051e3277))
+
 ## [0.158.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.14...runner-rs-v0.158.15) (2026-08-06)
 
 
