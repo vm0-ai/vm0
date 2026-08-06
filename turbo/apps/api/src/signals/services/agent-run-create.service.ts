@@ -206,6 +206,7 @@ import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
+  isPiEdgeCompatibleProviderType,
   PI_STANDBY_PROFILE,
   resolvePiEdgeModelConfig,
   type PiEdgeModelConfig,
@@ -696,6 +697,9 @@ interface ResolvedModelProviderEnvironment {
   readonly concreteType?: ModelProviderType;
   readonly environment: Record<string, string>;
   readonly secrets: Record<string, string>;
+  // Server-only credential for the in-API Pi turn. Never persisted into the
+  // runner payload; firewall providers keep their sandbox secret placeholders.
+  readonly piEdgeApiKey?: string;
   readonly selectedModel: string | null;
   readonly firewall?: ExpandedFirewallConfig;
   readonly inlineFirewall?: boolean;
@@ -1723,6 +1727,7 @@ function modelProviderEnvironment(args: {
   readonly type: ModelProviderType;
   readonly config: SingleSecretModelProviderConfig;
   readonly secretValue: string | undefined;
+  readonly piEdgeApiKey?: string;
   readonly sourceUserId: string;
   readonly selectedModel: string | null;
 }): ResolvedModelProviderEnvironment {
@@ -1762,6 +1767,7 @@ function modelProviderEnvironment(args: {
     type: args.type,
     environment,
     secrets,
+    ...(args.piEdgeApiKey ? { piEdgeApiKey: args.piEdgeApiKey } : {}),
     selectedModel: model,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
     ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
@@ -2033,6 +2039,7 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly resolvePiEdgeCredentials: boolean;
 }
 
 async function customGatewayModelProviderEnvironment(
@@ -2158,6 +2165,21 @@ function isCandidateModelProviderRow(
   return isModelProviderType(row.type);
 }
 
+async function resolveCandidatePiEdgeApiKey(
+  args: ResolveModelProviderEnvironmentArgs,
+  type: ModelProviderType,
+  encryptedValue: string,
+  decryptedValue?: string,
+): Promise<string | undefined> {
+  if (!args.resolvePiEdgeCredentials || !isPiEdgeCompatibleProviderType(type)) {
+    return undefined;
+  }
+  const apiKey =
+    decryptedValue ??
+    (await decryptStoredSecretValue(encryptedValue, args.featureSwitchContext));
+  return hasUsableModelProviderSecretValue(apiKey) ? apiKey : undefined;
+}
+
 async function resolveCandidateModelProviderEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
@@ -2196,11 +2218,17 @@ async function resolveCandidateModelProviderEnvironment(
     return null;
   }
   if (getModelProviderFirewall(row.type) !== undefined) {
+    const piEdgeApiKey = await resolveCandidatePiEdgeApiKey(
+      args,
+      row.type,
+      row.encryptedValue,
+    );
     return modelProviderEnvironment({
       id: row.id,
       type: row.type,
       config,
       secretValue: undefined,
+      ...(piEdgeApiKey ? { piEdgeApiKey } : {}),
       sourceUserId: row.userId,
       selectedModel: args.selectedModelOverride ?? row.selectedModel,
     });
@@ -2212,11 +2240,18 @@ async function resolveCandidateModelProviderEnvironment(
   if (!hasUsableModelProviderSecretValue(secretValue)) {
     return null;
   }
+  const piEdgeApiKey = await resolveCandidatePiEdgeApiKey(
+    args,
+    row.type,
+    row.encryptedValue,
+    secretValue,
+  );
   return modelProviderEnvironment({
     id: row.id,
     type: row.type,
     config,
     secretValue,
+    ...(piEdgeApiKey ? { piEdgeApiKey } : {}),
     sourceUserId: row.userId,
     selectedModel: args.selectedModelOverride ?? row.selectedModel,
   });
@@ -6928,6 +6963,13 @@ async function resolveRunModelProvider(
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
         featureSwitchContext: options.featureSwitchContext,
+        resolvePiEdgeCredentials:
+          args.chatThreadId !== undefined &&
+          args.kickoffPiEdgeTurn !== undefined &&
+          isFeatureEnabled(
+            FeatureSwitchKey.PiLoop,
+            options.featureSwitchContext,
+          ),
       })
     : null;
   options.signal.throwIfAborted();

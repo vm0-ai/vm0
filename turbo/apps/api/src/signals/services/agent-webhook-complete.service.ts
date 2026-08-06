@@ -38,6 +38,7 @@ type TerminalStatus = "completed" | "failed";
 interface CompleteAgentRunInput {
   readonly auth: SandboxAuth;
   readonly body: WebhookCompleteBody;
+  readonly allowCheckpointlessSuccess?: boolean;
 }
 
 interface TerminalSideEffectsInput {
@@ -322,6 +323,15 @@ async function handleSuccessfulCompletion(
   signal.throwIfAborted();
 
   if (!checkpoint) {
+    if (input.allowCheckpointlessSuccess) {
+      return await persistSuccessfulCompletion(
+        db,
+        input,
+        run,
+        undefined,
+        signal,
+      );
+    }
     return await handleMissingCheckpoint(db, input, run, signal);
   }
 
@@ -333,6 +343,16 @@ async function handleSuccessfulCompletion(
   signal.throwIfAborted();
 
   const result = buildRunResult(checkpoint, session?.id);
+  return await persistSuccessfulCompletion(db, input, run, result, signal);
+}
+
+async function persistSuccessfulCompletion(
+  db: Db,
+  input: CompleteAgentRunInput,
+  run: RunRecord,
+  result: RunResult | undefined,
+  signal: AbortSignal,
+): Promise<CompletionResponse> {
   const completedAt = nowDate();
   const transitioned = await transitionRunStatus(
     db,
@@ -340,7 +360,7 @@ async function handleSuccessfulCompletion(
     {
       status: "completed",
       completedAt,
-      result,
+      ...(result ? { result } : {}),
       sandboxId: input.body.sandboxId,
       sandboxReuseResult: input.body.sandboxReuseResult,
     },

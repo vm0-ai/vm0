@@ -191,6 +191,7 @@ export const runPiEdgeTurn$ = command(
       completeAgentRun$,
       {
         auth: { userId: args.userId, orgId: args.orgId, runId: args.runId },
+        allowCheckpointlessSuccess: true,
         body: {
           runId: args.runId,
           exitCode: failure === undefined ? 0 : 1,
