@@ -78,7 +78,7 @@ pub const CLI_STDERR_RESULT_MAX_LINES: usize = 200;
 /// Documented maximum byte length for one returned stderr line after CRLF normalization.
 pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 
-/// Integration contract for one accepted ordinary CLI stdout record.
+/// Integration contract for one accepted Claude Code stdout record.
 pub const CLI_STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 
 /// Documented replacement for a stderr line that exceeds the diagnostic limit.

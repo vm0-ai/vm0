@@ -12,7 +12,7 @@ const EVENT_BYTES: usize = 2 * 1024 * 1024;
 const EVENT_COUNT: usize = 8;
 
 #[tokio::test]
-async fn ordinary_cli_event_delivery_byte_overload_terminates_promptly()
+async fn claude_code_event_delivery_byte_overload_terminates_promptly()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock_cli = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;

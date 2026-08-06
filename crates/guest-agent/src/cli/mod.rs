@@ -8,16 +8,17 @@
 //! - `command`: Claude Code command construction.
 //! - `diagnostics`: bounded stderr tail collection.
 //! - `event_delivery`: event sender watermark state.
-//! - `framework`: Claude-vs-Codex behavior switches.
+//! - `claude`: Claude result parsing and tool tracking.
 //! - `termination`: process-group termination FSM.
 //!
-//! `execute_cli` intentionally remains the orchestration owner for process
-//! spawn, stdout JSONL reading, event sender shutdown, heartbeat races, and
-//! child reaping. Branch ordering and deadline reset timing in that control
-//! flow are part of the runtime contract.
+//! `execute_cli` owns the Claude Code subprocess orchestration, while
+//! `codex_app_server_backend` owns the Codex JSON-RPC lifecycle. Each path
+//! retains ownership of its process, event delivery, heartbeat races, and
+//! child reaping until completion.
 
 mod child_env;
 mod child_exit_notifier;
+mod claude;
 #[doc(hidden)]
 pub mod codex_app_server;
 mod codex_app_server_backend;
@@ -29,14 +30,13 @@ mod command;
 mod diagnostics;
 mod event_delivery;
 mod exec_boundary;
-mod framework;
 mod line_reader;
 mod process_group;
 mod termination;
 
+pub use claude::{ClaudeResultStatus, ClaudeResultSummary};
 pub use codex_setup::setup_codex_for_config;
 pub use codex_startup::CodexStartupTiming;
-pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
 
 use crate::active_input::{ActiveInputController, ActiveInputWriter, ReplayUserEventAction};
 use crate::constants;
@@ -49,7 +49,6 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
 use event_delivery::{EventDeliveryRuntime, EventDeliverySender};
-use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
@@ -83,7 +82,7 @@ const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
-/// Maximum retained bytes for one ordinary CLI stdout record before parsing.
+/// Maximum retained bytes for one Claude Code stdout record before parsing.
 ///
 /// LF is excluded. A preceding CR counts before CRLF normalization.
 const STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
@@ -156,15 +155,6 @@ async fn write_claude_stream_json_to_stdin(
     Ok(())
 }
 
-async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
-    match interval {
-        Some(interval) => {
-            interval.tick().await;
-        }
-        None => std::future::pending::<()>().await,
-    }
-}
-
 /// Bounded terminal failure detail extracted from CLI stdout JSONL.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliFailureDiagnostic {
@@ -200,7 +190,7 @@ pub struct CliFailureDiagnostic {
 pub struct CliExecutionResult {
     /// Terminal outcome code for the configured CLI backend.
     ///
-    /// For ordinary CLI execution, this is the CLI process exit code. On Unix,
+    /// For Claude Code execution, this is the CLI process exit code. On Unix,
     /// signal termination is mapped to `128 + signal`, matching shell
     /// convention, so SIGKILL is reported as `137`.
     ///
@@ -530,12 +520,13 @@ impl<'a> CliEventIngestor<'a> {
         raw_line: impl AsRef<[u8]>,
         event: &serde_json::Value,
         masker: &SecretMasker,
-        behavior: CliFrameworkBehavior,
+        framework: env::Framework,
     ) -> Result<ParsedEventAction, AgentError> {
         let is_stream_event =
             event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event");
         if !is_stream_event
-            && behavior.is_codex_turn_started(event)
+            && matches!(framework, env::Framework::Codex)
+            && event.get("type").and_then(serde_json::Value::as_str) == Some("turn.started")
             && let Some(codex_startup) = self.codex_startup
         {
             codex_startup.record_success_at(Instant::now());
@@ -551,7 +542,7 @@ impl<'a> CliEventIngestor<'a> {
         }
         self.session_metadata_capture.capture_event(event);
 
-        if behavior.logs_codex_failure_diagnostics()
+        if matches!(framework, env::Framework::Codex)
             && let Some(diagnostic) = events::masked_codex_failure_diagnostic(event, masker)
         {
             let candidate = CliFailureDiagnostic {
@@ -715,12 +706,11 @@ async fn execute_cli_inner(
     let CliExecutionControls {
         active_input,
         user_cancellation,
-        codex_startup,
+        codex_startup: _,
     } = controls;
 
-    let behavior = CliFrameworkBehavior::new(runtime.framework);
     let replay_user_messages = active_input.is_enabled();
-    log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
+    log_info!(LOG_TAG, "Starting claude-code execution...");
 
     let cmd = command::build_claude_command_for_runtime(runtime, replay_user_messages);
     let (bin, args) = cmd
@@ -785,14 +775,9 @@ async fn execute_cli_inner(
 
     let mut child = cmd.spawn()?;
 
-    let claude_stdin = if behavior.uses_stream_json_stdin() {
-        let Some(stdin) = child.stdin.take() else {
-            let _ = child.start_kill();
-            return Err(AgentError::Execution("no stdin".into()));
-        };
-        Some(stdin)
-    } else {
-        None
+    let Some(claude_stdin) = child.stdin.take() else {
+        let _ = child.start_kill();
+        return Err(AgentError::Execution("no stdin".into()));
     };
 
     let stdout = child
@@ -809,11 +794,11 @@ async fn execute_cli_inner(
         tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
 
     let active_input_controller = active_input.controller();
-    let mut claude_stdin_write_handle = claude_stdin.map(|stdin| {
+    let mut claude_stdin_write_handle = Some({
         let run_id = runtime.run_id.to_string();
         let prompt = runtime.prompt.to_string();
         tokio::spawn(async move {
-            write_claude_stream_json_to_stdin(stdin, &run_id, &prompt, active_input).await
+            write_claude_stream_json_to_stdin(claude_stdin, &run_id, &prompt, active_input).await
         })
     });
 
@@ -872,15 +857,11 @@ async fn execute_cli_inner(
     // parallel tool calls correctly.
     // See: https://github.com/anthropics/claude-code/issues/11650
     let mut stuck_tool_tracker: HashMap<String, (String, tokio::time::Instant)> = HashMap::new();
-    let mut stuck_tool_check = if behavior.uses_claude_tool_watchdog() {
-        let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
-        Some(tokio::time::interval_at(
-            tokio::time::Instant::now() + stuck_tool_interval,
-            stuck_tool_interval,
-        ))
-    } else {
-        None
-    };
+    let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
+    let mut stuck_tool_check = tokio::time::interval_at(
+        tokio::time::Instant::now() + stuck_tool_interval,
+        stuck_tool_interval,
+    );
     // MAINTENANCE: update if Claude Code adds new network tools that can hang.
     const STUCK_TOOL_NAMES: &[&str] = &["WebSearch", "WebFetch"];
 
@@ -897,7 +878,7 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut event_ingestor = CliEventIngestor::new(runtime, codex_startup);
+    let mut event_ingestor = CliEventIngestor::new(runtime, None);
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {
@@ -1035,7 +1016,7 @@ async fn execute_cli_inner(
                         }
 
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
-                            if behavior.filters_replayed_user_events() && replay_user_messages {
+                            if replay_user_messages {
                                 match active_input_controller.replay_user_event_action(&event) {
                                     ReplayUserEventAction::External => {}
                                     ReplayUserEventAction::InternalInitialPrompt => {
@@ -1080,14 +1061,16 @@ async fn execute_cli_inner(
                                     line.as_bytes(),
                                     &event,
                                     masker,
-                                    behavior,
+                                    env::Framework::ClaudeCode,
                                 )
                                 .await?
                             {
                                 ParsedEventAction::Forward => {}
                                 ParsedEventAction::Skip => continue,
                             }
-                            let is_result_event = behavior.handles_claude_result_event(&event);
+                            let is_result_event =
+                                event.get("type").and_then(serde_json::Value::as_str)
+                                    == Some("result");
                             if post_result_cleanup_was_armed || is_result_event {
                                 match try_observe_cli_exit(
                                     &mut child,
@@ -1146,7 +1129,7 @@ async fn execute_cli_inner(
                                 }
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
-                            behavior.track_claude_tool_events(&event, &mut stuck_tool_tracker);
+                            claude::track_claude_tool_events(&event, &mut stuck_tool_tracker);
                             termination_runtime.record_post_result_activity(
                                 post_result_cleanup_was_armed,
                                 termination_deadline.as_mut(),
@@ -1285,7 +1268,7 @@ async fn execute_cli_inner(
                 );
                 break Ok(());
             }
-            _ = tick_optional_interval(&mut stuck_tool_check), if cli_status.is_none() => {
+            _ = stuck_tool_check.tick(), if cli_status.is_none() => {
                 let timeout_secs = runtime.stuck_tool_timeout_secs;
                 // Find the oldest network tool that has exceeded the timeout.
                 let stuck = stuck_tool_tracker

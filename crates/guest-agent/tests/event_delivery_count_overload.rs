@@ -9,7 +9,7 @@ use serde_json::json;
 use std::time::Duration;
 
 #[tokio::test]
-async fn ordinary_cli_event_delivery_count_overload_terminates_promptly()
+async fn claude_code_event_delivery_count_overload_terminates_promptly()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock_cli = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;

@@ -1005,7 +1005,7 @@ async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_, '_>) -> Resul
             raw_line,
             &event,
             sink.masker,
-            super::framework::CliFrameworkBehavior::new(Framework::Codex),
+            Framework::Codex,
         )
         .await?
     {

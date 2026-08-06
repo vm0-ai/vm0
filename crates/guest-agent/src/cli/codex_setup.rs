@@ -1,8 +1,8 @@
 //! Codex setup boundary.
 //!
 //! This module owns the guest-side setup wrapper that runs before Codex starts.
-//! Auth-state file construction lives in `codex_auth`; command construction
-//! stays in `cli::command`.
+//! Auth-state file construction lives in `codex_auth`; app-server process and
+//! protocol orchestration stay in the sibling Codex app-server modules.
 
 use std::time::Instant;
 

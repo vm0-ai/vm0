@@ -95,7 +95,7 @@ print_failure_context() {
   print_service_logs
 }
 
-if sudo grep -q 'Using mock-codex for testing' "$STREAM_LOG"; then
+if sudo grep -F -q 'Using mock-codex' "$STREAM_LOG"; then
   print_failure_context
   fail "real Codex active-input smoke used mock Codex"
 fi

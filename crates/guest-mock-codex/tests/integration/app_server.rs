@@ -13,7 +13,7 @@ use crate::support::{BIN, ChildWaitOutcome, require_session_file, run, wait_chil
 const APP_SERVER_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const APP_SERVER_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 
-struct AppServerProcess {
+pub(crate) struct AppServerProcess {
     child: Option<Child>,
     stdin: Option<ChildStdin>,
     stdout_rx: Receiver<Result<Option<Value>, String>>,
@@ -21,7 +21,12 @@ struct AppServerProcess {
 }
 
 impl AppServerProcess {
-    fn request(&mut self, id: i64, method: &str, params: Value) -> std::io::Result<Value> {
+    pub(crate) fn request(
+        &mut self,
+        id: i64,
+        method: &str,
+        params: Value,
+    ) -> std::io::Result<Value> {
         self.send(&json!({
             "id": id,
             "method": method,
@@ -78,7 +83,7 @@ impl AppServerProcess {
         }
     }
 
-    fn close_and_wait(&mut self) -> std::io::Result<i32> {
+    pub(crate) fn close_and_wait(&mut self) -> std::io::Result<i32> {
         self.stdin.take();
         let child = self
             .child
@@ -161,7 +166,7 @@ impl Drop for AppServerProcess {
     }
 }
 
-fn spawn_app_server(
+pub(crate) fn spawn_app_server(
     codex_home: &Path,
     args: &[&str],
     scenario: Option<&str>,
@@ -238,7 +243,7 @@ fn spawn_app_server_with_env(
     })
 }
 
-fn text_input(text: &str) -> Value {
+pub(crate) fn text_input(text: &str) -> Value {
     json!({
         "type": "text",
         "text": text,
@@ -246,7 +251,7 @@ fn text_input(text: &str) -> Value {
     })
 }
 
-fn initialize_params() -> Value {
+pub(crate) fn initialize_params() -> Value {
     json!({
         "clientInfo": {
             "name": "guest-mock-codex-tests",

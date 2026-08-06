@@ -7,3 +7,4 @@ mod support;
 
 mod app_server;
 mod session_filesystem;
+mod session_resume;

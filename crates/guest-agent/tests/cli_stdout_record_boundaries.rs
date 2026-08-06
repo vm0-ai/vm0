@@ -1,4 +1,4 @@
-//! Accepted ordinary CLI stdout preserves exact-limit, CRLF normalization, and
+//! Accepted Claude Code stdout preserves exact-limit, CRLF normalization, and
 //! EOF-final-record behavior through the production execution entry point.
 
 mod common;

@@ -13,12 +13,20 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 #[tokio::test]
-async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
+async fn codex_app_server_backend_uses_runtime_snapshot_and_preserves_large_prompt()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
     let run_id = "codex-app-server-backend-child-env-test";
-    let prompt = "runtime child env prompt";
+    let prompt_prefix = " \n--option-looking user text\n中文 and emoji 🚀\n";
+    let prompt = format!(
+        "{prompt_prefix}{}",
+        "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1 - prompt_prefix.len())
+    );
+    assert_eq!(
+        prompt.len(),
+        guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1
+    );
 
     unsafe {
         common::setup_codex_app_server_env(
@@ -26,7 +34,7 @@ async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
             tmp.path(),
             common::CodexAppServerEnvConfig {
                 run_id,
-                prompt,
+                prompt: &prompt,
                 scenario: Some("runtime-turn-complete-without-thread-started"),
                 resume_session_id: None,
             },
@@ -92,7 +100,7 @@ async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
     let input_event = find_mock_input_event(&Path::new(&runtime.config.home_dir).join(".codex"))?;
     assert_eq!(
         input_event.get("text").and_then(Value::as_str),
-        Some(prompt)
+        Some(prompt.as_str())
     );
     assert_eq!(
         input_event.get("child_env_home").and_then(Value::as_str),
