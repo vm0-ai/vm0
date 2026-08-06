@@ -11,7 +11,7 @@ import {
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import {
@@ -308,7 +308,14 @@ describe("organization billing settings", () => {
           joinedAt: "2026-01-02T00:00:00Z",
         },
       ],
-      pendingInvitations: [],
+      pendingInvitations: [
+        {
+          id: "invitation_1",
+          email: "pending@example.com",
+          role: "member",
+          createdAt: "2026-01-03T00:00:00Z",
+        },
+      ],
       membershipRequests: [],
       createdAt: "2026-01-01T00:00:00Z",
     });
@@ -368,21 +375,30 @@ describe("organization billing settings", () => {
     expect(
       within(memberUsage).getByText("sam@example.com"),
     ).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("pending@example.com"),
+    ).toBeInTheDocument();
+    expect(within(memberUsage).getByText("Pending")).toBeInTheDocument();
     const alexUsage = within(memberUsage).getByRole("combobox", {
       name: "Usage for Alex Chen",
     });
     const samUsage = within(memberUsage).getByRole("combobox", {
       name: "Usage for Sam Lee",
     });
+    const pendingUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for pending@example.com",
+    });
     expect(alexUsage).toHaveTextContent("$20 · 20,400 credits · 2% off");
     expect(samUsage).toHaveTextContent("Pay as you go");
-    expect(alexUsage).toBeDisabled();
+    expect(pendingUsage).toHaveTextContent("Pay as you go");
+    expect(alexUsage).not.toBeDisabled();
     expect(samUsage).not.toBeDisabled();
+    expect(pendingUsage).not.toBeDisabled();
     expect(
-      within(memberUsage).getByText(
+      within(memberUsage).getAllByText(
         "Uses pay-as-you-go credits with no monthly pack.",
       ),
-    ).toBeInTheDocument();
+    ).toHaveLength(2);
     expect(
       within(memberUsage).getByText("+400 bonus credits"),
     ).toBeInTheDocument();
@@ -395,24 +411,48 @@ describe("organization billing settings", () => {
     expect(within(orderSummary).getByText("$180/month")).toBeInTheDocument();
     expect(buttonByText("Checkout coming soon", orderSummary)).toBeDisabled();
 
-    click(samUsage);
+    click(alexUsage);
+    const alexPayAsYouGo = await screen.findByRole("option", {
+      name: "Pay as you go",
+    });
+    expect(alexPayAsYouGo).toHaveAttribute("aria-disabled", "true");
+    const alexFiftyDollarPack = screen.getByRole("option", {
+      name: "$50 · 52,600 credits · 5% off",
+    });
+    expect(alexFiftyDollarPack).not.toHaveAttribute("aria-disabled", "true");
+    click(alexFiftyDollarPack);
+    expect(within(orderSummary).getByText("$210/month")).toBeInTheDocument();
+
+    click(pendingUsage);
     click(
       await screen.findByRole("option", {
         name: "$100 · 108,700 credits · 8% off",
       }),
     );
 
-    expect(within(orderSummary).getByText("$280/month")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$310/month")).toBeInTheDocument();
     expect(
       within(memberUsage).getByText("+8,700 bonus credits"),
     ).toBeInTheDocument();
     expect(alexUsage).not.toBeDisabled();
     expect(samUsage).not.toBeDisabled();
+    expect(pendingUsage).not.toBeDisabled();
 
     click(alexUsage);
-    click(await screen.findByRole("option", { name: "Pay as you go" }));
+    const availablePayAsYouGo = await screen.findByRole("option", {
+      name: "Pay as you go",
+    });
+    expect(availablePayAsYouGo).not.toHaveAttribute("aria-disabled", "true");
+    click(availablePayAsYouGo);
     expect(within(orderSummary).getByText("$260/month")).toBeInTheDocument();
-    expect(samUsage).toBeDisabled();
+    expect(pendingUsage).not.toBeDisabled();
+
+    click(pendingUsage);
+    const pendingPayAsYouGo = await screen.findByRole("option", {
+      name: "Pay as you go",
+    });
+    expect(pendingPayAsYouGo).toHaveAttribute("aria-disabled", "true");
+    fireEvent.keyDown(document, { key: "Escape" });
 
     click(buttonByText("Change plan"));
     const returnedChoosePlanHeading = await screen.findByRole("heading", {

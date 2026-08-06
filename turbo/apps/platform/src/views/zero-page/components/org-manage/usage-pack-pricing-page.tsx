@@ -24,6 +24,7 @@ import { i18n } from "../../../../i18n/index.ts";
 import { currentUserInfo$ } from "../../../../signals/auth.ts";
 import {
   orgMembers$,
+  orgPendingInvitations$,
   type OrgMember,
 } from "../../../../signals/external/org-members.ts";
 import {
@@ -61,6 +62,7 @@ interface MemberDisplay {
   readonly email: string | undefined;
   readonly imageUrl: string | undefined;
   readonly isCurrent: boolean;
+  readonly isPending: boolean;
   readonly name: string;
 }
 
@@ -213,6 +215,13 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
               })}
             </span>
           )}
+          {member.isPending && (
+            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground zero-badge">
+              {i18n.t(($) => {
+                return $.settings.workspace.members.pending;
+              })}
+            </span>
+          )}
         </span>
         {member.email && member.email !== member.name && (
           <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
@@ -225,14 +234,14 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
 }
 
 function MemberUsageRow({
-  disabled,
   member,
   onSelect,
+  payAsYouGoDisabled,
   selection,
 }: {
-  readonly disabled: boolean;
   readonly member: MemberDisplay;
   readonly onSelect: (selection: MemberUsageSelection) => void;
+  readonly payAsYouGoDisabled: boolean;
   readonly selection: MemberUsageSelection;
 }) {
   const summary =
@@ -255,7 +264,6 @@ function MemberUsageRow({
       <MemberIdentity member={member} />
       <div className="min-w-0">
         <Select
-          disabled={disabled}
           value={String(selection)}
           onValueChange={(value) => {
             onSelect(parseUsageSelection(value));
@@ -273,7 +281,7 @@ function MemberUsageRow({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={PAY_AS_YOU_GO}>
+            <SelectItem disabled={payAsYouGoDisabled} value={PAY_AS_YOU_GO}>
               {usageSelectionLabel(PAY_AS_YOU_GO)}
             </SelectItem>
             {USAGE_PACKS_USD.map((pack) => {
@@ -343,47 +351,17 @@ function MemberUsageFooter() {
   );
 }
 
-function MemberUsageConfiguration() {
-  const userLoadable = useLastLoadable(currentUserInfo$);
-  const membersLoadable = useLastLoadable(orgMembers$);
+function MemberUsageConfiguration({
+  members,
+}: {
+  readonly members: readonly MemberDisplay[] | undefined;
+}) {
   const selections = useGet(memberUsageSelections$);
   const setSelection = useSet(setMemberUsageSelection$);
-  const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
-  const orgMembers =
-    membersLoadable.state === "hasData" ? membersLoadable.data : [];
 
-  if (!user) {
+  if (!members) {
     return <div className="h-36 animate-pulse rounded-xl bg-muted/40" />;
   }
-
-  const currentMember: MemberDisplay = {
-    id: user.id,
-    email: user.primaryEmailAddress?.emailAddress,
-    imageUrl: user.imageUrl,
-    isCurrent: true,
-    name:
-      user.fullName ??
-      user.primaryEmailAddress?.emailAddress ??
-      i18n.t(($) => {
-        return $.billing.plans.usagePacks.currentMember;
-      }),
-  };
-  const members: readonly MemberDisplay[] = [
-    currentMember,
-    ...orgMembers
-      .filter((member) => {
-        return member.userId !== user.id;
-      })
-      .map((member): MemberDisplay => {
-        return {
-          id: member.userId,
-          email: member.email,
-          imageUrl: member.imageUrl,
-          isCurrent: false,
-          name: memberName(member),
-        };
-      }),
-  ];
   const usagePackTotalUsd = members.reduce((total, member, index) => {
     const selection = memberUsageSelection(selections, member.id, index);
     return total + (selection === PAY_AS_YOU_GO ? 0 : selection);
@@ -412,8 +390,10 @@ function MemberUsageConfiguration() {
             className={index === 0 ? undefined : "border-t border-border/50"}
           >
             <MemberUsageRow
-              disabled={monthlyPackCount === 1 && selection !== PAY_AS_YOU_GO}
               member={member}
+              payAsYouGoDisabled={
+                monthlyPackCount === 1 && selection !== PAY_AS_YOU_GO
+              }
               selection={selection}
               onSelect={(usage) => {
                 setSelection({ memberId: member.id, usage });
@@ -784,24 +764,58 @@ function PackageConfigurationStep({
 }) {
   const userLoadable = useLastLoadable(currentUserInfo$);
   const membersLoadable = useLastLoadable(orgMembers$);
+  const pendingInvitationsLoadable = useLastLoadable(orgPendingInvitations$);
   const selections = useGet(memberUsageSelections$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const orgMembers =
     membersLoadable.state === "hasData" ? membersLoadable.data : [];
-  const memberIds = user
+  const pendingInvitations =
+    pendingInvitationsLoadable.state === "hasData"
+      ? pendingInvitationsLoadable.data
+      : [];
+  const members: readonly MemberDisplay[] | undefined = user
     ? [
-        user.id,
+        {
+          id: user.id,
+          email: user.primaryEmailAddress?.emailAddress,
+          imageUrl: user.imageUrl,
+          isCurrent: true,
+          isPending: false,
+          name:
+            user.fullName ??
+            user.primaryEmailAddress?.emailAddress ??
+            i18n.t(($) => {
+              return $.billing.plans.usagePacks.currentMember;
+            }),
+        },
         ...orgMembers
           .filter((member) => {
             return member.userId !== user.id;
           })
-          .map((member) => {
-            return member.userId;
+          .map((member): MemberDisplay => {
+            return {
+              id: member.userId,
+              email: member.email,
+              imageUrl: member.imageUrl,
+              isCurrent: false,
+              isPending: false,
+              name: memberName(member),
+            };
           }),
+        ...pendingInvitations.map((invitation): MemberDisplay => {
+          return {
+            id: invitation.id,
+            email: invitation.email,
+            imageUrl: undefined,
+            isCurrent: false,
+            isPending: true,
+            name: invitation.email,
+          };
+        }),
       ]
-    : [];
-  const memberUsageTotalUsd = memberIds.reduce((total, memberId, index) => {
-    const selection = memberUsageSelection(selections, memberId, index);
+    : undefined;
+  const memberUsageTotalUsd = (members ?? []).reduce((total, member, index) => {
+    const selection = memberUsageSelection(selections, member.id, index);
     return total + (selection === PAY_AS_YOU_GO ? 0 : selection);
   }, 0);
 
@@ -810,7 +824,7 @@ function PackageConfigurationStep({
       <PricingPageHeader onBack={onBack} step={2} />
       <PricingSteps current={2} />
       <SelectedPlanSummary plan={plan} onChange={onBack} />
-      <MemberUsageConfiguration />
+      <MemberUsageConfiguration members={members} />
       <OrderSummary plan={plan} memberUsageTotalUsd={memberUsageTotalUsd} />
     </>
   );
