@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import type { Store } from "ccstate";
-import { StoreProvider } from "ccstate-react";
+import { StoreProvider, useSet } from "ccstate-react";
 import { Toaster } from "@vm0/ui/components/ui/sonner";
 import { ErrorBoundary } from "./error-boundary.tsx";
 import { AppSkeletonOverlay, Router } from "./router.tsx";
@@ -10,6 +10,7 @@ import { InspectLogFileInput } from "./inspect-log-file-input.tsx";
 import { listenForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
 import { setupAuthenticatedDaemons$ } from "../signals/authenticated-daemons.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
+import { handleBillingRedirect$ } from "../signals/zero-page/billing.ts";
 import { detach, Reason } from "../signals/utils.ts";
 import {
   isStandalonePwa,
@@ -17,6 +18,19 @@ import {
 } from "../lib/keyboard-dismiss-gesture.ts";
 import { IN_VITEST } from "../env.ts";
 import "./css/index.css";
+
+function BillingToaster() {
+  const handleBillingRedirect = useSet(handleBillingRedirect$);
+
+  return (
+    <Toaster
+      position="top-center"
+      visibleToasts={1}
+      duration={IN_VITEST ? Infinity : undefined}
+      onReady={handleBillingRedirect}
+    />
+  );
+}
 
 export const setupRouter = (
   store: Store,
@@ -46,11 +60,7 @@ export const setupRouter = (
           <InspectLogFileInput />
           <ForceUpgradeDialog />
         </ErrorBoundary>
-        <Toaster
-          position="top-center"
-          visibleToasts={1}
-          duration={IN_VITEST ? Infinity : undefined}
-        />
+        <BillingToaster />
       </StoreProvider>
     </StrictMode>,
   );
