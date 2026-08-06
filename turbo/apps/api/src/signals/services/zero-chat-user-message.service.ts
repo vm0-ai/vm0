@@ -105,18 +105,6 @@ export function withAgentRunSourceAnnotation(
   };
 }
 
-/** Hide server-owned run-model provenance from clients that predate it. */
-export function withoutRunModelAnnotation(
-  document: UserMessageDocument,
-): UserMessageDocument {
-  const parts = document.parts.filter((part) => {
-    return part.type !== "model";
-  });
-  return parts.length === document.parts.length
-    ? document
-    : { version: 1, parts };
-}
-
 /** Replace any prior run-model annotation with the model persisted for the run. */
 export function withRunModelAnnotation(
   document: UserMessageDocument,
