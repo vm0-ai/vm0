@@ -1688,6 +1688,24 @@ describe("CHAT-02: queueing and recalling messages", () => {
       selectedModel: "claude-sonnet-4-6",
     });
 
+    const legacyPublicEvents = await chat.listThreadEvents(
+      actor,
+      active.threadId,
+      {},
+      "0.636.1",
+    );
+    const legacyBudgetEvent = legacyPublicEvents.events.find((event) => {
+      return event.eventType === "input.budget" && event.runId === active.runId;
+    });
+    if (!legacyBudgetEvent || legacyBudgetEvent.eventType !== "input.budget") {
+      throw new Error("Expected the legacy run time budget input");
+    }
+    expect(
+      legacyBudgetEvent.userMessage.parts.some((part) => {
+        return part.type === "model";
+      }),
+    ).toBeFalsy();
+
     mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
     await webhooks.requestAgentEvents(
       {
@@ -5687,7 +5705,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(message).toMatchObject({
       content: null,
-      userMessage,
+      userMessage: {
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
@@ -5796,7 +5820,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(message?.generationTemplate).toStrictEqual(illustrationTemplate);
     expect(message).toMatchObject({
       content: null,
-      userMessage,
+      userMessage: {
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
@@ -5864,6 +5894,7 @@ describe("CHAT-02: generation templates and attachments", () => {
             contentType: "text/plain",
           },
           { type: "text", text: "plain API attachment" },
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
         ],
       },
     });
