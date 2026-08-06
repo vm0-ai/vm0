@@ -1,3 +1,4 @@
+-- Custom SQL migration file, put your code below! --
 WITH "ranked_vm0_api_keys" AS (
 	SELECT
 		"id",

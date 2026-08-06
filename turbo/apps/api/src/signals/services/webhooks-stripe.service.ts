@@ -51,6 +51,13 @@ import {
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
 import type { Tx } from "../../lib/db-types";
+import {
+  handleUsagePackCheckoutCompleted,
+  handleUsagePackInvoicePaid,
+  handleUsagePackSubscriptionCreated,
+  handleUsagePackSubscriptionDeleted,
+  handleUsagePackSubscriptionUpdated,
+} from "./usage-pack-subscription.service";
 
 const L = logger("WebhookStripe");
 
@@ -92,7 +99,8 @@ interface InvoiceInput {
   readonly lines: {
     readonly data: readonly {
       readonly id?: string;
-      readonly amount?: number;
+      readonly amount?: number | null;
+      readonly subtotal?: number | null;
       readonly quantity?: number | null;
       readonly price?: { readonly id: string } | null;
       readonly pricing?: {
@@ -100,9 +108,16 @@ interface InvoiceInput {
           readonly price?: string | { readonly id: string } | null;
         } | null;
       } | null;
+      readonly proration?: boolean;
       readonly period: { readonly start?: number; readonly end: number };
       readonly parent: {
         readonly type: "subscription_item_details" | "invoice_item_details";
+        readonly subscription_item_details?: {
+          readonly proration: boolean;
+        } | null;
+        readonly invoice_item_details?: {
+          readonly proration: boolean;
+        } | null;
       } | null;
     }[];
   };
@@ -129,6 +144,7 @@ interface SubscriptionInput {
     readonly data: readonly {
       readonly price: { readonly id: string };
       readonly quantity?: number | null;
+      readonly current_period_start?: number | null;
       readonly current_period_end?: number | null;
     }[];
   };
@@ -2728,7 +2744,7 @@ function concurrencyInvoiceLines(
     const priceId = invoiceLinePriceId(line);
     return priceId &&
       isConcurrencyPriceId(priceId) &&
-      (line.amount === undefined || line.amount >= 0)
+      (line.amount === undefined || line.amount === null || line.amount >= 0)
       ? [{ line, index }]
       : [];
   });
@@ -3102,15 +3118,28 @@ async function handleCheckoutCompleted(
 
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const usagePackOutcome = await handleUsagePackCheckoutCompleted(
+    db,
+    session,
+    subscription,
+  );
   const orgIds = await bindSubscriptionToCustomerOrg(db, {
     customerId,
-    subscription,
+    subscription: usagePackOutcome.subscription ?? subscription,
     source: "checkout.session.completed",
   });
-  return { drainOrgId: null, orgIds };
+  return {
+    drainOrgId: null,
+    orgIds: [
+      ...new Set([
+        ...orgIds,
+        ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+      ]),
+    ],
+  };
 }
 
-async function handleSubscriptionCreated(
+async function handleSubscriptionCreatedLegacy(
   db: Db,
   getClerk: ClerkClientProvider,
   subscription: SubscriptionInput,
@@ -3131,11 +3160,38 @@ async function handleSubscriptionCreated(
   });
 }
 
+async function handleSubscriptionCreated(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  subscription: SubscriptionInput,
+): Promise<readonly string[]> {
+  const usagePackOutcome = await handleUsagePackSubscriptionCreated(
+    db,
+    subscription,
+  );
+  const orgIds = await handleSubscriptionCreatedLegacy(
+    db,
+    getClerk,
+    usagePackOutcome.subscription ?? subscription,
+  );
+  return [
+    ...new Set([
+      ...orgIds,
+      ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+    ]),
+  ];
+}
+
 async function handleInvoicePaid(
   db: Db,
   getClerk: ClerkClientProvider,
   invoice: InvoiceInput,
 ): Promise<string | null> {
+  const usagePackResult = await handleUsagePackInvoicePaid(db, invoice);
+  if (usagePackResult.handled) {
+    return usagePackResult.orgId;
+  }
+
   const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);
   if (autoRechargeResult.handled) {
     return autoRechargeResult.drainOrgId;
@@ -3460,7 +3516,7 @@ async function handleUsageAllowanceSubscriptionUpdated(
   });
 }
 
-async function handleSubscriptionUpdated(
+async function handleSubscriptionUpdatedLegacy(
   db: Db,
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
@@ -3556,6 +3612,28 @@ async function handleSubscriptionUpdated(
   });
 }
 
+async function handleSubscriptionUpdated(
+  db: Db,
+  subscription: SubscriptionInput,
+  previousAttributes: SubscriptionPreviousAttributes | undefined,
+): Promise<readonly string[]> {
+  const usagePackOutcome = await handleUsagePackSubscriptionUpdated(
+    db,
+    subscription,
+  );
+  const orgIds = await handleSubscriptionUpdatedLegacy(
+    db,
+    usagePackOutcome.subscription ?? subscription,
+    previousAttributes,
+  );
+  return [
+    ...new Set([
+      ...orgIds,
+      ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+    ]),
+  ];
+}
+
 async function handleSubscriptionScheduleReleased(
   db: Db,
   schedule: SubscriptionScheduleInput,
@@ -3613,7 +3691,7 @@ async function handleSubscriptionScheduleEnded(
   });
 }
 
-async function handleSubscriptionDeleted(
+async function handleSubscriptionDeletedLegacy(
   db: Db,
   subscription: SubscriptionDeletedInput,
 ): Promise<readonly string[]> {
@@ -3734,6 +3812,23 @@ async function handleSubscriptionDeleted(
   return rows.map((row) => {
     return row.orgId;
   });
+}
+
+async function handleSubscriptionDeleted(
+  db: Db,
+  subscription: SubscriptionDeletedInput,
+): Promise<readonly string[]> {
+  const usagePackOutcome = await handleUsagePackSubscriptionDeleted(
+    db,
+    subscription,
+  );
+  const orgIds = await handleSubscriptionDeletedLegacy(db, subscription);
+  return [
+    ...new Set([
+      ...orgIds,
+      ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+    ]),
+  ];
 }
 
 export const handleStripeWebhookEvent$ = command(

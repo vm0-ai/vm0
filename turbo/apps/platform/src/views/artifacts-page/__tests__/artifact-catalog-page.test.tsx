@@ -1,9 +1,9 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import {
-  ARTIFACT_CATALOG_KINDS,
   artifactCatalogContract,
   type ArtifactSummary,
 } from "@vm0/api-contracts/contracts/artifact-catalog";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -33,7 +33,12 @@ function artifact(overrides: Partial<ArtifactSummary> = {}): ArtifactSummary {
   };
 }
 
-function setupArtifactCatalogPage(): void {
+function setupArtifactCatalogPage(
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {
+    [FeatureSwitchKey.JoggAiBuiltIn]: true,
+    [FeatureSwitchKey.SharedThreadSharing]: true,
+  },
+): void {
   detachedSetupPage({
     context,
     path: "/artifacts",
@@ -42,6 +47,7 @@ function setupArtifactCatalogPage(): void {
       activeOrg: { id: CATALOG_ORG_ID, name: "Test Org" },
       memberships: [{ id: CATALOG_ORG_ID }],
     },
+    featureSwitches,
   });
 }
 
@@ -126,7 +132,6 @@ describe("artifact catalog page", () => {
           }),
         ],
         nextCursor: null,
-        supportedKinds: [...ARTIFACT_CATALOG_KINDS],
       });
     });
 
@@ -182,13 +187,11 @@ describe("artifact catalog page", () => {
               artifact({ kind: "avatar", title: "avatar-video.mp4" }),
             ],
             nextCursor: null,
-            supportedKinds: [...ARTIFACT_CATALOG_KINDS],
           });
         }
         return respond(200, {
           artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
           nextCursor: null,
-          supportedKinds: [...ARTIFACT_CATALOG_KINDS],
         });
       },
     );
@@ -217,6 +220,145 @@ describe("artifact catalog page", () => {
     await findCard("avatar-video.mp4");
   });
 
+  it("shows feature-switched filters while the first page loads", async () => {
+    const requestStarted = context.mocks.deferred<void>();
+    const releaseResponse = context.mocks.deferred<void>();
+    context.mocks.api(artifactCatalogContract.list, async ({ respond }) => {
+      requestStarted.resolve();
+      await releaseResponse.promise;
+      return respond(200, {
+        artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage();
+    await requestStarted.promise;
+
+    expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
+    expect(buttonByLabel("Show avatar artifacts")).toBeInTheDocument();
+    expect(
+      buttonByLabel("Show shared conversation artifacts"),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      releaseResponse.resolve();
+      await releaseResponse.promise;
+    });
+    await findCard("launch-deck");
+  });
+
+  it("hides avatars when the JoggAI switch is disabled", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage({
+      [FeatureSwitchKey.JoggAiBuiltIn]: false,
+      [FeatureSwitchKey.SharedThreadSharing]: true,
+    });
+    await findCard("launch-deck");
+
+    expect(buttonByLabel("Show avatar artifacts")).toBeUndefined();
+    expect(
+      buttonByLabel("Show shared conversation artifacts"),
+    ).toBeInTheDocument();
+  });
+
+  it("hides shared conversations when sharing is disabled", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage({
+      [FeatureSwitchKey.JoggAiBuiltIn]: true,
+      [FeatureSwitchKey.SharedThreadSharing]: false,
+    });
+    await findCard("launch-deck");
+
+    expect(buttonByLabel("Show avatar artifacts")).toBeInTheDocument();
+    expect(buttonByLabel("Show shared conversation artifacts")).toBeUndefined();
+  });
+
+  it("renders shared conversations as compact rows", async () => {
+    const sharedRequestStarted = context.mocks.deferred<void>();
+    const releaseSharedResponse = context.mocks.deferred<void>();
+    const locationAssign = context.mocks.browser.locationAssign();
+    context.mocks.api(
+      artifactCatalogContract.list,
+      async ({ query, respond }) => {
+        if (query.kind === "shared-thread") {
+          sharedRequestStarted.resolve();
+          await releaseSharedResponse.promise;
+          return respond(200, {
+            artifacts: [
+              artifact({
+                kind: "shared-thread",
+                title: "Weekly launch review",
+              }),
+            ],
+            nextCursor: null,
+          });
+        }
+        return respond(200, {
+          artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+          nextCursor: null,
+        });
+      },
+    );
+    context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
+      return respond(200, {
+        ...artifact({
+          kind: "shared-thread",
+          title: "Weekly launch review",
+        }),
+        kind: "shared-thread",
+        sharedThread: { id: "b0000000-0000-4000-a000-000000000001" },
+      });
+    });
+
+    setupArtifactCatalogPage();
+    await findCard("launch-deck");
+
+    const sharedConversationFilter = buttonByLabel(
+      "Show shared conversation artifacts",
+    );
+    if (!sharedConversationFilter) {
+      throw new Error("Expected a shared conversation kind filter");
+    }
+    click(sharedConversationFilter);
+    await sharedRequestStarted.promise;
+
+    expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
+
+    await act(async () => {
+      releaseSharedResponse.resolve();
+      await releaseSharedResponse.promise;
+    });
+
+    const row = await findCard("Weekly launch review");
+    const listItem = row.closest("li");
+    if (!listItem) {
+      throw new Error("Expected a shared conversation list item");
+    }
+    expect(row).toHaveRole("button");
+    expect(listItem).toHaveRole("listitem");
+    expect(listItem.parentElement).toHaveRole("list");
+
+    click(row);
+    await waitFor(() => {
+      expect(locationAssign.calls).toStrictEqual([
+        "/share/threads/b0000000-0000-4000-a000-000000000001",
+      ]);
+    });
+  });
+
   it("localizes the catalog and filters without changing artifact titles", async () => {
     document.documentElement.lang = "pt-BR";
     const requestedKinds: (string | undefined)[] = [];
@@ -230,7 +372,6 @@ describe("artifact catalog page", () => {
           }),
         ],
         nextCursor: null,
-        supportedKinds: [...ARTIFACT_CATALOG_KINDS],
       });
     });
 
@@ -557,7 +698,6 @@ describe("artifact catalog page", () => {
       return respond(200, {
         artifacts: [artifact({ kind: "avatar", title: "avatar-video.mp4" })],
         nextCursor: null,
-        supportedKinds: [...ARTIFACT_CATALOG_KINDS],
       });
     });
     context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
