@@ -1,6 +1,7 @@
 """Shared runtime URL syntax policy tests."""
 
 from collections.abc import Iterator
+from itertools import product
 
 import pytest
 
@@ -13,6 +14,15 @@ class _NoPythonCharacterAccess(str):
 
     def __getitem__(self, key: int | slice) -> str:
         raise AssertionError("safe URL syntax checks must not index the input in Python")
+
+
+def _numeric_unsafe_url_codepoint_policy(value: str) -> bool:
+    return any(
+        ord(char) < url_syntax.ASCII_CONTROL_MAX
+        or ord(char) == url_syntax.ASCII_DELETE
+        or 0xD800 <= ord(char) <= 0xDFFF
+        for char in value
+    )
 
 
 @pytest.mark.parametrize("codepoint", range(url_syntax.ASCII_CONTROL_MAX))
@@ -45,13 +55,34 @@ def test_unsafe_url_codepoint_contract(value: str, expected: bool):
 
 def test_unsafe_url_codepoint_matches_numeric_policy_for_every_codepoint():
     for codepoint in range(0x110000):
-        expected = (
-            codepoint < url_syntax.ASCII_CONTROL_MAX
-            or codepoint == url_syntax.ASCII_DELETE
-            or 0xD800 <= codepoint <= 0xDFFF
-        )
+        expected = _numeric_unsafe_url_codepoint_policy(chr(codepoint))
         assert url_syntax.has_unsafe_url_codepoint(chr(codepoint)) is expected, (
             f"unexpected URL syntax result for U+{codepoint:04X}"
+        )
+
+
+def test_unsafe_url_codepoint_matches_numeric_policy_for_mixed_strings():
+    boundary_values = (
+        "a",
+        "é",
+        "🙂",
+        " ",
+        "\\",
+        "\x00",
+        "\x1f",
+        "\x7f",
+        "\x80",
+        "\x85",
+        "\u00a0",
+        "\u200b",
+        "\u2028",
+        "\ud800",
+        "\udfff",
+    )
+    for parts in product(boundary_values, repeat=3):
+        value = f"prefix{''.join(parts)}suffix"
+        assert url_syntax.has_unsafe_url_codepoint(value) == _numeric_unsafe_url_codepoint_policy(
+            value
         )
 
 
@@ -115,16 +146,18 @@ def test_unsafe_runtime_url_syntax_contract(
 
 
 @pytest.mark.parametrize(
-    "value",
+    ("value", "expected_unsafe"),
     [
-        pytest.param("", id="empty"),
-        pytest.param("https://api.example.com/path?query=value", id="printable-ascii"),
-        pytest.param("https://api.example.com/café/東京/🙂", id="printable-unicode"),
+        pytest.param("", False, id="empty"),
+        pytest.param("https://api.example.com/path?query=value", False, id="printable-ascii"),
+        pytest.param("https://api.example.com/café/東京/🙂", False, id="printable-unicode"),
+        pytest.param("https://api.example.com/path\u200b", False, id="accepted-non-printable"),
+        pytest.param("https://api.example.com/café\ud800", True, id="forbidden-surrogate"),
     ],
 )
-def test_safe_url_syntax_bypasses_python_character_access(value: str):
+def test_url_syntax_bypasses_python_character_access(value: str, expected_unsafe: bool):
     guarded_value = _NoPythonCharacterAccess(value)
 
-    assert not url_syntax.has_unsafe_url_codepoint(guarded_value)
+    assert url_syntax.has_unsafe_url_codepoint(guarded_value) is expected_unsafe
     assert not url_syntax.has_raw_whitespace(guarded_value)
-    assert not url_syntax.has_unsafe_runtime_url_syntax(guarded_value)
+    assert url_syntax.has_unsafe_runtime_url_syntax(guarded_value) is expected_unsafe
