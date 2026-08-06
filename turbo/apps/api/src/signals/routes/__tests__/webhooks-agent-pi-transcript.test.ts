@@ -159,6 +159,14 @@ async function readTranscript(
   );
 }
 
+async function readTranscriptOk(runId: string) {
+  const response = await readTranscript(runId, [200]);
+  if (response.status !== 200) {
+    throw new Error("Expected the pi transcript read to succeed");
+  }
+  return response.body;
+}
+
 async function outputMessages(actor: ApiTestUser, threadId: string) {
   const page = await chat.listThreadEvents(actor, threadId);
   return page.events.filter((event) => {
@@ -203,11 +211,11 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     );
     expect(response.body).toMatchObject({ received: 2 });
 
-    const transcript = await readTranscript(runId, [200]);
-    expect(transcript.body.version).toBe(1);
-    expect(transcript.body.lastOrdinal).toBe(2);
-    expect(transcript.body.messages).toHaveLength(2);
-    expect(transcript.body.messages[0]).toMatchObject({
+    const transcript = await readTranscriptOk(runId);
+    expect(transcript.version).toBe(1);
+    expect(transcript.lastOrdinal).toBe(2);
+    expect(transcript.messages).toHaveLength(2);
+    expect(transcript.messages[0]).toMatchObject({
       ordinal: 1,
       messageId: "pi-m1",
       runId,
@@ -215,7 +223,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
       role: "assistant",
       payload: assistantMessage("first reply"),
     });
-    expect(transcript.body.messages[1]).toMatchObject({
+    expect(transcript.messages[1]).toMatchObject({
       ordinal: 2,
       messageId: "pi-m2",
       role: "toolResult",
@@ -257,8 +265,8 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
       [200],
     );
 
-    const transcript = await readTranscript(runId, [200]);
-    expect(transcript.body.lastOrdinal).toBe(2);
+    const transcript = await readTranscriptOk(runId);
+    expect(transcript.lastOrdinal).toBe(2);
     await expect(outputMessages(actor, threadId)).resolves.toHaveLength(0);
 
     await flushWaitUntilForTest();
@@ -283,9 +291,9 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
 
     await sendEvents(runId, batch, [200]);
 
-    const transcript = await readTranscript(runId, [200]);
-    expect(transcript.body.lastOrdinal).toBe(1);
-    expect(transcript.body.messages).toHaveLength(1);
+    const transcript = await readTranscriptOk(runId);
+    expect(transcript.lastOrdinal).toBe(1);
+    expect(transcript.messages).toHaveLength(1);
     await expect(outputMessages(actor, threadId)).resolves.toHaveLength(1);
 
     await flushWaitUntilForTest();
@@ -326,8 +334,8 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
       error: { code: "CONFLICT" },
     });
 
-    const transcript = await readTranscript(runId, [200]);
-    expect(transcript.body.lastOrdinal).toBe(1);
+    const transcript = await readTranscriptOk(runId);
+    expect(transcript.lastOrdinal).toBe(1);
     await expect(outputMessages(actor, threadId)).resolves.toHaveLength(1);
 
     await flushWaitUntilForTest();
@@ -383,8 +391,8 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     );
     expect(response.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
 
-    const transcript = await readTranscript(runId, [200]);
-    expect(transcript.body.messages).toHaveLength(0);
+    const transcript = await readTranscriptOk(runId);
+    expect(transcript.messages).toHaveLength(0);
   });
 
   it("rejects pi events for a run without a chat thread", async () => {
@@ -488,8 +496,8 @@ describe("GET /api/webhooks/agent/pi-transcript", () => {
       [200],
     );
 
-    const other = await readTranscript(secondRun.runId, [200]);
-    expect(other.body.messages).toHaveLength(0);
+    const other = await readTranscriptOk(secondRun.runId);
+    expect(other.messages).toHaveLength(0);
 
     await readTranscript(firstRun.runId, [401], secondRun.runId);
   });
