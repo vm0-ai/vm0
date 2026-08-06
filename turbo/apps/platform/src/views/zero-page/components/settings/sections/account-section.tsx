@@ -1,6 +1,6 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { IconUser } from "@tabler/icons-react";
+import { IconExternalLink } from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
   clerkInstance$,
@@ -43,7 +43,7 @@ export function AccountSection() {
       </div>
       <Button asChild className="shrink-0">
         <a href={userProfileUrl} target="_blank" rel="noreferrer">
-          <IconUser size={14} />
+          <IconExternalLink size={14} />
           {t(($) => {
             return $.settings.preferences.account.manage;
           })}
