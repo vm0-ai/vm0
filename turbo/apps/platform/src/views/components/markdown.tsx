@@ -9,6 +9,7 @@ import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { rehypeMermaid } from "../../lib/rehype-mermaid.ts";
+import { pageLifecycleId$ } from "../../signals/page-signal.ts";
 import { theme$ } from "../../signals/theme.ts";
 import {
   imageLoadStatusByKey$,
@@ -20,7 +21,10 @@ type MarkdownNodeProp = { node?: unknown };
 type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & MarkdownNodeProp;
 type MarkdownDivProps = ComponentPropsWithoutRef<"div"> &
-  MarkdownNodeProp & { "data-mermaid-code"?: string };
+  MarkdownNodeProp & {
+    "data-mermaid-code"?: string;
+    "data-mermaid-scope"?: string;
+  };
 
 type RewriteArgs = Parameters<
   NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
@@ -366,7 +370,12 @@ function MarkdownDivRenderer(props: MarkdownDivProps) {
   const { children, ...rest } = props;
   const mermaidCode = props["data-mermaid-code"];
   if (typeof mermaidCode === "string") {
-    return <MermaidDiagram code={mermaidCode} />;
+    return (
+      <MermaidDiagram
+        code={mermaidCode}
+        scope={props["data-mermaid-scope"] ?? ""}
+      />
+    );
   }
   return <div {...omitMarkdownNodeProp(rest)}>{children}</div>;
 }
@@ -399,12 +408,16 @@ type RehypePlugins = MarkdownPreviewProps["rehypePlugins"];
 // `@uiw/react-markdown-preview` appends after every caller-provided plugin.
 function buildRehypePlugins(args: {
   mathEnabled: boolean;
+  mermaidScope: string;
   rehypePlugins: RehypePlugins;
 }): RehypePlugins {
+  const mermaidPlugins: NonNullable<RehypePlugins> = [
+    [rehypeMermaid, { scope: args.mermaidScope }],
+  ];
   return [
     ...(args.mathEnabled ? [rehypeKatex] : []),
     ...(args.rehypePlugins ?? []),
-    rehypeMermaid,
+    ...mermaidPlugins,
   ];
 }
 
@@ -412,6 +425,7 @@ export function Markdown({
   className,
   style,
   mediaPreview = false,
+  mermaidScope,
   mathEnabled = false,
   escapeHtml = false,
   source,
@@ -420,10 +434,12 @@ export function Markdown({
   ...rest
 }: MarkdownPreviewProps & {
   mediaPreview?: boolean;
+  mermaidScope?: string;
   mathEnabled?: boolean;
   escapeHtml?: boolean;
 }) {
   const theme = useGet(theme$);
+  const pageLifecycleId = useGet(pageLifecycleId$);
   const components = mediaPreview
     ? MEDIA_MARKDOWN_COMPONENTS
     : PLAIN_MARKDOWN_COMPONENTS;
@@ -451,6 +467,7 @@ export function Markdown({
       }
       rehypePlugins={buildRehypePlugins({
         mathEnabled,
+        mermaidScope: mermaidScope ?? pageLifecycleId,
         rehypePlugins,
       })}
       components={components}

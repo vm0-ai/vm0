@@ -4333,12 +4333,14 @@ function parseInlineAttachments(content: string): {
 
 function BodyContentBlocks({
   blocks,
+  mermaidScope,
   openLightbox,
   hardBreaks,
   escapeMarkdownHtml = false,
   markdownMediaPreview = true,
 }: {
   blocks: BodyRenderBlock[];
+  mermaidScope: string;
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
   escapeMarkdownHtml?: boolean;
@@ -4353,6 +4355,7 @@ function BodyContentBlocks({
           <BodyRenderBlockView
             key={bodyRenderBlockKey(block, cardOccurrences)}
             block={block}
+            mermaidScope={mermaidScope}
             openLightbox={openLightbox}
             openVideoLightbox={openVideoLightbox}
             hardBreaks={hardBreaks}
@@ -4380,6 +4383,7 @@ function bodyRenderBlockKey(
 
 function BodyRenderBlockView({
   block,
+  mermaidScope,
   openLightbox,
   openVideoLightbox,
   hardBreaks,
@@ -4387,6 +4391,7 @@ function BodyRenderBlockView({
   markdownMediaPreview,
 }: {
   block: BodyRenderBlock;
+  mermaidScope: string;
   openLightbox: (url: string) => void;
   openVideoLightbox: (value: { url: string; filename: string }) => void;
   hardBreaks: boolean;
@@ -4397,6 +4402,7 @@ function BodyRenderBlockView({
     case "markdown": {
       return (
         <Markdown
+          mermaidScope={mermaidScope}
           source={
             hardBreaks ? block.content.replace(/\n/g, "  \n") : block.content
           }
@@ -7741,6 +7747,7 @@ function PagedUserMessage({
                   <div className="px-4 py-3">
                     <BodyContentBlocks
                       blocks={bodyBlocks}
+                      mermaidScope={thread.lifecycleId}
                       openLightbox={openLightbox}
                       hardBreaks
                       escapeMarkdownHtml
@@ -7898,6 +7905,7 @@ function PagedAssistantEventItem({
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}
+            mermaidScope={thread.lifecycleId}
             openLightbox={openLightbox}
             hardBreaks={false}
           />

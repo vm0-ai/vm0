@@ -25,23 +25,30 @@ import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chip
  * render finishes — re-attaching would abort the render that just produced the
  * result and start it again.
  */
-export function MermaidDiagram({ code }: { code: string }) {
+export function MermaidDiagram({
+  code,
+  scope,
+}: {
+  code: string;
+  scope: string;
+}) {
   const { t } = useTranslation();
   const theme = useGet(theme$);
   const diagramRef = useSet(mermaidDiagramRef$);
   const openImageLightbox = useSet(openImageLightbox$);
   const resultByKey = useGet(mermaidDiagramResultByKey$);
   const result: MermaidDiagramResult = resultByKey[
-    mermaidDiagramKey(code, theme)
+    mermaidDiagramKey(code, theme, scope)
   ] ?? { status: "rendering" };
 
   return (
     <div className="mermaid-block" data-mermaid-status={result.status}>
       <button
-        key={`${theme}:${code}`}
+        key={`${scope}:${theme}:${code}`}
         ref={diagramRef}
         type="button"
         data-mermaid-code={code}
+        data-mermaid-scope={scope}
         data-mermaid-theme={theme}
         className="mermaid-diagram-expand"
         disabled={result.status !== "rendered"}
@@ -52,12 +59,12 @@ export function MermaidDiagram({ code }: { code: string }) {
           if (result.status !== "rendered") {
             return;
           }
-          // A rendered diagram is an inline data URL, not a stored artifact,
-          // so it stays in the lightbox instead of moving to the sidebar.
+          // The lightbox and sidebar reuse the chat panel-owned object URL and
+          // carry the File metadata needed to present it as diagram.svg.
           openImageLightbox({
             url: result.url,
-            filename: "diagram.svg",
-            splitViewAvailable: false,
+            file: result.file,
+            shareAvailable: false,
           });
         }}
       >
