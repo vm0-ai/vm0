@@ -26,7 +26,6 @@ const ARTIFACT_CATALOG_PAGE_SIZE = 60;
 export interface ArtifactCatalogPage {
   readonly artifacts: readonly ArtifactSummary[];
   readonly nextCursor: string | null;
-  readonly supportedKinds?: readonly ArtifactCatalogKind[];
 }
 
 export interface ArtifactCatalogSignals {
@@ -64,7 +63,6 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
         client.list({
           query: {
             limit: ARTIFACT_CATALOG_PAGE_SIZE,
-            includeSharedThreads: "1",
             ...(kind ? { kind } : {}),
             ...(chatThreadId ? { chatThreadId } : {}),
           },
@@ -93,7 +91,6 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
         }),
       ],
       nextCursor: lastPage.nextCursor,
-      supportedKinds: firstPage.supportedKinds,
     };
   });
 
@@ -121,7 +118,6 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
             query: {
               limit: ARTIFACT_CATALOG_PAGE_SIZE,
               cursor,
-              includeSharedThreads: "1",
               ...(kind ? { kind } : {}),
               ...(chatThreadId ? { chatThreadId } : {}),
             },
@@ -226,7 +222,6 @@ export function createArtifactCatalogSignals(
       const result = await accept(
         client.get({
           params: { artifactId },
-          query: { includeSharedThreads: "1" },
           fetchOptions: { signal },
         }),
         [200, 404],

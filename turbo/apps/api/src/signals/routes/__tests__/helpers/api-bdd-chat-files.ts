@@ -1003,12 +1003,11 @@ export function createChatFilesBddApi(context: TestContext) {
     ): Promise<{
       readonly artifacts: readonly ArtifactSummary[];
       readonly nextCursor: string | null;
-      readonly supportedKinds?: readonly ArtifactCatalogKind[];
     }> {
       const response = await accept(
         artifactCatalogClient().list({
           headers: authenticate(context, actor),
-          query: { ...query, includeSharedThreads: "1" },
+          query,
         }),
         [200],
       );
@@ -1023,7 +1022,6 @@ export function createChatFilesBddApi(context: TestContext) {
         artifactCatalogClient().get({
           headers: authenticate(context, actor),
           params: { artifactId },
-          query: { includeSharedThreads: "1" },
         }),
         [200],
       );
@@ -1039,7 +1037,6 @@ export function createChatFilesBddApi(context: TestContext) {
         artifactCatalogClient().get({
           headers: authenticate(context, actor),
           params: { artifactId },
-          query: { includeSharedThreads: "1" },
         }),
         statuses,
       );

@@ -15,7 +15,8 @@ import {
   IconWorld,
 } from "@tabler/icons-react";
 import { r2ImageTransformUrl } from "@vm0/core";
-import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
 import { Alert, AlertDescription } from "@vm0/ui/components/ui/alert";
 import { useTranslation } from "react-i18next";
@@ -27,6 +28,7 @@ import {
   selectedArtifactCatalogKind$,
   setArtifactCatalogKind$,
 } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -381,21 +383,22 @@ export function ArtifactCatalogEmpty() {
 
 function ArtifactCatalogKindFilter({
   selectedKind,
-  supportedKinds,
+  avatarEnabled,
+  sharedConversationEnabled,
   onKindChange,
 }: {
   readonly selectedKind: ArtifactCatalogKind | null;
-  readonly supportedKinds: readonly ArtifactCatalogKind[] | undefined;
+  readonly avatarEnabled: boolean;
+  readonly sharedConversationEnabled: boolean;
   readonly onKindChange: (value: ArtifactCatalogKind | null) => void;
 }) {
   const { t } = useTranslation();
-  const options = supportedKinds
-    ? ARTIFACT_KIND_OPTIONS.filter((kind) => {
-        return supportedKinds.includes(kind);
-      })
-    : ARTIFACT_KIND_OPTIONS.filter((kind) => {
-        return kind !== "avatar" && kind !== "shared-thread";
-      });
+  const options = ARTIFACT_KIND_OPTIONS.filter((kind) => {
+    return (
+      (kind !== "avatar" || avatarEnabled) &&
+      (kind !== "shared-thread" || sharedConversationEnabled)
+    );
+  });
   return (
     <div
       className="flex flex-wrap items-center gap-1.5"
@@ -494,8 +497,8 @@ export function ArtifactCatalogPage() {
   const loadMore = useSet(loadMoreArtifactCatalog$);
   const pageSignal = useGet(pageSignal$);
   const lightboxUrl = useGet(lightboxUrl$);
+  const featureSwitches = useGet(featureSwitch$);
   const catalog = useLoadable(artifactCatalog$);
-  const lastCatalog = useLastLoadable(artifactCatalog$);
   const artifacts = catalog.state === "hasData" ? catalog.data.artifacts : [];
   const sharedConversationLayout = selectedKind === "shared-thread";
   const hasMore =
@@ -543,10 +546,11 @@ export function ArtifactCatalogPage() {
         <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
           <ArtifactCatalogKindFilter
             selectedKind={selectedKind}
-            supportedKinds={
-              lastCatalog.state === "hasData"
-                ? lastCatalog.data.supportedKinds
-                : ARTIFACT_KIND_OPTIONS
+            avatarEnabled={
+              featureSwitches[FeatureSwitchKey.JoggAiBuiltIn] ?? false
+            }
+            sharedConversationEnabled={
+              featureSwitches[FeatureSwitchKey.SharedThreadSharing] ?? false
             }
             onKindChange={setKind}
           />
