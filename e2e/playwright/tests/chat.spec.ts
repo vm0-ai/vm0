@@ -62,11 +62,14 @@ test("image lightbox centers and pans across the full viewer", async ({
 
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
-  await page.locator('input[type="file"]').setInputFiles({
-    buffer: Buffer.from(imageMarkup),
-    mimeType: "image/svg+xml",
-    name: "lightbox.svg",
-  });
+  await page
+    .getByRole("main")
+    .locator('input[type="file"]')
+    .setInputFiles({
+      buffer: Buffer.from(imageMarkup),
+      mimeType: "image/svg+xml",
+      name: "lightbox.svg",
+    });
 
   await page
     .getByRole("button", { name: "Open image preview for lightbox.svg" })
