@@ -981,12 +981,21 @@
       "upgrade": "Actualización",
       "upgradeTo": "Actualizar a {{plan}}",
       "usagePacks": {
-        "baseAndPack": "{{base}} de base + paquete de uso de {{pack}}",
+        "addMember": "Añadir miembro",
+        "baseAndMemberUsage": "{{base}} de base + {{usage}} de uso de miembros",
+        "bonusCredits": "+{{value}} créditos extra",
         "checkoutComingSoon": "Pago próximamente",
-        "description": "Todos los planes incluyen un paquete de uso mensual obligatorio.",
+        "currentMember": "Miembro actual",
+        "description": "Asigna paquetes de uso mensuales a los miembros o permite que usen créditos de pago por uso.",
+        "memberExclusive": "Cada paquete mensual pertenece a un miembro y no se puede compartir. Los miembros sin paquete usan créditos de pago por uso.",
+        "memberUsage": "Uso del miembro",
+        "memberUsageTotal": "Total de paquetes mensuales",
         "monthlyTotal": "Total mensual",
-        "monthlyUsagePack": "Paquete de uso mensual",
-        "required": "Obligatorio"
+        "packOption": "{{price}} · {{credits}} créditos · {{discount}} % de descuento",
+        "payAsYouGo": "Pago por uso",
+        "payAsYouGoDescription": "Usa créditos de pago por uso sin paquete mensual.",
+        "removeMember": "Eliminar a {{name}}",
+        "selectUsage": "Uso de {{name}}"
       }
     },
     "restore": {

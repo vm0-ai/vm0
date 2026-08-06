@@ -960,12 +960,21 @@
       "upgrade": "अपग्रेड",
       "upgradeTo": "{{plan}} में अपग्रेड करें",
       "usagePacks": {
-        "baseAndPack": "{{base}} आधार + {{pack}} उपयोग पैक",
+        "addMember": "सदस्य जोड़ें",
+        "baseAndMemberUsage": "{{base}} आधार + {{usage}} सदस्य उपयोग",
+        "bonusCredits": "+{{value}} बोनस क्रेडिट",
         "checkoutComingSoon": "चेकआउट जल्द उपलब्ध होगा",
-        "description": "हर प्लान में एक अनिवार्य मासिक उपयोग पैक शामिल है।",
+        "currentMember": "मौजूदा सदस्य",
+        "description": "सदस्यों को मासिक उपयोग पैक दें या उन्हें पे-एज़-यू-गो क्रेडिट उपयोग करने दें।",
+        "memberExclusive": "हर मासिक पैक एक सदस्य का होता है और साझा नहीं किया जा सकता। बिना पैक वाले सदस्य पे-एज़-यू-गो क्रेडिट उपयोग करते हैं।",
+        "memberUsage": "सदस्य उपयोग",
+        "memberUsageTotal": "मासिक पैक का कुल",
         "monthlyTotal": "मासिक कुल",
-        "monthlyUsagePack": "मासिक उपयोग पैक",
-        "required": "अनिवार्य"
+        "packOption": "{{price}} · {{credits}} क्रेडिट · {{discount}}% की छूट",
+        "payAsYouGo": "उपयोग के अनुसार भुगतान",
+        "payAsYouGoDescription": "बिना मासिक पैक के पे-एज़-यू-गो क्रेडिट उपयोग करता है।",
+        "removeMember": "{{name}} को हटाएँ",
+        "selectUsage": "{{name}} के लिए उपयोग"
       }
     },
     "restore": {

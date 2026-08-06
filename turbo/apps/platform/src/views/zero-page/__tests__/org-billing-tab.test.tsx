@@ -44,19 +44,6 @@ function buttonByText(
   return button;
 }
 
-function buttonByAriaLabel(
-  label: string,
-  container: ParentNode = document.body,
-): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.getAttribute("aria-label") === label;
-  });
-  if (!button) {
-    throw new Error(`${label} button not found`);
-  }
-  return button;
-}
-
 function activeProBillingStatus(): BillingStatusResponse {
   return {
     tier: "pro",
@@ -289,7 +276,7 @@ describe("organization billing settings", () => {
     });
   });
 
-  it("shows required monthly usage packs behind the feature switch", async () => {
+  it("configures member usage behind the feature switch", async () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Usage Pack Org",
@@ -298,10 +285,42 @@ describe("organization billing settings", () => {
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
       return respond(200, noActiveBillingStatus());
     });
+    context.mocks.data.orgMembers({
+      name: "Usage Pack Org",
+      role: "admin",
+      members: [
+        {
+          userId: "user_1",
+          email: "alex@example.com",
+          firstName: "Alex",
+          lastName: "Chen",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00Z",
+        },
+        {
+          userId: "user_2",
+          email: "sam@example.com",
+          firstName: "Sam",
+          lastName: "Lee",
+          imageUrl: "",
+          role: "member",
+          joinedAt: "2026-01-02T00:00:00Z",
+        },
+      ],
+      pendingInvitations: [],
+      membershipRequests: [],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
 
     detachedSetupPage({
       context,
       path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
       featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
@@ -314,27 +333,76 @@ describe("organization billing settings", () => {
     const teamPlan = screen.getByRole("article", { name: "Team plan" });
     expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
     expect(
-      within(proPlan).getByText("$0 base + $20 usage pack"),
+      within(proPlan).getByText("$0 base + $20 member usage"),
     ).toBeInTheDocument();
     expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
     expect(
-      within(teamPlan).getByText("$160 base + $20 usage pack"),
+      within(teamPlan).getByText("$160 base + $20 member usage"),
     ).toBeInTheDocument();
 
-    const teamPackGroup = within(teamPlan).getByRole("group", {
-      name: "Team: Monthly usage pack",
+    const memberUsage = screen.getByRole("group", {
+      name: "Member usage",
     });
-    const oneHundredDollarPack = buttonByAriaLabel(
-      "$100 100,000 credits / month",
-      teamPackGroup,
-    );
-    click(oneHundredDollarPack);
+    expect(within(memberUsage).getByText("Alex Chen")).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("alex@example.com"),
+    ).toBeInTheDocument();
+    const alexUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for Alex Chen",
+    });
+    expect(alexUsage).toHaveTextContent("$20 · 20,400 credits · 2% off");
+    expect(
+      within(memberUsage).getByText("+400 bonus credits"),
+    ).toBeInTheDocument();
 
-    expect(oneHundredDollarPack).toHaveAttribute("aria-pressed", "true");
+    click(alexUsage);
+    click(await screen.findByRole("option", { name: "Pay as you go" }));
+
+    expect(within(proPlan).getByText("$0/month")).toBeInTheDocument();
+    expect(
+      within(proPlan).getByText("$0 base + $0 member usage"),
+    ).toBeInTheDocument();
+    expect(within(teamPlan).getByText("$160/month")).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText(
+        "Uses pay-as-you-go credits with no monthly pack.",
+      ),
+    ).toBeInTheDocument();
+
+    click(
+      within(memberUsage).getByRole("combobox", {
+        name: "Add member",
+      }),
+    );
+    click(await screen.findByRole("option", { name: "Sam Lee" }));
+
+    expect(within(memberUsage).getByText("Sam Lee")).toBeInTheDocument();
+    expect(
+      within(memberUsage).getByText("sam@example.com"),
+    ).toBeInTheDocument();
+    expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
+    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
+
+    const samUsage = within(memberUsage).getByRole("combobox", {
+      name: "Usage for Sam Lee",
+    });
+    click(samUsage);
+    click(
+      await screen.findByRole("option", {
+        name: "$100 · 108,700 credits · 8% off",
+      }),
+    );
+
+    expect(within(proPlan).getByText("$100/month")).toBeInTheDocument();
     expect(within(teamPlan).getByText("$260/month")).toBeInTheDocument();
     expect(
-      within(teamPlan).getByText("$160 base + $100 usage pack"),
+      within(memberUsage).getByText("+8,700 bonus credits"),
     ).toBeInTheDocument();
+
+    click(within(memberUsage).getByLabelText("Remove Sam Lee"));
+    expect(within(memberUsage).queryByText("Sam Lee")).not.toBeInTheDocument();
+    expect(within(proPlan).getByText("$0/month")).toBeInTheDocument();
+    expect(within(teamPlan).getByText("$160/month")).toBeInTheDocument();
     expect(buttonByText("Checkout coming soon", proPlan)).toBeDisabled();
     expect(buttonByText("Checkout coming soon", teamPlan)).toBeDisabled();
   });

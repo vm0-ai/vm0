@@ -960,12 +960,21 @@
       "upgrade": "Upgrade",
       "upgradeTo": "Upgrade auf {{plan}}",
       "usagePacks": {
-        "baseAndPack": "{{base}} Basispreis + {{pack}} Nutzungspaket",
+        "addMember": "Mitglied hinzufügen",
+        "baseAndMemberUsage": "{{base}} Basispreis + {{usage}} Mitgliedernutzung",
+        "bonusCredits": "+{{value}} Bonus-Credits",
         "checkoutComingSoon": "Checkout in Kürze verfügbar",
-        "description": "Jeder Tarif enthält ein obligatorisches monatliches Nutzungspaket.",
+        "currentMember": "Aktuelles Mitglied",
+        "description": "Weisen Sie Mitgliedern monatliche Nutzungspakete zu oder lassen Sie sie nutzungsabhängige Credits verwenden.",
+        "memberExclusive": "Jedes Monatspaket gehört einem Mitglied und kann nicht geteilt werden. Mitglieder ohne Paket verwenden nutzungsabhängige Credits.",
+        "memberUsage": "Nutzung des Mitglieds",
+        "memberUsageTotal": "Monatliche Paketsumme",
         "monthlyTotal": "Monatliche Gesamtkosten",
-        "monthlyUsagePack": "Monatliches Nutzungspaket",
-        "required": "Erforderlich"
+        "packOption": "{{price}} · {{credits}} Credits · {{discount}} % Rabatt",
+        "payAsYouGo": "Nutzungsabhängig zahlen",
+        "payAsYouGoDescription": "Verwendet nutzungsabhängige Credits ohne Monatspaket.",
+        "removeMember": "{{name}} entfernen",
+        "selectUsage": "Nutzung für {{name}}"
       }
     },
     "restore": {

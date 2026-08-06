@@ -960,12 +960,21 @@
       "upgrade": "アップグレード",
       "upgradeTo": "{{plan}} にアップグレードする",
       "usagePacks": {
-        "baseAndPack": "基本料金 {{base}} + 利用パック {{pack}}",
+        "addMember": "メンバーを追加",
+        "baseAndMemberUsage": "基本料金 {{base}} + メンバー利用料 {{usage}}",
+        "bonusCredits": "+{{value}} ボーナスクレジット",
         "checkoutComingSoon": "チェックアウトは近日公開",
-        "description": "すべてのプランで月額利用パックの選択が必須です。",
+        "currentMember": "現在のメンバー",
+        "description": "メンバーに月額利用パックを割り当てるか、従量課金クレジットを使用させます。",
+        "memberExclusive": "各月額パックは1人のメンバー専用で共有できません。パックがないメンバーは従量課金クレジットを使用します。",
+        "memberUsage": "メンバーの利用設定",
+        "memberUsageTotal": "月額パック合計",
         "monthlyTotal": "月額合計",
-        "monthlyUsagePack": "月額利用パック",
-        "required": "必須"
+        "packOption": "{{price}} · {{credits}} クレジット · {{discount}}%オフ",
+        "payAsYouGo": "従量課金",
+        "payAsYouGoDescription": "月額パックなしで従量課金クレジットを使用します。",
+        "removeMember": "{{name}} を削除",
+        "selectUsage": "{{name}} の利用設定"
       }
     },
     "restore": {

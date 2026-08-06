@@ -960,12 +960,21 @@
       "upgrade": "Upgrade",
       "upgradeTo": "Upgrade to {{plan}}",
       "usagePacks": {
-        "baseAndPack": "{{base}} base + {{pack}} usage pack",
+        "addMember": "Add member",
+        "baseAndMemberUsage": "{{base}} base + {{usage}} member usage",
+        "bonusCredits": "+{{value}} bonus credits",
         "checkoutComingSoon": "Checkout coming soon",
-        "description": "Every plan includes a required monthly usage pack.",
+        "currentMember": "Current member",
+        "description": "Assign monthly usage packs to members, or let them use pay-as-you-go credits.",
+        "memberExclusive": "Each monthly pack belongs to one member and cannot be shared. Members without a pack use pay-as-you-go credits.",
+        "memberUsage": "Member usage",
+        "memberUsageTotal": "Monthly pack total",
         "monthlyTotal": "Monthly total",
-        "monthlyUsagePack": "Monthly usage pack",
-        "required": "Required"
+        "packOption": "{{price}} · {{credits}} credits · {{discount}}% off",
+        "payAsYouGo": "Pay as you go",
+        "payAsYouGoDescription": "Uses pay-as-you-go credits with no monthly pack.",
+        "removeMember": "Remove {{name}}",
+        "selectUsage": "Usage for {{name}}"
       }
     },
     "restore": {

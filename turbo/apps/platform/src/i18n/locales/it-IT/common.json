@@ -981,12 +981,21 @@
       "upgrade": "Aggiorna",
       "upgradeTo": "Passa a {{plan}}",
       "usagePacks": {
-        "baseAndPack": "{{base}} di base + pacchetto di utilizzo da {{pack}}",
+        "addMember": "Aggiungi membro",
+        "baseAndMemberUsage": "{{base}} di base + {{usage}} di utilizzo dei membri",
+        "bonusCredits": "+{{value}} crediti bonus",
         "checkoutComingSoon": "Checkout disponibile a breve",
-        "description": "Ogni piano include un pacchetto di utilizzo mensile obbligatorio.",
+        "currentMember": "Membro attuale",
+        "description": "Assegna pacchetti di utilizzo mensili ai membri o consenti loro di usare crediti a consumo.",
+        "memberExclusive": "Ogni pacchetto mensile appartiene a un membro e non può essere condiviso. I membri senza pacchetto usano crediti a consumo.",
+        "memberUsage": "Utilizzo del membro",
+        "memberUsageTotal": "Totale pacchetti mensili",
         "monthlyTotal": "Totale mensile",
-        "monthlyUsagePack": "Pacchetto di utilizzo mensile",
-        "required": "Obbligatorio"
+        "packOption": "{{price}} · {{credits}} crediti · {{discount}}% di sconto",
+        "payAsYouGo": "Pagamento a consumo",
+        "payAsYouGoDescription": "Usa crediti a consumo senza un pacchetto mensile.",
+        "removeMember": "Rimuovi {{name}}",
+        "selectUsage": "Utilizzo per {{name}}"
       }
     },
     "restore": {

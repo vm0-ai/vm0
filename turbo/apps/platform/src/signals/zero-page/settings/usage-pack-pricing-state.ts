@@ -1,31 +1,50 @@
 import { command, computed, state } from "ccstate";
 
 export const USAGE_PACKS_USD = [20, 50, 100, 200] as const;
+export const PAY_AS_YOU_GO = "payAsYouGo" as const;
 
 export type UsagePackUsd = (typeof USAGE_PACKS_USD)[number];
-export type UsagePackPlanTier = "pro" | "team";
+export type MemberUsageSelection = UsagePackUsd | typeof PAY_AS_YOU_GO;
 
-const internalUsagePackSelection$ = state<
-  Readonly<Record<UsagePackPlanTier, UsagePackUsd>>
->({
-  pro: 20,
-  team: 20,
+const internalMemberUsageSelections$ = state<
+  Readonly<Record<string, MemberUsageSelection>>
+>({});
+
+export const memberUsageSelections$ = computed((get) => {
+  return get(internalMemberUsageSelections$);
 });
 
-export const usagePackSelection$ = computed((get) => {
-  return get(internalUsagePackSelection$);
-});
-
-export const setUsagePackSelection$ = command(
+export const setMemberUsageSelection$ = command(
   (
     { set },
     selection: {
-      readonly plan: UsagePackPlanTier;
-      readonly pack: UsagePackUsd;
+      readonly memberId: string;
+      readonly usage: MemberUsageSelection;
     },
   ) => {
-    set(internalUsagePackSelection$, (current) => {
-      return { ...current, [selection.plan]: selection.pack };
+    set(internalMemberUsageSelections$, (current) => {
+      return { ...current, [selection.memberId]: selection.usage };
+    });
+  },
+);
+
+export const addMemberUsageConfiguration$ = command(
+  ({ set }, memberId: string) => {
+    set(
+      internalMemberUsageSelections$,
+      (current): Readonly<Record<string, MemberUsageSelection>> => {
+        return { ...current, [memberId]: 20 };
+      },
+    );
+  },
+);
+
+export const removeMemberUsageConfiguration$ = command(
+  ({ set }, memberId: string) => {
+    set(internalMemberUsageSelections$, (current) => {
+      const next = { ...current };
+      delete next[memberId];
+      return next;
     });
   },
 );

@@ -960,12 +960,21 @@
       "upgrade": "Tingkatkan",
       "upgradeTo": "Tingkatkan ke {{plan}}",
       "usagePacks": {
-        "baseAndPack": "Dasar {{base}} + paket penggunaan {{pack}}",
+        "addMember": "Tambahkan anggota",
+        "baseAndMemberUsage": "Dasar {{base}} + penggunaan anggota {{usage}}",
+        "bonusCredits": "+{{value}} kredit bonus",
         "checkoutComingSoon": "Checkout segera hadir",
-        "description": "Setiap paket mencakup paket penggunaan bulanan wajib.",
+        "currentMember": "Anggota saat ini",
+        "description": "Tetapkan paket penggunaan bulanan kepada anggota atau izinkan mereka memakai kredit bayar sesuai pemakaian.",
+        "memberExclusive": "Setiap paket bulanan hanya untuk satu anggota dan tidak dapat dibagikan. Anggota tanpa paket menggunakan kredit bayar sesuai pemakaian.",
+        "memberUsage": "Penggunaan anggota",
+        "memberUsageTotal": "Total paket bulanan",
         "monthlyTotal": "Total bulanan",
-        "monthlyUsagePack": "Paket penggunaan bulanan",
-        "required": "Wajib"
+        "packOption": "{{price}} · {{credits}} kredit · Diskon {{discount}}%",
+        "payAsYouGo": "Bayar sesuai pemakaian",
+        "payAsYouGoDescription": "Menggunakan kredit bayar sesuai pemakaian tanpa paket bulanan.",
+        "removeMember": "Hapus {{name}}",
+        "selectUsage": "Penggunaan untuk {{name}}"
       }
     },
     "restore": {

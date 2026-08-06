@@ -960,12 +960,21 @@
       "upgrade": "업그레이드",
       "upgradeTo": "{{plan}}으로 업그레이드",
       "usagePacks": {
-        "baseAndPack": "기본 요금 {{base}} + 사용량 팩 {{pack}}",
+        "addMember": "구성원 추가",
+        "baseAndMemberUsage": "기본 요금 {{base}} + 구성원 사용량 {{usage}}",
+        "bonusCredits": "+{{value}} 보너스 크레딧",
         "checkoutComingSoon": "결제 기능 준비 중",
-        "description": "모든 요금제에는 필수 월간 사용량 팩이 포함됩니다.",
+        "currentMember": "현재 구성원",
+        "description": "구성원에게 월간 사용량 팩을 할당하거나 사용량 기반 크레딧을 사용하도록 설정합니다.",
+        "memberExclusive": "각 월간 팩은 한 구성원에게만 속하며 공유할 수 없습니다. 팩이 없는 구성원은 사용량 기반 크레딧을 사용합니다.",
+        "memberUsage": "구성원 사용량",
+        "memberUsageTotal": "월간 팩 합계",
         "monthlyTotal": "월간 합계",
-        "monthlyUsagePack": "월간 사용량 팩",
-        "required": "필수"
+        "packOption": "{{price}} · {{credits}} 크레딧 · {{discount}}% 할인",
+        "payAsYouGo": "사용량 기반 결제",
+        "payAsYouGoDescription": "월간 팩 없이 사용량 기반 크레딧을 사용합니다.",
+        "removeMember": "{{name}} 삭제",
+        "selectUsage": "{{name}} 사용량"
       }
     },
     "restore": {

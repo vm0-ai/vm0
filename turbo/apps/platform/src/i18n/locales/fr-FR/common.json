@@ -981,12 +981,21 @@
       "upgrade": "Mettre à niveau",
       "upgradeTo": "Passer à {{plan}}",
       "usagePacks": {
-        "baseAndPack": "Base de {{base}} + forfait d’utilisation de {{pack}}",
+        "addMember": "Ajouter un membre",
+        "baseAndMemberUsage": "Base de {{base}} + utilisation des membres de {{usage}}",
+        "bonusCredits": "+{{value}} crédits bonus",
         "checkoutComingSoon": "Paiement bientôt disponible",
-        "description": "Chaque offre inclut un forfait d’utilisation mensuel obligatoire.",
+        "currentMember": "Membre actuel",
+        "description": "Attribuez des forfaits mensuels aux membres ou laissez-les utiliser des crédits à l’usage.",
+        "memberExclusive": "Chaque forfait mensuel appartient à un membre et ne peut pas être partagé. Les membres sans forfait utilisent des crédits à l’usage.",
+        "memberUsage": "Utilisation du membre",
+        "memberUsageTotal": "Total des forfaits mensuels",
         "monthlyTotal": "Total mensuel",
-        "monthlyUsagePack": "Forfait d’utilisation mensuel",
-        "required": "Obligatoire"
+        "packOption": "{{price}} · {{credits}} crédits · {{discount}} % de réduction",
+        "payAsYouGo": "Paiement à l’usage",
+        "payAsYouGoDescription": "Utilise des crédits à l’usage sans forfait mensuel.",
+        "removeMember": "Supprimer {{name}}",
+        "selectUsage": "Utilisation de {{name}}"
       }
     },
     "restore": {
