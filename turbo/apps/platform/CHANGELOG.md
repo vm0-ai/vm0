@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.694.0](https://github.com/vm0-ai/vm0/compare/app-v0.693.0...app-v0.694.0) (2026-08-06)
+
+
+### Features
+
+* **chat:** share selected conversation messages ([#25304](https://github.com/vm0-ai/vm0/issues/25304)) ([dcb3ace](https://github.com/vm0-ai/vm0/commit/dcb3acef66984b6f76c58ba04cc607bb119726c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.280.0
+    * @vm0/core bumped to 8.524.0
+
 ## [0.693.0](https://github.com/vm0-ai/vm0/compare/app-v0.692.0...app-v0.693.0) (2026-08-06)
 
 
