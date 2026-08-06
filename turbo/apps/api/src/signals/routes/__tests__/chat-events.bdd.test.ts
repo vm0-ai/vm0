@@ -1597,22 +1597,13 @@ describe("CHAT-02: queueing and recalling messages", () => {
   it("steers a run once when assistant output reaches its time budget", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped chat actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ChatSteer]: true,
-      },
-    );
 
     const active = await sendChatRun(actor, {
       agentId,
       prompt: "run until the time budget warning",
     });
     const claimed = await claimChatRun(runnerGroup, active.runId);
+    expect(claimed.claim.featureFlags).toMatchObject({ chatSteer: true });
     const running = await api.readRun(actor, active.runId);
     if (!running.startedAt) {
       throw new Error("Expected the claimed run to have a start time");
@@ -1715,16 +1706,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
   it("does not carry an unclaimed time budget input into a later run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped chat actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ChatSteer]: true,
-      },
-    );
 
     const first = await sendChatRun(actor, {
       agentId,
