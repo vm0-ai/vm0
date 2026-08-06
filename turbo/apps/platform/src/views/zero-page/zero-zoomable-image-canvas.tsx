@@ -13,6 +13,7 @@ import {
 } from "../../signals/view-component-state.ts";
 
 const IMAGE_ZOOM_STEP = 0.15;
+const IMAGE_DOUBLE_CLICK_ZOOM_STEP = 1;
 
 type ZoomableArtifactImageSurface =
   | "attachment-lightbox"
@@ -215,7 +216,10 @@ export function ZoomableArtifactImageCanvas({
       key={zoomKey}
       centerZoomedOut
       disablePadding
-      doubleClick={{ disabled: true }}
+      doubleClick={{
+        mode: displayZoom === 1 ? "zoomIn" : "reset",
+        step: IMAGE_DOUBLE_CLICK_ZOOM_STEP,
+      }}
       initialScale={1}
       maxScale={IMAGE_LIGHTBOX_MAX_ZOOM}
       minScale={IMAGE_LIGHTBOX_MIN_ZOOM}

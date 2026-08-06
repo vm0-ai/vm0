@@ -454,7 +454,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("opens, zooms, and closes an uploaded image preview", async () => {
+  it("zooms an uploaded image preview with controls and double-click", async () => {
     await setupUploadedImagePreview();
 
     click(screen.getByLabelText("Open image preview for photo.png"));
@@ -473,9 +473,12 @@ describe("zero attachment chips", () => {
       "artifact-dialog-image-stage-content",
     );
     const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
 
     const lightboxImage = screen.getByTestId("attachment-lightbox-image");
     mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformWrapper, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
     Object.defineProperty(lightboxImage, "naturalWidth", {
       configurable: true,
       value: 1200,
@@ -484,6 +487,22 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("200%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(-200px, -150px) scale(2)",
+      );
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
     });
 
     click(screen.getByLabelText("Zoom in"));
