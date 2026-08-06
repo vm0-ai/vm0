@@ -16,6 +16,7 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorScopeDiffContract,
+  zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
@@ -45,7 +46,6 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
-import { server } from "../../../mocks/server.ts";
 import { search } from "../../../signals/location.ts";
 import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
@@ -222,25 +222,25 @@ function mockConnectors(
     oauthScopes?: string[];
     tokenExpiresAt?: string | null;
   }[],
-): void {
-  context.mocks.data.connectors(
-    connectors.map((connector) => {
-      return {
-        id: crypto.randomUUID(),
-        slug: connector.connectorSlug,
-        authMethod: connector.authMethod ?? "oauth",
-        externalId: null,
-        externalUsername: connector.externalUsername ?? null,
-        externalEmail: null,
-        oauthScopes: connector.oauthScopes ?? null,
-        connectionStatus: connector.connectionStatus ?? "connected",
-        reconnectReason: connector.reconnectReason ?? null,
-        tokenExpiresAt: connector.tokenExpiresAt ?? null,
-        createdAt: "2026-01-01T00:00:00Z",
-        updatedAt: "2026-01-01T00:00:00Z",
-      };
-    }),
-  );
+): ConnectorResponse[] {
+  const responses = connectors.map((connector) => {
+    return {
+      id: crypto.randomUUID(),
+      slug: connector.connectorSlug,
+      authMethod: connector.authMethod ?? "oauth",
+      externalId: null,
+      externalUsername: connector.externalUsername ?? null,
+      externalEmail: null,
+      oauthScopes: connector.oauthScopes ?? null,
+      connectionStatus: connector.connectionStatus ?? "connected",
+      reconnectReason: connector.reconnectReason ?? null,
+      tokenExpiresAt: connector.tokenExpiresAt ?? null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    } satisfies ConnectorResponse;
+  });
+  context.mocks.data.connectors(responses);
+  return responses;
 }
 
 async function setupAwsExternalCodeConnection(): Promise<{
@@ -2070,7 +2070,7 @@ describe("connectors page", () => {
   it("ignores a null change before completing Stripe OAuth from a scoped event", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
-    mockConnectors([]);
+    let listedConnectors = mockConnectors([]);
     context.mocks.data.team([
       teamAgent(defaultAgentId, "Zero"),
       teamAgent(researchAgentId, "Research Agent"),
@@ -2134,14 +2134,7 @@ describe("connectors page", () => {
     );
     let connectorListRequests = 0;
     const catchUpObserved = context.mocks.deferred<void>();
-    const observeConnectorListRequest = ({
-      request,
-    }: {
-      request: Request;
-    }): void => {
-      if (new URL(request.url).pathname !== "/api/zero/connectors") {
-        return;
-      }
+    context.mocks.api(zeroConnectorsMainContract.list, ({ respond }) => {
       connectorListRequests += 1;
       if (
         context.mocks.ably.hasSubscription("connector:changed") &&
@@ -2149,18 +2142,12 @@ describe("connectors page", () => {
       ) {
         catchUpObserved.resolve();
       }
-    };
-    server.events.on("response:mocked", observeConnectorListRequest);
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        server.events.removeListener(
-          "response:mocked",
-          observeConnectorListRequest,
-        );
-      },
-      { once: true },
-    );
+      return respond(200, {
+        connectors: listedConnectors,
+        configuredConnectorSlugs: ["stripe"],
+        connectorProvidedBindings: [],
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -2217,7 +2204,9 @@ describe("connectors page", () => {
       ).toBeTruthy();
     });
 
-    mockConnectors([{ connectorSlug: "stripe", authMethod: "oauth" }]);
+    listedConnectors = mockConnectors([
+      { connectorSlug: "stripe", authMethod: "oauth" },
+    ]);
     context.mocks.ably.trigger("connector:changed", {
       connectorSlug: "stripe",
     });
