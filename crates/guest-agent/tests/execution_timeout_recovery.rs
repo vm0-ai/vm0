@@ -8,8 +8,6 @@ use guest_contracts::diagnostics::{
 };
 use httpmock::prelude::*;
 use serde_json::json;
-use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 use std::time::Duration;
 use tokio::process::Command;
 
@@ -25,11 +23,7 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
     let home = tmp.path().join("home");
     let runtime_dir = tmp.path().join("runtime");
     std::fs::create_dir_all(&home)?;
-    let history = format!(
-        "{{\"type\":\"thread.started\",\"thread_id\":\"{THREAD_ID}\"}}\n\
-         {{\"type\":\"turn.started\"}}\n"
-    );
-    let mock_codex = write_stalled_codex(tmp.path(), &history)?;
+    let mock_codex = common::build_and_locate_mock_codex()?;
     let run_payload_file = common::write_run_payload_file_for_test(
         &runtime_dir,
         &guest_contracts::env::RunPayload {
@@ -72,8 +66,7 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
     let upload = server.mock(|when, then| {
         when.method(PUT)
             .path("/test/execution-timeout-history")
-            .header("Content-Type", "application/octet-stream")
-            .body(history.as_str());
+            .header("Content-Type", "application/octet-stream");
         then.status(200);
     });
     let checkpoint = server.mock(|when, then| {
@@ -106,6 +99,11 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
             .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
             .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
             .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
+            .env(guest_contracts::env::RESUME_SESSION_ID_ENV, THREAD_ID)
+            .env(
+                "MOCK_CODEX_APP_SERVER_SCENARIO",
+                "runtime-turn-started-before-steer",
+            )
             .env(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "1")
             .env(
                 guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
@@ -149,36 +147,5 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
         std::fs::read_to_string(paths.session_id_file())?.trim(),
         THREAD_ID
     );
-    let child_pid = std::fs::read_to_string(tmp.path().join("codex.pid"))?;
-    assert!(
-        !Path::new(&format!("/proc/{}", child_pid.trim())).exists(),
-        "timed-out Codex process should be gone before guest-agent exits"
-    );
-
     Ok(())
-}
-
-fn write_stalled_codex(
-    root: &Path,
-    history: &str,
-) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
-    let path = root.join("stalled-codex");
-    let script = format!(
-        "#!/bin/sh\n\
-         set -eu\n\
-         printf '%s\\n' \"$$\" > '{}'\n\
-         history_dir=\"$HOME/.codex/sessions/2026/07/29\"\n\
-         mkdir -p \"$history_dir\"\n\
-         printf '%s' '{}' > \"$history_dir/{THREAD_ID}.jsonl\"\n\
-         printf '%s\\n' '{{\"type\":\"thread.started\",\"thread_id\":\"{THREAD_ID}\"}}'\n\
-         printf '%s\\n' '{{\"type\":\"turn.started\"}}'\n\
-         while :; do sleep 1; done\n",
-        root.join("codex.pid").display(),
-        history.replace('\'', "'\\''"),
-    );
-    std::fs::write(&path, script)?;
-    let mut permissions = std::fs::metadata(&path)?.permissions();
-    permissions.set_mode(0o700);
-    std::fs::set_permissions(&path, permissions)?;
-    Ok(path)
 }

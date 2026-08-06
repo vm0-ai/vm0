@@ -16,7 +16,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import type { MemberUsagePack } from "@vm0/api-contracts/contracts/zero-billing";
+import type {
+  MemberUsagePack,
+  UsagePackCatalogItem,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { MouseEvent } from "react";
@@ -29,6 +32,7 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   startUsagePackCheckout$,
   type BillingTier,
+  usagePackCatalogAsync$,
 } from "../../../../signals/zero-page/billing.ts";
 import {
   orgMembers$,
@@ -49,15 +53,6 @@ import {
 } from "../../../../signals/zero-page/settings/usage-pack-pricing-state.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { planProImg, planTeamImg } from "../../platform-assets.ts";
-
-const CREDITS_PER_DOLLAR = 1000;
-
-const USAGE_PACK_PRICE_PERCENT: Readonly<Record<UsagePackUsd, number>> = {
-  20: 98,
-  50: 95,
-  100: 92,
-  200: 90,
-};
 
 interface UsagePackPlan {
   readonly tier: UsagePackPlanTier;
@@ -148,28 +143,36 @@ function planFeatures(tier: UsagePackPlanTier): readonly string[] {
   ];
 }
 
-function usagePackDetails(dollars: UsagePackUsd) {
-  const baseCredits = dollars * CREDITS_PER_DOLLAR;
-  const pricePercent = USAGE_PACK_PRICE_PERCENT[dollars];
-  const rawCredits = (baseCredits * 100) / pricePercent;
-  const credits = Math.round(rawCredits / 100) * 100;
-  return {
-    bonusCredits: credits - baseCredits,
-    credits,
-    discountPercent: 100 - pricePercent,
-  };
+function usagePackCatalogItem(
+  catalog: readonly UsagePackCatalogItem[],
+  usagePackUsd: UsagePackUsd,
+): UsagePackCatalogItem {
+  const item = catalog.find((candidate) => {
+    return candidate.usagePackUsd === usagePackUsd;
+  });
+  if (!item) {
+    throw new Error(`Usage pack catalog is missing $${usagePackUsd}`);
+  }
+  return item;
 }
 
-function usageSelectionLabel(selection: MemberUsageSelection): string {
-  const details = usagePackDetails(selection);
+function usagePackDiscountPercent(item: UsagePackCatalogItem): number {
+  return Math.round((item.bonusCredits / item.totalCredits) * 100);
+}
+
+function usageSelectionLabel(
+  selection: MemberUsageSelection,
+  catalog: readonly UsagePackCatalogItem[],
+): string {
+  const item = usagePackCatalogItem(catalog, selection);
   return i18n.t(
     ($) => {
       return $.billing.plans.usagePacks.packOption;
     },
     {
-      credits: formatLocalizedNumber(details.credits),
-      discount: details.discountPercent,
-      price: formatUsd(selection, 0),
+      credits: formatLocalizedNumber(item.totalCredits),
+      discount: usagePackDiscountPercent(item),
+      price: formatUsd(item.priceUsd, 0),
     },
   );
 }
@@ -200,15 +203,16 @@ interface MemberUsageTotals {
 function memberUsageTotals(
   members: readonly MemberDisplay[],
   selections: Readonly<Record<string, MemberUsageSelection>>,
+  catalog: readonly UsagePackCatalogItem[],
 ): MemberUsageTotals {
   return members.reduce<MemberUsageTotals>(
     (totals, member) => {
       const selection = memberUsageSelection(selections, member.id);
-      const details = usagePackDetails(selection);
+      const item = usagePackCatalogItem(catalog, selection);
       return {
-        bonusCredits: totals.bonusCredits + details.bonusCredits,
-        totalCredits: totals.totalCredits + details.credits,
-        totalUsd: totals.totalUsd + selection,
+        bonusCredits: totals.bonusCredits + item.bonusCredits,
+        totalCredits: totals.totalCredits + item.totalCredits,
+        totalUsd: totals.totalUsd + item.priceUsd,
       };
     },
     { bonusCredits: 0, totalCredits: 0, totalUsd: 0 },
@@ -277,20 +281,23 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
 }
 
 function MemberUsageRow({
+  catalog,
   member,
   onSelect,
   selection,
 }: {
+  readonly catalog: readonly UsagePackCatalogItem[];
   readonly member: MemberDisplay;
   readonly onSelect: (selection: MemberUsageSelection) => void;
   readonly selection: MemberUsageSelection;
 }) {
+  const item = usagePackCatalogItem(catalog, selection);
   const summary = i18n.t(
     ($) => {
       return $.billing.plans.usagePacks.bonusCredits;
     },
     {
-      value: formatLocalizedNumber(usagePackDetails(selection).bonusCredits),
+      value: formatLocalizedNumber(item.bonusCredits),
     },
   );
   return (
@@ -315,10 +322,13 @@ function MemberUsageRow({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {USAGE_PACKS_USD.map((pack) => {
+            {catalog.map((pack) => {
               return (
-                <SelectItem key={pack} value={String(pack)}>
-                  {usageSelectionLabel(pack)}
+                <SelectItem
+                  key={pack.usagePackUsd}
+                  value={String(pack.usagePackUsd)}
+                >
+                  {usageSelectionLabel(pack.usagePackUsd, catalog)}
                 </SelectItem>
               );
             })}
@@ -383,8 +393,10 @@ function MemberUsageFooter() {
 }
 
 function MemberUsageConfiguration({
+  catalog,
   members,
 }: {
+  readonly catalog: readonly UsagePackCatalogItem[];
   readonly members: readonly MemberDisplay[] | undefined;
 }) {
   const selections = useGet(memberUsageSelections$);
@@ -393,7 +405,7 @@ function MemberUsageConfiguration({
   if (!members) {
     return <div className="h-36 animate-pulse rounded-xl bg-muted/40" />;
   }
-  const { totalUsd } = memberUsageTotals(members, selections);
+  const { totalUsd } = memberUsageTotals(members, selections, catalog);
   const memberUsageLabel = i18n.t(($) => {
     return $.billing.plans.usagePacks.memberUsage;
   });
@@ -414,6 +426,7 @@ function MemberUsageConfiguration({
             className={index === 0 ? undefined : "border-t border-border/50"}
           >
             <MemberUsageRow
+              catalog={catalog}
               member={member}
               selection={selection}
               onSelect={(usage) => {
@@ -450,15 +463,17 @@ function PlanFeatureList({ tier }: { readonly tier: UsagePackPlanTier }) {
 
 function PlanSelectionCard({
   disabled,
+  minimumPackagePriceUsd,
   onSelect,
   plan,
 }: {
   readonly disabled: boolean;
+  readonly minimumPackagePriceUsd: number;
   readonly onSelect: () => void;
   readonly plan: UsagePackPlan;
 }) {
   const name = planName(plan.tier);
-  const minimumTotalUsd = plan.basePriceUsd + MINIMUM_USAGE_PACK_USD;
+  const minimumTotalUsd = plan.basePriceUsd + minimumPackagePriceUsd;
   return (
     <article
       aria-label={i18n.t(
@@ -510,7 +525,7 @@ function PlanSelectionCard({
             },
             {
               base: formatUsd(plan.basePriceUsd, 0),
-              package: formatUsd(MINIMUM_USAGE_PACK_USD, 0),
+              package: formatUsd(minimumPackagePriceUsd, 0),
             },
           )}
         </p>
@@ -842,14 +857,17 @@ function CheckoutOrderSummary({
 }
 
 function PlanSelectionStep({
+  catalog,
   currentTier,
   onBack,
   onSelect,
 }: {
+  readonly catalog: readonly UsagePackCatalogItem[];
   readonly currentTier: BillingTier;
   readonly onBack: () => void;
   readonly onSelect: (plan: UsagePackPlanTier) => void;
 }) {
+  const minimumPackage = usagePackCatalogItem(catalog, MINIMUM_USAGE_PACK_USD);
   return (
     <>
       <PricingPageHeader onBack={onBack} step={1} />
@@ -860,6 +878,7 @@ function PlanSelectionStep({
             <PlanSelectionCard
               key={plan.tier}
               disabled={!canCheckoutUsagePackPlan(currentTier, plan.tier)}
+              minimumPackagePriceUsd={minimumPackage.priceUsd}
               plan={plan}
               onSelect={() => {
                 onSelect(plan.tier);
@@ -873,9 +892,11 @@ function PlanSelectionStep({
 }
 
 function PackageConfigurationStep({
+  catalog,
   onBack,
   plan,
 }: {
+  readonly catalog: readonly UsagePackCatalogItem[];
   readonly onBack: () => void;
   readonly plan: UsagePackPlan;
 }) {
@@ -932,14 +953,14 @@ function PackageConfigurationStep({
           }),
         ]
       : undefined;
-  const totals = memberUsageTotals(members ?? [], selections);
+  const totals = memberUsageTotals(members ?? [], selections, catalog);
 
   return (
     <>
       <PricingPageHeader onBack={onBack} step={2} />
       <PricingSteps current={2} />
       <SelectedPlanSummary plan={plan} onChange={onBack} />
-      <MemberUsageConfiguration members={members} />
+      <MemberUsageConfiguration catalog={catalog} members={members} />
       <CheckoutOrderSummary
         members={members}
         plan={plan}
@@ -960,6 +981,9 @@ export function UsagePackPricingPage({
   const selectedPlanTier = useGet(selectedUsagePackPlan$);
   const setSelectedPlan = useSet(setSelectedUsagePackPlan$);
   const usagePackPricingPageRef = useSet(usagePackPricingPageRef$);
+  const catalogLoadable = useLoadable(usagePackCatalogAsync$);
+  const catalog =
+    catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
   const selectedPlan = USAGE_PACK_PLANS.find((plan) => {
     return (
       plan.tier === selectedPlanTier &&
@@ -973,8 +997,11 @@ export function UsagePackPricingPage({
       role="group"
       tabIndex={-1}
     >
-      {selectedPlan ? (
+      {!catalog ? (
+        <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
+      ) : selectedPlan ? (
         <PackageConfigurationStep
+          catalog={catalog}
           plan={selectedPlan}
           onBack={() => {
             setSelectedPlan(null);
@@ -982,6 +1009,7 @@ export function UsagePackPricingPage({
         />
       ) : (
         <PlanSelectionStep
+          catalog={catalog}
           currentTier={currentTier}
           onBack={() => {
             setSelectedPlan(null);

@@ -6,7 +6,7 @@
 # The first turn writes a mock session file at
 # `$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`. Continue
 # rehydrates from the agent session into Codex's rollout filename shape,
-# calls codex with `exec resume`, and renders the next turn.
+# resumes the Codex app-server thread, and renders the next turn.
 
 load '../../helpers/setup'
 

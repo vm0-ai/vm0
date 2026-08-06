@@ -77,10 +77,8 @@ export const artifactSidebarInlineOpenEnabled$ = computed((get): boolean => {
   );
 });
 
-export const chatThreadSidebarAutoOpenEnabled$ = computed((get): boolean => {
-  return (
-    get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarAutoOpen] ?? false
-  );
+export const cjkFriendlyMarkdownEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.CjkFriendlyMarkdown] ?? false;
 });
 
 export const codexFastModeEnabled$ = computed((get): boolean => {
@@ -126,9 +124,6 @@ export const reloadFeatureSwitch$ = command(
     );
     if (result.body.supportsStructuredInlineTemplates !== true) {
       combined[FeatureSwitchKey.StructuredPromptInlineTemplates] = false;
-    }
-    if (result.body.supportsCustomModelGateways !== true) {
-      combined[FeatureSwitchKey.CustomModelGateways] = false;
     }
     const imageRecognitionGloballyAvailable =
       result.body.supportsImageRecognition === true;

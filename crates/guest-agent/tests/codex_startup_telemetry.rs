@@ -15,87 +15,7 @@ const GUEST_AGENT_TIMEOUT: Duration = Duration::from_secs(20);
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[tokio::test]
-async fn ordinary_codex_records_startup_success_once_at_turn_started() -> TestResult {
-    common::ensure_canonical_workspace_for_test()?;
-
-    let tmp = tempfile::tempdir()?;
-    let codex = tmp.path().join("codex");
-    let runtime_dir = tmp.path().join("runtime");
-    write_jsonl_executable(
-        &codex,
-        &[
-            json!({
-                "type": "thread.started",
-                "thread_id": "00000000-0000-4000-8000-000000000101"
-            }),
-            json!({"type": "turn.started"}),
-            json!({"type": "turn.started"}),
-            json!({
-                "type": "turn.completed",
-                "usage": {"input_tokens": 1, "output_tokens": 1}
-            }),
-        ],
-        false,
-    )?;
-    let run_payload_path = write_run_payload(&runtime_dir, "measure successful startup")?;
-
-    let output = run_guest_agent(GuestAgentInvocation {
-        framework: TestFramework::Codex {
-            binary: &codex,
-            app_server_scenario: None,
-        },
-        runtime_dir: &runtime_dir,
-        run_payload_path: &run_payload_path,
-        home: tmp.path(),
-        run_id: "codex-startup-success",
-    })
-    .await?;
-
-    assert_guest_success(&output);
-    let operations = read_sandbox_operations(&runtime_dir)?;
-    assert_one_codex_startup(&operations, true)?;
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn ordinary_codex_exit_before_turn_started_records_startup_failure() -> TestResult {
-    common::ensure_canonical_workspace_for_test()?;
-
-    let tmp = tempfile::tempdir()?;
-    let codex = tmp.path().join("codex");
-    let runtime_dir = tmp.path().join("runtime");
-    write_jsonl_executable(
-        &codex,
-        &[json!({
-            "type": "thread.started",
-            "thread_id": "00000000-0000-4000-8000-000000000102"
-        })],
-        false,
-    )?;
-    let run_payload_path = write_run_payload(&runtime_dir, "measure failed startup")?;
-
-    let output = run_guest_agent(GuestAgentInvocation {
-        framework: TestFramework::Codex {
-            binary: &codex,
-            app_server_scenario: None,
-        },
-        runtime_dir: &runtime_dir,
-        run_payload_path: &run_payload_path,
-        home: tmp.path(),
-        run_id: "codex-startup-before-turn-exit",
-    })
-    .await?;
-
-    assert_guest_success(&output);
-    let operations = read_sandbox_operations(&runtime_dir)?;
-    assert_one_codex_startup(&operations, false)?;
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn app_server_records_startup_success_at_primary_turn_started() -> TestResult {
+async fn codex_records_startup_success_at_primary_turn_started() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let mock_codex = common::build_and_locate_mock_codex()?;
@@ -123,7 +43,7 @@ async fn app_server_records_startup_success_at_primary_turn_started() -> TestRes
 }
 
 #[tokio::test]
-async fn app_server_secondary_turn_started_does_not_complete_startup() -> TestResult {
+async fn codex_secondary_turn_started_does_not_complete_startup() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let mock_codex = common::build_and_locate_mock_codex()?;
@@ -242,9 +162,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
                 .env("USE_MOCK_CODEX", "true")
                 .env("VM0_MOCK_CODEX_PATH", binary);
             if let Some(scenario) = app_server_scenario {
-                command
-                    .env("VM0_CODEX_APP_SERVER_BACKEND", "1")
-                    .env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
+                command.env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
             }
         }
         TestFramework::ClaudeCode { binary } => {

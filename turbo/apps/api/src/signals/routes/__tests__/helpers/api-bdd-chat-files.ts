@@ -40,7 +40,6 @@ import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contr
 import {
   addClientCapabilityToVersion,
   CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
-  CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION,
   CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
@@ -91,11 +90,8 @@ interface AuthHeaders {
 
 const LEGACY_BDD_CLIENT_VERSION = "0.636.1";
 const BDD_CLIENT_VERSION = addClientCapabilityToVersion(
-  addClientCapabilityToVersion(
-    LEGACY_BDD_CLIENT_VERSION,
-    CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
-  ),
-  CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION,
+  LEGACY_BDD_CLIENT_VERSION,
+  CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
 );
 
 interface BddCompose {

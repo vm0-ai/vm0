@@ -22,6 +22,8 @@ interface UsagePackCreditGrantResult {
   readonly created: boolean;
 }
 
+type UsagePackCreditGrantStore = Pick<Db, "insert" | "select">;
+
 export async function usagePackCreditGrantSchemaAvailable(
   db: Pick<Db, "select">,
 ): Promise<boolean> {
@@ -40,7 +42,7 @@ export async function usagePackCreditGrantSchemaAvailable(
 }
 
 export async function createUsagePackCreditGrant(
-  db: Db,
+  db: UsagePackCreditGrantStore,
   args: UsagePackCreditGrantArgs,
 ): Promise<UsagePackCreditGrantResult> {
   // Fulfillment is intentionally independent of the enrollment feature switch:

@@ -159,7 +159,6 @@ function setupArtifactCatalog(
 
 function setupChatThread({
   artifactFiles = [],
-  autoOpenEnabled = false,
   inlineArtifactOpenEnabled = false,
   waitForHistoryResponse,
   historyMessages = [],
@@ -191,7 +190,6 @@ function setupChatThread({
   ],
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
-  autoOpenEnabled?: boolean;
   inlineArtifactOpenEnabled?: boolean;
   waitForHistoryResponse?: () => Promise<void>;
   historyMessages?: MockChatEventInput[];
@@ -281,7 +279,6 @@ function setupChatThread({
     path: THREAD_PATH,
     featureSwitches: {
       [FeatureSwitchKey.ArtifactSidebarInlineOpen]: inlineArtifactOpenEnabled,
-      [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
     },
   });
 
@@ -733,7 +730,6 @@ describe("thread-owned utility sidebar", () => {
     });
 
     setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
           id: "msg-completed-user",
@@ -864,7 +860,6 @@ describe("thread-owned utility sidebar", () => {
       },
     );
     setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000051",
@@ -986,7 +981,6 @@ describe("thread-owned utility sidebar", () => {
     });
 
     setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000058",
@@ -1024,7 +1018,6 @@ describe("thread-owned utility sidebar", () => {
     });
 
     setupChatThread({
-      autoOpenEnabled: true,
       waitForHistoryResponse: async () => {
         historyRequestStarted.resolve();
         await releaseHistoryResponse.promise;
@@ -1061,7 +1054,6 @@ describe("thread-owned utility sidebar", () => {
     });
 
     setupChatThread({
-      autoOpenEnabled: true,
       historyMessages: [
         {
           id: "c0000000-0000-4000-a000-000000000055",
@@ -1095,7 +1087,6 @@ describe("thread-owned utility sidebar", () => {
     });
 
     setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000052",
@@ -1174,7 +1165,6 @@ describe("thread-owned utility sidebar", () => {
     });
 
     setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
           id: "msg-openable-fallback",
@@ -1265,7 +1255,6 @@ describe("thread-owned utility sidebar", () => {
       return respond(200, { browser: browserSession({ liveUrl: null }) });
     });
     const fixture = setupChatThread({
-      autoOpenEnabled: true,
       messages: [],
     });
 
@@ -1316,7 +1305,6 @@ describe("thread-owned utility sidebar", () => {
       return respond(200, { browser: browserSession({ liveUrl: null }) });
     });
     const fixture = setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000055",
@@ -1363,7 +1351,6 @@ describe("thread-owned utility sidebar", () => {
       });
     });
     const fixture = setupChatThread({
-      autoOpenEnabled: true,
       messages: [],
     });
     await openArtifactsFromHeader();
@@ -1395,26 +1382,11 @@ describe("thread-owned utility sidebar", () => {
     expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
   });
 
-  it.each([
-    {
-      name: "the auto-open switch is off",
-      autoOpenEnabled: false,
-      splitViewAvailable: true,
-    },
-    {
-      name: "the viewport cannot show split view",
-      autoOpenEnabled: true,
-      splitViewAvailable: false,
-    },
-  ])("does not auto-open when $name", async (scenario) => {
-    context.mocks.browser.matchMedia((query) => {
-      return (
-        scenario.splitViewAvailable &&
-        query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY
-      );
+  it("does not auto-open when the viewport cannot show split view", async () => {
+    context.mocks.browser.matchMedia(() => {
+      return false;
     });
     setupChatThread({
-      autoOpenEnabled: scenario.autoOpenEnabled,
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000057",

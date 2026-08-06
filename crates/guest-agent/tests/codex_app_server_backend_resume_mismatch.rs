@@ -1,4 +1,4 @@
-//! Resume response validation for the experimental Codex app-server backend.
+//! Resume response validation for Codex app-server execution.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.

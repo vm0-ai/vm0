@@ -1,10 +1,10 @@
 import { command } from "ccstate";
 import {
   zeroBillingCheckoutContract,
+  zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
-  USAGE_PACKS_USD,
   type MemberUsagePack,
-  type UsagePackUsd,
+  type UsagePackCatalogItem,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -32,8 +32,13 @@ import {
   checkoutTierConflictMessage,
   checkoutWouldReplaceWithSameOrLowerTier,
   createCheckoutSession$,
-  createUsagePackCheckoutSession$,
 } from "../services/zero-billing-checkout.service";
+import {
+  createUsagePackCheckoutSession$,
+  loadUsagePackCatalog,
+  usagePackSubscriptionSchemaAvailable,
+  type UsagePackCheckoutAllocation,
+} from "../services/usage-pack-subscription.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -75,13 +80,71 @@ function memberUsagePackIdsMatch(
   );
 }
 
-function usagePackQuantity(
+interface UsagePackMembership {
+  readonly publicUserData?: { readonly userId?: string | null } | null;
+}
+
+interface UsagePackInvitation {
+  readonly id: string;
+}
+
+function usagePackCheckoutAllocations(
   selections: readonly MemberUsagePack[],
-  usagePackUsd: UsagePackUsd,
-): number {
-  return selections.filter((selection) => {
-    return selection.usagePackUsd === usagePackUsd;
-  }).length;
+  memberships: readonly UsagePackMembership[],
+  invitations: readonly UsagePackInvitation[],
+  catalog: readonly UsagePackCatalogItem[],
+): readonly UsagePackCheckoutAllocation[] | null {
+  const memberIds = memberships.map((membership) => {
+    const memberId = membership.publicUserData?.userId;
+    if (!memberId) {
+      throw new Error("Clerk organization membership is missing its user ID");
+    }
+    return memberId;
+  });
+  const invitationIds = invitations.map((invitation) => {
+    return invitation.id;
+  });
+  if (!memberUsagePackIdsMatch(selections, [...memberIds, ...invitationIds])) {
+    return null;
+  }
+
+  const memberIdSet = new Set(memberIds);
+  const invitationIdSet = new Set(invitationIds);
+  const catalogSelections = new Set(
+    catalog.map((item) => {
+      return item.usagePackUsd;
+    }),
+  );
+  return selections.map((selection) => {
+    if (!catalogSelections.has(selection.usagePackUsd)) {
+      throw new Error(
+        `Usage pack $${selection.usagePackUsd} is missing from the catalog`,
+      );
+    }
+    const stripePriceId = activeUsagePackPriceId(selection.usagePackUsd);
+    if (!stripePriceId) {
+      throw new Error(
+        `Usage pack $${selection.usagePackUsd} Price is not configured`,
+      );
+    }
+    if (memberIdSet.has(selection.memberId)) {
+      return {
+        usagePackUsd: selection.usagePackUsd,
+        stripePriceId,
+        userId: selection.memberId,
+      };
+    }
+    if (!invitationIdSet.has(selection.memberId)) {
+      throw new Error(
+        `Usage pack owner ${selection.memberId} is no longer eligible`,
+      );
+    }
+    return {
+      usagePackUsd: selection.usagePackUsd,
+      stripePriceId,
+      invitationId: selection.memberId,
+    };
+  });
 }
 
 const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -208,6 +271,12 @@ const usagePackCheckoutAuthed$ = command(
     }
     signal.throwIfAborted();
 
+    const db = get(db$);
+    if (!(await usagePackSubscriptionSchemaAvailable(db))) {
+      return providerUnavailable("Usage pack billing is not ready");
+    }
+    signal.throwIfAborted();
+
     const bodyResult = await get(
       bodyResultOf(zeroBillingUsagePackCheckoutContract.create),
     );
@@ -234,50 +303,27 @@ const usagePackCheckoutAuthed$ = command(
       );
     }
 
+    const catalog = await loadUsagePackCatalog();
+    signal.throwIfAborted();
+
     const clerk = get(clerk$);
     const [memberships, invitations] = await Promise.all([
       listAllOrganizationMemberships(clerk.organizations, auth.orgId),
       listAllPendingOrganizationInvitations(clerk.organizations, auth.orgId),
     ]);
     signal.throwIfAborted();
-    const memberIds = memberships.map((membership) => {
-      const memberId = membership.publicUserData?.userId;
-      if (!memberId) {
-        throw new Error("Clerk organization membership is missing its user ID");
-      }
-      return memberId;
-    });
-    const expectedMemberIds = [
-      ...memberIds,
-      ...invitations.map((invitation) => {
-        return invitation.id;
-      }),
-    ];
-    if (!memberUsagePackIdsMatch(memberUsagePacks, expectedMemberIds)) {
+    const allocations = usagePackCheckoutAllocations(
+      memberUsagePacks,
+      memberships,
+      invitations,
+      catalog,
+    );
+    if (!allocations) {
       return badRequestMessage(
         "Organization members changed; refresh billing and try again",
       );
     }
 
-    const usagePackLineItems: {
-      priceId: string;
-      quantity: number;
-    }[] = [];
-    for (const usagePackUsd of USAGE_PACKS_USD) {
-      const quantity = usagePackQuantity(memberUsagePacks, usagePackUsd);
-      if (quantity === 0) {
-        continue;
-      }
-      const priceId = activeUsagePackPriceId(usagePackUsd);
-      if (!priceId) {
-        return badRequestMessage(
-          `Price not configured for $${usagePackUsd} usage pack`,
-        );
-      }
-      usagePackLineItems.push({ priceId, quantity });
-    }
-
-    const db = get(db$);
     const [metadata] = await db
       .select({ tier: orgMetadata.tier })
       .from(orgMetadata)
@@ -304,7 +350,7 @@ const usagePackCheckoutAuthed$ = command(
         orgId: auth.orgId,
         tier,
         planPriceId,
-        usagePackLineItems,
+        allocations,
         successUrl,
         cancelUrl,
         adAttribution,
@@ -315,6 +361,50 @@ const usagePackCheckoutAuthed$ = command(
     return { status: 200 as const, body: { url } };
   },
 );
+
+const usagePackCatalogAuthed$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+    if (!isStaffOrg(auth.orgId)) {
+      return usagePackCheckoutDisabled;
+    }
+
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        overrides,
+      })
+    ) {
+      return usagePackCheckoutDisabled;
+    }
+
+    const usagePacks = await loadUsagePackCatalog();
+    signal.throwIfAborted();
+    return { status: 200 as const, body: { usagePacks: [...usagePacks] } };
+  },
+);
+
+const usagePackCatalog$ = command(async ({ set }, signal: AbortSignal) => {
+  if (!optionalEnv("STRIPE_SECRET_KEY")) {
+    return providerUnavailable("Billing not configured");
+  }
+
+  return await set(
+    authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      usagePackCatalogAuthed$,
+    ),
+    signal,
+  );
+});
 
 const usagePackCheckout$ = command(async ({ set }, signal: AbortSignal) => {
   if (!optionalEnv("STRIPE_SECRET_KEY")) {
@@ -400,5 +490,9 @@ export const zeroBillingCheckoutRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingUsagePackCheckoutContract.create,
     handler: usagePackCheckout$,
+  },
+  {
+    route: zeroBillingUsagePackCatalogContract.get,
+    handler: usagePackCatalog$,
   },
 ];

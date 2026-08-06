@@ -62,7 +62,6 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import {
-  chatThreadSidebarAutoOpenEnabled$,
   codexFastModeEnabled$,
   featureSwitch$,
   imageRecognitionAvailable$,
@@ -1938,7 +1937,6 @@ function createEventChangeEffects(
     ({ get, set }, signal: AbortSignal): void => {
       signal.throwIfAborted();
       if (
-        !get(chatThreadSidebarAutoOpenEnabled$) ||
         typeof window === "undefined" ||
         !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
       ) {

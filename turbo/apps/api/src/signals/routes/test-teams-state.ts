@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getProviderRuntimeModel,
   getVm0Vendor,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -299,35 +298,26 @@ async function seedDefaultAgent(
 
 async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
   await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, composeId));
-  await db.insert(vm0ApiKeys).values(vm0ManagedKeyRows(composeId));
+  await db
+    .insert(vm0ApiKeys)
+    .values(vm0ManagedKeyRows(composeId))
+    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
 }
 
 function vm0ManagedKeyRows(composeId: string) {
   return [
     {
       vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      model: getProviderRuntimeModel(
-        "vm0",
-        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      ),
       apiKey: `vm0-key-default-${composeId}`,
       label: composeId,
     },
     {
       vendor: "anthropic",
-      model: "claude-sonnet-4-6",
       apiKey: `vm0-key-anthropic-${composeId}`,
       label: composeId,
     },
     {
-      vendor: "deepseek",
-      model: "deepseek-v4-flash",
-      apiKey: `vm0-key-deepseek-${composeId}`,
-      label: composeId,
-    },
-    {
       vendor: "moonshot",
-      model: "kimi-k2.7-code",
       apiKey: `vm0-key-moonshot-${composeId}`,
       label: composeId,
     },
