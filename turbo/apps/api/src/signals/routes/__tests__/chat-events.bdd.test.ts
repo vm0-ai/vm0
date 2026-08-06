@@ -8020,6 +8020,7 @@ describe("CHAT-02: shared user message queue", () => {
     expect(second.body).toMatchObject({ runId: null });
 
     await cancelChatRun(actor, anchor.runId);
+    await flushWaitUntilForTest();
     const messages = await waitForThreadMessages(
       actor,
       anchor.threadId,
