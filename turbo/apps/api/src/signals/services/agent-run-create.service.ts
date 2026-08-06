@@ -4537,6 +4537,7 @@ async function checkFinalRunAdmission(
   db: Db,
   args: {
     readonly orgId: string;
+    readonly userId: string;
     readonly modelProviderType: string | null | undefined;
     readonly selectedModel: string | null | undefined;
     readonly enforceVm0Credits: boolean;
@@ -4552,12 +4553,14 @@ async function checkFinalRunAdmission(
         const availability = await resolveOrgCreditAvailability({
           db,
           orgId: args.orgId,
+          userId: args.userId,
         });
         args.signal.throwIfAborted();
         return (
           (await checkResolvedOrgCreditsForRunAdmission({
             db,
             orgId: args.orgId,
+            userId: args.userId,
             modelProviderType: args.modelProviderType,
             selectedModel: args.selectedModel,
             availability,
@@ -6927,6 +6930,7 @@ async function resolveRunModelProvider(
       (await checkOrgCreditsForRunAdmission({
         db,
         orgId: args.orgId,
+        userId: args.userId,
         modelProviderType: "vm0",
         selectedModel: args.selectedModelOverride,
       })) ?? null;
@@ -8231,6 +8235,7 @@ export const completeAgentRun$ = command(
       async () => {
         return await checkFinalRunAdmission(db, {
           orgId: args.orgId,
+          userId: args.userId,
           modelProviderType,
           selectedModel,
           enforceVm0Credits:

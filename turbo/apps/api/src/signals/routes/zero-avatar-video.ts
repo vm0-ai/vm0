@@ -164,7 +164,7 @@ const postGenerateInner$ = command(
 
     const hasCredits = await set(
       checkAvatarVideoCredits$,
-      { orgId: auth.orgId },
+      { orgId: auth.orgId, userId: auth.userId },
       signal,
     );
     if (!hasCredits) {

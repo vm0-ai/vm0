@@ -310,6 +310,7 @@ async function resolveBillableFirewallCacheExpiry(params: {
   const availability = await resolveOrgCreditAvailability({
     db: params.db,
     orgId: params.auth.orgId,
+    userId: params.auth.userId,
   });
   if (!availability) {
     return insufficientCredits();
@@ -325,6 +326,7 @@ async function resolveBillableFirewallCacheExpiry(params: {
           runId: params.auth.runId,
         });
   const spendableUnits =
+    availability.usagePackCredits +
     Math.max(availability.spendableCredits, 0) +
     (allowance?.remainingUnits ?? 0);
   if (spendableUnits <= 0) {

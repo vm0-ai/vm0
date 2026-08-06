@@ -640,6 +640,7 @@ export async function resolveModelFirstProviderAdmission(params: {
   const error = await checkOrgCreditsForRunAdmission({
     db: params.db,
     orgId: params.orgId,
+    userId: params.userId,
     modelProviderType: effectiveModelProvider,
     selectedModel,
   });
