@@ -958,7 +958,35 @@
         "name": "Team"
       },
       "upgrade": "Upgrade",
-      "upgradeTo": "Upgrade to {{plan}}"
+      "upgradeTo": "Upgrade to {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} bonus credits",
+        "changePlan": "Change plan",
+        "checkoutComingSoon": "Checkout coming soon",
+        "choosePlan": "Choose a plan",
+        "choosePlanDescription": "Choose the workspace plan first. Member packages are configured next.",
+        "configurePackages": "Configure member packages",
+        "configurePackagesDescription": "Choose a required package for every member, then review the combined monthly total.",
+        "currentMember": "Current member",
+        "description": "Choose a monthly usage pack for every member.",
+        "discountBonusCredits": "Bonus credits from discount",
+        "memberExclusive": "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
+        "memberPackages": "Member packages",
+        "memberUsage": "Member usage",
+        "memberUsageTotal": "Monthly pack total",
+        "minimumPackageBreakdown": "{{base}} plan + {{package}} required member package",
+        "monthlyTotal": "Monthly total",
+        "orderSummary": "Order summary",
+        "packagesStep": "Packages",
+        "packOption": "{{price}} · {{credits}} credits · {{discount}}% off",
+        "planStep": "Plan",
+        "purchaseSteps": "Purchase steps",
+        "selectedPlan": "Selected plan",
+        "selectPlan": "Select {{plan}}",
+        "selectUsage": "Usage for {{name}}",
+        "startingAt": "Starting at",
+        "totalCredits": "Total credits"
+      }
     },
     "restore": {
       "cancellationDescription": "This will undo the scheduled cancellation for your {{plan}} plan.",

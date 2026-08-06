@@ -979,7 +979,35 @@
         "name": "Team"
       },
       "upgrade": "Aggiorna",
-      "upgradeTo": "Passa a {{plan}}"
+      "upgradeTo": "Passa a {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} crediti bonus",
+        "changePlan": "Cambia piano",
+        "checkoutComingSoon": "Checkout disponibile a breve",
+        "choosePlan": "Scegli un piano",
+        "choosePlanDescription": "Scegli prima il piano dell’area di lavoro. I pacchetti dei membri vengono configurati dopo.",
+        "configurePackages": "Configura i pacchetti dei membri",
+        "configurePackagesDescription": "Scegli un pacchetto obbligatorio per ogni membro, quindi verifica il totale mensile combinato.",
+        "currentMember": "Membro attuale",
+        "description": "Scegli un pacchetto di utilizzo mensile per ogni membro.",
+        "discountBonusCredits": "Crediti bonus dallo sconto",
+        "memberExclusive": "Ogni pacchetto appartiene a un membro e non può essere condiviso. Quando un pacchetto si esaurisce, l’utilizzo torna ai crediti a consumo. In seguito puoi passare a un nuovo pacchetto.",
+        "memberPackages": "Pacchetti dei membri",
+        "memberUsage": "Utilizzo del membro",
+        "memberUsageTotal": "Totale pacchetti mensili",
+        "minimumPackageBreakdown": "Piano da {{base}} + pacchetto membro obbligatorio da {{package}}",
+        "monthlyTotal": "Totale mensile",
+        "orderSummary": "Riepilogo dell’ordine",
+        "packagesStep": "Pacchetti",
+        "packOption": "{{price}} · {{credits}} crediti · {{discount}}% di sconto",
+        "planStep": "Piano",
+        "purchaseSteps": "Passaggi di acquisto",
+        "selectedPlan": "Piano selezionato",
+        "selectPlan": "Seleziona {{plan}}",
+        "selectUsage": "Utilizzo per {{name}}",
+        "startingAt": "A partire da",
+        "totalCredits": "Crediti totali"
+      }
     },
     "restore": {
       "cancellationDescription": "Questa operazione annullerà la cancellazione programmata del piano {{plan}}.",
