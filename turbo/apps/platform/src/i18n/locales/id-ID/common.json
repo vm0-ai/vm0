@@ -546,6 +546,8 @@
         "label": "Filter jenis artefak",
         "presentation": "Presentasi",
         "presentationAria": "Tampilkan artefak presentasi",
+        "sharedConversation": "Percakapan yang dibagikan",
+        "sharedConversationAria": "Tampilkan artefak percakapan yang dibagikan",
         "video": "Video",
         "videoAria": "Tampilkan artefak video",
         "website": "Situs web",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Presentasi",
+      "sharedConversation": "Percakapan yang dibagikan",
       "text": "Teks",
       "video": "Video"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "Pratinjau video untuk {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Buka percakapan yang dibagikan",
       "panelTitle": "Artefak",
       "singularTitle": "Artefak",
       "unavailable": "Artefak ini tidak lagi tersedia."
@@ -1525,6 +1529,21 @@
       "waitingIn": "Menunggu di",
       "worked": "Dikerjakan",
       "workedFor": "Dikerjakan selama {{duration}}"
+    },
+    "sharing": {
+      "cancel": "Batal",
+      "close": "Tutup",
+      "copyFailed": "Tautan tidak dapat disalin",
+      "copyLink": "Salin tautan",
+      "create": "Bagikan",
+      "createFailed": "Percakapan yang dibagikan tidak dapat dibuat. Coba lagi.",
+      "deselectGroup": "Batalkan pilihan grup pesan",
+      "linkCopied": "Tautan disalin",
+      "selectedCount_other": "{{count}} dipilih",
+      "selectGroup": "Pilih grup pesan",
+      "shareLink": "Tautan percakapan yang dibagikan",
+      "start": "Bagikan pesan",
+      "tooLarge": "Pilih lebih sedikit pesan untuk dibagikan"
     },
     "shortcuts": {
       "number": "nomor"
@@ -4592,6 +4611,12 @@
       "description": "Halaman yang Anda cari tidak ada.",
       "title": "Halaman tidak ditemukan"
     }
+  },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "Percakapan yang dibagikan ini tidak ada.",
+    "notFoundTitle": "Percakapan yang dibagikan tidak ditemukan",
+    "tryOkou": "Coba Okou"
   },
   "usage": {
     "automations": {

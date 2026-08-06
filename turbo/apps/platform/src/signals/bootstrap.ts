@@ -86,6 +86,7 @@ import {
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
+import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
@@ -141,6 +142,11 @@ function setupAuthSidebarPageWrapper(
 }
 
 const ROUTE_CONFIG = [
+  {
+    path: ROUTES.sharedThread,
+    setup: setupSharedThreadPage$,
+    analytics: false,
+  },
   {
     path: ROUTES.signIn,
     setup: setupSignInPage$,

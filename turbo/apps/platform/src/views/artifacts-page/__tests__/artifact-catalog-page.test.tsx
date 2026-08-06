@@ -150,6 +150,7 @@ describe("artifact catalog page", () => {
       "Images",
       "Videos",
       "Avatars",
+      "Shared conversations",
       "Files",
     ]);
     expect(buttonByLabel("Show all artifacts")).toBeUndefined();
@@ -255,6 +256,7 @@ describe("artifact catalog page", () => {
       "Imagens",
       "Vídeos",
       "Avatares",
+      "Conversas compartilhadas",
       "Arquivos",
     ]);
 

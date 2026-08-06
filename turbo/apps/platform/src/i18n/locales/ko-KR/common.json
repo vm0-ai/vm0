@@ -546,6 +546,8 @@
         "label": "아티팩트 종류 필터",
         "presentation": "프레젠테이션",
         "presentationAria": "프레젠테이션 아티팩트 표시",
+        "sharedConversation": "공유된 대화",
+        "sharedConversationAria": "공유된 대화 아티팩트 표시",
         "video": "비디오",
         "videoAria": "비디오 아티팩트 표시",
         "website": "웹사이트",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "마크다운",
       "presentation": "프레젠테이션",
+      "sharedConversation": "공유된 대화",
       "text": "텍스트",
       "video": "비디오"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "{{filename}} 비디오 미리보기"
     },
     "sidebar": {
+      "openSharedConversation": "공유된 대화 열기",
       "panelTitle": "아티팩트",
       "singularTitle": "아티팩트",
       "unavailable": "이 아티팩트는 더 이상 사용할 수 없습니다."
@@ -1525,6 +1529,21 @@
       "waitingIn": "대기 중",
       "worked": "작업 완료",
       "workedFor": "{{duration}} 동안 작업 완료"
+    },
+    "sharing": {
+      "cancel": "취소",
+      "close": "닫기",
+      "copyFailed": "링크를 복사하지 못했습니다",
+      "copyLink": "링크 복사",
+      "create": "공유",
+      "createFailed": "공유된 대화를 만들지 못했습니다. 다시 시도하세요.",
+      "deselectGroup": "메시지 그룹 선택 해제",
+      "linkCopied": "링크가 복사되었습니다",
+      "selectedCount_other": "{{count}}개 선택됨",
+      "selectGroup": "메시지 그룹 선택",
+      "shareLink": "공유된 대화 링크",
+      "start": "메시지 공유",
+      "tooLarge": "공유할 메시지를 더 적게 선택하세요"
     },
     "shortcuts": {
       "number": "번호"
@@ -4592,6 +4611,12 @@
       "description": "찾으시는 페이지가 존재하지 않습니다.",
       "title": "페이지를 찾을 수 없습니다"
     }
+  },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "이 공유된 대화는 존재하지 않습니다.",
+    "notFoundTitle": "공유된 대화를 찾을 수 없습니다",
+    "tryOkou": "Okou 사용해 보기"
   },
   "usage": {
     "automations": {

@@ -75,4 +75,5 @@ export enum FeatureSwitchKey {
   ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
   CustomConnectorCliCreate = "customConnectorCliCreate",
   CustomConnectorOAuth2 = "customConnectorOAuth2",
+  SharedThreadSharing = "sharedThreadSharing",
 }

@@ -25,6 +25,7 @@ import type {
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 import type { ComposerSignals } from "../zero-page/composer-signals.ts";
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
+import type { ChatThreadSharingSignals } from "./chat-thread-sharing.ts";
 
 type RecommendedFollowup = NonNullable<
   ChatFollowupsEvent["recommendedFollowups"]
@@ -165,6 +166,7 @@ export interface ChatPanelSignals {
   readonly awayFromBottom$: Computed<boolean>;
   readonly composer: ComposerSignals;
   readonly feedback: ChatThreadFeedbackSignals;
+  readonly sharing: ChatThreadSharingSignals;
   // -- Agent info (derived from threadMeta$.agentId) ------------------------
   readonly agent$: Computed<Promise<ZeroAgentResponse>>;
   readonly agentId$: Computed<string | null>;
