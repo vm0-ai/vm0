@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.72](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.71...nbd-cow-v0.4.72) (2026-08-06)
+
+
+### Documentation
+
+* **nbd-cow:** document cow io cancellation semantics ([#25338](https://github.com/vm0-ai/vm0/issues/25338)) ([51502fb](https://github.com/vm0-ai/vm0/commit/51502fbe14b0fc76a5dbce4b369aa5c06d8316f5))
+
 ## [0.4.71](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.70...nbd-cow-v0.4.71) (2026-08-03)
 
 

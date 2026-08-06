@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.158.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.12...runner-rs-v0.158.13) (2026-08-06)
+
+
+### Bug Fixes
+
+* **python:** accept trailing authority-fragment base url variables ([#25339](https://github.com/vm0-ai/vm0/issues/25339)) ([46fdc70](https://github.com/vm0-ai/vm0/commit/46fdc7052407228e21856a8b47e43ef31060cd87))
+
+
+### Documentation
+
+* **python:** document auth base rewrite validation ([#25337](https://github.com/vm0-ai/vm0/issues/25337)) ([228bb70](https://github.com/vm0-ai/vm0/commit/228bb706ec45dfb23142f2786ed92d64919669a7))
+
+
+### Refactoring
+
+* **runner:** centralize private atomic file publication ([#25342](https://github.com/vm0-ai/vm0/issues/25342)) ([3b3293d](https://github.com/vm0-ai/vm0/commit/3b3293d941e76f2f406a199c360e95b99144b64b))
+
 ## [0.158.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.11...runner-rs-v0.158.12) (2026-08-05)
 
 

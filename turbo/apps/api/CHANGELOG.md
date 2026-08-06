@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.382.0](https://github.com/vm0-ai/vm0/compare/api-v1.381.1...api-v1.382.0) (2026-08-06)
+
+
+### Features
+
+* roll out the structured prompt inline templates switch to all users ([#25320](https://github.com/vm0-ai/vm0/issues/25320)) ([3eb8de7](https://github.com/vm0-ai/vm0/commit/3eb8de762355227d47fea1b30dab71b57a33a5ae))
+
+
+### Refactoring
+
+* **api:** remove legacy artifacts list endpoint ([#25336](https://github.com/vm0-ai/vm0/issues/25336)) ([73629d3](https://github.com/vm0-ai/vm0/commit/73629d30c213ef9f39c7a9538ae6fb07cc6e582c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.275.1
+    * @vm0/connectors bumped to 1.203.1
+    * @vm0/core bumped to 8.519.0
+    * @vm0/db bumped to 1.167.2
+
 ## [1.381.1](https://github.com/vm0-ai/vm0/compare/api-v1.381.0...api-v1.381.1) (2026-08-06)
 
 
