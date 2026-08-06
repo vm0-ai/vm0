@@ -28,7 +28,6 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
   ["translation:write", FeatureSwitchKey.Translation],
-  ["connector:write", FeatureSwitchKey.CustomConnectorCliCreate],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [

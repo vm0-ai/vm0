@@ -443,18 +443,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
   },
-  [FeatureSwitchKey.CustomConnectorCliCreate]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Allow Zero CLI agents to create and configure custom connectors directly.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.CustomConnectorOAuth2]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Allow org admins to add OAuth 2.0 authentication to custom connectors.",
-    enabled: true,
-  },
 };
 
 interface ResolvedHashes {
