@@ -1,6 +1,7 @@
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
+  zeroBillingUsagePackCheckoutContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -417,7 +418,7 @@ describe("organization billing settings", () => {
     ).toBeInTheDocument();
     expect(within(orderSummary).getByText("1,200")).toBeInTheDocument();
     expect(within(orderSummary).getByText("$220/month")).toBeInTheDocument();
-    expect(buttonByText("Checkout coming soon", orderSummary)).toBeDisabled();
+    expect(buttonByText("Upgrade to Team", orderSummary)).not.toBeDisabled();
 
     click(alexUsage);
     expect(
@@ -501,6 +502,45 @@ describe("organization billing settings", () => {
     expect(
       within(resetOrderSummary).getByText("$220/month"),
     ).toBeInTheDocument();
+
+    const resetAlexUsage = within(resetMemberUsage).getByRole("combobox", {
+      name: "Usage for Alex Chen",
+    });
+    click(resetAlexUsage);
+    click(
+      await screen.findByRole("option", {
+        name: "$50 · 52,600 credits · 5% off",
+      }),
+    );
+    const resetPendingUsage = within(resetMemberUsage).getByRole("combobox", {
+      name: "Usage for pending@example.com",
+    });
+    click(resetPendingUsage);
+    click(
+      await screen.findByRole("option", {
+        name: "$100 · 108,700 credits · 8% off",
+      }),
+    );
+    context.mocks.api(
+      zeroBillingUsagePackCheckoutContract.create,
+      ({ body, respond }) => {
+        expect(body.memberUsagePacks).toStrictEqual([
+          { memberId: "user_1", usagePackUsd: 50 },
+          { memberId: "user_2", usagePackUsd: 20 },
+          { memberId: "invitation_1", usagePackUsd: 100 },
+        ]);
+        return respond(200, {
+          url: "https://checkout.stripe.com/test-usage-pack",
+        });
+      },
+    );
+
+    click(buttonByText("Upgrade to Team", resetOrderSummary));
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/test-usage-pack",
+      );
+    });
   });
 
   it("scrolls to buy credits from the credits billing deep link", async () => {

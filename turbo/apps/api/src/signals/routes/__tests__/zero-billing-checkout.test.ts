@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import {
   type BillingStatusResponse,
+  USAGE_PACKS_USD,
   zeroBillingCheckoutContract,
+  zeroBillingUsagePackCheckoutContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -10,13 +12,16 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { createStore } from "ccstate";
+import type StripeSDK from "stripe";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
+import { mockStripeClient } from "../../external/stripe-client";
 import {
   seedOrgMetadata,
   setOnboardingPaymentPendingFixture,
@@ -25,14 +30,22 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const APP_ORIGIN = "http://localhost:3002";
+const TEST_STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
+const TEST_PRICE_USAGE_PACK_PLAN_PRO = "price_test_usage_pack_plan_pro";
+const TEST_PRICE_USAGE_PACK_PLAN_TEAM = "price_test_usage_pack_plan_team";
+const TEST_PRICE_USAGE_PACK_20 = "price_test_usage_pack_20";
+const TEST_PRICE_USAGE_PACK_50 = "price_test_usage_pack_50";
+const TEST_PRICE_USAGE_PACK_100 = "price_test_usage_pack_100";
+const TEST_PRICE_USAGE_PACK_200 = "price_test_usage_pack_200";
 const TEST_PRICE_CUSTOM_CREDIT_UNIT = "price_test_custom_credit_unit";
 const TEST_PRICE_CONCURRENCY = "price_test_concurrency";
 const STRIPE_WEBHOOK_SECRET = "whsec_checkout_test";
@@ -52,6 +65,15 @@ function setZeroPrice(): void {
   mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
   mockEnv("ZERO_PRICE_CUSTOM_CREDIT_UNIT", TEST_PRICE_CUSTOM_CREDIT_UNIT);
   mockEnv("ZERO_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);
+}
+
+function setUsagePackPrices(): void {
+  mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_PRO", TEST_PRICE_USAGE_PACK_PLAN_PRO);
+  mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_TEAM", TEST_PRICE_USAGE_PACK_PLAN_TEAM);
+  mockEnv("ZERO_PRICE_USAGE_PACK_20", TEST_PRICE_USAGE_PACK_20);
+  mockEnv("ZERO_PRICE_USAGE_PACK_50", TEST_PRICE_USAGE_PACK_50);
+  mockEnv("ZERO_PRICE_USAGE_PACK_100", TEST_PRICE_USAGE_PACK_100);
+  mockEnv("ZERO_PRICE_USAGE_PACK_200", TEST_PRICE_USAGE_PACK_200);
 }
 
 function currentSecond(): number {
@@ -75,9 +97,9 @@ function zeroToken(args: {
   });
 }
 
-function createOrgFixture(): BillingOrgFixture {
+function createOrgFixture(orgId = `org_${randomUUID()}`): BillingOrgFixture {
   return {
-    orgId: `org_${randomUUID()}`,
+    orgId,
     userId: `user_${randomUUID()}`,
   };
 }
@@ -968,6 +990,236 @@ describe("POST /api/zero/billing/checkout", () => {
   });
 });
 
+describe("POST /api/zero/billing/usage-pack-checkout", () => {
+  beforeEach(() => {
+    mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+    setZeroPrice();
+    setUsagePackPrices();
+  });
+
+  it("keeps usage pack checkout behind its feature switch", async () => {
+    const fixture = createOrgFixture(TEST_STAFF_ORG_ID);
+    authenticateOrg(fixture);
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingUsagePackCheckoutContract).create({
+        body: {
+          tier: "pro",
+          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Usage pack checkout is not enabled",
+        code: "FORBIDDEN",
+      },
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("keeps usage pack checkout restricted to staff organizations", async () => {
+    const fixture = createOrgFixture();
+    authenticateOrg(fixture);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingUsagePackCheckoutContract).create({
+        body: {
+          tier: "pro",
+          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Usage pack checkout is not enabled",
+        code: "FORBIDDEN",
+      },
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("checks out the new plan and aggregates shared usage pack prices", async () => {
+    const fixture = createOrgFixture(TEST_STAFF_ORG_ID);
+    const memberIds = Array.from({ length: 101 }, (_, index) => {
+      return index === 0 ? fixture.userId : `user_${randomUUID()}`;
+    });
+    const invitationId = `inv_${randomUUID()}`;
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockImplementation(
+      (args) => {
+        const offset =
+          typeof args === "object" &&
+          args !== null &&
+          "offset" in args &&
+          typeof args.offset === "number"
+            ? args.offset
+            : 0;
+        const limit =
+          typeof args === "object" &&
+          args !== null &&
+          "limit" in args &&
+          typeof args.limit === "number"
+            ? args.limit
+            : 100;
+        return Promise.resolve({
+          data: memberIds.slice(offset, offset + limit).map((userId) => {
+            return {
+              role: "org:member",
+              publicUserData: { userId },
+              createdAt: now(),
+            };
+          }),
+        });
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      {
+        data: [
+          {
+            id: invitationId,
+            emailAddress: "pending@example.com",
+            role: "org:member",
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/usage-pack",
+    });
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingUsagePackCheckoutContract).create({
+        body: {
+          tier: "team",
+          memberUsagePacks: [
+            ...memberIds.map((memberId, index) => {
+              return {
+                memberId,
+                usagePackUsd: USAGE_PACKS_USD[index] ?? 20,
+              };
+            }),
+            { memberId: invitationId, usagePackUsd: 20 },
+          ],
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/usage-pack",
+    });
+    const metadata = {
+      orgId: fixture.orgId,
+      tier: "team",
+      priceId: TEST_PRICE_USAGE_PACK_PLAN_TEAM,
+      purpose: "usage_pack_subscription",
+    };
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
+      mode: "subscription",
+      customer: expect.any(String),
+      line_items: [
+        { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
+        { price: TEST_PRICE_USAGE_PACK_20, quantity: 99 },
+        { price: TEST_PRICE_USAGE_PACK_50, quantity: 1 },
+        { price: TEST_PRICE_USAGE_PACK_100, quantity: 1 },
+        { price: TEST_PRICE_USAGE_PACK_200, quantity: 1 },
+      ],
+      allow_promotion_codes: true,
+      success_url: `${APP_ORIGIN}/billing?billing=success`,
+      cancel_url: `${APP_ORIGIN}/billing?billing=canceled`,
+      metadata,
+      subscription_data: { metadata },
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenNthCalledWith(1, {
+      organizationId: fixture.orgId,
+      limit: 100,
+      offset: 0,
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenNthCalledWith(2, {
+      organizationId: fixture.orgId,
+      limit: 100,
+      offset: 100,
+    });
+  });
+
+  it("rejects stale member selections before creating checkout", async () => {
+    const fixture = createOrgFixture(TEST_STAFF_ORG_ID);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: fixture.userId },
+            createdAt: now(),
+          },
+          {
+            role: "org:member",
+            publicUserData: { userId: `user_${randomUUID()}` },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingUsagePackCheckoutContract).create({
+        body: {
+          tier: "pro",
+          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Organization members changed; refresh billing and try again",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/zero/billing/checkout/complete", () => {
   beforeEach(() => {
     setZeroPrice();
@@ -1004,7 +1256,8 @@ describe("POST /api/zero/billing/checkout/complete", () => {
     return createOrgFixture();
   }
 
-  it("records a completed subscription checkout while waiting for invoice payment", async () => {
+  it("finds the plan item in a completed multi-item subscription", async () => {
+    setUsagePackPrices();
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
     const fixture = await trackedSeed({
@@ -1027,7 +1280,11 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       items: {
         data: [
           {
-            price: { id: TEST_PRICE_PRO },
+            price: { id: TEST_PRICE_USAGE_PACK_20 },
+            current_period_end: 1_800_000_000,
+          },
+          {
+            price: { id: TEST_PRICE_USAGE_PACK_PLAN_PRO },
             current_period_end: 1_800_000_000,
           },
         ],

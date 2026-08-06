@@ -26,6 +26,9 @@ const mocks = createZeroRouteMocks(context);
 
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
+const TEST_USAGE_PACK_PLAN_PRO = "price_test_usage_pack_plan_pro";
+const TEST_USAGE_PACK_PLAN_TEAM = "price_test_usage_pack_plan_team";
+const TEST_USAGE_PACK_50 = "price_test_usage_pack_50";
 
 async function readBillingStatus() {
   return await accept(
@@ -272,6 +275,103 @@ describe("POST /api/zero/billing/downgrade", () => {
       type: "downgrade",
       targetTier: "pro",
       effectiveDate,
+    });
+  });
+
+  it("preserves usage packs when scheduling team to pro", async () => {
+    mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_PRO", TEST_USAGE_PACK_PLAN_PRO);
+    mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_TEAM", TEST_USAGE_PACK_PLAN_TEAM);
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
+
+    const subId = `sub-usage-pack-team-pro-${randomUUID().slice(0, 8)}`;
+    const periodStart = 1_782_809_751;
+    const periodEnd = 1_785_401_751;
+    const scheduleId = `sched-usage-pack-${randomUUID().slice(0, 8)}`;
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeSubscriptionId: subId,
+          subscriptionStatus: "active",
+          tier: "team",
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subId,
+      default_payment_method: "pm_card",
+      items: {
+        data: [
+          {
+            id: "si_usage_pack_50",
+            quantity: 2,
+            price: { id: TEST_USAGE_PACK_50 },
+          },
+          {
+            id: "si_usage_pack_plan_team",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 1,
+            price: {
+              id: TEST_USAGE_PACK_PLAN_TEAM,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValue({
+      id: scheduleId,
+      current_phase: {
+        start_date: periodStart,
+        end_date: periodEnd,
+      },
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+    });
+
+    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const response = await accept(
+      client.create({
+        body: { targetTier: "pro" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      effectiveDate: new Date(periodEnd * 1000).toISOString(),
+    });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(scheduleId, {
+      end_behavior: "release",
+      proration_behavior: "none",
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [
+            { price: TEST_USAGE_PACK_50, quantity: 2 },
+            { price: TEST_USAGE_PACK_PLAN_TEAM, quantity: 1 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: periodEnd,
+          duration: { interval: "month", interval_count: 1 },
+          items: [
+            { price: TEST_USAGE_PACK_50, quantity: 2 },
+            { price: TEST_USAGE_PACK_PLAN_PRO, quantity: 1 },
+          ],
+          proration_behavior: "none",
+        },
+      ],
     });
   });
 

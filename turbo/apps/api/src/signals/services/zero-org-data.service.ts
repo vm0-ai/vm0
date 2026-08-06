@@ -20,6 +20,10 @@ import type { User } from "@clerk/backend";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { clerk$ } from "../external/clerk";
+import {
+  listAllOrganizationMemberships,
+  listAllPendingOrganizationInvitations,
+} from "../external/clerk-organization-lists";
 import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { now, nowDate } from "../../lib/time";
@@ -38,6 +42,7 @@ interface OrgIdentity {
 
 const CACHE_TTL_MS = 60_000;
 const USER_PROFILE_CACHE_TTL_MS = 15 * 60 * 1000;
+const CLERK_USER_LIST_BATCH_SIZE = 100;
 
 const forbiddenAccess = Object.freeze({
   status: 403 as const,
@@ -615,38 +620,48 @@ async function fetchUserProfileMap(
     return map;
   }
 
-  const users = await client.users.getUserList({ userId: [...missingUserIds] });
   const refreshedAt = nowDate();
-  for (const user of users.data) {
-    const email = userPrimaryEmail(user);
-    const name =
-      [user.firstName, user.lastName].filter(Boolean).join(" ") || null;
-    const imageUrl = user.imageUrl || null;
-    map.set(user.id, {
-      email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      imageUrl: imageUrl ?? "",
+  const userIdsToFetch = [...missingUserIds];
+  for (
+    let offset = 0;
+    offset < userIdsToFetch.length;
+    offset += CLERK_USER_LIST_BATCH_SIZE
+  ) {
+    const users = await client.users.getUserList({
+      userId: userIdsToFetch.slice(offset, offset + CLERK_USER_LIST_BATCH_SIZE),
+      limit: CLERK_USER_LIST_BATCH_SIZE,
     });
-    if (email) {
-      await db
-        .insert(userCache)
-        .values({
-          userId: user.id,
-          email,
-          name,
-          imageUrl,
-          cachedAt: refreshedAt,
-        })
-        .onConflictDoUpdate({
-          target: userCache.userId,
-          set: {
+    for (const user of users.data) {
+      const email = userPrimaryEmail(user);
+      const name =
+        [user.firstName, user.lastName].filter(Boolean).join(" ") || null;
+      const imageUrl = user.imageUrl || null;
+      map.set(user.id, {
+        email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        imageUrl: imageUrl ?? "",
+      });
+      if (email) {
+        await db
+          .insert(userCache)
+          .values({
+            userId: user.id,
             email,
             name,
             imageUrl,
             cachedAt: refreshedAt,
-          },
-        });
+          })
+          .onConflictDoUpdate({
+            target: userCache.userId,
+            set: {
+              email,
+              name,
+              imageUrl,
+              cachedAt: refreshedAt,
+            },
+          });
+      }
     }
   }
   return map;
@@ -661,16 +676,11 @@ export function zeroOrgMembersList(
 
     const [org, memberships, invitations] = await Promise.all([
       client.organizations.getOrganization({ organizationId: args.orgId }),
-      client.organizations.getOrganizationMembershipList({
-        organizationId: args.orgId,
-      }),
-      client.organizations.getOrganizationInvitationList({
-        organizationId: args.orgId,
-        status: ["pending"],
-      }),
+      listAllOrganizationMemberships(client.organizations, args.orgId),
+      listAllPendingOrganizationInvitations(client.organizations, args.orgId),
     ]);
 
-    const membersWithUserIds = memberships.data.map((membership) => {
+    const membersWithUserIds = memberships.map((membership) => {
       return {
         membership,
         userId: requiredClerkMembershipUserId(
@@ -703,7 +713,7 @@ export function zeroOrgMembersList(
 
     const pendingInvitations =
       args.callerRole === "admin"
-        ? invitations.data.map((inv) => {
+        ? invitations.map((inv) => {
             return {
               id: inv.id,
               email: inv.emailAddress,

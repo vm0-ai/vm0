@@ -1674,7 +1674,7 @@ function BillingPricingPage({
   return (
     <>
       {usagePackPlansEnabled ? (
-        <UsagePackPricingPage onBack={onBack} />
+        <UsagePackPricingPage currentTier={currentTier} onBack={onBack} />
       ) : (
         <PricingPage
           currentTier={currentTier}

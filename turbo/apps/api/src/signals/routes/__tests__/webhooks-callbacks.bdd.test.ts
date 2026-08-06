@@ -3674,6 +3674,30 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const subscriptionId = `sub_bdd_concurrency_${suffix}`;
     const periodStart = epochSeconds(-1);
     const periodEnd = epochSeconds(30);
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.created",
+        object: {
+          id: subscriptionId,
+          customer: granted.customerId,
+          status: "active",
+          metadata: { purpose: "concurrency_subscription", orgId },
+          cancel_at_period_end: false,
+          items: {
+            data: [
+              {
+                price: { id: "price_bdd_concurrency" },
+                quantity: 2,
+                current_period_end: periodEnd,
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
     const invoice = {
       id: `in_bdd_concurrency_${suffix}`,
       customer: granted.customerId,
@@ -3822,6 +3846,8 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     // the billing status read.
     billingStatus = await billing.readBillingStatus(actor);
     expect(billingStatus.concurrencySubscriptions).toStrictEqual([]);
+    expect(billingStatus.tier).toBe("pro");
+    expect(billingStatus.hasSubscription).toBeTruthy();
     const afterDeleted = await runs.readRunQueue(actor);
     expect(afterDeleted.body.concurrency.limit).toBe(2);
   });
