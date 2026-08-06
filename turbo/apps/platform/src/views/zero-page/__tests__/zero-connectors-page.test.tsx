@@ -45,6 +45,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
+import { server } from "../../../mocks/server.ts";
 import { search } from "../../../signals/location.ts";
 import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
@@ -2066,7 +2067,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("ignores unscoped changes before completing Stripe OAuth", async () => {
+  it("ignores a null change before completing Stripe OAuth from a scoped event", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
@@ -2131,6 +2132,35 @@ describe("connectors page", () => {
         return respond(200, { enabledConnectorSlugs: ["stripe"] });
       },
     );
+    let connectorListRequests = 0;
+    const catchUpObserved = context.mocks.deferred<void>();
+    const observeConnectorListRequest = ({
+      request,
+    }: {
+      request: Request;
+    }): void => {
+      if (new URL(request.url).pathname !== "/api/zero/connectors") {
+        return;
+      }
+      connectorListRequests += 1;
+      if (
+        context.mocks.ably.hasSubscription("connector:changed") &&
+        !catchUpObserved.settled()
+      ) {
+        catchUpObserved.resolve();
+      }
+    };
+    server.events.on("response:mocked", observeConnectorListRequest);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        server.events.removeListener(
+          "response:mocked",
+          observeConnectorListRequest,
+        );
+      },
+      { once: true },
+    );
 
     detachedSetupPage({
       context,
@@ -2155,15 +2185,37 @@ describe("connectors page", () => {
       expect(
         context.mocks.ably.hasSubscription("connector:changed"),
       ).toBeTruthy();
+      expect(within(dialog).getByText("Connecting...")).toBeInTheDocument();
     });
+    await catchUpObserved.promise;
+    const requestsBeforeNull = connectorListRequests;
 
     context.mocks.ably.trigger("connector:changed", null);
-    expect(authorizedAgentIds).toStrictEqual([]);
+    authWindow.close();
 
-    context.mocks.ably.trigger("connector:changed", {
-      connectorSlug: "github",
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeFalsy();
+      expect(
+        within(dialog).queryByText("Connecting..."),
+      ).not.toBeInTheDocument();
     });
     expect(authorizedAgentIds).toStrictEqual([]);
+    expect(connectorListRequests - requestsBeforeNull).toBe(1);
+
+    const completionWindow = createMockAuthWindow();
+    context.mocks.browser.open(completionWindow);
+    click(buttonByText("Connect", dialog));
+
+    await waitFor(() => {
+      expect(completionWindow.location.href).toBe(
+        "https://oauth.test/stripe/authorize",
+      );
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeTruthy();
+    });
 
     mockConnectors([{ connectorSlug: "stripe", authMethod: "oauth" }]);
     context.mocks.ably.trigger("connector:changed", {
