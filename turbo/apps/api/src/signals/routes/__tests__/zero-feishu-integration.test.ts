@@ -909,6 +909,36 @@ describe("Feishu integration", () => {
     );
   }
 
+  async function startFeishuDmSession(fixture: FeishuRunFixture): Promise<{
+    readonly firstMessageId: string;
+    readonly mainSessionId: string;
+  }> {
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    const firstMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "start the Feishu DM session", "ou_feishu_user", {
+        messageId: firstMessageId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const initialRun = await findRun(actor, "start the Feishu DM session");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const initialClaim = await runsApi.claimRunnerJob(initialRun.id);
+    expect(initialClaim.resumeSession).toBeNull();
+    const mainSessionId = randomUUID();
+    await completeRunSession({
+      runId: initialRun.id,
+      sandboxToken: initialClaim.sandboxToken,
+      sessionId: mainSessionId,
+      history: `bdd initial feishu history ${initialRun.id}`,
+      assistantText: "Initial Feishu DM answer",
+    });
+    return { firstMessageId, mainSessionId };
+  }
+
   it("rejects configuration API access when the feature switch is disabled", async () => {
     const actor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
@@ -2740,32 +2770,11 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("resumes and resets Feishu DM sessions at message and agent boundaries", async () => {
+  it("resumes Feishu DM sessions across messages and quoted replies", async () => {
     const fixture = await setupFeishuRunFixture();
-    const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
-      fixture;
-    await connectFixtureUser(fixture);
-    const firstMessageId = `om_${randomUUID()}`;
-    await postEvent(
-      callbackUrl,
-      directMessage(appId, "start the Feishu DM session", "ou_feishu_user", {
-        messageId: firstMessageId,
-      }),
-      { encrypted: true },
-    );
-    await flushWaitUntilForTest();
-    const initialRun = await findRun(actor, "start the Feishu DM session");
-    await runsApi.heartbeatRunner(runnerGroup);
-    const initialClaim = await runsApi.claimRunnerJob(initialRun.id);
-    expect(initialClaim.resumeSession).toBeNull();
-    const mainSessionId = randomUUID();
-    await completeRunSession({
-      runId: initialRun.id,
-      sandboxToken: initialClaim.sandboxToken,
-      sessionId: mainSessionId,
-      history: `bdd initial feishu history ${initialRun.id}`,
-      assistantText: "Initial Feishu DM answer",
-    });
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    const { firstMessageId, mainSessionId } =
+      await startFeishuDmSession(fixture);
 
     await postEvent(
       callbackUrl,
@@ -2823,6 +2832,22 @@ describe("Feishu integration", () => {
         );
       });
     expect(completedQuotedReply?.replyInThread).toBeFalsy();
+
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("resets Feishu DM sessions when switching agents", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
+      fixture;
+    await startFeishuDmSession(fixture);
 
     await postEvent(
       callbackUrl,
