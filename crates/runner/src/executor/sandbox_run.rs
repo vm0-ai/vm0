@@ -1536,7 +1536,6 @@ pub(super) async fn register_proxy(
                 registry: config.registry.clone(),
                 connector_slugs,
                 targets: context.connector_runtime_targets.as_deref(),
-                firewalls: context.firewalls.as_deref(),
                 refreshes: context.network_policy_refreshes.as_ref(),
             })
             .await;

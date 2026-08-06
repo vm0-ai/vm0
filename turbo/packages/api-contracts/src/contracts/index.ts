@@ -742,7 +742,7 @@ export {
   type StoredExecutionContext,
   type NetworkPolicyRefresh,
   type ConnectorRuntimeTarget,
-  type ConnectorRuntimeAbsentReason,
+  type ConnectorRuntimeCustomAbsentReason,
   type ConnectorRuntimeSyncResult,
   type SecretConnectorMetadata,
   type CanonicalStorageManifest,

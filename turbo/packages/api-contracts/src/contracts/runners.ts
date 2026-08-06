@@ -227,7 +227,7 @@ const connectorRuntimeSyncTargetsSchema = connectorRuntimeTargetsSchema
   .min(1)
   .max(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX);
 
-export const connectorRuntimeAbsentReasonSchema = z.enum([
+export const connectorRuntimeCustomAbsentReasonSchema = z.enum([
   "connector-unavailable",
   "grant-unavailable",
   "credentials-unavailable",
@@ -244,6 +244,13 @@ export const connectorRuntimeBuiltinAvailableResultSchema =
     target: connectorRuntimeBuiltinTargetSchema,
     state: z.literal("available"),
     networkPolicy: networkPolicySchema,
+  });
+
+export const connectorRuntimeBuiltinUnresolvedResultSchema =
+  connectorRuntimeResultBaseSchema.extend({
+    target: connectorRuntimeBuiltinTargetSchema,
+    state: z.literal("unresolved"),
+    reason: z.literal("connector-unavailable"),
   });
 
 export const connectorRuntimeCustomAvailableResultSchema =
@@ -263,17 +270,18 @@ export const connectorRuntimeCustomAvailableResultSchema =
     networkPolicy: networkPolicySchema,
   });
 
-export const connectorRuntimeAbsentResultSchema =
+export const connectorRuntimeCustomAbsentResultSchema =
   connectorRuntimeResultBaseSchema.extend({
-    target: connectorRuntimeTargetSchema,
+    target: connectorRuntimeCustomTargetSchema,
     state: z.literal("absent"),
-    reason: connectorRuntimeAbsentReasonSchema,
+    reason: connectorRuntimeCustomAbsentReasonSchema,
   });
 
 export const connectorRuntimeSyncResultSchema = z.union([
   connectorRuntimeBuiltinAvailableResultSchema,
+  connectorRuntimeBuiltinUnresolvedResultSchema,
   connectorRuntimeCustomAvailableResultSchema,
-  connectorRuntimeAbsentResultSchema,
+  connectorRuntimeCustomAbsentResultSchema,
 ]);
 const connectorPermissionNameListSchema = z
   .array(z.string().min(1))
@@ -1074,8 +1082,8 @@ export type NetworkPolicyRefresh = z.infer<typeof networkPolicyRefreshSchema>;
 export type ConnectorRuntimeTarget = z.infer<
   typeof connectorRuntimeTargetSchema
 >;
-export type ConnectorRuntimeAbsentReason = z.infer<
-  typeof connectorRuntimeAbsentReasonSchema
+export type ConnectorRuntimeCustomAbsentReason = z.infer<
+  typeof connectorRuntimeCustomAbsentReasonSchema
 >;
 export type ConnectorRuntimeSyncResult = z.infer<
   typeof connectorRuntimeSyncResultSchema

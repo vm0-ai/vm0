@@ -1257,13 +1257,22 @@ pub enum ConnectorRuntimeSyncState {
         #[serde(default)]
         firewall: Option<FirewallEntry>,
     },
+    Unresolved {
+        reason: ConnectorRuntimeUnresolvedReason,
+    },
     Absent {
-        reason: ConnectorRuntimeAbsentReason,
+        reason: ConnectorRuntimeCustomAbsentReason,
     },
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub enum ConnectorRuntimeAbsentReason {
+pub enum ConnectorRuntimeUnresolvedReason {
+    #[serde(rename = "connector-unavailable")]
+    Connector,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub enum ConnectorRuntimeCustomAbsentReason {
     #[serde(rename = "connector-unavailable")]
     Connector,
     #[serde(rename = "grant-unavailable")]

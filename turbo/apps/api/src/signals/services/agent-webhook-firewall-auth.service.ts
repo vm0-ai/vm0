@@ -107,7 +107,10 @@ import {
   resolveConnectorCredentialAccess,
   type ConnectorCredentialAccess,
 } from "./connector-credential-access.service";
-import { resolveLiveCustomConnectorOAuth2AccessToken } from "./custom-connector-oauth2.service";
+import {
+  CustomConnectorOAuth2TokenRefreshError,
+  resolveLiveCustomConnectorOAuth2AccessToken,
+} from "./custom-connector-oauth2.service";
 import { CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY } from "./zero-custom-connector.service";
 import {
   resolveConnectorRuntimeTargets,
@@ -3035,28 +3038,32 @@ async function syncCustomConnectorRuntimeSecrets(args: {
     if (Object.hasOwn(args.secrets, row.secretName)) {
       continue;
     }
-    const encryptedValue =
-      row.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
-        ? await tapError(
-            resolveLiveCustomConnectorOAuth2AccessToken({
-              db: args.db,
-              orgId: args.orgId,
-              userId: args.userId,
-              connectorId: row.connectorId,
-              connectorRevision: row.connectorRevision,
-              featureContext: args.featureSwitchContext,
-              signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
-              forceRefresh: args.forceRefresh,
-            }),
-            (error) => {
-              L.warn("Failed to resolve live custom connector OAuth token", {
-                runId: args.runId,
-                connectorId: row.connectorId,
-                error,
-              });
-            },
-          )
-        : row.encryptedValue;
+    let encryptedValue = row.encryptedValue;
+    if (row.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY) {
+      const accessToken = await tapError(
+        resolveLiveCustomConnectorOAuth2AccessToken({
+          db: args.db,
+          orgId: args.orgId,
+          userId: args.userId,
+          connectorId: row.connectorId,
+          connectorRevision: row.connectorRevision,
+          featureContext: args.featureSwitchContext,
+          signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+          forceRefresh: args.forceRefresh,
+        }),
+        (error) => {
+          L.warn("Failed to resolve live custom connector OAuth token", {
+            runId: args.runId,
+            connectorId: row.connectorId,
+            error,
+          });
+        },
+      );
+      encryptedValue =
+        accessToken?.kind === "available"
+          ? accessToken.encryptedAccessToken
+          : null;
+    }
     if (!encryptedValue) {
       continue;
     }
@@ -4152,7 +4159,6 @@ type AvailableCustomConnectorRuntimeResult = Extract<
 interface AvailableCustomConnectorRuntimeResolution {
   readonly result: AvailableCustomConnectorRuntimeResult;
   readonly customAuthRefs: ConnectorRuntimeResolution["customAuthRefs"];
-  readonly customAuthExpiresAt: string | undefined;
 }
 
 function availableCustomConnectorRuntimeResolution(
@@ -4171,7 +4177,6 @@ function availableCustomConnectorRuntimeResolution(
   return {
     result: resolution.result,
     customAuthRefs: resolution.customAuthRefs,
-    customAuthExpiresAt: resolution.customAuthExpiresAt,
   };
 }
 
@@ -4225,13 +4230,25 @@ async function currentCustomConnectorRunScope(
   return run;
 }
 
+type CurrentCustomConnectorSecretsResolution =
+  | {
+      readonly kind: "available";
+      readonly secrets: Record<string, string>;
+      readonly expiresAt: number | null;
+      readonly refreshedConnectors: readonly string[];
+      readonly refreshedSecrets: readonly string[];
+    }
+  | { readonly kind: "unavailable" }
+  | { readonly kind: "reconnect-required" }
+  | { readonly kind: "refresh-failed" };
+
 async function resolveCurrentCustomConnectorSecrets(args: {
   readonly db: Db;
   readonly auth: SandboxAuth;
   readonly api: CurrentCustomConnectorFirewallApi;
   readonly authRefs: ConnectorRuntimeResolution["customAuthRefs"];
   readonly forceRefresh: boolean;
-}): Promise<Record<string, string> | undefined> {
+}): Promise<CurrentCustomConnectorSecretsResolution> {
   const referenced = collectReferencedKeys(
     args.api.auth.headers ?? {},
     args.api.auth.base,
@@ -4248,7 +4265,7 @@ async function resolveCurrentCustomConnectorSecrets(args: {
       return !refsByAlias.has(alias);
     })
   ) {
-    return undefined;
+    return { kind: "unavailable" };
   }
 
   const featureSwitchContext = await loadUserFeatureSwitchContext(
@@ -4257,34 +4274,69 @@ async function resolveCurrentCustomConnectorSecrets(args: {
     args.auth.userId,
   );
   const currentSecrets: Record<string, string> = {};
+  let expiresAt: number | null = null;
+  const refreshedConnectors: string[] = [];
+  const refreshedSecrets: string[] = [];
   for (const alias of referenced.secrets) {
     const ref = refsByAlias.get(alias);
     if (!ref) {
-      return undefined;
+      return { kind: "unavailable" };
     }
-    const encryptedValue =
-      ref.encryptedValue ??
-      (ref.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
-        ? await resolveLiveCustomConnectorOAuth2AccessToken({
-            db: args.db,
-            orgId: args.auth.orgId,
-            userId: args.auth.userId,
-            connectorId: ref.connectorId,
-            connectorRevision: ref.connectorRevision,
-            featureContext: featureSwitchContext,
-            signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
-            forceRefresh: args.forceRefresh,
-          })
-        : null);
+    let encryptedValue = ref.encryptedValue;
+    if (
+      encryptedValue === null &&
+      ref.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
+    ) {
+      const accessToken = await settle(
+        resolveLiveCustomConnectorOAuth2AccessToken({
+          db: args.db,
+          orgId: args.auth.orgId,
+          userId: args.auth.userId,
+          connectorId: ref.connectorId,
+          connectorRevision: ref.connectorRevision,
+          featureContext: featureSwitchContext,
+          signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+          forceRefresh: args.forceRefresh,
+        }),
+      );
+      if (!accessToken.ok) {
+        if (
+          accessToken.error instanceof CustomConnectorOAuth2TokenRefreshError
+        ) {
+          return { kind: "refresh-failed" };
+        }
+        throw accessToken.error;
+      }
+      if (accessToken.value.kind === "unavailable") {
+        return { kind: "unavailable" };
+      }
+      if (accessToken.value.kind === "reconnect-required") {
+        return { kind: "reconnect-required" };
+      }
+      encryptedValue = accessToken.value.encryptedAccessToken;
+      expiresAt = accessToken.value.tokenExpiresAt
+        ? Math.floor(accessToken.value.tokenExpiresAt.getTime() / 1000)
+        : null;
+      if (accessToken.value.status === "refreshed") {
+        refreshedConnectors.push(ref.connectorId);
+        refreshedSecrets.push(alias);
+      }
+    }
     if (!encryptedValue) {
-      return undefined;
+      return { kind: "unavailable" };
     }
     currentSecrets[alias] = await decryptStoredSecretValue(
       encryptedValue,
       featureSwitchContext,
     );
   }
-  return currentSecrets;
+  return {
+    kind: "available",
+    secrets: currentSecrets,
+    expiresAt,
+    refreshedConnectors,
+    refreshedSecrets,
+  };
 }
 
 async function resolveCurrentCustomConnectorFirewallAuth(args: {
@@ -4311,6 +4363,9 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
       },
     ],
   });
+  if (resolution?.customAuthState === "reconnect-required") {
+    return connectorReconnectRequired([args.customConnectorId]);
+  }
   const currentResolution = availableCustomConnectorRuntimeResolution(
     resolution,
     args.customConnectorId,
@@ -4332,8 +4387,14 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
     authRefs: currentResolution.customAuthRefs,
     forceRefresh: args.body.forceRefresh === true,
   });
-  if (!currentSecrets) {
+  if (currentSecrets.kind === "unavailable") {
     return connectorNotConfigured();
+  }
+  if (currentSecrets.kind === "refresh-failed") {
+    return tokenRefreshFailed([args.customConnectorId], "upstream_provider");
+  }
+  if (currentSecrets.kind === "reconnect-required") {
+    return connectorReconnectRequired([args.customConnectorId]);
   }
 
   const billableCacheExpiry = await resolveBillableFirewallCacheExpiry({
@@ -4346,7 +4407,7 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
   }
   const resolved = resolveTemplates({
     authHeaders: api.auth.headers ?? {},
-    secrets: currentSecrets,
+    secrets: currentSecrets.secrets,
     vars: args.body.vars ?? {},
     authBase: api.auth.base,
     authQuery: api.auth.query,
@@ -4362,18 +4423,13 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
       base: resolved.base,
       query: resolved.query,
       awsSigv4: resolved.awsSigv4,
-      expiresAt:
-        mergeExpiresAt(
-          billableCacheExpiry.expiresAt ?? null,
-          currentResolution.customAuthExpiresAt
-            ? Math.floor(
-                Date.parse(currentResolution.customAuthExpiresAt) / 1000,
-              )
-            : undefined,
-        ) ?? null,
+      expiresAt: mergeExpiresAt(
+        billableCacheExpiry.expiresAt ?? null,
+        currentSecrets.expiresAt ?? undefined,
+      ),
       resolvedSecrets: resolved.resolvedSecrets,
-      refreshedConnectors: [],
-      refreshedSecrets: [],
+      refreshedConnectors: currentSecrets.refreshedConnectors,
+      refreshedSecrets: currentSecrets.refreshedSecrets,
     },
   };
 }

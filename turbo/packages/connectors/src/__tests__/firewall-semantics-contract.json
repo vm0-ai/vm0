@@ -2459,6 +2459,35 @@
       }
     },
     {
+      "name": "custom connector id selects its internal firewall owner",
+      "firewalls": [
+        {
+          "name": "custom_connector_00000000000040008000000000000001",
+          "customConnectorId": "00000000-0000-4000-8000-000000000001",
+          "apis": [{ "base": "https://api.example.com", "auth": {} }]
+        },
+        {
+          "name": "custom_connector_00000000000040008000000000000002",
+          "customConnectorId": "00000000-0000-4000-8000-000000000002",
+          "apis": [{ "base": "https://api.example.com", "auth": {} }]
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "https://api.example.com/graphql",
+        "connectorIntent": {
+          "status": "present",
+          "value": "00000000-0000-4000-8000-000000000002"
+        }
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "custom_connector_00000000000040008000000000000002",
+        "base": "https://api.example.com",
+        "relativePath": "/graphql"
+      }
+    },
+    {
       "name": "same-owner equal routing identity preserves permission behavior",
       "firewalls": [
         {

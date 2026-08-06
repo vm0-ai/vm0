@@ -177,7 +177,7 @@ async def test_removed_connector_becomes_ordinary_request_without_auth(
     assert retained_flow.request.headers["Authorization"] == "Bearer retained"
 
 
-async def test_explicit_absent_custom_intent_does_not_fall_through_to_sibling(
+async def test_custom_connector_id_selects_active_owner_and_does_not_fall_through_after_removal(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -185,6 +185,7 @@ async def test_explicit_absent_custom_intent_does_not_fall_through_to_sibling(
     headers,
 ):
     custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
+    custom_name = "custom_connector_550e8400e29b41d4a716446655440000"
     sibling_name = "retained-custom-sibling"
     shared_host = "shared.example.com"
     registry_path = tmp_path / "registry.json"
@@ -202,23 +203,41 @@ async def test_explicit_absent_custom_intent_does_not_fall_through_to_sibling(
                     {
                         "kind": "inline",
                         "firewall": _firewall(
+                            custom_name,
+                            f"https://{shared_host}",
+                        ),
+                        "customConnectorId": custom_connector_id,
+                    },
+                    {
+                        "kind": "inline",
+                        "firewall": _firewall(
                             sibling_name,
                             f"https://{shared_host}",
                         ),
-                    }
+                    },
                 ],
                 "networkPolicies": {
-                    sibling_name: {
+                    name: {
                         "allow": ["items.read"],
                         "deny": [],
                         "ask": [],
                         "unknownPolicy": "deny",
                     }
+                    for name in (custom_name, sibling_name)
                 },
-                "omittedCustomConnectorIds": [custom_connector_id],
                 "billableFirewalls": [],
             }
         },
+    )
+    active_flow = real_flow(
+        with_response=False,
+        client_ip=_CLIENT_IP,
+        host=shared_host,
+        path="/items/123",
+        request_headers=headers(
+            ("Host", shared_host),
+            ("X-VM0-Connector-Intent", custom_connector_id),
+        ),
     )
     removed_flow = real_flow(
         with_response=False,
@@ -233,14 +252,51 @@ async def test_explicit_absent_custom_intent_does_not_fall_through_to_sibling(
 
     with (
         mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
-        fake_firewall_headers(headers={"Authorization": "Bearer sibling"}) as auth_fetch,
+        fake_firewall_headers(headers={"Authorization": "Bearer selected"}) as auth_fetch,
     ):
+        await mitm_addon.request(active_flow)
+        write_multi_vm_registry(
+            registry_path,
+            {
+                _CLIENT_IP: {
+                    "runId": "run-custom-removal",
+                    "cliAgentType": "codex",
+                    "sandboxToken": "sandbox-token",
+                    "networkLogPath": str(tmp_path / "network.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                    "encryptedSecrets": "iv:tag:data",
+                    "firewalls": [
+                        {
+                            "kind": "inline",
+                            "firewall": _firewall(
+                                sibling_name,
+                                f"https://{shared_host}",
+                            ),
+                        }
+                    ],
+                    "networkPolicies": {
+                        sibling_name: {
+                            "allow": ["items.read"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        }
+                    },
+                    "omittedCustomConnectorIds": [custom_connector_id],
+                    "billableFirewalls": [],
+                }
+            },
+        )
+        registry.reset_cache_for_tests()
         state = registry.load_registry_state(str(registry_path))
         await mitm_addon.request(removed_flow)
 
     assert not isinstance(state, registry.RegistryUnavailable)
     assert state.omitted_custom_connector_ids == {_CLIENT_IP: frozenset({custom_connector_id})}
-    auth_fetch.assert_not_awaited()
+    auth_fetch.assert_awaited_once()
+    assert active_flow.response is None
+    assert active_flow.metadata[metadata_keys.FIREWALL_NAME] == custom_name
+    assert active_flow.request.headers["Authorization"] == "Bearer selected"
     assert removed_flow.response is None
     assert removed_flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert metadata_keys.FIREWALL_NAME not in removed_flow.metadata

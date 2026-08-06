@@ -199,6 +199,43 @@ describe("connector runtime synchronization contract", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("keeps builtin retry states distinct from custom authoritative absence", () => {
+    const builtinTarget = {
+      kind: "builtin" as const,
+      connectorSlug: "slack",
+    };
+    const customTarget = { kind: "custom" as const, customConnectorId };
+
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: builtinTarget,
+        state: "unresolved",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "absent",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: builtinTarget,
+        state: "absent",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "unresolved",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("stored connector permission baseline contract", () => {

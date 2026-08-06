@@ -8328,7 +8328,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       initialExpiresIn: 3600,
       refreshResponse: (attempt) => {
         if (attempt > 2) {
-          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+          return HttpResponse.json(
+            { error: "temporarily_unavailable" },
+            { status: 503 },
+          );
         }
         return HttpResponse.json({
           access_token:
@@ -8422,40 +8425,47 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       fw.encryptedSecretsBody({}),
     );
 
-    mockNow(now() + 2 * 3_600_000);
+    const firstRefreshAt = now() + 2 * 3_600_000;
+    mockNow(firstRefreshAt);
     onTestFinished(() => {
       clearMockNow();
     });
     const [firstResolved, secondResolved] = await Promise.all([
       fw.requestFirewallAuth(
         { authorization: `Bearer ${claim.sandboxToken}` },
-        {
-          encryptedSecrets: fw.encryptedSecretsBody({}),
-          authHeaders: {
-            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-          },
-        },
+        currentAuthBody,
         [200],
       ),
       fw.requestFirewallAuth(
         { authorization: `Bearer ${claim.sandboxToken}` },
-        {
-          encryptedSecrets: fw.encryptedSecretsBody({}),
-          authHeaders: {
-            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-          },
-        },
+        currentAuthBody,
         [200],
       ),
     ]);
-    for (const resolved of [firstResolved, secondResolved]) {
-      if (resolved.status !== 200) {
-        throw new Error("Expected custom OAuth firewall auth to resolve");
-      }
-      expect(resolved.body.headers).toStrictEqual({
-        Authorization: "Bearer custom-oauth-refreshed-access-token",
-      });
-    }
+    const concurrentResolvedBodies = [firstResolved, secondResolved].map(
+      (resolved) => {
+        if (resolved.status !== 200) {
+          throw new Error("Expected custom OAuth firewall auth to resolve");
+        }
+        expect(resolved.body.headers).toStrictEqual({
+          Authorization: "Bearer custom-oauth-refreshed-access-token",
+        });
+        expect(resolved.body.expiresAt).toBe(
+          Math.floor((firstRefreshAt + 3_600_000) / 1000),
+        );
+        return resolved.body;
+      },
+    );
+    expect(
+      concurrentResolvedBodies.flatMap((body) => {
+        return body.refreshedConnectors;
+      }),
+    ).toStrictEqual([custom.id]);
+    expect(
+      concurrentResolvedBodies.flatMap((body) => {
+        return body.refreshedSecrets;
+      }),
+    ).toStrictEqual([secretKey]);
     expect(
       provider.tokenBodies.map((body) => {
         return body.get("grant_type");
@@ -8478,9 +8488,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: {
         Authorization: "Bearer custom-oauth-refreshed-access-token",
       },
+      expiresAt: Math.floor((firstRefreshAt + 3_600_000) / 1000),
+      refreshedConnectors: [],
+      refreshedSecrets: [],
     });
     expect(provider.tokenBodies).toHaveLength(2);
 
+    const forceRefreshAt = firstRefreshAt + 10 * 60_000;
+    mockNow(forceRefreshAt);
     const forceResolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       { ...currentAuthBody, forceRefresh: true },
@@ -8490,6 +8505,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: {
         Authorization: "Bearer custom-oauth-force-refreshed-access-token",
       },
+      expiresAt: Math.floor((forceRefreshAt + 3_600_000) / 1000),
+      refreshedConnectors: [custom.id],
+      refreshedSecrets: [secretKey],
     });
     expect(
       provider.tokenBodies.map((body) => {
@@ -8505,18 +8523,34 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectedBasicAuthorization,
     ]);
 
+    const failedRefresh = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      { ...currentAuthBody, forceRefresh: true },
+      [502],
+    );
+    if (failedRefresh.status !== 502) {
+      throw new Error("Expected custom OAuth refresh failure");
+    }
+    expect(failedRefresh.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "upstream_provider",
+    });
+
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("marks a custom OAuth connection for reconnect after invalid_grant", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
       refreshResponse: () => {
         return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
       },
     });
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
-    const { actor, agentId } = await entitledRunActor();
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD Revoked OAuth 2.0 Runtime API",
@@ -8560,6 +8594,52 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       agentId,
       prompt: "use the revoked OAuth custom connector",
       modelProvider: "anthropic-api-key",
+    });
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code"]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(firstRun.runId);
+    const [runtimeResult] = await api.syncConnectorRuntime(firstRun.runId, {
+      targets: [{ kind: "custom", customConnectorId: custom.id }],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
+    mockNow(now() + 2 * 3_600_000);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const reconnectRequired = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [502],
+    );
+    if (reconnectRequired.status !== 502) {
+      throw new Error("Expected custom OAuth reconnect requirement");
+    }
+    expect(reconnectRequired.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "reconnect_required",
+    });
+    const stillReconnectRequired = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [502],
+    );
+    if (stillReconnectRequired.status !== 502) {
+      throw new Error("Expected persisted custom OAuth reconnect requirement");
+    }
+    expect(stillReconnectRequired.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "reconnect_required",
     });
     expect(
       provider.tokenBodies.map((body) => {
@@ -9566,11 +9646,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
       {
-        targets: [{ kind: "builtin", connectorSlug: "slack" }],
+        targets: [
+          { kind: "builtin", connectorSlug: "missing-builtin" },
+          { kind: "builtin", connectorSlug: "slack" },
+        ],
       },
       [200],
     );
     expect(sameUserRuntime.body.results[0]).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "missing-builtin" },
+      state: "unresolved",
+      reason: "connector-unavailable",
+    });
+    expect(sameUserRuntime.body.results[1]).toMatchObject({
       target: { kind: "builtin", connectorSlug: "slack" },
       state: "available",
       nextSyncAt: expect.any(String),

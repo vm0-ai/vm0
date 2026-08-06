@@ -1,5 +1,5 @@
 import type {
-  ConnectorRuntimeAbsentReason,
+  ConnectorRuntimeCustomAbsentReason,
   ConnectorRuntimeSyncResult,
   ConnectorRuntimeTarget,
 } from "@vm0/api-contracts/contracts/runners";
@@ -11,7 +11,6 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { settle } from "../utils";
-import { nowDate } from "../../lib/time";
 import {
   buildCustomConnectorRuntimeContext,
   customConnectorRuntimeExecutionState,
@@ -38,7 +37,6 @@ interface ConnectorRuntimeScope {
 }
 
 interface CustomConnectionSnapshot {
-  readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
   readonly secrets: readonly {
     readonly name: string;
@@ -55,18 +53,12 @@ interface CustomTargetSnapshot {
 export interface ConnectorRuntimeResolution {
   readonly result: ConnectorRuntimeSyncResult;
   readonly customAuthRefs?: readonly CustomConnectorAuthRef[];
-  readonly customAuthExpiresAt?: string;
+  readonly customAuthState?: "reconnect-required";
 }
 
-function targetKey(target: ConnectorRuntimeTarget): string {
-  return target.kind === "builtin"
-    ? `builtin:${target.connectorSlug}`
-    : `custom:${target.customConnectorId}`;
-}
-
-function absentResult(
-  target: ConnectorRuntimeTarget,
-  reason: ConnectorRuntimeAbsentReason,
+function customAbsentResult(
+  target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>,
+  reason: ConnectorRuntimeCustomAbsentReason,
 ): ConnectorRuntimeResolution {
   return {
     result: {
@@ -77,10 +69,21 @@ function absentResult(
   };
 }
 
+function builtinUnresolvedResult(
+  target: Extract<ConnectorRuntimeTarget, { readonly kind: "builtin" }>,
+): ConnectorRuntimeResolution {
+  return {
+    result: {
+      target,
+      state: "unresolved",
+      reason: "connector-unavailable",
+    },
+  };
+}
+
 function connectionSnapshots(
   rows: readonly {
     readonly customConnectorId: string;
-    readonly tokenExpiresAt: Date | null;
     readonly needsReconnect: boolean;
     readonly secretName: string | null;
     readonly encryptedValue: string | null;
@@ -96,7 +99,6 @@ function connectionSnapshots(
     let connection = grouped.get(row.customConnectorId);
     if (!connection) {
       connection = {
-        tokenExpiresAt: row.tokenExpiresAt,
         needsReconnect: row.needsReconnect,
         secrets: [],
       };
@@ -171,19 +173,11 @@ function customCredentialsAvailable(
   });
 }
 
-async function loadSnapshot(args: {
+async function loadCustomSnapshot(args: {
   readonly db: Db;
   readonly scope: ConnectorRuntimeScope;
-  readonly targets: readonly ConnectorRuntimeTarget[];
-  readonly checkedAt: Date;
+  readonly customConnectorIds: readonly string[];
 }) {
-  const builtinTargets = args.targets.filter((target) => {
-    return target.kind === "builtin";
-  });
-  const customConnectorIds = args.targets.flatMap((target) => {
-    return target.kind === "custom" ? [target.customConnectorId] : [];
-  });
-
   return await args.db.transaction(
     async (tx) => {
       const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(tx);
@@ -192,32 +186,10 @@ async function loadSnapshot(args: {
         args.scope.orgId,
         args.scope.userId,
       );
-      const builtinRefreshes =
-        builtinTargets.length === 0
-          ? []
-          : await resolveActiveNetworkPolicyRefreshes(
-              tx,
-              args.scope,
-              builtinTargets.map((target) => {
-                return target.connectorSlug;
-              }),
-              connectorCatalogSnapshot,
-              args.checkedAt,
-            );
-
-      if (customConnectorIds.length === 0) {
-        return {
-          connectorCatalogSnapshot,
-          featureSwitchContext,
-          builtinRefreshes,
-          customTargets: new Map<string, CustomTargetSnapshot>(),
-        };
-      }
-
       const runtimeRows = await loadCustomConnectorRuntimeData(tx, {
         orgId: args.scope.orgId,
         userId: args.scope.userId,
-        connectorIds: customConnectorIds,
+        connectorIds: args.customConnectorIds,
       });
       const grantRows = await tx
         .select({
@@ -231,13 +203,15 @@ async function loadSnapshot(args: {
             eq(userCustomConnectors.orgId, args.scope.orgId),
             eq(userCustomConnectors.userId, args.scope.userId),
             eq(userCustomConnectors.agentId, args.scope.agentId),
-            inArray(userCustomConnectors.customConnectorId, customConnectorIds),
+            inArray(
+              userCustomConnectors.customConnectorId,
+              args.customConnectorIds,
+            ),
           ),
         );
       const connectionRows = await tx
         .select({
           customConnectorId: connectors.customConnectorId,
-          tokenExpiresAt: connectors.tokenExpiresAt,
           needsReconnect: connectors.needsReconnect,
           secretName: secrets.name,
           encryptedValue: secrets.encryptedValue,
@@ -248,7 +222,7 @@ async function loadSnapshot(args: {
           and(
             eq(connectors.orgId, args.scope.orgId),
             eq(connectors.userId, args.scope.userId),
-            inArray(connectors.customConnectorId, customConnectorIds),
+            inArray(connectors.customConnectorId, args.customConnectorIds),
           ),
         );
       const connections = connectionSnapshots(
@@ -281,7 +255,6 @@ async function loadSnapshot(args: {
       return {
         connectorCatalogSnapshot,
         featureSwitchContext,
-        builtinRefreshes,
         customTargets,
       };
     },
@@ -291,18 +264,24 @@ async function loadSnapshot(args: {
 
 async function resolveCustomTarget(args: {
   readonly target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>;
-  readonly snapshot: Awaited<ReturnType<typeof loadSnapshot>>;
+  readonly snapshot: Awaited<ReturnType<typeof loadCustomSnapshot>>;
 }): Promise<ConnectorRuntimeResolution> {
   const custom = args.snapshot.customTargets.get(args.target.customConnectorId);
   if (!custom) {
-    return absentResult(args.target, "connector-unavailable");
+    return customAbsentResult(args.target, "connector-unavailable");
   }
   if (!custom.grant) {
-    return absentResult(args.target, "grant-unavailable");
+    return customAbsentResult(args.target, "grant-unavailable");
   }
   const values = valuesWithOAuthAccessToken(custom);
   if (!customCredentialsAvailable(custom, values)) {
-    return absentResult(args.target, "credentials-unavailable");
+    const resolution = customAbsentResult(
+      args.target,
+      "credentials-unavailable",
+    );
+    return custom.connection?.needsReconnect
+      ? { ...resolution, customAuthState: "reconnect-required" }
+      : resolution;
   }
   const row = { ...custom.row, values };
   const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle({
@@ -310,7 +289,7 @@ async function resolveCustomTarget(args: {
     snapshot: args.snapshot.connectorCatalogSnapshot,
   });
   if (permissionBundle === undefined) {
-    return absentResult(args.target, "permission-bundle-unavailable");
+    return customAbsentResult(args.target, "permission-bundle-unavailable");
   }
 
   const contextResult = await settle(
@@ -323,7 +302,10 @@ async function resolveCustomTarget(args: {
   );
   if (!contextResult.ok) {
     if (contextResult.error instanceof CustomConnectorRuntimePrefixError) {
-      return absentResult(args.target, "runtime-configuration-unavailable");
+      return customAbsentResult(
+        args.target,
+        "runtime-configuration-unavailable",
+      );
     }
     throw contextResult.error;
   }
@@ -332,7 +314,7 @@ async function resolveCustomTarget(args: {
     connectorId: args.target.customConnectorId,
   });
   if (!state) {
-    return absentResult(args.target, "runtime-configuration-unavailable");
+    return customAbsentResult(args.target, "runtime-configuration-unavailable");
   }
   const result = {
     target: args.target,
@@ -349,8 +331,6 @@ async function resolveCustomTarget(args: {
       },
     },
     customAuthRefs: state.authRefs,
-    customAuthExpiresAt:
-      custom.connection?.tokenExpiresAt?.toISOString() ?? undefined,
   };
 }
 
@@ -359,17 +339,28 @@ export async function resolveConnectorRuntimeTargets(args: {
   readonly scope: ConnectorRuntimeScope;
   readonly targets: readonly ConnectorRuntimeTarget[];
 }): Promise<readonly ConnectorRuntimeResolution[]> {
-  const snapshot = await loadSnapshot({
-    db: args.db,
-    scope: args.scope,
-    targets: args.targets,
-    checkedAt: nowDate(),
+  const builtinConnectorSlugs = args.targets.flatMap((target) => {
+    return target.kind === "builtin" ? [target.connectorSlug] : [];
   });
-  const builtinByTarget = new Map<
-    string,
-    (typeof snapshot.builtinRefreshes)[number]
-  >(
-    snapshot.builtinRefreshes.map((refresh) => {
+  const customConnectorIds = args.targets.flatMap((target) => {
+    return target.kind === "custom" ? [target.customConnectorId] : [];
+  });
+  const [builtinRefreshes, customSnapshot] = await Promise.all([
+    resolveActiveNetworkPolicyRefreshes(
+      args.db,
+      args.scope,
+      builtinConnectorSlugs,
+    ),
+    customConnectorIds.length > 0
+      ? loadCustomSnapshot({
+          db: args.db,
+          scope: args.scope,
+          customConnectorIds,
+        })
+      : undefined,
+  ]);
+  const builtinByTarget = new Map(
+    builtinRefreshes.map((refresh) => {
       return [`builtin:${refresh.connectorSlug}`, refresh] as const;
     }),
   );
@@ -377,10 +368,15 @@ export async function resolveConnectorRuntimeTargets(args: {
   const results: ConnectorRuntimeResolution[] = [];
   for (const target of args.targets) {
     if (target.kind === "custom") {
-      results.push(await resolveCustomTarget({ target, snapshot }));
+      if (!customSnapshot) {
+        throw new Error("Custom connector runtime snapshot is unavailable");
+      }
+      results.push(
+        await resolveCustomTarget({ target, snapshot: customSnapshot }),
+      );
       continue;
     }
-    const refresh = builtinByTarget.get(targetKey(target));
+    const refresh = builtinByTarget.get(`builtin:${target.connectorSlug}`);
     results.push(
       refresh
         ? {
@@ -393,7 +389,7 @@ export async function resolveConnectorRuntimeTargets(args: {
                 : {}),
             },
           }
-        : absentResult(target, "connector-unavailable"),
+        : builtinUnresolvedResult(target),
     );
   }
   return results;
