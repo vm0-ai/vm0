@@ -468,22 +468,20 @@ class _UsageBufferState:
         if retained_batches:
             retained_flush = _pending_flush_from_pending_batches(flush_sequence, retained_batches)
             retained_flush.retry_after_flush_generation = flush_generation
-            self._insert_pending_flush(retained_flush)
+            retained_batch_index = retained_flush.batches[0].flush_batch_index
+            for index, pending_flush in enumerate(self._pending_flushes):
+                if (
+                    pending_flush.flush_sequence == retained_flush.flush_sequence
+                    and pending_flush.batches[0].flush_batch_index > retained_batch_index
+                ):
+                    self._pending_flushes.insert(index, retained_flush)
+                    break
+            else:
+                self._pending_flushes.append(retained_flush)
         return _RetainBatchesResult(
             retained_batches=retained_batches,
             dropped_batches=dropped_batches,
         )
-
-    def _insert_pending_flush(self, retained_flush: _PendingFlush) -> None:
-        retained_batch_index = retained_flush.batches[0].flush_batch_index
-        for index, pending_flush in enumerate(self._pending_flushes):
-            if (
-                pending_flush.flush_sequence == retained_flush.flush_sequence
-                and pending_flush.batches[0].flush_batch_index > retained_batch_index
-            ):
-                self._pending_flushes.insert(index, retained_flush)
-                return
-        self._pending_flushes.append(retained_flush)
 
     def buffered_source_event_count(self) -> int:
         return (
