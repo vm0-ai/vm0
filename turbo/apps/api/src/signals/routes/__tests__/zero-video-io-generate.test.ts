@@ -57,6 +57,8 @@ const KLING_STATUS_URL =
 const KLING_RESPONSE_URL =
   "https://queue.fal.run/fal-ai/kling-video/v3/4k/text-to-video/requests/kling-video-request/response";
 const KLING_VIDEO_URL = "https://v3b.fal.media/files/kling-output.mp4";
+const CLOUDFLARE_MEDIA_FRAME_URL =
+  /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//u;
 const WEB_ORIGIN = "https://www.vm0.test";
 
 const VIDEO_PRICING_DEFAULTS = [
@@ -409,6 +411,13 @@ describe("POST /api/zero/video-io/generate", () => {
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    server.use(
+      http.get(CLOUDFLARE_MEDIA_FRAME_URL, () => {
+        return new HttpResponse("video poster unavailable in route fixture", {
+          status: 404,
+        });
+      }),
+    );
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
