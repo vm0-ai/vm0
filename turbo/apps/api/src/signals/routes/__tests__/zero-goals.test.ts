@@ -355,7 +355,10 @@ describe("zero goals", () => {
       isGoalRun: true,
       userMessage: {
         version: 1,
-        parts: [{ type: "goal", goalBrief: "bootstrap autonomously" }],
+        parts: [
+          { type: "goal", goalBrief: "bootstrap autonomously" },
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
       },
     });
     if (!claimedGoalEvent) {

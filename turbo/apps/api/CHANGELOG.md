@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.389.0](https://github.com/vm0-ai/vm0/compare/api-v1.388.0...api-v1.389.0) (2026-08-06)
+
+
+### Features
+
+* **billing:** update concurrency slots in existing subscription ([#25473](https://github.com/vm0-ai/vm0/issues/25473)) ([061b9ad](https://github.com/vm0-ai/vm0/commit/061b9ad443dc09738005ac3d9a8f6393449f361a))
+
+
+### Refactoring
+
+* **api:** select vm0 API keys by vendor ([#25484](https://github.com/vm0-ai/vm0/issues/25484)) ([1bbf711](https://github.com/vm0-ai/vm0/commit/1bbf71139e079b73bd5ac4b8375ea0aef71f3fee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.282.0
+    * @vm0/core bumped to 8.524.2
+    * @vm0/db bumped to 1.172.1
+
 ## [1.388.0](https://github.com/vm0-ai/vm0/compare/api-v1.387.0...api-v1.388.0) (2026-08-06)
 
 

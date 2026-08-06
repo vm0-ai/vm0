@@ -8,7 +8,7 @@ import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contrac
 import {
   chatThreadsContract,
   type ChatEvent,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
@@ -404,7 +404,7 @@ async function sendNoCreditMessage(
     readonly agentId: string;
     readonly threadId?: string;
     readonly prompt: string;
-    readonly userMessage?: UserMessageDocument;
+    readonly userMessage?: UserMessageInputDocument;
   },
 ): Promise<string> {
   await api.ensureOrgModelProvider(actor);

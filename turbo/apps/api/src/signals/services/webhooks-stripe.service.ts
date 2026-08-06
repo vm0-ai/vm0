@@ -92,6 +92,7 @@ interface InvoiceInput {
   readonly lines: {
     readonly data: readonly {
       readonly id?: string;
+      readonly amount?: number;
       readonly quantity?: number | null;
       readonly price?: { readonly id: string } | null;
       readonly pricing?: {
@@ -2725,7 +2726,11 @@ function concurrencyInvoiceLines(
 ): readonly { readonly line: InvoiceLineInput; readonly index: number }[] {
   return invoice.lines.data.flatMap((line, index) => {
     const priceId = invoiceLinePriceId(line);
-    return priceId && isConcurrencyPriceId(priceId) ? [{ line, index }] : [];
+    return priceId &&
+      isConcurrencyPriceId(priceId) &&
+      (line.amount === undefined || line.amount >= 0)
+      ? [{ line, index }]
+      : [];
   });
 }
 

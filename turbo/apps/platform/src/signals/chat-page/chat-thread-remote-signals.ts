@@ -7,7 +7,7 @@ import {
   chatThreadModelSelectionContract,
   type CodexServiceTier,
   type PersistedAttachment,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
@@ -45,7 +45,7 @@ interface ChatThreadRealtimeHandlers {
 
 interface PatchDraftArgs {
   readonly threadId: string;
-  readonly userMessage: UserMessageDocument | null;
+  readonly userMessage: UserMessageInputDocument | null;
   readonly attachments: PersistedAttachment[] | null;
 }
 

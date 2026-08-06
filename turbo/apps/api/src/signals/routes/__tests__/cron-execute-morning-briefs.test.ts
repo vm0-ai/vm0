@@ -11,7 +11,7 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
   type GenerationTemplateRequest,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -1024,7 +1024,7 @@ describe("cron execute morning briefs", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
