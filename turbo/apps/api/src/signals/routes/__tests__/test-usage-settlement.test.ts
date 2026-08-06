@@ -294,15 +294,23 @@ describe("POST /api/test/usage-settlement/process", () => {
   it("consumes purchased grants by FEFO before bonus and shared credits", async () => {
     const fixture = await setupSettlementFixture(100);
     const provider = await seedSettlementPricing();
-    const bonusKey = `bonus-${randomUUID()}`;
+    const earlyBonusKey = `bonus-early-${randomUUID()}`;
+    const lateBonusKey = `bonus-late-${randomUUID()}`;
     const earlyPurchasedKey = `purchased-early-${randomUUID()}`;
     const latePurchasedKey = `purchased-late-${randomUUID()}`;
     await createGrant({
       fixture,
       grantType: "bonus",
-      idempotencyKey: bonusKey,
+      idempotencyKey: earlyBonusKey,
       amount: 5,
       expiresAt: "2028-01-01T00:00:00.000Z",
+    });
+    await createGrant({
+      fixture,
+      grantType: "bonus",
+      idempotencyKey: lateBonusKey,
+      amount: 6,
+      expiresAt: "2031-01-01T00:00:00.000Z",
     });
     await createGrant({
       fixture,
@@ -318,22 +326,57 @@ describe("POST /api/test/usage-settlement/process", () => {
       amount: 3,
       expiresAt: "2029-01-01T00:00:00.000Z",
     });
-    await insertCharge({ fixture, provider, amount: 14 });
 
+    await insertCharge({ fixture, provider, amount: 5 });
     await processSettlement(fixture.orgId);
-    const state = await readSettlementState(fixture.orgId);
-    const remainingByKey = Object.fromEntries(
-      state.body.grants.map((grant) => {
-        return [grant.idempotency_key, grant.remaining_amount];
-      }),
-    );
+    const afterPurchasedFefo = await readSettlementState(fixture.orgId);
+    expect(
+      Object.fromEntries(
+        afterPurchasedFefo.body.grants.map((grant) => {
+          return [grant.idempotency_key, grant.remaining_amount];
+        }),
+      ),
+    ).toStrictEqual({
+      [earlyBonusKey]: 5,
+      [lateBonusKey]: 6,
+      [earlyPurchasedKey]: 0,
+      [latePurchasedKey]: 2,
+    });
+    expect(afterPurchasedFefo.body.org_credits).toBe(100);
 
-    expect(remainingByKey).toStrictEqual({
-      [bonusKey]: 0,
+    await insertCharge({ fixture, provider, amount: 5 });
+    await processSettlement(fixture.orgId);
+    const afterSourcePriority = await readSettlementState(fixture.orgId);
+    expect(
+      Object.fromEntries(
+        afterSourcePriority.body.grants.map((grant) => {
+          return [grant.idempotency_key, grant.remaining_amount];
+        }),
+      ),
+    ).toStrictEqual({
+      [earlyBonusKey]: 2,
+      [lateBonusKey]: 6,
       [earlyPurchasedKey]: 0,
       [latePurchasedKey]: 0,
     });
-    expect(state.body.org_credits).toBe(98);
+    expect(afterSourcePriority.body.org_credits).toBe(100);
+
+    await insertCharge({ fixture, provider, amount: 10 });
+    await processSettlement(fixture.orgId);
+    const afterBonusFefo = await readSettlementState(fixture.orgId);
+    expect(
+      Object.fromEntries(
+        afterBonusFefo.body.grants.map((grant) => {
+          return [grant.idempotency_key, grant.remaining_amount];
+        }),
+      ),
+    ).toStrictEqual({
+      [earlyBonusKey]: 0,
+      [lateBonusKey]: 0,
+      [earlyPurchasedKey]: 0,
+      [latePurchasedKey]: 0,
+    });
+    expect(afterBonusFefo.body.org_credits).toBe(98);
   });
 
   it("isolates member grants and excludes expired grants", async () => {

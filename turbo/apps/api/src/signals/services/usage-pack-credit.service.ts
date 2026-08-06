@@ -4,6 +4,9 @@ import { and, eq, gt, sql, sum } from "drizzle-orm";
 import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
+import { settle } from "../utils";
+
+const PG_UNDEFINED_TABLE = "42P01";
 
 interface UsagePackCreditGrantArgs {
   readonly orgId: string;
@@ -17,6 +20,21 @@ interface UsagePackCreditGrantArgs {
 interface UsagePackCreditGrantResult {
   readonly id: string;
   readonly created: boolean;
+}
+
+export function isUsagePackCreditGrantTableUnavailable(
+  error: unknown,
+): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const { cause } = error;
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    cause.code === PG_UNDEFINED_TABLE
+  );
 }
 
 export async function createUsagePackCreditGrant(
@@ -75,21 +93,32 @@ export async function getSpendableUsagePackCredits(
     readonly at?: Date;
   },
 ): Promise<number> {
-  const [row] = await db
-    .select({
-      total:
-        sql`COALESCE(${sum(usagePackCreditGrants.remainingAmount)}, 0)::bigint`
-          .mapWith(pgInt8ToSafeIntegerDecoder)
-          .as("total"),
-    })
-    .from(usagePackCreditGrants)
-    .where(
-      and(
-        eq(usagePackCreditGrants.orgId, args.orgId),
-        eq(usagePackCreditGrants.userId, args.userId),
-        gt(usagePackCreditGrants.remainingAmount, 0),
-        gt(usagePackCreditGrants.expiresAt, args.at ?? nowDate()),
+  const result = await settle(
+    db
+      .select({
+        total:
+          sql`COALESCE(${sum(usagePackCreditGrants.remainingAmount)}, 0)::bigint`
+            .mapWith(pgInt8ToSafeIntegerDecoder)
+            .as("total"),
+      })
+      .from(usagePackCreditGrants)
+      .where(
+        and(
+          eq(usagePackCreditGrants.orgId, args.orgId),
+          eq(usagePackCreditGrants.userId, args.userId),
+          gt(usagePackCreditGrants.remainingAmount, 0),
+          gt(usagePackCreditGrants.expiresAt, args.at ?? nowDate()),
+        ),
       ),
-    );
-  return row?.total ?? 0;
+  );
+  if (!result.ok) {
+    // Migration 0841 runs before API promotion, but rollback and isolated
+    // probes can briefly execute this reader without the table. Remove after
+    // 0841 is present in every supported API rollback database.
+    if (isUsagePackCreditGrantTableUnavailable(result.error)) {
+      return 0;
+    }
+    throw result.error;
+  }
+  return result.value[0]?.total ?? 0;
 }
