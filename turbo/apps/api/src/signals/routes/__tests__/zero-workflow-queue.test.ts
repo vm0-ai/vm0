@@ -863,7 +863,7 @@ describe("workflow queue", () => {
       webhookAutomation.threadId,
       created.body.id,
     );
-    if (!pendingTick) {
+    if (!pendingTick?.userMessage) {
       throw new Error("Expected the schedule tick to remain pending");
     }
     const admittedTriggerBrief =
@@ -905,7 +905,13 @@ describe("workflow queue", () => {
     if (claimedTick?.eventType !== "input.prompt") {
       throw new Error("Expected the schedule tick to be claimed");
     }
-    expect(claimedTick.userMessage).toStrictEqual(pendingTick.userMessage);
+    expect(claimedTick.userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        ...pendingTick.userMessage.parts,
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
     expect(chatEventDisplayText(claimedTick)).toBe(admittedDisplayPrompt);
     expect(chatEventAutomationPart(claimedTick)?.automationBrief).toBe(
       admittedTriggerBrief,

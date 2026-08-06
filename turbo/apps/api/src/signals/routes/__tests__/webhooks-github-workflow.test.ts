@@ -715,6 +715,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     });
     if (
       admittedEvent?.eventType !== "input.automation" ||
+      !admittedEvent.userMessage ||
       claimedEvent?.eventType !== "input.prompt"
     ) {
       throw new Error("Expected admitted and claimed workflow chat events");
@@ -723,7 +724,13 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       chatEventAutomationPart(admittedEvent)?.automationBrief,
     ).toBeUndefined();
     expect(chatEventDisplayText(admittedEvent)).toBe(displayPrompt);
-    expect(claimedEvent.userMessage).toStrictEqual(admittedEvent.userMessage);
+    expect(claimedEvent.userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        ...admittedEvent.userMessage.parts,
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
     expect(chatEventDisplayText(claimedEvent)).toBe(displayPrompt);
     const claim = await runsApi.claimRunnerJob(runId);
     const zeroToken = claim.environment?.ZERO_TOKEN;

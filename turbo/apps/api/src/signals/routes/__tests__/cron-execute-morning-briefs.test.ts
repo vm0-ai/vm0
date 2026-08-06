@@ -832,6 +832,7 @@ describe("cron execute morning briefs", () => {
         parts: [
           { type: "text", text: chatMessage },
           { type: "morning_brief", briefDate: BRIEF_DATE },
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
         ],
       },
     });
