@@ -17,7 +17,6 @@ import {
 } from "@vm0/ui";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   clearCustomConnectorSecret$,
   closeCustomConnectorDialog$,
@@ -29,16 +28,12 @@ import {
   openCustomConnectorConnectDialog$,
   openCustomConnectorDeleteDialog$,
   openCustomConnectorEditDialog$,
-  openCustomConnectorRenameDialog$,
-  setCustomConnectorRenameInput$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 import { CustomConnectorCreateDialog } from "./custom-connector-create-dialog.tsx";
-import { CustomConnectorRenameDialog } from "./custom-connector-rename-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./custom-connector-connect-dialog.tsx";
 import { CustomConnectorDeleteConfirm } from "./custom-connector-delete-confirm.tsx";
 import { CustomConnectorAccessManagementDialog } from "./connector-access-management-dialog.tsx";
@@ -50,14 +45,8 @@ const CUSTOM_CONNECTOR_AGENT_NAME_MAX_CHARS = 12;
 
 function connectsDirectlyWithOAuth(
   connector: CustomConnectorResponse,
-  oauth2Enabled: boolean,
-  feishuEnabled: boolean,
 ): boolean {
-  return (
-    connector.authMode === "oauth" &&
-    (oauth2Enabled ||
-      (feishuEnabled && connector.oauthConfig?.providerAdapter === "feishu"))
-  );
+  return connector.authMode === "oauth";
 }
 
 function customConnectorAgentName(
@@ -187,10 +176,7 @@ interface CustomConnectorRowProps {
   readonly onConnect: () => void;
   readonly onDisconnect: () => void;
   readonly onEdit: () => void;
-  readonly onRename: () => void;
   readonly onManageAccess: () => void;
-  readonly fullEditingEnabled: boolean;
-  readonly feishuEnabled: boolean;
   readonly onDelete: () => void;
 }
 
@@ -264,21 +250,14 @@ function CustomConnectorRow({
   onConnect,
   onDisconnect,
   onEdit,
-  onRename,
   onManageAccess,
-  fullEditingEnabled,
-  feishuEnabled,
   onDelete,
 }: CustomConnectorRowProps) {
   const { t } = useTranslation();
   const adminCanManage =
     isAdmin && connector.oauthConfig?.providerAdapter !== "feishu";
   const hasActions = connector.connected || adminCanManage;
-  const directOAuth = connectsDirectlyWithOAuth(
-    connector,
-    fullEditingEnabled,
-    feishuEnabled,
-  );
+  const directOAuth = connectsDirectlyWithOAuth(connector);
   const cardContent = (
     <CustomConnectorCardContent
       connector={connector}
@@ -347,16 +326,10 @@ function CustomConnectorRow({
               )}
               {adminCanManage && (
                 <>
-                  <DropdownMenuModalItem
-                    onModalSelect={fullEditingEnabled ? onEdit : onRename}
-                  >
-                    {fullEditingEnabled
-                      ? t(($) => {
-                          return $.connectors.actions.edit;
-                        })
-                      : t(($) => {
-                          return $.connectors.actions.rename;
-                        })}
+                  <DropdownMenuModalItem onModalSelect={onEdit}>
+                    {t(($) => {
+                      return $.connectors.actions.edit;
+                    })}
                   </DropdownMenuModalItem>
                   <DropdownMenuModalItem
                     onModalSelect={onDelete}
@@ -384,12 +357,6 @@ function CustomConnectorDialogs() {
       {dialog.kind === "create" && <CustomConnectorCreateDialog />}
       {dialog.kind === "edit" && (
         <CustomConnectorCreateDialog connector={dialog.connector} />
-      )}
-      {dialog.kind === "rename" && (
-        <CustomConnectorRenameDialog
-          id={dialog.connector.id}
-          currentDisplayName={dialog.connector.displayName}
-        />
       )}
       {dialog.kind === "connect" && (
         <CustomConnectorConnectDialog connector={dialog.connector} />
@@ -423,18 +390,11 @@ export function CustomConnectorsPanel() {
   const authorizedAgentsLoading =
     authorizedAgentsByIdLoadable.state === "loading";
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
-  const featureSwitches = useGet(featureSwitch$);
-  const fullEditingEnabled =
-    featureSwitches[FeatureSwitchKey.CustomConnectorOAuth2] ?? false;
-  const feishuEnabled =
-    featureSwitches[FeatureSwitchKey.FeishuIntegration] ?? false;
   const openEdit = useSet(openCustomConnectorEditDialog$);
-  const openRename = useSet(openCustomConnectorRenameDialog$);
   const openAccess = useSet(openCustomConnectorAccessDialog$);
   const openConnect = useSet(openCustomConnectorConnectDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
   const connectOAuth2 = useSet(connectCustomConnectorOAuth2$);
-  const setRenameInput = useSet(setCustomConnectorRenameInput$);
   const clearSecret = useSet(clearCustomConnectorSecret$);
   const signal = useGet(pageSignal$);
 
@@ -442,15 +402,8 @@ export function CustomConnectorsPanel() {
     detach(clearSecret(connector.id, signal), Reason.DomCallback);
   };
 
-  const handleRename = (connector: CustomConnectorResponse) => {
-    setRenameInput(connector.displayName);
-    openRename(connector);
-  };
-
   const handleConnect = (connector: CustomConnectorResponse) => {
-    if (
-      connectsDirectlyWithOAuth(connector, fullEditingEnabled, feishuEnabled)
-    ) {
+    if (connectsDirectlyWithOAuth(connector)) {
       detach(connectOAuth2(connector.id, signal), Reason.DomCallback);
       return;
     }
@@ -499,14 +452,9 @@ export function CustomConnectorsPanel() {
                 onEdit={() => {
                   return openEdit(c);
                 }}
-                onRename={() => {
-                  return handleRename(c);
-                }}
                 onManageAccess={() => {
                   return openAccess(c);
                 }}
-                fullEditingEnabled={fullEditingEnabled}
-                feishuEnabled={feishuEnabled}
                 onDelete={() => {
                   return openDelete(c);
                 }}
