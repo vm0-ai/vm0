@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingUsagePackCheckoutContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -11,6 +12,7 @@ import {
   zeroBillingDowngradeContract,
   zeroBillingRestoreContract,
   type BillingStatusResponse,
+  type MemberUsagePack,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
@@ -365,6 +367,56 @@ export const startCheckout$ = command(
     } else {
       window.location.href = result.body.url;
       // Don't reset loading — page is navigating away
+    }
+  },
+);
+
+export const startUsagePackCheckout$ = command(
+  async (
+    { get },
+    args: {
+      readonly tier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
+    newTab: boolean,
+    signal: AbortSignal,
+  ) => {
+    const currentUrl = window.location.href;
+    const successUrl = new URL(currentUrl);
+    successUrl.searchParams.set("billing", args.tier);
+    successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
+    applyStoredAdAttribution(successUrl);
+    const stripeSuccessUrl = successUrl
+      .toString()
+      .replace(
+        "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
+        "billing_session_id={CHECKOUT_SESSION_ID}",
+      );
+    const cancelUrl = new URL(currentUrl);
+    cancelUrl.searchParams.set("billing", "canceled");
+    applyStoredAdAttribution(cancelUrl);
+    const adAttribution = getStoredAdAttributionMetadata();
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackCheckoutContract);
+    const result = await accept(
+      client.create({
+        body: {
+          tier: args.tier,
+          memberUsagePacks: [...args.memberUsagePacks],
+          successUrl: stripeSuccessUrl,
+          cancelUrl: cancelUrl.toString(),
+          ...(adAttribution === undefined ? {} : { adAttribution }),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
     }
   },
 );

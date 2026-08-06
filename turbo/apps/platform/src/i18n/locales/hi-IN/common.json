@@ -962,7 +962,6 @@
       "usagePacks": {
         "bonusCredits": "+{{value}} बोनस क्रेडिट",
         "changePlan": "प्लान बदलें",
-        "checkoutComingSoon": "चेकआउट जल्द उपलब्ध होगा",
         "choosePlan": "प्लान चुनें",
         "choosePlanDescription": "पहले वर्कस्पेस प्लान चुनें। सदस्य पैकेज अगले चरण में कॉन्फ़िगर किए जाते हैं।",
         "configurePackages": "सदस्य पैकेज कॉन्फ़िगर करें",

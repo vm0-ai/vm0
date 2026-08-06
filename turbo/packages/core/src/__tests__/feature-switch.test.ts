@@ -128,6 +128,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -152,6 +153,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
