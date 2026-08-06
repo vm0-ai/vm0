@@ -471,10 +471,47 @@ export const webhookEventsContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
     summary: "Receive agent events from sandbox",
+  },
+});
+
+const piTranscriptMessageSchema = z.object({
+  ordinal: z.number().int().positive(),
+  messageId: z.string(),
+  runId: z.string(),
+  runEventSequenceNumber: z.number().int().nonnegative(),
+  role: z.string(),
+  payload: z.unknown(),
+  createdAt: z.string(),
+});
+
+/**
+ * Pi transcript read contract for /api/webhooks/agent/pi-transcript.
+ * Returns the latest-version Pi transcript of the chat thread the run
+ * belongs to, for sandbox handoff/resume.
+ */
+export const webhookPiTranscriptContract = c.router({
+  read: {
+    method: "GET",
+    path: "/api/webhooks/agent/pi-transcript",
+    headers: authHeadersSchema,
+    query: z.object({
+      runId: z.string().min(1, "runId is required"),
+    }),
+    responses: {
+      200: z.object({
+        version: z.number().int().positive(),
+        lastOrdinal: z.number().int().nonnegative(),
+        messages: z.array(piTranscriptMessageSchema),
+      }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Read the Pi transcript for the run's chat thread",
   },
 });
 

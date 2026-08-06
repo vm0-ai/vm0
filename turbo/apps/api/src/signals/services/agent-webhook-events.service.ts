@@ -5,7 +5,11 @@ import type {
   AgentEvent,
   EventConsumerPayload,
 } from "../../lib/event-consumer/verify";
-import { eventDeliveryUnavailable } from "../../lib/error";
+import {
+  badRequestMessage,
+  conflict,
+  eventDeliveryUnavailable,
+} from "../../lib/error";
 import { logger } from "../../lib/log";
 import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { now } from "../../lib/time";
@@ -18,6 +22,10 @@ import {
   publishMaterializedChatProjection,
   type MaterializedChatProjection,
 } from "./agent-event-consumer-run-output.service";
+import {
+  PiTranscriptConflictError,
+  PiTranscriptRejectedError,
+} from "./pi-transcript.service";
 import { refreshTelegramTypingEvents$ } from "./agent-event-consumer-telegram-typing.service";
 import { settle, tapError } from "../utils";
 
@@ -218,6 +226,16 @@ export const receiveAgentEvents$ = command(
     );
     signal.throwIfAborted();
     if (!projectionResult.ok) {
+      if (projectionResult.error instanceof PiTranscriptRejectedError) {
+        return {
+          response: badRequestMessage(projectionResult.error.message),
+        };
+      }
+      if (projectionResult.error instanceof PiTranscriptConflictError) {
+        return {
+          response: conflict(projectionResult.error.message),
+        };
+      }
       if (isForeignKeyViolation(projectionResult.error)) {
         L.debug("Ignored events for deleted run", {
           runId: payload.runId,
