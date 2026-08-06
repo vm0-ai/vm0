@@ -182,6 +182,9 @@ describe("PiLoop edge turn", () => {
       },
       [200],
     );
+    if (standbyPoll.status !== 200) {
+      throw new Error("Expected Pi standby poll to return 200");
+    }
     expect(standbyPoll.body.job).toMatchObject({
       runId: edge.runId,
       experimentalProfile: "vm0/pi-standby",
