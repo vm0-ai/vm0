@@ -26,12 +26,24 @@ export interface PiEdgeTurnArgs {
  */
 export const PI_STANDBY_PROFILE = "vm0/pi-standby";
 
-const PI_EDGE_COMPATIBLE_TYPE = "openai-api-key";
+const PI_EDGE_DEFAULT_BASE_URLS: Readonly<Record<string, string>> = {
+  "openai-api-key": "https://api.openai.com/v1/",
+  deepseek: "https://api.deepseek.com/",
+  "moonshot-api-key": "https://api.moonshot.ai/v1/",
+};
+
+export function isPiEdgeCompatibleProviderType(type: string): boolean {
+  return (
+    type === "openrouter-codex" ||
+    type === "vercel-ai-gateway-codex" ||
+    Object.hasOwn(PI_EDGE_DEFAULT_BASE_URLS, type)
+  );
+}
 
 /**
- * Resolves the edge-callable model config from a resolved run provider.
- * Only OpenAI-compatible providers with an eagerly resolved secret qualify;
- * firewall-injected providers return null and fall back to the legacy path.
+ * Resolves the edge-callable model config from a resolved run provider. The
+ * API-only key is kept separate from the runner secret namespace so firewall
+ * providers can still expose placeholders to the sandbox.
  */
 export function resolvePiEdgeModelConfig(
   provider: {
@@ -39,25 +51,32 @@ export function resolvePiEdgeModelConfig(
     readonly concreteType?: string;
     readonly environment: Record<string, string>;
     readonly secrets: Record<string, string>;
+    readonly piEdgeApiKey?: string;
     readonly selectedModel: string | null;
+    readonly inlineFirewall?: boolean;
   } | null,
 ): PiEdgeModelConfig | null {
-  if (!provider || !provider.selectedModel) {
+  if (!provider || !provider.selectedModel || provider.inlineFirewall) {
     return null;
   }
-  if ((provider.concreteType ?? provider.type) !== PI_EDGE_COMPATIBLE_TYPE) {
+  const concreteType = provider.concreteType ?? provider.type;
+  if (!isPiEdgeCompatibleProviderType(concreteType)) {
     return null;
   }
-  const baseUrlEntry = Object.entries(provider.environment).find(([key]) => {
-    return key.endsWith("BASE_URL");
-  });
-  const [apiKey] = Object.values(provider.secrets);
-  if (!baseUrlEntry || apiKey === undefined || apiKey.length === 0) {
+  const baseUrl =
+    provider.environment.OPENAI_BASE_URL ??
+    PI_EDGE_DEFAULT_BASE_URLS[concreteType];
+  const model =
+    provider.environment.OPENAI_MODEL ??
+    provider.environment.ANTHROPIC_MODEL ??
+    provider.selectedModel;
+  const apiKey = provider.piEdgeApiKey ?? Object.values(provider.secrets).at(0);
+  if (!baseUrl || !model || !apiKey || apiKey.trim().length === 0) {
     return null;
   }
   return {
-    baseUrl: baseUrlEntry[1],
+    baseUrl,
     apiKey,
-    model: provider.selectedModel,
+    model,
   };
 }
