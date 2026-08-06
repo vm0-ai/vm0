@@ -1,6 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
@@ -75,11 +74,9 @@ function makeVerticallyScrollable(
 }
 
 async function setupKeyboardGestureChat({
-  featureEnabled,
   standalone,
   threadId,
 }: {
-  readonly featureEnabled: boolean;
   readonly standalone: boolean;
   readonly threadId: string;
 }): Promise<{
@@ -103,9 +100,6 @@ async function setupKeyboardGestureChat({
   detachedSetupPage({
     context,
     path: `/chats/${threadId}`,
-    featureSwitches: {
-      [FeatureSwitchKey.PwaChatKeyboardGestures]: featureEnabled,
-    },
   });
 
   return await waitFor(() => {
@@ -393,7 +387,6 @@ describe("chat lifecycle", () => {
   it("contains keyboard gestures on the rendered standalone-PWA chat page", async () => {
     const { composerEditor, composerScrollSurface, history } =
       await setupKeyboardGestureChat({
-        featureEnabled: true,
         standalone: true,
         threadId: "b0000000-0000-4000-a000-000000000991",
       });
@@ -446,30 +439,8 @@ describe("chat lifecycle", () => {
   it("leaves mobile-browser chat gestures unchanged outside standalone mode", async () => {
     const { composerEditor, composerScrollSurface, history } =
       await setupKeyboardGestureChat({
-        featureEnabled: true,
         standalone: false,
         threadId: "b0000000-0000-4000-a000-000000000992",
-      });
-
-    expect(history).not.toHaveClass("overscroll-contain");
-    expect(composerScrollSurface).not.toHaveClass("overscroll-contain");
-    openSoftwareKeyboard();
-    composerEditor.focus();
-    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
-    const move = dispatchTouch(composerEditor, "touchmove", {
-      x: 100,
-      y: 460,
-    });
-    expect(move.defaultPrevented).toBeFalsy();
-    expect(composerEditor).toHaveFocus();
-  });
-
-  it("leaves standalone-PWA chat gestures unchanged while the switch is disabled", async () => {
-    const { composerEditor, composerScrollSurface, history } =
-      await setupKeyboardGestureChat({
-        featureEnabled: false,
-        standalone: true,
-        threadId: "b0000000-0000-4000-a000-000000000993",
       });
 
     expect(history).not.toHaveClass("overscroll-contain");

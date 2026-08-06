@@ -91,10 +91,6 @@ export const composerUploadPopoverEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
 });
 
-export const pwaChatKeyboardGesturesEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.PwaChatKeyboardGestures] ?? false;
-});
-
 export const mermaidDiagramsEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.MermaidDiagrams] ?? false;
 });
