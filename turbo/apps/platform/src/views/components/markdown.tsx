@@ -8,7 +8,6 @@ import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chip
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
-import { mermaidDiagramsEnabled$ } from "../../signals/external/feature-switch.ts";
 import { rehypeMermaid } from "../../lib/rehype-mermaid.ts";
 import { theme$ } from "../../signals/theme.ts";
 import {
@@ -400,15 +399,13 @@ type RehypePlugins = MarkdownPreviewProps["rehypePlugins"];
 // `@uiw/react-markdown-preview` appends after every caller-provided plugin.
 function buildRehypePlugins(args: {
   mathEnabled: boolean;
-  mermaidEnabled: boolean;
   rehypePlugins: RehypePlugins;
 }): RehypePlugins {
-  const plugins = [
+  return [
     ...(args.mathEnabled ? [rehypeKatex] : []),
     ...(args.rehypePlugins ?? []),
-    ...(args.mermaidEnabled ? [rehypeMermaid] : []),
+    rehypeMermaid,
   ];
-  return plugins.length > 0 ? plugins : undefined;
 }
 
 export function Markdown({
@@ -427,7 +424,6 @@ export function Markdown({
   escapeHtml?: boolean;
 }) {
   const theme = useGet(theme$);
-  const mermaidEnabled = useGet(mermaidDiagramsEnabled$);
   const components = mediaPreview
     ? MEDIA_MARKDOWN_COMPONENTS
     : PLAIN_MARKDOWN_COMPONENTS;
@@ -455,7 +451,6 @@ export function Markdown({
       }
       rehypePlugins={buildRehypePlugins({
         mathEnabled,
-        mermaidEnabled,
         rehypePlugins,
       })}
       components={components}

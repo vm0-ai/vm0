@@ -188,7 +188,6 @@ describe("assistant markdown", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     // The diagram is shown by an <img>, so the SVG itself never reaches the
@@ -210,7 +209,6 @@ describe("assistant markdown", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     // Copies share one result entry. Mounting the second must not reset that
@@ -233,7 +231,6 @@ describe("assistant markdown", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const settingsDialog = await openSettingsDialog();
@@ -261,7 +258,6 @@ describe("assistant markdown", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const expand = await screen.findByLabelText("Expand diagram");
@@ -284,7 +280,6 @@ describe("assistant markdown", () => {
       context,
       path: "/chats/thread-markdown",
       featureSwitches: {
-        [FeatureSwitchKey.MermaidDiagrams]: true,
         [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
       },
     });
@@ -326,7 +321,6 @@ describe("assistant markdown", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     await waitFor(() => {
@@ -343,7 +337,6 @@ describe("assistant markdown", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const diagram = await screen.findByAltText("Diagram");
@@ -358,7 +351,6 @@ describe("assistant markdown", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     await waitFor(() => {
@@ -374,23 +366,6 @@ describe("assistant markdown", () => {
     // the ref that drives the render, and re-attaching it would abort the
     // render that produced this result and start the same one again.
     expect(screen.getByLabelText("Expand diagram")).toBeInTheDocument();
-  });
-
-  it("leaves mermaid blocks as code when the feature switch is off", async () => {
-    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: false },
-    });
-
-    await waitFor(() => {
-      expect(
-        document.querySelector("code.language-mermaid"),
-      ).toBeInTheDocument();
-    });
-    expect(document.querySelector(".mermaid-block")).toBeNull();
   });
 
   it("keeps external links safe", async () => {

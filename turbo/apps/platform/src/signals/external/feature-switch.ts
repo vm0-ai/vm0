@@ -95,10 +95,6 @@ export const pwaChatKeyboardGesturesEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.PwaChatKeyboardGestures] ?? false;
 });
 
-export const mermaidDiagramsEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.MermaidDiagrams] ?? false;
-});
-
 export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
   return (
     get(featureSwitch$)[FeatureSwitchKey.ComposerConnectorPermissions] ?? false

@@ -77,5 +77,4 @@ export enum FeatureSwitchKey {
   ImageCanvasDoubleClickZoom = "imageCanvasDoubleClickZoom",
   CustomConnectorCliCreate = "customConnectorCliCreate",
   CustomConnectorOAuth2 = "customConnectorOAuth2",
-  MermaidDiagrams = "mermaidDiagrams",
 }
