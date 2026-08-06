@@ -12,7 +12,11 @@ import { setLoop } from "../utils.ts";
 import { billingStatusAsync$ } from "../zero-page/billing.ts";
 import { getStoredAdAttributionMetadata } from "../bootstrap/ad-attribution.ts";
 import { reloadOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
-import { resetOnboardingDraft$ } from "./onboarding-state.ts";
+import {
+  ONBOARDING_CHECKOUT_STATE_PARAM,
+  resetOnboardingDraft$,
+  storeOnboardingCheckoutDraft,
+} from "./onboarding-state.ts";
 
 export const completeOnboarding$ = command(
   async (
@@ -54,24 +58,19 @@ interface OnboardingVideoCheckoutInput {
   readonly note: string;
   readonly templateId: string;
   readonly templateSlug: string;
-  readonly searchParams: URLSearchParams;
 }
 
 function checkoutReturnUrl(
   input: OnboardingVideoCheckoutInput,
   result: "pro" | "canceled",
+  checkoutState: string,
 ): string {
   const url = new URL(ROUTES.onboardingVideoRun, window.location.origin);
-  const params = new URLSearchParams(input.searchParams);
+  const params = new URLSearchParams();
   params.set("choice", "video");
-  params.set("prompt", input.prompt);
   params.set("template", input.templateId);
   params.set("onboarding_template", input.templateSlug);
-  if (input.note.trim()) {
-    params.set("onboarding_note", input.note);
-  } else {
-    params.delete("onboarding_note");
-  }
+  params.set(ONBOARDING_CHECKOUT_STATE_PARAM, checkoutState);
   params.set("onboarding_billing", result);
   if (result === "pro") {
     params.set("onboarding_billing_session_id", "{CHECKOUT_SESSION_ID}");
@@ -99,14 +98,18 @@ export const prepareOnboardingVideoRun$ = command(
       return "run";
     }
 
+    const checkoutState = storeOnboardingCheckoutDraft({
+      prompt: input.prompt,
+      note: input.note,
+    });
     const client = get(zeroClient$)(zeroBillingCheckoutContract);
     const adAttribution = getStoredAdAttributionMetadata();
     const result = await accept(
       client.create({
         body: {
           tier: "pro",
-          successUrl: checkoutReturnUrl(input, "pro"),
-          cancelUrl: checkoutReturnUrl(input, "canceled"),
+          successUrl: checkoutReturnUrl(input, "pro", checkoutState),
+          cancelUrl: checkoutReturnUrl(input, "canceled", checkoutState),
           ...(adAttribution === undefined ? {} : { adAttribution }),
         },
         fetchOptions: { signal },
