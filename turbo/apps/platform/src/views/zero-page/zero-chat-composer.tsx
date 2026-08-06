@@ -8035,14 +8035,14 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerTemplateAttachmentSync signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} />
-          <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-3 pt-1">
             <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
               <ComposerUploadControl signals={signals} />
               <ComposerTemplatePickerSlot signals={signals} />
               <ComposerWorkflowPromptSlot signals={signals} />
               <ComposerConnectorsSlot signals={signals} />
             </div>
-            <div className="flex items-center gap-1 sm:gap-2">
+            <div className="ml-auto flex items-center gap-1 sm:gap-2">
               <ComposerModelPickerSlot signals={signals} />
               <MicButton signals={signals} />
               <ComposerSendControl signals={signals} />
