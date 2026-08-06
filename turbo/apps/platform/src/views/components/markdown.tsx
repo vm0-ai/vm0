@@ -10,6 +10,7 @@ import remarkMath from "remark-math";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { mermaidDiagramsEnabled$ } from "../../signals/external/feature-switch.ts";
 import { rehypeMermaid } from "../../lib/rehype-mermaid.ts";
+import { pageLifecycleId$ } from "../../signals/page-signal.ts";
 import { theme$ } from "../../signals/theme.ts";
 import {
   imageLoadStatusByKey$,
@@ -423,7 +424,7 @@ export function Markdown({
   className,
   style,
   mediaPreview = false,
-  mermaidScope = "",
+  mermaidScope,
   mathEnabled = false,
   escapeHtml = false,
   source,
@@ -438,6 +439,7 @@ export function Markdown({
 }) {
   const theme = useGet(theme$);
   const mermaidEnabled = useGet(mermaidDiagramsEnabled$);
+  const pageLifecycleId = useGet(pageLifecycleId$);
   const components = mediaPreview
     ? MEDIA_MARKDOWN_COMPONENTS
     : PLAIN_MARKDOWN_COMPONENTS;
@@ -466,7 +468,7 @@ export function Markdown({
       rehypePlugins={buildRehypePlugins({
         mathEnabled,
         mermaidEnabled,
-        mermaidScope,
+        mermaidScope: mermaidScope ?? pageLifecycleId,
         rehypePlugins,
       })}
       components={components}

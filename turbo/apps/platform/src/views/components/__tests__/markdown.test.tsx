@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
+  chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { StoreProvider } from "ccstate-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -13,36 +14,37 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
-import { detach, Reason } from "../../../signals/utils.ts";
 import { Markdown } from "../markdown.tsx";
 
 const context = testContext();
 
 function mockThread(content: string): void {
-  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (
-      query.sinceSeqId !== undefined ||
-      query.beforeSeqId !== undefined ||
-      query.sinceId !== undefined ||
-      query.beforeId !== undefined
-    ) {
-      return respond(200, { events: [] });
-    }
+  context.mocks.api(
+    chatThreadEventsContract.list,
+    ({ params, query, respond }) => {
+      if (
+        query.sinceSeqId !== undefined ||
+        query.beforeSeqId !== undefined ||
+        query.sinceId !== undefined ||
+        query.beforeId !== undefined
+      ) {
+        return respond(200, { events: [] });
+      }
 
-    return respond(200, {
-      events: [
-        {
-          id: "msg-1",
-          threadId: "thread-markdown",
-          eventType: "output.message" as const,
-          content,
-          seqId: 1,
-          createdAt: "2026-01-01T00:00:00Z",
-        },
-      ],
-    });
-  });
+      return respond(200, {
+        events: [
+          {
+            id: `msg-${params.threadId}`,
+            threadId: params.threadId,
+            eventType: "output.message" as const,
+            content,
+            seqId: 1,
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      });
+    },
+  );
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
@@ -75,6 +77,18 @@ function getButtonByText(container: ParentNode, text: string): HTMLElement {
   }
 
   return button;
+}
+
+function getLinkByText(container: ParentNode, text: string): HTMLElement {
+  const link = queryAllByRoleFast("link", container).find((el) => {
+    return el.textContent?.trim() === text;
+  });
+
+  if (!link) {
+    throw new Error(`Could not find link: ${text}`);
+  }
+
+  return link;
 }
 
 async function openSettingsDialog(): Promise<HTMLElement> {
@@ -365,7 +379,32 @@ describe("assistant markdown", () => {
 
   it("revokes a mermaid object URL when its chat panel signal aborts", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
+    const replacementThreadId = "c0000000-0000-4000-a000-000000000002";
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: [
+          {
+            id: replacementThreadId,
+            agentId: "c0000000-0000-4000-a000-000000000001",
+            title: "Replacement thread",
+            sortAt: "2026-01-01T00:00:01Z",
+            createdAt: "2026-01-01T00:00:01Z",
+            updatedAt: "2026-01-01T00:00:01Z",
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
+          },
+        ],
+        latestEventId: null,
+        latestSeqId: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
 
     detachedSetupPage({
       context,
@@ -377,14 +416,16 @@ describe("assistant markdown", () => {
     const url = diagram.getAttribute("src") ?? "";
     expect(objectUrls.revokedUrls).not.toContain(url);
 
-    // Resetting the pane aborts the old chat panel before replacing it.
-    detach(
-      context.store.set(setupLeftThread$, "thread-markdown", context.signal),
-      Reason.Entrance,
-      "replace chat panel",
+    // Following a real thread link replaces the panel through the same route
+    // transition a user triggers from the chat sidebar.
+    click(
+      await waitFor(() => {
+        return getLinkByText(document, "Replacement thread");
+      }),
     );
 
     await waitFor(() => {
+      expect(document.title).toBe("Replacement thread | VM0");
       expect(objectUrls.revokedUrls).toContain(url);
     });
 

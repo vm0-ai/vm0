@@ -159,6 +159,8 @@ function setupArtifactCatalog(
 function setupChatThread({
   artifactFiles = [],
   autoOpenEnabled = false,
+  inlineArtifactOpenEnabled = false,
+  mermaidEnabled = false,
   waitForHistoryResponse,
   historyMessages = [],
   messages = [
@@ -190,6 +192,8 @@ function setupChatThread({
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
   autoOpenEnabled?: boolean;
+  inlineArtifactOpenEnabled?: boolean;
+  mermaidEnabled?: boolean;
   waitForHistoryResponse?: () => Promise<void>;
   historyMessages?: MockChatEventInput[];
   messages?: MockChatEventInput[];
@@ -277,7 +281,9 @@ function setupChatThread({
     context,
     path: THREAD_PATH,
     featureSwitches: {
+      [FeatureSwitchKey.ArtifactSidebarInlineOpen]: inlineArtifactOpenEnabled,
       [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
+      [FeatureSwitchKey.MermaidDiagrams]: mermaidEnabled,
     },
   });
 
@@ -449,6 +455,55 @@ describe("thread-owned utility sidebar", () => {
         screen.getByTestId("thread-sidebar-artifacts"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("keeps a mermaid file URL alive when a markdown artifact replaces itself", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-sidebar/diagram-notes.md";
+    const summary = catalogArtifact({ title: "diagram-notes.md" });
+    setupArtifactCatalog(
+      [summary],
+      new Map([
+        [
+          summary.id,
+          catalogFileDetail({
+            contentType: "text/markdown",
+            filename: "diagram-notes.md",
+            fileId: "f0000000-0000-4000-a000-000000000002",
+            summary,
+            url: markdownUrl,
+          }),
+        ],
+      ]),
+    );
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("```mermaid\nflowchart TD\n  A --> B\n```", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+
+    setupChatThread({
+      inlineArtifactOpenEnabled: true,
+      mermaidEnabled: true,
+    });
+    await openCatalogArtifact("diagram-notes.md");
+
+    const diagram = await screen.findByAltText("Diagram");
+    const url = diagram.getAttribute("src") ?? "";
+    const expand = screen.getByLabelText("Expand diagram");
+    await waitFor(() => {
+      expect(expand).toBeEnabled();
+    });
+    click(expand);
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    const sidebarImage = await waitFor(() => {
+      return within(sidebar).getByTestId("artifact-sidebar-body-image");
+    });
+    expect(sidebarImage).toHaveAttribute("src", url);
+    expect(sidebarImage).toHaveAttribute("alt", "diagram.svg");
+    expect(objectUrls.revokedUrls).not.toContain(url);
   });
 
   it("connects the agent and syncs a catalog artifact to Google Drive", async () => {

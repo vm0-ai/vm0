@@ -4,6 +4,7 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "./chat-page/chat-thread-pane-state.ts";
+import { pageLifecycleId$, pageSignal$ } from "./page-signal.ts";
 
 export type MermaidDiagramResult =
   | { readonly status: "rendering" }
@@ -185,8 +186,8 @@ function sizeDiagramAndSerialize(svg: SVGSVGElement): string {
 }
 
 /**
- * Keep the rendered SVG as a browser-native file. The containing chat panel
- * owns its object URL, while preview surfaces reuse that URL with File metadata.
+ * Keep the rendered SVG as a browser-native file. The containing chat panel or
+ * page owns its object URL, while preview surfaces reuse it with File metadata.
  */
 function svgFile(markup: string): File {
   return new File([markup], "diagram.svg", { type: "image/svg+xml" });
@@ -196,9 +197,9 @@ function svgFile(markup: string): File {
  * Renders one diagram into an SVG file. mermaid 11 isolates concurrent `render`
  * calls, so several diagrams in one message can render in parallel.
  *
- * `el` carries the source and theme to render and anchors the render to the
- * element's lifetime; the diagram itself is shown by an <img> and never enters
- * the document.
+ * `el` carries the source and theme to render and retains the shared result for
+ * the element's lifetime. The matching chat panel or page owns the object URL;
+ * the diagram itself is shown by an <img> and never enters the document.
  */
 const renderMermaidDiagram$ = command(
   async ({ get, set }, el: HTMLElement, signal: AbortSignal) => {
@@ -206,6 +207,18 @@ const renderMermaidDiagram$ = command(
     const theme = el.dataset.mermaidTheme === "dark" ? "dark" : "light";
     const scope = el.dataset.mermaidScope ?? "";
     const key = mermaidDiagramKey(code, theme, scope);
+    const panelSignal = [
+      get(currentLeftThread$),
+      get(currentRightThread$),
+    ].find((thread) => {
+      return thread?.lifecycleId === scope;
+    })?.signal;
+    const pageLifecycleId = get(pageLifecycleId$);
+    // Resolve the owner before rendering so a panel or page replacement cannot
+    // make a completed render fall back to the source element's shorter life.
+    const objectUrlSignal =
+      panelSignal ??
+      (scope !== "" && pageLifecycleId === scope ? get(pageSignal$) : signal);
 
     set(retainMermaidDiagramResult$, key);
     signal.addEventListener(
@@ -250,13 +263,6 @@ const renderMermaidDiagram$ = command(
     }
 
     const file = svgFile(sizeDiagramAndSerialize(svg));
-    const panelSignal = [
-      get(currentLeftThread$),
-      get(currentRightThread$),
-    ].find((thread) => {
-      return thread?.lifecycleId === scope;
-    })?.signal;
-    const objectUrlSignal = panelSignal ?? signal;
     objectUrlSignal.throwIfAborted();
     const url = URL.createObjectURL(file);
     objectUrlSignal.addEventListener(
