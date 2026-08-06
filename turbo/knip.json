@@ -55,6 +55,12 @@
       "ignoreDependencies": ["eslint", "oxlint", "wrangler"],
       "ignoreBinaries": ["eslint", "oxlint", "wrangler"]
     },
+    "apps/pi-state-worker": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts", "*.config.mjs"],
+      "ignoreDependencies": ["eslint", "oxlint", "wrangler"],
+      "ignoreBinaries": ["eslint", "oxlint", "wrangler"]
+    },
     "apps/desktop": {
       "entry": [
         "forge.config.js",

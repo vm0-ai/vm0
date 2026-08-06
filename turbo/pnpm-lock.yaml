@@ -503,6 +503,30 @@ importers:
         specifier: ^4.90.1
         version: 4.91.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
 
+  apps/pi-state-worker:
+    devDependencies:
+      '@types/node':
+        specifier: 24.3.0
+        version: 24.3.0
+      '@vm0/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
+      '@vm0/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      eslint:
+        specifier: ^9.34.0
+        version: 9.39.4(jiti@2.7.0)
+      oxlint:
+        specifier: ^1.75.0
+        version: 1.75.0(oxlint-tsgolint@7.0.2001)
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      wrangler:
+        specifier: ^4.90.1
+        version: 4.91.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+
   apps/platform:
     dependencies:
       '@clerk/clerk-js':
@@ -1575,7 +1599,7 @@ packages:
     engines: {node: '>=22.12.0'}
 
   '@electron/node-gyp@https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2':
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
+    resolution: {gitHosted: true, integrity: sha512-MXgzlTDEEndJB3TBbvd5uFQO/8gaINo1Hfen8vef5rq/VHVPeB63uuv/uO5+8GFsAJ/rauu6XB79S6K4+aXc+w==, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
     version: 10.2.0-electron.1
     engines: {node: '>=12.13.0'}
     hasBin: true
@@ -17370,7 +17394,7 @@ snapshots:
       '@humanfs/node': 0.16.7
       '@humanwhocodes/module-importer': 1.0.1
       '@humanwhocodes/retry': 0.4.3
-      '@types/estree': 1.0.8
+      '@types/estree': 1.0.9
       ajv: 6.15.0
       chalk: 4.1.2
       cross-spawn: 7.0.6

@@ -31,6 +31,9 @@
         "turbo/apps/host-worker": {
             "release-type": "node"
         },
+        "turbo/apps/pi-state-worker": {
+            "release-type": "node"
+        },
         "turbo/packages/api-contracts": {
             "release-type": "node",
             "skip-changelog": true

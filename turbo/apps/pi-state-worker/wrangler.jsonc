@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "zero-pi-state-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-13",
+  "routes": [
+    {
+      "pattern": "pi-state.vm0.ai",
+      "custom_domain": true,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PI_THREADS",
+        "class_name": "PiThreadDurableObject",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PiThreadDurableObject"],
+    },
+  ],
+  "env": {
+    "test": {
+      "routes": [
+        {
+          "pattern": "pi-state.vm7.ai",
+          "custom_domain": true,
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "PI_THREADS",
+            "class_name": "PiThreadDurableObject",
+          },
+        ],
+      },
+    },
+  },
+}
