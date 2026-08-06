@@ -1987,6 +1987,154 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     ]);
   });
 
+  it("opens Stripe's hosted confirmation for a lower slot quantity", async () => {
+    const subscriptionId = `sub_${randomUUID()}`;
+    const subscriptionItemId = `si_${randomUUID()}`;
+    const fixture = await createConcurrencySubscriptionOrg({
+      subscriptionId,
+      slots: 5,
+      periodEnd: new Date("2099-05-20T00:00:00Z"),
+      tier: "team",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: subscriptionId,
+      customer: fixture.customerId,
+      latest_invoice: null,
+      pending_update: null,
+      items: {
+        data: [
+          {
+            id: subscriptionItemId,
+            price: { id: TEST_PRICE_CONCURRENCY },
+            quantity: 5,
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.billingPortal.sessions.create.mockResolvedValueOnce({
+      url: "https://billing.stripe.test/concurrency-reduction",
+    });
+
+    const statusBefore = await readBillingStatus(fixture);
+    expect(statusBefore.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({
+        id: subscriptionId,
+        quantity: 5,
+        canReduce: true,
+      }),
+    ]);
+
+    const client = setupApp({ context })(
+      zeroBillingConcurrencySubscriptionContract,
+    );
+    const successUrl = `${APP_ORIGIN}/?concurrency=reduced`;
+    const cancelUrl = `${APP_ORIGIN}/billing?concurrency=canceled`;
+    const response = await accept(
+      client.reduce({
+        params: { subscriptionId },
+        body: { quantity: 3, successUrl, cancelUrl },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://billing.stripe.test/concurrency-reduction",
+    });
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).toHaveBeenCalledWith({
+      customer: fixture.customerId,
+      configuration: TEST_CONCURRENCY_PORTAL_CONFIGURATION,
+      return_url: cancelUrl,
+      flow_data: {
+        type: "subscription_update_confirm",
+        after_completion: {
+          type: "redirect",
+          redirect: { return_url: successUrl },
+        },
+        subscription_update_confirm: {
+          subscription: subscriptionId,
+          items: [{ id: subscriptionItemId, quantity: 3 }],
+        },
+      },
+    });
+    const statusAfter = await readBillingStatus(fixture);
+    expect(statusAfter.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({ id: subscriptionId, quantity: 5 }),
+    ]);
+  });
+
+  it("rejects a concurrency quantity that is not a reduction", async () => {
+    const subscriptionId = `sub_${randomUUID()}`;
+    const fixture = await createConcurrencySubscriptionOrg({
+      subscriptionId,
+      slots: 3,
+      periodEnd: new Date("2099-05-20T00:00:00Z"),
+      tier: "team",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingConcurrencySubscriptionContract).reduce({
+        params: { subscriptionId },
+        body: {
+          quantity: 3,
+          successUrl: `${APP_ORIGIN}/?concurrency=reduced`,
+          cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "New concurrency quantity must be lower than the current quantity",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("holds slot reductions until Portal updates are enabled", async () => {
+    const subscriptionId = `sub_${randomUUID()}`;
+    const fixture = await createConcurrencySubscriptionOrg({
+      subscriptionId,
+      slots: 3,
+      periodEnd: new Date("2099-05-20T00:00:00Z"),
+      tier: "team",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    mockEnv("STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED", "false");
+
+    const status = await readBillingStatus(fixture);
+    expect(status.concurrencySubscriptions[0]).not.toHaveProperty("canReduce");
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingConcurrencySubscriptionContract).reduce({
+        params: { subscriptionId },
+        body: {
+          quantity: 2,
+          successUrl: `${APP_ORIGIN}/?concurrency=reduced`,
+          cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Concurrency subscription updates are temporarily unavailable",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
   it("holds additional slot purchases until Portal updates are enabled", async () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const fixture = await createConcurrencySubscriptionOrg({

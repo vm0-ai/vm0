@@ -53,6 +53,7 @@ const concurrencySubscriptionSchema = z.object({
   quantity: z.number().int().nonnegative(),
   currentPeriodEnd: z.string().nullable(),
   cancelAtPeriodEnd: z.boolean(),
+  canReduce: z.boolean().optional(),
 });
 
 const usageAllowanceWindowSchema = z.object({
@@ -187,6 +188,12 @@ const checkoutCompleteRequestSchema = z.object({
 });
 
 const concurrencyCheckoutRequestSchema = z.object({
+  quantity: z.number().int().min(1).max(1000),
+  successUrl: stripeRedirectUrlSchema,
+  cancelUrl: stripeRedirectUrlSchema,
+});
+
+const concurrencySubscriptionReduceRequestSchema = z.object({
   quantity: z.number().int().min(1).max(1000),
   successUrl: stripeRedirectUrlSchema,
   cancelUrl: stripeRedirectUrlSchema,
@@ -397,6 +404,25 @@ export type ZeroBillingConcurrencyCheckoutContract =
  * Zero contract for concurrency subscriptions.
  */
 export const zeroBillingConcurrencySubscriptionContract = c.router({
+  reduce: {
+    method: "POST",
+    path: "/api/zero/billing/concurrency-subscriptions/:subscriptionId/reduce",
+    pathParams: z.object({
+      subscriptionId: z.string().min(1),
+    }),
+    headers: authHeadersSchema,
+    body: concurrencySubscriptionReduceRequestSchema,
+    responses: {
+      200: checkoutResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Reduce a concurrency add-on subscription quantity",
+  },
   cancel: {
     method: "POST",
     path: "/api/zero/billing/concurrency-subscriptions/:subscriptionId/cancel",
