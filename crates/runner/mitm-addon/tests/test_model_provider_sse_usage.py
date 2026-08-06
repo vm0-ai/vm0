@@ -352,33 +352,222 @@ class TestModelProviderSseUsage:
         }
         assert {event["provider"] for event in events} == {"gpt-5.5"}
 
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     @pytest.mark.parametrize("hook_name", ["response", "error"])
-    def test_full_pipeline_compressed_openai_sse_truncated_trailer_does_not_report_usage(
-        self, tmp_path, real_flow, hook_name
+    def test_full_pipeline_incomplete_compressed_openai_sse_recovers_terminal_usage(
+        self, tmp_path, real_flow, encoding, hook_name
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         assert flow.response is not None
-        flow.response.headers["content-encoding"] = "gzip"
+        flow.response.headers["content-encoding"] = encoding
         plaintext = (
             b"event: response.completed\n"
             b'data: {"response":{"id":"resp_sse_1","model":"gpt-5.5",'
-            b'"usage":{"input_tokens":50,"output_tokens":20}}}\n\n'
+            b'"usage":{"input_tokens":100,"output_tokens":40,'
+            b'"input_tokens_details":{"cached_tokens":20,'
+            b'"cache_write_tokens":30}}}}\n\n'
         )
 
         mitm_addon.responseheaders(flow)
-        response_stream(flow)(gzip.compress(plaintext)[:-1])
+        response_stream(flow)(_compress_zlib_sse(plaintext, encoding)[:-1])
         if hook_name == "error":
             flow.error = Error("connection reset by peer")
             webhook = self._run_error(flow)
         else:
             webhook = self._run_response(flow)
 
+        expected = {
+            "tokens.input": 50,
+            "tokens.output": 40,
+            "tokens.cache_read": 20,
+            "tokens.cache_creation": 30,
+        }
+        assert {
+            event["category"]: event["quantity"] for event in webhook.usage_events()
+        } == expected
+        assert compact_observation_quantities(webhook.model_usage_observation_events()) == expected
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="openai_responses_sse",
+            event="compressed_body",
+            error=body_decoding.INCOMPLETE_COMPRESSED_BODY,
+        )
+
+    @pytest.mark.parametrize(
+        ("event_prefix", "event_type"),
+        [
+            pytest.param(b"event: response.done\n", "response.done", id="done"),
+            pytest.param(
+                b"event: response.incomplete\n",
+                "response.incomplete",
+                id="incomplete",
+            ),
+            pytest.param(b"event: response.failed\n", "response.failed", id="failed"),
+            pytest.param(b"", "response.completed", id="eventless"),
+        ],
+    )
+    def test_full_pipeline_incomplete_compressed_openai_sse_recovers_terminal_vocabulary(
+        self, tmp_path, real_flow, event_prefix, event_type
+    ):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+        plaintext = (
+            event_prefix
+            + b'data: {"type":"'
+            + event_type.encode()
+            + b'","response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":11,"output_tokens":5}}}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(gzip.compress(plaintext)[:-1])
+        webhook = self._run_response(flow)
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input": 11,
+            "tokens.output": 5,
+        }
+
+    @pytest.mark.parametrize("truncate_trailer", [False, True], ids=["complete", "incomplete"])
+    def test_full_pipeline_openai_recovery_excludes_unknown_event_usage(
+        self, tmp_path, real_flow, truncate_trailer
+    ):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+        plaintext = (
+            b"event: response.future_usage\n"
+            b'data: {"type":"response.future_usage","response":{"model":"gpt-5.5",'
+            b'"usage":{"output_tokens":99}}}\n\n'
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":10}}}\n\n'
+        )
+        encoded = gzip.compress(plaintext)
+        if truncate_trailer:
+            encoded = encoded[:-1]
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(encoded)
+        webhook = self._run_response(flow)
+
+        expected = {"tokens.input": 10}
+        if not truncate_trailer:
+            expected["tokens.output"] = 99
+        assert {
+            event["category"]: event["quantity"] for event in webhook.usage_events()
+        } == expected
+
+    def test_full_pipeline_incomplete_compressed_openai_sse_rejects_conflicting_identity(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+        plaintext = (
+            b"event: response.completed\n"
+            b'data: {"type":"response.failed","response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":11,"output_tokens":5}}}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(gzip.compress(plaintext)[:-1])
+        webhook = self._run_response(flow)
+
+        assert webhook.request_count == 0
+
+    def test_full_pipeline_incomplete_compressed_openai_sse_does_not_flush_partial_event(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+        plaintext = (
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":11,"output_tokens":5}'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(gzip.compress(plaintext)[:-1])
+        webhook = self._run_response(flow)
+
+        assert webhook.request_count == 0
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_full_pipeline_invalid_compressed_openai_sse_remains_fail_closed(
+        self, tmp_path, real_flow, encoding
+    ):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = encoding
+        plaintext = (
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":11,"output_tokens":5}}}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(_compress_zlib_sse(plaintext, encoding) + b"not-compressed")
+        webhook = self._run_response(flow)
+
         assert webhook.request_count == 0
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="openai_responses_sse",
             event="compressed_body",
+            error=body_decoding.INVALID_COMPRESSED_BODY,
         )
+
+    def test_full_pipeline_decoded_limit_openai_sse_remains_fail_closed(self, tmp_path, real_flow):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+        plaintext = (
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":11,"output_tokens":5}}}\n\n'
+            b"event: response.output_text.delta\n"
+            b"data: " + b"x" * (5 * 1024 * 1024 + 1)
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(gzip.compress(plaintext))
+        webhook = self._run_response(flow)
+
+        assert webhook.request_count == 0
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="openai_responses_sse",
+            event="compressed_body",
+            error=body_decoding.DECODED_BODY_LIMIT_EXCEEDED,
+        )
+
+    def test_full_pipeline_response_then_error_emits_recovered_openai_usage_once(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+        plaintext = (
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":11,"output_tokens":5}}}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(gzip.compress(plaintext)[:-1])
+        with self._usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            flow.error = Error("connection reset after response")
+            mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert [(event["category"], event["quantity"]) for event in webhook.usage_events()] == [
+            ("tokens.input", 11),
+            ("tokens.output", 5),
+        ]
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     @pytest.mark.parametrize("hook_name", ["response", "error"])
