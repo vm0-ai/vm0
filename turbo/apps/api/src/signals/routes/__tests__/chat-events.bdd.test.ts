@@ -1495,12 +1495,20 @@ describe("CHAT-02: queueing and recalling messages", () => {
       contextId: null,
     });
     for (const pendingEventId of [firstPendingEventId, secondPendingEventId]) {
-      expect(userMessages(events.events)).toContainEqual(
-        expect.objectContaining({
-          runId: active.runId,
-          revokesEventId: pendingEventId,
-        }),
-      );
+      const claimedEvent = events.events.find((event) => {
+        return (
+          event.eventType === "input.prompt" &&
+          event.runId === active.runId &&
+          event.revokesEventId === pendingEventId
+        );
+      });
+      if (!claimedEvent || claimedEvent.eventType !== "input.prompt") {
+        throw new Error("Expected the pending active input to be claimed");
+      }
+      expect(claimedEvent.userMessage.parts).toContainEqual({
+        type: "model",
+        selectedModel: "claude-sonnet-4-6",
+      });
     }
 
     const emptyControlPayloadBytes = Buffer.byteLength(
@@ -1665,15 +1673,20 @@ describe("CHAT-02: queueing and recalling messages", () => {
     ).resolves.toBe(RUN_TIME_BUDGET_MESSAGE);
 
     const publicEvents = await chat.listThreadEvents(actor, active.threadId);
-    expect(
-      publicEvents.events.some((event) => {
-        return (
-          event.eventType === "input.budget" &&
-          event.runId === active.runId &&
-          chatEventDisplayText(event) === RUN_TIME_BUDGET_MESSAGE
-        );
-      }),
-    ).toBeTruthy();
+    const budgetEvent = publicEvents.events.find((event) => {
+      return (
+        event.eventType === "input.budget" &&
+        event.runId === active.runId &&
+        chatEventDisplayText(event) === RUN_TIME_BUDGET_MESSAGE
+      );
+    });
+    if (!budgetEvent || budgetEvent.eventType !== "input.budget") {
+      throw new Error("Expected the run time budget input to be claimed");
+    }
+    expect(budgetEvent.userMessage.parts).toContainEqual({
+      type: "model",
+      selectedModel: "claude-sonnet-4-6",
+    });
 
     mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
     await webhooks.requestAgentEvents(
