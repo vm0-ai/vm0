@@ -592,7 +592,7 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("keeps the user profile inside settings and changes debug capture", async () => {
+  it("links to the hosted user profile in a new tab and changes debug capture", async () => {
     prepareDefaultAgent();
     context.mocks.data.userPreferences({
       captureNetworkBodiesRemaining: 0,
@@ -652,49 +652,17 @@ describe("zero sidebar account menu", () => {
       );
     });
 
-    const clerkProfileModals: HTMLDivElement[] = [];
-    mockedClerk.openUserProfile.mockImplementation((options) => {
-      const container = options?.getContainer?.();
-      if (!container) {
-        throw new Error("Clerk profile portal container not found");
-      }
-      const modal = document.createElement("div");
-      modal.dataset.clerkUserProfile = "";
-      container.append(modal);
-      clerkProfileModals.push(modal);
-    });
-
-    click(buttonByText("Manage"));
-
-    await waitFor(() => {
-      expect(clerkProfileModals).toHaveLength(1);
-      expect(mockedClerk.openUserProfile).toHaveBeenCalledWith({
-        apiKeysProps: { hide: true },
-        appearance: {
-          elements: {
-            modalBackdrop: {
-              position: "absolute",
-              width: "100%",
-              height: "100%",
-            },
-          },
-        },
-        getContainer: expect.any(Function),
-      });
-    });
-
-    const clerkProfileModal = clerkProfileModals[0];
-    if (!clerkProfileModal) {
-      throw new Error("Clerk profile modal not found");
-    }
-    expect(openedSettingsDialog).toContainElement(clerkProfileModal);
-    clerkProfileModal.remove();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Settings" }),
-      ).toBeInTheDocument();
-    });
+    const userProfileLink = screen.getByRole("link", { name: "Manage" });
+    expect(userProfileLink).toHaveAttribute(
+      "href",
+      "https://accounts.example.test/user",
+    );
+    expect(userProfileLink).toHaveAttribute("target", "_blank");
+    expect(userProfileLink).toHaveAttribute("rel", "noreferrer");
+    expect(mockedClerk.buildUserProfileUrl).toHaveBeenCalled();
+    expect(mockedClerk.buildUrlWithAuth).toHaveBeenCalledWith(
+      "https://accounts.example.test/user",
+    );
 
     click(buttonByText("Debug"));
 
@@ -721,7 +689,6 @@ describe("zero sidebar account menu", () => {
     });
 
     const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
-    mockedClerk.closeUserProfile.mockClear();
     click(buttonByLabel("Close", settingsDialog));
 
     await waitFor(() => {
@@ -730,7 +697,6 @@ describe("zero sidebar account menu", () => {
       ).not.toBeInTheDocument();
       expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
     });
-    expect(mockedClerk.closeUserProfile).toHaveBeenCalledTimes(1);
     expect(document.body.style.pointerEvents).not.toBe("none");
 
     const reopenedMenu = await openAccountMenu();

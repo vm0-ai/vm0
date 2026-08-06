@@ -1,24 +1,18 @@
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { IconUser } from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
-import { currentUserInfo$ } from "../../../../../signals/auth.ts";
 import {
-  openSettingsUserProfile$,
-  settingsClerkProfilePortalContainer$,
-  settingsDialogSignal$,
-} from "../../../../../signals/zero-page/settings/settings-dialog.ts";
-import { detach, Reason } from "../../../../../signals/utils.ts";
+  clerkInstance$,
+  currentUserInfo$,
+} from "../../../../../signals/auth.ts";
 
 export function AccountSection() {
   const { t } = useTranslation();
-  const clerkProfilePortalContainer = useGet(
-    settingsClerkProfilePortalContainer$,
-  );
-  const settingsDialogSignal = useGet(settingsDialogSignal$);
-  const openUserProfile = useSet(openSettingsUserProfile$);
+  const clerk = useGet(clerkInstance$);
   const userLoadable = useLoadable(currentUserInfo$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
+  const userProfileUrl = clerk.buildUrlWithAuth(clerk.buildUserProfileUrl());
 
   const displayName = user?.fullName ?? user?.firstName ?? "";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
@@ -47,19 +41,13 @@ export function AccountSection() {
           <div className="text-sm text-muted-foreground truncate">{email}</div>
         )}
       </div>
-      <Button
-        onClick={() => {
-          if (settingsDialogSignal) {
-            detach(openUserProfile(settingsDialogSignal), Reason.DomCallback);
-          }
-        }}
-        disabled={!clerkProfilePortalContainer || !settingsDialogSignal}
-        className="shrink-0"
-      >
-        <IconUser size={14} />
-        {t(($) => {
-          return $.settings.preferences.account.manage;
-        })}
+      <Button asChild className="shrink-0">
+        <a href={userProfileUrl} target="_blank" rel="noreferrer">
+          <IconUser size={14} />
+          {t(($) => {
+            return $.settings.preferences.account.manage;
+          })}
+        </a>
       </Button>
     </div>
   );

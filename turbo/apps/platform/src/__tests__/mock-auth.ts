@@ -181,6 +181,10 @@ export function clearMockedAuth() {
   });
   mockedClerk.buildUrlWithAuth.mockReset();
   mockedClerk.buildUrlWithAuth.mockImplementation(defaultBuildUrlWithAuthImpl);
+  mockedClerk.buildUserProfileUrl.mockReset();
+  mockedClerk.buildUserProfileUrl.mockImplementation(
+    defaultBuildUserProfileUrlImpl,
+  );
   mockedClerk.buildSignInUrl.mockReset();
   mockedClerk.buildSignInUrl.mockImplementation(defaultBuildSignInUrlImpl);
   mockedClerk.initialize.mockReset();
@@ -214,6 +218,10 @@ const clientSignInCreate = vi.fn(
 );
 const defaultBuildUrlWithAuthImpl = (to: string) => {
   return to;
+};
+
+const defaultBuildUserProfileUrlImpl = () => {
+  return "https://accounts.example.test/user";
 };
 
 interface MockedClerkLoadOptions {
@@ -345,6 +353,7 @@ export const mockedClerk = {
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.
   buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),
+  buildUserProfileUrl: vi.fn(defaultBuildUserProfileUrlImpl),
   setActive: vi.fn(defaultSetActiveImpl),
   createOrganization: vi.fn((_params: { name: string; slug: string }) => {
     return Promise.resolve({ id: "new-org-id" });
