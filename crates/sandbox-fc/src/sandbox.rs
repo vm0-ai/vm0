@@ -3453,60 +3453,6 @@ fn park_admission_action(outcome: SandboxParkOutcome) -> &'static str {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-enum BalloonSettleOutcome {
-    SkippedZeroTarget,
-    TargetReached,
-    WithinTolerance,
-    PressureLimited,
-    Deadline,
-    StatsUnavailable,
-}
-
-impl BalloonSettleOutcome {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::SkippedZeroTarget => "skipped_zero_target",
-            Self::TargetReached => "target_reached",
-            Self::WithinTolerance => "within_tolerance",
-            Self::PressureLimited => "pressure_limited",
-            Self::Deadline => "deadline",
-            Self::StatsUnavailable => "stats_unavailable",
-        }
-    }
-}
-
-fn emit_balloon_settle_summary(
-    settle_outcome: BalloonSettleOutcome,
-    elapsed_ms: u64,
-    sample_count: u32,
-    park_outcome: SandboxParkOutcome,
-) {
-    info!(
-        target: "sandbox_fc::balloon_settle",
-        measurement = "balloon_settle",
-        outcome = settle_outcome.as_str(),
-        elapsed_ms,
-        sample_count,
-        admission_action = park_admission_action(park_outcome),
-        "balloon settle completed"
-    );
-}
-
-fn complete_balloon_settle(
-    summary: &BalloonSettleSummary,
-    settle_outcome: BalloonSettleOutcome,
-    park_outcome: SandboxParkOutcome,
-) -> SandboxParkOutcome {
-    emit_balloon_settle_summary(
-        settle_outcome,
-        summary.elapsed_ms(),
-        summary.sample_count,
-        park_outcome,
-    );
-    park_outcome
-}
-
 /// Wait until the guest balloon driver inflates close enough to `target_mib`.
 ///
 /// The guest needs running vCPUs to inflate, so this must be called
@@ -3542,7 +3488,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     &summary,
                     outcome,
                 );
-                return complete_balloon_settle(&summary, BalloonSettleOutcome::Deadline, outcome);
+                return outcome;
             }
         }
 
@@ -3570,11 +3516,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon fully inflated, proceeding to pause"
                     );
-                    return complete_balloon_settle(
-                        &summary,
-                        BalloonSettleOutcome::TargetReached,
-                        SandboxParkOutcome::Reusable,
-                    );
+                    return SandboxParkOutcome::Reusable;
                 }
 
                 if deficit_mib <= tolerance_mib {
@@ -3598,11 +3540,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon inflated within tolerance, proceeding to pause"
                     );
-                    return complete_balloon_settle(
-                        &summary,
-                        BalloonSettleOutcome::WithinTolerance,
-                        SandboxParkOutcome::Reusable,
-                    );
+                    return SandboxParkOutcome::Reusable;
                 }
 
                 if summary.is_pressure_limited_partial_reclaim(deficit_mib, tolerance_mib) {
@@ -3627,11 +3565,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reason = BALLOON_PRESSURE_LIMITED_REASON,
                         "balloon pressure-limited partial reclaim, proceeding to pause"
                     );
-                    return complete_balloon_settle(
-                        &summary,
-                        BalloonSettleOutcome::PressureLimited,
-                        SandboxParkOutcome::Reusable,
-                    );
+                    return SandboxParkOutcome::Reusable;
                 }
 
                 trace!(
@@ -3670,11 +3604,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     %e,
                     "balloon stats unavailable, proceeding to pause"
                 );
-                return complete_balloon_settle(
-                    &summary,
-                    BalloonSettleOutcome::StatsUnavailable,
-                    outcome,
-                );
+                return outcome;
             }
             Err(_) => {
                 let outcome = summary.park_outcome();
@@ -3686,7 +3616,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     &summary,
                     outcome,
                 );
-                return complete_balloon_settle(&summary, BalloonSettleOutcome::Deadline, outcome);
+                return outcome;
             }
         }
 
@@ -3754,12 +3684,6 @@ async fn park_inner(
         // savings.
         wait_for_balloon(&client, target, log_id).await
     } else {
-        emit_balloon_settle_summary(
-            BalloonSettleOutcome::SkippedZeroTarget,
-            0,
-            0,
-            SandboxParkOutcome::Reusable,
-        );
         SandboxParkOutcome::Reusable
     };
 

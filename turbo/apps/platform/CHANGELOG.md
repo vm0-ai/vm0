@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.690.0](https://github.com/vm0-ai/vm0/compare/app-v0.689.0...app-v0.690.0) (2026-08-06)
+
+
+### Features
+
+* add managed translation command ([#25364](https://github.com/vm0-ai/vm0/issues/25364)) ([696da1d](https://github.com/vm0-ai/vm0/commit/696da1dce5263a45cea595da2622726df8410245))
+
+
+### Bug Fixes
+
+* neutralize non-allowlisted html tags at the markdown root ([#25355](https://github.com/vm0-ai/vm0/issues/25355)) ([c101465](https://github.com/vm0-ai/vm0/commit/c1014657a664620393beb2a047017755a87fa9cc))
+* prevent oversized Stripe checkout return URLs ([#25376](https://github.com/vm0-ai/vm0/issues/25376)) ([f3fda2f](https://github.com/vm0-ai/vm0/commit/f3fda2f1fcfe78fd61380fe3751e4c80b606de93))
+* stabilize browser fit resize lifecycle ([#25357](https://github.com/vm0-ai/vm0/issues/25357)) ([d24d8ca](https://github.com/vm0-ai/vm0/commit/d24d8ca1be3fc1021aac86dccdc9083c4d5c0dd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.277.0
+    * @vm0/core bumped to 8.521.0
+
 ## [0.689.0](https://github.com/vm0-ai/vm0/compare/app-v0.688.0...app-v0.689.0) (2026-08-06)
 
 

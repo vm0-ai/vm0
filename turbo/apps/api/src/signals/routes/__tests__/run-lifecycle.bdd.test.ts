@@ -1481,12 +1481,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ]);
   });
 
-  it("fully validates legacy catalog attestations before caching them", async () => {
+  it("fully validates a missing catalog authority before caching it", async () => {
     const api = createRunsApi(context);
     // Catalog rows are global by source, so isolate mutations from parallel test files.
     mockEnv(
       "R2_USER_STORAGES_BUCKET_NAME",
-      "test-run-lifecycle-legacy-catalog",
+      "test-run-lifecycle-missing-catalog-authority",
     );
 
     const missingCatalogVersion = `api-test-missing-validation-${randomUUID()}`;
@@ -1532,6 +1532,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
+  });
+
+  it("fully validates a different catalog authority before caching it", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      "test-run-lifecycle-different-catalog-authority",
+    );
 
     const differentCatalogVersion = `api-test-different-validation-${randomUUID()}`;
     await installApiTestConnectorCatalog({
@@ -1619,6 +1627,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
+  });
+
+  it("deduplicates concurrent attested catalog loads", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      "test-run-lifecycle-concurrent-attested-catalog",
+    );
 
     const concurrentCatalogVersion = `api-test-concurrent-attested-${randomUUID()}`;
     await installApiTestConnectorCatalog({

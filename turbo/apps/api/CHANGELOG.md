@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.384.0](https://github.com/vm0-ai/vm0/compare/api-v1.383.0...api-v1.384.0) (2026-08-06)
+
+
+### Features
+
+* add managed translation command ([#25364](https://github.com/vm0-ai/vm0/issues/25364)) ([696da1d](https://github.com/vm0-ai/vm0/commit/696da1dce5263a45cea595da2622726df8410245))
+
+
+### Bug Fixes
+
+* prevent oversized Stripe checkout return URLs ([#25376](https://github.com/vm0-ai/vm0/issues/25376)) ([f3fda2f](https://github.com/vm0-ai/vm0/commit/f3fda2f1fcfe78fd61380fe3751e4c80b606de93))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.277.0
+    * @vm0/core bumped to 8.521.0
+    * @vm0/db bumped to 1.168.1
+
 ## [1.383.0](https://github.com/vm0-ai/vm0/compare/api-v1.382.0...api-v1.383.0) (2026-08-06)
 
 
