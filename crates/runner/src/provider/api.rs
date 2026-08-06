@@ -31,7 +31,7 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    ReservedReuseClaimObservation, parse_runner_preference,
+    parse_runner_preference,
 };
 use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
@@ -46,7 +46,6 @@ use crate::types::{
 use sandbox::SandboxId;
 
 const CHAT_STEER_FEATURE_FLAG: &str = "chatSteer";
-const RESERVED_REUSE_CLAIM_TRACING_TARGET: &str = "runner::reserved_reuse_claim";
 
 fn chat_steer_enabled(
     reuse_key: Option<&str>,
@@ -172,80 +171,6 @@ struct ClaimFailureDecision {
     status: Option<StatusCode>,
     transport_kind: Option<&'static str>,
     response_run_id: Option<RunId>,
-}
-
-enum ReservedReuseClaimOutcome {
-    Claimed { timezone_state: &'static str },
-    Unavailable,
-    ProviderFailure { class: ClaimFailureClass },
-    ResponseRunIdMismatch,
-}
-
-fn record_reserved_reuse_claim_observation(
-    observation: Option<ReservedReuseClaimObservation>,
-    run_id: RunId,
-    runner_id: &str,
-    heartbeat_generation: u64,
-    outcome: ReservedReuseClaimOutcome,
-) {
-    let Some(observation) = observation else {
-        return;
-    };
-    let duration_ms = duration_ms(observation.elapsed());
-    let preference_reason = observation.preference_reason();
-
-    match outcome {
-        ReservedReuseClaimOutcome::Claimed { timezone_state } => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
-            measurement = "reserved_reuse_claim",
-            outcome = "claimed",
-            run_id = %run_id,
-            runner_id,
-            heartbeat_generation,
-            runner_version = env!("CARGO_PKG_VERSION"),
-            duration_ms,
-            preference_reason,
-            timezone_state,
-            "reserved reusable claim observed"
-        ),
-        ReservedReuseClaimOutcome::Unavailable => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
-            measurement = "reserved_reuse_claim",
-            outcome = "unavailable",
-            run_id = %run_id,
-            runner_id,
-            heartbeat_generation,
-            runner_version = env!("CARGO_PKG_VERSION"),
-            duration_ms,
-            preference_reason,
-            "reserved reusable claim observed"
-        ),
-        ReservedReuseClaimOutcome::ProviderFailure { class } => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
-            measurement = "reserved_reuse_claim",
-            outcome = "provider_failure",
-            failure_class = class.as_str(),
-            run_id = %run_id,
-            runner_id,
-            heartbeat_generation,
-            runner_version = env!("CARGO_PKG_VERSION"),
-            duration_ms,
-            preference_reason,
-            "reserved reusable claim observed"
-        ),
-        ReservedReuseClaimOutcome::ResponseRunIdMismatch => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
-            measurement = "reserved_reuse_claim",
-            outcome = "response_run_id_mismatch",
-            run_id = %run_id,
-            runner_id,
-            heartbeat_generation,
-            runner_version = env!("CARGO_PKG_VERSION"),
-            duration_ms,
-            preference_reason,
-            "reserved reusable claim observed"
-        ),
-    }
 }
 
 const CLAIM_TELEMETRY_DURATION_MS_MAX: u64 = 9_007_199_254_740_991;
@@ -715,7 +640,6 @@ impl JobProvider for ApiProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
-        let reserved_reuse_observation = candidate.reserved_reuse_claim_observation();
         match self
             .api
             .claim(&candidate, &self.runner_id, self.heartbeat_generation)
@@ -740,13 +664,6 @@ impl JobProvider for ApiProvider {
                 } {
                     Ok(claimed) => claimed,
                     Err(error) => {
-                        record_reserved_reuse_claim_observation(
-                            reserved_reuse_observation,
-                            run_id,
-                            &self.runner_id,
-                            self.heartbeat_generation,
-                            ReservedReuseClaimOutcome::ResponseRunIdMismatch,
-                        );
                         self.record_claim_failure(
                             run_id,
                             ClaimFailureDecision {
@@ -761,19 +678,6 @@ impl JobProvider for ApiProvider {
                         return None;
                     }
                 };
-                record_reserved_reuse_claim_observation(
-                    reserved_reuse_observation,
-                    run_id,
-                    &self.runner_id,
-                    self.heartbeat_generation,
-                    ReservedReuseClaimOutcome::Claimed {
-                        timezone_state: if claimed.context().user_timezone.is_some() {
-                            "present"
-                        } else {
-                            "absent"
-                        },
-                    },
-                );
                 self.claim_cooldowns.remove(run_id).await;
                 info!(
                     run_id = %run_id,
@@ -784,30 +688,14 @@ impl JobProvider for ApiProvider {
                 Some(claimed)
             }
             Ok(None) => {
-                record_reserved_reuse_claim_observation(
-                    reserved_reuse_observation,
-                    run_id,
-                    &self.runner_id,
-                    self.heartbeat_generation,
-                    ReservedReuseClaimOutcome::Unavailable,
-                );
                 self.claim_cooldowns.remove(run_id).await;
                 info!(run_id = %run_id, "job unavailable, skipping");
                 self.poll_wakeups.request_immediate_poll().await;
                 None
             }
             Err(e) => {
-                let decision = classify_claim_failure(&e);
-                record_reserved_reuse_claim_observation(
-                    reserved_reuse_observation,
-                    run_id,
-                    &self.runner_id,
-                    self.heartbeat_generation,
-                    ReservedReuseClaimOutcome::ProviderFailure {
-                        class: decision.class,
-                    },
-                );
-                self.record_claim_failure(run_id, decision).await;
+                self.record_claim_failure(run_id, classify_claim_failure(&e))
+                    .await;
                 None
             }
         }
@@ -1726,7 +1614,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::http::HttpClientConfig;
-    use crate::provider::{RunnerPreference, RunnerPreferenceReason};
+    use crate::provider::RunnerPreferenceReason;
 
     const RUNNER_CLAIM_RESPONSE_FIXTURE: &str = include_str!(
         "../../../../turbo/packages/api-contracts/src/contracts/__tests__/fixtures/runner-claim-response.json"
@@ -2018,80 +1906,6 @@ mod tests {
             .get(field)
             .map(String::as_str)
             .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"))
-    }
-
-    fn marked_reusable_candidate(
-        run_id: RunId,
-        preference_reason: Option<RunnerPreferenceReason>,
-    ) -> JobCandidate {
-        let mut candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string())
-            .with_runner_preference(preference_reason.map(|reason| {
-                RunnerPreference::for_test(
-                    TEST_RUNNER_ID.parse().unwrap(),
-                    TEST_HEARTBEAT_GENERATION,
-                    reason,
-                    Instant::now() + Duration::from_secs(30),
-                )
-            }));
-        candidate.mark_reserved_reuse_claim_started();
-        candidate
-    }
-
-    fn reserved_reuse_claim_event(events: &[CapturedEvent]) -> &CapturedEvent {
-        let matching: Vec<_> = events
-            .iter()
-            .filter(|event| {
-                event
-                    .fields
-                    .get("message")
-                    .is_some_and(|message| message == "reserved reusable claim observed")
-            })
-            .collect();
-        assert_eq!(
-            matching.len(),
-            1,
-            "marked claim should emit exactly one observation; events={events:#?}"
-        );
-        matching[0]
-    }
-
-    fn assert_reserved_reuse_claim_event<'a>(
-        events: &'a [CapturedEvent],
-        run_id: RunId,
-        outcome: &str,
-        preference_reason: &str,
-    ) -> &'a CapturedEvent {
-        let event = reserved_reuse_claim_event(events);
-        assert_eq!(event.level, Level::INFO);
-        assert_eq!(event_field(event, "measurement"), "reserved_reuse_claim");
-        assert_eq!(event_field(event, "outcome"), outcome);
-        assert_eq!(event_field(event, "run_id"), run_id.to_string());
-        assert_eq!(event_field(event, "runner_id"), TEST_RUNNER_ID);
-        assert_eq!(
-            event_field(event, "heartbeat_generation"),
-            TEST_HEARTBEAT_GENERATION.to_string()
-        );
-        assert_eq!(
-            event_field(event, "runner_version"),
-            env!("CARGO_PKG_VERSION")
-        );
-        assert_eq!(event_field(event, "preference_reason"), preference_reason);
-        event_field(event, "duration_ms")
-            .parse::<u64>()
-            .expect("claim duration should be an integer number of milliseconds");
-        event
-    }
-
-    fn assert_no_reserved_reuse_claim_event(events: &[CapturedEvent]) {
-        assert!(
-            events.iter().all(|event| {
-                event
-                    .fields
-                    .get("message")
-                    .is_none_or(|message| message != "reserved reusable claim observed")
-            }),
-            "unmarked claim must not emit a reserved-reuse observation; events={events:#?}"
-        );
     }
 
     fn heartbeat_state_for_test() -> HeartbeatState {
@@ -2919,12 +2733,11 @@ mod tests {
         )
         .await;
 
-        let mut direct = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+        let direct = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
             .expect("discover should receive direct candidate")
             .unwrap();
         assert_eq!(direct.discovery_source(), Some(JobDiscoverySource::Ably));
-        direct.mark_reserved_reuse_claim_started();
         let (claim, events) = capture_api_provider_events(provider.claim(direct)).await;
         assert!(claim.is_none());
         let event = captured_event(&events, "claim failed, candidate cooling down");
@@ -2937,17 +2750,6 @@ mod tests {
             !format!("{event:#?}").contains("sensitive-claim-rejection-body"),
             "claim failure event must not contain the response body"
         );
-        let observation =
-            assert_reserved_reuse_claim_event(&events, rejected_run_id, "provider_failure", "none");
-        assert_eq!(
-            event_field(observation, "failure_class"),
-            "http_deterministic"
-        );
-        assert!(
-            !format!("{observation:#?}").contains("sensitive-claim-rejection-body"),
-            "claim observation must not contain the response body"
-        );
-
         let next = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
             .expect("claim failure should poll for another candidate")
@@ -3015,14 +2817,8 @@ mod tests {
         )
         .await;
 
-        let mut unavailable = provider.discover().await.unwrap();
-        unavailable.mark_reserved_reuse_claim_started();
-        let (claim, events) = capture_api_provider_events(provider.claim(unavailable)).await;
-        assert!(claim.is_none());
-        let observation =
-            assert_reserved_reuse_claim_event(&events, unavailable_run_id, "unavailable", "none");
-        assert!(!observation.fields.contains_key("failure_class"));
-        assert!(!observation.fields.contains_key("timezone_state"));
+        let unavailable = provider.discover().await.unwrap();
+        assert!(provider.claim(unavailable).await.is_none());
         let next = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
             .expect("unavailable claim should promptly poll the backlog")
@@ -3896,10 +3692,13 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let candidate =
-            marked_reusable_candidate(run_id, Some(RunnerPreferenceReason::ExactHistoryGeneration));
-        let (claimed, events) = capture_api_provider_events(provider.claim(candidate)).await;
-        let claimed = claimed.expect("shared current claim response should decode");
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("shared current claim response should decode");
         let context = claimed.context();
 
         assert_eq!(context.run_id, run_id);
@@ -3942,17 +3741,6 @@ mod tests {
         assert_eq!(
             context.codex_runtime_config.as_ref().unwrap().provider_id,
             "fixture_provider"
-        );
-        let event = assert_reserved_reuse_claim_event(
-            &events,
-            run_id,
-            "claimed",
-            "exact_history_generation",
-        );
-        assert_eq!(event_field(event, "timezone_state"), "present");
-        assert!(
-            !format!("{event:#?}").contains("UTC"),
-            "claim observation must not contain the raw timezone"
         );
         claim_mock.assert_calls_async(1).await;
     }
@@ -4053,18 +3841,18 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
-            run_id,
-            crate::profile::DEFAULT_PROFILE.to_string(),
-        )))
-        .await;
-        let claimed = claimed.expect("previous minimal claim response should remain compatible");
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("previous minimal claim response should remain compatible");
         let context = claimed.context();
 
         assert_eq!(context.prompt, "previous response");
         assert!(context.append_system_prompt.is_none());
         assert!(context.billable_firewalls.is_empty());
-        assert_no_reserved_reuse_claim_event(&events);
         claim_mock.assert_calls_async(1).await;
     }
 
@@ -4162,7 +3950,7 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let candidate = marked_reusable_candidate(run_id, None);
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
         let (claimed, events) = capture_api_provider_events(provider.claim(candidate)).await;
 
         assert!(claimed.is_none());
@@ -4173,10 +3961,6 @@ mod tests {
             context_run_id.to_string()
         );
         assert_eq!(event_field(event, "retry_after_ms"), "30000");
-        let observation =
-            assert_reserved_reuse_claim_event(&events, run_id, "response_run_id_mismatch", "none");
-        assert!(!observation.fields.contains_key("failure_class"));
-        assert!(!observation.fields.contains_key("timezone_state"));
         claim_mock.assert_calls_async(1).await;
     }
 
@@ -4211,7 +3995,7 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let candidate = marked_reusable_candidate(run_id, None);
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
         let (claimed, events) = capture_api_provider_events(provider.claim(candidate)).await;
         let claimed = claimed.expect("claim should succeed");
         let event = captured_event(&events, "job claimed");
@@ -4220,8 +4004,6 @@ mod tests {
             "550e8400-e29b-41d4-a716-446655440000"
         );
         assert_eq!(event_field(event, "heartbeat_generation"), "7");
-        let observation = assert_reserved_reuse_claim_event(&events, run_id, "claimed", "none");
-        assert_eq!(event_field(observation, "timezone_state"), "absent");
         let (context, completion_auth, active_input_source) = claimed.into_parts();
         assert_eq!(context.sandbox_token, "claim-sandbox-token");
         assert!(active_input_source.is_none());
