@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   artifactCatalogContract,
@@ -29,6 +29,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
 import {
@@ -733,20 +734,57 @@ describe("thread-owned utility sidebar", () => {
     expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
   });
 
+  it("syncs browser fit after the sidebar entry transition", async () => {
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    const browser = browserSession();
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser });
+    });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, { browser: { ...browser, liveUrl: null } });
+    });
+    setupChatThread();
+
+    click(await screen.findByLabelText("Open browser"));
+    const frame = await screen.findByTitle("Live browser: Thread browser");
+    const viewport = frame.closest("[data-browser-session-viewport]");
+    if (!(viewport instanceof HTMLDivElement)) {
+      throw new Error("Expected a live browser viewport");
+    }
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ width: 720, height: 900 }),
+    );
+    expect(screen.getByLabelText("Fit browser to window")).not.toBeVisible();
+
+    const transitionEnd = new Event("transitionend", { bubbles: true });
+    Object.defineProperty(transitionEnd, "propertyName", { value: "width" });
+    fireEvent(screen.getByTestId("chat-thread-sidebar-pane"), transitionEnd);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Fit browser to window")).toBeVisible();
+    });
+  });
+
   it("auto-opens the thread browser while its latest lifecycle event is open", async () => {
     const liveUrl = "https://live.browser-use.com/?wss=auto-open-browser";
     const requestStarted = context.mocks.deferred<void>();
     const releaseResponse = context.mocks.deferred<void>();
-    const browser = browserSession({
+    let browser = browserSession({
       name: "Auto-open browser",
       liveUrl,
     });
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
+    let browserRequests = 0;
     context.mocks.api(zeroBrowserContract.get, async ({ respond }) => {
-      requestStarted.resolve();
-      await releaseResponse.promise;
+      browserRequests += 1;
+      if (browserRequests === 1) {
+        requestStarted.resolve();
+        await releaseResponse.promise;
+      }
       return respond(200, { browser });
     });
     let leaseRequests = 0;
@@ -766,12 +804,12 @@ describe("thread-owned utility sidebar", () => {
       zeroBrowserContract.resizeByThread,
       ({ body, respond }) => {
         resizeAspectRatios.push(body.aspectRatio);
-        return respond(200, {
-          browser: {
-            ...browser,
-            screen: { width: 1440, height: 1800, resizable: true },
-          },
-        });
+        browser = {
+          ...browser,
+          screen: { width: 1440, height: 1800, resizable: true },
+          updatedAt: "2026-03-10T00:00:00.500Z",
+        };
+        return respond(200, { browser });
       },
     );
     setupChatThread({
@@ -804,13 +842,29 @@ describe("thread-owned utility sidebar", () => {
     if (!(viewport instanceof HTMLDivElement)) {
       throw new Error("Expected a live browser viewport");
     }
-    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
-      DOMRect.fromRect({
-        width: 720,
-        height: 900,
-      }),
+    let viewportWidth = 720;
+    vi.spyOn(viewport, "getBoundingClientRect").mockImplementation(() => {
+      return DOMRect.fromRect({ width: viewportWidth, height: 900 });
+    });
+    const resizeHandle = screen.getByRole("separator", {
+      name: "Resize sidebar",
+    });
+    const sidebarLayout = resizeHandle.parentElement;
+    if (!(sidebarLayout instanceof HTMLDivElement)) {
+      throw new Error("Expected the sidebar layout");
+    }
+    vi.spyOn(sidebarLayout, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ width: 1600, height: 900 }),
     );
-    window.dispatchEvent(new Event("resize"));
+    fireEvent.pointerDown(resizeHandle, { clientX: 840 });
+    const resizeMask = document.querySelector(
+      "[data-chat-thread-sidebar-resize-mask]",
+    );
+    if (!(resizeMask instanceof HTMLDivElement)) {
+      throw new Error("Expected the sidebar resize mask");
+    }
+    fireEvent.pointerMove(resizeMask, { clientX: 780 });
+    fireEvent.pointerUp(resizeMask);
     const fitWindow = await waitFor(() => {
       const button = queryAllByRoleFast("button").find((candidate) => {
         return candidate.getAttribute("aria-label") === "Fit browser to window";
@@ -834,6 +888,31 @@ describe("thread-owned utility sidebar", () => {
       expect(
         screen.getByTitle("Live browser: Auto-open browser"),
       ).toHaveAttribute("src", liveUrl);
+    });
+
+    viewportWidth = 900;
+    window.dispatchEvent(new Event("resize"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Fit browser to window")).toBeVisible();
+    });
+    viewportWidth = 720;
+    window.dispatchEvent(new Event("resize"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Fit browser to window")).not.toBeVisible();
+    });
+
+    await waitFor(() => {
+      expect(hasSubscription("browserSessionChanged")).toBeTruthy();
+    });
+    browser = {
+      ...browser,
+      screen: { width: 1440, height: 900, resizable: true },
+      updatedAt: "2026-03-10T00:00:01.000Z",
+    };
+    triggerAblyEvent("browserSessionChanged", { threadId: THREAD_ID });
+    await waitFor(() => {
+      expect(viewport).toHaveAttribute("data-browser-aspect-ratio", "1.6");
+      expect(screen.getByLabelText("Fit browser to window")).toBeVisible();
     });
   });
 

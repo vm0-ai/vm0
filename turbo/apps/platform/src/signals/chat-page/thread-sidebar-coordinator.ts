@@ -48,6 +48,14 @@ export const activeThreadSidebar$ = computed(
   },
 );
 
+export const syncActiveBrowserFitAction$ = command(({ get, set }) => {
+  const active = get(activeThreadSidebar$);
+  if (active?.target.type !== "browser") {
+    return;
+  }
+  set(active.thread.browserSessionSignals.syncFitActionVisibility$);
+});
+
 const openOnThread$ = command(
   ({ get, set }, thread: ChatPanelSignals, target: ThreadSidebarTarget) => {
     for (const other of [get(currentLeftThread$), get(currentRightThread$)]) {
