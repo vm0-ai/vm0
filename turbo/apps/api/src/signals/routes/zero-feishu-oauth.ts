@@ -22,9 +22,10 @@ import {
   type StoredOAuthState,
 } from "../services/connector-oauth-state.service";
 import {
+  customConnectorOAuthStateMatchesDefinition,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
-  parseCustomConnectorOAuthStateContext,
+  parseValidCustomConnectorOAuthState,
   startCustomConnectorOAuth2$,
   storeCustomConnectorOAuth2Connection,
   type CustomConnectorOAuthStateContext,
@@ -169,16 +170,10 @@ function callbackRedirectResponse(
 function validCustomFeishuState(
   storedState: StoredOAuthState,
 ): FeishuCustomConnectorOAuthContext | null {
-  const context = parseCustomConnectorOAuthStateContext(
-    storedState.oauthContext,
-  );
+  const context = parseValidCustomConnectorOAuthState(storedState);
   if (
     !context?.providerContext ||
-    context.providerContext.provider !== "feishu" ||
-    storedState.connectorSlug !== null ||
-    storedState.customConnectorId !== context.connectorId ||
-    storedState.connectorRevision !== context.connectorRevision ||
-    storedState.authMethod !== "oauth2"
+    context.providerContext.provider !== "feishu"
   ) {
     return null;
   }
@@ -376,6 +371,7 @@ async function persistFeishuOAuthConnection(args: {
       orgId: args.state.orgId,
       userId: args.state.userId,
       connectorId: args.connector.id,
+      storageVersion: args.connector.storageVersion,
       token: args.token,
       featureContext: args.featureContext,
     });
@@ -698,7 +694,7 @@ const completeClaimedCustomFeishuOAuth$ = command(
     if (
       !connector?.oauthConfig ||
       connector.oauthConfig.providerAdapter !== "feishu" ||
-      connector.revision !== context.connectorRevision
+      !customConnectorOAuthStateMatchesDefinition(context, connector)
     ) {
       return callbackRedirectResponse(
         completionErrorUrl(

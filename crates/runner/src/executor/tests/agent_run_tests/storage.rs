@@ -180,7 +180,10 @@ async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
         );
 
         start_process_gate.release_one();
-        run.await.unwrap();
+        tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut run)
+            .await
+            .expect("deferred storage run should complete after process spawn")
+            .unwrap();
     }
 
     tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut archive_request)
