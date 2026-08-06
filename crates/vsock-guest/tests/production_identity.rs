@@ -115,6 +115,14 @@ fn production_env_script_remains_until_operation_cleanup() {
     send_supervised_env_exec(&mut stream, 3);
 
     let started = read_message(&mut stream);
+    if started.msg_type == MSG_EXEC_RESULT {
+        let result = vsock_proto::decode_exec_result(&started.payload)
+            .expect("decode exec result received before exec-started");
+        panic!(
+            "exec operation completed before exec-started: termination={:?}, diagnostic={:?}",
+            result.termination, result.diagnostic
+        );
+    }
     assert_eq!(started.msg_type, MSG_EXEC_STARTED);
     assert_eq!(started.seq, 3);
     assert!(
@@ -183,7 +191,9 @@ fn start_guest_connection() -> (JoinHandle<std::io::Result<()>>, UnixStream) {
     host_stream
         .set_read_timeout(Some(GUEST_CONNECTION_TIMEOUT))
         .expect("set host read timeout");
-    let handle = thread::spawn(move || vsock_guest::handle_connection(guest_stream));
+    let handle = thread::spawn(move || {
+        vsock_guest::handle_connection_with_test_process_containment(guest_stream)
+    });
 
     let ready = read_message(&mut host_stream);
     assert_eq!(ready.msg_type, MSG_READY);
