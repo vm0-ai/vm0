@@ -1,4 +1,7 @@
-import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
+import type {
+  PiModelConfig,
+  RunSkillSnapshot,
+} from "@vm0/api-contracts/contracts/runners";
 import {
   isPiAgentModelSupported,
   type ExecutionEnv,
@@ -28,11 +31,24 @@ export interface PiEdgeTurnArgs {
 }
 
 /**
- * Runner job profile for Pi runs. No runner advertises it yet, so the
- * launch-time job row stays unclaimed and expires; the pi-standby prewarm
- * (workstream B of #25433) will claim it.
+ * Runner job profile for Pi runs. Runners advertise this as a distinct queue
+ * lane backed by the default Sandbox resource shape, allowing the standby job
+ * to be claimed independently from ordinary agent work.
  */
 export const PI_STANDBY_PROFILE = "vm0/pi-standby";
+
+/** Build the non-secret model config persisted for the standby Sandbox. */
+export function piSandboxModelConfig(config: PiEdgeModelConfig): PiModelConfig {
+  return {
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    apiKeyEnv:
+      config.provider === "moonshotai"
+        ? "ANTHROPIC_AUTH_TOKEN"
+        : "OPENAI_API_KEY",
+  };
+}
 
 const PI_EDGE_DEFAULT_BASE_URLS: Readonly<Record<string, string>> = {
   "openai-api-key": "https://api.openai.com/v1/",

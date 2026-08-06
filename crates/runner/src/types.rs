@@ -138,6 +138,46 @@ pub struct ExecutionContext {
     pub model_usage_provider: Option<String>,
     #[serde(default)]
     pub codex_runtime_config: Option<CodexRuntimeConfig>,
+    /// Complete Pi system prompt rendered once by the API for this run.
+    #[serde(default)]
+    pub pi_system_prompt: Option<String>,
+    /// Non-secret model metadata for the Pi Sandbox runtime.
+    #[serde(default)]
+    pub pi_model_config: Option<PiModelConfig>,
+    /// Exact-version Skill resource view fixed before the first Pi model call.
+    #[serde(default)]
+    pub run_skill_snapshot: Option<RunSkillSnapshot>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PiModelConfig {
+    pub provider: String,
+    pub base_url: String,
+    pub model: String,
+    pub api_key_env: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunSkillSnapshot {
+    pub schema_version: u32,
+    pub policy_version: u32,
+    pub root: String,
+    pub digest: String,
+    pub entries: Vec<RunSkillSnapshotEntry>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunSkillSnapshotEntry {
+    pub logical_dir: String,
+    pub skill_file: String,
+    pub org_id: String,
+    pub user_id: String,
+    pub storage_name: String,
+    pub storage_id: String,
+    pub version_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1544,6 +1584,53 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000"
         });
         assert!(serde_json::from_value::<Job>(json).is_err());
+    }
+
+    #[test]
+    fn execution_context_deserializes_pi_resources_without_expiring_urls() {
+        let json = serde_json::json!({
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "codex",
+            "piSystemPrompt": "fixed Pi prompt",
+            "piModelConfig": {
+                "provider": "deepseek",
+                "baseUrl": "https://api.deepseek.com/",
+                "model": "deepseek-v4-flash",
+                "apiKeyEnv": "OPENAI_API_KEY"
+            },
+            "runSkillSnapshot": {
+                "schemaVersion": 1,
+                "policyVersion": 1,
+                "root": "/home/user/.pi/agent/skills",
+                "digest": format!("sha256:{}", "a".repeat(64)),
+                "entries": [{
+                    "logicalDir": "/home/user/.pi/agent/skills/demo",
+                    "skillFile": "/home/user/.pi/agent/skills/demo/SKILL.md",
+                    "orgId": "org-1",
+                    "userId": "user-1",
+                    "storageName": "skill-demo",
+                    "storageId": "storage-1",
+                    "versionId": "version-1"
+                }]
+            }
+        });
+
+        let context: ExecutionContext = serde_json::from_value(json).unwrap();
+
+        assert_eq!(context.pi_system_prompt.as_deref(), Some("fixed Pi prompt"));
+        assert_eq!(
+            context
+                .pi_model_config
+                .as_ref()
+                .map(|config| config.model.as_str()),
+            Some("deepseek-v4-flash")
+        );
+        let snapshot = context.run_skill_snapshot.as_ref().unwrap();
+        assert_eq!(snapshot.entries[0].version_id, "version-1");
+        let serialized = serde_json::to_string(snapshot).unwrap();
+        assert!(!serialized.contains("url"));
     }
 
     #[test]

@@ -190,6 +190,7 @@ async fn run_codex_app_server(
 ) -> Result<CliExecutionResult, AgentError> {
     let CliExecutionControls {
         mut active_input,
+        pi_standby: _,
         user_cancellation,
         codex_startup,
     } = controls;

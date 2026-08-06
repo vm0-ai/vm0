@@ -651,6 +651,7 @@ pub async fn execute_cli_with_active_input_for_config_started_at(
 /// Run-scoped controls observed while the inner CLI is executing.
 pub struct CliExecutionControls<'a> {
     active_input: ActiveInputWriter,
+    pi_standby: crate::pi_standby::PiStandbyReader,
     user_cancellation: CancellationToken,
     codex_startup: Option<&'a CodexStartupTiming>,
 }
@@ -665,9 +666,16 @@ impl<'a> CliExecutionControls<'a> {
     ) -> Self {
         Self {
             active_input,
+            pi_standby: crate::pi_standby::PiStandbyReader::closed(),
             user_cancellation,
             codex_startup,
         }
+    }
+
+    #[must_use]
+    pub fn with_pi_standby_reader(mut self, reader: crate::pi_standby::PiStandbyReader) -> Self {
+        self.pi_standby = reader;
+        self
     }
 }
 
@@ -705,6 +713,7 @@ async fn execute_cli_inner(
 
     let CliExecutionControls {
         active_input,
+        pi_standby: _,
         user_cancellation,
         codex_startup: _,
     } = controls;

@@ -31,6 +31,7 @@ use uuid::Uuid;
 use crate::active_input::ActiveInputSource;
 use crate::error::RunnerResult;
 use crate::ids::RunId;
+use crate::pi_standby::PiStandbySubscription;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 
 const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -517,6 +518,7 @@ pub struct ClaimedJob {
     context: ExecutionContext,
     completion_auth: CompletionAuth,
     active_input_source: Option<ActiveInputSource>,
+    pi_standby_source: Option<PiStandbySubscription>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -544,7 +546,7 @@ impl ClaimedJob {
         expected_run_id: RunId,
         context: ExecutionContext,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
-        Self::api_with_optional_active_input_source(expected_run_id, context, None)
+        Self::api_with_optional_sources(expected_run_id, context, None, None)
     }
 
     pub(crate) fn api_with_active_input_source(
@@ -552,17 +554,22 @@ impl ClaimedJob {
         context: ExecutionContext,
         active_input_source: ActiveInputSource,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
-        Self::api_with_optional_active_input_source(
-            expected_run_id,
-            context,
-            Some(active_input_source),
-        )
+        Self::api_with_optional_sources(expected_run_id, context, Some(active_input_source), None)
     }
 
-    fn api_with_optional_active_input_source(
+    pub(crate) fn api_with_pi_standby_source(
+        expected_run_id: RunId,
+        context: ExecutionContext,
+        pi_standby_source: PiStandbySubscription,
+    ) -> Result<Self, ClaimedJobRunIdMismatch> {
+        Self::api_with_optional_sources(expected_run_id, context, None, Some(pi_standby_source))
+    }
+
+    fn api_with_optional_sources(
         expected_run_id: RunId,
         context: ExecutionContext,
         active_input_source: Option<ActiveInputSource>,
+        pi_standby_source: Option<PiStandbySubscription>,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
         Self::validate_run_id(expected_run_id, &context)?;
         let completion_auth =
@@ -571,6 +578,7 @@ impl ClaimedJob {
             context,
             completion_auth,
             active_input_source,
+            pi_standby_source,
         })
     }
 
@@ -592,6 +600,7 @@ impl ClaimedJob {
             context,
             completion_auth: CompletionAuth::local(),
             active_input_source,
+            pi_standby_source: None,
         })
     }
 
@@ -599,6 +608,22 @@ impl ClaimedJob {
         self,
     ) -> (ExecutionContext, CompletionAuth, Option<ActiveInputSource>) {
         (self.context, self.completion_auth, self.active_input_source)
+    }
+
+    pub(crate) fn into_run_parts(
+        self,
+    ) -> (
+        ExecutionContext,
+        CompletionAuth,
+        Option<ActiveInputSource>,
+        Option<PiStandbySubscription>,
+    ) {
+        (
+            self.context,
+            self.completion_auth,
+            self.active_input_source,
+            self.pi_standby_source,
+        )
     }
 
     pub(crate) fn context(&self) -> &ExecutionContext {

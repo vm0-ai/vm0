@@ -248,10 +248,12 @@ async fn run(runtime: GuestRuntime) -> i32 {
         framework_supports_active_input && has_process_control_endpoint,
         &runtime.config.prompt,
     );
+    let pi_standby = guest_agent::pi_standby::PiStandbyRuntime::new();
     let control_handle = control::ControlHandle::spawn(
         shutdown.clone(),
         active_input.controller(),
         cli_cancellation.clone(),
+        pi_standby.controller(),
     );
     log_info!(
         LOG_TAG,
@@ -300,6 +302,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
         Some(heartbeat_status_rx),
         &telemetry,
         active_input.into_writer(),
+        pi_standby.into_reader(),
         cli_cancellation,
         &runtime,
     )
@@ -340,6 +343,7 @@ async fn execute(
     heartbeat_monitor: cli::HeartbeatMonitor,
     telemetry: &Telemetry,
     active_input: guest_agent::active_input::ActiveInputWriter,
+    pi_standby: guest_agent::pi_standby::PiStandbyReader,
     cli_cancellation: CancellationToken,
     runtime: &GuestRuntime,
 ) -> i32 {
@@ -421,7 +425,8 @@ async fn execute(
         masker,
         heartbeat_monitor,
         http.clone(),
-        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref()),
+        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref())
+            .with_pi_standby_reader(pi_standby),
         config,
         runtime_paths,
         start,

@@ -39,6 +39,7 @@ use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
+use crate::pi_standby::PiStandbyNotifications;
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
     CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
@@ -253,6 +254,7 @@ pub struct ApiProvider {
     network_policy_refresh: NetworkPolicyRefreshHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     active_input_notifications: ActiveInputNotifications,
+    pi_standby_notifications: PiStandbyNotifications,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -299,6 +301,7 @@ impl ApiProvider {
             DIRECT_CANDIDATE_STALE_AFTER,
         );
         let active_input_notifications = ActiveInputNotifications::new();
+        let pi_standby_notifications = PiStandbyNotifications::new();
 
         Arc::new(Self {
             api,
@@ -314,6 +317,7 @@ impl ApiProvider {
             network_policy_refresh,
             builtin_firewall_catalog_refresh,
             active_input_notifications,
+            pi_standby_notifications,
             cancel,
         })
     }
@@ -474,6 +478,7 @@ impl ApiProvider {
             cancel_tokens: self.cancel_tokens.clone(),
             network_policy_refresh: self.network_policy_refresh.clone(),
             active_input_notifications: self.active_input_notifications.clone(),
+            pi_standby_notifications: self.pi_standby_notifications.clone(),
             provider_cancel: self.cancel.clone(),
         }));
     }
@@ -654,22 +659,30 @@ impl JobProvider for ApiProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
+        let is_pi_standby = candidate.profile_name() == crate::profile::PI_STANDBY_PROFILE;
         match self
             .api
             .claim(&candidate, &self.runner_id, self.heartbeat_generation)
             .await
         {
             Ok(Some(ctx)) => {
-                let active_input_source = supports_thread_active_input(ctx.reuse_key.as_deref())
-                    .then(|| {
-                        ActiveInputSource::api(
-                            self.api.clone(),
-                            run_id,
-                            ctx.sandbox_token.clone(),
-                            self.active_input_notifications.subscribe(run_id),
-                        )
-                    });
-                let claimed = match if let Some(active_input_source) = active_input_source {
+                let active_input_source = (!is_pi_standby
+                    && supports_thread_active_input(ctx.reuse_key.as_deref()))
+                .then(|| {
+                    ActiveInputSource::api(
+                        self.api.clone(),
+                        run_id,
+                        ctx.sandbox_token.clone(),
+                        self.active_input_notifications.subscribe(run_id),
+                    )
+                });
+                let claimed = match if is_pi_standby {
+                    ClaimedJob::api_with_pi_standby_source(
+                        run_id,
+                        ctx,
+                        self.pi_standby_notifications.subscribe(run_id),
+                    )
+                } else if let Some(active_input_source) = active_input_source {
                     ClaimedJob::api_with_active_input_source(run_id, ctx, active_input_source)
                 } else {
                     ClaimedJob::api(run_id, ctx)
@@ -1890,6 +1903,7 @@ mod tests {
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
             active_input_notifications: ActiveInputNotifications::new(),
+            pi_standby_notifications: PiStandbyNotifications::new(),
             cancel_tokens: RunCancellationRegistry::new(),
             cancel,
         })

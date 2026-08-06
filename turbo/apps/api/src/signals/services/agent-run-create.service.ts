@@ -4,6 +4,7 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  type PiModelConfig,
   PI_SKILLS_ROOT,
   type SecretConnectorMetadata,
   type RunSkillSnapshot,
@@ -214,6 +215,7 @@ import { notifyRunnerJob } from "./runner-dispatch.service";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   isPiEdgeCompatibleProviderType,
+  piSandboxModelConfig,
   PI_STANDBY_PROFILE,
   resolvePiEdgeModelConfig,
   type PiEdgeModelConfig,
@@ -5763,9 +5765,25 @@ interface BuildRunnerJobPayloadInput {
 
 interface PreparedPiLaunchResources {
   readonly executionEnv: ExecutionEnv;
+  readonly modelConfig: PiModelConfig;
   readonly prompt: string;
   readonly systemPrompt: string;
   readonly snapshot: RunSkillSnapshot;
+}
+
+function storedExecutionContextWithPiResources(
+  context: StoredExecutionContext,
+  resources: PreparedPiLaunchResources | undefined,
+): StoredExecutionContext {
+  if (resources === undefined) {
+    return context;
+  }
+  return {
+    ...context,
+    runSkillSnapshot: resources.snapshot,
+    piSystemPrompt: resources.systemPrompt,
+    piModelConfig: resources.modelConfig,
+  };
 }
 
 async function preparePiLaunchResources(args: {
@@ -5799,6 +5817,7 @@ async function preparePiLaunchResources(args: {
   }
   return {
     executionEnv: resources.env,
+    modelConfig: piSandboxModelConfig(args.piEdge),
     prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
     systemPrompt: renderPiSystemPrompt({
       appendSystemPrompt: args.body.appendSystemPrompt,
@@ -5906,14 +5925,10 @@ function buildRunnerJobPayload(
       additionalVolumeSources: args.additionalVolumeSources,
       persistedStorageMounts: builtContext.persistedStorageMounts,
     });
-    const storedContext =
-      piResources === undefined
-        ? builtContext.context
-        : {
-            ...builtContext.context,
-            runSkillSnapshot: piResources.snapshot,
-            piSystemPrompt: piResources.systemPrompt,
-          };
+    const storedContext = storedExecutionContextWithPiResources(
+      builtContext.context,
+      piResources,
+    );
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
       userId: args.userId,

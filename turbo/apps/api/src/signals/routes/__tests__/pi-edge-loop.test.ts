@@ -393,6 +393,12 @@ describe("PiLoop edge turn", () => {
     });
     expect(skillSnapshot.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(skillSnapshot.entries.length).toBeGreaterThan(0);
+    expect(standbyContext.piModelConfig).toStrictEqual({
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com/",
+      model: "deepseek-v4-flash",
+      apiKeyEnv: "OPENAI_API_KEY",
+    });
     expect(skillSnapshot.entries).toContainEqual(
       expect.objectContaining({
         logicalDir: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}`,

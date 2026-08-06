@@ -586,6 +586,26 @@ export const runSkillSnapshotSchema = z
   .readonly();
 
 /**
+ * Non-secret Pi model metadata forwarded to the Sandbox. The API key remains
+ * in the existing model-provider environment; `apiKeyEnv` names the exact
+ * environment entry the Sandbox runtime must read.
+ */
+export const piModelConfigSchema = z
+  .object({
+    provider: z.enum([
+      "deepseek",
+      "moonshotai",
+      "openai",
+      "openrouter",
+      "vercel-ai-gateway",
+    ]),
+    baseUrl: z.url(),
+    model: z.string().min(1),
+    apiKeyEnv: z.enum(["ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"]),
+  })
+  .readonly();
+
+/**
  * Stored execution context (subset stored in database for late routing)
  * Contains prepared context without runtime-generated fields
  * Secrets are encrypted with AES-256-GCM before storage
@@ -658,6 +678,7 @@ export const storedExecutionContextSchema = z.object({
   // Complete Pi prompt rendered once before the first model call and reused
   // byte-for-byte by the API loop and the standby Sandbox.
   piSystemPrompt: z.string().min(1).optional(),
+  piModelConfig: piModelConfigSchema.optional(),
   runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
@@ -743,6 +764,7 @@ export const executionContextSchema = z.object({
     .nullable()
     .optional(),
   piSystemPrompt: z.string().min(1).optional(),
+  piModelConfig: piModelConfigSchema.optional(),
   runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
@@ -960,6 +982,7 @@ export type StoredExecutionContext = z.infer<
 >;
 export type RunSkillSnapshot = z.infer<typeof runSkillSnapshotSchema>;
 export type RunSkillSnapshotEntry = z.infer<typeof runSkillSnapshotEntrySchema>;
+export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
 export type CompatibleStoredExecutionContext = z.infer<
   typeof compatibleStoredExecutionContextSchema
 >;
