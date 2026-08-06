@@ -354,7 +354,7 @@ export const zeroBillingConcurrencyCheckoutContract = c.router({
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Create Stripe checkout session for concurrency add-on",
+    summary: "Start a Stripe purchase for concurrency add-on slots",
   },
 });
 
