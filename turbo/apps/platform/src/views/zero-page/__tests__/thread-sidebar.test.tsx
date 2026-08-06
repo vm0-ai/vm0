@@ -161,7 +161,6 @@ function setupChatThread({
   artifactFiles = [],
   autoOpenEnabled = false,
   inlineArtifactOpenEnabled = false,
-  mermaidEnabled = false,
   waitForHistoryResponse,
   historyMessages = [],
   messages = [
@@ -194,7 +193,6 @@ function setupChatThread({
   artifactFiles?: ChatThreadArtifactFile[];
   autoOpenEnabled?: boolean;
   inlineArtifactOpenEnabled?: boolean;
-  mermaidEnabled?: boolean;
   waitForHistoryResponse?: () => Promise<void>;
   historyMessages?: MockChatEventInput[];
   messages?: MockChatEventInput[];
@@ -284,7 +282,6 @@ function setupChatThread({
     featureSwitches: {
       [FeatureSwitchKey.ArtifactSidebarInlineOpen]: inlineArtifactOpenEnabled,
       [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
-      [FeatureSwitchKey.MermaidDiagrams]: mermaidEnabled,
     },
   });
 
@@ -486,7 +483,6 @@ describe("thread-owned utility sidebar", () => {
 
     setupChatThread({
       inlineArtifactOpenEnabled: true,
-      mermaidEnabled: true,
     });
     await openCatalogArtifact("diagram-notes.md");
 
