@@ -29,6 +29,8 @@ pub(super) struct RunnerStatusSnapshot {
     /// (e.g. from a newer runner writing a future variant) are preserved and
     /// routed to the normal refuse branch by [`decide_gate`].
     pub(super) mode: String,
+    /// Stable identity of the runner process that wrote this snapshot.
+    pub(super) started_at: chrono::DateTime<chrono::Utc>,
     /// UUIDs of runs currently in flight.
     run_ids: Vec<RunId>,
     /// How long the runner process itself has been up, derived from the
@@ -134,12 +136,12 @@ pub(super) async fn read_runner_status(
             error,
         }
     })?;
+    let started_at = started.with_timezone(&chrono::Utc);
     let now = chrono::Utc::now();
-    let uptime = (now - started.with_timezone(&chrono::Utc))
-        .to_std()
-        .unwrap_or_default();
+    let uptime = (now - started_at).to_std().unwrap_or_default();
     Ok(RunnerStatusSnapshot {
         mode: file.mode,
+        started_at,
         run_ids: file.active_runs.into_iter().map(|run| run.run_id).collect(),
         uptime,
     })
@@ -479,6 +481,9 @@ mod tests {
     fn snapshot(mode: &str, run_count: usize) -> RunnerStatusSnapshot {
         RunnerStatusSnapshot {
             mode: mode.to_string(),
+            started_at: chrono::DateTime::parse_from_rfc3339("2026-04-13T00:00:00.000Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
             run_ids: (0..run_count).map(|_| RunId::nil()).collect(),
             uptime: std::time::Duration::from_secs(600),
         }

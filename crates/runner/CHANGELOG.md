@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.158.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.18...runner-rs-v0.158.19) (2026-08-06)
+
+
+### Performance Improvements
+
+* **runner:** correlate preference reuse outcomes ([#25443](https://github.com/vm0-ai/vm0/issues/25443)) ([1314003](https://github.com/vm0-ai/vm0/commit/1314003df53a575df0b20a1c4c67cc3304486199))
+
 ## [0.158.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.17...runner-rs-v0.158.18) (2026-08-06)
 
 

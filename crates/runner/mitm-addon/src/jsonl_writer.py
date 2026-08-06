@@ -43,7 +43,21 @@ _last_append_failure_warning_at: float | None = None
 
 
 def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
-    """Queue a JSONL line for best-effort append without blocking hook latency."""
+    """Queue caller-framed bytes for best-effort append without blocking hook latency.
+
+    When accepted, ``line`` is passed to the append worker without transformation.
+    The caller owns JSON serialization and the terminating newline; this function
+    validates neither JSON nor record boundaries.
+
+    The call returns no admission or durability result. An empty ``log_path``,
+    writer shutdown, pending-write or pending-byte saturation, or failure to start
+    the worker can leave the entry unaccepted. ``log_name`` supplies warning context,
+    but not every rejection emits one.
+
+    Flush operations wait only for writes that were accepted, so they can succeed
+    even if this call was rejected. Processing an accepted write, including a failed
+    append attempt, does not guarantee persistence.
+    """
     global _pending_bytes, _queued_writes
 
     if not log_path:

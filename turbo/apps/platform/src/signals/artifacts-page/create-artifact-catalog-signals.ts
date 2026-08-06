@@ -64,6 +64,7 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
         client.list({
           query: {
             limit: ARTIFACT_CATALOG_PAGE_SIZE,
+            includeSharedThreads: "1",
             ...(kind ? { kind } : {}),
             ...(chatThreadId ? { chatThreadId } : {}),
           },
@@ -120,6 +121,7 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
             query: {
               limit: ARTIFACT_CATALOG_PAGE_SIZE,
               cursor,
+              includeSharedThreads: "1",
               ...(kind ? { kind } : {}),
               ...(chatThreadId ? { chatThreadId } : {}),
             },
@@ -224,6 +226,7 @@ export function createArtifactCatalogSignals(
       const result = await accept(
         client.get({
           params: { artifactId },
+          query: { includeSharedThreads: "1" },
           fetchOptions: { signal },
         }),
         [200, 404],
