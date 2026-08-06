@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.388.0](https://github.com/vm0-ai/vm0/compare/api-v1.387.0...api-v1.388.0) (2026-08-06)
+
+
+### Features
+
+* **billing:** add member usage pack credit settlement ([#25434](https://github.com/vm0-ai/vm0/issues/25434)) ([372fcc1](https://github.com/vm0-ai/vm0/commit/372fcc1b9a8fbfff459e51bbf42850bba8f71b0c))
+
+
+### Refactoring
+
+* remove custom connector feature switches ([#25449](https://github.com/vm0-ai/vm0/issues/25449)) ([f6d7788](https://github.com/vm0-ai/vm0/commit/f6d77883a45d704b34d0450105bf8693bdf36055))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.281.0
+    * @vm0/core bumped to 8.524.1
+    * @vm0/db bumped to 1.172.0
+
 ## [1.387.0](https://github.com/vm0-ai/vm0/compare/api-v1.386.0...api-v1.387.0) (2026-08-06)
 
 
