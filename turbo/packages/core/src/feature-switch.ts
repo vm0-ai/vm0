@@ -386,8 +386,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Render ```mermaid code blocks in assistant markdown as diagrams, and tell the web chat agent that they are rendered.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ArtifactSidebarInlineOpen]: {
     maintainer: "bingjie@vm0.ai",

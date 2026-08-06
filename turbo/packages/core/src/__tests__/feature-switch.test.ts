@@ -21,6 +21,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.PwaChatKeyboardGestures, {})).toBe(
       true,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.MermaidDiagrams, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
     ).toBe(true);
