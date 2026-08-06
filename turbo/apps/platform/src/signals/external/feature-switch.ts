@@ -77,12 +77,6 @@ export const artifactSidebarInlineOpenEnabled$ = computed((get): boolean => {
   );
 });
 
-export const chatThreadSidebarAutoOpenEnabled$ = computed((get): boolean => {
-  return (
-    get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarAutoOpen] ?? false
-  );
-});
-
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });

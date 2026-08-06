@@ -8,7 +8,6 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
@@ -111,11 +110,7 @@ async function primeRuntimeChatDb(): Promise<
   return await context.store.get(chatIdb$);
 }
 
-function setupChatPage({
-  autoOpenEnabled = false,
-}: {
-  readonly autoOpenEnabled?: boolean;
-} = {}): void {
+function setupChatPage(): void {
   detachedSetupPage({
     context,
     path: `/chats/${THREAD_ID}`,
@@ -123,9 +118,6 @@ function setupChatPage({
     org: {
       activeOrg: { id: IDB_ORG_ID, name: "Default Org" },
       memberships: [{ id: IDB_ORG_ID }],
-    },
-    featureSwitches: {
-      [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
     },
   });
 }
@@ -274,7 +266,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     });
 
     try {
-      setupChatPage({ autoOpenEnabled: true });
+      setupChatPage();
       await catchUpRequested.promise;
 
       await expect(
@@ -486,7 +478,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     });
 
     try {
-      setupChatPage({ autoOpenEnabled: true });
+      setupChatPage();
 
       await expect(
         screen.findByText("Browser stopped remotely", undefined, {
