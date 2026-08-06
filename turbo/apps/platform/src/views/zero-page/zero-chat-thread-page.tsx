@@ -117,10 +117,7 @@ import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import {
-  featureSwitch$,
-  mermaidDiagramsEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -2636,17 +2633,11 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const scrollContentOnRef = useSet(thread.scrollContentOnRef$);
-  // Following content that grows after its scroll was committed rides with the
-  // diagrams that made it necessary: a diagram is the only chat content that
-  // settles long after its message, and one switch keeps the rollback single.
-  // Without the ref the message container is never observed, which is exactly
-  // how the thread behaved before #24658.
-  const followContentGrowth = useGet(mermaidDiagramsEnabled$);
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
       <div
-        ref={followContentGrowth ? scrollContentOnRef : undefined}
+        ref={scrollContentOnRef}
         data-message-container
         className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
         style={{ visibility: renderedGroupsReady ? "visible" : "hidden" }}

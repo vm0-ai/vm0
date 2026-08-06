@@ -18,7 +18,6 @@ describe("isFeatureEnabled", () => {
       true,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.MermaidDiagrams, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
     ).toBe(true);
