@@ -895,6 +895,7 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
   readonly connector: CustomConnectorRow;
   readonly featureContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
+  readonly forceRefresh?: boolean;
 }): Promise<string | null> {
   if (args.connector.authMode !== "oauth" || !args.connector.oauthConfig) {
     return null;
@@ -910,7 +911,7 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
   if (!connection?.encryptedAccessToken || connection.needsReconnect) {
     return null;
   }
-  if (connectionAccessTokenIsCurrent(connection)) {
+  if (!args.forceRefresh && connectionAccessTokenIsCurrent(connection)) {
     return connection.encryptedAccessToken;
   }
   return await args.db.transaction(async (tx) => {
@@ -928,7 +929,18 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
     ) {
       return null;
     }
-    if (connectionAccessTokenIsCurrent(lockedConnection)) {
+    if (
+      args.forceRefresh &&
+      lockedConnection.encryptedAccessToken !==
+        connection.encryptedAccessToken &&
+      connectionAccessTokenIsCurrent(lockedConnection)
+    ) {
+      return lockedConnection.encryptedAccessToken;
+    }
+    if (
+      !args.forceRefresh &&
+      connectionAccessTokenIsCurrent(lockedConnection)
+    ) {
       return lockedConnection.encryptedAccessToken;
     }
     if (!lockedConnection.encryptedRefreshToken) {
@@ -1059,6 +1071,7 @@ export async function resolveLiveCustomConnectorOAuth2AccessToken(args: {
   readonly connectorRevision: number;
   readonly featureContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
+  readonly forceRefresh?: boolean;
 }): Promise<string | null> {
   const connector = await loadLiveCustomConnector(args);
   args.signal.throwIfAborted();

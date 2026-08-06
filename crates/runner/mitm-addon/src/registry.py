@@ -10,10 +10,7 @@ from mitmproxy import ctx
 import matching
 import registry_firewalls
 import state_file
-from firewall_auth_cache import (
-    evict_all_cache_keys,
-    evict_stale_cache_keys,
-)
+from firewall_auth_cache import evict_all_cache_keys, evict_stale_cache_keys
 
 VmContext = tuple[
     dict,

@@ -112,7 +112,7 @@ struct ScheduledRefreshTask {
 struct ActiveRunNetworkPolicySnapshot {
     source_ip: String,
     registry: ProxyRegistryHandle,
-    builtin_firewalls: HashMap<String, FirewallEntry>,
+    builtin_firewall: Option<FirewallEntry>,
 }
 
 pub(crate) struct NetworkPolicyRefreshRegistration<'a> {
@@ -939,7 +939,7 @@ impl NetworkPolicyRefreshCore {
         let snapshot = ActiveRunNetworkPolicySnapshot {
             source_ip: active.source_ip,
             registry: active.registry,
-            builtin_firewalls: active.builtin_firewalls,
+            builtin_firewall: None,
         };
         for target in active.connectors.into_keys() {
             if let Err(error) = snapshot
@@ -1059,7 +1059,11 @@ impl NetworkPolicyRefreshCore {
         Some(ActiveRunNetworkPolicySnapshot {
             source_ip: active.source_ip.clone(),
             registry: active.registry.clone(),
-            builtin_firewalls: active.builtin_firewalls.clone(),
+            builtin_firewall: target
+                .target
+                .builtin_connector_slug()
+                .and_then(|connector_slug| active.builtin_firewalls.get(connector_slug))
+                .cloned(),
         })
     }
 
@@ -1330,9 +1334,14 @@ fn connector_runtime_registry_state(
             if firewall.is_some() {
                 return Err("builtin available result must not include an inline firewall");
             }
-            let Some(firewall) = snapshot.builtin_firewalls.get(connector_slug) else {
+            let Some(firewall @ FirewallEntry::Builtin { name, .. }) =
+                snapshot.builtin_firewall.as_ref()
+            else {
                 return Err("builtin target has no retained firewall entry");
             };
+            if name != connector_slug {
+                return Err("builtin target has a mismatched retained firewall entry");
+            }
             Ok(ConnectorRuntimeRegistryState::Available {
                 firewall: firewall.clone(),
                 network_policy: network_policy.clone(),
@@ -1686,6 +1695,7 @@ mod tests {
                         proxy_log_path: &proxy_log_path,
                         firewalls: Some(&firewalls),
                         network_policies: Some(&network_policies),
+                        connector_runtime_targets: None,
                         encrypted_secrets: None,
                         secret_connector_map: None,
                         secret_connector_metadata_map: None,
@@ -1956,6 +1966,7 @@ mod tests {
                     proxy_log_path: &proxy_log_path,
                     firewalls: Some(&firewalls),
                     network_policies: Some(&network_policies),
+                    connector_runtime_targets: None,
                     encrypted_secrets: None,
                     secret_connector_map: None,
                     secret_connector_metadata_map: None,
@@ -1998,6 +2009,7 @@ mod tests {
                     proxy_log_path: &proxy_log_path,
                     firewalls: Some(firewalls),
                     network_policies: Some(network_policies),
+                    connector_runtime_targets: None,
                     encrypted_secrets: None,
                     secret_connector_map: None,
                     secret_connector_metadata_map: None,

@@ -3005,6 +3005,7 @@ async function syncCustomConnectorRuntimeSecrets(args: {
   readonly secrets: Record<string, string>;
   readonly referencedKeys: Set<string>;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly forceRefresh: boolean;
 }): Promise<void> {
   const missingKeys = [...args.referencedKeys].filter((key) => {
     return !Object.hasOwn(args.secrets, key);
@@ -3045,6 +3046,7 @@ async function syncCustomConnectorRuntimeSecrets(args: {
               connectorRevision: row.connectorRevision,
               featureContext: args.featureSwitchContext,
               signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+              forceRefresh: args.forceRefresh,
             }),
             (error) => {
               L.warn("Failed to resolve live custom connector OAuth token", {
@@ -3113,6 +3115,7 @@ async function syncFirewallRuntimeSecrets(args: {
     secrets: args.secrets,
     referencedKeys: args.referencedKeys,
     featureSwitchContext: args.featureSwitchContext,
+    forceRefresh: args.body.forceRefresh === true,
   });
   syncPlatformRuntimeSecrets({
     secrets: args.secrets,
@@ -4227,6 +4230,7 @@ async function resolveCurrentCustomConnectorSecrets(args: {
   readonly auth: SandboxAuth;
   readonly api: CurrentCustomConnectorFirewallApi;
   readonly authRefs: ConnectorRuntimeResolution["customAuthRefs"];
+  readonly forceRefresh: boolean;
 }): Promise<Record<string, string> | undefined> {
   const referenced = collectReferencedKeys(
     args.api.auth.headers ?? {},
@@ -4269,6 +4273,7 @@ async function resolveCurrentCustomConnectorSecrets(args: {
             connectorRevision: ref.connectorRevision,
             featureContext: featureSwitchContext,
             signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+            forceRefresh: args.forceRefresh,
           })
         : null);
     if (!encryptedValue) {
@@ -4325,6 +4330,7 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
     auth: args.auth,
     api,
     authRefs: currentResolution.customAuthRefs,
+    forceRefresh: args.body.forceRefresh === true,
   });
   if (!currentSecrets) {
     return connectorNotConfigured();

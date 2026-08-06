@@ -38,13 +38,8 @@ interface ConnectorRuntimeScope {
 }
 
 interface CustomConnectionSnapshot {
-  readonly id: string;
-  readonly customConnectorId: string;
-  readonly authMethod: string;
-  readonly storageVersion: number;
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
-  readonly reconnectReason: string | null;
   readonly secrets: readonly {
     readonly name: string;
     readonly encryptedValue: string;
@@ -84,13 +79,9 @@ function absentResult(
 
 function connectionSnapshots(
   rows: readonly {
-    readonly connectionId: string;
     readonly customConnectorId: string;
-    readonly authMethod: string;
-    readonly storageVersion: number;
     readonly tokenExpiresAt: Date | null;
     readonly needsReconnect: boolean;
-    readonly reconnectReason: string | null;
     readonly secretName: string | null;
     readonly encryptedValue: string | null;
   }[],
@@ -105,13 +96,8 @@ function connectionSnapshots(
     let connection = grouped.get(row.customConnectorId);
     if (!connection) {
       connection = {
-        id: row.connectionId,
-        customConnectorId: row.customConnectorId,
-        authMethod: row.authMethod,
-        storageVersion: row.storageVersion,
         tokenExpiresAt: row.tokenExpiresAt,
         needsReconnect: row.needsReconnect,
-        reconnectReason: row.reconnectReason,
         secrets: [],
       };
       grouped.set(row.customConnectorId, connection);
@@ -250,13 +236,9 @@ async function loadSnapshot(args: {
         );
       const connectionRows = await tx
         .select({
-          connectionId: connectors.id,
           customConnectorId: connectors.customConnectorId,
-          authMethod: connectors.authMethod,
-          storageVersion: connectors.storageVersion,
           tokenExpiresAt: connectors.tokenExpiresAt,
           needsReconnect: connectors.needsReconnect,
-          reconnectReason: connectors.reconnectReason,
           secretName: secrets.name,
           encryptedValue: secrets.encryptedValue,
         })
@@ -376,14 +358,12 @@ export async function resolveConnectorRuntimeTargets(args: {
   readonly db: Db;
   readonly scope: ConnectorRuntimeScope;
   readonly targets: readonly ConnectorRuntimeTarget[];
-  readonly checkedAt?: Date;
 }): Promise<readonly ConnectorRuntimeResolution[]> {
-  const checkedAt = args.checkedAt ?? nowDate();
   const snapshot = await loadSnapshot({
     db: args.db,
     scope: args.scope,
     targets: args.targets,
-    checkedAt,
+    checkedAt: nowDate(),
   });
   const builtinByTarget = new Map<
     string,

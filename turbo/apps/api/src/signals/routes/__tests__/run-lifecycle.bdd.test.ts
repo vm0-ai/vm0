@@ -8327,12 +8327,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
       refreshResponse: (attempt) => {
-        if (attempt > 1) {
+        if (attempt > 2) {
           return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
         }
         return HttpResponse.json({
-          access_token: "custom-oauth-refreshed-access-token",
-          refresh_token: "custom-oauth-rotated-refresh-token",
+          access_token:
+            attempt === 1
+              ? "custom-oauth-refreshed-access-token"
+              : "custom-oauth-force-refreshed-access-token",
+          refresh_token:
+            attempt === 1
+              ? "custom-oauth-rotated-refresh-token"
+              : "custom-oauth-force-rotated-refresh-token",
           token_type: "Bearer",
           expires_in: 3600,
         });
@@ -8407,6 +8413,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.secretValues).not.toContain(
       "Bearer custom-oauth-initial-access-token",
     );
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ kind: "custom", customConnectorId: custom.id }],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
 
     mockNow(now() + 2 * 3_600_000);
     onTestFinished(() => {
@@ -8451,6 +8465,42 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       "custom-oauth-refresh-token",
     );
     expect(provider.authorizationHeaders).toStrictEqual([
+      expectedBasicAuthorization,
+      expectedBasicAuthorization,
+    ]);
+
+    const currentResolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(currentResolved.body).toMatchObject({
+      headers: {
+        Authorization: "Bearer custom-oauth-refreshed-access-token",
+      },
+    });
+    expect(provider.tokenBodies).toHaveLength(2);
+
+    const forceResolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      { ...currentAuthBody, forceRefresh: true },
+      [200],
+    );
+    expect(forceResolved.body).toMatchObject({
+      headers: {
+        Authorization: "Bearer custom-oauth-force-refreshed-access-token",
+      },
+    });
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token", "refresh_token"]);
+    expect(provider.tokenBodies[2]?.get("refresh_token")).toBe(
+      "custom-oauth-rotated-refresh-token",
+    );
+    expect(provider.authorizationHeaders).toStrictEqual([
+      expectedBasicAuthorization,
       expectedBasicAuthorization,
       expectedBasicAuthorization,
     ]);

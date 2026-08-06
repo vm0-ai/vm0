@@ -1509,6 +1509,7 @@ pub(super) async fn register_proxy(
         proxy_log_path: &proxy_log_path,
         firewalls: context.firewalls.as_deref(),
         network_policies: context.network_policies.as_ref(),
+        connector_runtime_targets: context.connector_runtime_targets.as_deref(),
         encrypted_secrets: context.encrypted_secrets.as_deref(),
         secret_connector_map: context.secret_connector_map.as_ref(),
         secret_connector_metadata_map: context.secret_connector_metadata_map.as_ref(),

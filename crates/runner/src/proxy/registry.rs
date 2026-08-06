@@ -54,6 +54,7 @@ pub struct VmRegistration<'a> {
     pub proxy_log_path: &'a std::path::Path,
     pub firewalls: Option<&'a [FirewallEntry]>,
     pub network_policies: Option<&'a HashMap<String, NetworkPolicy>>,
+    pub connector_runtime_targets: Option<&'a [ConnectorRuntimeTarget]>,
     pub encrypted_secrets: Option<&'a str>,
     pub secret_connector_map: Option<&'a HashMap<String, String>>,
     pub secret_connector_metadata_map: Option<&'a HashMap<String, SecretConnectorMetadata>>,
@@ -179,6 +180,46 @@ fn replace_first_matching_firewall(
     }
 }
 
+fn initial_omitted_connector_runtime_targets(
+    registration: &VmRegistration<'_>,
+) -> (HashSet<String>, HashSet<String>) {
+    let mut active_builtin_firewalls = HashSet::new();
+    let mut active_custom_connector_ids = HashSet::new();
+    for firewall in registration.firewalls.unwrap_or_default() {
+        match firewall {
+            FirewallEntry::Builtin { name, .. } => {
+                active_builtin_firewalls.insert(name.as_str());
+            }
+            FirewallEntry::Inline {
+                custom_connector_id: Some(custom_connector_id),
+                ..
+            } => {
+                active_custom_connector_ids.insert(custom_connector_id.as_str());
+            }
+            FirewallEntry::Inline { .. } => {}
+        }
+    }
+
+    let mut omitted_builtin_firewalls = HashSet::new();
+    let mut omitted_custom_connector_ids = HashSet::new();
+    for target in registration.connector_runtime_targets.unwrap_or_default() {
+        match target {
+            ConnectorRuntimeTarget::Builtin { connector_slug }
+                if !active_builtin_firewalls.contains(connector_slug.as_str()) =>
+            {
+                omitted_builtin_firewalls.insert(connector_slug.clone());
+            }
+            ConnectorRuntimeTarget::Custom {
+                custom_connector_id,
+            } if !active_custom_connector_ids.contains(custom_connector_id.as_str()) => {
+                omitted_custom_connector_ids.insert(custom_connector_id.clone());
+            }
+            ConnectorRuntimeTarget::Builtin { .. } | ConnectorRuntimeTarget::Custom { .. } => {}
+        }
+    }
+    (omitted_builtin_firewalls, omitted_custom_connector_ids)
+}
+
 impl ProxyRegistryHandle {
     /// Create a handle from explicit paths (for testing).
     #[cfg(test)]
@@ -200,6 +241,8 @@ impl ProxyRegistryHandle {
         let mut registry = read_registry(&self.registry_path).await?;
         let now = chrono::Utc::now().timestamp_millis();
         let firewalls = registration.firewalls.map(|s| s.to_vec());
+        let (omitted_builtin_firewalls, omitted_custom_connector_ids) =
+            initial_omitted_connector_runtime_targets(registration);
         registry.vms.insert(
             source_ip.to_string(),
             VmEntry {
@@ -211,8 +254,8 @@ impl ProxyRegistryHandle {
                 proxy_log_path: registration.proxy_log_path.to_string_lossy().into_owned(),
                 firewalls,
                 network_policies: registration.network_policies.cloned(),
-                omitted_builtin_firewalls: HashSet::new(),
-                omitted_custom_connector_ids: HashSet::new(),
+                omitted_builtin_firewalls,
+                omitted_custom_connector_ids,
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
                 secret_connector_map: registration.secret_connector_map.cloned(),
                 secret_connector_metadata_map: registration.secret_connector_metadata_map.cloned(),
@@ -633,6 +676,7 @@ mod tests {
             proxy_log_path: Path::new("/tmp/proxy-run-test.jsonl"),
             firewalls: None,
             network_policies: None,
+            connector_runtime_targets: None,
             encrypted_secrets: None,
             secret_connector_map: None,
             secret_connector_metadata_map: None,
@@ -958,6 +1002,58 @@ mod tests {
 
         // Unregister non-existent IP is a no-op.
         harness.handle.unregister_vm("10.200.0.99").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn registration_marks_pinned_targets_without_firewalls_as_omitted() {
+        let harness = RegistryHarness::new().await;
+        let available_custom_id = "550e8400-e29b-41d4-a716-446655440000";
+        let omitted_custom_id = "550e8400-e29b-41d4-a716-446655440001";
+        let firewalls = vec![
+            FirewallEntry::Builtin {
+                name: "slack".to_string(),
+                base_url_vars: None,
+            },
+            custom_runtime_firewall(available_custom_id, "custom_connector_available"),
+        ];
+        let targets = vec![
+            ConnectorRuntimeTarget::Builtin {
+                connector_slug: "slack".to_string(),
+            },
+            ConnectorRuntimeTarget::Builtin {
+                connector_slug: "github".to_string(),
+            },
+            ConnectorRuntimeTarget::Custom {
+                custom_connector_id: available_custom_id.to_string(),
+            },
+            ConnectorRuntimeTarget::Custom {
+                custom_connector_id: omitted_custom_id.to_string(),
+            },
+        ];
+
+        harness
+            .handle
+            .register_vm(
+                "10.200.0.2",
+                &VmRegistration {
+                    firewalls: Some(&firewalls),
+                    connector_runtime_targets: Some(&targets),
+                    ..base_registration()
+                },
+            )
+            .await
+            .unwrap();
+
+        let registry = read_registry(harness.registry_path()).await.unwrap();
+        let vm = &registry.vms["10.200.0.2"];
+        assert_eq!(
+            vm.omitted_builtin_firewalls,
+            HashSet::from(["github".to_string()])
+        );
+        assert_eq!(
+            vm.omitted_custom_connector_ids,
+            HashSet::from([omitted_custom_id.to_string()])
+        );
     }
 
     #[tokio::test]
