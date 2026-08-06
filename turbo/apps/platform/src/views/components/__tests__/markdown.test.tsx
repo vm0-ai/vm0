@@ -87,6 +87,18 @@ describe("assistant markdown", () => {
     expect(container.querySelector(".wmde-markdown span")).toBeNull();
   });
 
+  it("neutralizes non-allowlisted tags written at the top level", () => {
+    const { container } = render(
+      <StoreProvider value={context.store}>
+        <Markdown source={"<style>\n* { margin: 0; padding: 0; }\n</style>"} />
+      </StoreProvider>,
+    );
+
+    // A live <style> element would apply its rules to the whole app document.
+    expect(container.querySelector("style")).toBeNull();
+    expect(container.textContent).toContain("* { margin: 0; padding: 0; }");
+  });
+
   it("keeps blockquotes rendering when html is escaped", () => {
     const { container } = render(
       <StoreProvider value={context.store}>
