@@ -3,6 +3,7 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import type { ChatThreadScrollSignals } from "./chat-thread-scroll.ts";
 
 const SHARED_THREAD_SELECTION_TEXT_LIMIT_BYTES = 1.5 * 1024 * 1024;
 
@@ -22,8 +23,8 @@ export interface ChatThreadSharingSignals {
   readonly selectedEventIds$: Computed<ReadonlySet<string>>;
   readonly selectedCount$: Computed<number>;
   readonly createdSharedThreadId$: Computed<string | null>;
-  readonly start$: Command<void, []>;
-  readonly close$: Command<void, []>;
+  readonly start$: Command<Promise<void>, [AbortSignal]>;
+  readonly close$: Command<Promise<void>, [AbortSignal]>;
   readonly toggle$: Command<
     ToggleSharedThreadSelectionResult,
     [readonly ShareableChatEvent[]]
@@ -33,21 +34,35 @@ export interface ChatThreadSharingSignals {
 
 export function createChatThreadSharingSignals(
   threadId: string,
+  scroll: Pick<
+    ChatThreadScrollSignals,
+    "autoScroll$" | "readRenderedThreadScrollPosition$"
+  >,
 ): ChatThreadSharingSignals {
   const internalPhase$ = state<SharedThreadSelectionPhase>("idle");
   const internalSelectedBytes$ = state<ReadonlyMap<string, number>>(new Map());
   const internalCreatedSharedThreadId$ = state<string | null>(null);
 
-  const start$ = command(({ set }) => {
+  const start$ = command(({ set }, signal: AbortSignal) => {
     set(internalSelectedBytes$, new Map());
     set(internalCreatedSharedThreadId$, null);
     set(internalPhase$, "selecting");
+    return set(
+      scroll.autoScroll$,
+      set(scroll.readRenderedThreadScrollPosition$),
+      signal,
+    );
   });
 
-  const close$ = command(({ set }) => {
+  const close$ = command(({ set }, signal: AbortSignal) => {
     set(internalSelectedBytes$, new Map());
     set(internalCreatedSharedThreadId$, null);
     set(internalPhase$, "idle");
+    return set(
+      scroll.autoScroll$,
+      set(scroll.readRenderedThreadScrollPosition$),
+      signal,
+    );
   });
 
   const toggle$ = command(

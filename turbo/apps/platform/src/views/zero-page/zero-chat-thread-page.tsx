@@ -524,6 +524,9 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
   );
 }
 
+const CHAT_THREAD_HEADER_CLASS =
+  "hidden h-14 shrink-0 items-center justify-between bg-transparent px-6 sm:flex";
+
 function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const threadTitle = useGet(thread.threadTitle$)?.trim() ?? "";
@@ -549,7 +552,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
 
   if (sharingPhase !== "idle") {
     return (
-      <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
+      <header className={CHAT_THREAD_HEADER_CLASS}>
         <span className="text-sm font-medium text-foreground">
           {t(
             ($) => {
@@ -558,7 +561,17 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
             { count: selectedCount },
           )}
         </span>
-        <Button variant="ghost" size="sm" onClick={closeSharing}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            detach(
+              closeSharing(pageSignal),
+              Reason.DomCallback,
+              "close shared thread selection",
+            );
+          }}
+        >
           {t(($) => {
             return $.chat.sharing.cancel;
           })}
@@ -568,7 +581,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
   }
 
   return (
-    <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
+    <header className={CHAT_THREAD_HEADER_CLASS}>
       <div className="flex min-w-0 items-center gap-2">
         <ChatThreadEmojiMenuButton
           threadId={thread.threadId}
@@ -592,7 +605,13 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={startSharing}
+                  onClick={() => {
+                    detach(
+                      startSharing(pageSignal),
+                      Reason.DomCallback,
+                      "start shared thread selection",
+                    );
+                  }}
                   className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
                   aria-label={t(($) => {
                     return $.chat.sharing.start;
@@ -3750,7 +3769,16 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
                   return $.chat.sharing.copyLink;
                 })}
               </Button>
-              <Button variant="outline" onClick={close}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  detach(
+                    close(pageSignal),
+                    Reason.DomCallback,
+                    "close shared thread selection",
+                  );
+                }}
+              >
                 {t(($) => {
                   return $.chat.sharing.close;
                 })}

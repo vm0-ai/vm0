@@ -17,7 +17,7 @@ interface ScrollAfterRenderRequest {
   readonly position: ThreadScrollPosition | null;
 }
 
-interface ChatThreadScrollSignals {
+export interface ChatThreadScrollSignals {
   readonly scrollContainerOnRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
