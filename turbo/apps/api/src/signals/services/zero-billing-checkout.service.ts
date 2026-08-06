@@ -25,21 +25,6 @@ interface CreateCheckoutSessionArgs {
   readonly adAttribution?: Readonly<Record<string, string | undefined>>;
 }
 
-interface UsagePackLineItem {
-  readonly priceId: string;
-  readonly quantity: number;
-}
-
-interface CreateUsagePackCheckoutSessionArgs {
-  readonly orgId: string;
-  readonly tier: SubscriptionCheckoutTier;
-  readonly planPriceId: string;
-  readonly usagePackLineItems: readonly UsagePackLineItem[];
-  readonly successUrl: string;
-  readonly cancelUrl: string;
-  readonly adAttribution?: Readonly<Record<string, string | undefined>>;
-}
-
 interface CompleteCheckoutSessionArgs {
   readonly orgId: string;
   readonly sessionId: string;
@@ -73,7 +58,6 @@ interface StartConcurrencyPurchaseArgs {
 }
 
 const CREDITS_PER_DOLLAR = 1000;
-const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
@@ -147,6 +131,17 @@ export function activeUsagePackPriceId(
   usagePackUsd: UsagePackUsd,
 ): string | undefined {
   return usagePackPriceIds(usagePackUsd)[0];
+}
+
+export function usagePackUsdForKnownPriceId(
+  priceId: string,
+): UsagePackUsd | null {
+  for (const usagePackUsd of [20, 50, 100, 200] as const) {
+    if (usagePackPriceIds(usagePackUsd).includes(priceId)) {
+      return usagePackUsd;
+    }
+  }
+  return null;
 }
 
 export function isUsagePackPlanPriceId(priceId: string): boolean {
@@ -324,53 +319,6 @@ export const createCheckoutSession$ = command(
           ? {}
           : { trial_period_days: args.trialDays }),
       },
-    });
-    signal.throwIfAborted();
-
-    if (!session.url) {
-      throw new Error("Stripe checkout session did not return a URL");
-    }
-    return session.url;
-  },
-);
-
-export const createUsagePackCheckoutSession$ = command(
-  async (
-    { set },
-    args: CreateUsagePackCheckoutSessionArgs,
-    signal: AbortSignal,
-  ): Promise<string> => {
-    const metadata: Stripe.MetadataParam = {
-      ...checkoutSessionMetadata({
-        orgId: args.orgId,
-        tier: args.tier,
-        priceId: args.planPriceId,
-        adAttribution: args.adAttribution,
-      }),
-      purpose: USAGE_PACK_SUBSCRIPTION_PURPOSE,
-    };
-    const customerId = await set(
-      getOrCreateStripeCustomer$,
-      { orgId: args.orgId, metadata: args.adAttribution },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId,
-      line_items: [
-        { price: args.planPriceId, quantity: 1 },
-        ...args.usagePackLineItems.map((lineItem) => {
-          return { price: lineItem.priceId, quantity: lineItem.quantity };
-        }),
-      ],
-      allow_promotion_codes: true,
-      success_url: args.successUrl,
-      cancel_url: args.cancelUrl,
-      metadata,
-      subscription_data: { metadata },
     });
     signal.throwIfAborted();
 
