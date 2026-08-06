@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.689.0](https://github.com/vm0-ai/vm0/compare/app-v0.688.0...app-v0.689.0) (2026-08-06)
+
+
+### Features
+
+* **platform:** add staged member usage pack pricing preview ([#25296](https://github.com/vm0-ai/vm0/issues/25296)) ([c8022f6](https://github.com/vm0-ai/vm0/commit/c8022f6a1e8ddc02426d2bca4750038f379a5d33))
+
+
+### Bug Fixes
+
+* **chat:** open avatar message templates at voice picker ([#25295](https://github.com/vm0-ai/vm0/issues/25295)) ([e2132fa](https://github.com/vm0-ai/vm0/commit/e2132faf7cac315a358ee9820bce050397071bba))
+
+
+### Performance Improvements
+
+* **python:** bound network log url serialization ([#25362](https://github.com/vm0-ai/vm0/issues/25362)) ([287c719](https://github.com/vm0-ai/vm0/commit/287c7195a97e4381ae8a15ce2555ec30c8a67177))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.276.0
+    * @vm0/core bumped to 8.520.0
+
+## [0.688.0](https://github.com/vm0-ai/vm0/compare/app-v0.687.0...app-v0.688.0) (2026-08-06)
+
+
+### Features
+
+* roll out the structured prompt inline templates switch to all users ([#25320](https://github.com/vm0-ai/vm0/issues/25320)) ([3eb8de7](https://github.com/vm0-ai/vm0/commit/3eb8de762355227d47fea1b30dab71b57a33a5ae))
+
+
+### Bug Fixes
+
+* open clerk account portal in a new tab ([#25331](https://github.com/vm0-ai/vm0/issues/25331)) ([44b0c91](https://github.com/vm0-ai/vm0/commit/44b0c919db78456c49fa04eec9b5e2a2c411acad))
+* **platform:** center images in the full preview canvas ([#25321](https://github.com/vm0-ai/vm0/issues/25321)) ([7fbcfb6](https://github.com/vm0-ai/vm0/commit/7fbcfb6eb22f427a2bae51151b392f4c57b6f39d))
+
+
+### Refactoring
+
+* **api:** remove legacy artifacts list endpoint ([#25336](https://github.com/vm0-ai/vm0/issues/25336)) ([73629d3](https://github.com/vm0-ai/vm0/commit/73629d30c213ef9f39c7a9538ae6fb07cc6e582c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.275.1
+    * @vm0/connectors bumped to 1.203.1
+    * @vm0/core bumped to 8.519.0
+
 ## [0.687.0](https://github.com/vm0-ai/vm0/compare/app-v0.686.2...app-v0.687.0) (2026-08-06)
 
 

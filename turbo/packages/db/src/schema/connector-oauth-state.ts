@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   check,
   foreignKey,
@@ -23,6 +24,7 @@ export const connectorOauthStates = pgTable(
     connectorSlug: varchar("connector_slug", { length: 64 }),
     customConnectorId: uuid("custom_connector_id"),
     connectorRevision: integer("connector_revision"),
+    storageVersion: bigint("storage_version", { mode: "number" }),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
@@ -61,6 +63,19 @@ export const connectorOauthStates = pgTable(
         ) OR (
           ${table.customConnectorId} IS NOT NULL
           AND ${table.connectorRevision} IS NOT NULL
+        )`,
+      ),
+      check(
+        "chk_connector_oauth_states_custom_storage_version",
+        sql`(
+          ${table.customConnectorId} IS NULL
+          AND ${table.storageVersion} IS NULL
+        ) OR (
+          ${table.customConnectorId} IS NOT NULL
+          AND (
+            ${table.storageVersion} IS NULL
+            OR ${table.storageVersion} > 0
+          )
         )`,
       ),
     ];

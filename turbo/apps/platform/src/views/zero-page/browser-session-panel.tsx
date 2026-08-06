@@ -27,109 +27,6 @@ interface BrowserSessionPanelProps {
   readonly containLiveFrame?: boolean;
 }
 
-const BROWSER_FIT_GAP_TOLERANCE_PX = 2;
-
-interface ViewportSize {
-  readonly width: number;
-  readonly height: number;
-}
-
-function browserFrameNeedsFit(
-  viewport: ViewportSize | null,
-  browserAspectRatio: number,
-): boolean {
-  if (
-    !viewport ||
-    !Number.isFinite(viewport.width) ||
-    !Number.isFinite(viewport.height) ||
-    viewport.width <= 0 ||
-    viewport.height <= 0 ||
-    !Number.isFinite(browserAspectRatio) ||
-    browserAspectRatio <= 0
-  ) {
-    return false;
-  }
-  const fittedWidth = Math.min(
-    viewport.width,
-    viewport.height * browserAspectRatio,
-  );
-  const fittedHeight = Math.min(
-    viewport.height,
-    viewport.width / browserAspectRatio,
-  );
-  return (
-    viewport.width - fittedWidth > BROWSER_FIT_GAP_TOLERANCE_PX ||
-    viewport.height - fittedHeight > BROWSER_FIT_GAP_TOLERANCE_PX
-  );
-}
-
-function measuredViewport(element: HTMLElement | null): ViewportSize | null {
-  if (!element) {
-    return null;
-  }
-  const { width, height } = element.getBoundingClientRect();
-  if (
-    !Number.isFinite(width) ||
-    !Number.isFinite(height) ||
-    width <= 0 ||
-    height <= 0
-  ) {
-    return null;
-  }
-  return { width, height };
-}
-
-function createBrowserFitController({
-  browserAspectRatio,
-  canFitWindow,
-}: {
-  readonly browserAspectRatio: number;
-  readonly canFitWindow: boolean;
-}): {
-  readonly viewportRef: (element: HTMLDivElement | null) => void;
-  readonly actionRef: (element: HTMLDivElement | null) => void;
-  readonly viewportAspectRatio: () => number | null;
-} {
-  let viewport: HTMLDivElement | null = null;
-  let action: HTMLDivElement | null = null;
-  let observer: ResizeObserver | null = null;
-
-  const syncActionVisibility = () => {
-    if (!action) {
-      return;
-    }
-    action.hidden = !(
-      canFitWindow &&
-      browserFrameNeedsFit(measuredViewport(viewport), browserAspectRatio)
-    );
-  };
-  const viewportRef = (element: HTMLDivElement | null) => {
-    observer?.disconnect();
-    observer = null;
-    window.removeEventListener("resize", syncActionVisibility);
-    viewport = element;
-    if (viewport && canFitWindow) {
-      window.addEventListener("resize", syncActionVisibility);
-      if (typeof ResizeObserver !== "undefined") {
-        observer = new ResizeObserver(syncActionVisibility);
-        observer.observe(viewport);
-      }
-    }
-    syncActionVisibility();
-  };
-  return {
-    viewportRef,
-    actionRef: (element) => {
-      action = element;
-      syncActionVisibility();
-    },
-    viewportAspectRatio: () => {
-      const size = measuredViewport(viewport);
-      return size ? size.width / size.height : null;
-    },
-  };
-}
-
 function PanelFrame({
   children,
   panelRef,
@@ -274,24 +171,23 @@ function ContainedLiveBrowserViewport({
   readonly children: ReactNode;
 }) {
   const { t } = useTranslation();
-  const fitWindow = useSet(signals.fitWindow$);
+  const fitViewport = useSet(signals.fitViewport$);
+  const fitViewportRef = useSet(signals.fitViewportRef$);
   const fittingWindow = useGet(signals.fittingWindow$);
   const pageSignal = useGet(pageSignal$);
-  const fitController = createBrowserFitController({
-    browserAspectRatio,
-    canFitWindow,
-  });
 
   return (
     <div
-      ref={fitController.viewportRef}
+      ref={fitViewportRef}
       data-browser-session-viewport
+      data-browser-aspect-ratio={browserAspectRatio}
+      data-can-fit-window={canFitWindow}
       style={{ containerType: "size" }}
       className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/20"
     >
       {children}
       <div
-        ref={fitController.actionRef}
+        data-browser-session-fit-action
         hidden
         className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3"
       >
@@ -302,12 +198,8 @@ function ContainedLiveBrowserViewport({
           data-browser-session-fit
           disabled={fittingWindow}
           onClick={() => {
-            const aspectRatio = fitController.viewportAspectRatio();
-            if (aspectRatio === null) {
-              return;
-            }
             detach(
-              fitWindow(aspectRatio, pageSignal),
+              fitViewport(pageSignal),
               Reason.DomCallback,
               "fit browser to sidebar window",
             );

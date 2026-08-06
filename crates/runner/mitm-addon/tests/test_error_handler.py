@@ -26,6 +26,7 @@ from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
+    read_jsonl_text_after_flush,
 )
 from tests.request_handler_helpers import (
     _single_firewall_vm,
@@ -530,6 +531,35 @@ class TestErrorHandler:
         assert entry["latency_ms"] > 0
         assert_utc_millisecond_timestamp(entry["timestamp"])
         assert flow.metadata[metadata_keys.ORIGINAL_URL] == raw_url
+
+    def test_error_log_omits_url_when_json_escaping_exceeds_line_budget(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        raw_url = "https://target.example.com/path?payload=" + ("\\" * 600_000)
+        flow = real_flow(with_response=False, host="target.example.com")
+        log_path = tmp_path / "network.jsonl"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+        flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        http_network_log.set_target(
+            flow,
+            url=raw_url,
+            host="target.example.com",
+            port=443,
+        )
+        flow.error = Error("connection reset by peer")
+
+        with mitm_ctx():
+            mitm_addon.error(flow)
+
+        serialized = read_jsonl_text_after_flush(log_path)
+        entry = json.loads(serialized)
+        assert len(raw_url) < 1_000_000
+        assert len(serialized.encode()) <= 1_000_000
+        assert entry["url"] == "[truncated]"
+        assert entry["url_truncated"] is True
+        assert entry["url_original_char_count"] == len(raw_url)
 
     async def test_request_classified_error_logs_network_target(
         self, registry_file, real_flow, mitm_ctx, headers

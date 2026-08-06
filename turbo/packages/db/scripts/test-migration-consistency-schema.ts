@@ -1271,6 +1271,331 @@ async function expectDatabaseError(
   throw new Error(`Expected database error ${args.code}`);
 }
 
+const CUSTOM_CREDENTIAL_STORAGE_PREVIOUS_MIGRATION = "0838_gifted_korath";
+const CUSTOM_CREDENTIAL_STORAGE_MIGRATION =
+  "0840_backfill_custom_connector_credential_parents_v1";
+
+async function validateCustomCredentialStorageGenerationBackfill(): Promise<void> {
+  console.log(
+    "=== Validate custom credential storage generation backfill ===\n",
+  );
+  const testDb = "migration_custom_credential_storage_generation_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    canonical: "00000000-0000-4000-8000-000000084001",
+    legacy: "00000000-0000-4000-8000-000000084002",
+    duplicate: "00000000-0000-4000-8000-000000084003",
+    oauth: "00000000-0000-4000-8000-000000084004",
+    preParented: "00000000-0000-4000-8000-000000084005",
+    oldInsert: "00000000-0000-4000-8000-000000084006",
+    oldUpdate: "00000000-0000-4000-8000-000000084007",
+    futureVersion: "00000000-0000-4000-8000-000000084008",
+    orgId: "custom-storage-generation-org",
+    userId: "custom-storage-generation-user",
+  } as const;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      CUSTOM_CREDENTIAL_STORAGE_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `
+          INSERT INTO "org_custom_connectors" (
+            "id",
+            "org_id",
+            "slug",
+            "display_name",
+            "prefixes",
+            "header_name",
+            "header_template",
+            "auth_mode",
+            "created_by"
+          ) VALUES
+            ($1, $9, '_storage-canonical', 'Canonical', '["https://canonical.example.test/"]'::jsonb, 'Authorization', 'Bearer {{secret}}', 'manual', $10),
+            ($2, $9, '_storage-legacy', 'Legacy', '["https://legacy.example.test/"]'::jsonb, 'Authorization', 'Bearer {{secret}}', 'manual', $10),
+            ($3, $9, '_storage-duplicate', 'Duplicate', '["https://duplicate.example.test/"]'::jsonb, 'Authorization', 'Bearer {{secret}}', 'manual', $10),
+            ($4, $9, '_storage-oauth', 'OAuth', '["https://oauth.example.test/"]'::jsonb, 'Authorization', 'Bearer {{secret}}', 'oauth', $10),
+            ($5, $9, '_storage-pre-parented', 'Pre-parented', '["https://parented.example.test/"]'::jsonb, 'Authorization', 'Bearer {{secret}}', 'manual', $10),
+            ($6, $9, '_storage-old-insert', 'Old insert', '["https://old-insert.example.test/"]'::jsonb, 'Authorization', 'Bearer {{secret}}', 'manual', $10),
+            ($7, $9, '_storage-old-update', 'Old update', '["https://old-update.example.test/"]'::jsonb, 'Authorization', 'Bearer {{secret}}', 'manual', $10),
+            ($8, $9, '_storage-future', 'Future version', '["https://future.example.test/"]'::jsonb, 'Authorization', 'Bearer {{secret}}', 'manual', $10)
+        `,
+        [
+          fixture.canonical,
+          fixture.legacy,
+          fixture.duplicate,
+          fixture.oauth,
+          fixture.preParented,
+          fixture.oldInsert,
+          fixture.oldUpdate,
+          fixture.futureVersion,
+          fixture.orgId,
+          fixture.userId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "org_custom_connector_oauth_configs" (
+            "connector_id",
+            "org_id",
+            "provider_adapter",
+            "client_id",
+            "encrypted_client_secret",
+            "authorization_url",
+            "token_url",
+            "token_endpoint_auth_method",
+            "pkce_method"
+          ) VALUES (
+            $1,
+            $2,
+            'standard',
+            'migration-client',
+            'migration-secret',
+            'https://oauth.example.test/authorize',
+            'https://oauth.example.test/token',
+            'client_secret_post',
+            'none'
+          )
+        `,
+        [fixture.oauth, fixture.orgId],
+      );
+      await client.query("COMMIT");
+
+      await client.query(
+        `
+          INSERT INTO "org_custom_connector_values" (
+            "connector_id",
+            "user_id",
+            "org_id",
+            "kind",
+            "key",
+            "encrypted_value"
+          ) VALUES
+            ($1, $6, $7, 'secret', 'api_key', 'canonical-value'),
+            ($2, $6, $7, 'secret', 'api_key', 'duplicate-value'),
+            ($3, $6, $7, 'secret', 'api_key', 'oauth-value'),
+            ($4, $6, $7, 'secret', 'api_key', 'pre-parented-value'),
+            ($5, $6, $7, 'secret', 'api_key', 'old-update-value')
+        `,
+        [
+          fixture.canonical,
+          fixture.duplicate,
+          fixture.oauth,
+          fixture.preParented,
+          fixture.oldUpdate,
+          fixture.userId,
+          fixture.orgId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "org_custom_connector_secrets" (
+            "connector_id",
+            "user_id",
+            "org_id",
+            "encrypted_value"
+          ) VALUES
+            ($1, $3, $4, 'legacy-value'),
+            ($2, $3, $4, 'duplicate-legacy-value')
+        `,
+        [fixture.legacy, fixture.duplicate, fixture.userId, fixture.orgId],
+      );
+      await client.query(
+        `
+          INSERT INTO "connectors" (
+            "custom_connector_id",
+            "auth_method",
+            "storage_version",
+            "user_id",
+            "org_id"
+          ) VALUES ($1, 'oauth', 7, $2, $3)
+        `,
+        [fixture.preParented, fixture.userId, fixture.orgId],
+      );
+
+      await applyMigrationsUpToTag(client, CUSTOM_CREDENTIAL_STORAGE_MIGRATION);
+
+      const definitions = await client.query<{
+        id: string;
+        storageVersion: number;
+      }>(
+        `
+          SELECT "id", "storage_version"::int AS "storageVersion"
+          FROM "org_custom_connectors"
+          WHERE "org_id" = $1
+          ORDER BY "id"
+        `,
+        [fixture.orgId],
+      );
+      assert.equal(definitions.rows.length, 8);
+      assert.ok(
+        definitions.rows.every((definition) => {
+          return definition.storageVersion === 1;
+        }),
+      );
+
+      const parents = await client.query<{
+        authMethod: string;
+        customConnectorId: string;
+        storageVersion: number;
+      }>(
+        `
+          SELECT
+            "custom_connector_id" AS "customConnectorId",
+            "auth_method" AS "authMethod",
+            "storage_version"::int AS "storageVersion"
+          FROM "connectors"
+          WHERE "org_id" = $1
+            AND "user_id" = $2
+            AND "custom_connector_id" IS NOT NULL
+          ORDER BY "custom_connector_id"
+        `,
+        [fixture.orgId, fixture.userId],
+      );
+      assert.deepEqual(parents.rows, [
+        {
+          authMethod: "manual",
+          customConnectorId: fixture.canonical,
+          storageVersion: 1,
+        },
+        {
+          authMethod: "manual",
+          customConnectorId: fixture.legacy,
+          storageVersion: 1,
+        },
+        {
+          authMethod: "manual",
+          customConnectorId: fixture.duplicate,
+          storageVersion: 1,
+        },
+        {
+          authMethod: "oauth",
+          customConnectorId: fixture.preParented,
+          storageVersion: 7,
+        },
+        {
+          authMethod: "manual",
+          customConnectorId: fixture.oldUpdate,
+          storageVersion: 1,
+        },
+      ]);
+      const sourceCounts = await client.query<{
+        legacyCount: number;
+        valueCount: number;
+      }>(`
+        SELECT
+          (SELECT count(*)::int FROM "org_custom_connector_secrets") AS "legacyCount",
+          (SELECT count(*)::int FROM "org_custom_connector_values") AS "valueCount"
+      `);
+      assert.deepEqual(sourceCounts.rows, [{ legacyCount: 2, valueCount: 5 }]);
+
+      const oldWriterUpsert = `
+        INSERT INTO "org_custom_connector_values" (
+          "connector_id",
+          "user_id",
+          "org_id",
+          "kind",
+          "key",
+          "encrypted_value"
+        ) VALUES ($1, $2, $3, 'secret', 'api_key', $4)
+        ON CONFLICT ("connector_id", "user_id", "kind", "key")
+        DO UPDATE SET
+          "encrypted_value" = excluded."encrypted_value",
+          "updated_at" = now()
+      `;
+      await client.query(oldWriterUpsert, [
+        fixture.oldInsert,
+        fixture.userId,
+        fixture.orgId,
+        "old-insert-value",
+      ]);
+      await client.query(
+        `DELETE FROM "connectors" WHERE "custom_connector_id" = $1`,
+        [fixture.oldUpdate],
+      );
+      await client.query(oldWriterUpsert, [
+        fixture.oldUpdate,
+        fixture.userId,
+        fixture.orgId,
+        "old-update-replacement",
+      ]);
+      await client.query(
+        `UPDATE "org_custom_connectors" SET "storage_version" = 2 WHERE "id" = $1`,
+        [fixture.futureVersion],
+      );
+      await client.query(oldWriterUpsert, [
+        fixture.futureVersion,
+        fixture.userId,
+        fixture.orgId,
+        "future-version-value",
+      ]);
+
+      const transitionParents = await client.query<{
+        customConnectorId: string;
+        storageVersion: number;
+      }>(
+        `
+          SELECT
+            "custom_connector_id" AS "customConnectorId",
+            "storage_version"::int AS "storageVersion"
+          FROM "connectors"
+          WHERE "custom_connector_id" = ANY($1::uuid[])
+          ORDER BY "custom_connector_id"
+        `,
+        [[fixture.oldInsert, fixture.oldUpdate, fixture.futureVersion]],
+      );
+      assert.deepEqual(transitionParents.rows, [
+        {
+          customConnectorId: fixture.oldInsert,
+          storageVersion: 1,
+        },
+        {
+          customConnectorId: fixture.oldUpdate,
+          storageVersion: 1,
+        },
+      ]);
+
+      const transitionObjects = await client.query<{
+        functionCount: number;
+        triggerCount: number;
+      }>(`
+        SELECT
+          (
+            SELECT count(*)::int
+            FROM pg_proc
+            WHERE proname = 'ensure_custom_manual_connector_parent_v1'
+          ) AS "functionCount",
+          (
+            SELECT count(*)::int
+            FROM pg_trigger
+            WHERE tgname = 'org_custom_connector_values_ensure_parent_v1'
+              AND NOT tgisinternal
+          ) AS "triggerCount"
+      `);
+      assert.deepEqual(transitionObjects.rows, [
+        { functionCount: 1, triggerCount: 1 },
+      ]);
+
+      console.log("   ✅ Existing manual credentials receive one parent");
+      console.log("   ✅ OAuth and pre-parented identities remain unchanged");
+      console.log(
+        "   ✅ Outgoing insert and update statements create v1 parents",
+      );
+      console.log("   ✅ Outgoing writers cannot certify a future version\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 type PermanentTrigger = {
   readonly definition: string;
   readonly schemaName: string;
@@ -1372,6 +1697,13 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     schemaName: "public",
     tableName: "org_custom_connector_oauth_configs",
     triggerName: "trg_org_custom_connector_oauth_configs_mode",
+  },
+  {
+    definition:
+      "CREATE TRIGGER org_custom_connector_values_ensure_parent_v1 AFTER INSERT OR UPDATE ON public.org_custom_connector_values FOR EACH ROW EXECUTE FUNCTION ensure_custom_manual_connector_parent_v1()",
+    schemaName: "public",
+    tableName: "org_custom_connector_values",
+    triggerName: "org_custom_connector_values_ensure_parent_v1",
   },
   {
     definition:
@@ -1498,6 +1830,13 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "15e3309d90f7237e3b5c28fbf23a439d",
     functionName: "enforce_org_custom_connector_oauth_mode",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "5867c91a0201a2b10282662c752b8396",
+    functionName: "ensure_custom_manual_connector_parent_v1",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -3993,6 +4332,7 @@ async function main(): Promise<void> {
     await validateGoalOnlyRunGroupsCleanup();
     await validateTeamsMessageFileScopeBackfill();
     await validateInvalidatedGoalContinuationCleanup();
+    await validateCustomCredentialStorageGenerationBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

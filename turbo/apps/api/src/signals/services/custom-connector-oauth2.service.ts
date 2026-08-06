@@ -59,6 +59,7 @@ const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 const customConnectorOAuthStateContextSchema = z.object({
   connectorId: z.string().uuid(),
   connectorRevision: z.number().int().positive(),
+  storageVersion: z.number().int().positive().optional(),
   providerContext: z
     .object({
       provider: z.literal("feishu"),
@@ -503,6 +504,7 @@ export const startCustomConnectorOAuth2$ = command(
     const context: CustomConnectorOAuthStateContext = {
       connectorId: connector.id,
       connectorRevision: connector.revision,
+      storageVersion: connector.storageVersion,
       ...(providerAdapter === "feishu"
         ? {
             providerContext: {
@@ -525,6 +527,7 @@ export const startCustomConnectorOAuth2$ = command(
         state,
         customConnectorId: connector.id,
         connectorRevision: connector.revision,
+        storageVersion: connector.storageVersion,
         authMethod: CUSTOM_CONNECTOR_OAUTH_METHOD_ID,
         userId: args.userId,
         orgId: args.orgId,
@@ -553,6 +556,57 @@ export function parseCustomConnectorOAuthStateContext(
     safeJsonParse(raw),
   );
   return parsed.success ? parsed.data : null;
+}
+
+type StoredCustomConnectorOAuthState = Pick<
+  typeof connectorOauthStates.$inferSelect,
+  | "authMethod"
+  | "connectorRevision"
+  | "connectorSlug"
+  | "customConnectorId"
+  | "oauthContext"
+  | "storageVersion"
+>;
+
+export function parseValidCustomConnectorOAuthState(
+  storedState: StoredCustomConnectorOAuthState,
+): CustomConnectorOAuthStateContext | null {
+  const context = parseCustomConnectorOAuthStateContext(
+    storedState.oauthContext,
+  );
+  if (
+    !context ||
+    storedState.connectorSlug !== null ||
+    storedState.customConnectorId !== context.connectorId ||
+    storedState.connectorRevision !== context.connectorRevision ||
+    storedState.authMethod !== CUSTOM_CONNECTOR_OAUTH_METHOD_ID
+  ) {
+    return null;
+  }
+  const hasStoredVersion = storedState.storageVersion !== null;
+  const hasContextVersion = context.storageVersion !== undefined;
+  if (hasStoredVersion !== hasContextVersion) {
+    return null;
+  }
+  if (
+    storedState.storageVersion !== null &&
+    storedState.storageVersion !== context.storageVersion
+  ) {
+    return null;
+  }
+  return context;
+}
+
+export function customConnectorOAuthStateMatchesDefinition(
+  context: CustomConnectorOAuthStateContext,
+  connector: Pick<CustomConnectorRow, "id" | "revision" | "storageVersion">,
+): boolean {
+  return (
+    connector.id === context.connectorId &&
+    connector.revision === context.connectorRevision &&
+    (context.storageVersion === undefined ||
+      connector.storageVersion === context.storageVersion)
+  );
 }
 
 export async function decryptCustomConnectorOAuth2Credentials(
@@ -684,6 +738,7 @@ export async function storeCustomConnectorOAuth2Connection(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorId: string;
+  readonly storageVersion: number;
   readonly token: OAuthTokenResult;
   readonly featureContext: FeatureSwitchContext;
 }): Promise<void> {
@@ -694,7 +749,7 @@ export async function storeCustomConnectorOAuth2Connection(args: {
       .values({
         customConnectorId: args.connectorId,
         authMethod: "oauth",
-        storageVersion: 1,
+        storageVersion: args.storageVersion,
         tokenExpiresAt: args.token.expiresAt,
         userId: args.userId,
         orgId: args.orgId,
@@ -707,6 +762,8 @@ export async function storeCustomConnectorOAuth2Connection(args: {
         ],
         targetWhere: isNotNull(connectors.customConnectorId),
         set: {
+          authMethod: "oauth",
+          storageVersion: args.storageVersion,
           tokenExpiresAt: args.token.expiresAt,
           needsReconnect: false,
           reconnectReason: null,

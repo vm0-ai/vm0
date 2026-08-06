@@ -1,5 +1,33 @@
 # Changelog
 
+## [8.520.0](https://github.com/vm0-ai/vm0/compare/core-v8.519.0...core-v8.520.0) (2026-08-06)
+
+
+### Features
+
+* **platform:** add staged member usage pack pricing preview ([#25296](https://github.com/vm0-ai/vm0/issues/25296)) ([c8022f6](https://github.com/vm0-ai/vm0/commit/c8022f6a1e8ddc02426d2bca4750038f379a5d33))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.276.0
+
+## [8.519.0](https://github.com/vm0-ai/vm0/compare/core-v8.518.0...core-v8.519.0) (2026-08-06)
+
+
+### Features
+
+* roll out the structured prompt inline templates switch to all users ([#25320](https://github.com/vm0-ai/vm0/issues/25320)) ([3eb8de7](https://github.com/vm0-ai/vm0/commit/3eb8de762355227d47fea1b30dab71b57a33a5ae))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.275.1
+
 ## [8.518.0](https://github.com/vm0-ai/vm0/compare/core-v8.517.0...core-v8.518.0) (2026-08-06)
 
 

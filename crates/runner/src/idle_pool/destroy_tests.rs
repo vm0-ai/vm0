@@ -100,17 +100,48 @@ async fn idle_destroy_payload_stop_panic_is_uncertain_after_destroy() {
 }
 
 #[tokio::test]
-async fn idle_destroy_job_destroy_panic_releases_budget_lease() {
+async fn idle_destroy_job_destroy_panic_preserves_workspace_cache_and_releases_budget_lease() {
+    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-panic-promote").await;
     let overrides = Arc::new(MockSandboxOverrides::new());
     overrides.push_destroy_panic("simulated destroy panic");
     let (budget, lease) = reserved_budget_lease();
-    let job = make_idle_destroy_job(Arc::clone(&overrides), lease).await;
+    let job = make_idle_destroy_job_for(
+        fixture.sandbox_id,
+        Arc::clone(&overrides),
+        lease,
+        Some(fixture.promotion),
+    )
+    .await;
 
-    let promoted = job.run_with_context("test_destroy_panic").await;
+    let result = job.run_retaining_lease("test_destroy_panic").await;
 
-    assert!(!promoted);
+    assert_eq!(result.outcome, DestroyOutcome::Uncertain);
+    assert!(result.workspace_cache_promoted);
+    let exec_calls = overrides.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
     assert_eq!(overrides.destroy_call_count(), 1);
+    assert_eq!(budget.allocated(), (2, 4096, 1));
+    drop(result.budget_lease);
     assert_eq!(budget.allocated(), (0, 0, 0));
+    let states = fixture.cache.held_workspace_states().await;
+    assert_eq!(states.len(), 1);
+    assert_eq!(states[0].reuse_key, fixture.reuse_key);
+    let paths = RunnerPaths::new(fixture._dir.path().join("runner"));
+    assert!(
+        !tokio::fs::try_exists(paths.active_workspace_image(&fixture.sandbox_id))
+            .await
+            .unwrap(),
+        "successful promotion must move the image out before sandbox destruction"
+    );
+    tokio::fs::remove_dir_all(paths.workspace_dir(&fixture.sandbox_id))
+        .await
+        .unwrap();
+    assert_eq!(
+        WorkspacePromotionFixture::checkout_result(&fixture.cache, &fixture.reuse_key).await,
+        WorkspaceCacheCheckoutResult::Hit,
+        "removing the destroyed sandbox workspace must not remove the promoted cache entry"
+    );
 }
 
 #[tokio::test]

@@ -21,6 +21,11 @@ const variableStateSchema = z.object({
   connector_id: z.uuid(),
 });
 
+const customOauthStateSchema = z.object({
+  storage_version: z.number().int().positive().nullable(),
+  context_storage_version: z.number().int().positive().nullable(),
+});
+
 export const testConnectorCredentialStorageStateActionBodySchema =
   z.discriminatedUnion("action", [
     z.object({
@@ -30,6 +35,20 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       connector_slug: z.string(),
       secret_names: z.array(z.string()),
       variable_names: z.array(z.string()),
+    }),
+    z.object({
+      action: z.literal("read-custom-parent"),
+      org_id: z.string(),
+      user_id: z.string(),
+      custom_connector_id: z.uuid(),
+    }),
+    z.object({
+      action: z.literal("read-custom-oauth-state"),
+      state: z.string(),
+    }),
+    z.object({
+      action: z.literal("downgrade-custom-oauth-state"),
+      state: z.string(),
     }),
     z.object({
       action: z.literal("seed-owned-secret"),
@@ -79,6 +98,7 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     ok: z.literal(true),
     connector: connectorStateSchema.nullable().optional(),
     connector_id: z.uuid().optional(),
+    custom_oauth_state: customOauthStateSchema.nullable().optional(),
     secrets: z.array(secretStateSchema).optional(),
     variables: z.array(variableStateSchema).optional(),
   },

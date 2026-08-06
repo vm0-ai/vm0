@@ -958,7 +958,35 @@
         "name": "Team"
       },
       "upgrade": "Upgrade",
-      "upgradeTo": "Upgrade auf {{plan}}"
+      "upgradeTo": "Upgrade auf {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} Bonus-Credits",
+        "changePlan": "Plan ändern",
+        "checkoutComingSoon": "Checkout in Kürze verfügbar",
+        "choosePlan": "Plan auswählen",
+        "choosePlanDescription": "Wählen Sie zuerst den Workspace-Plan. Mitgliederpakete konfigurieren Sie im nächsten Schritt.",
+        "configurePackages": "Mitgliederpakete konfigurieren",
+        "configurePackagesDescription": "Wählen Sie für jedes Mitglied ein erforderliches Paket aus und prüfen Sie dann die kombinierte Monatssumme.",
+        "currentMember": "Aktuelles Mitglied",
+        "description": "Wählen Sie für jedes Mitglied ein monatliches Nutzungspaket aus.",
+        "discountBonusCredits": "Bonus-Credits durch Rabatt",
+        "memberExclusive": "Jedes Paket gehört einem Mitglied und kann nicht geteilt werden. Wenn ein Paket aufgebraucht ist, wird die Nutzung über nutzungsabhängige Credits abgerechnet. Sie können später auf ein neues Paket upgraden.",
+        "memberPackages": "Mitgliederpakete",
+        "memberUsage": "Nutzung des Mitglieds",
+        "memberUsageTotal": "Monatliche Paketsumme",
+        "minimumPackageBreakdown": "{{base}} Plan + {{package}} erforderliches Mitgliederpaket",
+        "monthlyTotal": "Monatliche Gesamtkosten",
+        "orderSummary": "Bestellübersicht",
+        "packagesStep": "Pakete",
+        "packOption": "{{price}} · {{credits}} Credits · {{discount}} % Rabatt",
+        "planStep": "Plan",
+        "purchaseSteps": "Kaufschritte",
+        "selectedPlan": "Ausgewählter Plan",
+        "selectPlan": "{{plan}} auswählen",
+        "selectUsage": "Nutzung für {{name}}",
+        "startingAt": "Ab",
+        "totalCredits": "Credits insgesamt"
+      }
     },
     "restore": {
       "cancellationDescription": "Dadurch wird die geplante Kündigung für Ihren {{plan}}-Plan rückgängig gemacht.",

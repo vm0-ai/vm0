@@ -979,7 +979,35 @@
         "name": "Team"
       },
       "upgrade": "Mettre à niveau",
-      "upgradeTo": "Passer à {{plan}}"
+      "upgradeTo": "Passer à {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} crédits bonus",
+        "changePlan": "Changer de forfait",
+        "checkoutComingSoon": "Paiement bientôt disponible",
+        "choosePlan": "Choisissez un forfait",
+        "choosePlanDescription": "Choisissez d’abord le forfait de l’espace de travail. Les forfaits des membres sont configurés ensuite.",
+        "configurePackages": "Configurer les forfaits des membres",
+        "configurePackagesDescription": "Choisissez un forfait obligatoire pour chaque membre, puis vérifiez le total mensuel combiné.",
+        "currentMember": "Membre actuel",
+        "description": "Choisissez un forfait d’utilisation mensuel pour chaque membre.",
+        "discountBonusCredits": "Crédits bonus liés à la remise",
+        "memberExclusive": "Chaque forfait appartient à un membre et ne peut pas être partagé. Lorsqu’un forfait est épuisé, l’utilisation revient aux crédits à l’usage. Vous pourrez passer à un nouveau forfait ultérieurement.",
+        "memberPackages": "Forfaits des membres",
+        "memberUsage": "Utilisation du membre",
+        "memberUsageTotal": "Total des forfaits mensuels",
+        "minimumPackageBreakdown": "Forfait de {{base}} + forfait membre obligatoire de {{package}}",
+        "monthlyTotal": "Total mensuel",
+        "orderSummary": "Récapitulatif de la commande",
+        "packagesStep": "Forfaits",
+        "packOption": "{{price}} · {{credits}} crédits · {{discount}} % de réduction",
+        "planStep": "Forfait",
+        "purchaseSteps": "Étapes d’achat",
+        "selectedPlan": "Forfait sélectionné",
+        "selectPlan": "Sélectionner {{plan}}",
+        "selectUsage": "Utilisation de {{name}}",
+        "startingAt": "À partir de",
+        "totalCredits": "Crédits totaux"
+      }
     },
     "restore": {
       "cancellationDescription": "Cela annulera l'annulation programmée de votre forfait {{plan}}.",
