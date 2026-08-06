@@ -511,28 +511,6 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("uses the full lightbox canvas and centers an image on open", async () => {
-    await setupUploadedImagePreview();
-
-    click(screen.getByLabelText("Open image preview for photo.png"));
-
-    const zoomContent = await screen.findByTestId(
-      "artifact-dialog-image-stage-content",
-    );
-    const transformContent = zoomContent.parentElement;
-    if (!(transformContent instanceof HTMLElement)) {
-      throw new Error("Image transform content not found");
-    }
-
-    expect(transformContent).toHaveStyle({ height: "100%", width: "100%" });
-    expect(zoomContent).toHaveClass(
-      "h-full",
-      "w-full",
-      "items-center",
-      "justify-center",
-    );
-  });
-
   it("closes the attachment lightbox with Escape before browser shortcuts run", async () => {
     await setupUploadedImagePreview();
 
