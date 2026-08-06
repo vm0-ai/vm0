@@ -1062,8 +1062,8 @@ const TEMPLATE_CARD_SHADOW =
  */
 const TEMPLATE_TILE_WRAPPER = "group/tile relative cursor-pointer";
 const TEMPLATE_TILE_RING =
-  "rounded-xl ring-offset-4 ring-offset-card transition-shadow duration-150";
-const TEMPLATE_TILE_RING_HOVER = "ring-gray-400 group-hover/tile:ring-1";
+  "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
+const TEMPLATE_TILE_RING_HOVER = "ring-primary group-hover/tile:ring-1";
 const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
 const TEMPLATE_TILE_MEDIA =
   "relative overflow-hidden border border-gray-200 bg-muted";
@@ -1140,7 +1140,7 @@ function VideoTemplateGrid({
   onSelect: (item: VideoTemplateItem) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => {
         return (
           <VideoTemplateCard
@@ -1270,7 +1270,7 @@ function WebsiteTemplateGrid({
   onPreview: (item: WebsiteTemplateItem) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => {
         return (
           <WebsiteTemplateCard
@@ -1494,7 +1494,7 @@ function WorkflowTemplateGrid({
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => {
         return (
           <WorkflowTemplateCard
@@ -4765,7 +4765,7 @@ function PptTemplateGrid({
   signals: ComposerSignals;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => {
         return (
           <PptCard
@@ -5148,6 +5148,12 @@ function TemplatePickerDialog({
                     onSearchChange={handleSearchChange}
                   />
                 </div>
+                {/* Cards dissolve into the header instead of being clipped by it:
+                    a white wash whose own blur fades out over the same 32px. */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 top-[68px] z-10 h-8 bg-gradient-to-b from-card via-card/70 to-transparent backdrop-blur-[2px] [mask-image:linear-gradient(to_bottom,black,transparent)]"
+                />
                 <TemplatePickerCategoryContent
                   signals={signals}
                   selectedCategory={selectedCategory}
