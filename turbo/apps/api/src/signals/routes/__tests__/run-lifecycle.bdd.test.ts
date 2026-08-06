@@ -602,7 +602,7 @@ function customConnectorRuntimeAuthBody(
       matchedFirewall: {
         name: runtime.firewall.firewall.name,
         apiId: api.id,
-        customConnectorAuthOwner: runtime.firewall.customConnectorAuthOwner,
+        customConnectorId: runtime.firewall.customConnectorId,
       },
     },
   };
@@ -8150,7 +8150,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     if (!legacyCustomFirewall || legacyCustomFirewall.kind !== "inline") {
       throw new Error("Expected the legacy custom firewall snapshot");
     }
-    expect(legacyCustomFirewall.customConnectorAuthOwner).toBeUndefined();
+    expect(legacyCustomFirewall.customConnectorId).toBeUndefined();
 
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -8174,14 +8174,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       targets: [target],
     });
     const initialAvailable = availableCustomConnectorRuntime(initialRuntime);
-    const initialOwner = initialAvailable.firewall.customConnectorAuthOwner;
     const { api: initialApi, body: currentAuthBody } =
       customConnectorRuntimeAuthBody(
         initialAvailable,
         fw.encryptedSecretsBody({}),
       );
     expect(initialApi.id).toBe(`${internalName}:0`);
-    expect(initialOwner).toMatchObject({ customConnectorId: custom.id });
+    expect(initialAvailable.firewall.customConnectorId).toBe(custom.id);
     expect(initialAvailable.networkPolicy.unknownPolicy).toBe("allow");
     const initialCurrentAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -8190,6 +8189,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(initialCurrentAuth.body).toMatchObject({
       headers: { Authorization: "Bearer custom-secret-value" },
+      expiresAt: null,
     });
 
     await connectors.setCustomConnectorSecret(
@@ -8197,23 +8197,21 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       custom.id,
       "updated-custom-secret-value",
     );
-    const staleOwnerAuth = await fw.requestFirewallAuth(
+    const currentUpdatedAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       currentAuthBody,
-      [424],
+      [200],
     );
-    if (staleOwnerAuth.status !== 424) {
-      throw new Error("Expected the stale custom owner to be rejected");
-    }
-    expect(staleOwnerAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+    expect(currentUpdatedAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer updated-custom-secret-value" },
+      expiresAt: null,
+    });
 
     const [updatedRuntime] = await api.reconcileConnectorRuntime(run.runId, {
       targets: [target],
     });
     const updatedAvailable = availableCustomConnectorRuntime(updatedRuntime);
-    expect(
-      updatedAvailable.firewall.customConnectorAuthOwner.authStateDigest,
-    ).not.toBe(initialOwner.authStateDigest);
+    expect(updatedAvailable.firewall.customConnectorId).toBe(custom.id);
     const { body: updatedAuthBody } = customConnectorRuntimeAuthBody(
       updatedAvailable,
       fw.encryptedSecretsBody({}),

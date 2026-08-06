@@ -34,7 +34,6 @@ import {
   replaceBasicAuthTemplates,
   type BasicAuthTemplateArg,
   type BasicAuthTemplateMatch,
-  type CustomConnectorAuthOwner,
 } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
@@ -154,7 +153,7 @@ interface FirewallAuthBody {
   readonly matchedFirewall?: {
     readonly name: string;
     readonly apiId: string;
-    readonly customConnectorAuthOwner?: CustomConnectorAuthOwner;
+    readonly customConnectorId?: string;
   };
 }
 
@@ -4155,17 +4154,14 @@ interface AvailableCustomConnectorRuntimeResolution {
 
 function availableCustomConnectorRuntimeResolution(
   resolution: ConnectorRuntimeResolution | undefined,
-  owner: CustomConnectorAuthOwner,
+  customConnectorId: string,
 ): AvailableCustomConnectorRuntimeResolution | undefined {
   if (
     !resolution ||
     resolution.result.state !== "available" ||
     resolution.result.target.kind !== "custom" ||
     !("firewall" in resolution.result) ||
-    !isDeepStrictEqual(
-      resolution.result.firewall.customConnectorAuthOwner,
-      owner,
-    )
+    resolution.result.firewall.customConnectorId !== customConnectorId
   ) {
     return undefined;
   }
@@ -4290,7 +4286,7 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
   readonly db: Db;
   readonly auth: SandboxAuth;
   readonly body: FirewallAuthBody;
-  readonly owner: CustomConnectorAuthOwner;
+  readonly customConnectorId: string;
 }): Promise<ResolveFirewallAuthResult> {
   const run = await currentCustomConnectorRunScope(args.db, args.auth);
   if (!run) {
@@ -4306,13 +4302,13 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
     targets: [
       {
         kind: "custom",
-        customConnectorId: args.owner.customConnectorId,
+        customConnectorId: args.customConnectorId,
       },
     ],
   });
   const currentResolution = availableCustomConnectorRuntimeResolution(
     resolution,
-    args.owner,
+    args.customConnectorId,
   );
   if (!currentResolution) {
     return connectorNotConfigured();
@@ -4360,17 +4356,15 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
       base: resolved.base,
       query: resolved.query,
       awsSigv4: resolved.awsSigv4,
-      expiresAt: mergeExpiresAt(
+      expiresAt:
         mergeExpiresAt(
-          Math.floor(
-            Date.parse(currentResolution.result.nextReconcileAt) / 1000,
-          ),
-          billableCacheExpiry.expiresAt,
-        ),
-        currentResolution.customAuthExpiresAt
-          ? Math.floor(Date.parse(currentResolution.customAuthExpiresAt) / 1000)
-          : undefined,
-      ),
+          billableCacheExpiry.expiresAt ?? null,
+          currentResolution.customAuthExpiresAt
+            ? Math.floor(
+                Date.parse(currentResolution.customAuthExpiresAt) / 1000,
+              )
+            : undefined,
+        ) ?? null,
       resolvedSecrets: resolved.resolvedSecrets,
       refreshedConnectors: [],
       refreshedSecrets: [],
@@ -4383,14 +4377,13 @@ export async function resolveFirewallAuth(
   auth: SandboxAuth,
   body: FirewallAuthBody,
 ): Promise<ResolveFirewallAuthResult> {
-  const customConnectorAuthOwner =
-    body.matchedFirewall?.customConnectorAuthOwner;
-  if (customConnectorAuthOwner) {
+  const customConnectorId = body.matchedFirewall?.customConnectorId;
+  if (customConnectorId) {
     return await resolveCurrentCustomConnectorFirewallAuth({
       db,
       auth,
       body,
-      owner: customConnectorAuthOwner,
+      customConnectorId,
     });
   }
   const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db);

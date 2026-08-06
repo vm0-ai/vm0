@@ -205,17 +205,10 @@ const executionFirewallSchema = firewallSchema.extend({
   ),
 });
 
-export const customConnectorAuthOwnerSchema = z
-  .object({
-    customConnectorId: z.uuid(),
-    authStateDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
-  })
-  .strict();
-
 export const executionFirewallInlineEntrySchema = z.object({
   kind: z.literal("inline"),
   firewall: executionFirewallSchema,
-  customConnectorAuthOwner: customConnectorAuthOwnerSchema.optional(),
+  customConnectorId: z.uuid().optional(),
 });
 
 export const executionFirewallEntrySchema = z.discriminatedUnion("kind", [
@@ -325,9 +318,6 @@ export type ExecutionFirewallBuiltinEntry = z.infer<
 >;
 export type ExecutionFirewallInlineEntry = z.infer<
   typeof executionFirewallInlineEntrySchema
->;
-export type CustomConnectorAuthOwner = z.infer<
-  typeof customConnectorAuthOwnerSchema
 >;
 export type ExecutionFirewallEntry = z.infer<
   typeof executionFirewallEntrySchema

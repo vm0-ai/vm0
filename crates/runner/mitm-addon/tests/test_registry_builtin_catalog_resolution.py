@@ -143,18 +143,15 @@ class TestRegistryBuiltinCatalogResolution:
                 builtin_firewall_catalog_snapshot=snapshot,
             )
 
-    def test_inline_custom_auth_owner_is_preserved_on_firewall_and_apis(self):
-        owner = {
-            "customConnectorId": "550e8400-e29b-41d4-a716-446655440000",
-            "authStateDigest": f"sha256:{'a' * 64}",
-        }
+    def test_inline_custom_connector_id_is_preserved_on_firewall_and_apis(self):
+        custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
         resolved = registry_firewalls.resolve_firewall_entries(
             {
-                "runId": "run-custom-owner",
+                "runId": "run-custom-id",
                 "firewalls": [
                     {
                         "kind": "inline",
-                        "customConnectorAuthOwner": owner,
+                        "customConnectorId": custom_connector_id,
                         "firewall": {
                             "name": "custom_connector_test",
                             "apis": [
@@ -172,31 +169,18 @@ class TestRegistryBuiltinCatalogResolution:
         )
 
         assert resolved.firewalls is not None
-        assert resolved.firewalls[0]["customConnectorAuthOwner"] == owner
-        assert resolved.firewalls[0]["apis"][0]["customConnectorAuthOwner"] == owner
+        assert resolved.firewalls[0]["customConnectorId"] == custom_connector_id
+        assert resolved.firewalls[0]["apis"][0]["customConnectorId"] == custom_connector_id
 
-    @pytest.mark.parametrize(
-        "owner",
-        [
-            {
-                "customConnectorId": "not-a-uuid",
-                "authStateDigest": f"sha256:{'a' * 64}",
-            },
-            {
-                "customConnectorId": "550e8400-e29b-41d4-a716-446655440000",
-                "authStateDigest": "not-a-digest",
-            },
-        ],
-    )
-    def test_inline_custom_auth_owner_rejects_invalid_identity(self, owner):
+    def test_inline_custom_connector_id_rejects_invalid_identity(self):
         with pytest.raises(registry_firewalls.FirewallEntryResolutionError):
             registry_firewalls.resolve_firewall_entries(
                 {
-                    "runId": "run-custom-owner",
+                    "runId": "run-custom-id",
                     "firewalls": [
                         {
                             "kind": "inline",
-                            "customConnectorAuthOwner": owner,
+                            "customConnectorId": "not-a-uuid",
                             "firewall": {
                                 "name": "custom_connector_test",
                                 "apis": [],

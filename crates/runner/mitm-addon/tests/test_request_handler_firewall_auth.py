@@ -80,13 +80,10 @@ async def test_repeated_firewall_requests_reuse_snapshot_auth_identity(
     assert flows[1].request.headers["Authorization"] == "Bearer resolved"
 
 
-async def test_custom_owner_scopes_cache_and_auth_request_to_exact_match(
+async def test_custom_connector_id_is_forwarded_with_matched_firewall(
     tmp_path, real_flow, mitm_ctx
 ):
-    owner = {
-        "customConnectorId": "550e8400-e29b-41d4-a716-446655440000",
-        "authStateDigest": f"sha256:{'a' * 64}",
-    }
+    custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
     firewall_name = "custom_connector_550e8400e29b41d4a716446655440000"
     api_id = f"{firewall_name}:0"
     reg_path = _write_registry(
@@ -94,7 +91,7 @@ async def test_custom_owner_scopes_cache_and_auth_request_to_exact_match(
         vm_info=_single_firewall_vm(
             tmp_path,
             firewall_name=firewall_name,
-            custom_connector_auth_owner=owner,
+            custom_connector_id=custom_connector_id,
             api_entry={
                 "id": api_id,
                 "base": "https://custom.example.test/api/",
@@ -122,11 +119,7 @@ async def test_custom_owner_scopes_cache_and_auth_request_to_exact_match(
     ):
         await mitm_addon.request(flow)
 
-    cache_key = flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
-    assert cache_key.custom_connector_auth_owner == (
-        owner["customConnectorId"],
-        owner["authStateDigest"],
-    )
+    assert flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY].api_id == api_id
     auth_fetch.assert_awaited_once()
     await_args = auth_fetch.await_args
     assert await_args is not None
@@ -134,31 +127,32 @@ async def test_custom_owner_scopes_cache_and_auth_request_to_exact_match(
     assert request.to_body()["matchedFirewall"] == {
         "name": firewall_name,
         "apiId": api_id,
-        "customConnectorAuthOwner": owner,
+        "customConnectorId": custom_connector_id,
     }
     assert flow.request.headers["Authorization"] == "Bearer resolved"
 
 
-async def test_custom_owner_change_during_auth_discards_stale_credentials(
+async def test_custom_firewall_change_during_auth_discards_stale_credentials(
     tmp_path, real_flow, mitm_ctx
 ):
     custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
     firewall_name = "custom_connector_550e8400e29b41d4a716446655440000"
 
-    def write_owner(digest_character: str):
+    def write_firewall(auth_scheme: str):
         return _write_registry(
             tmp_path,
             vm_info=_single_firewall_vm(
                 tmp_path,
                 firewall_name=firewall_name,
-                custom_connector_auth_owner={
-                    "customConnectorId": custom_connector_id,
-                    "authStateDigest": f"sha256:{digest_character * 64}",
-                },
+                custom_connector_id=custom_connector_id,
                 api_entry={
                     "id": f"{firewall_name}:0",
                     "base": "https://custom.example.test/api/",
-                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.CUSTOM_TOKEN }}"}},
+                    "auth": {
+                        "headers": {
+                            "Authorization": f"{auth_scheme} ${{{{ secrets.CUSTOM_TOKEN }}}}"
+                        }
+                    },
                 },
                 network_policy={
                     "allow": [],
@@ -169,7 +163,7 @@ async def test_custom_owner_change_during_auth_discards_stale_credentials(
             ),
         )
 
-    reg_path = write_owner("a")
+    reg_path = write_firewall("Bearer")
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -200,7 +194,7 @@ async def test_custom_owner_change_during_auth_discards_stale_credentials(
         request_task = asyncio.create_task(mitm_addon.request(flow))
         try:
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
-            write_owner("b")
+            write_firewall("Token")
             release_auth_resolution.set()
             await asyncio.wait_for(request_task, timeout=1)
         finally:

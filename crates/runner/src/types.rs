@@ -185,16 +185,8 @@ pub enum FirewallEntry {
     Inline {
         firewall: Firewall,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        custom_connector_auth_owner: Option<CustomConnectorAuthOwner>,
+        custom_connector_id: Option<String>,
     },
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(deny_unknown_fields)]
-pub struct CustomConnectorAuthOwner {
-    pub custom_connector_id: String,
-    pub auth_state_digest: String,
 }
 
 /// A firewall definition shared by inline execution entries and builtin catalogs.

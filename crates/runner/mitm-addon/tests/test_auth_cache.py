@@ -471,32 +471,6 @@ class TestFirewallHeaderCache:
 
         assert not has_auth_state(cache_key)
 
-    def test_custom_owner_eviction_is_digest_scoped(self):
-        custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
-        current_digest = f"sha256:{'b' * 64}"
-        stale_key = auth_cache_key(
-            run_id="run-current",
-            custom_connector_auth_owner=(
-                custom_connector_id,
-                f"sha256:{'a' * 64}",
-            ),
-        )
-        current_key = auth_cache_key(
-            run_id="run-current",
-            custom_connector_auth_owner=(custom_connector_id, current_digest),
-        )
-        legacy_key = auth_cache_key(run_id="run-current", api_id="legacy-api")
-        for key in (stale_key, current_key, legacy_key):
-            set_cached_headers(key, headers={}, expires_at=None)
-
-        auth_cache.evict_stale_custom_owner_cache_keys(
-            {("run-current", custom_connector_id, current_digest)}
-        )
-
-        assert not has_auth_state(stale_key)
-        assert has_auth_state(current_key)
-        assert has_auth_state(legacy_key)
-
 
 class TestGetFirewallHeaders:
     async def test_cache_miss_fetches_and_caches(self, headers):

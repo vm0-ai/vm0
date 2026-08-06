@@ -315,17 +315,17 @@ impl ProxyRegistryHandle {
             ) => {
                 let FirewallEntry::Inline {
                     firewall: inline_firewall,
-                    custom_connector_auth_owner: Some(owner),
+                    custom_connector_id: Some(entry_connector_id),
                 } = &firewall
                 else {
                     return Err(RunnerError::Internal(format!(
-                        "custom connector runtime result {} has no auth owner",
+                        "custom connector runtime result {} has no connector id",
                         custom_connector_id
                     )));
                 };
-                if owner.custom_connector_id != *custom_connector_id {
+                if entry_connector_id != custom_connector_id {
                     return Err(RunnerError::Internal(format!(
-                        "custom connector runtime result {} has mismatched auth owner",
+                        "custom connector runtime result {} has mismatched connector id",
                         custom_connector_id
                     )));
                 }
@@ -337,9 +337,9 @@ impl ProxyRegistryHandle {
                     .filter_map(|entry| {
                         if let FirewallEntry::Inline {
                             firewall,
-                            custom_connector_auth_owner: Some(existing_owner),
+                            custom_connector_id: Some(existing_connector_id),
                         } = entry
-                            && existing_owner.custom_connector_id == *custom_connector_id
+                            && existing_connector_id == custom_connector_id
                         {
                             Some(firewall.name.clone())
                         } else {
@@ -349,10 +349,10 @@ impl ProxyRegistryHandle {
                     .collect::<Vec<_>>();
                 replace_first_matching_firewall(firewalls, firewall, |entry| {
                     if let FirewallEntry::Inline {
-                        custom_connector_auth_owner: Some(existing_owner),
+                        custom_connector_id: Some(existing_connector_id),
                         ..
                     } = entry
-                        && existing_owner.custom_connector_id == *custom_connector_id
+                        && existing_connector_id == custom_connector_id
                     {
                         true
                     } else {
@@ -377,9 +377,9 @@ impl ProxyRegistryHandle {
                     firewalls.retain(|entry| {
                         if let FirewallEntry::Inline {
                             firewall,
-                            custom_connector_auth_owner: Some(owner),
+                            custom_connector_id: Some(existing_connector_id),
                         } = entry
-                            && owner.custom_connector_id == *custom_connector_id
+                            && existing_connector_id == custom_connector_id
                         {
                             removed_firewall_names.push(firewall.name.clone());
                             false
@@ -461,8 +461,8 @@ impl ProxyRegistryHandle {
                     firewalls.iter().find_map(|entry| match entry {
                         FirewallEntry::Inline {
                             firewall,
-                            custom_connector_auth_owner: Some(owner),
-                        } if owner.custom_connector_id == *custom_connector_id => {
+                            custom_connector_id: Some(existing_connector_id),
+                        } if existing_connector_id == custom_connector_id => {
                             Some(firewall.name.clone())
                         }
                         _ => None,
@@ -595,10 +595,7 @@ pub(super) async fn write_empty_registry(path: &Path) -> RunnerResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{
-        CustomConnectorAuthOwner, Firewall, FirewallApi, FirewallAuth, FirewallEntry,
-        FirewallPermission,
-    };
+    use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry, FirewallPermission};
     use std::os::unix::fs::PermissionsExt;
 
     struct RegistryHarness {
@@ -676,7 +673,7 @@ mod tests {
                         ]),
                     }],
                 },
-                custom_connector_auth_owner: None,
+                custom_connector_id: None,
             })
             .collect()
     }
@@ -690,11 +687,7 @@ mod tests {
         }
     }
 
-    fn custom_runtime_firewall(
-        custom_connector_id: &str,
-        auth_state_digest: &str,
-        name: &str,
-    ) -> FirewallEntry {
+    fn custom_runtime_firewall(custom_connector_id: &str, name: &str) -> FirewallEntry {
         FirewallEntry::Inline {
             firewall: Firewall {
                 name: name.to_string(),
@@ -714,10 +707,7 @@ mod tests {
                     permissions: None,
                 }],
             },
-            custom_connector_auth_owner: Some(CustomConnectorAuthOwner {
-                custom_connector_id: custom_connector_id.to_string(),
-                auth_state_digest: auth_state_digest.to_string(),
-            }),
+            custom_connector_id: Some(custom_connector_id.to_string()),
         }
     }
 
@@ -980,11 +970,7 @@ mod tests {
         let original_name = "custom_connector_original";
         let restored_name = "custom_connector_restored";
         let firewalls = vec![
-            custom_runtime_firewall(
-                custom_connector_id,
-                &format!("sha256:{}", "a".repeat(64)),
-                original_name,
-            ),
+            custom_runtime_firewall(custom_connector_id, original_name),
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
                 base_url_vars: None,
@@ -1053,11 +1039,7 @@ mod tests {
                 .contains_key("slack")
         );
 
-        let restored_firewall = custom_runtime_firewall(
-            custom_connector_id,
-            &format!("sha256:{}", "b".repeat(64)),
-            restored_name,
-        );
+        let restored_firewall = custom_runtime_firewall(custom_connector_id, restored_name);
         assert!(
             harness
                 .handle
@@ -1099,10 +1081,9 @@ mod tests {
                 matches!(
                     entry,
                     FirewallEntry::Inline {
-                        custom_connector_auth_owner: Some(owner),
+                        custom_connector_id: Some(entry_connector_id),
                         ..
-                    } if owner.custom_connector_id == custom_connector_id
-                        && owner.auth_state_digest == format!("sha256:{}", "b".repeat(64))
+                    } if entry_connector_id == custom_connector_id
                 )
             })
         }));
@@ -1487,7 +1468,7 @@ mod tests {
                     }]),
                 }],
             },
-            custom_connector_auth_owner: None,
+            custom_connector_id: None,
         }];
 
         let registration = VmRegistration {
@@ -1641,7 +1622,7 @@ mod tests {
                     permissions: None,
                 }],
             },
-            custom_connector_auth_owner: None,
+            custom_connector_id: None,
         }];
 
         let registration = VmRegistration {
@@ -1693,7 +1674,7 @@ mod tests {
                     permissions: None,
                 }],
             },
-            custom_connector_auth_owner: None,
+            custom_connector_id: None,
         }];
 
         let registration = VmRegistration {

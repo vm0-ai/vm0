@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
-  customConnectorAuthOwnerSchema,
   executionFirewallInlineEntrySchema,
   executionFirewallsSchema,
   firewallApiSchema,
@@ -250,6 +249,7 @@ export const connectorRuntimeCustomAvailableResultSchema =
     target: connectorRuntimeCustomTargetSchema,
     state: z.literal("available"),
     firewall: executionFirewallInlineEntrySchema.extend({
+      customConnectorId: z.uuid(),
       firewall: firewallSchema.extend({
         apis: z.array(
           firewallApiSchema.extend({
@@ -257,7 +257,6 @@ export const connectorRuntimeCustomAvailableResultSchema =
           }),
         ),
       }),
-      customConnectorAuthOwner: customConnectorAuthOwnerSchema,
     }),
     networkPolicy: networkPolicySchema,
   });

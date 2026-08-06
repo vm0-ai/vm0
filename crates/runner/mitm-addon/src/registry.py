@@ -13,7 +13,6 @@ import state_file
 from firewall_auth_cache import (
     evict_all_cache_keys,
     evict_stale_cache_keys,
-    evict_stale_custom_owner_cache_keys,
 )
 
 VmContext = tuple[
@@ -337,23 +336,6 @@ def _omitted_runtime_intents(vm: dict, field_name: str) -> frozenset[str]:
     return frozenset(raw_values)
 
 
-def _active_custom_auth_owners(new_registry: dict) -> set[tuple[str, str, str]]:
-    owners: set[tuple[str, str, str]] = set()
-    for vm in new_registry.values():
-        run_id = vm["runId"]
-        for firewall in vm.get("firewalls") or []:
-            if not isinstance(firewall, dict):
-                continue
-            owner = firewall.get("customConnectorAuthOwner")
-            if not isinstance(owner, dict):
-                continue
-            custom_connector_id = owner.get("customConnectorId")
-            auth_state_digest = owner.get("authStateDigest")
-            if isinstance(custom_connector_id, str) and isinstance(auth_state_digest, str):
-                owners.add((run_id, custom_connector_id, auth_state_digest))
-    return owners
-
-
 def _read_registry_vms(raw_bytes: bytes) -> dict:
     raw_registry = json.loads(raw_bytes.decode("utf-8"))
     if not isinstance(raw_registry, dict):
@@ -461,7 +443,6 @@ def load_registry_state(registry_path: str) -> RegistryState:
     # Evict cache entries for runs no longer in the registry.
     active_run_ids = {vm["runId"] for vm in new_registry.values()}
     evict_stale_cache_keys(active_run_ids)
-    evict_stale_custom_owner_cache_keys(_active_custom_auth_owners(new_registry))
 
     state.snapshot = _RegistrySnapshot(
         new_registry,

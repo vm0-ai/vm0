@@ -1355,17 +1355,14 @@ fn connector_runtime_registry_state(
                     Some(
                         firewall @ FirewallEntry::Inline {
                             firewall: inline_firewall,
-                            custom_connector_auth_owner: Some(owner),
+                            custom_connector_id: Some(entry_connector_id),
                         },
                     ),
             },
         ) => {
             validate_connector_runtime_network_policy(network_policy)?;
-            if owner.custom_connector_id != *custom_connector_id {
-                return Err("custom available result has a mismatched auth owner");
-            }
-            if !valid_custom_auth_state_digest(&owner.auth_state_digest) {
-                return Err("custom available result has an invalid auth state digest");
+            if entry_connector_id != custom_connector_id {
+                return Err("custom available result has a mismatched connector id");
             }
             inline_firewall
                 .validate_for_connector_runtime()
@@ -1396,16 +1393,6 @@ fn validate_connector_runtime_network_policy(policy: &NetworkPolicy) -> Result<(
         }
     }
     Ok(())
-}
-
-fn valid_custom_auth_state_digest(value: &str) -> bool {
-    let Some(hex) = value.strip_prefix("sha256:") else {
-        return false;
-    };
-    hex.len() == 64
-        && hex
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn parse_optional_refresh_deadline(
@@ -1480,9 +1467,7 @@ mod tests {
 
     use crate::http::{HttpClient, HttpClientConfig};
     use crate::proxy::{ProxyRegistryHandle, VmRegistration};
-    use crate::types::{
-        CustomConnectorAuthOwner, Firewall, FirewallApi, FirewallAuth, FirewallEntry,
-    };
+    use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry};
 
     fn api_client_for_url(api_url: String) -> ApiClient {
         ApiClient::new(
@@ -1508,10 +1493,7 @@ mod tests {
         }
     }
 
-    fn custom_runtime_firewall(
-        custom_connector_id: &str,
-        auth_state_digest: &str,
-    ) -> FirewallEntry {
+    fn custom_runtime_firewall(custom_connector_id: &str) -> FirewallEntry {
         FirewallEntry::Inline {
             firewall: Firewall {
                 name: format!("custom_connector_{}", custom_connector_id.replace('-', "")),
@@ -1531,10 +1513,7 @@ mod tests {
                     permissions: None,
                 }],
             },
-            custom_connector_auth_owner: Some(CustomConnectorAuthOwner {
-                custom_connector_id: custom_connector_id.to_string(),
-                auth_state_digest: auth_state_digest.to_string(),
-            }),
+            custom_connector_id: Some(custom_connector_id.to_string()),
         }
     }
 
@@ -2349,8 +2328,7 @@ mod tests {
                     }],
                 }));
         });
-        let digest = format!("sha256:{}", "a".repeat(64));
-        let firewall = custom_runtime_firewall(custom_connector_id, &digest);
+        let firewall = custom_runtime_firewall(custom_connector_id);
         let empty_firewalls = Vec::new();
         let empty_policies = HashMap::new();
         let (_dir, registry, registry_path) =
@@ -2431,11 +2409,8 @@ mod tests {
         .expect("registry should be valid JSON");
         let vm = &registry_json["vms"]["10.200.0.2"];
         assert_eq!(
-            vm["firewalls"][0]["customConnectorAuthOwner"],
-            json!({
-                "authStateDigest": digest,
-                "customConnectorId": custom_connector_id,
-            })
+            vm["firewalls"][0]["customConnectorId"],
+            json!(custom_connector_id)
         );
         assert_eq!(
             vm["networkPolicies"]["custom_connector_550e8400e29b41d4a716446655440000"]["allow"],
@@ -2452,8 +2427,7 @@ mod tests {
         let run_id = RunId::nil();
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
         let target = custom_target(custom_connector_id);
-        let initial_digest = format!("sha256:{}", "a".repeat(64));
-        let initial_firewall = custom_runtime_firewall(custom_connector_id, &initial_digest);
+        let initial_firewall = custom_runtime_firewall(custom_connector_id);
         let initial_name = format!("custom_connector_{}", custom_connector_id.replace('-', ""));
         let initial_policies = HashMap::from([(
             initial_name,
@@ -2464,7 +2438,7 @@ mod tests {
                 unknown_policy: "deny".to_string(),
             },
         )]);
-        let invalid_firewall = custom_runtime_firewall(custom_connector_id, "not-a-digest");
+        let invalid_firewall = custom_runtime_firewall("550e8400-e29b-41d4-a716-446655440001");
         server.mock(|when, then| {
             when.method(POST).path(format!(
                 "/api/runners/runs/{run_id}/connector-runtime/reconcile"
@@ -2613,8 +2587,7 @@ mod tests {
             ));
             then.status(404);
         });
-        let digest = format!("sha256:{}", "a".repeat(64));
-        let firewall = custom_runtime_firewall(custom_connector_id, &digest);
+        let firewall = custom_runtime_firewall(custom_connector_id);
         let firewall_name = format!("custom_connector_{}", custom_connector_id.replace('-', ""));
         let firewalls = vec![firewall];
         let policies = HashMap::from([(

@@ -144,10 +144,7 @@ describe("connector runtime reconciliation contract", () => {
             },
           ],
         },
-        customConnectorAuthOwner: {
-          customConnectorId,
-          authStateDigest: `sha256:${"a".repeat(64)}`,
-        },
+        customConnectorId,
       },
       networkPolicy: {
         allow: [],

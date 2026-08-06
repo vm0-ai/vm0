@@ -1,12 +1,9 @@
-import { createHash } from "node:crypto";
-
 import type {
   ConnectorRuntimeAbsentReason,
   ConnectorRuntimeReconcileResult,
   ConnectorRuntimeTarget,
 } from "@vm0/api-contracts/contracts/runners";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import type { ExecutionFirewallInlineEntry } from "@vm0/connectors/firewall-types";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
@@ -206,66 +203,6 @@ function customCredentialsAvailable(
   });
 }
 
-function authStateDigest(args: {
-  readonly snapshot: CustomTargetSnapshot;
-  readonly values: readonly StoredValueRow[];
-  readonly authRefs: readonly CustomConnectorAuthRef[];
-  readonly firewall: ExecutionFirewallInlineEntry;
-}): `sha256:${string}` {
-  const connection = args.snapshot.connection;
-  const material = {
-    version: 1,
-    customConnectorId: args.snapshot.row.connector.id,
-    connection: connection
-      ? {
-          id: connection.id,
-          authMethod: connection.authMethod,
-          storageVersion: connection.storageVersion,
-          needsReconnect: connection.needsReconnect,
-          reconnectReason: connection.reconnectReason,
-          secrets: [...connection.secrets]
-            .map((secret) => {
-              return secret.name;
-            })
-            .sort(),
-        }
-      : null,
-    values: [...args.values]
-      .filter((value) => {
-        return !(
-          args.snapshot.row.connector.authMode === "oauth" &&
-          value.kind === "secret" &&
-          value.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
-        );
-      })
-      .sort((left, right) => {
-        return `${left.kind}:${left.key}`.localeCompare(
-          `${right.kind}:${right.key}`,
-        );
-      })
-      .map((value) => {
-        return [value.kind, value.key, value.encryptedValue] as const;
-      }),
-    aliases: [...args.authRefs]
-      .sort((left, right) => {
-        return left.secretName.localeCompare(right.secretName);
-      })
-      .map((ref) => {
-        return [
-          ref.secretName,
-          ref.connectorRevision,
-          ref.kind,
-          ref.key,
-        ] as const;
-      }),
-    firewall: args.firewall,
-  };
-  const hex = createHash("sha256")
-    .update(JSON.stringify(material))
-    .digest("hex");
-  return `sha256:${hex}`;
-}
-
 async function loadSnapshot(args: {
   readonly db: Db;
   readonly scope: ConnectorRuntimeScope;
@@ -446,28 +383,19 @@ async function resolveCustomTarget(args: {
       args.checkedAt,
     );
   }
-  const resultWithoutOwner = {
+  const result = {
     target: args.target,
     state: "available" as const,
     firewall: state.firewall,
     networkPolicy: state.networkPolicy,
     nextReconcileAt: periodicReconcileAt(args.checkedAt),
   };
-  const digest = authStateDigest({
-    snapshot: custom,
-    values,
-    authRefs: state.authRefs,
-    firewall: state.firewall,
-  });
   return {
     result: {
-      ...resultWithoutOwner,
+      ...result,
       firewall: {
         ...state.firewall,
-        customConnectorAuthOwner: {
-          customConnectorId: args.target.customConnectorId,
-          authStateDigest: digest,
-        },
+        customConnectorId: args.target.customConnectorId,
       },
     },
     customAuthRefs: state.authRefs,

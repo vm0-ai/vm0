@@ -1699,7 +1699,7 @@ mod tests {
                         }]),
                     }],
                 },
-                custom_connector_auth_owner: None,
+                custom_connector_id: None,
             },
             FirewallEntry::Builtin {
                 name: "model-provider:openai".to_string(),

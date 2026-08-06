@@ -25,15 +25,15 @@ def _single_firewall_vm(
     network_policy: dict[str, object] | None,
     billable_firewalls: list[str] | None = None,
     include_encrypted_secrets: bool = True,
-    custom_connector_auth_owner: dict[str, str] | None = None,
+    custom_connector_id: str | None = None,
     vm_fields: dict[str, object] | None = None,
 ) -> dict[str, object]:
     firewall_entry: dict[str, object] = {
         "kind": "inline",
         "firewall": {"name": firewall_name, "apis": [api_entry]},
     }
-    if custom_connector_auth_owner is not None:
-        firewall_entry["customConnectorAuthOwner"] = custom_connector_auth_owner
+    if custom_connector_id is not None:
+        firewall_entry["customConnectorId"] = custom_connector_id
     vm_info: dict[str, object] = {
         "runId": run_id,
         "billableFirewalls": billable_firewalls or [],
