@@ -80,6 +80,7 @@ type CreateSharedThreadRouteResponse =
   | { readonly status: 201; readonly body: CreateSharedThreadResponse }
   | ApiErrorRouteResponse<400>
   | ApiErrorRouteResponse<401>
+  | ApiErrorRouteResponse<403>
   | ApiErrorRouteResponse<404>
   | ApiErrorRouteResponse<413>;
 
@@ -180,6 +181,7 @@ const sharedThreadsRuntimeSpec: Record<
       201: createSharedThreadResponseSchema,
       400: sharedThreadApiErrorSchema,
       401: sharedThreadApiErrorSchema,
+      403: sharedThreadApiErrorSchema,
       404: sharedThreadApiErrorSchema,
       413: sharedThreadApiErrorSchema,
     },

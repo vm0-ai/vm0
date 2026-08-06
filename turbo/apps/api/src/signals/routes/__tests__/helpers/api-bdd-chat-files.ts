@@ -29,8 +29,6 @@ import {
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
-  ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_HEADER,
-  ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_VALUE,
   artifactCatalogContract,
   type ArtifactCatalogKind,
   type ArtifactDetail,
@@ -1009,12 +1007,8 @@ export function createChatFilesBddApi(context: TestContext) {
     }> {
       const response = await accept(
         artifactCatalogClient().list({
-          extraHeaders: {
-            [ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_HEADER]:
-              ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_VALUE,
-          },
           headers: authenticate(context, actor),
-          query,
+          query: { ...query, includeSharedThreads: "1" },
         }),
         [200],
       );
@@ -1027,12 +1021,9 @@ export function createChatFilesBddApi(context: TestContext) {
     ): Promise<ArtifactDetail> {
       const response = await accept(
         artifactCatalogClient().get({
-          extraHeaders: {
-            [ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_HEADER]:
-              ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_VALUE,
-          },
           headers: authenticate(context, actor),
           params: { artifactId },
+          query: { includeSharedThreads: "1" },
         }),
         [200],
       );
@@ -1046,12 +1037,9 @@ export function createChatFilesBddApi(context: TestContext) {
     ) {
       return await accept(
         artifactCatalogClient().get({
-          extraHeaders: {
-            [ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_HEADER]:
-              ARTIFACT_CATALOG_SHARED_THREADS_CAPABILITY_VALUE,
-          },
           headers: authenticate(context, actor),
           params: { artifactId },
+          query: { includeSharedThreads: "1" },
         }),
         statuses,
       );

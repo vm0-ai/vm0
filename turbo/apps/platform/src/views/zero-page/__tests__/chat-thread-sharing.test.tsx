@@ -164,4 +164,61 @@ describe("chat thread sharing", () => {
     ).resolves.toBeInTheDocument();
     expect(buttonsByText("Share messages")).toHaveLength(0);
   });
+
+  it("keeps an oversized visual message group unselected", async () => {
+    const user = userEvent.setup({ delay: null });
+    const oversizedText = "界".repeat(512 * 1024 + 1);
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      threadTitle: "Oversized conversation",
+      chatEvents: [
+        {
+          id: USER_EVENT_ID,
+          role: "user",
+          content: oversizedText,
+          runId: RUN_ID,
+          createdAt: "2026-08-06T10:00:00Z",
+        },
+        {
+          id: ASSISTANT_EVENT_ID,
+          role: "assistant",
+          content: "Small answer after the oversized prompt",
+          runId: RUN_ID,
+          createdAt: "2026-08-06T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.SharedThreadSharing]: true,
+      },
+    });
+
+    await screen.findByText("Small answer after the oversized prompt");
+    await user.click(buttonByText("Share messages"));
+
+    const oversizedGroup = [
+      ...document.querySelectorAll<HTMLElement>(
+        "[data-chat-share-selectable-group]",
+      ),
+    ].find((group) => {
+      return (group.textContent?.length ?? 0) > 512 * 1024;
+    });
+    const checkbox =
+      oversizedGroup?.querySelector<HTMLElement>('[role="checkbox"]');
+    if (!checkbox) {
+      throw new Error("Expected the oversized message selection checkbox");
+    }
+
+    await user.click(checkbox);
+
+    await expect(
+      screen.findByText("Select fewer messages to share"),
+    ).resolves.toBeInTheDocument();
+    expect(checkbox).toHaveAttribute("data-state", "unchecked");
+    expect(screen.getAllByText("0 selected").length).toBeGreaterThan(0);
+  });
 });

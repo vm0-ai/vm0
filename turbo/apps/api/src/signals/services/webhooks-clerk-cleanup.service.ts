@@ -36,9 +36,13 @@ import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, count, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, like, sql } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import {
+  sharedThreadArtifactAuthorUserId,
+  SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
+} from "../../lib/shared-thread-artifact";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -754,6 +758,23 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   }
 
   await deleteOrgUsageData(db, orgId);
+  await db.delete(sharedThreads).where(
+    inArray(
+      sharedThreads.id,
+      db
+        .select({ id: artifacts.entityId })
+        .from(artifacts)
+        .where(
+          and(
+            eq(artifacts.orgId, orgId),
+            like(
+              artifacts.logicalKey,
+              `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+            ),
+          ),
+        ),
+    ),
+  );
   await db.delete(artifacts).where(eq(artifacts.orgId, orgId));
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
@@ -802,7 +823,14 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
     .delete(telegramInstallations)
     .where(eq(telegramInstallations.ownerUserId, userId));
   await deleteUserUsageData(db, userId);
-  await db.delete(artifacts).where(eq(artifacts.authorUserId, userId));
+  await db
+    .delete(artifacts)
+    .where(
+      inArray(artifacts.authorUserId, [
+        userId,
+        sharedThreadArtifactAuthorUserId(userId),
+      ]),
+    );
   await db.delete(sharedThreads).where(eq(sharedThreads.userId, userId));
   await db.delete(agentRuns).where(eq(agentRuns.userId, userId));
 

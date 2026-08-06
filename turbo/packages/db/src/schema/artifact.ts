@@ -24,11 +24,11 @@ export type { ArtifactThumbnail } from "@vm0/db/jsonb-contracts/artifact";
  * - `image` -> `image_artifacts.id`
  * - `video` -> `video_artifacts.id`
  * - `presentation` -> `presentation_artifacts.id`
- * - `shared-thread` -> `shared_threads.id`
  *
  * `logical_key` is stable across repeated projections of the same product:
  * `file:<url>` for stored files and `site:<hosted_site_id>` for hosted
- * products; immutable snapshots use `shared-thread:<shared_thread_id>`.
+ * products. Shared-thread snapshots use a compatibility `file` row whose
+ * logical key is `shared-thread:<shared_thread_id>`.
  * Projection metadata records which `run_uploaded_files` row most recently
  * won a file-backed logical key without changing the catalog sort position.
  */
@@ -38,7 +38,6 @@ export const ARTIFACT_KINDS = [
   "image",
   "video",
   "presentation",
-  "shared-thread",
 ] as const;
 export type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
 

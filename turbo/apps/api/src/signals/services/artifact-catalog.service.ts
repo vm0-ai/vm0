@@ -1,5 +1,18 @@
 import { command } from "ccstate";
-import { and, asc, desc, eq, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  like,
+  lt,
+  lte,
+  notLike,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type {
   ArtifactCatalogKind,
   ArtifactDetail,
@@ -23,6 +36,11 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { z } from "zod";
 
 import { nowDate } from "../../lib/time";
+import {
+  isSharedThreadArtifactLogicalKey,
+  sharedThreadArtifactAuthorUserId,
+  SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
+} from "../../lib/shared-thread-artifact";
 import { writeDb$, type Db } from "../external/db";
 import { publishArtifactCatalogChanged } from "./artifact-realtime.service";
 import { inferMimetype } from "./zero-chat-event-shared.service";
@@ -104,21 +122,40 @@ function fileArtifactKind(row: CatalogFileRow): "file" | "image" | "video" {
 function catalogArtifactKind(
   kind: ArtifactKind,
   metadata: Record<string, unknown> | null,
+  logicalKey: string,
 ): ArtifactCatalogKind {
+  if (kind === "file" && isSharedThreadArtifactLogicalKey(logicalKey)) {
+    return "shared-thread";
+  }
   return metadata &&
     metadataString(metadata, "generatedBy") === AVATAR_VIDEO_MARKER
     ? "avatar"
     : kind;
 }
 
-function artifactCatalogKindFilter(kind: ArtifactCatalogKind) {
+function artifactCatalogKindFilter(kind: ArtifactCatalogKind): SQL | undefined {
   const generatedBy = sql`${runUploadedFiles.metadata} ->> 'generatedBy'`;
+  if (kind === "shared-thread") {
+    return and(
+      eq(artifacts.kind, "file"),
+      like(
+        artifacts.logicalKey,
+        `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+      ),
+    );
+  }
   if (kind === "avatar") {
     return eq(generatedBy, AVATAR_VIDEO_MARKER);
   }
   if (kind === "file" || kind === "video") {
     return and(
       eq(artifacts.kind, kind),
+      kind === "file"
+        ? notLike(
+            artifacts.logicalKey,
+            `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+          )
+        : undefined,
       sql`${generatedBy} IS DISTINCT FROM ${AVATAR_VIDEO_MARKER}`,
     );
   }
@@ -741,6 +778,7 @@ async function reconcilePendingArtifactCatalog(
 function toArtifactSummary(row: {
   readonly id: string;
   readonly kind: ArtifactKind;
+  readonly logicalKey: string;
   readonly projectionMetadata: Record<string, unknown> | null;
   readonly title: string;
   readonly thumbnail: ArtifactThumbnail | null;
@@ -749,7 +787,7 @@ function toArtifactSummary(row: {
 }): ArtifactSummary {
   return {
     id: row.id,
-    kind: catalogArtifactKind(row.kind, row.projectionMetadata),
+    kind: catalogArtifactKind(row.kind, row.projectionMetadata, row.logicalKey),
     title: row.title,
     thumbnail: row.thumbnail,
     createdAt: row.createdAt.toISOString(),
@@ -763,7 +801,7 @@ function toArtifactSummary(row: {
  * file directly or its run, while shared threads retain their nullable source
  * thread ID after snapshot creation.
  */
-function chatThreadFilter(db: Db, chatThreadId: string) {
+function chatThreadFilter(db: Db, chatThreadId: string): SQL | undefined {
   return or(
     inArray(
       artifacts.projectionFileId,
@@ -784,7 +822,11 @@ function chatThreadFilter(db: Db, chatThreadId: string) {
         ),
     ),
     and(
-      eq(artifacts.kind, "shared-thread"),
+      eq(artifacts.kind, "file"),
+      like(
+        artifacts.logicalKey,
+        `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+      ),
       inArray(
         artifacts.entityId,
         db
@@ -794,6 +836,18 @@ function chatThreadFilter(db: Db, chatThreadId: string) {
       ),
     ),
   );
+}
+
+function artifactCatalogOwnerFilter(
+  userId: string,
+  includeSharedThreads: boolean,
+): SQL {
+  return includeSharedThreads
+    ? inArray(artifacts.authorUserId, [
+        userId,
+        sharedThreadArtifactAuthorUserId(userId),
+      ])
+    : eq(artifacts.authorUserId, userId);
 }
 
 export const listArtifactCatalog$ = command(
@@ -811,6 +865,7 @@ export const listArtifactCatalog$ = command(
       .select({
         id: artifacts.id,
         kind: artifacts.kind,
+        logicalKey: artifacts.logicalKey,
         projectionMetadata: runUploadedFiles.metadata,
         title: artifacts.title,
         thumbnail: artifacts.thumbnail,
@@ -825,10 +880,7 @@ export const listArtifactCatalog$ = command(
       .where(
         and(
           eq(artifacts.orgId, args.orgId),
-          eq(artifacts.authorUserId, args.userId),
-          args.includeSharedThreads
-            ? undefined
-            : ne(artifacts.kind, "shared-thread"),
+          artifactCatalogOwnerFilter(args.userId, args.includeSharedThreads),
           args.kind ? artifactCatalogKindFilter(args.kind) : undefined,
           args.chatThreadId
             ? chatThreadFilter(db, args.chatThreadId)
@@ -865,6 +917,7 @@ interface GetArtifactCatalogEntryArgs {
   readonly artifactId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly includeSharedThreads: boolean;
 }
 
 async function fileDetail(
@@ -994,6 +1047,7 @@ export const getArtifactCatalogEntry$ = command(
       .select({
         id: artifacts.id,
         kind: artifacts.kind,
+        logicalKey: artifacts.logicalKey,
         entityId: artifacts.entityId,
         projectionFileId: artifacts.projectionFileId,
         projectionMetadata: runUploadedFiles.metadata,
@@ -1011,7 +1065,7 @@ export const getArtifactCatalogEntry$ = command(
         and(
           eq(artifacts.id, args.artifactId),
           eq(artifacts.orgId, args.orgId),
-          eq(artifacts.authorUserId, args.userId),
+          artifactCatalogOwnerFilter(args.userId, args.includeSharedThreads),
         ),
       )
       .limit(1);
@@ -1021,7 +1075,10 @@ export const getArtifactCatalogEntry$ = command(
     }
 
     const summary = toArtifactSummary(row);
-    if (row.kind === "shared-thread") {
+    if (
+      row.kind === "file" &&
+      isSharedThreadArtifactLogicalKey(row.logicalKey)
+    ) {
       return {
         ...summary,
         kind: "shared-thread",
