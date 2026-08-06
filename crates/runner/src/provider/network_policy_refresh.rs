@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::{
-    CONNECTOR_RUNTIME_TARGETS_MAX, NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
+    CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX, NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
 };
 use chrono::{DateTime, Utc};
 use tokio::sync::{
@@ -55,7 +55,8 @@ use crate::types::{
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
 const NETWORK_POLICY_REFRESH_BATCH_MAX: usize = NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX as usize;
-const CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX: usize = CONNECTOR_RUNTIME_TARGETS_MAX as usize;
+const CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX: usize =
+    CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX as usize;
 const EXPIRED_REFRESH_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
 const SCHEDULED_REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 const REFRESH_RETRY_INITIAL_DELAY: Duration = Duration::from_secs(1);
@@ -3952,6 +3953,73 @@ mod tests {
 
         first_mock.assert_calls(1);
         second_mock.assert_calls(1);
+    }
+
+    #[tokio::test]
+    async fn connector_runtime_reconcile_splits_batches_without_limiting_run_targets() {
+        let server = MockServer::start();
+        let run_id = RunId::nil();
+        let connector_slugs = (0..=CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX)
+            .map(|index| format!("connector-{index}"))
+            .collect::<Vec<_>>();
+        let targets = connector_slugs
+            .iter()
+            .map(|connector_slug| builtin_target(connector_slug))
+            .collect::<Vec<_>>();
+        let first_batch = targets[..CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX].to_vec();
+        let second_batch = targets[CONNECTOR_RUNTIME_RECONCILE_BATCH_MAX..].to_vec();
+        let first_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!(
+                    "/api/runners/runs/{run_id}/connector-runtime/reconcile"
+                ))
+                .json_body(json!({ "targets": first_batch }));
+            then.status(500)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "error": {
+                        "code": "INTERNAL_SERVER_ERROR",
+                        "message": "reconcile failed",
+                    },
+                }));
+        });
+        let second_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!(
+                    "/api/runners/runs/{run_id}/connector-runtime/reconcile"
+                ))
+                .json_body(json!({ "targets": second_batch }));
+            then.status(500)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "error": {
+                        "code": "INTERNAL_SERVER_ERROR",
+                        "message": "reconcile failed",
+                    },
+                }));
+        });
+        let (core, _requests) = core_without_worker(&server);
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry_path = dir.path().join("proxy-registry.json");
+        tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
+            .await
+            .expect("empty registry should be written");
+        let registry = ProxyRegistryHandle::new(registry_path, dir.path().join("registry.lock"));
+        let mut active_run =
+            active_run_network_policy_state_with_connectors(registry, connector_slugs.clone());
+        active_run.tagged = true;
+        core.inner
+            .active_runs
+            .lock()
+            .await
+            .insert(run_id, active_run);
+
+        core.refresh_network_policies_now(run_id, connector_slugs)
+            .await;
+
+        first_mock.assert_calls(1);
+        second_mock.assert_calls(1);
+        core.unregister_run(run_id).await;
     }
 
     async fn assert_failed_network_policy_refresh_retains_last_known_good() {

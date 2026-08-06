@@ -113,7 +113,7 @@ pub mod runners {
 
     /// Maximum connector runtime targets accepted by the reconciliation endpoint.
     /// Rust runners use this shared contract value to split target batches before calling the API.
-    pub const CONNECTOR_RUNTIME_TARGETS_MAX: u64 = 256;
+    pub const CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX: u64 = 256;
 
     /// Maximum connector slugs accepted by the runner network policy refresh endpoint.
     /// Rust runners use this shared contract value to split refresh requests before calling the API.

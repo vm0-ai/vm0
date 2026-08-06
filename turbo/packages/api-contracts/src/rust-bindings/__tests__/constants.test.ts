@@ -30,8 +30,8 @@ import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX,
   CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE,
-  CONNECTOR_RUNTIME_TARGETS_MAX,
   NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
@@ -91,7 +91,7 @@ const networkPolicyRefreshConnectorSlugsMaxDoc = [
   "Maximum connector slugs accepted by the runner network policy refresh endpoint.",
   "Rust runners use this shared contract value to split refresh requests before calling the API.",
 ] as const;
-const connectorRuntimeTargetsMaxDoc = [
+const connectorRuntimeReconcileTargetsMaxDoc = [
   "Maximum connector runtime targets accepted by the reconciliation endpoint.",
   "Rust runners use this shared contract value to split target batches before calling the API.",
 ] as const;
@@ -233,9 +233,9 @@ const expectedBindings = [
   },
   {
     rustModulePath: ["runners"],
-    rustConstName: "CONNECTOR_RUNTIME_TARGETS_MAX",
-    value: rustU64(CONNECTOR_RUNTIME_TARGETS_MAX),
-    rustDoc: connectorRuntimeTargetsMaxDoc,
+    rustConstName: "CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX",
+    value: rustU64(CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX),
+    rustDoc: connectorRuntimeReconcileTargetsMaxDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -514,7 +514,7 @@ describe("Rust constant bindings", () => {
       `pub const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX: u64 = ${NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX};`,
     );
     expect(firstRender).toContain(
-      `pub const CONNECTOR_RUNTIME_TARGETS_MAX: u64 = ${CONNECTOR_RUNTIME_TARGETS_MAX};`,
+      `pub const CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX: u64 = ${CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX};`,
     );
     expect(firstRender).toContain(
       `pub const CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE: &str = "${CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE}";`,

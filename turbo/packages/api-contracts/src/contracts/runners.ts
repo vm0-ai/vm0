@@ -40,7 +40,7 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX = 256;
 export const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
-export const CONNECTOR_RUNTIME_TARGETS_MAX = 256;
+export const CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX = 256;
 export const CONNECTOR_RUNTIME_RECONCILE_RUN_TERMINAL_ERROR_CODE =
   "RUN_TERMINAL";
 export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
@@ -222,8 +222,11 @@ function uniqueConnectorRuntimeTargets(
 
 const connectorRuntimeTargetsSchema = z
   .array(connectorRuntimeTargetSchema)
-  .max(CONNECTOR_RUNTIME_TARGETS_MAX)
   .superRefine(uniqueConnectorRuntimeTargets);
+
+const connectorRuntimeReconcileTargetsSchema = connectorRuntimeTargetsSchema
+  .min(1)
+  .max(CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX);
 
 export const connectorRuntimeAbsentReasonSchema = z.enum([
   "connector-unavailable",
@@ -942,7 +945,7 @@ export const runnersConnectorRuntimeReconcileContract = c.router({
       runId: z.uuid(),
     }),
     body: z.object({
-      targets: connectorRuntimeTargetsSchema.min(1),
+      targets: connectorRuntimeReconcileTargetsSchema,
     }),
     responses: {
       200: z.object({

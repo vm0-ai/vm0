@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   compatibleStoredExecutionContextSchema,
+  CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX,
   connectorRuntimeReconcileResultSchema,
   elapsedSinceApiStartMs,
   executionContextSchema,
@@ -113,6 +114,33 @@ describe("runner claim response contract", () => {
 
 describe("connector runtime reconciliation contract", () => {
   const customConnectorId = "00000000-0000-4000-8000-000000000001";
+
+  it("limits reconciliation batches without limiting run targets", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const targets = Array.from(
+      { length: CONNECTOR_RUNTIME_RECONCILE_TARGETS_MAX + 1 },
+      (_, index) => {
+        return {
+          kind: "builtin" as const,
+          connectorSlug: `connector-${index}`,
+        };
+      },
+    );
+
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        connectorRuntimeTargets: targets,
+      }).success,
+    ).toBe(true);
+    expect(
+      runnersConnectorRuntimeReconcileContract.reconcile.body.safeParse({
+        targets,
+      }).success,
+    ).toBe(false);
+  });
 
   it("requires unique tagged targets", () => {
     const target = {
