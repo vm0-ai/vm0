@@ -4,9 +4,6 @@ export function platformStaticAssetUrl(path: string) {
   return `${STATIC_ASSETS_BASE_URL}/platform/${path.replace(/^\/+/u, "")}`;
 }
 
-export const platformCheckmarkPrimaryImg = platformStaticAssetUrl(
-  "checkmark-primary-52b8c1164a7c.svg",
-);
 export const platformEmptyPrivateAgentsImg = platformStaticAssetUrl(
   "views/agents-page/assets/empty-private-agents-9a8d7e3750b6.png",
 );

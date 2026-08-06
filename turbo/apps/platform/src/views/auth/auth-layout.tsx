@@ -3,7 +3,6 @@ import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  platformCheckmarkPrimaryImg,
   platformVm0LogoDarkImg,
   platformVm0LogoImg,
 } from "../../lib/static-assets.ts";
@@ -315,30 +314,49 @@ a[class*="resendCode"] {
   color: hsl(var(--primary)) !important;
 }
 
-/* Legal consent checkbox - clear visual distinction between checked/unchecked states */
+/* Legal consent checkbox - mirrors the platform Checkbox primitive: neutral
+   surface when unchecked, filled primary with a white check when checked. The
+   check is drawn with borders instead of a scaled background image, so it stays
+   crisp at any zoom level or device pixel ratio. */
 .cl-card input[type="checkbox"],
 .cl-formFieldCheckboxInput input[type="checkbox"] {
   -webkit-appearance: none;
   appearance: none;
   outline: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   width: 16px !important;
   height: 16px !important;
   min-width: 16px !important;
-  border: 1.5px solid hsl(var(--foreground) / 0.35) !important;
-  border-radius: 3px !important;
-  background-color: transparent !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: var(--radius-md) !important;
+  background-color: hsl(var(--input)) !important;
   cursor: pointer !important;
   flex-shrink: 0 !important;
+  transition:
+    background-color 150ms,
+    border-color 150ms !important;
 }
 
 .cl-card input[type="checkbox"]:checked,
 .cl-formFieldCheckboxInput input[type="checkbox"]:checked {
-  background-color: transparent !important;
+  background-color: hsl(var(--primary)) !important;
   border-color: hsl(var(--primary)) !important;
-  background-image: url("${platformCheckmarkPrimaryImg}") !important;
-  background-repeat: no-repeat !important;
-  background-position: center !important;
-  background-size: 70% !important;
+  /* Clerk paints its own checkmark here. Drop it so the two marks cannot
+     double-draw if Clerk changes its asset or its background sizing. */
+  background-image: none !important;
+}
+
+.cl-card input[type="checkbox"]:checked::after,
+.cl-formFieldCheckboxInput input[type="checkbox"]:checked::after {
+  content: "";
+  display: block;
+  width: 5px;
+  height: 9px;
+  border: solid hsl(var(--on-filled));
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
 }
 
 .cl-card input[type="checkbox"]:hover,
