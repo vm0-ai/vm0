@@ -644,12 +644,6 @@ async fn claim_with_local_admission(
     let observed_candidate =
         is_selected_finalizing_candidate(&candidate, ctx.runner_id, ctx.heartbeat_generation)
             .then(|| candidate.clone());
-    if matches!(
-        &admission.resource,
-        LocalAdmissionResource::Reusable(_) | LocalAdmissionResource::ExactSpeculative(_)
-    ) {
-        candidate.mark_reserved_reuse_claim_started();
-    }
     let LocalAdmission {
         resource,
         cancellation,
