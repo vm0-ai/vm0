@@ -1,5 +1,37 @@
 # Changelog
 
+## [8.524.3](https://github.com/vm0-ai/vm0/compare/core-v8.524.2...core-v8.524.3) (2026-08-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.283.0
+
+## [8.524.2](https://github.com/vm0-ai/vm0/compare/core-v8.524.1...core-v8.524.2) (2026-08-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.282.0
+
+## [8.524.1](https://github.com/vm0-ai/vm0/compare/core-v8.524.0...core-v8.524.1) (2026-08-06)
+
+
+### Refactoring
+
+* remove custom connector feature switches ([#25449](https://github.com/vm0-ai/vm0/issues/25449)) ([f6d7788](https://github.com/vm0-ai/vm0/commit/f6d77883a45d704b34d0450105bf8693bdf36055))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.281.0
+
 ## [8.524.0](https://github.com/vm0-ai/vm0/compare/core-v8.523.0...core-v8.524.0) (2026-08-06)
 
 

@@ -7,6 +7,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { generateSandboxToken } from "../../auth/tokens";
+import { webhooksAgentHealthUsageTelemetryRoutes } from "../webhooks-agent-health-usage-telemetry";
 
 const context = testContext();
 
@@ -22,7 +23,9 @@ describe("agent usage event webhook", () => {
     const sandboxToken = generateSandboxToken(userId, runId, orgId);
 
     await accept(
-      setupApp({ context })(webhookUsageEventContract).send({
+      setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+        webhookUsageEventContract,
+      ).send({
         headers: { authorization: `Bearer ${sandboxToken}` },
         body: {
           runId,

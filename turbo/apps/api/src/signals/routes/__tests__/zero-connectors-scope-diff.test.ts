@@ -15,6 +15,7 @@ import {
   createConnectorBddApi,
   mockGitHubConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
+import { zeroConnectorsRoutes } from "../zero-connectors";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -85,7 +86,9 @@ describe("GET /api/zero/connectors/:connectorSlug/scope-diff", () => {
       iat: seconds,
       exp: seconds + 60,
     });
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorScopeDiffContract,
+    );
     const response = await accept(
       client.getScopeDiff({
         params: { connectorSlug: "github" },

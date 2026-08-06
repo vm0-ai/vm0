@@ -1671,7 +1671,6 @@
       "edit": "編集",
       "grant": "グラント",
       "reconnect": "再接続",
-      "rename": "名前の変更",
       "revoke": "取り消し",
       "save": "保存",
       "saving": "保存中...",
@@ -1921,17 +1920,12 @@
       "emptyAdmin": "カスタム コネクタはまだありません。すべてのメンバーが使用する API を登録するために作成します。",
       "emptyMember": "組織はまだカスタム コネクタを登録していません。",
       "moreOptions": "その他のオプション",
-      "rename": {
-        "displayName": "表示名",
-        "title": "カスタムコネクタの名前を変更する"
-      },
       "statusConnected": "接続済み",
       "toasts": {
         "connected": "接続済み",
         "created": "「{{connector}}」を作成しました",
         "deleted": "カスタムコネクタが削除されました",
         "disconnected": "切断されました",
-        "renamed": "名前を「{{connector}}」に変更しました",
         "updated": "「{{connector}}」を更新しました"
       },
       "updateConfirm": {

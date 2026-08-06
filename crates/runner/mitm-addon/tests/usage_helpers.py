@@ -5,14 +5,13 @@ from __future__ import annotations
 import contextlib
 import json
 import threading
-from collections import deque
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Protocol
 
 import usage
+from tests.threaded_http_test_server import ThreadedHttpTestServer
 
 _DeliveryOutcomeCallback = Callable[[usage.webhook.WebhookDeliveryOutcome], None]
 _EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
@@ -124,14 +123,6 @@ def fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
 
 
 @dataclass(frozen=True)
-class WebhookResponse:
-    status: int = 204
-    headers: tuple[tuple[str, str], ...] = ()
-    body: bytes = b""
-    release_event: threading.Event | None = None
-
-
-@dataclass(frozen=True)
 class CapturedWebhookRequest:
     method: str
     path: str
@@ -149,29 +140,23 @@ class CapturedWebhookRequest:
 
 class UsageWebhookServer:
     def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._request_condition = threading.Condition()
-        self._requests: list[CapturedWebhookRequest] = []
-        self._responses: deque[WebhookResponse] = deque()
-        self._release_events: list[threading.Event] = []
-        self._server: ThreadingHTTPServer | None = None
-        self._thread: threading.Thread | None = None
+        self._http = ThreadedHttpTestServer(
+            request_factory=CapturedWebhookRequest,
+            default_status=204,
+            thread_name="usage-webhook-test-server",
+        )
 
     @property
     def api_url(self) -> str:
-        assert self._server is not None
-        host, port = self._server.server_address[:2]
-        return f"http://{host}:{port}"
+        return self._http.api_url
 
     @property
     def requests(self) -> tuple[CapturedWebhookRequest, ...]:
-        with self._lock:
-            return tuple(self._requests)
+        return self._http.requests
 
     @property
     def request_count(self) -> int:
-        with self._lock:
-            return len(self._requests)
+        return self._http.request_count
 
     def url(self, path: str = "/api/webhooks/agent/usage-event") -> str:
         if not path.startswith("/"):
@@ -187,25 +172,16 @@ class UsageWebhookServer:
         release_event: threading.Event | None = None,
     ) -> None:
         """Queue a response, optionally blocking it until an event is set."""
-        with self._lock:
-            if release_event is not None:
-                self._release_events.append(release_event)
-            self._responses.append(
-                WebhookResponse(
-                    status=status,
-                    headers=tuple(headers),
-                    body=body,
-                    release_event=release_event,
-                )
-            )
+        self._http.queue_response(
+            status,
+            headers=headers,
+            body=body,
+            release_event=release_event,
+        )
 
     def wait_for_request_count(self, count: int, *, timeout: float = 2.0) -> bool:
         """Wait until at least ``count`` requests have been recorded."""
-        with self._request_condition:
-            return self._request_condition.wait_for(
-                lambda: self.request_count >= count,
-                timeout,
-            )
+        return self._http.wait_for_request_count(count, timeout=timeout)
 
     def json_bodies(self) -> list[dict[str, Any]]:
         return [request.json_body() for request in self.requests]
@@ -232,73 +208,5 @@ class UsageWebhookServer:
 
     @contextlib.contextmanager
     def run(self) -> Iterator[UsageWebhookServer]:
-        server_ref = self
-
-        class _Handler(BaseHTTPRequestHandler):
-            def do_GET(self) -> None:
-                server_ref._handle_request(self)
-
-            def do_POST(self) -> None:
-                server_ref._handle_request(self)
-
-            def log_message(self, message_format: str, *args: Any) -> None:
-                return None
-
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-        server = self._server
-
-        def serve_forever() -> None:
-            server.serve_forever(poll_interval=0.01)
-
-        self._thread = threading.Thread(
-            target=serve_forever,
-            name="usage-webhook-test-server",
-            daemon=True,
-        )
-        self._thread.start()
-        try:
+        with self._http.run():
             yield self
-        finally:
-            with self._lock:
-                release_events = tuple(self._release_events)
-                self._release_events.clear()
-            for release_event in release_events:
-                release_event.set()
-            self._server.shutdown()
-            self._thread.join(timeout=2.0)
-            self._server.server_close()
-            self._server = None
-            self._thread = None
-
-    def _record_request_and_reserve_response(
-        self, request: CapturedWebhookRequest
-    ) -> WebhookResponse:
-        with self._lock:
-            self._requests.append(request)
-            response = self._responses.popleft() if self._responses else WebhookResponse()
-        with self._request_condition:
-            self._request_condition.notify_all()
-        return response
-
-    def _handle_request(self, handler: BaseHTTPRequestHandler) -> None:
-        content_length = int(handler.headers.get("content-length", "0"))
-        body = handler.rfile.read(content_length)
-        response = self._record_request_and_reserve_response(
-            CapturedWebhookRequest(
-                method=handler.command,
-                path=handler.path,
-                headers={key.lower(): value for key, value in handler.headers.items()},
-                body=body,
-            )
-        )
-        if response.release_event is not None:
-            response.release_event.wait()
-
-        handler.send_response(response.status)
-        for name, value in response.headers:
-            handler.send_header(name, value)
-        if response.body:
-            handler.send_header("Content-Length", str(len(response.body)))
-        handler.end_headers()
-        if response.body:
-            handler.wfile.write(response.body)

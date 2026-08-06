@@ -14,7 +14,6 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { ROUTES } from "../../route";
 import { SlackFileFetchError } from "../../external/slack-file-fetcher";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
@@ -28,6 +27,7 @@ import {
   seedSlackOrgInstallation$,
   type SlackIntegrationFixture,
 } from "./helpers/zero-integrations-slack";
+import { zeroIntegrationsSlackRoutes } from "../zero-integrations-slack";
 
 const context = testContext();
 const store = createStore();
@@ -155,7 +155,9 @@ describe("GET /api/zero/integrations/slack", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -189,7 +191,9 @@ describe("GET /api/zero/integrations/slack", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -221,7 +225,9 @@ describe("GET /api/zero/integrations/slack", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -301,7 +307,9 @@ describe("GET /api/zero/integrations/slack", () => {
 
       mockAdminAuth();
 
-      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+      const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+        zeroIntegrationsSlackContract,
+      );
 
       const response = await accept(
         client.getStatus({
@@ -324,7 +332,9 @@ describe("GET /api/zero/integrations/slack", () => {
 
       mockAdminAuth();
 
-      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+      const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+        zeroIntegrationsSlackContract,
+      );
 
       const response = await accept(
         client.getStatus({
@@ -353,7 +363,9 @@ describe("GET /api/zero/integrations/slack", () => {
 
       mockAdminAuth();
 
-      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+      const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+        zeroIntegrationsSlackContract,
+      );
 
       const response = await accept(
         client.getStatus({
@@ -442,7 +454,9 @@ describe("DELETE /api/zero/integrations/slack", () => {
   }
 
   it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({ headers: {}, query: {} }),
@@ -455,7 +469,9 @@ describe("DELETE /api/zero/integrations/slack", () => {
   it("returns 404 when the user has no Slack connection", async () => {
     const seeded = await seedDeleteContext({ withConnection: false });
     mocks.clerk.session(seeded.userId, seeded.orgId);
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({
@@ -481,7 +497,9 @@ describe("DELETE /api/zero/integrations/slack", () => {
       context.signal,
     );
     mocks.clerk.session(seeded.userId, seeded.orgId);
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({
@@ -588,7 +606,9 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
   it("returns 403 when a non-admin tries to uninstall", async () => {
     const seeded = await seedUninstallContext();
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:member");
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({
@@ -605,7 +625,9 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
   it("returns 404 when no installation exists", async () => {
     const seeded = await seedUninstallContext({ withInstallation: false });
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({
@@ -631,7 +653,9 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
       context.signal,
     );
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({
@@ -737,7 +761,10 @@ function requestDownloadFile(
   query: string,
   authorization?: string,
 ): Promise<Response> {
-  const app = createApp({ signal: context.signal, routes: ROUTES });
+  const app = createApp({
+    signal: context.signal,
+    routes: zeroIntegrationsSlackRoutes,
+  });
   const headers: Record<string, string> = authorization
     ? { authorization }
     : {};

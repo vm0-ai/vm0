@@ -17,8 +17,14 @@ import {
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { zeroFinanceRoutes } from "../zero-finance";
 
 const context = testContext();
+const FINANCE_ROUTES = Object.freeze([
+  ...zeroBillingStatusRoutes,
+  ...zeroFinanceRoutes,
+]);
 const APIDOJO_BASE_URL = "https://apidojo-yahoo-finance-v1.p.rapidapi.com";
 
 function authenticate(actor: ApiTestUser) {
@@ -31,7 +37,7 @@ function authenticate(actor: ApiTestUser) {
 }
 
 function client() {
-  return setupApp({ context });
+  return setupApp({ context, routes: FINANCE_ROUTES });
 }
 
 async function fundActor(actor: ApiTestUser): Promise<void> {

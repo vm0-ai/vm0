@@ -10,6 +10,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { presentationImagesRoutes } from "../presentation-images";
 
 const context = testContext();
 const routeMocks = createZeroRouteMocks(context);
@@ -138,7 +139,9 @@ describe("POST /api/presentation/images/resolve", () => {
       ),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -250,7 +253,9 @@ describe("POST /api/presentation/images/resolve", () => {
       }),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -284,7 +289,9 @@ describe("POST /api/presentation/images/resolve", () => {
       }),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -311,7 +318,9 @@ describe("POST /api/presentation/images/resolve", () => {
   it("returns 503 when no image provider is configured", async () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -361,7 +370,9 @@ describe("POST /api/presentation/images/resolve", () => {
       }),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -427,7 +438,9 @@ describe("POST /api/presentation/images/resolve", () => {
       }),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -465,7 +478,9 @@ describe("POST /api/presentation/images/resolve", () => {
   it("requires file write capability for zero tokens", async () => {
     const fixture = createFixture();
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: {

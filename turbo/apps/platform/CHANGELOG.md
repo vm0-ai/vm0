@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.696.0](https://github.com/vm0-ai/vm0/compare/app-v0.695.0...app-v0.696.0) (2026-08-06)
+
+
+### Features
+
+* **chat:** persist run models in user messages ([#25467](https://github.com/vm0-ai/vm0/issues/25467)) ([64f785f](https://github.com/vm0-ai/vm0/commit/64f785f5b8a3a9bd6b802b079299bcde6b7d1100))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.283.0
+    * @vm0/core bumped to 8.524.3
+
+## [0.695.0](https://github.com/vm0-ai/vm0/compare/app-v0.694.1...app-v0.695.0) (2026-08-06)
+
+
+### Features
+
+* **billing:** update concurrency slots in existing subscription ([#25473](https://github.com/vm0-ai/vm0/issues/25473)) ([061b9ad](https://github.com/vm0-ai/vm0/commit/061b9ad443dc09738005ac3d9a8f6393449f361a))
+
+
+### Bug Fixes
+
+* **billing:** show checkout return toast after toaster mounts ([#25483](https://github.com/vm0-ai/vm0/issues/25483)) ([cbe9cd8](https://github.com/vm0-ai/vm0/commit/cbe9cd8f404bf339e2d4fdabe1b425f60bc9c879))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.282.0
+    * @vm0/core bumped to 8.524.2
+
+## [0.694.1](https://github.com/vm0-ai/vm0/compare/app-v0.694.0...app-v0.694.1) (2026-08-06)
+
+
+### Refactoring
+
+* remove custom connector feature switches ([#25449](https://github.com/vm0-ai/vm0/issues/25449)) ([f6d7788](https://github.com/vm0-ai/vm0/commit/f6d77883a45d704b34d0450105bf8693bdf36055))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.281.0
+    * @vm0/core bumped to 8.524.1
+
 ## [0.694.0](https://github.com/vm0-ai/vm0/compare/app-v0.693.0...app-v0.694.0) (2026-08-06)
 
 

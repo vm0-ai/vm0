@@ -30,6 +30,7 @@ import {
 } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
 
 const context = testContext();
 const store = createStore();
@@ -82,7 +83,9 @@ describe("GET /api/zero/billing/status", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(client.get({ headers: {} }), [401]);
 
@@ -93,7 +96,9 @@ describe("GET /api/zero/billing/status", () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -114,7 +119,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -143,7 +150,9 @@ describe("GET /api/zero/billing/status", () => {
       capabilities: ["billing:read"],
     });
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: `Bearer ${token}` } }),
@@ -160,7 +169,9 @@ describe("GET /api/zero/billing/status", () => {
       capabilities: [],
     });
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: `Bearer ${token}` } }),
@@ -193,7 +204,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -230,7 +243,9 @@ describe("GET /api/zero/billing/status", () => {
       mocks.clerk.session(fixture.userId, fixture.orgId);
 
       const response = await accept(
-        setupApp({ context })(zeroBillingStatusContract).get({
+        setupApp({ context, routes: zeroBillingStatusRoutes })(
+          zeroBillingStatusContract,
+        ).get({
           headers: { authorization: "Bearer clerk-session" },
         }),
         [200],
@@ -252,7 +267,9 @@ describe("GET /api/zero/billing/status", () => {
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -290,7 +307,9 @@ describe("GET /api/zero/billing/status", () => {
       mocks.clerk.session(fixture.userId, fixture.orgId);
 
       const response = await accept(
-        setupApp({ context })(zeroBillingStatusContract).get({
+        setupApp({ context, routes: zeroBillingStatusRoutes })(
+          zeroBillingStatusContract,
+        ).get({
           headers: { authorization: "Bearer clerk-session" },
         }),
         [200],
@@ -326,7 +345,9 @@ describe("GET /api/zero/billing/status", () => {
       mocks.clerk.session(fixture.userId, fixture.orgId);
 
       const response = await accept(
-        setupApp({ context })(zeroBillingStatusContract).get({
+        setupApp({ context, routes: zeroBillingStatusRoutes })(
+          zeroBillingStatusContract,
+        ).get({
           headers: { authorization: "Bearer clerk-session" },
         }),
         [200],
@@ -355,7 +376,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -393,7 +416,9 @@ describe("GET /api/zero/billing/status", () => {
     mocks.clerk.session(userId, orgId);
 
     const response = await accept(
-      setupApp({ context })(zeroBillingStatusContract).get({
+      setupApp({ context, routes: zeroBillingStatusRoutes })(
+        zeroBillingStatusContract,
+      ).get({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -423,7 +448,9 @@ describe("GET /api/zero/billing/status", () => {
     });
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
     const initialResponse = await accept(
       client.get({
         headers: { authorization: "Bearer clerk-session" },
@@ -486,7 +513,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -551,7 +580,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -626,7 +657,9 @@ describe("GET /api/zero/billing/status", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
-      setupApp({ context })(zeroBillingStatusContract).get({
+      setupApp({ context, routes: zeroBillingStatusRoutes })(
+        zeroBillingStatusContract,
+      ).get({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -685,7 +718,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -720,7 +755,9 @@ describe("GET /api/zero/billing/status", () => {
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -750,7 +787,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -789,7 +828,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -810,7 +851,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -840,7 +883,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -868,7 +913,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -902,7 +949,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -949,7 +998,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -999,7 +1050,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -1042,7 +1095,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -1078,7 +1133,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -1122,7 +1179,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -1154,7 +1213,9 @@ describe("GET /api/zero/billing/status", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),

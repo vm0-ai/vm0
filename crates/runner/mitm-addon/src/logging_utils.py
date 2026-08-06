@@ -7,6 +7,7 @@ log entries, and extracting firewall metadata.
 import json
 import time
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from mitmproxy import ctx, http
@@ -21,10 +22,25 @@ _PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
 # Network log size fields are consumed as JavaScript numbers downstream.
 NETWORK_LOG_MAX_SAFE_SIZE = 9_007_199_254_740_991
 
-# Keep URL-driven HTTP rows below the runner uploader's 1 MiB payload envelope.
-HTTP_NETWORK_LOG_MAX_URL_CHARACTERS = 1_000_000
+# Network rows limit the complete request URL; proxy diagnostics apply the same
+# number to the query-free value they retain.
+URL_LOG_MAX_CHARACTERS = 1_000_000
 HTTP_NETWORK_LOG_MAX_JSONL_BYTES = 1_000_000
-_HTTP_NETWORK_LOG_TRUNCATED_URL = "[truncated]"
+_TRUNCATED_URL = "[truncated]"
+
+
+@dataclass(frozen=True)
+class _ProxyLogUrlProjection:
+    value: str
+    original_char_count: int | None = None
+
+    def truncation_fields(self) -> dict[str, object]:
+        if self.original_char_count is None:
+            return {}
+        return {
+            "url_truncated": True,
+            "url_original_char_count": self.original_char_count,
+        }
 
 
 def elapsed_ms(start_time: float | None) -> int:
@@ -104,7 +120,7 @@ def log_network_entry(log_path: str, entry: dict) -> None:
 def _http_network_log_omission_entry(entry: dict, original_url_char_count: int) -> dict:
     return {
         **entry,
-        "url": _HTTP_NETWORK_LOG_TRUNCATED_URL,
+        "url": _TRUNCATED_URL,
         "url_truncated": True,
         "url_original_char_count": original_url_char_count,
     }
@@ -117,7 +133,7 @@ def log_http_network_entry(log_path: str, entry: dict, raw_url: str) -> None:
 
     original_url_char_count = len(raw_url)
     log_entry = {**entry, "timestamp": _utc_log_timestamp()}
-    if original_url_char_count > HTTP_NETWORK_LOG_MAX_URL_CHARACTERS:
+    if original_url_char_count > URL_LOG_MAX_CHARACTERS:
         _write_jsonl_entry(
             log_path,
             _http_network_log_omission_entry(log_entry, original_url_char_count),
@@ -141,15 +157,31 @@ def log_http_network_entry(log_path: str, entry: dict, raw_url: str) -> None:
     jsonl_writer.write_jsonl_line(log_path, line, "network")
 
 
+def project_url_for_proxy_log(raw_url: str) -> _ProxyLogUrlProjection:
+    """Project a request URL without unbounded retained-path processing."""
+    value = network_log_sanitization.sanitize_url_for_network_log_with_retained_limit(
+        raw_url,
+        URL_LOG_MAX_CHARACTERS,
+    )
+    if value is None:
+        return _ProxyLogUrlProjection(_TRUNCATED_URL, len(raw_url))
+    return _ProxyLogUrlProjection(value)
+
+
 def sanitize_proxy_log_extra_value(key: str, value: object) -> object:
     """Sanitize the narrow set of proxy-log extras owned by this module.
 
-    Only the exact ``url`` field is treated specially, and only when the
-    value is a string.  Every other field is returned unchanged; this helper
-    is not a general secret-redaction boundary for arbitrary proxy-log data.
+    Only the exact ``url`` field is treated specially.  Raw strings are
+    sanitized here; a projection produced by this module is
+    already safe and is unwrapped without repeated URL processing.  Every
+    other field is returned unchanged; this helper is not a general
+    secret-redaction boundary for arbitrary proxy-log data.
     """
-    if key == "url" and isinstance(value, str):
-        return network_log_sanitization.sanitize_url_for_network_log(value)
+    if key == "url":
+        if isinstance(value, _ProxyLogUrlProjection):
+            return value.value
+        if isinstance(value, str):
+            return network_log_sanitization.sanitize_url_for_network_log(value)
     return value
 
 
@@ -164,8 +196,9 @@ def log_proxy_entry(
 
     The logger owns the canonical ``timestamp``, ``level``, and ``message``
     fields; extras with those exact names are ignored and cannot override
-    them.  Among remaining extras, only an exact ``url`` string is sanitized
-    by ``sanitize_proxy_log_extra_value``.  All other extras are written as
+    them.  Among remaining extras, an exact raw string ``url`` is sanitized by
+    ``sanitize_proxy_log_extra_value``; a projection from this module is
+    unwrapped without repeated processing.  All other extras are written as
     provided, so callers must pass only values that are safe to persist and
     JSON-serializable.
 

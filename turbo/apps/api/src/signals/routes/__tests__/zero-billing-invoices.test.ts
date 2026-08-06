@@ -19,6 +19,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { zeroBillingInvoicesRoutes } from "../zero-billing-invoices";
 
 const context = testContext();
 const store = createStore();
@@ -30,7 +31,9 @@ describe("GET /api/zero/billing/invoices", () => {
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
+    const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      zeroBillingInvoicesContract,
+    );
 
     const response = await accept(client.get({ headers: {} }), [401]);
 
@@ -46,7 +49,9 @@ describe("GET /api/zero/billing/invoices", () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
 
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
+    const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      zeroBillingInvoicesContract,
+    );
 
     const response = await accept(
       client.get({
@@ -69,7 +74,9 @@ describe("GET /api/zero/billing/invoices", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
+    const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      zeroBillingInvoicesContract,
+    );
 
     const response = await accept(
       client.get({
@@ -127,7 +134,9 @@ describe("GET /api/zero/billing/invoices", () => {
       ]);
     });
 
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
+    const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      zeroBillingInvoicesContract,
+    );
 
     const response = await accept(
       client.get({
@@ -216,7 +225,9 @@ describe("GET /api/zero/billing/invoices", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
+    const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      zeroBillingInvoicesContract,
+    );
     const response = await accept(
       client.downloadReceipts({
         headers: { authorization: "Bearer clerk-session" },
@@ -320,7 +331,9 @@ describe("GET /api/zero/billing/invoices", () => {
       ),
     );
 
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
+    const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      zeroBillingInvoicesContract,
+    );
     const responsePromise = accept(
       client.downloadReceipts({
         headers: { authorization: "Bearer clerk-session" },
@@ -383,7 +396,9 @@ describe("GET /api/zero/billing/invoices", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
+    const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      zeroBillingInvoicesContract,
+    );
     const response = await accept(
       client.downloadReceipts({
         headers: { authorization: "Bearer clerk-session" },
@@ -410,7 +425,9 @@ describe("GET /api/zero/billing/invoices", () => {
       throw new Error("Stripe invoices should not be listed without customer");
     });
 
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
+    const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      zeroBillingInvoicesContract,
+    );
 
     const response = await accept(
       client.get({
@@ -444,7 +461,9 @@ describe("GET /api/zero/billing/invoices", () => {
       return Promise.resolve([]);
     });
 
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
+    const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      zeroBillingInvoicesContract,
+    );
 
     const response = await accept(
       client.get({

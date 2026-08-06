@@ -50,6 +50,7 @@ import {
   upsertOrgPlanEntitlement,
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("WebhookStripe");
 
@@ -59,7 +60,7 @@ type BillingDowngradeCheckoutTargetTier =
   | "pro";
 const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
 
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WriteTx = Tx;
 type UsageAllowanceSubscriptionUpdateStore = Pick<Db, "select" | "update">;
 type ClerkClient = ReturnType<typeof clerk$.read>;
 type ClerkClientProvider = () => ClerkClient;
@@ -91,6 +92,7 @@ interface InvoiceInput {
   readonly lines: {
     readonly data: readonly {
       readonly id?: string;
+      readonly amount?: number;
       readonly quantity?: number | null;
       readonly price?: { readonly id: string } | null;
       readonly pricing?: {
@@ -2724,7 +2726,11 @@ function concurrencyInvoiceLines(
 ): readonly { readonly line: InvoiceLineInput; readonly index: number }[] {
   return invoice.lines.data.flatMap((line, index) => {
     const priceId = invoiceLinePriceId(line);
-    return priceId && isConcurrencyPriceId(priceId) ? [{ line, index }] : [];
+    return priceId &&
+      isConcurrencyPriceId(priceId) &&
+      (line.amount === undefined || line.amount >= 0)
+      ? [{ line, index }]
+      : [];
   });
 }
 

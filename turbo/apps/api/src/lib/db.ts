@@ -1,13 +1,13 @@
 import { trace } from "@opentelemetry/api";
-import { schema } from "@vm0/db";
 import { attachDatabasePool } from "@vercel/functions";
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import {
   createInstrumentedPgStream,
   instrumentPgPool,
 } from "./db-instrumentation";
+import type { ApiDb } from "./db-types";
 import { env } from "./env";
 import { logger } from "./log";
 import { singleton } from "./singleton";
@@ -19,8 +19,6 @@ interface SingletonValue<T> {
   readonly peek: () => T | undefined;
   readonly reset: () => void;
 }
-
-type ApiDb = NodePgDatabase<typeof schema>;
 
 const pool = singleton((): Pool => {
   // The official pg instrumentation normally hooks Pool through
@@ -52,7 +50,7 @@ const pool = singleton((): Pool => {
 });
 
 export const db: SingletonValue<ApiDb> = singleton((): ApiDb => {
-  return drizzle(pool(), { schema });
+  return drizzle(pool());
 });
 
 export async function closeDbPool(): Promise<void> {

@@ -1128,6 +1128,106 @@
       }
     },
     {
+      "name": "plus greedy allowed base wins over star greedy denied base",
+      "firewalls": [
+        {
+          "name": "bentoml",
+          "apis": [
+            {
+              "base": "https://{deployment*}.bentoml.ai",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "deployment.star",
+                  "rules": ["GET /api"]
+                }
+              ]
+            },
+            {
+              "base": "https://{deployment+}.bentoml.ai",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "deployment.plus",
+                  "rules": ["GET /api"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "bentoml": {
+          "allow": ["deployment.plus"],
+          "deny": ["deployment.star"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://foo.bentoml.ai/api"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "bentoml",
+        "base": "https://{deployment+}.bentoml.ai",
+        "relativePath": "/api",
+        "permission": "deployment.plus",
+        "rule": "GET /api"
+      }
+    },
+    {
+      "name": "two-code-point allowed base wins over one-code-point emoji denied base",
+      "firewalls": [
+        {
+          "name": "files",
+          "apis": [
+            {
+              "base": "https://api.example.com/files/😀{id}",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "files.emoji",
+                  "rules": ["GET /tail"]
+                }
+              ]
+            },
+            {
+              "base": "https://api.example.com/files/{id}ab",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "files.ascii",
+                  "rules": ["GET /tail"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "files": {
+          "allow": ["files.ascii"],
+          "deny": ["files.emoji"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/files/😀xab/tail"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "files",
+        "base": "https://api.example.com/files/{id}ab",
+        "relativePath": "/tail",
+        "permission": "files.ascii",
+        "rule": "GET /tail"
+      }
+    },
+    {
       "name": "unknown endpoint follows deny policy",
       "firewalls": [
         {

@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import type { Tx } from "../../lib/db-types";
 
 export type TelegramOwnerLink =
   | { readonly kind: "custom"; readonly id: string }
@@ -34,9 +35,7 @@ interface TelegramChatThreadCreateArgs {
   readonly currentTime: Date;
 }
 
-type TelegramChatThreadTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
+type TelegramChatThreadTransaction = Tx;
 
 function ownerWhere(ownerLink: TelegramOwnerLink) {
   return ownerLink.kind === "custom"

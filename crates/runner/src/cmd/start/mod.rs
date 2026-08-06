@@ -465,7 +465,7 @@ async fn run_start_with_home(
     let mut memory_prefetch = prefetch::MemoryPrefetchTasks::spawn(
         resource_locks
             .profile_paths()
-            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory_bin()),
+            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory()),
     );
 
     // Compute the smallest profile resources for budget pre-check.

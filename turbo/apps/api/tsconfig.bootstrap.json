@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": false,
+    "disableSourceOfProjectReferenceRedirect": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "rootDir": "./src",
+    "outDir": "./.typecheck/bootstrap",
+    "tsBuildInfoFile": "./.typecheck/bootstrap.tsbuildinfo"
+  },
+  "include": [
+    "src/index.ts",
+    "src/production-bootstrap.ts",
+    "src/server.ts",
+    "src/signals/route.ts"
+  ],
+  "exclude": ["node_modules", "dist"],
+  "references": [{ "path": "./tsconfig.core.json" }]
+}

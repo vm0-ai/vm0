@@ -33,6 +33,7 @@ import type {
   RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
+import type { Tx } from "../../lib/db-types";
 
 const log = logger("api:strapi-workflow-event");
 
@@ -60,7 +61,7 @@ const strapiPublishEventSchema = z
 type StrapiPublishEvent = z.infer<typeof strapiPublishEventSchema>;
 type StrapiIntegrationRow = typeof strapiIntegrations.$inferSelect;
 type StrapiPendingRow = typeof strapiWorkflowPendingEvents.$inferSelect;
-type StrapiWebhookTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type StrapiWebhookTransaction = Tx;
 
 type DispatchStrapiWebhookResult =
   | {

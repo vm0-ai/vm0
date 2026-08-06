@@ -1,7 +1,6 @@
 import type { FormEvent } from "react";
 
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Button,
   Dialog,
@@ -15,7 +14,6 @@ import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   closeCustomConnectorDialog$,
@@ -272,15 +270,8 @@ export function CustomConnectorConnectDialog({
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorConnectForm$);
-  const featureSwitches = useGet(featureSwitch$);
-  const oauth2Enabled =
-    (featureSwitches[FeatureSwitchKey.CustomConnectorOAuth2] ?? false) ||
-    ((featureSwitches[FeatureSwitchKey.FeishuIntegration] ?? false) &&
-      connector.oauthConfig?.providerAdapter === "feishu");
   const methods: readonly CustomConnectorAuthMethod[] =
-    connector.authMode === "oauth" && oauth2Enabled
-      ? [{ type: "oauth2" }]
-      : [{ type: "api" }];
+    connector.authMode === "oauth" ? [{ type: "oauth2" }] : [{ type: "api" }];
   const selectedMethod =
     methods.find((method) => {
       return method.type === form.authMethod;

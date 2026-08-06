@@ -15,6 +15,8 @@ import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { webhooksAgentFirewallAuthRoutes } from "../webhooks-agent-firewall-auth";
+import { zeroModelProvidersRoutes } from "../zero-model-providers";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -203,7 +205,9 @@ async function markOrgCodexProviderStaleViaFirewall(
     }),
   );
 
-  const client = setupApp({ context })(webhookFirewallAuthContract);
+  const client = setupApp({ context, routes: webhooksAgentFirewallAuthRoutes })(
+    webhookFirewallAuthContract,
+  );
   const failed = await accept(
     client.resolve({
       headers: {
@@ -234,7 +238,9 @@ async function markOrgCodexProviderStaleViaFirewall(
 
 describe("GET /api/zero/model-providers", () => {
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(client.list({ headers: {} }), [401]);
 
@@ -245,7 +251,9 @@ describe("GET /api/zero/model-providers", () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
 
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -260,7 +268,9 @@ describe("GET /api/zero/model-providers", () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -274,7 +284,9 @@ describe("GET /api/zero/model-providers", () => {
     const fixture = uniqueOrgUser("zmp-list-member");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -290,7 +302,9 @@ describe("GET /api/zero/model-providers", () => {
 
     mocks.clerk.session(userId, orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     await accept(
       client.upsert({
@@ -315,7 +329,9 @@ describe("GET /api/zero/model-providers", () => {
 
     mocks.clerk.session(userId, orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     await accept(
       client.upsert({
@@ -339,7 +355,9 @@ describe("GET /api/zero/model-providers", () => {
 
     mocks.clerk.session(userId, orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     await accept(
       client.upsert({
@@ -381,7 +399,9 @@ describe("GET /api/zero/model-providers", () => {
 
     mocks.clerk.session(userId, orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     await accept(
       client.upsert({
@@ -409,7 +429,9 @@ describe("GET /api/zero/model-providers", () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -436,7 +458,9 @@ describe("GET /api/zero/model-providers", () => {
       sub: "expired",
     });
 
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     await accept(
       client.upsert({
@@ -470,7 +494,9 @@ describe("GET /api/zero/model-providers", () => {
 
 describe("POST /api/zero/model-providers", () => {
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.upsert({
@@ -486,7 +512,9 @@ describe("POST /api/zero/model-providers", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.upsert({
@@ -502,7 +530,9 @@ describe("POST /api/zero/model-providers", () => {
   it("returns 403 when the caller is not an org admin", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-member");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.upsert({
@@ -520,7 +550,9 @@ describe("POST /api/zero/model-providers", () => {
   it("creates and updates an org single-secret provider", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-single");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const first = await accept(
       client.upsert({
@@ -565,7 +597,9 @@ describe("POST /api/zero/model-providers", () => {
   it("rejects whitespace-only org single-secret provider secrets", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-blank-secret");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.upsert({
@@ -595,7 +629,9 @@ describe("POST /api/zero/model-providers", () => {
   it("creates org-level AWS Bedrock multi-auth provider", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-bedrock");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.upsert({
@@ -644,7 +680,9 @@ describe("POST /api/zero/model-providers", () => {
   it("rejects invalid multi-auth shape for single-secret providers", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-bad-multi");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.upsert({
@@ -663,7 +701,9 @@ describe("POST /api/zero/model-providers", () => {
 
   it("creates an openai-api-key provider by default", async () => {
     const fixture = uniqueOrgUser("zmp-openai");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const response = await accept(
@@ -692,7 +732,9 @@ describe("POST /api/zero/model-providers", () => {
   it("does not mark provider rows as defaults across frameworks", async () => {
     const fixture = uniqueOrgUser("zmp-cross-framework");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     await accept(
       client.upsert({
@@ -736,7 +778,9 @@ describe("POST /api/zero/model-providers", () => {
   it("creates a vm0 no-secret org provider", async () => {
     const fixture = uniqueOrgUser("zmp-vm0");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.upsert({
@@ -776,7 +820,9 @@ describe("POST /api/zero/model-providers", () => {
         });
       }),
     );
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const response = await accept(
       client.upsert({
@@ -807,7 +853,9 @@ describe("POST /api/zero/model-providers", () => {
   it("handles codex auth_json claim variants through provider upsert", async () => {
     const fixture = uniqueOrgUser("zmp-codex-claims");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const withApiKey = await accept(
       client.upsert({
@@ -872,7 +920,9 @@ describe("POST /api/zero/model-providers", () => {
   it("returns typed codex auth_json validation errors", async () => {
     const fixture = uniqueOrgUser("zmp-codex-invalid");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     const malformed = await accept(
       client.upsert({
@@ -943,7 +993,9 @@ describe("POST /api/zero/model-providers", () => {
   it("returns typed codex auth_json validation errors for token claims", async () => {
     const fixture = uniqueOrgUser("zmp-codex-token-invalid");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     for (const authJson of [
       JSON.stringify({ OPENAI_API_KEY: "sk-test" }),
@@ -981,7 +1033,9 @@ describe("POST /api/zero/model-providers", () => {
       exp: Math.floor(now() / 1000) - 60,
       sub: "expired",
     });
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
 
     await accept(
       client.upsert({
@@ -1036,7 +1090,9 @@ describe("POST /api/zero/model-providers", () => {
 
 describe("DELETE /api/zero/model-providers/:type", () => {
   it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersByTypeContract,
+    );
 
     const response = await accept(
       client.delete({ headers: {}, params: { type: "anthropic-api-key" } }),
@@ -1049,7 +1105,9 @@ describe("DELETE /api/zero/model-providers/:type", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersByTypeContract,
+    );
 
     const response = await accept(
       client.delete({
@@ -1065,7 +1123,9 @@ describe("DELETE /api/zero/model-providers/:type", () => {
   it("returns 403 for non-admin members", async () => {
     const fixture = uniqueOrgUser("zmp-delete-member");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersByTypeContract,
+    );
 
     const response = await accept(
       client.delete({
@@ -1083,7 +1143,9 @@ describe("DELETE /api/zero/model-providers/:type", () => {
   it("returns 404 when the target provider is absent", async () => {
     const fixture = uniqueOrgUser("zmp-delete-missing");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersByTypeContract,
+    );
 
     const response = await accept(
       client.delete({
@@ -1099,10 +1161,13 @@ describe("DELETE /api/zero/model-providers/:type", () => {
   it("deletes an org single-secret provider", async () => {
     const fixture = uniqueOrgUser("zmp-delete-legacy");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const mainClient = setupApp({ context })(zeroModelProvidersMainContract);
-    const byTypeClient = setupApp({ context })(
-      zeroModelProvidersByTypeContract,
+    const mainClient = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
     );
+    const byTypeClient = setupApp({
+      context,
+      routes: zeroModelProvidersRoutes,
+    })(zeroModelProvidersByTypeContract);
 
     await accept(
       mainClient.upsert({
@@ -1144,10 +1209,13 @@ describe("DELETE /api/zero/model-providers/:type", () => {
   it("deletes a codex auth_json provider", async () => {
     const fixture = uniqueOrgUser("zmp-delete-multiauth");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const mainClient = setupApp({ context })(zeroModelProvidersMainContract);
-    const byTypeClient = setupApp({ context })(
-      zeroModelProvidersByTypeContract,
+    const mainClient = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
     );
+    const byTypeClient = setupApp({
+      context,
+      routes: zeroModelProvidersRoutes,
+    })(zeroModelProvidersByTypeContract);
 
     await accept(
       mainClient.upsert({
@@ -1192,10 +1260,13 @@ describe("DELETE /api/zero/model-providers/:type", () => {
   it("does not promote another provider when deleting a provider", async () => {
     const fixture = uniqueOrgUser("zmp-delete-default");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const mainClient = setupApp({ context })(zeroModelProvidersMainContract);
-    const byTypeClient = setupApp({ context })(
-      zeroModelProvidersByTypeContract,
+    const mainClient = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
     );
+    const byTypeClient = setupApp({
+      context,
+      routes: zeroModelProvidersRoutes,
+    })(zeroModelProvidersByTypeContract);
 
     await accept(
       mainClient.upsert({

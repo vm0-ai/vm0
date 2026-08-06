@@ -13,8 +13,8 @@ export const featureSwitchesResponseSchema = z.object({
    */
   supportsStructuredInlineTemplates: z.boolean().optional(),
   /**
-   * Optional capability handshake for custom connector OAuth 2.0.
-   * Older API deployments omit this field.
+   * Optional compatibility handshake for custom connector OAuth 2.0.
+   * Keep returning this while older Platform bundles still read it.
    */
   supportsCustomConnectorOAuth2: z.boolean().optional(),
   /**

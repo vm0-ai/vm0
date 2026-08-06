@@ -13,6 +13,7 @@ import { seedConnectedXConnector } from "../../../test-fixtures/x-connector";
 import { createBddApi } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroImageShareXRoutes } from "../zero-image-share-x";
 
 const context = testContext();
 const routeMocks = createZeroRouteMocks(context);
@@ -45,7 +46,9 @@ function authHeaders() {
 }
 
 function client() {
-  return setupApp({ context })(zeroImageShareXContract);
+  return setupApp({ context, routes: zeroImageShareXRoutes })(
+    zeroImageShareXContract,
+  );
 }
 
 function mockXImageShareProvider(options?: {

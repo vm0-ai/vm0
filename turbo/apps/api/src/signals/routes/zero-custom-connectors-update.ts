@@ -1,7 +1,5 @@
 import { command } from "ccstate";
 import { zeroCustomConnectorByIdContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -10,7 +8,6 @@ import {
   getCustomConnectorResponse,
   updateCustomConnectorDefinition$,
 } from "../services/zero-custom-connector.service";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 
@@ -37,23 +34,6 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
-  }
-  const featureContext = await get(
-    userFeatureSwitchContext(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, featureContext)
-  ) {
-    return {
-      status: 403 as const,
-      body: {
-        error: {
-          message: "Custom connector editing is not enabled",
-          code: "FORBIDDEN" as const,
-        },
-      },
-    };
   }
   const result = await set(
     updateCustomConnectorDefinition$,

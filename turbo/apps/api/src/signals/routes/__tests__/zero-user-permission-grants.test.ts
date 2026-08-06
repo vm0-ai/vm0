@@ -20,6 +20,9 @@ import {
   seedUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
+import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
+
+const TEST_APP_ROUTES = Object.freeze([...zeroUserPermissionGrantsRoutes]);
 
 const context = testContext();
 const store = createStore();
@@ -65,7 +68,9 @@ async function seedAgent(args: {
 }
 
 function client() {
-  return setupApp({ context })(zeroUserPermissionGrantsContract);
+  return setupApp({ context, routes: zeroUserPermissionGrantsRoutes })(
+    zeroUserPermissionGrantsContract,
+  );
 }
 
 async function applyPermissionGrants(args: {
@@ -260,7 +265,10 @@ describe("zero user permission grants", () => {
       visibility: "private",
     });
 
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+    const client = setupApp({
+      context,
+      routes: zeroUserPermissionGrantsRoutes,
+    })(zeroUserPermissionGrantsContract);
 
     mocks.clerk.session(owner.userId, owner.orgId, "org:member");
     const ownerResponse = await applyPermissionGrant({
@@ -318,7 +326,10 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+    const client = setupApp({
+      context,
+      routes: zeroUserPermissionGrantsRoutes,
+    })(zeroUserPermissionGrantsContract);
 
     const malformedConnector = await accept(
       client.apply({
@@ -390,7 +401,7 @@ describe("zero user permission grants", () => {
       action: "deny",
     });
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const askResponse = await app.request(
       "/api/zero/user-permission-grants/apply",
       {
@@ -595,7 +606,10 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+    const client = setupApp({
+      context,
+      routes: zeroUserPermissionGrantsRoutes,
+    })(zeroUserPermissionGrantsContract);
 
     const invalidConnector = await accept(
       client.apply({
@@ -642,7 +656,7 @@ describe("zero user permission grants", () => {
     );
     expect(invalidPermission.body.error.code).toBe("VALIDATION_ERROR");
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const denyExpiration = await app.request(
       "/api/zero/user-permission-grants/apply",
       {
@@ -711,7 +725,10 @@ describe("zero user permission grants", () => {
       visibility: "private",
     });
     mocks.clerk.session(sameOrgUserId, owner.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+    const client = setupApp({
+      context,
+      routes: zeroUserPermissionGrantsRoutes,
+    })(zeroUserPermissionGrantsContract);
 
     const response = await accept(
       client.apply({
@@ -958,7 +975,7 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     const response = await app.request(
       "/api/zero/user-permission-grants/apply",
@@ -989,7 +1006,7 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     const response = await app.request(
       "/api/zero/user-permission-grants/apply",

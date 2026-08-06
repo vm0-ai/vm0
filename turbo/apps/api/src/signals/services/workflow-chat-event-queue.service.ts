@@ -31,12 +31,11 @@ import type {
   WorkflowAutomationEventPayload,
   WorkflowAutomationEventType,
 } from "./workflow-automation-context.service";
+import type { Tx } from "../../lib/db-types";
 
 const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
 
-export type WorkflowQueueAdmissionTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
+export type WorkflowQueueAdmissionTransaction = Tx;
 
 async function chatEventQueueAdmissionLock(
   tx: WorkflowQueueAdmissionTransaction,

@@ -37,6 +37,7 @@ import {
   seedCurrentSkillVersionsState,
   setAllSkillsCommitShaState,
 } from "./helpers/cron-sync-skills-state";
+import { cronSyncSkillsRoutes } from "../cron-sync-skills";
 
 const context = testContext();
 const CRON_SECRET = "test-cron-secret";
@@ -159,7 +160,9 @@ async function seedCurrentSkillVersions(
 }
 
 function apiClient() {
-  return setupApp({ context })(cronSyncSkillsContract);
+  return setupApp({ context, routes: cronSyncSkillsRoutes })(
+    cronSyncSkillsContract,
+  );
 }
 
 function cronHeaders(secret = CRON_SECRET) {

@@ -247,7 +247,9 @@ mocking only external services:
 
 ```typescript
 const context = testContext();
-const client = setupApp({ context })(zeroAgentsMainContract);
+const client = setupApp({ context, routes: zeroAgentsRoutes })(
+  zeroAgentsMainContract,
+);
 
 it("should list an agent created through the API", async () => {
   context.mocks.clerk.session(userId, orgId);

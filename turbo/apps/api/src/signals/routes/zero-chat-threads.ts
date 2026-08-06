@@ -118,6 +118,7 @@ function projectChatEventForClient(
   }
   if (
     event.eventType === "input.prompt" ||
+    event.eventType === "input.budget" ||
     event.eventType === "input.goal" ||
     event.eventType === "input.rejected"
   ) {

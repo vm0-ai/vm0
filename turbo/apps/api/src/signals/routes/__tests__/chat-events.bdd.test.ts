@@ -83,7 +83,6 @@ import {
 import {
   deleteAgentRunFixture,
   deleteBddVm0ApiKeys,
-  hasVm0ApiKeyLabel,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
   holdChatThreadRowLockFixture,
@@ -96,6 +95,19 @@ import {
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
 } from "../../../test-fixtures/chat-events";
+import { zeroChatEventsRoutes } from "../zero-chat-events";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroMailRoutes } from "../zero-mail";
+import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
+import { zeroModelProvidersRoutes } from "../zero-model-providers";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroChatEventsRoutes,
+  ...zeroChatThreadRoutes,
+  ...zeroMailRoutes,
+  ...zeroModelProviderGatewayRoutes,
+  ...zeroModelProvidersRoutes,
+]);
 
 /**
  * CHAT-02 / RUN-01 / CHAIN-CHAT: the web chat send route end to end.
@@ -791,27 +803,39 @@ function modelProviderSecretPlaceholder(
 }
 
 function modelProvidersClient() {
-  return setupApp({ context })(zeroModelProvidersMainContract);
+  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+    zeroModelProvidersMainContract,
+  );
 }
 
 function modelProviderConnectionsClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsMainContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsMainContract,
+  );
 }
 
 function modelProviderConnectionsByIdClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsByIdContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsByIdContract,
+  );
 }
 
 function chatEventsClient() {
-  return setupApp({ context })(chatEventsContract);
+  return setupApp({ context, routes: zeroChatEventsRoutes })(
+    chatEventsContract,
+  );
 }
 
 function chatThreadsClient() {
-  return setupApp({ context })(chatThreadsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadsContract,
+  );
 }
 
 function chatThreadEventsClient() {
-  return setupApp({ context })(chatThreadEventsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadEventsContract,
+  );
 }
 
 describe("CHAT-02: thread run admission invariant", () => {
@@ -932,7 +956,7 @@ async function requestSendEventRaw(
   body: ChatRunSendBody & { readonly userMessage: UserMessageInputDocument },
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   const response = await app.request("/api/zero/chat/events", {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
@@ -1687,6 +1711,24 @@ describe("CHAT-02: queueing and recalling messages", () => {
       type: "model",
       selectedModel: "claude-sonnet-4-6",
     });
+
+    const legacyPublicEvents = await chat.listThreadEvents(
+      actor,
+      active.threadId,
+      {},
+      "0.636.1",
+    );
+    const legacyBudgetEvent = legacyPublicEvents.events.find((event) => {
+      return event.eventType === "input.budget" && event.runId === active.runId;
+    });
+    if (!legacyBudgetEvent || legacyBudgetEvent.eventType !== "input.budget") {
+      throw new Error("Expected the legacy run time budget input");
+    }
+    expect(
+      legacyBudgetEvent.userMessage.parts.some((part) => {
+        return part.type === "model";
+      }),
+    ).toBeFalsy();
 
     mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
     await webhooks.requestAgentEvents(
@@ -2550,16 +2592,18 @@ describe("CHAT-02: Zero Mail link delivery", () => {
     );
 
     const linked = await accept(
-      setupApp({ context })(zeroMailContract).linkDraft({
-        headers: {
-          authorization: `Bearer ${zeroTokenFromClaim(claim)}`,
+      setupApp({ context, routes: zeroMailRoutes })(zeroMailContract).linkDraft(
+        {
+          headers: {
+            authorization: `Bearer ${zeroTokenFromClaim(claim)}`,
+          },
+          body: {
+            threadId: run.threadId,
+            agentId,
+            gmailDraftId,
+          },
         },
-        body: {
-          threadId: run.threadId,
-          agentId,
-          gmailDraftId,
-        },
-      }),
+      ),
       [200],
     );
     const beforeReply = await chat.listThreadEvents(actor, run.threadId);
@@ -3553,7 +3597,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("prefers dev-seed vm0 managed keys over concurrent test keys", async () => {
+  it("selects vm0 managed keys by vendor instead of model", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keySuffix = randomUUID();
@@ -3564,6 +3608,7 @@ describe("CHAT-02: model-first provider policies", () => {
     onTestFinished(async () => {
       await Promise.all([
         deleteBddVm0ApiKeys({ vendor: "zai", model: "glm-5.2" }),
+        deleteBddVm0ApiKeys({ vendor: "zai", model: "glm-5.1" }),
         ...(runId ? [api.requestCancelRun(actor, runId, [200])] : []),
       ]);
     });
@@ -3576,11 +3621,12 @@ describe("CHAT-02: model-first provider policies", () => {
           apiKey: fakeKey,
           label: `bdd-fake-${keySuffix}`,
         },
-        {
-          apiKey: devSeedKey,
-          label: "dev-seed",
-        },
       ],
+    });
+    await replaceBddVm0ApiKeys({
+      vendor: "zai",
+      model: "glm-5.1",
+      keys: [{ apiKey: devSeedKey, label: "dev-seed" }],
     });
 
     await api.updateOrgModelPolicies(actor, [
@@ -3630,17 +3676,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected vm0 firewall auth to resolve");
     }
     const authorization = resolved.body.headers.Authorization;
-    if (!authorization?.startsWith("Bearer ")) {
-      throw new Error("Expected vm0 firewall auth to return a bearer token");
-    }
-    await expect(
-      hasVm0ApiKeyLabel({
-        vendor: "zai",
-        model: "glm-5.2",
-        apiKey: authorization.slice("Bearer ".length),
-        label: "dev-seed",
-      }),
-    ).resolves.toBeTruthy();
+    expect(authorization).toBe(`Bearer ${devSeedKey}`);
   }, 90_000);
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
     const fw = createFirewallApi(context);
@@ -5687,7 +5723,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(message).toMatchObject({
       content: null,
-      userMessage,
+      userMessage: {
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
@@ -5796,7 +5838,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(message?.generationTemplate).toStrictEqual(illustrationTemplate);
     expect(message).toMatchObject({
       content: null,
-      userMessage,
+      userMessage: {
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
@@ -5864,6 +5912,7 @@ describe("CHAT-02: generation templates and attachments", () => {
             contentType: "text/plain",
           },
           { type: "text", text: "plain API attachment" },
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
         ],
       },
     });

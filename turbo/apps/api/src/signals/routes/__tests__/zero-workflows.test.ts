@@ -33,6 +33,8 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { zeroWorkflowsRoutes } from "../zero-workflows";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -98,11 +100,15 @@ function authHeaders(actor: ApiTestUser): { readonly authorization: string } {
 }
 
 function collectionClient() {
-  return setupApp({ context })(zeroWorkflowsCollectionContract);
+  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+    zeroWorkflowsCollectionContract,
+  );
 }
 
 function detailClient() {
-  return setupApp({ context })(zeroWorkflowsDetailContract);
+  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+    zeroWorkflowsDetailContract,
+  );
 }
 
 function mockConnectorReadinessModel(
@@ -132,11 +138,15 @@ function mockConnectorReadinessModel(
 }
 
 function visibilityClient() {
-  return setupApp({ context })(zeroWorkflowVisibilityContract);
+  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+    zeroWorkflowVisibilityContract,
+  );
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 async function createAgent(

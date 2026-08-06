@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.191](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.190...sandbox-fc-v0.37.191) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** centralize firecracker snapshot validation ([#25469](https://github.com/vm0-ai/vm0/issues/25469)) ([2ff4c4e](https://github.com/vm0-ai/vm0/commit/2ff4c4ecbc54f1eb2d7a65664122e489b3afc362))
+
 ## [0.37.190](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.189...sandbox-fc-v0.37.190) (2026-08-06)
 
 

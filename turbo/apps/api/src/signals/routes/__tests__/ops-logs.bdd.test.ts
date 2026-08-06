@@ -14,6 +14,7 @@ import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext, accept } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { withThreadlessRunCleanupTestLockFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { modelStatsRoutes } from "../model-stats";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -37,6 +38,7 @@ import {
 } from "./helpers/model-stats-state";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { zeroAgentInstructionsRoutes } from "../zero-agent-instructions";
 
 /*
  * BILL-02 model stats and OPS-01 user export.
@@ -61,6 +63,7 @@ interface DeferredS3Put {
 }
 
 const context = testContext();
+const registerExportTest = it;
 const trackDeferredS3Put = createFixtureTracker<DeferredS3Put>((pendingPut) => {
   pendingPut.resolve();
   return Promise.resolve();
@@ -1141,6 +1144,15 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 });
 
 describe("OPS-01: user data export", () => {
+  function it(name: string, test: () => Promise<void>): void {
+    registerExportTest(name, async () => {
+      await withThreadlessRunCleanupTestLockFixture({
+        signal: context.signal,
+        run: test,
+      });
+    });
+  }
+
   it("rejects unauthenticated and org-less export requests", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
@@ -1379,7 +1391,9 @@ describe("OPS-01: user data export", () => {
       visibility: "private",
     });
     await accept(
-      setupApp({ context })(zeroAgentInstructionsContract).update({
+      setupApp({ context, routes: zeroAgentInstructionsRoutes })(
+        zeroAgentInstructionsContract,
+      ).update({
         params: { id: agent.agentId },
         headers: { authorization: "Bearer clerk-session" },
         body: { content: "Use the exported agent instructions." },

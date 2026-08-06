@@ -24,14 +24,22 @@
 //! same-UID sandbox process from replacing the script after its path appears in
 //! argv but before bash opens it.
 //!
-//! Cleanup is intentionally layered. The generated script removes its own file
-//! and directory before exporting env values, stale env-script entries are
-//! cleaned on later launches, and `EnvScriptGuard` removes the script path on
-//! drop. `PreparedShellCommand` and `SpawnedShellCommand` carry that guard so
-//! the script stays available through the prepare-to-spawn handoff and for the
-//! spawned operation. Callers must retain the guard while the shell wrapper may
-//! still need to open the script; dropping it too early can remove the script
-//! before bash reads it.
+//! Cleanup is intentionally layered and mode-dependent. Before exporting env
+//! values, the generated script makes best-effort attempts to remove its own
+//! file and directory. Those attempts succeed when the command identity can
+//! write the per-run directory, including same-user and privileged execution.
+//! In production non-`sudo` execution, the root-owned directory deliberately
+//! denies that access to the sandbox user, so the root-side `EnvScriptGuard`
+//! owns normal cleanup and the restricted script remains until operation
+//! teardown. `PreparedShellCommand` and `SpawnedShellCommand` carry that guard
+//! through the prepare-to-spawn handoff and for the spawned operation. Callers
+//! must retain it while the shell wrapper may still need to open the script;
+//! dropping it too early can remove the script before bash reads it.
+//!
+//! Guard cleanup and later-launch stale cleanup are best effort. If guest
+//! termination bypasses destructors, a script can remain until a later launch
+//! removes it after the stale threshold.
+//!
 //! `SpawnedShellCommand` also returns exec process-containment ownership
 //! only after a successful spawn. Setup failures clean that containment before
 //! returning the original spawn error.
@@ -636,7 +644,7 @@ mod tests {
     }
 
     #[test]
-    fn env_script_content_self_removes_before_exports() {
+    fn env_script_content_attempts_self_removal_before_exports() {
         let dir = Path::new("/run/vm0-exec/vm0-env-test");
         let path = dir.join("run.sh");
         let script =
@@ -788,7 +796,7 @@ mod tests {
     }
 
     #[test]
-    fn env_script_removes_file_and_directory_when_started() {
+    fn env_script_self_removes_when_command_can_write_directory() {
         let (dir, _guard) = temp_dir("self-remove");
         let output = dir.join("output");
         let output_arg = shell_escape_value(output.to_str().unwrap());

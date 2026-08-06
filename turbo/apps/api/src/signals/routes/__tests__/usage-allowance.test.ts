@@ -24,6 +24,7 @@ import {
   generatedStripeCustomerId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
+import { webhooksAgentFirewallAuthRoutes } from "../webhooks-agent-firewall-auth";
 
 const context = testContext();
 
@@ -492,7 +493,10 @@ describe("Usage Allowance", () => {
     });
     const api = createRunsApi(context);
     const run = await createVm0Run(actor, agentId, "billable firewall lease");
-    const client = setupApp({ context })(webhookFirewallAuthContract);
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
     const headers = {
       authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
     };
@@ -702,7 +706,10 @@ describe("Usage Allowance", () => {
       weeklyWindowUnits: 2,
     });
     await seedOrgMetadata({ orgId, tier: "pro", credits: 0 });
-    const client = setupApp({ context })(webhookFirewallAuthContract);
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
     const headers = {
       authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
     };
