@@ -37,6 +37,7 @@ from tests.webhook_test_helpers import (
     install_runner_usage_flush_request,
     request_runner_usage_flush,
 )
+from usage import openai_responses
 
 _TELEMETRY_PATH = "/api/webhooks/agent/telemetry"
 
@@ -459,15 +460,38 @@ class TestModelProviderSseUsage:
             event["category"]: event["quantity"] for event in webhook.usage_events()
         } == expected
 
+    @pytest.mark.parametrize(
+        "type_fields",
+        [
+            pytest.param(b'"type":"response.failed",', id="sse-json-conflict"),
+            pytest.param(
+                b'"type":"response.completed","type":"response.failed",'
+                b'"type":"response.completed",',
+                id="middle-conflicts-with-matching-ends",
+            ),
+            pytest.param(
+                b'"padding":"'
+                + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
+                + b'","type":"response.failed","type":"response.completed",',
+                id="conflict-after-prefilter-bound",
+            ),
+            pytest.param(
+                b'"padding":"'
+                + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
+                + b'","type":42,',
+                id="invalid-type-after-prefilter-bound",
+            ),
+        ],
+    )
     def test_full_pipeline_incomplete_compressed_openai_sse_rejects_conflicting_identity(
-        self, tmp_path, real_flow
+        self, tmp_path, real_flow, type_fields
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         assert flow.response is not None
         flow.response.headers["content-encoding"] = "gzip"
         plaintext = (
             b"event: response.completed\n"
-            b'data: {"type":"response.failed","response":{"model":"gpt-5.5",'
+            b"data: {" + type_fields + b'"response":{"model":"gpt-5.5",'
             b'"usage":{"input_tokens":11,"output_tokens":5}}}\n\n'
         )
 

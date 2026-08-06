@@ -180,14 +180,41 @@ class TestOpenAIResponsesSseUsageExtractor:
             pytest.param(b"", id="eventless"),
         ],
     )
-    def test_conflicting_duplicate_terminal_types_do_not_report_snapshot(self, event_prefix):
+    @pytest.mark.parametrize(
+        "type_fields",
+        [
+            pytest.param(
+                b'"type":"response.failed","type":"response.completed",',
+                id="first-conflicts-with-last",
+            ),
+            pytest.param(
+                b'"type":"response.completed","type":"response.failed",'
+                b'"type":"response.completed",',
+                id="middle-conflicts-with-matching-ends",
+            ),
+            pytest.param(
+                b'"padding":"'
+                + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
+                + b'","type":"response.failed","type":"response.completed",',
+                id="conflict-after-prefilter-bound",
+            ),
+            pytest.param(
+                b'"padding":"'
+                + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
+                + b'","type":42,',
+                id="invalid-type-after-prefilter-bound",
+            ),
+        ],
+    )
+    def test_conflicting_duplicate_terminal_types_do_not_report_snapshot(
+        self, event_prefix, type_fields
+    ):
         terminal_usage: list[dict] = []
         parse, usage = create_openai_responses_sse_usage_extractor(
             on_terminal_usage=terminal_usage.append
         )
         parse(
-            event_prefix + b'data: {"type":"response.failed","type":"response.completed",'
-            b'"response":{"model":"gpt-5.5",'
+            event_prefix + b"data: {" + type_fields + b'"response":{"model":"gpt-5.5",'
             b'"usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
         )
 
@@ -596,17 +623,17 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         assert len(payload) < openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES
 
-        real_inspect = openai_responses._inspect_responses_event_type
+        real_classify = openai_responses._classify_responses_event_type
         classified_prefixes: list[bytes] = []
 
-        def track_inspection(body: bytes):
+        def track_classification(body: bytes):
             classified_prefixes.append(body)
-            return real_inspect(body)
+            return real_classify(body)
 
         monkeypatch.setattr(
             openai_responses,
-            "_inspect_responses_event_type",
-            track_inspection,
+            "_classify_responses_event_type",
+            track_classification,
         )
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(event_prefix + b"data: ")
