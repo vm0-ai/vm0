@@ -69,7 +69,6 @@ export enum FeatureSwitchKey {
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",
-  ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
   ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",

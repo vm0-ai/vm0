@@ -18,6 +18,7 @@ const featureSwitchesAuthOptions = {
 } as const;
 
 const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
+const LEGACY_CHAT_THREAD_SIDEBAR_AUTO_OPEN_SWITCH = "chatThreadSidebarAutoOpen";
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
@@ -35,9 +36,13 @@ function featureSwitchResponseBody(params: {
   // Platform bundles loaded before Mail follow-up removal still carry this
   // key. Force them off until their compatible follow-up endpoint can be
   // removed after the old frontend release drains.
+  // Platform bundles loaded before sidebar auto-open became permanent still
+  // gate that behavior on the removed switch. Keep it enabled until the old
+  // frontend release drains.
   const effectiveSwitches = {
     ...registeredEffectiveSwitches,
     [LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH]: false,
+    [LEGACY_CHAT_THREAD_SIDEBAR_AUTO_OPEN_SWITCH]: true,
   };
 
   return {

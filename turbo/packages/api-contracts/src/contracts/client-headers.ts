@@ -6,7 +6,6 @@ export const CLIENT_CAPABILITY_PT_BR_LOCALE = "pt-br-locale-v1";
 export const CLIENT_CAPABILITY_JA_JP_LOCALE = "ja-jp-locale-v1";
 export const CLIENT_CAPABILITY_HI_IN_LOCALE = "hi-in-locale-v1";
 export const CLIENT_CAPABILITY_AGENT_RUN_SOURCE = "agent-run-source-v1";
-export const CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION = "run-model-annotation-v1";
 export const CLIENT_CAPABILITY_KO_KR_LOCALE = "ko-kr-locale-v1";
 export const CLIENT_CAPABILITY_ID_ID_LOCALE = "id-id-locale-v1";
 export const CLIENT_CAPABILITY_DE_DE_LOCALE = "de-de-locale-v1";

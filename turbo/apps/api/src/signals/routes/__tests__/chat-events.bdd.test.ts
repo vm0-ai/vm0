@@ -23,7 +23,6 @@ import {
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
-import { CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION } from "@vm0/api-contracts/contracts/client-headers";
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
@@ -1706,24 +1705,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
       type: "model",
       selectedModel: "claude-sonnet-4-6",
     });
-
-    const legacyPublicEvents = await chat.listThreadEvents(
-      actor,
-      active.threadId,
-      {},
-      "0.636.1",
-    );
-    const legacyBudgetEvent = legacyPublicEvents.events.find((event) => {
-      return event.eventType === "input.budget" && event.runId === active.runId;
-    });
-    if (!legacyBudgetEvent || legacyBudgetEvent.eventType !== "input.budget") {
-      throw new Error("Expected the legacy run time budget input");
-    }
-    expect(
-      legacyBudgetEvent.userMessage.parts.some((part) => {
-        return part.type === "model";
-      }),
-    ).toBeFalsy();
 
     mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
     await webhooks.requestAgentEvents(
@@ -7122,41 +7103,6 @@ describe("CHAT-02: shared user message queue", () => {
     });
     expect(queued.runId).toBeUndefined();
 
-    const legacyMessages = await chat.listThreadEvents(
-      actor,
-      sent.body.threadId,
-      {},
-      "0.636.1",
-    );
-    const legacyClaimed = userMessages(legacyMessages.events).find(
-      (message): message is PromptMessage => {
-        return (
-          message.eventType === "input.prompt" &&
-          message.revokesEventId === messageId
-        );
-      },
-    );
-    expect(legacyClaimed?.userMessage).toStrictEqual(userMessage);
-
-    const modelCapableMessages = await chat.listThreadEvents(
-      actor,
-      sent.body.threadId,
-      {},
-      `0.636.1+${CLIENT_CAPABILITY_RUN_MODEL_ANNOTATION}`,
-    );
-    const modelCapableClaimed = userMessages(modelCapableMessages.events).find(
-      (message): message is PromptMessage => {
-        return (
-          message.eventType === "input.prompt" &&
-          message.revokesEventId === messageId
-        );
-      },
-    );
-    expect(modelCapableClaimed?.userMessage.parts).toContainEqual({
-      type: "model",
-      selectedModel: "claude-sonnet-4-6",
-    });
-
     const replay = await chat.requestSendEvent(
       actor,
       {
@@ -8015,6 +7961,7 @@ describe("CHAT-02: shared user message queue", () => {
     expect(second.body).toMatchObject({ runId: null });
 
     await cancelChatRun(actor, anchor.runId);
+    await flushWaitUntilForTest();
     const messages = await waitForThreadMessages(
       actor,
       anchor.threadId,
