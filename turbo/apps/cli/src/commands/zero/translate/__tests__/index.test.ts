@@ -28,6 +28,7 @@ describe("zero translate command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   it("translates text and prints only the translation", async () => {

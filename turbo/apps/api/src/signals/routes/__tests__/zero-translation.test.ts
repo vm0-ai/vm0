@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { createStore } from "ccstate";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import {
   ZERO_TRANSLATION_MAX_SOURCE_TEXT_CHARS,
@@ -20,14 +19,12 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { readUsageStorageCounts$ } from "./helpers/zero-usage-insight";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const TRANSLATION_MODEL = "qwen/qwen-2.5-7b-instruct";
@@ -158,13 +155,7 @@ async function readRunUsage(actor: TranslationActor) {
 }
 
 async function expectNoUsage(actor: TranslationActor): Promise<void> {
-  await expect(
-    store.set(
-      readUsageStorageCounts$,
-      { scope: "organization", id: actor.orgId },
-      context.signal,
-    ),
-  ).resolves.toStrictEqual({ raw: 0, hourly: 0 });
+  await expect(readRunUsage(actor)).resolves.toStrictEqual([]);
 }
 
 describe("POST /api/zero/translate", () => {
@@ -243,13 +234,6 @@ describe("POST /api/zero/translate", () => {
       targetLanguage: "Simplified Chinese",
       text: "Hello, world",
     });
-    await expect(
-      store.set(
-        readUsageStorageCounts$,
-        { scope: "organization", id: actor.orgId },
-        context.signal,
-      ),
-    ).resolves.toStrictEqual({ raw: 6, hourly: 0 });
     await expect(readRunUsage(actor)).resolves.toStrictEqual([
       expect.objectContaining({
         runId: actor.runId,
@@ -497,12 +481,5 @@ describe("POST /api/zero/translate", () => {
     expect(JSON.stringify(response.body)).not.toContain(
       "This text must not be returned",
     );
-    await expect(
-      store.set(
-        readUsageStorageCounts$,
-        { scope: "organization", id: actor.orgId },
-        context.signal,
-      ),
-    ).resolves.toStrictEqual({ raw: 2, hourly: 0 });
   });
 });

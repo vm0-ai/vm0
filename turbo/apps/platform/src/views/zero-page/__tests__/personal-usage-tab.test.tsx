@@ -19,12 +19,12 @@ function usageRows(): UsageRecordRow[] {
       threadId: "thread-planning",
       runId: null,
       title: "Quarterly planning chat",
-      credits: 980,
+      credits: 983,
       tokens: 2200,
       breakdown: [
         {
           kind: "other",
-          credits: 980,
+          credits: 983,
           providers: [
             { provider: "firecrawl", credits: 180 },
             { provider: "google-maps", credits: 200 },
@@ -38,6 +38,16 @@ function usageRows(): UsageRecordRow[] {
             },
             { provider: "apidojo", credits: 200 },
             { provider: "google-weather", credits: 200 },
+            {
+              provider: "qwen/qwen-2.5-7b-instruct",
+              credits: 3,
+              usageKinds: [
+                {
+                  kind: "translation/qwen/qwen-2.5-7b-instruct/tokens.output",
+                  credits: 3,
+                },
+              ],
+            },
           ],
         },
       ],
@@ -192,7 +202,7 @@ describe("personal usage settings", () => {
       expect(screen.getByText("Quarterly planning chat")).toBeInTheDocument();
       expect(screen.getByText("Slack customer follow-up")).toBeInTheDocument();
     });
-    expect(screen.getByText("980")).toBeInTheDocument();
+    expect(screen.getByText("983")).toBeInTheDocument();
     expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
     expect(screen.queryByText("All sources")).not.toBeInTheDocument();
     expect(requestedRanges).toContain("today");
@@ -220,11 +230,17 @@ describe("personal usage settings", () => {
       ).toBeTruthy();
       expect(screen.getAllByText("Finance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Weather").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Translation").length).toBeGreaterThanOrEqual(
+        1,
+      );
       expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
       expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();
       expect(screen.queryByText("Perplexity")).not.toBeInTheDocument();
       expect(screen.queryByText("Apidojo")).not.toBeInTheDocument();
       expect(screen.queryByText("Google Weather")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("qwen/qwen-2.5-7b-instruct"),
+      ).not.toBeInTheDocument();
     });
 
     click(screen.getByText("Load more"));

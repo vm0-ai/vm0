@@ -2,6 +2,7 @@
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
+import { zeroTranslateCommand } from "./commands/zero/translate";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import {
   decodeZeroTokenPayload,
@@ -331,7 +332,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     name: "translate",
     description: "Translate text through a managed translation model",
     load: async () => {
-      return (await import("./commands/zero/translate")).zeroTranslateCommand;
+      return zeroTranslateCommand;
     },
   },
   {

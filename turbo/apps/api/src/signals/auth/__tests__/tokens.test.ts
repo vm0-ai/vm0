@@ -220,10 +220,21 @@ describe("auth tokens", () => {
     );
   });
 
-  it("grants translation capability by default", () => {
-    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+  it("gates translation capability behind the translation feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.Translation]: true },
+    );
 
-    expect(verifyZeroToken(token)?.capabilities).toContain("translation:write");
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "translation:write",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "translation:write",
+    );
   });
 
   it("gates image recognition on run eligibility", () => {
