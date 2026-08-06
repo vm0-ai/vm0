@@ -809,7 +809,18 @@ def firewall_rule_is_valid(rule_str: str) -> bool:
 # firewall config; malformed unknownPolicy only affects unknown-endpoint
 # resolution.
 def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
-    """Compile one firewall into VM-independent matcher data."""
+    """Compile one firewall into reusable matcher data.
+
+    The core retains the firewall name and, for each compilable raw API, its original list index
+    plus matcher-relevant ``base``, ``auth``, optional ``hostPolicy``, permissions, rules, ordering,
+    and malformed state. The original index lets ``bind_compiled_firewall_core`` attach a later raw
+    API shell without recompiling this data.
+
+    Return ``None`` when the firewall is not a dictionary, ``apis`` is not a list, or no API has a
+    compilable string base. Other selected malformed inputs are retained according to the compiled
+    matcher contract above. A caller that reuses this core with another firewall dictionary must
+    satisfy the compatibility contract documented by ``bind_compiled_firewall_core``.
+    """
     if not isinstance(fw_entry, dict):
         return None
 
@@ -911,7 +922,25 @@ def bind_compiled_firewall_core(
     fw_entry: dict,
     core: CompiledFirewallCore,
 ) -> _CompiledFirewall | None:
-    """Bind VM-specific raw API entries to reusable compiled firewall core data."""
+    """Bind compatible raw API shell entries to reusable compiled firewall data.
+
+    ``fw_entry`` must describe the same matcher definition that produced ``core``. Its firewall
+    name and raw ``apis`` positional structure must be unchanged, including which entries compile.
+    At every retained position, ``base``, ``auth``, optional ``hostPolicy``, permissions, permission
+    names, rules, and their ordering must have the same values. Each API core is paired with the raw
+    dictionary at its original ``raw_api_index``; reordering or replacing entries is incompatible
+    even when the target list still has a dictionary at that index.
+
+    Fields excluded from core compilation may remain shell-local. Builtin reuse currently rebinds
+    generated API ``id`` values and snapshot-owned ``_builtinHostPolicyRuntime`` metadata. Such raw
+    fields remain subject to their own validity and lifecycle contracts; in particular, runtime
+    host-policy metadata must stay paired with the target shell's resolved registry snapshot.
+
+    The caller or its cache key must enforce this compatibility before reuse. This function does
+    not compare semantic content. It returns ``None`` only when the target ``apis`` value is not a
+    list, a retained index is unavailable or does not contain a dictionary, or no APIs are bound;
+    that result is a structural failure, not a semantic compatibility verdict.
+    """
     raw_apis = fw_entry.get("apis", [])
     if not isinstance(raw_apis, list):
         return None
