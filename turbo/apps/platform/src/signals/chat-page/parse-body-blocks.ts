@@ -409,14 +409,15 @@ function isPlatformFileUrl(url: string): boolean {
     return false;
   }
   const parsed = new URL(url, baseUrl);
-  if (
-    !LEGACY_PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname) &&
-    !SHORT_ARTIFACT_FILE_PATH_PATTERN.test(parsed.pathname)
-  ) {
+  const isLegacyPath = LEGACY_PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname);
+  const isShortArtifactPath = SHORT_ARTIFACT_FILE_PATH_PATTERN.test(
+    parsed.pathname,
+  );
+  if (!isLegacyPath && !isShortArtifactPath) {
     return false;
   }
   if (!hasExplicitUrlOrigin(url)) {
-    return true;
+    return isLegacyPath;
   }
   return (
     platformFileHosts().has(parsed.host) ||
