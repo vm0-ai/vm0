@@ -87,18 +87,6 @@ describe("assistant markdown", () => {
     expect(container.querySelector(".wmde-markdown span")).toBeNull();
   });
 
-  it("neutralizes non-allowlisted tags written at the top level", () => {
-    const { container } = render(
-      <StoreProvider value={context.store}>
-        <Markdown source={"<style>\n* { margin: 0; padding: 0; }\n</style>"} />
-      </StoreProvider>,
-    );
-
-    // A live <style> element would apply its rules to the whole app document.
-    expect(container.querySelector("style")).toBeNull();
-    expect(container.textContent).toContain("* { margin: 0; padding: 0; }");
-  });
-
   it("keeps blockquotes rendering when html is escaped", () => {
     const { container } = render(
       <StoreProvider value={context.store}>
@@ -145,6 +133,34 @@ describe("assistant markdown", () => {
         document.querySelector('[data-color-mode="light"]'),
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows a raw style block as text instead of styling the page", async () => {
+    mockThread("<style>\n.zero-injected { color: red }\n</style>");
+
+    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+
+    await waitFor(() => {
+      expect(document.querySelector(".wmde-markdown")?.textContent).toContain(
+        ".zero-injected { color: red }",
+      );
+    });
+    // A mounted stylesheet would restyle the whole page, not just this message.
+    const injectedSheets = Array.from(
+      document.querySelectorAll("style"),
+    ).filter((sheet) => {
+      return sheet.textContent?.includes(".zero-injected") ?? false;
+    });
+    expect(injectedSheets).toHaveLength(0);
+  });
+
+  it("keeps allowlisted html blocks rendering as elements", async () => {
+    mockThread("<div><strong>kept markup</strong></div>");
+
+    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+
+    const kept = await screen.findByText("kept markup", { selector: "strong" });
+    expect(kept).toBeInTheDocument();
   });
 
   it("renders media links inline", async () => {
