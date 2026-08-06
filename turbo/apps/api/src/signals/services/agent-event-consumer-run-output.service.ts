@@ -13,6 +13,7 @@ import {
   publishChatThreadMessageCreatedSafely,
   publishThreadListChangedSafely,
 } from "../external/realtime";
+import { projectPiEventsInTransaction } from "./pi-transcript.service";
 import {
   insertAssistantEventsInTransaction,
   type InsertAssistantEventsInput,
@@ -233,6 +234,15 @@ function assistantEventItems(
   });
 }
 
+function orderedAssistantItems(
+  first: InsertAssistantEventsInput["items"],
+  second: InsertAssistantEventsInput["items"],
+): InsertAssistantEventsInput["items"] {
+  return [...first, ...second].sort((left, right) => {
+    return left.runEventSequenceNumber - right.runEventSequenceNumber;
+  });
+}
+
 async function materializeRunOutputEvents(
   writeDb: Db,
   payload: EventConsumerPayload,
@@ -258,6 +268,12 @@ async function materializeRunOutputEvents(
     const thread = await chatThreadForRunFromDb(tx, payload.runId);
     signal.throwIfAborted();
 
+    const piAssistantItems = await projectPiEventsInTransaction(
+      tx,
+      { runId: payload.runId, thread, events: payload.events },
+      signal,
+    );
+
     let insertedRowCount = 0;
     let shouldAttemptFirstAssistantEventClaim = false;
     if (thread) {
@@ -267,7 +283,7 @@ async function materializeRunOutputEvents(
           runId: payload.runId,
           threadId: thread.chatThreadId,
           userId: thread.userId,
-          items: assistantItems,
+          items: orderedAssistantItems(assistantItems, piAssistantItems),
         },
         signal,
       );
