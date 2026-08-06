@@ -287,7 +287,7 @@ export async function usagePackInvitationPurchaseSchemaAvailable(
   const [state] = await db
     .select({
       available:
-        sql`to_regclass('public.usage_pack_invitation_purchases') IS NOT NULL`.mapWith(
+        sql`to_regclass('usage_pack_invitation_purchases') IS NOT NULL`.mapWith(
           pgBooleanDecoder,
         ),
     })
@@ -1358,6 +1358,9 @@ export async function handleUsagePackInvitationAccepted(
   signal?: AbortSignal,
 ): Promise<boolean> {
   if (!args.purchaseId && !args.invitationId) {
+    return false;
+  }
+  if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
     return false;
   }
   const candidate = await loadAcceptanceCandidate(db, args);
