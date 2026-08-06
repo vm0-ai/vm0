@@ -353,7 +353,9 @@ export const mockedClerk = {
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.
   buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),
-  buildUserProfileUrl: vi.fn(defaultBuildUserProfileUrlImpl),
+  buildUserProfileUrl: vi.fn<typeof defaultBuildUserProfileUrlImpl>(
+    defaultBuildUserProfileUrlImpl,
+  ),
   setActive: vi.fn(defaultSetActiveImpl),
   createOrganization: vi.fn((_params: { name: string; slug: string }) => {
     return Promise.resolve({ id: "new-org-id" });

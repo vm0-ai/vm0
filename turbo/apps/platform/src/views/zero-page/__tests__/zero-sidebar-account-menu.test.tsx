@@ -659,7 +659,7 @@ describe("zero sidebar account menu", () => {
     );
     expect(userProfileLink).toHaveAttribute("target", "_blank");
     expect(userProfileLink).toHaveAttribute("rel", "noreferrer");
-    expect(mockedClerk.buildUserProfileUrl).toHaveBeenCalled();
+    expect(mockedClerk.buildUserProfileUrl).toHaveBeenCalledWith();
     expect(mockedClerk.buildUrlWithAuth).toHaveBeenCalledWith(
       "https://accounts.example.test/user",
     );
