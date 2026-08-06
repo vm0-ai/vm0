@@ -135,10 +135,12 @@ const redeemResponseSchema = z.discriminatedUnion("status", [
 // Request schemas
 // ---------------------------------------------------------------------------
 
+const stripeRedirectUrlSchema = z.string().url().max(5000);
+
 const checkoutRequestSchema = z.object({
   tier: z.enum(["pro", "team"]),
-  successUrl: z.string().url(),
-  cancelUrl: z.string().url(),
+  successUrl: stripeRedirectUrlSchema,
+  cancelUrl: stripeRedirectUrlSchema,
   trialDays: z.literal(7).optional(),
   adAttribution: adAttributionMetadataSchema.optional(),
 });
@@ -149,8 +151,8 @@ const checkoutCompleteRequestSchema = z.object({
 
 const concurrencyCheckoutRequestSchema = z.object({
   quantity: z.number().int().min(1).max(1000),
-  successUrl: z.string().url(),
-  cancelUrl: z.string().url(),
+  successUrl: stripeRedirectUrlSchema,
+  cancelUrl: stripeRedirectUrlSchema,
 });
 
 const concurrencySubscriptionCancelResponseSchema = z.object({
@@ -166,8 +168,8 @@ const creditCheckoutRequestSchema = z
   .object({
     credits: z.number().int().min(1000).max(10_000_000),
     customAmount: z.boolean().optional(),
-    successUrl: z.string().url(),
-    cancelUrl: z.string().url(),
+    successUrl: stripeRedirectUrlSchema,
+    cancelUrl: stripeRedirectUrlSchema,
     autoRecharge: z
       .object({
         enabled: z.boolean(),
@@ -195,7 +197,7 @@ const creditCheckoutRequestSchema = z
   );
 
 const portalRequestSchema = z.object({
-  returnUrl: z.string().url(),
+  returnUrl: stripeRedirectUrlSchema,
 });
 
 const autoRechargeUpdateRequestSchema = z
@@ -217,8 +219,8 @@ const autoRechargeUpdateRequestSchema = z
   );
 
 const redeemRequestSchema = z.object({
-  successUrl: z.string().url(),
-  cancelUrl: z.string().url(),
+  successUrl: stripeRedirectUrlSchema,
+  cancelUrl: stripeRedirectUrlSchema,
 });
 
 const redeemCodeRequestSchema = z.object({
@@ -516,7 +518,7 @@ export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
 
 const downgradeRequestSchema = z.object({
   targetTier: z.enum(["limited-free-1", "pro-suspend", "pro"]),
-  returnUrl: z.string().url().optional(),
+  returnUrl: stripeRedirectUrlSchema.optional(),
 });
 
 const downgradeResponseSchema = z.union([
@@ -531,7 +533,7 @@ const downgradeResponseSchema = z.union([
 ]);
 
 const restoreRequestSchema = z.object({
-  returnUrl: z.string().url().optional(),
+  returnUrl: stripeRedirectUrlSchema.optional(),
 });
 
 const restoreResponseSchema = z.discriminatedUnion("status", [

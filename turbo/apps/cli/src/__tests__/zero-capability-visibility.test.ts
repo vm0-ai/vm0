@@ -41,6 +41,7 @@ function buildCommands(): Command[] {
     new Command("people-search"),
     new Command("web-search"),
     new Command("recognize"),
+    new Command("translate"),
     new Command("finance"),
     new Command("banking"),
     new Command("goal"),
@@ -144,7 +145,7 @@ describe("registerZeroCommands", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual(["recognize"]);
+    expect(hiddenCommandNames(prog)).toEqual(["recognize", "translate"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -189,6 +190,7 @@ describe("registerZeroCommands", () => {
       "people-search",
       "web-search",
       "recognize",
+      "translate",
       "finance",
       "banking",
       "goal",
@@ -200,7 +202,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["recognize"]);
+    expect(hiddenCommandNames(prog)).toEqual(["recognize", "translate"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -214,7 +216,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["recognize"]);
+    expect(hiddenCommandNames(prog)).toEqual(["recognize", "translate"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -727,6 +729,34 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(buildProgram())).toContain("recognize");
     expect(buildZeroHelpText(decodeZeroTokenPayload(eligibleToken))).toContain(
       "Recognize an image?",
+    );
+  });
+
+  it("should expose translation only to capable Zero runs", () => {
+    vi.stubEnv("ZERO_TOKEN", undefined);
+    const noTokenProgram = buildProgram();
+    expect(registeredCommandNames(noTokenProgram)).toContain("translate");
+    expect(hiddenCommandNames(noTokenProgram)).toContain("translate");
+
+    const missingCapabilityToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: [],
+    });
+    vi.stubEnv("ZERO_TOKEN", missingCapabilityToken);
+    expect(hiddenCommandNames(buildProgram())).toContain("translate");
+
+    const capableToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: ["translation:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", capableToken);
+    expect(visibleCommandNames(buildProgram())).toContain("translate");
+    expect(buildZeroHelpText(decodeZeroTokenPayload(capableToken))).toContain(
+      "Translate text?",
     );
   });
 

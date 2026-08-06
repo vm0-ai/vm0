@@ -157,6 +157,18 @@ export {
   type ZeroRecognitionResponse,
 } from "./zero-recognition";
 export {
+  ZERO_TRANSLATION_MAX_LANGUAGE_CHARS,
+  ZERO_TRANSLATION_MAX_RESULT_TEXT_CHARS,
+  ZERO_TRANSLATION_MAX_SOURCE_TEXT_CHARS,
+  zeroTranslationContract,
+  zeroTranslationLanguageSchema,
+  zeroTranslationRequestSchema,
+  zeroTranslationResponseSchema,
+  type ZeroTranslationContract,
+  type ZeroTranslationRequest,
+  type ZeroTranslationResponse,
+} from "./zero-translation";
+export {
   zeroModelPoliciesMainContract,
   type ZeroModelPoliciesMainContract,
 } from "./zero-model-policies";
