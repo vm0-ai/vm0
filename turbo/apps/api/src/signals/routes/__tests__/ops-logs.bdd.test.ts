@@ -1,7 +1,14 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync } from "node:zlib";
 import AdmZip from "adm-zip";
-import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  test as vitestTest,
+} from "vitest";
 import type {
   GenerationTemplateRequest,
   UserMessageDocument,
@@ -14,6 +21,7 @@ import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext, accept } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { withThreadlessRunCleanupTestLockFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { modelStatsRoutes } from "../model-stats";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -65,6 +73,18 @@ const trackDeferredS3Put = createFixtureTracker<DeferredS3Put>((pendingPut) => {
   pendingPut.resolve();
   return Promise.resolve();
 });
+
+function itWithThreadlessRunCleanupIsolation(
+  name: string,
+  test: () => Promise<void>,
+): void {
+  vitestTest(name, async () => {
+    await withThreadlessRunCleanupTestLockFixture({
+      signal: context.signal,
+      run: test,
+    });
+  });
+}
 
 afterEach(() => {
   clearMockNow();
@@ -1483,7 +1503,8 @@ describe("OPS-01: user data export", () => {
     ).toBeFalsy();
   });
 
-  it("exports gzip-backed session history bytes as a jsonl conversation file", async () => {
+  // prettier-ignore
+  itWithThreadlessRunCleanupIsolation("exports gzip-backed session history bytes as a jsonl conversation file", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1584,7 +1605,8 @@ describe("OPS-01: user data export", () => {
     expect(manifest.counts.sessionHistories).toBe(1);
   });
 
-  it("exports zstd-backed session history bytes as a jsonl conversation file", async () => {
+  // prettier-ignore
+  itWithThreadlessRunCleanupIsolation("exports zstd-backed session history bytes as a jsonl conversation file", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1685,7 +1707,8 @@ describe("OPS-01: user data export", () => {
     expect(manifest.counts.sessionHistories).toBe(1);
   });
 
-  it("fails user export when gzip-backed session history does not match its hash", async () => {
+  // prettier-ignore
+  itWithThreadlessRunCleanupIsolation("fails user export when gzip-backed session history does not match its hash", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1767,7 +1790,8 @@ describe("OPS-01: user data export", () => {
     expect(failedStatus.job.error).toContain("session history hash mismatch");
   });
 
-  it("fails user export when zstd-backed session history does not match its hash", async () => {
+  // prettier-ignore
+  itWithThreadlessRunCleanupIsolation("fails user export when zstd-backed session history does not match its hash", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1849,7 +1873,8 @@ describe("OPS-01: user data export", () => {
     expect(failedStatus.job.error).toContain("session history hash mismatch");
   });
 
-  it("fails user export when gzip-backed session history exceeds its encoded size", async () => {
+  // prettier-ignore
+  itWithThreadlessRunCleanupIsolation("fails user export when gzip-backed session history exceeds its encoded size", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
