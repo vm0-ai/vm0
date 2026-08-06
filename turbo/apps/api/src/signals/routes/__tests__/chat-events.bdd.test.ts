@@ -82,7 +82,6 @@ import {
 import {
   deleteAgentRunFixture,
   deleteBddVm0ApiKeys,
-  hasVm0ApiKeyLabel,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
   holdChatThreadRowLockFixture,
@@ -3539,7 +3538,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("prefers dev-seed vm0 managed keys over concurrent test keys", async () => {
+  it("selects vm0 managed keys by vendor instead of model", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keySuffix = randomUUID();
@@ -3550,6 +3549,7 @@ describe("CHAT-02: model-first provider policies", () => {
     onTestFinished(async () => {
       await Promise.all([
         deleteBddVm0ApiKeys({ vendor: "zai", model: "glm-5.2" }),
+        deleteBddVm0ApiKeys({ vendor: "zai", model: "glm-5.1" }),
         ...(runId ? [api.requestCancelRun(actor, runId, [200])] : []),
       ]);
     });
@@ -3562,11 +3562,12 @@ describe("CHAT-02: model-first provider policies", () => {
           apiKey: fakeKey,
           label: `bdd-fake-${keySuffix}`,
         },
-        {
-          apiKey: devSeedKey,
-          label: "dev-seed",
-        },
       ],
+    });
+    await replaceBddVm0ApiKeys({
+      vendor: "zai",
+      model: "glm-5.1",
+      keys: [{ apiKey: devSeedKey, label: "dev-seed" }],
     });
 
     await api.updateOrgModelPolicies(actor, [
@@ -3616,17 +3617,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected vm0 firewall auth to resolve");
     }
     const authorization = resolved.body.headers.Authorization;
-    if (!authorization?.startsWith("Bearer ")) {
-      throw new Error("Expected vm0 firewall auth to return a bearer token");
-    }
-    await expect(
-      hasVm0ApiKeyLabel({
-        vendor: "zai",
-        model: "glm-5.2",
-        apiKey: authorization.slice("Bearer ".length),
-        label: "dev-seed",
-      }),
-    ).resolves.toBeTruthy();
+    expect(authorization).toBe(`Bearer ${devSeedKey}`);
   }, 90_000);
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
     const fw = createFirewallApi(context);
