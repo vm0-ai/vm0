@@ -676,6 +676,7 @@
       "singleAccent": "Satu aksen",
       "slidePreview": "pratinjau slide {{title}}",
       "slideThumbnail": "pratinjau slide {{title}} {{slideNumber}}",
+      "subtitle": "Pilih titik awal — semuanya masih bisa diubah nanti",
       "template": "Template",
       "theme": "Tema",
       "themeNames": {
@@ -704,8 +705,7 @@
       "useThisTemplate": "Gunakan template ini",
       "website": "Website",
       "websitePreview": "pratinjau template website {{title}}",
-      "workflow": "Alur kerja",
-      "subtitle": "Pilih titik awal — semuanya masih bisa diubah nanti"
+      "workflow": "Alur kerja"
     },
     "title": "Artefak",
     "toasts": {

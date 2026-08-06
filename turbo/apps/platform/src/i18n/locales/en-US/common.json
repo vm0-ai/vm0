@@ -676,6 +676,7 @@
       "singleAccent": "Single-accent",
       "slidePreview": "{{title}} slide preview",
       "slideThumbnail": "{{title}} slide {{slideNumber}} preview",
+      "subtitle": "Pick a starting point — you can change everything later",
       "template": "Template",
       "theme": "Theme",
       "themeNames": {
@@ -704,8 +705,7 @@
       "useThisTemplate": "Use this template",
       "website": "Website",
       "websitePreview": "{{title}} website template preview",
-      "workflow": "Workflow",
-      "subtitle": "Pick a starting point — you can change everything later"
+      "workflow": "Workflow"
     },
     "title": "Artifacts",
     "toasts": {

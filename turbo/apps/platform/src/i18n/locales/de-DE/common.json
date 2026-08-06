@@ -676,6 +676,7 @@
       "singleAccent": "Einzelakzent",
       "slidePreview": "{{title}} Folienvorschau",
       "slideThumbnail": "{{title}} Folie {{slideNumber}} Vorschau",
+      "subtitle": "Wähle einen Startpunkt — alles lässt sich später ändern",
       "template": "Vorlage",
       "theme": "Thema",
       "themeNames": {
@@ -704,8 +705,7 @@
       "useThisTemplate": "Verwenden Sie diese Vorlage",
       "website": "Webseite",
       "websitePreview": "{{title}} Vorschau der Website-Vorlage",
-      "workflow": "Workflow",
-      "subtitle": "Wähle einen Startpunkt — alles lässt sich später ändern"
+      "workflow": "Workflow"
     },
     "title": "Artefakte",
     "toasts": {

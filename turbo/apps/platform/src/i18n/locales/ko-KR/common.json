@@ -676,6 +676,7 @@
       "singleAccent": "단일 악센트",
       "slidePreview": "{{title}} 슬라이드 미리보기",
       "slideThumbnail": "{{title}} 슬라이드 {{slideNumber}} 미리보기",
+      "subtitle": "시작점을 선택하세요. 나중에 모두 바꿀 수 있습니다",
       "template": "템플릿",
       "theme": "테마",
       "themeNames": {
@@ -704,8 +705,7 @@
       "useThisTemplate": "이 템플릿 사용",
       "website": "웹사이트",
       "websitePreview": "{{title}} 웹사이트 템플릿 미리보기",
-      "workflow": "워크플로",
-      "subtitle": "시작점을 선택하세요. 나중에 모두 바꿀 수 있습니다"
+      "workflow": "워크플로"
     },
     "title": "아티팩트",
     "toasts": {

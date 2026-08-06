@@ -676,6 +676,7 @@
       "singleAccent": "एकल-उच्चारण",
       "slidePreview": "{{title}} स्लाइड पूर्वावलोकन",
       "slideThumbnail": "{{title}} स्लाइड {{slideNumber}} पूर्वावलोकन",
+      "subtitle": "एक शुरुआती बिंदु चुनें — सब कुछ बाद में बदला जा सकता है",
       "template": "खाका",
       "theme": "विषय",
       "themeNames": {
@@ -704,8 +705,7 @@
       "useThisTemplate": "इस टेम्पलेट का उपयोग करें",
       "website": "वेबसाइट",
       "websitePreview": "{{title}} वेबसाइट टेम्पलेट पूर्वावलोकन",
-      "workflow": "वर्कफ़्लो",
-      "subtitle": "एक शुरुआती बिंदु चुनें — सब कुछ बाद में बदला जा सकता है"
+      "workflow": "वर्कफ़्लो"
     },
     "title": "आर्टिफ़ैक्ट",
     "toasts": {

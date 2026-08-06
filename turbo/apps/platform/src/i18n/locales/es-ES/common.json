@@ -693,6 +693,7 @@
       "singleAccent": "Acento único",
       "slidePreview": "Vista previa de las diapositivas de {{title}}",
       "slideThumbnail": "Vista previa de la diapositiva {{slideNumber}} de {{title}}",
+      "subtitle": "Elige un punto de partida: podrás cambiarlo todo después",
       "template": "Plantilla",
       "theme": "Tema",
       "themeNames": {
@@ -721,8 +722,7 @@
       "useThisTemplate": "Usa esta plantilla",
       "website": "Sitio web",
       "websitePreview": "Vista previa de la plantilla de sitio web {{title}}",
-      "workflow": "Flujo de trabajo",
-      "subtitle": "Elige un punto de partida: podrás cambiarlo todo después"
+      "workflow": "Flujo de trabajo"
     },
     "title": "Artefactos",
     "toasts": {

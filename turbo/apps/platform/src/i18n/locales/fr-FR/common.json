@@ -693,6 +693,7 @@
       "singleAccent": "Accent unique",
       "slidePreview": "Aperçu de la diapositive {{title}}",
       "slideThumbnail": "Aperçu de la diapositive {{slideNumber}} de {{title}}",
+      "subtitle": "Choisissez un point de départ — tout reste modifiable ensuite",
       "template": "Modèle",
       "theme": "Thème",
       "themeNames": {
@@ -721,8 +722,7 @@
       "useThisTemplate": "Utilisez ce modèle",
       "website": "Site web",
       "websitePreview": "Aperçu du modèle de site web {{title}}",
-      "workflow": "Workflow",
-      "subtitle": "Choisissez un point de départ — tout reste modifiable ensuite"
+      "workflow": "Workflow"
     },
     "title": "Artéfacts",
     "toasts": {

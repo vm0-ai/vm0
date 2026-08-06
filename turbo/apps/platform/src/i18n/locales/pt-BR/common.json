@@ -693,6 +693,7 @@
       "singleAccent": "Uma cor de destaque",
       "slidePreview": "Visualização dos slides de {{title}}",
       "slideThumbnail": "Visualização do slide {{slideNumber}} de {{title}}",
+      "subtitle": "Escolha um ponto de partida — você pode mudar tudo depois",
       "template": "Modelo",
       "theme": "Tema",
       "themeNames": {
@@ -721,8 +722,7 @@
       "useThisTemplate": "Usar este modelo",
       "website": "Site",
       "websitePreview": "Visualização do modelo de site {{title}}",
-      "workflow": "Fluxo de trabalho",
-      "subtitle": "Escolha um ponto de partida — você pode mudar tudo depois"
+      "workflow": "Fluxo de trabalho"
     },
     "title": "Artefatos",
     "toasts": {

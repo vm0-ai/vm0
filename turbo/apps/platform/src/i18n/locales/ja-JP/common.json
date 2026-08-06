@@ -676,6 +676,7 @@
       "singleAccent": "シングルアクセント",
       "slidePreview": "{{title}} スライド プレビュー",
       "slideThumbnail": "{{title}} スライド {{slideNumber}} プレビュー",
+      "subtitle": "出発点を選んでください。あとからすべて変更できます",
       "template": "テンプレート",
       "theme": "テーマ",
       "themeNames": {
@@ -704,8 +705,7 @@
       "useThisTemplate": "このテンプレートを使用してください",
       "website": "ウェブサイト",
       "websitePreview": "{{title}} Web サイト テンプレートのプレビュー",
-      "workflow": "ワークフロー",
-      "subtitle": "出発点を選んでください。あとからすべて変更できます"
+      "workflow": "ワークフロー"
     },
     "title": "アーティファクト",
     "toasts": {
