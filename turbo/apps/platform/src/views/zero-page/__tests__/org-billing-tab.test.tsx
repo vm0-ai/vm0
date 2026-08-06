@@ -3,6 +3,7 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
+  zeroBillingUsagePackManagementContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -612,6 +613,152 @@ describe("organization billing settings", () => {
       expect(window.location.href).toBe(
         "https://checkout.stripe.com/test-usage-pack",
       );
+    });
+  });
+
+  it("previews and confirms a current member package change", async () => {
+    let pendingPayment = false;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Managed Usage Pack Org",
+      role: "admin",
+    });
+    context.mocks.data.orgMembers({
+      name: "Managed Usage Pack Org",
+      role: "admin",
+      members: [
+        {
+          userId: "user_1",
+          email: "alex@example.com",
+          firstName: "Alex",
+          lastName: "Chen",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+      pendingInvitations: [],
+      membershipRequests: [],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCatalogContract.get,
+      ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          tier: "pro",
+          currentPeriodEnd: "2026-04-01T00:00:00Z",
+          allocations: [
+            {
+              id: "b5235934-83df-4f16-bf41-f46890db7d40",
+              memberId: "user_1",
+              usagePackUsd: 20,
+              currentPeriodEnd: "2026-04-01T00:00:00Z",
+              pendingChange: pendingPayment
+                ? {
+                    id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+                    kind: "upgrade",
+                    status: "pending_payment",
+                    targetUsagePackUsd: 50,
+                    effectiveAt: "2026-03-16T00:00:00Z",
+                  }
+                : null,
+            },
+          ],
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.previewChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          memberId: "user_1",
+          targetUsagePackUsd: 50,
+        });
+        return respond(200, {
+          changeId: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+          kind: "upgrade",
+          sourceUsagePackUsd: 20,
+          targetUsagePackUsd: 50,
+          immediateAmountCents: 1500,
+          nextRecurringAmountCents: 7000,
+          currency: "usd",
+          effectiveAt: "2026-03-16T00:00:00Z",
+          prorationDate: "2026-03-16T00:00:00Z",
+          expiresAt: "2026-03-16T00:15:00Z",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.confirmChange,
+      ({ body, params, respond }) => {
+        expect(body).toStrictEqual({});
+        expect(params.changeId).toBe("ad3bd64c-7237-436d-a221-61b14ed719e7");
+        pendingPayment = true;
+        return respond(200, {
+          status: "pending_payment",
+          effectiveAt: "2026-03-16T00:00:00Z",
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    const section = await screen.findByRole("heading", {
+      name: "Member packages",
+    });
+    const sectionContainer = section.closest("section");
+    if (!sectionContainer) {
+      throw new Error("Member packages section not found");
+    }
+    const packageSelect = await within(sectionContainer).findByRole(
+      "combobox",
+      {
+        name: "Usage for Alex Chen",
+      },
+    );
+    click(packageSelect);
+    click(
+      await screen.findByRole("option", {
+        name: "$50 · 54,321 credits · 8% off",
+      }),
+    );
+    click(buttonByText("Review", sectionContainer));
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review package change",
+    });
+    expect(within(reviewDialog).getByText("Due now")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$15.00")).toBeInTheDocument();
+    expect(
+      within(reviewDialog).getByText("Next recurring total"),
+    ).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$70.00")).toBeInTheDocument();
+
+    click(buttonByText("Confirm", reviewDialog));
+    await waitFor(() => {
+      expect(screen.getByText("Awaiting payment")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: "Review package change" }),
+      ).not.toBeInTheDocument();
     });
   });
 

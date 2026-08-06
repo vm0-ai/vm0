@@ -36,6 +36,12 @@ import {
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { upsertOrgPlanEntitlement } from "./org-plan-entitlements.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
+import {
+  handleUsagePackAllocationChangeInvoicePaid,
+  reconcileUsagePackAllocationChanges,
+  reconcileUsagePackAllocationChangeSubscription,
+  reconcileUsagePackAllocationChangeSubscriptionDeleted,
+} from "./usage-pack-allocation-change.service";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
 import {
   activeUsagePackPriceId,
@@ -991,6 +997,7 @@ async function handleUsagePackSubscriptionChanged(
   const currentSubscription = (await getStripeClient().subscriptions.retrieve(
     eventSubscription.id,
   )) as UsagePackSubscriptionInput;
+  await reconcileUsagePackAllocationChangeSubscription(db, currentSubscription);
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   validateUsagePackSubscriptionCorrelation(
     context,
@@ -1084,6 +1091,7 @@ export async function handleUsagePackSubscriptionDeleted(
     return { handled: false, orgId: null };
   }
   await requireUsagePackSubscriptionSchema(db);
+  await reconcileUsagePackAllocationChangeSubscriptionDeleted(db, subscription);
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   if (
     context.subscription.stripeSubscriptionId &&
@@ -1600,6 +1608,13 @@ export async function handleUsagePackInvoicePaid(
     return { handled: false, orgId: null };
   }
   await requireUsagePackSubscriptionSchema(db);
+  const changeOutcome = await handleUsagePackAllocationChangeInvoicePaid(
+    db,
+    invoice,
+  );
+  if (changeOutcome.handled) {
+    return changeOutcome;
+  }
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   if (
     await usagePackInvoiceAlreadyFulfilled(
@@ -1620,18 +1635,23 @@ export async function handleUsagePackInvoicePaid(
   const subscription = (await getStripeClient().subscriptions.retrieve(
     subscriptionId,
   )) as UsagePackSubscriptionInput;
+  await reconcileUsagePackAllocationChangeSubscription(db, subscription);
+  const reconciledContext = await loadUsagePackContext(
+    db,
+    usagePackSubscriptionId,
+  );
   validateUsagePackSubscriptionCorrelation(
-    context,
+    reconciledContext,
     subscription,
     usagePackSubscriptionId,
   );
   const prepared = await prepareUsagePackFulfillment(
-    context,
+    reconciledContext,
     subscription,
     invoice,
   );
   await commitUsagePackFulfillment(db, {
-    context,
+    context: reconciledContext,
     subscription,
     invoice,
     ...prepared,
@@ -1640,11 +1660,11 @@ export async function handleUsagePackInvoicePaid(
   L.debug("usage pack invoice fulfilled", {
     invoiceId: invoice.id,
     usagePackSubscriptionId,
-    orgId: context.subscription.orgId,
+    orgId: reconciledContext.subscription.orgId,
     allocations: prepared.fulfillment.allocations.length,
     periodEnd: prepared.fulfillment.periodEnd.toISOString(),
   });
-  return { handled: true, orgId: context.subscription.orgId };
+  return { handled: true, orgId: reconciledContext.subscription.orgId };
 }
 
 interface ReconcileUsagePackSubscriptionResult {
@@ -1761,6 +1781,11 @@ export async function reconcileUsagePackSubscriptions(
   }
   signal.throwIfAborted();
 
+  const allocationChanges = await reconcileUsagePackAllocationChanges(
+    db,
+    signal,
+  );
+
   const at = nowDate();
   const staleBefore = new Date(
     at.getTime() - USAGE_PACK_RECONCILIATION_DELAY_MS,
@@ -1802,8 +1827,8 @@ export async function reconcileUsagePackSubscriptions(
   signal.throwIfAborted();
 
   const stripe = getStripeClient();
-  const orgIds = new Set<string>();
-  let reconciled = 0;
+  const orgIds = new Set(allocationChanges.orgIds);
+  let reconciled = allocationChanges.reconciled;
   for (const candidate of candidates) {
     const result = await reconcileUsagePackSubscriptionCandidate(
       db,

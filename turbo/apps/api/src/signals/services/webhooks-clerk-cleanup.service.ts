@@ -58,6 +58,7 @@ import { settle, tapError } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
+import { scheduleUsagePackMemberRemoval } from "./usage-pack-allocation-change.service";
 import {
   deleteOrgUsageData,
   deleteUserUsageData,
@@ -923,6 +924,17 @@ export const cleanupClerkDeletedUser$ = command(
   },
 );
 
+async function commitClerkDeletedOrgMembershipCleanup(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<void> {
+  const commitSignal = new AbortController().signal;
+  await scheduleUsagePackMemberRemoval(db, { ...args, signal: commitSignal });
+  commitSignal.throwIfAborted();
+  await cleanupOrgMemberResources(db, args, commitSignal);
+  commitSignal.throwIfAborted();
+}
+
 export const cleanupClerkDeletedOrgMembership$ = command(
   async (
     { set },
@@ -932,7 +944,9 @@ export const cleanupClerkDeletedOrgMembership$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    await cleanupOrgMemberResources(set(writeDb$), args, signal);
+    const db = set(writeDb$);
+    await commitClerkDeletedOrgMembershipCleanup(db, args);
+    signal.throwIfAborted();
   },
 );
 

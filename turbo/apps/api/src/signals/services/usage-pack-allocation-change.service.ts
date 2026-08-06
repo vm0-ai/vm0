@@ -1,0 +1,2855 @@
+import {
+  type UsagePackChangeConfirmResponse,
+  type UsagePackChangePreviewResponse,
+  type UsagePackManagementResponse,
+  type UsagePackUsd,
+  USAGE_PACKS_USD,
+} from "@vm0/api-contracts/contracts/zero-billing";
+import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
+import {
+  usagePackAllocationChanges,
+  usagePackAllocations,
+  usagePackInvoiceFulfillments,
+  usagePackSubscriptions,
+} from "@vm0/db/schema/usage-pack-subscription";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  isNotNull,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
+import type { Stripe } from "stripe";
+
+import { pgBooleanDecoder } from "../../lib/db-structured-result";
+import { nowDate } from "../../lib/time";
+import type { Db } from "../external/db";
+import { getStripeClient } from "../external/stripe-client";
+import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
+import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
+import {
+  activeUsagePackPriceId,
+  isUsagePackPlanPriceId,
+  usagePackUsdForKnownPriceId,
+} from "./zero-billing-checkout.service";
+
+const PREVIEW_TTL_MS = 15 * 60 * 1000;
+const CHANGE_RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
+const CREDITS_PER_DOLLAR = 1000;
+const OPEN_CHANGE_STATUSES = [
+  "previewed",
+  "applying",
+  "pending_payment",
+  "scheduled",
+  "applied",
+] as const;
+const TERMINAL_SUBSCRIPTION_STATUSES = [
+  "canceled",
+  "incomplete_expired",
+  "invalid",
+] as const;
+
+type UsagePackSubscriptionRow = typeof usagePackSubscriptions.$inferSelect;
+type UsagePackAllocationRow = typeof usagePackAllocations.$inferSelect;
+type UsagePackAllocationChangeRow =
+  typeof usagePackAllocationChanges.$inferSelect;
+type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type OpenUsagePackAllocationChangeStatus = Exclude<
+  UsagePackAllocationChangeRow["status"],
+  "completed" | "failed"
+>;
+
+interface UsagePackChangeContext {
+  readonly subscription: UsagePackSubscriptionRow;
+  readonly allocations: readonly UsagePackAllocationRow[];
+  readonly changes: readonly UsagePackAllocationChangeRow[];
+}
+
+interface UsagePackPeriod {
+  readonly start: number;
+  readonly end: number;
+}
+
+interface UsagePackChangePreviewArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly targetUsagePackUsd: UsagePackUsd;
+  readonly signal: AbortSignal;
+}
+
+interface StripeUsagePackChangePreview {
+  readonly kind: "upgrade" | "downgrade";
+  readonly targetStripePriceId: string;
+  readonly prorationTimestamp: number;
+  readonly immediateAmountCents: number;
+  readonly nextRecurringAmountCents: number;
+  readonly currency: string;
+  readonly effectiveAt: Date;
+  readonly createdAt: Date;
+  readonly expiresAt: Date;
+}
+
+interface UsagePackChangeSubscriptionInput {
+  readonly id: string;
+  readonly customer?: string | { readonly id: string } | null;
+  readonly status: string;
+  readonly metadata?: Record<string, string> | null;
+  readonly schedule?: string | { readonly id: string } | null;
+  readonly discounts?: readonly (string | Stripe.Discount)[];
+  readonly pending_update?: {
+    readonly expires_at: number;
+  } | null;
+  readonly latest_invoice?: string | UsagePackChangeInvoiceInput | null;
+  readonly items: {
+    readonly data: readonly {
+      readonly id?: string;
+      readonly price: {
+        readonly id: string;
+        readonly recurring?: {
+          readonly interval: Stripe.Price.Recurring.Interval;
+          readonly interval_count: number;
+        } | null;
+      };
+      readonly quantity?: number | null;
+      readonly current_period_start?: number | null;
+      readonly current_period_end?: number | null;
+    }[];
+  };
+}
+
+interface UsagePackChangeInvoiceLineInput {
+  readonly id?: string;
+  readonly amount?: number | null;
+  readonly subtotal?: number | null;
+  readonly quantity?: number | null;
+  readonly price?: { readonly id: string } | null;
+  readonly pricing?: {
+    readonly price_details?: {
+      readonly price?: string | { readonly id: string } | null;
+    } | null;
+  } | null;
+  readonly proration?: boolean;
+  readonly period: { readonly start?: number; readonly end: number };
+  readonly parent: {
+    readonly type: "subscription_item_details" | "invoice_item_details";
+    readonly subscription_item_details?: {
+      readonly proration: boolean;
+    } | null;
+    readonly invoice_item_details?: {
+      readonly proration: boolean;
+    } | null;
+  } | null;
+}
+
+interface UsagePackChangeInvoiceInput {
+  readonly id: string;
+  readonly customer: string | { readonly id: string } | null;
+  readonly metadata: Record<string, string> | null;
+  readonly status?: string | null;
+  readonly paid?: boolean;
+  readonly hosted_invoice_url?: string | null;
+  readonly lines: { readonly data: readonly UsagePackChangeInvoiceLineInput[] };
+  readonly parent: {
+    readonly subscription_details: {
+      readonly metadata?: Record<string, string> | null;
+      readonly subscription: string | { readonly id: string };
+    } | null;
+  } | null;
+}
+
+type UsagePackChangePreviewResult =
+  | {
+      readonly status: "ready";
+      readonly preview: UsagePackChangePreviewResponse;
+    }
+  | { readonly status: "not_found" }
+  | { readonly status: "same_package" }
+  | { readonly status: "conflict" };
+
+type UsagePackChangeConfirmResult =
+  | {
+      readonly status: "confirmed";
+      readonly response: UsagePackChangeConfirmResponse;
+    }
+  | { readonly status: "not_found" }
+  | { readonly status: "expired" }
+  | { readonly status: "conflict" };
+
+type UsagePackChangeInvoiceOutcome =
+  | { readonly handled: false; readonly orgId: null }
+  | { readonly handled: true; readonly orgId: string };
+
+function usagePackUsd(value: number): UsagePackUsd {
+  const matched = USAGE_PACKS_USD.find((candidate) => {
+    return candidate === value;
+  });
+  if (!matched) {
+    throw new Error(`Invalid usage pack amount: ${value}`);
+  }
+  return matched;
+}
+
+function openManagementChangeStatus(
+  status: UsagePackAllocationChangeRow["status"],
+): OpenUsagePackAllocationChangeStatus {
+  switch (status) {
+    case "previewed":
+    case "applying":
+    case "pending_payment":
+    case "scheduled":
+    case "applied": {
+      return status;
+    }
+    case "completed":
+    case "failed": {
+      throw new Error(`Invalid open usage pack change status: ${status}`);
+    }
+  }
+}
+
+export async function usagePackAllocationChangeSchemaAvailable(
+  db: Pick<Db, "select">,
+): Promise<boolean> {
+  const [state] = await db
+    .select({
+      available:
+        sql`to_regclass('public.usage_pack_allocation_changes') IS NOT NULL`.mapWith(
+          pgBooleanDecoder,
+        ),
+    })
+    .from(sql`(SELECT 1) AS schema_probe`)
+    .limit(1);
+  return state?.available ?? false;
+}
+
+function stripeObjectId(
+  value: string | { readonly id: string } | null | undefined,
+): string | null {
+  return typeof value === "string" ? value : (value?.id ?? null);
+}
+
+function unixDate(value: number | null | undefined): Date | null {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    return null;
+  }
+  return new Date(value * 1000);
+}
+
+function invoiceLinePriceId(
+  line: UsagePackChangeInvoiceLineInput,
+): string | null {
+  return (
+    line.price?.id ?? stripeObjectId(line.pricing?.price_details?.price ?? null)
+  );
+}
+
+function invoiceLineAmount(
+  line: UsagePackChangeInvoiceLineInput,
+): number | null {
+  const amount = line.subtotal ?? line.amount;
+  return typeof amount === "number" && Number.isSafeInteger(amount)
+    ? amount
+    : null;
+}
+
+function invoiceLineIsProration(
+  line: UsagePackChangeInvoiceLineInput,
+): boolean {
+  if (line.parent?.type === "subscription_item_details") {
+    return (
+      line.parent.subscription_item_details?.proration ??
+      line.proration ??
+      false
+    );
+  }
+  if (line.parent?.type === "invoice_item_details") {
+    return (
+      line.parent.invoice_item_details?.proration ?? line.proration ?? false
+    );
+  }
+  return line.proration ?? false;
+}
+
+function invoiceSubscriptionId(
+  invoice: UsagePackChangeInvoiceInput,
+): string | null {
+  return stripeObjectId(invoice.parent?.subscription_details?.subscription);
+}
+
+function subscriptionScheduleId(
+  subscription: UsagePackChangeSubscriptionInput,
+): string | null {
+  return stripeObjectId(subscription.schedule);
+}
+
+function usagePackSubscriptionIdFromMetadata(
+  metadata: Readonly<Record<string, string>> | null | undefined,
+): string | null {
+  if (metadata?.purpose !== "usage_pack_subscription") {
+    return null;
+  }
+  return metadata.usagePackSubscriptionId ?? null;
+}
+
+function invoiceUsagePackSubscriptionId(
+  invoice: UsagePackChangeInvoiceInput,
+): string | null {
+  const ids = new Set(
+    [
+      usagePackSubscriptionIdFromMetadata(invoice.metadata),
+      usagePackSubscriptionIdFromMetadata(
+        invoice.parent?.subscription_details?.metadata,
+      ),
+    ].filter((id): id is string => {
+      return id !== null;
+    }),
+  );
+  if (ids.size > 1) {
+    throw new Error("Stripe usage pack invoice metadata has conflicting IDs");
+  }
+  return ids.values().next().value ?? null;
+}
+
+async function loadUsagePackChangeContextBySubscriptionId(
+  db: Pick<Db, "select">,
+  usagePackSubscriptionId: string,
+): Promise<UsagePackChangeContext | null> {
+  const [subscription] = await db
+    .select()
+    .from(usagePackSubscriptions)
+    .where(eq(usagePackSubscriptions.id, usagePackSubscriptionId))
+    .limit(1);
+  if (!subscription) {
+    return null;
+  }
+  const [allocations, changes] = await Promise.all([
+    db
+      .select()
+      .from(usagePackAllocations)
+      .where(
+        eq(
+          usagePackAllocations.usagePackSubscriptionId,
+          usagePackSubscriptionId,
+        ),
+      ),
+    db
+      .select()
+      .from(usagePackAllocationChanges)
+      .where(
+        and(
+          eq(
+            usagePackAllocationChanges.usagePackSubscriptionId,
+            usagePackSubscriptionId,
+          ),
+          inArray(usagePackAllocationChanges.status, [...OPEN_CHANGE_STATUSES]),
+        ),
+      ),
+  ]);
+  return { subscription, allocations, changes };
+}
+
+async function loadUsagePackChangeContextForOrg(
+  db: Pick<Db, "select">,
+  orgId: string,
+): Promise<UsagePackChangeContext | null> {
+  const [subscription] = await db
+    .select()
+    .from(usagePackSubscriptions)
+    .where(
+      and(
+        eq(usagePackSubscriptions.orgId, orgId),
+        isNotNull(usagePackSubscriptions.stripeSubscriptionId),
+        notInArray(usagePackSubscriptions.subscriptionStatus, [
+          ...TERMINAL_SUBSCRIPTION_STATUSES,
+        ]),
+      ),
+    )
+    .orderBy(desc(usagePackSubscriptions.updatedAt))
+    .limit(1);
+  if (!subscription) {
+    return null;
+  }
+  return await loadUsagePackChangeContextBySubscriptionId(db, subscription.id);
+}
+
+function activeMemberAllocations(
+  context: UsagePackChangeContext,
+): readonly UsagePackAllocationRow[] {
+  return context.allocations.filter((allocation) => {
+    return allocation.userId !== null && allocation.status === "active";
+  });
+}
+
+function activeAllocationForMember(
+  context: UsagePackChangeContext,
+  userId: string,
+): UsagePackAllocationRow | null {
+  return (
+    activeMemberAllocations(context).find((allocation) => {
+      return allocation.userId === userId;
+    }) ?? null
+  );
+}
+
+function packageQuantitiesForAllocations(
+  allocations: readonly UsagePackAllocationRow[],
+): ReadonlyMap<string, number> {
+  const quantities = new Map<string, number>();
+  for (const allocation of allocations) {
+    if (allocation.status === "inactive") {
+      continue;
+    }
+    quantities.set(
+      allocation.stripePriceId,
+      (quantities.get(allocation.stripePriceId) ?? 0) + 1,
+    );
+  }
+  return quantities;
+}
+
+function packageQuantitiesForSubscription(
+  subscription: UsagePackChangeSubscriptionInput,
+): ReadonlyMap<string, number> {
+  const quantities = new Map<string, number>();
+  for (const item of subscription.items.data) {
+    if (usagePackUsdForKnownPriceId(item.price.id) === null) {
+      continue;
+    }
+    const quantity = item.quantity ?? 1;
+    if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+      throw new Error(
+        `Usage pack subscription item ${item.price.id} has an invalid quantity`,
+      );
+    }
+    quantities.set(
+      item.price.id,
+      (quantities.get(item.price.id) ?? 0) + quantity,
+    );
+  }
+  return quantities;
+}
+
+function quantitiesMatch(
+  left: ReadonlyMap<string, number>,
+  right: ReadonlyMap<string, number>,
+): boolean {
+  return (
+    left.size === right.size &&
+    [...left].every(([priceId, quantity]) => {
+      return right.get(priceId) === quantity;
+    })
+  );
+}
+
+function validateCurrentStripeProjection(
+  context: UsagePackChangeContext,
+  subscription: UsagePackChangeSubscriptionInput,
+): void {
+  if (subscription.id !== context.subscription.stripeSubscriptionId) {
+    throw new Error("Stripe subscription does not match the usage pack record");
+  }
+  if (
+    stripeObjectId(subscription.customer) !==
+    context.subscription.stripeCustomerId
+  ) {
+    throw new Error("Stripe customer does not match the usage pack record");
+  }
+  if (
+    !quantitiesMatch(
+      packageQuantitiesForAllocations(context.allocations),
+      packageQuantitiesForSubscription(subscription),
+    )
+  ) {
+    throw new Error("Stripe usage pack quantities are out of sync");
+  }
+}
+
+function usagePackItemPeriod(subscription: UsagePackChangeSubscriptionInput): {
+  readonly start: number;
+  readonly end: number;
+} {
+  const usagePackItems = subscription.items.data.filter((item) => {
+    return usagePackUsdForKnownPriceId(item.price.id) !== null;
+  });
+  const first = usagePackItems[0];
+  const start = first?.current_period_start;
+  const end = first?.current_period_end;
+  if (
+    typeof start !== "number" ||
+    typeof end !== "number" ||
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(end) ||
+    end <= start ||
+    usagePackItems.some((item) => {
+      return (
+        item.current_period_start !== start || item.current_period_end !== end
+      );
+    })
+  ) {
+    throw new Error("Usage pack subscription has an invalid billing period");
+  }
+  return { start, end };
+}
+
+function subscriptionItemId(
+  item: UsagePackChangeSubscriptionInput["items"]["data"][number],
+): string {
+  if (!item.id) {
+    throw new Error(`Stripe subscription item ${item.price.id} has no ID`);
+  }
+  return item.id;
+}
+
+function changeUpdateItems(
+  subscription: UsagePackChangeSubscriptionInput,
+  sourcePriceId: string,
+  targetPriceId: string,
+): Stripe.SubscriptionUpdateParams.Item[] {
+  const source = subscription.items.data.find((item) => {
+    return item.price.id === sourcePriceId;
+  });
+  if (!source) {
+    throw new Error(`Stripe subscription is missing ${sourcePriceId}`);
+  }
+  const sourceQuantity = source.quantity ?? 1;
+  if (!Number.isSafeInteger(sourceQuantity) || sourceQuantity <= 0) {
+    throw new Error(
+      `Stripe subscription has an invalid ${sourcePriceId} quantity`,
+    );
+  }
+  const target = subscription.items.data.find((item) => {
+    return item.price.id === targetPriceId;
+  });
+  const targetQuantity = target?.quantity ?? 0;
+  if (!Number.isSafeInteger(targetQuantity) || targetQuantity < 0) {
+    throw new Error(
+      `Stripe subscription has an invalid ${targetPriceId} quantity`,
+    );
+  }
+
+  return [
+    sourceQuantity === 1
+      ? { id: subscriptionItemId(source), deleted: true }
+      : { id: subscriptionItemId(source), quantity: sourceQuantity - 1 },
+    target
+      ? { id: subscriptionItemId(target), quantity: targetQuantity + 1 }
+      : { price: targetPriceId, quantity: 1 },
+  ];
+}
+
+function safeInvoiceAmount(invoice: Stripe.Invoice, label: string): number {
+  if (
+    !Number.isSafeInteger(invoice.amount_due) ||
+    invoice.amount_due < 0 ||
+    invoice.currency.length !== 3
+  ) {
+    throw new Error(`Stripe ${label} preview has an invalid amount`);
+  }
+  return invoice.amount_due;
+}
+
+async function lockUsagePackBillingOrg(
+  tx: Pick<WriteTx, "execute">,
+  orgId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`usage_pack_billing:${orgId}`}, 0))`,
+  );
+}
+
+async function expireStaleUsagePackPreviews(
+  tx: WriteTx,
+  orgId: string,
+  at: Date,
+): Promise<void> {
+  await tx
+    .update(usagePackAllocationChanges)
+    .set({
+      status: "failed",
+      failureReason: "preview_expired",
+      completedAt: at,
+      updatedAt: at,
+    })
+    .where(
+      and(
+        eq(usagePackAllocationChanges.orgId, orgId),
+        eq(usagePackAllocationChanges.status, "previewed"),
+        lte(usagePackAllocationChanges.previewExpiresAt, at),
+      ),
+    );
+}
+
+export async function getUsagePackManagement(
+  db: Pick<Db, "select">,
+  orgId: string,
+): Promise<UsagePackManagementResponse | null> {
+  const context = await loadUsagePackChangeContextForOrg(db, orgId);
+  if (!context) {
+    return null;
+  }
+  const changesByUserId = new Map(
+    context.changes.map((change) => {
+      return [change.userId, change] as const;
+    }),
+  );
+  return {
+    tier: context.subscription.tier,
+    currentPeriodEnd:
+      context.subscription.currentPeriodEnd?.toISOString() ?? null,
+    allocations: activeMemberAllocations(context).map((allocation) => {
+      const change = changesByUserId.get(allocation.userId ?? "");
+      return {
+        id: allocation.id,
+        memberId: allocation.userId ?? "",
+        usagePackUsd: usagePackUsd(allocation.usagePackUsd),
+        currentPeriodEnd: allocation.currentPeriodEnd?.toISOString() ?? null,
+        pendingChange: change
+          ? {
+              id: change.id,
+              kind: change.kind,
+              status: openManagementChangeStatus(change.status),
+              targetUsagePackUsd:
+                change.targetUsagePackUsd === null
+                  ? null
+                  : usagePackUsd(change.targetUsagePackUsd),
+              effectiveAt: change.effectiveAt?.toISOString() ?? null,
+            }
+          : null,
+      };
+    }),
+  };
+}
+
+async function previewUsagePackChangeInStripe(
+  context: UsagePackChangeContext,
+  source: UsagePackAllocationRow,
+  stripeSubscriptionId: string,
+  targetUsagePackUsd: UsagePackUsd,
+  signal: AbortSignal,
+): Promise<StripeUsagePackChangePreview | null> {
+  const targetStripePriceId = activeUsagePackPriceId(targetUsagePackUsd);
+  if (!targetStripePriceId) {
+    throw new Error(
+      `Usage pack $${targetUsagePackUsd} Price is not configured`,
+    );
+  }
+  const stripe = getStripeClient();
+  const subscription =
+    await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  signal.throwIfAborted();
+  validateCurrentStripeProjection(context, subscription);
+  if (subscription.pending_update) {
+    return null;
+  }
+
+  const period = usagePackItemPeriod(subscription);
+  const requestedProrationTimestamp = Math.floor(nowDate().getTime() / 1000);
+  const prorationTimestamp = Math.min(
+    Math.max(requestedProrationTimestamp, period.start),
+    period.end - 1,
+  );
+  const kind =
+    targetUsagePackUsd > source.usagePackUsd ? "upgrade" : "downgrade";
+  const items = changeUpdateItems(
+    subscription,
+    source.stripePriceId,
+    targetStripePriceId,
+  );
+  const recurringPreviewPromise = stripe.invoices.createPreview({
+    subscription: subscription.id,
+    preview_mode: "recurring",
+    subscription_details: {
+      items,
+      proration_behavior: kind === "upgrade" ? "always_invoice" : "none",
+      ...(kind === "upgrade" ? { proration_date: prorationTimestamp } : {}),
+    },
+  });
+  const immediatePreviewPromise =
+    kind === "upgrade"
+      ? stripe.invoices.createPreview({
+          subscription: subscription.id,
+          preview_mode: "next",
+          subscription_details: {
+            items,
+            proration_behavior: "always_invoice",
+            proration_date: prorationTimestamp,
+          },
+        })
+      : null;
+  const [recurringPreview, immediatePreview] = await Promise.all([
+    recurringPreviewPromise,
+    immediatePreviewPromise,
+  ]);
+  signal.throwIfAborted();
+  const currency = recurringPreview.currency;
+  if (immediatePreview && immediatePreview.currency !== currency) {
+    throw new Error("Stripe usage pack previews returned different currencies");
+  }
+  const createdAt = nowDate();
+  return {
+    kind,
+    targetStripePriceId,
+    prorationTimestamp,
+    immediateAmountCents: immediatePreview
+      ? safeInvoiceAmount(immediatePreview, "immediate")
+      : 0,
+    nextRecurringAmountCents: safeInvoiceAmount(recurringPreview, "recurring"),
+    currency,
+    effectiveAt:
+      kind === "upgrade"
+        ? new Date(prorationTimestamp * 1000)
+        : new Date(period.end * 1000),
+    createdAt,
+    expiresAt: new Date(createdAt.getTime() + PREVIEW_TTL_MS),
+  };
+}
+
+async function persistUsagePackChangePreview(
+  db: Db,
+  context: UsagePackChangeContext,
+  source: UsagePackAllocationRow,
+  args: UsagePackChangePreviewArgs,
+  preview: StripeUsagePackChangePreview,
+): Promise<UsagePackAllocationChangeRow | undefined> {
+  const [change] = await db.transaction(async (tx) => {
+    await lockUsagePackBillingOrg(tx, args.orgId);
+    await expireStaleUsagePackPreviews(tx, args.orgId, preview.createdAt);
+    const [lockedSource] = await tx
+      .select()
+      .from(usagePackAllocations)
+      .where(eq(usagePackAllocations.id, source.id))
+      .for("update")
+      .limit(1);
+    if (
+      !lockedSource ||
+      lockedSource.status !== "active" ||
+      lockedSource.usagePackUsd !== source.usagePackUsd ||
+      lockedSource.stripePriceId !== source.stripePriceId
+    ) {
+      return [];
+    }
+    return await tx
+      .insert(usagePackAllocationChanges)
+      .values({
+        usagePackSubscriptionId: context.subscription.id,
+        orgId: args.orgId,
+        userId: args.userId,
+        sourceAllocationId: source.id,
+        kind: preview.kind,
+        sourceUsagePackUsd: source.usagePackUsd,
+        sourceStripePriceId: source.stripePriceId,
+        targetUsagePackUsd: args.targetUsagePackUsd,
+        targetStripePriceId: preview.targetStripePriceId,
+        prorationTimestamp: preview.prorationTimestamp,
+        immediateAmountCents: preview.immediateAmountCents,
+        nextRecurringAmountCents: preview.nextRecurringAmountCents,
+        currency: preview.currency,
+        effectiveAt: preview.effectiveAt,
+        previewExpiresAt: preview.expiresAt,
+        createdAt: preview.createdAt,
+        updatedAt: preview.createdAt,
+      })
+      .onConflictDoNothing()
+      .returning();
+  });
+  return change;
+}
+
+export async function previewUsagePackAllocationChange(
+  db: Db,
+  args: UsagePackChangePreviewArgs,
+): Promise<UsagePackChangePreviewResult> {
+  const context = await loadUsagePackChangeContextForOrg(db, args.orgId);
+  const stripeSubscriptionId = context?.subscription.stripeSubscriptionId;
+  if (!context || !stripeSubscriptionId) {
+    return { status: "not_found" };
+  }
+  if (context.subscription.cancelAtPeriodEnd) {
+    return { status: "conflict" };
+  }
+  const source = activeAllocationForMember(context, args.userId);
+  if (!source) {
+    return { status: "not_found" };
+  }
+  if (source.usagePackUsd === args.targetUsagePackUsd) {
+    return { status: "same_package" };
+  }
+  const preview = await previewUsagePackChangeInStripe(
+    context,
+    source,
+    stripeSubscriptionId,
+    args.targetUsagePackUsd,
+    args.signal,
+  );
+  if (!preview) {
+    return { status: "conflict" };
+  }
+  const change = await persistUsagePackChangePreview(
+    db,
+    context,
+    source,
+    args,
+    preview,
+  );
+  if (!change) {
+    return { status: "conflict" };
+  }
+  return {
+    status: "ready",
+    preview: {
+      changeId: change.id,
+      kind: preview.kind,
+      sourceUsagePackUsd: usagePackUsd(source.usagePackUsd),
+      targetUsagePackUsd: args.targetUsagePackUsd,
+      immediateAmountCents: preview.immediateAmountCents,
+      nextRecurringAmountCents: preview.nextRecurringAmountCents,
+      currency: preview.currency,
+      effectiveAt: preview.effectiveAt.toISOString(),
+      prorationDate: new Date(preview.prorationTimestamp * 1000).toISOString(),
+      expiresAt: preview.expiresAt.toISOString(),
+    },
+  };
+}
+
+function subscriptionPhaseItems(
+  subscription: UsagePackChangeSubscriptionInput,
+): Stripe.SubscriptionScheduleUpdateParams.Phase.Item[] {
+  return subscription.items.data.map((item) => {
+    return {
+      price: item.price.id,
+      quantity: item.quantity ?? 1,
+    };
+  });
+}
+
+function subscriptionPhaseDiscounts(
+  subscription: UsagePackChangeSubscriptionInput,
+): Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[] {
+  const discounts = subscription.discounts ?? [];
+  return discounts.flatMap((discount) => {
+    const id = stripeObjectId(discount);
+    return id ? [{ discount: id }] : [];
+  });
+}
+
+function phaseWithDiscounts(
+  phase: Stripe.SubscriptionScheduleUpdateParams.Phase,
+  discounts: readonly Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[],
+): Stripe.SubscriptionScheduleUpdateParams.Phase {
+  return discounts.length === 0
+    ? phase
+    : { ...phase, discounts: [...discounts] };
+}
+
+function subscriptionRecurringDuration(
+  subscription: UsagePackChangeSubscriptionInput,
+): Stripe.SubscriptionScheduleUpdateParams.Phase.Duration {
+  const recurring = subscription.items.data.find((item) => {
+    return isUsagePackPlanPriceId(item.price.id);
+  })?.price.recurring;
+  if (!recurring) {
+    throw new Error("Usage pack base plan is not recurring");
+  }
+  return {
+    interval: recurring.interval,
+    interval_count: recurring.interval_count,
+  };
+}
+
+function projectedPackageQuantities(
+  context: UsagePackChangeContext,
+  proposedChange: UsagePackAllocationChangeRow,
+): ReadonlyMap<string, number> {
+  const packageByOwner = new Map<string, string>();
+  for (const allocation of context.allocations) {
+    if (allocation.status === "inactive") {
+      continue;
+    }
+    packageByOwner.set(
+      allocationOwnerKey(allocation),
+      allocation.stripePriceId,
+    );
+  }
+  const scheduledChanges = [
+    ...context.changes.filter((change) => {
+      return change.status === "scheduled" && change.id !== proposedChange.id;
+    }),
+    proposedChange,
+  ];
+  for (const change of scheduledChanges) {
+    const ownerKey = `user:${change.userId}`;
+    if (change.kind === "removal") {
+      packageByOwner.delete(ownerKey);
+    } else if (change.targetStripePriceId) {
+      packageByOwner.set(ownerKey, change.targetStripePriceId);
+    }
+  }
+
+  const quantities = new Map<string, number>();
+  for (const priceId of packageByOwner.values()) {
+    quantities.set(priceId, (quantities.get(priceId) ?? 0) + 1);
+  }
+  return quantities;
+}
+
+function projectedScheduleItems(
+  subscription: UsagePackChangeSubscriptionInput,
+  quantities: ReadonlyMap<string, number>,
+): Stripe.SubscriptionScheduleUpdateParams.Phase.Item[] {
+  const preservedItems = subscription.items.data
+    .filter((item) => {
+      return usagePackUsdForKnownPriceId(item.price.id) === null;
+    })
+    .map((item) => {
+      return { price: item.price.id, quantity: item.quantity ?? 1 };
+    });
+  return [
+    ...preservedItems,
+    ...[...quantities].map(([price, quantity]) => {
+      return { price, quantity };
+    }),
+  ];
+}
+
+async function scheduleUsagePackAllocationChange(
+  context: UsagePackChangeContext,
+  change: UsagePackAllocationChangeRow,
+  subscription: UsagePackChangeSubscriptionInput,
+  signal: AbortSignal | undefined,
+  operationId = change.id,
+): Promise<{ readonly scheduleId: string; readonly effectiveAt: Date }> {
+  const period = usagePackItemPeriod(subscription);
+  const targetQuantities = projectedPackageQuantities(context, change);
+  if (targetQuantities.size === 0) {
+    throw new Error(
+      "A usage pack subscription cannot be scheduled without a package",
+    );
+  }
+  const stripe = getStripeClient();
+  const existingScheduleId = subscriptionScheduleId(subscription);
+  const createdSchedule = existingScheduleId
+    ? null
+    : await stripe.subscriptionSchedules.create(
+        { from_subscription: subscription.id },
+        { idempotencyKey: `usage-pack-change:${operationId}:schedule-create` },
+      );
+  signal?.throwIfAborted();
+  const scheduleId = existingScheduleId ?? createdSchedule?.id;
+  if (!scheduleId) {
+    throw new Error("Stripe did not return a subscription schedule ID");
+  }
+  const discounts = subscriptionPhaseDiscounts(subscription);
+  await stripe.subscriptionSchedules.update(
+    scheduleId,
+    {
+      end_behavior: "release",
+      proration_behavior: "none",
+      phases: [
+        phaseWithDiscounts(
+          {
+            start_date: period.start,
+            end_date: period.end,
+            items: subscriptionPhaseItems(subscription),
+            proration_behavior: "none",
+          },
+          discounts,
+        ),
+        phaseWithDiscounts(
+          {
+            start_date: period.end,
+            duration: subscriptionRecurringDuration(subscription),
+            items: projectedScheduleItems(subscription, targetQuantities),
+            proration_behavior: "none",
+          },
+          discounts,
+        ),
+      ],
+    },
+    { idempotencyKey: `usage-pack-change:${operationId}:schedule-update` },
+  );
+  signal?.throwIfAborted();
+  return {
+    scheduleId,
+    effectiveAt: new Date(period.end * 1000),
+  };
+}
+
+export async function reserveUsagePackMemberRemoval(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly signal: AbortSignal;
+  },
+): Promise<string | null> {
+  if (!(await usagePackAllocationChangeSchemaAvailable(db))) {
+    return null;
+  }
+  args.signal.throwIfAborted();
+  const at = nowDate();
+  const reservationId = await db.transaction(async (tx) => {
+    await lockUsagePackBillingOrg(tx, args.orgId);
+    await expireStaleUsagePackPreviews(tx, args.orgId, at);
+    const [allocation] = await tx
+      .select()
+      .from(usagePackAllocations)
+      .where(
+        and(
+          eq(usagePackAllocations.orgId, args.orgId),
+          eq(usagePackAllocations.userId, args.userId),
+          eq(usagePackAllocations.status, "active"),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!allocation) {
+      return null;
+    }
+    const context = await loadUsagePackChangeContextForOrg(tx, args.orgId);
+    if (!context?.subscription.stripeSubscriptionId) {
+      throw new Error(
+        "Usage pack subscription is not ready for member removal",
+      );
+    }
+    const blockingChange = context.changes.find((change) => {
+      return (
+        change.status === "applying" ||
+        change.status === "pending_payment" ||
+        change.status === "applied"
+      );
+    });
+    if (blockingChange) {
+      throw new Error(
+        `Usage pack billing change ${blockingChange.id} must finish before member removal`,
+      );
+    }
+    const existing = context.changes.find((change) => {
+      return change.userId === args.userId;
+    });
+    if (existing?.status === "scheduled" && existing.kind !== "removal") {
+      throw new Error(
+        `Usage pack change ${existing.id} must finish before member removal`,
+      );
+    }
+    const existingRemoval = existing?.kind === "removal" ? existing : null;
+    await invalidateUsagePackChangePreviews(tx, {
+      orgId: args.orgId,
+      at,
+      reason: "member_removal_reserved",
+      ...(existingRemoval ? { preservedChangeId: existingRemoval.id } : {}),
+    });
+    if (existingRemoval) {
+      if (existingRemoval.status === "previewed") {
+        await tx
+          .update(usagePackAllocationChanges)
+          .set({
+            previewExpiresAt: new Date(at.getTime() + PREVIEW_TTL_MS),
+            updatedAt: at,
+          })
+          .where(eq(usagePackAllocationChanges.id, existingRemoval.id));
+      }
+      return existingRemoval.id;
+    }
+    if (existing) {
+      await tx
+        .update(usagePackAllocationChanges)
+        .set({
+          status: "failed",
+          failureReason: "member_removal_reserved",
+          completedAt: at,
+          updatedAt: at,
+        })
+        .where(eq(usagePackAllocationChanges.id, existing.id));
+    }
+    const [reservation] = await tx
+      .insert(usagePackAllocationChanges)
+      .values({
+        usagePackSubscriptionId: context.subscription.id,
+        orgId: args.orgId,
+        userId: args.userId,
+        sourceAllocationId: allocation.id,
+        kind: "removal",
+        status: "previewed",
+        sourceUsagePackUsd: allocation.usagePackUsd,
+        sourceStripePriceId: allocation.stripePriceId,
+        immediateAmountCents: 0,
+        nextRecurringAmountCents: 0,
+        previewExpiresAt: new Date(at.getTime() + PREVIEW_TTL_MS),
+        createdAt: at,
+        updatedAt: at,
+      })
+      .returning({ id: usagePackAllocationChanges.id });
+    if (!reservation) {
+      throw new Error("Failed to reserve usage pack member removal");
+    }
+    return reservation.id;
+  });
+  args.signal.throwIfAborted();
+  return reservationId;
+}
+
+export async function cancelUsagePackMemberRemovalReservation(
+  db: Db,
+  reservationId: string | null,
+): Promise<void> {
+  if (!reservationId) {
+    return;
+  }
+  const at = nowDate();
+  await db
+    .update(usagePackAllocationChanges)
+    .set({
+      status: "failed",
+      failureReason: "member_removal_failed",
+      completedAt: at,
+      updatedAt: at,
+    })
+    .where(
+      and(
+        eq(usagePackAllocationChanges.id, reservationId),
+        eq(usagePackAllocationChanges.kind, "removal"),
+        eq(usagePackAllocationChanges.status, "previewed"),
+      ),
+    );
+}
+
+async function invalidateUsagePackChangePreviews(
+  tx: WriteTx,
+  args: {
+    readonly orgId: string;
+    readonly at: Date;
+    readonly reason: string;
+    readonly preservedChangeId?: string;
+  },
+): Promise<void> {
+  await tx
+    .update(usagePackAllocationChanges)
+    .set({
+      status: "failed",
+      failureReason: args.reason,
+      completedAt: args.at,
+      updatedAt: args.at,
+    })
+    .where(
+      args.preservedChangeId
+        ? and(
+            eq(usagePackAllocationChanges.orgId, args.orgId),
+            eq(usagePackAllocationChanges.status, "previewed"),
+            ne(usagePackAllocationChanges.id, args.preservedChangeId),
+          )
+        : and(
+            eq(usagePackAllocationChanges.orgId, args.orgId),
+            eq(usagePackAllocationChanges.status, "previewed"),
+          ),
+    );
+}
+
+async function activateExistingUsagePackRemoval(
+  tx: WriteTx,
+  context: UsagePackChangeContext,
+  existing: UsagePackAllocationChangeRow,
+  at: Date,
+): Promise<{
+  readonly context: UsagePackChangeContext;
+  readonly change: UsagePackAllocationChangeRow;
+}> {
+  if (
+    existing.status !== "previewed" &&
+    existing.status !== "applying" &&
+    existing.status !== "scheduled"
+  ) {
+    throw new Error(`Usage pack removal ${existing.id} has an invalid status`);
+  }
+  const [activated] =
+    existing.status === "previewed"
+      ? await tx
+          .update(usagePackAllocationChanges)
+          .set({ status: "applying", updatedAt: at })
+          .where(
+            and(
+              eq(usagePackAllocationChanges.id, existing.id),
+              eq(usagePackAllocationChanges.status, "previewed"),
+            ),
+          )
+          .returning()
+      : [existing];
+  if (!activated) {
+    throw new Error(
+      `Usage pack removal ${existing.id} changed while activating`,
+    );
+  }
+  await invalidateUsagePackChangePreviews(tx, {
+    orgId: existing.orgId,
+    at,
+    reason: "member_removed",
+  });
+  const refreshedContext = await loadUsagePackChangeContextBySubscriptionId(
+    tx,
+    context.subscription.id,
+  );
+  if (!refreshedContext) {
+    throw new Error("Usage pack subscription disappeared during removal");
+  }
+  return { context: refreshedContext, change: activated };
+}
+
+async function prepareUsagePackMemberRemoval(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<{
+  readonly context: UsagePackChangeContext;
+  readonly change: UsagePackAllocationChangeRow;
+} | null> {
+  const at = nowDate();
+  return await db.transaction(async (tx) => {
+    await lockUsagePackBillingOrg(tx, args.orgId);
+    await tx
+      .update(usagePackCreditGrants)
+      .set({ remainingAmount: 0 })
+      .where(
+        and(
+          eq(usagePackCreditGrants.orgId, args.orgId),
+          eq(usagePackCreditGrants.userId, args.userId),
+        ),
+      );
+    const context = await loadUsagePackChangeContextForOrg(tx, args.orgId);
+    if (!context) {
+      return null;
+    }
+    const source = activeAllocationForMember(context, args.userId);
+    if (!source) {
+      return null;
+    }
+    const existing = context.changes.find((change) => {
+      return change.userId === args.userId;
+    });
+    if (existing?.kind === "removal") {
+      return await activateExistingUsagePackRemoval(tx, context, existing, at);
+    }
+    if (
+      existing &&
+      existing.status !== "previewed" &&
+      existing.status !== "scheduled"
+    ) {
+      throw new Error(
+        `Usage pack allocation for ${args.userId} has a paid change in progress`,
+      );
+    }
+    if (existing) {
+      await tx
+        .update(usagePackAllocationChanges)
+        .set({
+          status: "failed",
+          failureReason: "member_removed",
+          completedAt: at,
+          updatedAt: at,
+        })
+        .where(eq(usagePackAllocationChanges.id, existing.id));
+    }
+    await invalidateUsagePackChangePreviews(tx, {
+      orgId: args.orgId,
+      at,
+      reason: "member_removed",
+    });
+    const [change] = await tx
+      .insert(usagePackAllocationChanges)
+      .values({
+        usagePackSubscriptionId: context.subscription.id,
+        orgId: args.orgId,
+        userId: args.userId,
+        sourceAllocationId: source.id,
+        kind: "removal",
+        status: "applying",
+        sourceUsagePackUsd: source.usagePackUsd,
+        sourceStripePriceId: source.stripePriceId,
+        immediateAmountCents: 0,
+        nextRecurringAmountCents: 0,
+        createdAt: at,
+        updatedAt: at,
+      })
+      .returning();
+    if (!change) {
+      throw new Error("Failed to create usage pack member removal");
+    }
+    const refreshedContext = await loadUsagePackChangeContextBySubscriptionId(
+      tx,
+      context.subscription.id,
+    );
+    if (!refreshedContext) {
+      throw new Error("Usage pack subscription disappeared during removal");
+    }
+    return { context: refreshedContext, change };
+  });
+}
+
+interface DeferredUsagePackChangeResult {
+  readonly effectiveAt: Date;
+  readonly stripeScheduleId: string | null;
+}
+
+async function applyDeferredUsagePackChange(
+  db: Db,
+  context: UsagePackChangeContext,
+  change: UsagePackAllocationChangeRow,
+  subscription: UsagePackChangeSubscriptionInput,
+  signal: AbortSignal | undefined,
+): Promise<DeferredUsagePackChangeResult> {
+  if (change.kind === "upgrade") {
+    throw new Error("Usage pack upgrades cannot be deferred");
+  }
+  const period = usagePackItemPeriod(subscription);
+  const remainingQuantities = projectedPackageQuantities(context, change);
+  if (remainingQuantities.size > 0) {
+    const scheduled = await scheduleUsagePackAllocationChange(
+      context,
+      change,
+      subscription,
+      signal,
+    );
+    return {
+      effectiveAt: scheduled.effectiveAt,
+      stripeScheduleId: scheduled.scheduleId,
+    };
+  }
+  if (change.kind !== "removal") {
+    throw new Error("A usage pack downgrade must retain a package");
+  }
+  const cancellation = await downgradeSubscriptionForOrg(
+    db,
+    {
+      orgId: context.subscription.orgId,
+      targetTier: "limited-free-1",
+      requirePaymentMethod: false,
+    },
+    signal,
+  );
+  if (!cancellation.ok) {
+    throw new Error(
+      `Failed to cancel empty usage pack subscription: ${cancellation.reason}`,
+    );
+  }
+  if (cancellation.status !== "scheduled") {
+    throw new Error("Usage pack cancellation unexpectedly requires payment");
+  }
+  await db
+    .update(usagePackSubscriptions)
+    .set({ cancelAtPeriodEnd: true, updatedAt: nowDate() })
+    .where(eq(usagePackSubscriptions.id, context.subscription.id));
+  signal?.throwIfAborted();
+  return {
+    effectiveAt: cancellation.effectiveDate
+      ? new Date(cancellation.effectiveDate)
+      : new Date(period.end * 1000),
+    stripeScheduleId: null,
+  };
+}
+
+async function scheduleDeferredUsagePackChange(
+  db: Db,
+  context: UsagePackChangeContext,
+  change: UsagePackAllocationChangeRow,
+  subscription: UsagePackChangeSubscriptionInput,
+  signal: AbortSignal | undefined,
+): Promise<DeferredUsagePackChangeResult> {
+  const scheduled = await applyDeferredUsagePackChange(
+    db,
+    context,
+    change,
+    subscription,
+    signal,
+  );
+  const updatedAt = nowDate();
+  await db
+    .update(usagePackAllocationChanges)
+    .set({
+      status: "scheduled",
+      stripeScheduleId: scheduled.stripeScheduleId,
+      effectiveAt: scheduled.effectiveAt,
+      updatedAt,
+    })
+    .where(
+      and(
+        eq(usagePackAllocationChanges.id, change.id),
+        eq(usagePackAllocationChanges.status, "applying"),
+      ),
+    );
+  signal?.throwIfAborted();
+  return scheduled;
+}
+
+export async function scheduleUsagePackMemberRemoval(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly signal: AbortSignal;
+  },
+): Promise<boolean> {
+  if (!(await usagePackAllocationChangeSchemaAvailable(db))) {
+    await db
+      .update(usagePackCreditGrants)
+      .set({ remainingAmount: 0 })
+      .where(
+        and(
+          eq(usagePackCreditGrants.orgId, args.orgId),
+          eq(usagePackCreditGrants.userId, args.userId),
+        ),
+      );
+    args.signal.throwIfAborted();
+    return false;
+  }
+  const prepared = await prepareUsagePackMemberRemoval(db, args);
+  args.signal.throwIfAborted();
+  if (!prepared) {
+    return false;
+  }
+  if (prepared.change.status === "scheduled") {
+    return true;
+  }
+  const stripeSubscriptionId =
+    prepared.context.subscription.stripeSubscriptionId;
+  if (!stripeSubscriptionId) {
+    throw new Error("Usage pack subscription has no Stripe subscription");
+  }
+  const stripeSubscription =
+    await getStripeClient().subscriptions.retrieve(stripeSubscriptionId);
+  args.signal.throwIfAborted();
+  validateCurrentStripeProjection(prepared.context, stripeSubscription);
+  await scheduleDeferredUsagePackChange(
+    db,
+    prepared.context,
+    prepared.change,
+    stripeSubscription,
+    args.signal,
+  );
+  return true;
+}
+
+function latestInvoice(
+  subscription: Stripe.Subscription,
+): Stripe.Invoice | null {
+  return subscription.latest_invoice &&
+    typeof subscription.latest_invoice !== "string"
+    ? subscription.latest_invoice
+    : null;
+}
+
+function pendingUpdateExpiry(subscription: Stripe.Subscription): Date | null {
+  return unixDate(subscription.pending_update?.expires_at);
+}
+
+function allocationOwnerKey(allocation: UsagePackAllocationRow): string {
+  if (allocation.userId) {
+    return `user:${allocation.userId}`;
+  }
+  if (allocation.invitationId) {
+    return `invitation:${allocation.invitationId}`;
+  }
+  throw new Error(`Usage pack allocation ${allocation.id} has no owner`);
+}
+
+function projectedQuantitiesAfterChanges(
+  context: UsagePackChangeContext,
+  changes: readonly UsagePackAllocationChangeRow[],
+): ReadonlyMap<string, number> {
+  const packageByOwner = new Map<string, string>();
+  for (const allocation of context.allocations) {
+    if (allocation.status !== "inactive") {
+      packageByOwner.set(
+        allocationOwnerKey(allocation),
+        allocation.stripePriceId,
+      );
+    }
+  }
+  for (const change of changes) {
+    const ownerKey = `user:${change.userId}`;
+    const currentPriceId = packageByOwner.get(ownerKey);
+    if (currentPriceId !== change.sourceStripePriceId) {
+      throw new Error(
+        `Usage pack change ${change.id} no longer matches its source allocation`,
+      );
+    }
+    if (change.kind === "removal") {
+      packageByOwner.delete(ownerKey);
+    } else if (change.targetStripePriceId) {
+      packageByOwner.set(ownerKey, change.targetStripePriceId);
+    } else {
+      throw new Error(`Usage pack change ${change.id} has no target Price`);
+    }
+  }
+
+  const quantities = new Map<string, number>();
+  for (const priceId of packageByOwner.values()) {
+    quantities.set(priceId, (quantities.get(priceId) ?? 0) + 1);
+  }
+  return quantities;
+}
+
+function deduplicateChangeSets(
+  sets: readonly (readonly UsagePackAllocationChangeRow[])[],
+): readonly (readonly UsagePackAllocationChangeRow[])[] {
+  const seen = new Set<string>();
+  return sets.filter((changes) => {
+    if (changes.length === 0) {
+      return false;
+    }
+    const key = changes
+      .map((change) => {
+        return change.id;
+      })
+      .sort()
+      .join(":");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function changesReflectedBySubscription(
+  context: UsagePackChangeContext,
+  subscription: UsagePackChangeSubscriptionInput,
+): readonly UsagePackAllocationChangeRow[] {
+  const actualQuantities = packageQuantitiesForSubscription(subscription);
+  const currentQuantities = packageQuantitiesForAllocations(
+    context.allocations,
+  );
+  if (quantitiesMatch(actualQuantities, currentQuantities)) {
+    return [];
+  }
+
+  const period = usagePackItemPeriod(subscription);
+  const periodStart = new Date(period.start * 1000);
+  const scheduled = context.changes.filter((change) => {
+    if (change.status === "scheduled") {
+      return change.effectiveAt !== null && change.effectiveAt <= periodStart;
+    }
+    if (change.status !== "applying" || change.kind === "upgrade") {
+      return false;
+    }
+    const source = context.allocations.find((allocation) => {
+      return allocation.id === change.sourceAllocationId;
+    });
+    return (
+      source?.currentPeriodEnd !== null &&
+      source?.currentPeriodEnd !== undefined &&
+      source.currentPeriodEnd <= periodStart
+    );
+  });
+  const upgrades = !subscription.pending_update
+    ? context.changes.filter((change) => {
+        return (
+          change.kind === "upgrade" &&
+          (change.status === "applying" || change.status === "pending_payment")
+        );
+      })
+    : [];
+  const candidates = deduplicateChangeSets([
+    [...scheduled, ...upgrades],
+    scheduled,
+    upgrades,
+  ]);
+  const reflected = candidates.find((changes) => {
+    return quantitiesMatch(
+      projectedQuantitiesAfterChanges(context, changes),
+      actualQuantities,
+    );
+  });
+  if (!reflected) {
+    throw new Error(
+      `Stripe usage pack quantities do not match an open allocation change for ${subscription.id}`,
+    );
+  }
+  return reflected;
+}
+
+async function commitReflectedUsagePackChanges(
+  db: Db,
+  context: UsagePackChangeContext,
+  changes: readonly UsagePackAllocationChangeRow[],
+  period: UsagePackPeriod,
+): Promise<number> {
+  if (changes.length === 0) {
+    return 0;
+  }
+  return await db.transaction(async (tx) => {
+    await lockUsagePackBillingOrg(tx, context.subscription.orgId);
+    let applied = 0;
+    const updatedAt = nowDate();
+    for (const expectedChange of changes) {
+      const [change] = await tx
+        .select()
+        .from(usagePackAllocationChanges)
+        .where(eq(usagePackAllocationChanges.id, expectedChange.id))
+        .for("update")
+        .limit(1);
+      if (!change || change.status === "completed") {
+        continue;
+      }
+      if (change.status === "failed" || change.replacementAllocationId) {
+        throw new Error(
+          `Usage pack change ${expectedChange.id} changed during reconciliation`,
+        );
+      }
+      const [source] = await tx
+        .select()
+        .from(usagePackAllocations)
+        .where(eq(usagePackAllocations.id, change.sourceAllocationId))
+        .for("update")
+        .limit(1);
+      if (
+        !source ||
+        source.status !== "active" ||
+        source.userId !== change.userId ||
+        source.stripePriceId !== change.sourceStripePriceId
+      ) {
+        throw new Error(
+          `Usage pack change ${change.id} has no current source allocation`,
+        );
+      }
+
+      await tx
+        .update(usagePackAllocations)
+        .set({ status: "inactive", updatedAt })
+        .where(eq(usagePackAllocations.id, source.id));
+
+      let replacementAllocationId: string | null = null;
+      if (change.kind !== "removal") {
+        if (change.targetUsagePackUsd === null || !change.targetStripePriceId) {
+          throw new Error(`Usage pack change ${change.id} has no target`);
+        }
+        const [replacement] = await tx
+          .insert(usagePackAllocations)
+          .values({
+            usagePackSubscriptionId: context.subscription.id,
+            orgId: context.subscription.orgId,
+            userId: change.userId,
+            usagePackUsd: usagePackUsd(change.targetUsagePackUsd),
+            stripePriceId: change.targetStripePriceId,
+            status: "active",
+            currentPeriodStart: new Date(period.start * 1000),
+            currentPeriodEnd: new Date(period.end * 1000),
+            createdAt: updatedAt,
+            updatedAt,
+          })
+          .returning({ id: usagePackAllocations.id });
+        if (!replacement) {
+          throw new Error(
+            `Failed to create replacement for usage pack change ${change.id}`,
+          );
+        }
+        replacementAllocationId = replacement.id;
+      }
+
+      const completed = change.kind !== "upgrade";
+      await tx
+        .update(usagePackAllocationChanges)
+        .set({
+          replacementAllocationId,
+          status: completed ? "completed" : "applied",
+          completedAt: completed ? updatedAt : null,
+          effectiveAt:
+            change.effectiveAt ??
+            (change.kind === "upgrade"
+              ? updatedAt
+              : new Date(period.start * 1000)),
+          updatedAt,
+        })
+        .where(eq(usagePackAllocationChanges.id, change.id));
+      applied += 1;
+    }
+    return applied;
+  });
+}
+
+async function finalizeCanceledUsagePackChanges(
+  db: Db,
+  context: UsagePackChangeContext,
+): Promise<number> {
+  const finalizable = context.changes.filter((change) => {
+    return change.status !== "applied";
+  });
+  if (finalizable.length === 0) {
+    return 0;
+  }
+  const at = nowDate();
+  return await db.transaction(async (tx) => {
+    await lockUsagePackBillingOrg(tx, context.subscription.orgId);
+    let finalized = 0;
+    for (const expected of finalizable) {
+      const [change] = await tx
+        .select()
+        .from(usagePackAllocationChanges)
+        .where(eq(usagePackAllocationChanges.id, expected.id))
+        .for("update")
+        .limit(1);
+      if (!change || change.status === "applied") {
+        continue;
+      }
+      const completed =
+        change.kind === "removal" &&
+        (change.status === "scheduled" || change.status === "applying");
+      if (completed) {
+        await tx
+          .update(usagePackAllocations)
+          .set({ status: "inactive", updatedAt: at })
+          .where(eq(usagePackAllocations.id, change.sourceAllocationId));
+      }
+      await tx
+        .update(usagePackAllocationChanges)
+        .set({
+          status: completed ? "completed" : "failed",
+          failureReason: completed ? null : "subscription_canceled",
+          effectiveAt: change.effectiveAt ?? at,
+          completedAt: at,
+          updatedAt: at,
+        })
+        .where(eq(usagePackAllocationChanges.id, change.id));
+      finalized += 1;
+    }
+    return finalized;
+  });
+}
+
+async function refreshScheduledChangesForUpgrade(
+  context: UsagePackChangeContext,
+  subscription: UsagePackChangeSubscriptionInput,
+  appliedUpgrade: UsagePackAllocationChangeRow,
+): Promise<void> {
+  const hasScheduledChange = context.changes.some((change) => {
+    return change.status === "scheduled";
+  });
+  if (!hasScheduledChange) {
+    return;
+  }
+  await scheduleUsagePackAllocationChange(
+    context,
+    appliedUpgrade,
+    subscription,
+    undefined,
+    `${appliedUpgrade.id}:schedule-refresh`,
+  );
+}
+
+export async function reconcileUsagePackAllocationChangeSubscription(
+  db: Db,
+  subscription: UsagePackChangeSubscriptionInput,
+): Promise<{ readonly reconciled: number; readonly orgId: string | null }> {
+  const usagePackSubscriptionId = usagePackSubscriptionIdFromMetadata(
+    subscription.metadata,
+  );
+  if (
+    !usagePackSubscriptionId ||
+    !(await usagePackAllocationChangeSchemaAvailable(db))
+  ) {
+    return { reconciled: 0, orgId: null };
+  }
+  const context = await loadUsagePackChangeContextBySubscriptionId(
+    db,
+    usagePackSubscriptionId,
+  );
+  if (!context) {
+    throw new Error(
+      `Unknown usage pack subscription: ${usagePackSubscriptionId}`,
+    );
+  }
+  if (!context.subscription.stripeSubscriptionId) {
+    return { reconciled: 0, orgId: context.subscription.orgId };
+  }
+  if (subscription.id !== context.subscription.stripeSubscriptionId) {
+    throw new Error("Stripe subscription does not match the usage pack record");
+  }
+  if (
+    subscription.status === "canceled" ||
+    subscription.status === "incomplete_expired"
+  ) {
+    const reconciled = await finalizeCanceledUsagePackChanges(db, context);
+    return { reconciled, orgId: context.subscription.orgId };
+  }
+
+  const reflected = changesReflectedBySubscription(context, subscription);
+  const period = usagePackItemPeriod(subscription);
+  const appliedUpgrade = reflected.find((change) => {
+    return change.kind === "upgrade";
+  });
+  if (appliedUpgrade) {
+    await refreshScheduledChangesForUpgrade(
+      context,
+      subscription,
+      appliedUpgrade,
+    );
+  }
+  const reconciled = await commitReflectedUsagePackChanges(
+    db,
+    context,
+    reflected,
+    period,
+  );
+  return { reconciled, orgId: context.subscription.orgId };
+}
+
+export async function reconcileUsagePackAllocationChangeSubscriptionDeleted(
+  db: Db,
+  subscription: {
+    readonly id: string;
+    readonly metadata?: Readonly<Record<string, string>> | null;
+  },
+): Promise<void> {
+  const usagePackSubscriptionId = usagePackSubscriptionIdFromMetadata(
+    subscription.metadata,
+  );
+  if (
+    !usagePackSubscriptionId ||
+    !(await usagePackAllocationChangeSchemaAvailable(db))
+  ) {
+    return;
+  }
+  const context = await loadUsagePackChangeContextBySubscriptionId(
+    db,
+    usagePackSubscriptionId,
+  );
+  if (!context) {
+    throw new Error(
+      `Unknown usage pack subscription: ${usagePackSubscriptionId}`,
+    );
+  }
+  if (!context.subscription.stripeSubscriptionId) {
+    return;
+  }
+  if (context.subscription.stripeSubscriptionId !== subscription.id) {
+    throw new Error("Deleted Stripe subscription does not match usage pack");
+  }
+  await finalizeCanceledUsagePackChanges(db, context);
+}
+
+function positiveBonusCredits(
+  metadata: Readonly<Record<string, string>>,
+  priceId: string,
+): number {
+  const value = metadata.bonusCredits;
+  if (!value || !/^[1-9]\d*$/.test(value)) {
+    throw new Error(
+      `Usage pack Price ${priceId} has invalid Product bonus credits`,
+    );
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`Usage pack Price ${priceId} bonus credits are too large`);
+  }
+  return parsed;
+}
+
+async function usagePackCreditsForPrice(
+  priceId: string,
+): Promise<{ readonly purchased: number; readonly bonus: number }> {
+  const price = await getStripeClient().prices.retrieve(priceId, {
+    expand: ["product"],
+  });
+  if (
+    price.id !== priceId ||
+    price.currency !== "usd" ||
+    price.unit_amount === null ||
+    !Number.isSafeInteger(price.unit_amount) ||
+    price.unit_amount <= 0
+  ) {
+    throw new Error(`Usage pack Price ${priceId} has an invalid USD amount`);
+  }
+  if (typeof price.product === "string" || "deleted" in price.product) {
+    throw new Error(`Usage pack Price ${priceId} has no active Product`);
+  }
+  const purchased = Math.floor((price.unit_amount * CREDITS_PER_DOLLAR) / 100);
+  if (!Number.isSafeInteger(purchased) || purchased <= 0) {
+    throw new Error(`Usage pack Price ${priceId} credits are too large`);
+  }
+  return {
+    purchased,
+    bonus: positiveBonusCredits(price.product.metadata, priceId),
+  };
+}
+
+function upgradeProrationPeriod(
+  invoice: UsagePackChangeInvoiceInput,
+  change: UsagePackAllocationChangeRow,
+): UsagePackPeriod | null {
+  const matchingLines = invoice.lines.data.filter((line) => {
+    const priceId = invoiceLinePriceId(line);
+    const amount = invoiceLineAmount(line);
+    return (
+      invoiceLineIsProration(line) &&
+      amount !== null &&
+      ((priceId === change.sourceStripePriceId && amount < 0) ||
+        (priceId === change.targetStripePriceId && amount > 0))
+    );
+  });
+  const sourceLine = matchingLines.find((line) => {
+    return invoiceLinePriceId(line) === change.sourceStripePriceId;
+  });
+  const targetLine = matchingLines.find((line) => {
+    return invoiceLinePriceId(line) === change.targetStripePriceId;
+  });
+  if (!sourceLine || !targetLine) {
+    return null;
+  }
+  const start = targetLine.period.start;
+  const end = targetLine.period.end;
+  if (
+    typeof start !== "number" ||
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(end) ||
+    end <= start ||
+    sourceLine.period.start !== start ||
+    sourceLine.period.end !== end ||
+    change.prorationTimestamp !== start
+  ) {
+    throw new Error(
+      `Usage pack change invoice ${invoice.id} has an invalid proration period`,
+    );
+  }
+  return { start, end };
+}
+
+function proratedCreditDelta(
+  sourceCredits: number,
+  targetCredits: number,
+  sourceAllocation: UsagePackAllocationRow,
+  prorationPeriod: UsagePackPeriod,
+): number {
+  if (
+    !sourceAllocation.currentPeriodStart ||
+    !sourceAllocation.currentPeriodEnd
+  ) {
+    throw new Error(
+      `Usage pack allocation ${sourceAllocation.id} has no billing period`,
+    );
+  }
+  const periodStart = Math.floor(
+    sourceAllocation.currentPeriodStart.getTime() / 1000,
+  );
+  const periodEnd = Math.floor(
+    sourceAllocation.currentPeriodEnd.getTime() / 1000,
+  );
+  if (
+    periodEnd !== prorationPeriod.end ||
+    prorationPeriod.start < periodStart ||
+    prorationPeriod.start >= periodEnd
+  ) {
+    throw new Error(
+      `Usage pack allocation ${sourceAllocation.id} does not match the proration period`,
+    );
+  }
+  const creditDelta = targetCredits - sourceCredits;
+  if (creditDelta <= 0 || !Number.isSafeInteger(creditDelta)) {
+    throw new Error("Usage pack upgrade does not increase credits");
+  }
+  const prorated = Math.floor(
+    (creditDelta * (periodEnd - prorationPeriod.start)) /
+      (periodEnd - periodStart),
+  );
+  if (!Number.isSafeInteger(prorated) || prorated < 0) {
+    throw new Error("Usage pack upgrade prorated credit delta is invalid");
+  }
+  return prorated;
+}
+
+async function usagePackInvoiceFulfillmentExists(
+  db: Pick<Db, "select">,
+  invoiceId: string,
+  usagePackSubscriptionId: string,
+): Promise<boolean> {
+  const [existing] = await db
+    .select({
+      usagePackSubscriptionId:
+        usagePackInvoiceFulfillments.usagePackSubscriptionId,
+    })
+    .from(usagePackInvoiceFulfillments)
+    .where(eq(usagePackInvoiceFulfillments.stripeInvoiceId, invoiceId))
+    .limit(1);
+  if (!existing) {
+    return false;
+  }
+  if (existing.usagePackSubscriptionId !== usagePackSubscriptionId) {
+    throw new Error(
+      `Invoice ${invoiceId} is already bound to another usage pack subscription`,
+    );
+  }
+  return true;
+}
+
+async function findUsagePackChangeForInvoice(
+  db: Pick<Db, "select">,
+  usagePackSubscriptionId: string,
+  invoice: UsagePackChangeInvoiceInput,
+): Promise<UsagePackAllocationChangeRow | null> {
+  const [bound] = await db
+    .select()
+    .from(usagePackAllocationChanges)
+    .where(eq(usagePackAllocationChanges.stripeInvoiceId, invoice.id))
+    .limit(1);
+  if (bound) {
+    if (bound.usagePackSubscriptionId !== usagePackSubscriptionId) {
+      throw new Error(
+        `Invoice ${invoice.id} is bound to another usage pack change`,
+      );
+    }
+    return bound;
+  }
+
+  const [candidate] = await db
+    .select()
+    .from(usagePackAllocationChanges)
+    .where(
+      and(
+        eq(
+          usagePackAllocationChanges.usagePackSubscriptionId,
+          usagePackSubscriptionId,
+        ),
+        eq(usagePackAllocationChanges.kind, "upgrade"),
+        inArray(usagePackAllocationChanges.status, [
+          "applying",
+          "pending_payment",
+          "applied",
+        ]),
+        isNull(usagePackAllocationChanges.stripeInvoiceId),
+      ),
+    )
+    .orderBy(desc(usagePackAllocationChanges.createdAt))
+    .limit(1);
+  if (!candidate || upgradeProrationPeriod(invoice, candidate) === null) {
+    return null;
+  }
+  return candidate;
+}
+
+async function commitUsagePackUpgradeInvoice(
+  db: Db,
+  args: {
+    readonly change: UsagePackAllocationChangeRow;
+    readonly invoice: UsagePackChangeInvoiceInput;
+    readonly purchasedCredits: number;
+    readonly bonusCredits: number;
+    readonly prorationPeriod: UsagePackPeriod;
+  },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [change] = await tx
+      .select()
+      .from(usagePackAllocationChanges)
+      .where(eq(usagePackAllocationChanges.id, args.change.id))
+      .for("update")
+      .limit(1);
+    if (!change) {
+      throw new Error(`Unknown usage pack change: ${args.change.id}`);
+    }
+    if (
+      await usagePackInvoiceFulfillmentExists(
+        tx,
+        args.invoice.id,
+        change.usagePackSubscriptionId,
+      )
+    ) {
+      return;
+    }
+    if (
+      change.kind !== "upgrade" ||
+      change.status !== "applied" ||
+      !change.replacementAllocationId
+    ) {
+      throw new Error(
+        `Usage pack change ${change.id} is not ready for fulfillment`,
+      );
+    }
+    if (change.stripeInvoiceId && change.stripeInvoiceId !== args.invoice.id) {
+      throw new Error(`Usage pack change ${change.id} has another invoice`);
+    }
+    if (args.purchasedCredits > 0) {
+      await createUsagePackCreditGrant(tx, {
+        orgId: change.orgId,
+        userId: change.userId,
+        grantType: "purchased",
+        idempotencyKey: `usage-pack-change:${change.id}:${args.invoice.id}:purchased`,
+        amount: args.purchasedCredits,
+        expiresAt: new Date(args.prorationPeriod.end * 1000),
+      });
+    }
+    if (args.bonusCredits > 0) {
+      await createUsagePackCreditGrant(tx, {
+        orgId: change.orgId,
+        userId: change.userId,
+        grantType: "bonus",
+        idempotencyKey: `usage-pack-change:${change.id}:${args.invoice.id}:bonus`,
+        amount: args.bonusCredits,
+        expiresAt: new Date(args.prorationPeriod.end * 1000),
+      });
+    }
+    const completedAt = nowDate();
+    await tx.insert(usagePackInvoiceFulfillments).values({
+      stripeInvoiceId: args.invoice.id,
+      usagePackSubscriptionId: change.usagePackSubscriptionId,
+      periodStart: new Date(args.prorationPeriod.start * 1000),
+      periodEnd: new Date(args.prorationPeriod.end * 1000),
+      createdAt: completedAt,
+    });
+    await tx
+      .update(usagePackAllocationChanges)
+      .set({
+        status: "completed",
+        stripeInvoiceId: args.invoice.id,
+        completedAt,
+        updatedAt: completedAt,
+      })
+      .where(eq(usagePackAllocationChanges.id, change.id));
+  });
+}
+
+export async function handleUsagePackAllocationChangeInvoicePaid(
+  db: Db,
+  invoice: UsagePackChangeInvoiceInput,
+): Promise<UsagePackChangeInvoiceOutcome> {
+  const usagePackSubscriptionId = invoiceUsagePackSubscriptionId(invoice);
+  if (
+    !usagePackSubscriptionId ||
+    !(await usagePackAllocationChangeSchemaAvailable(db))
+  ) {
+    return { handled: false, orgId: null };
+  }
+  const context = await loadUsagePackChangeContextBySubscriptionId(
+    db,
+    usagePackSubscriptionId,
+  );
+  if (!context) {
+    throw new Error(
+      `Unknown usage pack subscription: ${usagePackSubscriptionId}`,
+    );
+  }
+  if (
+    await usagePackInvoiceFulfillmentExists(
+      db,
+      invoice.id,
+      usagePackSubscriptionId,
+    )
+  ) {
+    return { handled: true, orgId: context.subscription.orgId };
+  }
+  const change = await findUsagePackChangeForInvoice(
+    db,
+    usagePackSubscriptionId,
+    invoice,
+  );
+  if (!change) {
+    return { handled: false, orgId: null };
+  }
+  if (invoice.status !== "paid" && invoice.paid !== true) {
+    throw new Error(`Usage pack change invoice ${invoice.id} is not paid`);
+  }
+  const subscriptionId = invoiceSubscriptionId(invoice);
+  if (
+    !subscriptionId ||
+    subscriptionId !== context.subscription.stripeSubscriptionId
+  ) {
+    throw new Error(
+      `Usage pack change invoice ${invoice.id} has the wrong subscription`,
+    );
+  }
+  if (
+    stripeObjectId(invoice.customer) !== context.subscription.stripeCustomerId
+  ) {
+    throw new Error(
+      `Usage pack change invoice ${invoice.id} has the wrong customer`,
+    );
+  }
+  const stripeSubscription =
+    await getStripeClient().subscriptions.retrieve(subscriptionId);
+  await reconcileUsagePackAllocationChangeSubscription(db, stripeSubscription);
+
+  const [reconciledChanges, sourceAllocations] = await Promise.all([
+    db
+      .select()
+      .from(usagePackAllocationChanges)
+      .where(eq(usagePackAllocationChanges.id, change.id))
+      .limit(1),
+    db
+      .select()
+      .from(usagePackAllocations)
+      .where(eq(usagePackAllocations.id, change.sourceAllocationId))
+      .limit(1),
+  ]);
+  const reconciledChange = reconciledChanges[0];
+  const sourceAllocation = sourceAllocations[0];
+  if (!reconciledChange || !sourceAllocation) {
+    throw new Error(`Usage pack change ${change.id} disappeared`);
+  }
+  const prorationPeriod = upgradeProrationPeriod(invoice, reconciledChange);
+  if (!prorationPeriod) {
+    throw new Error(
+      `Usage pack change invoice ${invoice.id} has no proration lines`,
+    );
+  }
+  if (!reconciledChange.targetStripePriceId) {
+    throw new Error(`Usage pack change ${change.id} has no target Price`);
+  }
+  const [sourceCredits, targetCredits] = await Promise.all([
+    usagePackCreditsForPrice(reconciledChange.sourceStripePriceId),
+    usagePackCreditsForPrice(reconciledChange.targetStripePriceId),
+  ]);
+  const purchasedCredits = proratedCreditDelta(
+    sourceCredits.purchased,
+    targetCredits.purchased,
+    sourceAllocation,
+    prorationPeriod,
+  );
+  const bonusCredits = proratedCreditDelta(
+    sourceCredits.bonus,
+    targetCredits.bonus,
+    sourceAllocation,
+    prorationPeriod,
+  );
+  await commitUsagePackUpgradeInvoice(db, {
+    change: reconciledChange,
+    invoice,
+    purchasedCredits,
+    bonusCredits,
+    prorationPeriod,
+  });
+  return { handled: true, orgId: context.subscription.orgId };
+}
+
+async function failExpiredUsagePackUpgrade(
+  db: Db,
+  context: UsagePackChangeContext,
+  subscription: UsagePackChangeSubscriptionInput,
+  at: Date,
+): Promise<number> {
+  if (subscription.pending_update) {
+    return 0;
+  }
+  validateCurrentStripeProjection(context, subscription);
+  const staleBefore = new Date(at.getTime() - CHANGE_RECONCILIATION_DELAY_MS);
+  const [failed] = await db
+    .update(usagePackAllocationChanges)
+    .set({
+      status: "failed",
+      failureReason: "pending_update_expired",
+      completedAt: at,
+      updatedAt: at,
+    })
+    .where(
+      and(
+        eq(
+          usagePackAllocationChanges.usagePackSubscriptionId,
+          context.subscription.id,
+        ),
+        eq(usagePackAllocationChanges.kind, "upgrade"),
+        inArray(usagePackAllocationChanges.status, [
+          "applying",
+          "pending_payment",
+        ]),
+        or(
+          lte(usagePackAllocationChanges.stripePendingUpdateExpiresAt, at),
+          and(
+            isNull(usagePackAllocationChanges.stripePendingUpdateExpiresAt),
+            lte(usagePackAllocationChanges.updatedAt, staleBefore),
+          ),
+        ),
+      ),
+    )
+    .returning({ id: usagePackAllocationChanges.id });
+  return failed ? 1 : 0;
+}
+
+async function paidUpgradeInvoiceForSubscription(
+  subscription: Stripe.Subscription,
+): Promise<UsagePackChangeInvoiceInput | null> {
+  const expanded = latestInvoice(subscription);
+  if (expanded) {
+    return expanded.status === "paid"
+      ? (expanded as UsagePackChangeInvoiceInput)
+      : null;
+  }
+  if (typeof subscription.latest_invoice !== "string") {
+    return null;
+  }
+  const invoice = await getStripeClient().invoices.retrieve(
+    subscription.latest_invoice,
+  );
+  return invoice.status === "paid"
+    ? (invoice as UsagePackChangeInvoiceInput)
+    : null;
+}
+
+async function retryApplyingDeferredUsagePackChange(
+  db: Db,
+  context: UsagePackChangeContext,
+  subscription: Stripe.Subscription,
+  signal: AbortSignal,
+): Promise<number> {
+  const change = context.changes.find((candidate) => {
+    return candidate.status === "applying" && candidate.kind !== "upgrade";
+  });
+  if (!change) {
+    return 0;
+  }
+  validateCurrentStripeProjection(context, subscription);
+  await scheduleDeferredUsagePackChange(
+    db,
+    context,
+    change,
+    subscription,
+    signal,
+  );
+  return 1;
+}
+
+async function usagePackChangeCandidateSubscriptionIds(
+  db: Pick<Db, "select">,
+  at: Date,
+  staleBefore: Date,
+): Promise<readonly string[]> {
+  const rows = await db
+    .select({
+      usagePackSubscriptionId:
+        usagePackAllocationChanges.usagePackSubscriptionId,
+    })
+    .from(usagePackAllocationChanges)
+    .where(
+      or(
+        and(
+          inArray(usagePackAllocationChanges.status, [
+            "applying",
+            "pending_payment",
+          ]),
+          lte(usagePackAllocationChanges.updatedAt, staleBefore),
+        ),
+        eq(usagePackAllocationChanges.status, "applied"),
+        and(
+          eq(usagePackAllocationChanges.status, "scheduled"),
+          lte(usagePackAllocationChanges.effectiveAt, at),
+        ),
+      ),
+    )
+    .limit(100);
+  return [
+    ...new Set(
+      rows.map((row) => {
+        return row.usagePackSubscriptionId;
+      }),
+    ),
+  ];
+}
+
+export async function reconcileUsagePackAllocationChanges(
+  db: Db,
+  signal: AbortSignal,
+): Promise<{
+  readonly reconciled: number;
+  readonly orgIds: readonly string[];
+}> {
+  if (!(await usagePackAllocationChangeSchemaAvailable(db))) {
+    return { reconciled: 0, orgIds: [] };
+  }
+  signal.throwIfAborted();
+  const at = nowDate();
+  const staleBefore = new Date(at.getTime() - CHANGE_RECONCILIATION_DELAY_MS);
+  const expiredPreviews = await db
+    .update(usagePackAllocationChanges)
+    .set({
+      status: "failed",
+      failureReason: "preview_expired",
+      completedAt: at,
+      updatedAt: at,
+    })
+    .where(
+      and(
+        eq(usagePackAllocationChanges.status, "previewed"),
+        lte(usagePackAllocationChanges.previewExpiresAt, at),
+      ),
+    )
+    .returning({ id: usagePackAllocationChanges.id });
+  signal.throwIfAborted();
+
+  const subscriptionIds = await usagePackChangeCandidateSubscriptionIds(
+    db,
+    at,
+    staleBefore,
+  );
+  signal.throwIfAborted();
+  const orgIds = new Set<string>();
+  let reconciled = expiredPreviews.length;
+  for (const usagePackSubscriptionId of subscriptionIds) {
+    const context = await loadUsagePackChangeContextBySubscriptionId(
+      db,
+      usagePackSubscriptionId,
+    );
+    signal.throwIfAborted();
+    if (!context?.subscription.stripeSubscriptionId) {
+      continue;
+    }
+    const subscription = await getStripeClient().subscriptions.retrieve(
+      context.subscription.stripeSubscriptionId,
+      { expand: ["latest_invoice"] },
+    );
+    signal.throwIfAborted();
+    const result = await reconcileUsagePackAllocationChangeSubscription(
+      db,
+      subscription,
+    );
+    reconciled += result.reconciled;
+    if (result.orgId) {
+      orgIds.add(result.orgId);
+    }
+    signal.throwIfAborted();
+
+    const refreshed = await loadUsagePackChangeContextBySubscriptionId(
+      db,
+      usagePackSubscriptionId,
+    );
+    if (!refreshed) {
+      continue;
+    }
+    reconciled += await retryApplyingDeferredUsagePackChange(
+      db,
+      refreshed,
+      subscription,
+      signal,
+    );
+    const hasOpenUpgrade = refreshed.changes.some((change) => {
+      return change.kind === "upgrade";
+    });
+    if (hasOpenUpgrade) {
+      const invoice = await paidUpgradeInvoiceForSubscription(subscription);
+      signal.throwIfAborted();
+      if (invoice) {
+        const outcome = await handleUsagePackAllocationChangeInvoicePaid(
+          db,
+          invoice,
+        );
+        reconciled += outcome.handled ? 1 : 0;
+        if (outcome.orgId) {
+          orgIds.add(outcome.orgId);
+        }
+      }
+    }
+    const afterInvoice = await loadUsagePackChangeContextBySubscriptionId(
+      db,
+      usagePackSubscriptionId,
+    );
+    if (afterInvoice) {
+      reconciled += await failExpiredUsagePackUpgrade(
+        db,
+        afterInvoice,
+        subscription,
+        at,
+      );
+    }
+    signal.throwIfAborted();
+  }
+  return { reconciled, orgIds: [...orgIds] };
+}
+
+function existingConfirmationResponse(
+  change: UsagePackAllocationChangeRow,
+): UsagePackChangeConfirmResponse | null {
+  switch (change.status) {
+    case "applied": {
+      return {
+        status: "processing",
+        effectiveAt: change.effectiveAt?.toISOString() ?? null,
+        hostedInvoiceUrl: null,
+      };
+    }
+    case "pending_payment": {
+      return {
+        status: "pending_payment",
+        effectiveAt: change.effectiveAt?.toISOString() ?? null,
+        hostedInvoiceUrl: null,
+      };
+    }
+    case "scheduled": {
+      return {
+        status: "scheduled",
+        effectiveAt: change.effectiveAt?.toISOString() ?? null,
+        hostedInvoiceUrl: null,
+      };
+    }
+    case "completed": {
+      return {
+        status: "completed",
+        effectiveAt: change.effectiveAt?.toISOString() ?? null,
+        hostedInvoiceUrl: null,
+      };
+    }
+    case "previewed":
+    case "applying":
+    case "failed": {
+      return null;
+    }
+  }
+}
+
+async function prepareUsagePackChangeConfirmation(
+  db: Db,
+  args: { readonly orgId: string; readonly changeId: string },
+): Promise<
+  | { readonly status: "ready"; readonly change: UsagePackAllocationChangeRow }
+  | {
+      readonly status: "resuming";
+      readonly change: UsagePackAllocationChangeRow;
+    }
+  | {
+      readonly status: "existing";
+      readonly response: UsagePackChangeConfirmResponse;
+    }
+  | { readonly status: "not_found" }
+  | { readonly status: "expired" }
+  | { readonly status: "conflict" }
+> {
+  const at = nowDate();
+  return await db.transaction(async (tx) => {
+    await lockUsagePackBillingOrg(tx, args.orgId);
+    const [change] = await tx
+      .select()
+      .from(usagePackAllocationChanges)
+      .where(
+        and(
+          eq(usagePackAllocationChanges.id, args.changeId),
+          eq(usagePackAllocationChanges.orgId, args.orgId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!change) {
+      return { status: "not_found" as const };
+    }
+    if (change.status === "applying") {
+      return { status: "resuming" as const, change };
+    }
+    const existing = existingConfirmationResponse(change);
+    if (existing) {
+      return { status: "existing" as const, response: existing };
+    }
+    if (change.status === "failed") {
+      return { status: "conflict" as const };
+    }
+    if (!change.previewExpiresAt || change.previewExpiresAt <= at) {
+      await tx
+        .update(usagePackAllocationChanges)
+        .set({
+          status: "failed",
+          failureReason: "preview_expired",
+          completedAt: at,
+          updatedAt: at,
+        })
+        .where(eq(usagePackAllocationChanges.id, change.id));
+      return { status: "expired" as const };
+    }
+    const [source] = await tx
+      .select()
+      .from(usagePackAllocations)
+      .where(eq(usagePackAllocations.id, change.sourceAllocationId))
+      .for("update")
+      .limit(1);
+    if (
+      !source ||
+      source.status !== "active" ||
+      source.userId !== change.userId ||
+      source.usagePackUsd !== change.sourceUsagePackUsd ||
+      source.stripePriceId !== change.sourceStripePriceId
+    ) {
+      await tx
+        .update(usagePackAllocationChanges)
+        .set({
+          status: "failed",
+          failureReason: "allocation_changed",
+          completedAt: at,
+          updatedAt: at,
+        })
+        .where(eq(usagePackAllocationChanges.id, change.id));
+      return { status: "conflict" as const };
+    }
+    const [prepared] = await tx
+      .update(usagePackAllocationChanges)
+      .set({ status: "applying", updatedAt: at })
+      .where(
+        and(
+          eq(usagePackAllocationChanges.id, change.id),
+          eq(usagePackAllocationChanges.status, "previewed"),
+        ),
+      )
+      .returning();
+    return prepared
+      ? { status: "ready" as const, change: prepared }
+      : { status: "conflict" as const };
+  });
+}
+
+async function confirmUsagePackDowngrade(
+  db: Db,
+  context: UsagePackChangeContext,
+  change: UsagePackAllocationChangeRow,
+  subscription: Stripe.Subscription,
+  signal: AbortSignal,
+): Promise<UsagePackChangeConfirmResult> {
+  if (!change.targetStripePriceId || change.targetUsagePackUsd === null) {
+    throw new Error("Usage pack downgrade has no target package");
+  }
+  const scheduled = await scheduleDeferredUsagePackChange(
+    db,
+    context,
+    change,
+    subscription,
+    signal,
+  );
+  return {
+    status: "confirmed",
+    response: {
+      status: "scheduled",
+      effectiveAt: scheduled.effectiveAt.toISOString(),
+      hostedInvoiceUrl: null,
+    },
+  };
+}
+
+async function confirmUsagePackUpgrade(
+  db: Db,
+  context: UsagePackChangeContext,
+  change: UsagePackAllocationChangeRow,
+  subscription: Stripe.Subscription,
+  signal: AbortSignal,
+): Promise<UsagePackChangeConfirmResult> {
+  if (!change.targetStripePriceId || change.targetUsagePackUsd === null) {
+    throw new Error("Usage pack upgrade has no target package");
+  }
+  if (subscription.pending_update) {
+    throw new Error("Stripe subscription already has a pending update");
+  }
+  if (change.prorationTimestamp === null) {
+    throw new Error("Usage pack upgrade has no proration timestamp");
+  }
+  const items = changeUpdateItems(
+    subscription,
+    change.sourceStripePriceId,
+    change.targetStripePriceId,
+  );
+  const updatedSubscription = await getStripeClient().subscriptions.update(
+    subscription.id,
+    {
+      items,
+      payment_behavior: "pending_if_incomplete",
+      proration_behavior: "always_invoice",
+      proration_date: change.prorationTimestamp,
+      expand: ["latest_invoice.payment_intent"],
+    },
+    { idempotencyKey: `usage-pack-change:${change.id}:apply` },
+  );
+  signal.throwIfAborted();
+  const invoice = latestInvoice(updatedSubscription);
+  const pendingExpiry = pendingUpdateExpiry(updatedSubscription);
+  const pending = Boolean(updatedSubscription.pending_update);
+  const updatedAt = nowDate();
+  await db
+    .update(usagePackAllocationChanges)
+    .set({
+      status: pending ? "pending_payment" : "applying",
+      stripeInvoiceId: invoice?.id ?? null,
+      stripePendingUpdateExpiresAt: pendingExpiry,
+      effectiveAt:
+        change.effectiveAt ?? new Date(change.prorationTimestamp * 1000),
+      updatedAt,
+    })
+    .where(
+      and(
+        eq(usagePackAllocationChanges.id, change.id),
+        eq(usagePackAllocationChanges.status, "applying"),
+      ),
+    );
+  signal.throwIfAborted();
+
+  if (!pending) {
+    await reconcileUsagePackAllocationChangeSubscription(
+      db,
+      updatedSubscription,
+    );
+    signal.throwIfAborted();
+    if (invoice?.status === "paid") {
+      await handleUsagePackAllocationChangeInvoicePaid(
+        db,
+        invoice as UsagePackChangeInvoiceInput,
+      );
+      signal.throwIfAborted();
+    }
+  }
+  const [finalChange] = await db
+    .select({ status: usagePackAllocationChanges.status })
+    .from(usagePackAllocationChanges)
+    .where(eq(usagePackAllocationChanges.id, change.id))
+    .limit(1);
+  const completed = finalChange?.status === "completed";
+  return {
+    status: "confirmed",
+    response: {
+      status: completed
+        ? "completed"
+        : pending
+          ? "pending_payment"
+          : "processing",
+      effectiveAt:
+        change.effectiveAt?.toISOString() ??
+        new Date(change.prorationTimestamp * 1000).toISOString(),
+      hostedInvoiceUrl: invoice?.hosted_invoice_url ?? null,
+    },
+  };
+}
+
+async function storedUsagePackConfirmationResult(
+  db: Db,
+  changeId: string,
+): Promise<UsagePackChangeConfirmResult | null> {
+  const [change] = await db
+    .select()
+    .from(usagePackAllocationChanges)
+    .where(eq(usagePackAllocationChanges.id, changeId))
+    .limit(1);
+  if (!change) {
+    return { status: "not_found" };
+  }
+  if (change.status === "failed") {
+    return { status: "conflict" };
+  }
+  const response = existingConfirmationResponse(change);
+  return response ? { status: "confirmed", response } : null;
+}
+
+async function resumeUsagePackChangeConfirmation(
+  db: Db,
+  change: UsagePackAllocationChangeRow,
+  subscription: Stripe.Subscription,
+  signal: AbortSignal,
+): Promise<UsagePackChangeConfirmResult | null> {
+  await reconcileUsagePackAllocationChangeSubscription(db, subscription);
+  signal.throwIfAborted();
+  let stored = await storedUsagePackConfirmationResult(db, change.id);
+  if (stored) {
+    if (
+      stored.status === "confirmed" &&
+      stored.response.status === "processing" &&
+      change.kind === "upgrade"
+    ) {
+      const invoice = await paidUpgradeInvoiceForSubscription(subscription);
+      signal.throwIfAborted();
+      if (invoice) {
+        await handleUsagePackAllocationChangeInvoicePaid(db, invoice);
+        signal.throwIfAborted();
+        stored = await storedUsagePackConfirmationResult(db, change.id);
+      }
+    }
+    return stored;
+  }
+  if (change.kind !== "upgrade" || !subscription.pending_update) {
+    return null;
+  }
+  const updatedAt = nowDate();
+  await db
+    .update(usagePackAllocationChanges)
+    .set({
+      status: "pending_payment",
+      stripeInvoiceId: stripeObjectId(subscription.latest_invoice),
+      stripePendingUpdateExpiresAt: pendingUpdateExpiry(subscription),
+      effectiveAt:
+        change.effectiveAt ??
+        (change.prorationTimestamp === null
+          ? null
+          : new Date(change.prorationTimestamp * 1000)),
+      updatedAt,
+    })
+    .where(
+      and(
+        eq(usagePackAllocationChanges.id, change.id),
+        eq(usagePackAllocationChanges.status, "applying"),
+      ),
+    );
+  signal.throwIfAborted();
+  return await storedUsagePackConfirmationResult(db, change.id);
+}
+
+export async function confirmUsagePackAllocationChange(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly changeId: string;
+    readonly signal: AbortSignal;
+  },
+): Promise<UsagePackChangeConfirmResult> {
+  const prepared = await prepareUsagePackChangeConfirmation(db, args);
+  if (prepared.status === "existing") {
+    return { status: "confirmed", response: prepared.response };
+  }
+  if (prepared.status !== "ready" && prepared.status !== "resuming") {
+    return prepared;
+  }
+  const change = prepared.change;
+  const context = await loadUsagePackChangeContextBySubscriptionId(
+    db,
+    change.usagePackSubscriptionId,
+  );
+  if (!context || !context.subscription.stripeSubscriptionId) {
+    throw new Error("Usage pack subscription disappeared during confirmation");
+  }
+  if (context.subscription.cancelAtPeriodEnd) {
+    const failedAt = nowDate();
+    await db
+      .update(usagePackAllocationChanges)
+      .set({
+        status: "failed",
+        failureReason: "subscription_change_pending",
+        completedAt: failedAt,
+        updatedAt: failedAt,
+      })
+      .where(
+        and(
+          eq(usagePackAllocationChanges.id, change.id),
+          eq(usagePackAllocationChanges.status, "applying"),
+        ),
+      );
+    return { status: "conflict" };
+  }
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(
+    context.subscription.stripeSubscriptionId,
+  );
+  args.signal.throwIfAborted();
+  const resumed = await resumeUsagePackChangeConfirmation(
+    db,
+    change,
+    subscription,
+    args.signal,
+  );
+  if (resumed) {
+    return resumed;
+  }
+  validateCurrentStripeProjection(context, subscription);
+  if (change.kind === "downgrade") {
+    return await confirmUsagePackDowngrade(
+      db,
+      context,
+      change,
+      subscription,
+      args.signal,
+    );
+  }
+  if (change.kind !== "upgrade") {
+    throw new Error("Usage pack removal cannot be confirmed manually");
+  }
+  return await confirmUsagePackUpgrade(
+    db,
+    context,
+    change,
+    subscription,
+    args.signal,
+  );
+}

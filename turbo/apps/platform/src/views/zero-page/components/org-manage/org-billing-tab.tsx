@@ -84,6 +84,7 @@ import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { UsagePackPricingPage } from "./usage-pack-pricing-page.tsx";
+import { UsagePackManagementSection } from "./usage-pack-management-section.tsx";
 
 const PLANS = [
   {
@@ -2002,7 +2003,7 @@ function BillingPricingPage({
 }) {
   const featureSwitches = useGet(featureSwitch$);
   const usagePackPlansEnabled =
-    featureSwitches[FeatureSwitchKey.UsagePackPlans] ?? false;
+    featureSwitches[FeatureSwitchKey.UsagePackPlans];
   return (
     <>
       {usagePackPlansEnabled ? (
@@ -2026,6 +2027,16 @@ function BillingPricingPage({
   );
 }
 
+function UsagePackManagementAvailability({
+  enabled,
+  hasScheduledChange,
+}: {
+  readonly enabled: boolean;
+  readonly hasScheduledChange: boolean;
+}) {
+  return enabled && !hasScheduledChange ? <UsagePackManagementSection /> : null;
+}
+
 export function OrgBillingTab() {
   const { t } = useTranslation();
   const featureSwitches = useGet(featureSwitch$);
@@ -2044,6 +2055,9 @@ export function OrgBillingTab() {
   const openRestore = useSet(openRestoreDialog$);
   const [portalLoadable, portal] = useLoadableSet(openBillingPortal$);
   const statusLoadable = useLastLoadable(billingStatusAsync$);
+  const featureSwitches = useGet(featureSwitch$);
+  const usagePackPlansEnabled =
+    featureSwitches[FeatureSwitchKey.UsagePackPlans];
   const loading = portalLoadable.state === "loading";
 
   const status =
@@ -2250,6 +2264,11 @@ export function OrgBillingTab() {
           )}
         </div>
       </section>
+
+      <UsagePackManagementAvailability
+        enabled={usagePackPlansEnabled}
+        hasScheduledChange={hasScheduledChange}
+      />
 
       {showBuyCredits && (
         <div ref={buyCreditsScrollRef}>

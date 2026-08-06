@@ -3,6 +3,7 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
+  zeroBillingUsagePackManagementContract,
   type MemberUsagePack,
   type UsagePackCatalogItem,
 } from "@vm0/api-contracts/contracts/zero-billing";
@@ -14,16 +15,21 @@ import { eq } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
-import { badRequestMessage, providerUnavailable } from "../../lib/error";
+import {
+  badRequestMessage,
+  conflict,
+  notFound,
+  providerUnavailable,
+} from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf } from "../context/request";
+import { bodyResultOf, pathParamsOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
 import {
   listAllOrganizationMemberships,
   listAllPendingOrganizationInvitations,
 } from "../external/clerk-organization-lists";
-import { db$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
 import {
   activePriceId,
   activeUsagePackPlanPriceId,
@@ -39,6 +45,12 @@ import {
   usagePackSubscriptionSchemaAvailable,
   type UsagePackCheckoutAllocation,
 } from "../services/usage-pack-subscription.service";
+import {
+  confirmUsagePackAllocationChange,
+  getUsagePackManagement,
+  previewUsagePackAllocationChange,
+  usagePackAllocationChangeSchemaAvailable,
+} from "../services/usage-pack-allocation-change.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -57,6 +69,16 @@ const usagePackCheckoutDisabled = Object.freeze({
   body: Object.freeze({
     error: Object.freeze({
       message: "Usage pack checkout is not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+const usagePackManagementDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Usage pack management is not enabled",
       code: "FORBIDDEN",
     }),
   }),
@@ -420,6 +442,191 @@ const usagePackCheckout$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
+const usagePackManagementAccess$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return { allowed: false as const, response: adminRequired };
+    }
+    if (!isStaffOrg(auth.orgId)) {
+      return {
+        allowed: false as const,
+        response: usagePackManagementDisabled,
+      };
+    }
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        overrides,
+      })
+    ) {
+      return {
+        allowed: false as const,
+        response: usagePackManagementDisabled,
+      };
+    }
+    return { allowed: true as const, auth };
+  },
+);
+
+const usagePackManagementGetAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const access = await set(usagePackManagementAccess$, signal);
+    if (!access.allowed) {
+      return access.response;
+    }
+    const db = get(db$);
+    const [subscriptionSchema, changeSchema] = await Promise.all([
+      usagePackSubscriptionSchemaAvailable(db),
+      usagePackAllocationChangeSchemaAvailable(db),
+    ]);
+    signal.throwIfAborted();
+    if (!subscriptionSchema || !changeSchema) {
+      return providerUnavailable("Usage pack billing is not ready");
+    }
+    const management = await getUsagePackManagement(db, access.auth.orgId);
+    signal.throwIfAborted();
+    if (!management) {
+      return notFound("Usage pack subscription not found");
+    }
+    return { status: 200 as const, body: management };
+  },
+);
+
+const usagePackChangePreviewAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const access = await set(usagePackManagementAccess$, signal);
+    if (!access.allowed) {
+      return access.response;
+    }
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingUsagePackManagementContract.previewChange),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const db = set(writeDb$);
+    const [subscriptionSchema, changeSchema] = await Promise.all([
+      usagePackSubscriptionSchemaAvailable(db),
+      usagePackAllocationChangeSchemaAvailable(db),
+    ]);
+    signal.throwIfAborted();
+    if (!subscriptionSchema || !changeSchema) {
+      return providerUnavailable("Usage pack billing is not ready");
+    }
+    const result = await previewUsagePackAllocationChange(db, {
+      orgId: access.auth.orgId,
+      userId: bodyResult.data.memberId,
+      targetUsagePackUsd: bodyResult.data.targetUsagePackUsd,
+      signal,
+    });
+    if (result.status === "not_found") {
+      return notFound("Usage pack allocation not found");
+    }
+    if (result.status === "same_package") {
+      return badRequestMessage("Member already has this usage pack");
+    }
+    if (result.status === "conflict") {
+      return conflict("Another usage pack billing change is in progress");
+    }
+    return { status: 200 as const, body: result.preview };
+  },
+);
+
+const usagePackChangeConfirmAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const access = await set(usagePackManagementAccess$, signal);
+    if (!access.allowed) {
+      return access.response;
+    }
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingUsagePackManagementContract.confirmChange),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const { changeId } = get(
+      pathParamsOf(zeroBillingUsagePackManagementContract.confirmChange),
+    );
+    const db = set(writeDb$);
+    const [subscriptionSchema, changeSchema] = await Promise.all([
+      usagePackSubscriptionSchemaAvailable(db),
+      usagePackAllocationChangeSchemaAvailable(db),
+    ]);
+    signal.throwIfAborted();
+    if (!subscriptionSchema || !changeSchema) {
+      return providerUnavailable("Usage pack billing is not ready");
+    }
+    const result = await confirmUsagePackAllocationChange(db, {
+      orgId: access.auth.orgId,
+      changeId,
+      signal,
+    });
+    if (result.status === "not_found") {
+      return notFound("Usage pack change not found");
+    }
+    if (result.status === "expired") {
+      return badRequestMessage("Usage pack change preview expired");
+    }
+    if (result.status === "conflict") {
+      return conflict("Usage pack allocation changed; create a new preview");
+    }
+    return { status: 200 as const, body: result.response };
+  },
+);
+
+const usagePackManagementGet$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+    return await set(
+      authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        usagePackManagementGetAuthed$,
+      ),
+      signal,
+    );
+  },
+);
+
+const usagePackChangePreview$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+    return await set(
+      authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        usagePackChangePreviewAuthed$,
+      ),
+      signal,
+    );
+  },
+);
+
+const usagePackChangeConfirm$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+    return await set(
+      authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        usagePackChangeConfirmAuthed$,
+      ),
+      signal,
+    );
+  },
+);
+
 const checkoutCompleteAuthed$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -494,5 +701,17 @@ export const zeroBillingCheckoutRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingUsagePackCatalogContract.get,
     handler: usagePackCatalog$,
+  },
+  {
+    route: zeroBillingUsagePackManagementContract.get,
+    handler: usagePackManagementGet$,
+  },
+  {
+    route: zeroBillingUsagePackManagementContract.previewChange,
+    handler: usagePackChangePreview$,
+  },
+  {
+    route: zeroBillingUsagePackManagementContract.confirmChange,
+    handler: usagePackChangeConfirm$,
   },
 ];
