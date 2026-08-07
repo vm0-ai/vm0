@@ -645,6 +645,43 @@ export async function expectComposerModel(label: string): Promise<void> {
   await expect(findComposerModel(label)).resolves.toBeInTheDocument();
 }
 
+// `fill` clears the composer with select-all before pasting, which would also
+// delete inline template nodes. Appending at the caret keeps templates that
+// were already inserted into the composer document.
+export async function appendAndSend(
+  user: ReturnType<typeof userEvent.setup>,
+  text: string,
+  editor?: HTMLElement,
+): Promise<void> {
+  if (editor) {
+    await user.click(editor);
+  }
+  await user.keyboard(text);
+  await user.keyboard("{Enter}");
+}
+
+export function composerInlineTemplates(): HTMLElement[] {
+  return Array.from(
+    document.querySelectorAll("[data-composer-inline-template]"),
+  ).filter((element): element is HTMLElement => {
+    return element instanceof HTMLElement;
+  });
+}
+
+// Selecting a template inserts an inline node into the composer document, so
+// the permanent signal is the node itself rather than a picker selection.
+export async function expectInlineTemplateInComposer(
+  title: string,
+): Promise<void> {
+  await waitFor(() => {
+    expect(
+      composerInlineTemplates().map((node) => {
+        return node.textContent;
+      }),
+    ).toContain(title);
+  });
+}
+
 export async function selectTemplate(
   user: ReturnType<typeof userEvent.setup>,
   template: PresentationTemplateItem,
@@ -662,11 +699,8 @@ export async function selectTemplate(
 
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Template")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
   });
+  await expectInlineTemplateInComposer(template.title);
 }
 
 export async function selectIllustrationTemplate(
@@ -687,11 +721,8 @@ export async function selectIllustrationTemplate(
 
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Template")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
   });
+  await expectInlineTemplateInComposer(template.title);
 }
 
 export function chatClipboardHtml(payload: {
@@ -738,18 +769,6 @@ export async function findComposerEditor(): Promise<HTMLElement> {
     }
     return editor;
   });
-}
-
-export async function expectTemplateAttachedToComposer(
-  removeAriaLabel: string,
-): Promise<void> {
-  const editor = await findComposerEditor();
-  const removeButton = screen.getByLabelText(removeAriaLabel);
-  const attachment = removeButton.closest(
-    "[data-composer-template-attachment]",
-  );
-  expect(attachment).toBeInTheDocument();
-  expect(editor).toContainElement(attachment as HTMLElement);
 }
 
 export function placeCaretAfterText(root: HTMLElement, text: string): void {

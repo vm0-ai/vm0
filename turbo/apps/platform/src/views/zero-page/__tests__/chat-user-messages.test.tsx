@@ -331,7 +331,7 @@ describe("user messages", () => {
       return element as HTMLElement;
     });
     expect(userMessageElement.textContent).toBe(
-      "Start Archived source with , then " +
+      "Archived deckStart Archived source with , then " +
         "TXTdeleted-notes.txt.\n" +
         "Use **literal** <span>.",
     );
@@ -343,12 +343,10 @@ describe("user messages", () => {
     expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
     const template = screen.getByLabelText("Message template Archived deck");
     const image = screen.getByLabelText("Preview reference.png");
-    expect(template).toBeInTheDocument();
     expect(image).toBeInTheDocument();
-    expect(
-      template.compareDocumentPosition(userMessageElement) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // Templates render inline at their position in the message, so the chip
+    // stays inside the bubble instead of being elevated above it.
+    expect(userMessageElement).toContainElement(template);
     expect(
       image.compareDocumentPosition(userMessageElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,

@@ -647,8 +647,8 @@ describe("chat drafts", () => {
         ),
       ).toHaveTextContent("Launch research");
       expect(
-        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
-      ).toBeInTheDocument();
+        editor.querySelector("[data-composer-inline-template]"),
+      ).toHaveTextContent(illustrationTemplate.title);
       const feedbackItem = editor.querySelector("[data-feedback-item]");
       expect(feedbackItem).toHaveTextContent("The launch sequence is vague");
       expect(feedbackItem).toHaveTextContent(
@@ -679,16 +679,18 @@ describe("chat drafts", () => {
         draftUserMessage: {
           version: 1,
           parts: [
-            {
-              type: "template",
-              titleSnapshot: illustrationTemplate.title,
-              template,
-            },
+            // Elevated file parts lead the document; the inline template keeps
+            // its place in the text flow behind them.
             {
               type: "file",
               fileId: secondAttachment.id,
               filenameSnapshot: secondAttachment.filename,
               contentType: secondAttachment.contentType,
+            },
+            {
+              type: "template",
+              titleSnapshot: illustrationTemplate.title,
+              template,
             },
             { type: "text", text: "Review " },
             {
