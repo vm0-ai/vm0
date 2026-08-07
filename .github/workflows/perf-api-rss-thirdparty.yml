@@ -1,4 +1,4 @@
-name: Perf API RSS Third-Party Ablation
+name: Perf API RSS Third-Party Floor
 
 on:
   push:
@@ -18,22 +18,10 @@ jobs:
     timeout-minutes: 30
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    strategy:
-      fail-fast: false
-      max-parallel: 8
-      matrix:
-        variant:
-          - head
-          - no-vitest-globals
-          - no-dom-lib
-          - no-vitest-and-dom
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
       - uses: ./.github/actions/toolchain-init
-      - name: Apply ablation
-        run: bash .github/scripts/rss-thirdparty-ablate.sh "${{ matrix.variant }}"
-      - name: Measure tsc peak RSS
-        working-directory: turbo/apps/api
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/rss-thirdparty-measure.sh" "${{ matrix.variant }}"
+      - name: Measure per-package floor
+        run: bash .github/scripts/rss-thirdparty-floor.sh
