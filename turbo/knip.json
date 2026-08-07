@@ -130,6 +130,10 @@
     "packages/proxy": {
       "entry": [],
       "project": ["**/*.{js,json}"]
+    },
+    "packages/pi-agent-runtime": {
+      "entry": ["src/**/*.{test,spec}.ts"],
+      "project": ["src/**/*.ts"]
     }
   },
   "ignoreIssues": {

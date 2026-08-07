@@ -7,14 +7,14 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
+import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+
 import {
-  createPiReadTool,
   formatPiUserPrompt,
   loadPiRunSkills,
-  NodeExecutionEnv,
-  piMessageRequiresSandbox,
   renderPiSystemPrompt,
-} from "./node";
+} from "./runtime";
+import { createPiReadTool, piMessageRequiresSandbox } from "./tools";
 
 const SHA256_ZERO = `sha256:${"0".repeat(64)}`;
 
