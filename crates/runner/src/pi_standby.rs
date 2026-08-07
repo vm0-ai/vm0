@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, Weak};
 
@@ -16,11 +17,6 @@ pub(crate) enum PiStandbySignal {
     Release,
 }
 
-enum PiStandbyDelivery {
-    Signal(PiStandbySignal),
-    Superseded,
-}
-
 #[derive(Clone)]
 pub(crate) struct PiStandbyNotifications {
     state: Arc<Mutex<PiStandbyNotificationState>>,
@@ -28,21 +24,14 @@ pub(crate) struct PiStandbyNotifications {
 
 pub(crate) struct PiStandbySubscription {
     run_id: RunId,
-    registration_id: u64,
-    receiver: oneshot::Receiver<PiStandbyDelivery>,
+    receiver: oneshot::Receiver<PiStandbySignal>,
     state: Weak<Mutex<PiStandbyNotificationState>>,
 }
 
 #[derive(Default)]
 struct PiStandbyNotificationState {
-    active_waiters: HashMap<RunId, ActivePiStandbyWaiter>,
+    active_waiters: HashMap<RunId, oneshot::Sender<PiStandbySignal>>,
     pending: PendingPiStandbyNotifications,
-    next_registration_id: u64,
-}
-
-struct ActivePiStandbyWaiter {
-    registration_id: u64,
-    sender: oneshot::Sender<PiStandbyDelivery>,
 }
 
 #[derive(Default)]
@@ -75,32 +64,13 @@ impl PendingPiStandbyNotifications {
 }
 
 impl PiStandbyNotificationState {
-    fn next_registration_id(&mut self) -> u64 {
-        self.next_registration_id += 1;
-        self.next_registration_id
-    }
-
     fn deliver_or_cache(&mut self, run_id: RunId, signal: PiStandbySignal) {
-        let Some(waiter) = self.active_waiters.remove(&run_id) else {
+        let Some(sender) = self.active_waiters.remove(&run_id) else {
             self.pending.insert(run_id, signal);
             return;
         };
-        if waiter
-            .sender
-            .send(PiStandbyDelivery::Signal(signal))
-            .is_err()
-        {
+        if sender.send(signal).is_err() {
             self.pending.insert(run_id, signal);
-        }
-    }
-
-    fn remove_waiter(&mut self, run_id: RunId, registration_id: u64) {
-        if self
-            .active_waiters
-            .get(&run_id)
-            .is_some_and(|waiter| waiter.registration_id == registration_id)
-        {
-            self.active_waiters.remove(&run_id);
         }
     }
 }
@@ -118,27 +88,26 @@ impl PiStandbyNotifications {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let registration_id = state.next_registration_id();
-        let superseded = if let Some(signal) = state.pending.take(run_id) {
-            let _ = sender.send(PiStandbyDelivery::Signal(signal));
-            None
+        let duplicate = if let Some(signal) = state.pending.take(run_id) {
+            let _ = sender.send(signal);
+            false
         } else {
-            state.active_waiters.insert(
-                run_id,
-                ActivePiStandbyWaiter {
-                    registration_id,
-                    sender,
-                },
-            )
+            match state.active_waiters.entry(run_id) {
+                Entry::Vacant(entry) => {
+                    entry.insert(sender);
+                    false
+                }
+                Entry::Occupied(_) => true,
+            }
         };
         drop(state);
-        if let Some(waiter) = superseded {
-            let _ = waiter.sender.send(PiStandbyDelivery::Superseded);
-        }
+        assert!(
+            !duplicate,
+            "Pi standby subscription already active for run {run_id}"
+        );
 
         PiStandbySubscription {
             run_id,
-            registration_id,
             receiver,
             state: Arc::downgrade(&self.state),
         }
@@ -153,15 +122,13 @@ impl PiStandbyNotifications {
 }
 
 impl PiStandbySubscription {
-    /// Returns `None` when a newer subscription replaces this registration.
-    pub(crate) async fn wait(mut self) -> Option<PiStandbySignal> {
+    pub(crate) async fn wait(mut self) -> PiStandbySignal {
         let result = (&mut self.receiver).await;
         match result {
-            Ok(PiStandbyDelivery::Signal(signal)) => Some(signal),
-            Ok(PiStandbyDelivery::Superseded) => None,
+            Ok(signal) => signal,
             // Subscriptions hold a weak state reference, so closure means the
             // final notification owner has gone away.
-            Err(_) => Some(PiStandbySignal::Release),
+            Err(_) => PiStandbySignal::Release,
         }
     }
 }
@@ -178,13 +145,10 @@ impl Drop for PiStandbySubscription {
         let mut state = state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        match delivery {
-            Some(PiStandbyDelivery::Signal(signal)) => {
-                state.deliver_or_cache(self.run_id, signal);
-            }
-            Some(PiStandbyDelivery::Superseded) | None => {
-                state.remove_waiter(self.run_id, self.registration_id);
-            }
+        if let Some(signal) = delivery {
+            state.deliver_or_cache(self.run_id, signal);
+        } else {
+            state.active_waiters.remove(&self.run_id);
         }
     }
 }
@@ -214,7 +178,7 @@ mod tests {
 
             notifications.notify(run_id, signal);
 
-            assert_eq!(wait.await, Some(signal));
+            assert_eq!(wait.await, signal);
         }
     }
 
@@ -230,7 +194,7 @@ mod tests {
                 notifications.notify(RunId::new_v4(), PiStandbySignal::Handoff);
             }
 
-            assert_eq!(subscription.wait().await, Some(signal));
+            assert_eq!(subscription.wait().await, signal);
         }
     }
 
@@ -242,7 +206,7 @@ mod tests {
 
         let subscription = notifications.subscribe(run_id);
 
-        assert_eq!(subscription.wait().await, Some(PiStandbySignal::Handoff));
+        assert_eq!(subscription.wait().await, PiStandbySignal::Handoff);
 
         let next_subscription = notifications.subscribe(run_id);
         let wait = next_subscription.wait();
@@ -251,7 +215,7 @@ mod tests {
 
         notifications.notify(run_id, PiStandbySignal::Release);
 
-        assert_eq!(wait.await, Some(PiStandbySignal::Release));
+        assert_eq!(wait.await, PiStandbySignal::Release);
     }
 
     #[tokio::test]
@@ -265,21 +229,23 @@ mod tests {
 
         assert_eq!(
             notifications.subscribe(run_id).wait().await,
-            Some(PiStandbySignal::Handoff)
+            PiStandbySignal::Handoff
         );
     }
 
     #[tokio::test]
-    async fn dropping_superseded_subscription_preserves_replacement() {
+    async fn duplicate_subscription_panics_without_replacing_original() {
         let notifications = PiStandbyNotifications::new();
         let run_id = RunId::new_v4();
         let subscription = notifications.subscribe(run_id);
-        let replacement = notifications.subscribe(run_id);
-        drop(subscription);
+
+        let duplicate = std::panic::catch_unwind(|| notifications.subscribe(run_id));
+
+        assert!(duplicate.is_err());
 
         notifications.notify(run_id, PiStandbySignal::Release);
 
-        assert_eq!(replacement.wait().await, Some(PiStandbySignal::Release));
+        assert_eq!(subscription.wait().await, PiStandbySignal::Release);
     }
 
     #[tokio::test]
@@ -293,7 +259,7 @@ mod tests {
 
         assert_eq!(
             notifications.subscribe(run_id).wait().await,
-            Some(PiStandbySignal::Release)
+            PiStandbySignal::Release
         );
     }
 
@@ -309,18 +275,8 @@ mod tests {
 
         assert_eq!(
             notifications.subscribe(run_id).wait().await,
-            Some(PiStandbySignal::Release)
+            PiStandbySignal::Release
         );
-    }
-
-    #[tokio::test]
-    async fn superseded_subscription_finishes_without_signal() {
-        let notifications = PiStandbyNotifications::new();
-        let run_id = RunId::new_v4();
-        let subscription = notifications.subscribe(run_id);
-        let _replacement = notifications.subscribe(run_id);
-
-        assert_eq!(subscription.wait().await, None);
     }
 
     #[tokio::test]
@@ -329,6 +285,6 @@ mod tests {
         let subscription = notifications.subscribe(RunId::new_v4());
         drop(notifications);
 
-        assert_eq!(subscription.wait().await, Some(PiStandbySignal::Release));
+        assert_eq!(subscription.wait().await, PiStandbySignal::Release);
     }
 }
