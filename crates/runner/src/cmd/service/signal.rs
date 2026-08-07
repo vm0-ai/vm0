@@ -1,9 +1,14 @@
 use std::process::ExitStatus;
+use std::time::Duration;
+
+use tokio::time::Instant;
 
 use crate::error::{RunnerError, RunnerResult};
 
 use super::diagnostic::status_field_preview;
-use super::systemctl::has_service_main_process;
+use super::systemctl::{
+    has_service_main_process, has_service_main_process_bounded, run_command_output_bounded,
+};
 use super::target::RunnerServiceUnit;
 
 /// Outcome of asking systemd to signal a unit's main process.
@@ -54,6 +59,51 @@ pub(super) async fn signal_service_main(
     }
 }
 
+/// Ask systemd to signal the current main process within a cleanup deadline.
+///
+/// Unlike an outer future timeout, the bounded command path kills and reaps a
+/// timed-out `systemctl` child before returning.
+pub(super) async fn signal_service_main_bounded(
+    unit: &RunnerServiceUnit,
+    signal: nix::sys::signal::Signal,
+    duration: Duration,
+) -> RunnerResult<ServiceSignalOutcome> {
+    let deadline = Instant::now() + duration;
+    let signal_arg = format!("--signal={}", signal.as_str());
+    let output = run_command_output_bounded(
+        "systemctl",
+        &[
+            "kill",
+            "--kill-whom=main",
+            signal_arg.as_str(),
+            unit.service_name(),
+        ],
+        duration,
+    )
+    .await
+    .map_err(|error| {
+        RunnerError::Internal(format!(
+            "signal {} with systemctl for {}: {error}",
+            signal.as_str(),
+            unit.service_name()
+        ))
+    })?;
+
+    if output.status.success() {
+        return Ok(ServiceSignalOutcome::Sent);
+    }
+
+    let signal_error = systemctl_kill_error(unit, signal, output.status, &output.stderr);
+    let now = Instant::now();
+    if now >= deadline {
+        return Err(signal_error);
+    }
+    match has_service_main_process_bounded(unit, deadline - now).await {
+        Ok(false) => Ok(ServiceSignalOutcome::AlreadyGone),
+        Ok(true) | Err(_) => Err(signal_error),
+    }
+}
+
 fn systemctl_kill_error(
     unit: &RunnerServiceUnit,
     signal: nix::sys::signal::Signal,
@@ -97,8 +147,9 @@ printf '%s\n' "$*" >> "$VM0_RUN_SERVICE_SIGNAL_INVOCATIONS"
 
 if [ "$1" = "kill" ]; then
   case "$VM0_RUN_SERVICE_SIGNAL_SCENARIO" in
-    success-*) exit 0 ;;
-    absent|live|recheck-failed)
+    success-*|bounded-success) exit 0 ;;
+    bounded-timeout) while :; do :; done ;;
+    absent|bounded-absent|live|recheck-failed)
       printf '%s\n' 'signal delivery failed' >&2
       exit 1
       ;;
@@ -107,7 +158,7 @@ fi
 
 if [ "$1" = "show" ]; then
   case "$VM0_RUN_SERVICE_SIGNAL_SCENARIO" in
-    absent)
+    absent|bounded-absent)
       printf '%s\n' 'LoadState=loaded' 'MainPID=0'
       exit 0
       ;;
@@ -167,6 +218,28 @@ exit 2
 
         assert_eq!(
             invocations,
+            vec![expected_kill_invocation(signal), expected_show_invocation()]
+        );
+    }
+
+    #[tokio::test]
+    async fn signal_service_main_bounded_times_out_systemctl() {
+        let signal = nix::sys::signal::Signal::SIGUSR1;
+        let invocations = run_signal_scenario("bounded-timeout", signal).await;
+
+        assert_eq!(invocations, vec![expected_kill_invocation(signal)]);
+    }
+
+    #[tokio::test]
+    async fn signal_service_main_bounded_preserves_signal_outcomes() {
+        let signal = nix::sys::signal::Signal::SIGUSR1;
+
+        let sent_invocations = run_signal_scenario("bounded-success", signal).await;
+        assert_eq!(sent_invocations, vec![expected_kill_invocation(signal)]);
+
+        let gone_invocations = run_signal_scenario("bounded-absent", signal).await;
+        assert_eq!(
+            gone_invocations,
             vec![expected_kill_invocation(signal), expected_show_invocation()]
         );
     }
@@ -232,13 +305,20 @@ exit 2
             value => panic!("unexpected signal scenario value: {value:?}"),
         };
         let unit = RunnerServiceUnit::from_suffix("test").unwrap();
-        let result = signal_service_main(&unit, signal).await;
+        let result = if scenario.starts_with("bounded-") {
+            signal_service_main_bounded(&unit, signal, Duration::from_millis(100)).await
+        } else {
+            signal_service_main(&unit, signal).await
+        };
 
         match scenario.as_str() {
             "success-sigusr1" | "success-sigusr2" => {
                 assert_eq!(result.unwrap(), ServiceSignalOutcome::Sent);
             }
-            "absent" => {
+            "bounded-success" => {
+                assert_eq!(result.unwrap(), ServiceSignalOutcome::Sent);
+            }
+            "absent" | "bounded-absent" => {
                 assert_eq!(result.unwrap(), ServiceSignalOutcome::AlreadyGone);
             }
             "live" | "recheck-failed" => {
@@ -250,6 +330,13 @@ exit 2
                 assert!(
                     !error.contains("state lookup failed"),
                     "recheck error replaced original failure: {error}"
+                );
+            }
+            "bounded-timeout" => {
+                let error = result.unwrap_err().to_string();
+                assert!(
+                    error.contains("systemctl timed out after 100ms"),
+                    "unexpected error: {error}"
                 );
             }
             unexpected => panic!("unexpected service signal scenario: {unexpected}"),
