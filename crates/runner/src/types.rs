@@ -39,6 +39,8 @@ pub struct Job {
     #[serde(default)]
     pub history_generation_run_id: Option<RunId>,
     #[serde(default)]
+    pub runner_preference_decision: Option<serde_json::Value>,
+    #[serde(default)]
     pub runner_preference: Option<serde_json::Value>,
     #[serde(default)]
     pub runner_preference_resolution: Option<serde_json::Value>,
