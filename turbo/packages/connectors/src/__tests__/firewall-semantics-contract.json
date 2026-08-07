@@ -683,6 +683,22 @@
       "expected": {
         "kind": "no-match"
       }
+    },
+    {
+      "name": "mixed greedy plus path prefix fails closed",
+      "path": "/api/file-123",
+      "pattern": "/api/file-{id+}",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed greedy star path prefix fails closed",
+      "path": "/api/file-123",
+      "pattern": "/api/file-{id*}",
+      "expected": {
+        "kind": "no-match"
+      }
     }
   ],
   "baseUrlMatchCases": [

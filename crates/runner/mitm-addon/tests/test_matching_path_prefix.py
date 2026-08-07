@@ -63,10 +63,6 @@ class TestMatchPathPrefix:
     def test_greedy_param_rejects_non_terminal_position(self, pattern):
         assert matching.match_path_prefix(["v1", "acme", "tail"], pattern) is None
 
-    @pytest.mark.parametrize("pattern", [["v1", "file-{id+}"], ["v1", "file-{id*}"]])
-    def test_greedy_param_rejects_mixed_segment(self, pattern):
-        assert matching.match_path_prefix(["v1", "file-123"], pattern) is None
-
 
 # =========================================================================
 # match_base_url

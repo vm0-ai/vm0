@@ -240,15 +240,6 @@ describe("matchFirewallPathPrefix", () => {
     ).toBeNull();
   });
 
-  it("rejects mixed greedy path params in base prefixes", () => {
-    expect(
-      matchFirewallPathPrefix("/api/file-123", "/api/file-{id+}"),
-    ).toBeNull();
-    expect(
-      matchFirewallPathPrefix("/api/file-123", "/api/file-{id*}"),
-    ).toBeNull();
-  });
-
   it("requires plus greedy path params to consume a non-empty segment", () => {
     expect(matchFirewallPathPrefix("/api", "/api/{rest+}")).toBeNull();
     expect(matchFirewallPathPrefix("/api/", "/api/{rest+}")).toBeNull();
