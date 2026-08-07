@@ -43,6 +43,7 @@ type DowngradeTargetTier = "limited-free-1" | "pro-suspend" | "pro";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
+export type ConcurrencyCancellationMode = "reduce" | "cancel";
 
 const RESTORE_PAYMENT_PENDING_KEY = "vm0:billing:restore-payment-pending";
 const DOWNGRADE_PAYMENT_PENDING_KEY = "vm0:billing:downgrade-payment-pending";
@@ -216,6 +217,10 @@ const internalConcurrencyPurchaseDialogOpen$ = state(false);
 const internalConcurrencyConfirmDialog$ = state<{
   readonly action: "cancel" | "restore";
   readonly subscriptionId: string;
+  readonly currentQuantity: number;
+  readonly canReduce: boolean;
+  readonly cancellationMode: ConcurrencyCancellationMode;
+  readonly reductionQuantity: number | null;
 } | null>(null);
 
 // ---------------------------------------------------------------------------
@@ -267,13 +272,48 @@ export const closeConcurrencyPurchaseDialog$ = command(({ set }) => {
   set(internalConcurrencyPurchaseDialogOpen$, false);
 });
 export const openConcurrencyConfirmDialog$ = command(
-  ({ set }, action: "cancel" | "restore", subscriptionId: string) => {
-    set(internalConcurrencyConfirmDialog$, { action, subscriptionId });
+  (
+    { set },
+    action: "cancel" | "restore",
+    subscriptionId: string,
+    currentQuantity: number,
+    canReduce: boolean,
+  ) => {
+    const reductionAvailable =
+      action === "cancel" && canReduce && currentQuantity > 1;
+    set(internalConcurrencyConfirmDialog$, {
+      action,
+      subscriptionId,
+      currentQuantity,
+      canReduce: reductionAvailable,
+      cancellationMode: reductionAvailable ? "reduce" : "cancel",
+      reductionQuantity: reductionAvailable ? currentQuantity - 1 : null,
+    });
   },
 );
 export const closeConcurrencyConfirmDialog$ = command(({ set }) => {
   set(internalConcurrencyConfirmDialog$, null);
 });
+export const setConcurrencyCancellationMode$ = command(
+  ({ set }, mode: ConcurrencyCancellationMode) => {
+    set(internalConcurrencyConfirmDialog$, (dialog) => {
+      if (!dialog || dialog.action !== "cancel" || !dialog.canReduce) {
+        return dialog;
+      }
+      return { ...dialog, cancellationMode: mode };
+    });
+  },
+);
+export const setConcurrencyReductionQuantity$ = command(
+  ({ set }, quantity: number | null) => {
+    set(internalConcurrencyConfirmDialog$, (dialog) => {
+      if (!dialog || dialog.action !== "cancel" || !dialog.canReduce) {
+        return dialog;
+      }
+      return { ...dialog, reductionQuantity: quantity };
+    });
+  },
+);
 /**
  * Async computed signal that fetches billing status on first access.
  * Use with useLastLoadable() in views for automatic loading.
@@ -355,6 +395,15 @@ export const handleBillingRedirect$ = command(({ get, set }) => {
     toast.success(
       i18n.t(($) => {
         return $.billing.toasts.concurrencyAdded;
+      }),
+    );
+    set(reloadBillingStatus$);
+  }
+
+  if (concurrency === "reduced") {
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.concurrencyReduced;
       }),
     );
     set(reloadBillingStatus$);
@@ -556,6 +605,36 @@ export const startConcurrencyCheckout$ = command(
     } else {
       window.location.href = result.body.url;
     }
+  },
+);
+
+export const startConcurrencyReduction$ = command(
+  async (
+    { get },
+    args: { readonly subscriptionId: string; readonly quantity: number },
+    signal: AbortSignal,
+  ) => {
+    const successUrl = new URL("/", window.location.origin);
+    successUrl.searchParams.set("concurrency", "reduced");
+    const cancelUrl = checkoutReturnUrl();
+    cancelUrl.searchParams.set("concurrency", "canceled");
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const result = await accept(
+      client.reduce({
+        params: { subscriptionId: args.subscriptionId },
+        body: {
+          quantity: args.quantity,
+          successUrl: successUrl.toString(),
+          cancelUrl: cancelUrl.toString(),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    window.location.href = result.body.url;
   },
 );
 

@@ -57,6 +57,23 @@ interface StartConcurrencyPurchaseArgs {
   readonly cancelUrl: string;
 }
 
+interface StartConcurrencySubscriptionUpdateArgs {
+  readonly subscriptionId: string;
+  readonly portalConfigurationId: string;
+  readonly update:
+    | { readonly type: "increase"; readonly quantity: number }
+    | { readonly type: "reduce"; readonly quantity: number };
+  readonly successUrl: string;
+  readonly cancelUrl: string;
+}
+
+type StartConcurrencySubscriptionUpdateResult =
+  | { readonly ok: true; readonly url: string }
+  | {
+      readonly ok: false;
+      readonly reason: "not_reduction" | "pending_update";
+    };
+
 const CREDITS_PER_DOLLAR = 1000;
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 export type SubscriptionCheckoutTier =
@@ -489,18 +506,90 @@ function expandedLatestInvoice(
     : subscription.latest_invoice;
 }
 
-function concurrencySubscriptionItem(subscription: Stripe.Subscription): {
+function concurrencySubscriptionItem(
+  items: readonly Stripe.SubscriptionItem[],
+): {
   readonly id: string;
   readonly quantity: number;
-} {
-  const item = subscription.items.data.find((candidate) => {
+} | null {
+  const item = items.find((candidate) => {
     return isConcurrencyPriceId(candidate.price.id);
   });
   if (!item || !item.quantity) {
-    throw new Error("Concurrency subscription has no active concurrency item");
+    return null;
   }
   return { id: item.id, quantity: item.quantity };
 }
+
+export const startConcurrencySubscriptionUpdate$ = command(
+  async (
+    _,
+    args: StartConcurrencySubscriptionUpdateArgs,
+    signal: AbortSignal,
+  ): Promise<StartConcurrencySubscriptionUpdateResult> => {
+    const stripe = getStripeClient();
+    const subscription = await stripe.subscriptions.retrieve(
+      args.subscriptionId,
+      { expand: ["latest_invoice"] },
+    );
+    signal.throwIfAborted();
+
+    const pendingInvoice = expandedLatestInvoice(subscription);
+    if (subscription.pending_update) {
+      if (args.update.type === "reduce") {
+        const pendingItem = concurrencySubscriptionItem(
+          subscription.pending_update.subscription_items ?? [],
+        );
+        if (pendingItem?.quantity !== args.update.quantity) {
+          return { ok: false, reason: "pending_update" };
+        }
+      }
+      if (!pendingInvoice?.hosted_invoice_url) {
+        throw new Error(
+          "Pending concurrency subscription update has no hosted invoice URL",
+        );
+      }
+      return { ok: true, url: pendingInvoice.hosted_invoice_url };
+    }
+
+    const item = concurrencySubscriptionItem(subscription.items.data);
+    if (!item) {
+      throw new Error(
+        "Concurrency subscription has no active concurrency item",
+      );
+    }
+    const targetQuantity =
+      args.update.type === "increase"
+        ? item.quantity + args.update.quantity
+        : args.update.quantity;
+    if (args.update.type === "reduce" && targetQuantity >= item.quantity) {
+      return { ok: false, reason: "not_reduction" };
+    }
+
+    const customerId =
+      typeof subscription.customer === "string"
+        ? subscription.customer
+        : subscription.customer.id;
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      configuration: args.portalConfigurationId,
+      return_url: args.cancelUrl,
+      flow_data: {
+        type: "subscription_update_confirm",
+        after_completion: {
+          type: "redirect",
+          redirect: { return_url: args.successUrl },
+        },
+        subscription_update_confirm: {
+          subscription: subscription.id,
+          items: [{ id: item.id, quantity: targetQuantity }],
+        },
+      },
+    });
+    signal.throwIfAborted();
+    return { ok: true, url: session.url };
+  },
+);
 
 export const startConcurrencyPurchase$ = command(
   async (
@@ -510,50 +599,26 @@ export const startConcurrencyPurchase$ = command(
   ): Promise<string> => {
     const stripe = getStripeClient();
     if (args.existingSubscriptionId) {
-      const subscription = await stripe.subscriptions.retrieve(
-        args.existingSubscriptionId,
-        { expand: ["latest_invoice"] },
-      );
-      signal.throwIfAborted();
-
-      const pendingInvoice = expandedLatestInvoice(subscription);
-      if (subscription.pending_update) {
-        if (!pendingInvoice?.hosted_invoice_url) {
-          throw new Error(
-            "Pending concurrency subscription update has no hosted invoice URL",
-          );
-        }
-        return pendingInvoice.hosted_invoice_url;
-      }
-
-      const item = concurrencySubscriptionItem(subscription);
       if (!args.portalConfigurationId) {
         throw new Error(
           "Concurrency billing portal configuration is not configured",
         );
       }
-      const customerId =
-        typeof subscription.customer === "string"
-          ? subscription.customer
-          : subscription.customer.id;
-      const session = await stripe.billingPortal.sessions.create({
-        customer: customerId,
-        configuration: args.portalConfigurationId,
-        return_url: args.cancelUrl,
-        flow_data: {
-          type: "subscription_update_confirm",
-          after_completion: {
-            type: "redirect",
-            redirect: { return_url: args.successUrl },
-          },
-          subscription_update_confirm: {
-            subscription: subscription.id,
-            items: [{ id: item.id, quantity: item.quantity + args.quantity }],
-          },
+      const result = await set(
+        startConcurrencySubscriptionUpdate$,
+        {
+          subscriptionId: args.existingSubscriptionId,
+          portalConfigurationId: args.portalConfigurationId,
+          update: { type: "increase", quantity: args.quantity },
+          successUrl: args.successUrl,
+          cancelUrl: args.cancelUrl,
         },
-      });
-      signal.throwIfAborted();
-      return session.url;
+        signal,
+      );
+      if (!result.ok) {
+        throw new Error("Concurrency increase did not produce a Portal URL");
+      }
+      return result.url;
     }
 
     const customerId = await set(

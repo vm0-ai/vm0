@@ -69,18 +69,6 @@ async function loadConcurrencyPurchaseTarget(
     };
   }
 
-  // Enable only after this invoice reader has deployed and previous API
-  // instances have drained; older readers overcount Portal proration lines.
-  if (
-    existingSubscription &&
-    env("STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED") !== "true"
-  ) {
-    return {
-      ok: false,
-      message: "Additional concurrency purchases are temporarily unavailable",
-    };
-  }
-
   const portalConfigurationId = env(
     "STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID",
   );

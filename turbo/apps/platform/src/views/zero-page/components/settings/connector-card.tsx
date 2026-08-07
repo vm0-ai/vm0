@@ -232,9 +232,11 @@ function ConnectorConnectionStatus({
             return $.connectors.card.connected;
           }));
     return (
-      <span className="flex items-center gap-2 truncate text-xs text-muted-foreground">
+      <span className="flex min-w-0 items-center gap-2 truncate text-xs text-muted-foreground">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-        <span className="truncate">{connectedText}</span>
+        <span className="min-w-0 truncate" title={connectedText}>
+          {connectedText}
+        </span>
       </span>
     );
   }
@@ -279,7 +281,7 @@ function ConnectionConnectorCard({
         </span>
       </div>
       <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
-        <div className="flex shrink-0 items-center gap-2 overflow-hidden">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <ConnectorConnectionStatus
             connector={connector}
             connected={connected}

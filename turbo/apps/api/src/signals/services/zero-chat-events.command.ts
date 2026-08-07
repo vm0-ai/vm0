@@ -1471,7 +1471,6 @@ function appendUnassociatedUserMessage(params: {
       eventType: "input.prompt",
       userMessage: params.userMessage,
       runId: null,
-      triggerSource: params.triggerSource,
       ...(params.triggerSource === "web" ? { contextType: "web" } : {}),
       ...(params.agentRunSource
         ? {

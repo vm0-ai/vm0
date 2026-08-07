@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.40](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.39...sandbox-v0.19.40) (2026-08-07)
+
+
+### Performance Improvements
+
+* **rust:** eliminate exec-control payload copies ([#25608](https://github.com/vm0-ai/vm0/issues/25608)) ([3f71e3b](https://github.com/vm0-ai/vm0/commit/3f71e3b491c2fb66e3c964494565aa9a9bcd4166))
+
 ## [0.19.39](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.38...sandbox-v0.19.39) (2026-08-06)
 
 

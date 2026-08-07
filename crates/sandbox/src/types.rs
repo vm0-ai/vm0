@@ -491,7 +491,22 @@ impl GuestProcessControlHandle {
         payload: &[u8],
         timeout: Duration,
     ) -> std::io::Result<ProcessControlAck> {
-        (self.control)(message_id.to_owned(), payload.to_vec(), timeout).await
+        self.control_owned(message_id.to_owned(), payload.to_vec(), timeout)
+            .await
+    }
+
+    /// Send an owned opaque control payload to the live guest process.
+    ///
+    /// This has the same behavior as [`Self::control`] but transfers ownership
+    /// of `message_id` and `payload` so callers that already own large request
+    /// data do not need to clone it for the provider callback.
+    pub async fn control_owned(
+        &self,
+        message_id: String,
+        payload: Vec<u8>,
+        timeout: Duration,
+    ) -> std::io::Result<ProcessControlAck> {
+        (self.control)(message_id, payload, timeout).await
     }
 }
 

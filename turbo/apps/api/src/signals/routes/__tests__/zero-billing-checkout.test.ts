@@ -115,7 +115,6 @@ function setZeroPrice(): void {
     "STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID",
     TEST_CONCURRENCY_PORTAL_CONFIGURATION,
   );
-  mockEnv("STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED", "true");
 }
 
 function setUsagePackPrices(): void {
@@ -426,6 +425,7 @@ async function createConcurrencySubscriptionOrg(args: {
     }),
     [200],
   );
+  context.mocks.stripe.subscriptions.retrieve.mockClear();
   const status = await readBillingStatus(fixture);
   expect(status.concurrencySubscriptions).toStrictEqual(
     expect.arrayContaining([
@@ -1987,25 +1987,105 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     ]);
   });
 
-  it("holds additional slot purchases until Portal updates are enabled", async () => {
+  it("opens Stripe's hosted confirmation for a lower slot quantity", async () => {
     const subscriptionId = `sub_${randomUUID()}`;
+    const subscriptionItemId = `si_${randomUUID()}`;
     const fixture = await createConcurrencySubscriptionOrg({
       subscriptionId,
-      slots: 2,
+      slots: 5,
       periodEnd: new Date("2099-05-20T00:00:00Z"),
       tier: "team",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockEnv("STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED", "false");
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: subscriptionId,
+      customer: fixture.customerId,
+      latest_invoice: null,
+      pending_update: null,
+      items: {
+        data: [
+          {
+            id: subscriptionItemId,
+            price: { id: TEST_PRICE_CONCURRENCY },
+            quantity: 5,
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.billingPortal.sessions.create.mockResolvedValueOnce({
+      url: "https://billing.stripe.test/concurrency-reduction",
+    });
+
+    const statusBefore = await readBillingStatus(fixture);
+    expect(statusBefore.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({
+        id: subscriptionId,
+        quantity: 5,
+        canReduce: true,
+      }),
+    ]);
+
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencySubscriptionRoutes,
+    })(zeroBillingConcurrencySubscriptionContract);
+    const successUrl = `${APP_ORIGIN}/?concurrency=reduced`;
+    const cancelUrl = `${APP_ORIGIN}/billing?concurrency=canceled`;
+    const response = await accept(
+      client.reduce({
+        params: { subscriptionId },
+        body: { quantity: 3, successUrl, cancelUrl },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://billing.stripe.test/concurrency-reduction",
+    });
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).toHaveBeenCalledWith({
+      customer: fixture.customerId,
+      configuration: TEST_CONCURRENCY_PORTAL_CONFIGURATION,
+      return_url: cancelUrl,
+      flow_data: {
+        type: "subscription_update_confirm",
+        after_completion: {
+          type: "redirect",
+          redirect: { return_url: successUrl },
+        },
+        subscription_update_confirm: {
+          subscription: subscriptionId,
+          items: [{ id: subscriptionItemId, quantity: 3 }],
+        },
+      },
+    });
+    const statusAfter = await readBillingStatus(fixture);
+    expect(statusAfter.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({ id: subscriptionId, quantity: 5 }),
+    ]);
+  });
+
+  it("rejects a concurrency quantity that is not a reduction", async () => {
+    const subscriptionId = `sub_${randomUUID()}`;
+    const fixture = await createConcurrencySubscriptionOrg({
+      subscriptionId,
+      slots: 3,
+      periodEnd: new Date("2099-05-20T00:00:00Z"),
+      tier: "team",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencyCheckoutRoutes,
-      })(zeroBillingConcurrencyCheckoutContract).create({
+        routes: zeroBillingConcurrencySubscriptionRoutes,
+      })(zeroBillingConcurrencySubscriptionContract).reduce({
+        params: { subscriptionId },
         body: {
-          quantity: 1,
-          successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
+          quantity: 3,
+          successUrl: `${APP_ORIGIN}/?concurrency=reduced`,
           cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
         },
         headers: { authorization: "Bearer clerk-session" },
@@ -2015,14 +2095,12 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Additional concurrency purchases are temporarily unavailable",
+        message:
+          "New concurrency quantity must be lower than the current quantity",
         code: "BAD_REQUEST",
       },
     });
     expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
-    expect(
-      context.mocks.stripe.billingPortal.sessions.create,
-    ).not.toHaveBeenCalled();
   });
 
   it("returns 400 when the concurrency portal configuration is missing", async () => {
@@ -2153,7 +2231,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
   });
 
-  it("uses the positive proration line as the updated slot quantity", async () => {
+  it("uses the live Stripe quantity for proration invoices", async () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const periodEnd = new Date("2099-05-20T00:00:00Z");
     const fixture = await createConcurrencySubscriptionOrg({
@@ -2205,6 +2283,25 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         },
       },
     };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: subscriptionId,
+      status: "active",
+      customer: fixture.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: { purpose: "concurrency_subscription" },
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_CONCURRENCY },
+            quantity: 4,
+            current_period_end: periodEndUnix,
+          },
+        ],
+      },
+    });
     context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
 
     await accept(
@@ -2219,7 +2316,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const status = await readBillingStatus(fixture);
     expect(status.concurrencySubscriptions).toStrictEqual([
-      expect.objectContaining({ id: subscriptionId, quantity: 5 }),
+      expect.objectContaining({ id: subscriptionId, quantity: 4 }),
     ]);
   });
 

@@ -606,13 +606,11 @@
   },
   "sidebar": {
     "clearSearch": "검색어 지우기",
-    "description": "대화를 시작할 에이전트를 선택하세요.",
     "descriptionWithChats": "에이전트를 선택하거나 채팅으로 바로 이동하세요.",
     "leadDescription": "항상 당신을 돕는 리드 어시스턴트",
     "markAllRead": "모두 읽음으로 표시",
     "more": "더 보기",
     "new": "새로 만들기",
-    "noAgents": "에이전트를 찾을 수 없습니다",
     "noResults": "결과가 없습니다",
     "noSubagents": "아직 하위 에이전트가 없습니다.",
     "openConversation": "대화 열기",

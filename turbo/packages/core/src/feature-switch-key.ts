@@ -63,7 +63,6 @@ export enum FeatureSwitchKey {
 
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
-  ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
   ChatErrorRecovery = "chatErrorRecovery",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   TeamsIntegration = "teamsIntegration",

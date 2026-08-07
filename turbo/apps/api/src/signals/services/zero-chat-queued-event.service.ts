@@ -67,7 +67,6 @@ import {
 } from "./autonomy-budget-schema.service";
 import type { Tx } from "../../lib/db-types";
 import { withRunModelAnnotation } from "./zero-chat-user-message.service";
-import { manualTriggerSource } from "./workflow-automation-trigger-source";
 import { chatAgentRunContextSchemaAvailable } from "./chat-agent-run-context-schema.service";
 
 type DbTransaction = Tx;
@@ -465,7 +464,6 @@ async function resolveUserQueueFirstClaimSnapshot(
       runId: args.runId,
       attachFiles: head.attachFiles ? [...head.attachFiles] : null,
       generationTemplate: head.generationTemplate,
-      triggerSource: queuedUserMessageTriggerSource(contextType),
     },
   };
 }
@@ -529,7 +527,6 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
           ? head.userMessage
           : withRunModelAnnotation(head.userMessage, args.selectedModel),
       runId: args.runId,
-      triggerSource: manualTriggerSource({ kind: head.automationKind }),
     },
   };
 }
@@ -596,7 +593,6 @@ async function resolveGoalQueueFirstClaimSnapshot(
           : withRunModelAnnotation(head.userMessage, args.selectedModel),
       runId: args.runId,
       runGroupId: args.goalId,
-      triggerSource: "workflow-event",
     },
   };
 }

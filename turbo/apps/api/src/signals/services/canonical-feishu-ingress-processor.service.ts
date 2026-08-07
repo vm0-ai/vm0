@@ -356,7 +356,6 @@ async function persistCanonicalFeishuIngress(args: {
         eventType: "input.prompt",
         userMessage: feishuInboundUserMessage(args.message, chatOpenUrl),
         runId: null,
-        triggerSource: "feishu",
         feishuContext: {
           ...args.launchContext,
         },

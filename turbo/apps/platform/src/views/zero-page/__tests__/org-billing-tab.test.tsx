@@ -913,6 +913,7 @@ describe("organization billing settings", () => {
           quantity: 2,
           currentPeriodEnd: "2026-06-01T00:00:00Z",
           cancelAtPeriodEnd: false,
+          canReduce: true,
         },
       ],
     };
@@ -981,11 +982,16 @@ describe("organization billing settings", () => {
       expect(screen.getByText("Renews Jun 1, 2026")).toBeInTheDocument();
     });
 
-    click(buttonByText("Cancel"));
+    click(buttonByText("Change"));
     const cancelDialog = await screen.findByRole("dialog", {
-      name: "Cancel concurrency subscription?",
+      name: "Change concurrency subscription",
     });
     expect(canceledSubscriptionId).toBeNull();
+    click(
+      within(cancelDialog).getByRole("radio", {
+        name: /Cancel entire subscription/u,
+      }),
+    );
     click(buttonByText("Cancel subscription", cancelDialog));
 
     await waitFor(() => {
@@ -1039,6 +1045,110 @@ describe("organization billing settings", () => {
         "https://checkout.stripe.com/concurrency?quantity=2",
       );
     });
+  });
+
+  it("lets an admin enter a lower concurrency subscription quantity", async () => {
+    let reductionRequest: {
+      readonly quantity: number;
+      readonly successUrl: string;
+      readonly cancelUrl: string;
+    } | null = null;
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Concurrency Reduction Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeTeamBillingStatus(),
+        concurrencyLimit: 15,
+        concurrencySubscriptions: [
+          {
+            id: "sub_concurrency_reduce",
+            quantity: 5,
+            currentPeriodEnd: "2026-06-01T00:00:00Z",
+            cancelAtPeriodEnd: false,
+            canReduce: true,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroBillingConcurrencySubscriptionContract.reduce,
+      ({ body, respond }) => {
+        reductionRequest = body;
+        return respond(200, {
+          url: "https://billing.stripe.com/concurrency-reduction",
+        });
+      },
+    );
+
+    await openBillingTab();
+
+    click(buttonByText("Change"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Change concurrency subscription",
+    });
+    expect(
+      within(dialog).getByRole("radio", { name: /Reduce slots/u }),
+    ).toHaveAttribute("aria-checked", "true");
+    const quantityInput = within(dialog).getByLabelText("New slot quantity");
+    expect(quantityInput).toHaveValue("4");
+    await fill(quantityInput, "3");
+    expect(within(dialog).getByText("$300/month")).toBeInTheDocument();
+
+    const expectedSuccessUrl = new URL("/", window.location.origin);
+    expectedSuccessUrl.searchParams.set("concurrency", "reduced");
+    const expectedCancelUrl = new URL(
+      window.location.pathname,
+      window.location.origin,
+    );
+    expectedCancelUrl.searchParams.set("concurrency", "canceled");
+    click(buttonByText("Continue to Stripe", dialog));
+
+    await waitFor(() => {
+      expect(reductionRequest).toStrictEqual({
+        quantity: 3,
+        successUrl: expectedSuccessUrl.toString(),
+        cancelUrl: expectedCancelUrl.toString(),
+      });
+      expect(window.location.href).toBe(
+        "https://billing.stripe.com/concurrency-reduction",
+      );
+    });
+  });
+
+  it("keeps full cancellation available with an older billing response", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Concurrency Compatibility Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeTeamBillingStatus(),
+        concurrencyLimit: 12,
+        concurrencySubscriptions: [
+          {
+            id: "sub_concurrency_compatibility",
+            quantity: 2,
+            currentPeriodEnd: "2026-06-01T00:00:00Z",
+            cancelAtPeriodEnd: false,
+          },
+        ],
+      });
+    });
+
+    await openBillingTab();
+
+    expect(buttonByText("Cancel")).toBeInTheDocument();
+    click(buttonByText("Cancel"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Cancel concurrency subscription?",
+    });
+    expect(within(dialog).queryByRole("radiogroup")).not.toBeInTheDocument();
+    expect(buttonByText("Cancel subscription", dialog)).toBeEnabled();
   });
 
   it("redirects to checkout when cancelling a plan requires payment confirmation", async () => {

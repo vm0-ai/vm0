@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.26](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.25...vsock-proto-v0.18.26) (2026-08-07)
+
+
+### Performance Improvements
+
+* **rust:** eliminate exec-control payload copies ([#25608](https://github.com/vm0-ai/vm0/issues/25608)) ([3f71e3b](https://github.com/vm0-ai/vm0/commit/3f71e3b491c2fb66e3c964494565aa9a9bcd4166))
+
 ## [0.18.25](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.24...vsock-proto-v0.18.25) (2026-08-03)
 
 

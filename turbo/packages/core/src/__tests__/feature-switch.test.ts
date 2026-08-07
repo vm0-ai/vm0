@@ -15,9 +15,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
     ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ChatThreadUnifiedSearch, {})).toBe(
-      true,
-    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
