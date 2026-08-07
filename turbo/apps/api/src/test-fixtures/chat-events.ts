@@ -23,7 +23,7 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
+import { and, count, eq, isNull, like, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
@@ -645,68 +645,69 @@ interface TelegramChatEventByPromptFixture {
   readonly eventId: string;
 }
 
-export async function findTelegramChatEventByPromptFixture(
-  prompt: string,
-): Promise<TelegramChatEventByPromptFixture | null> {
+/**
+ * Chat events live in a database shared by every parallel test worker, so a
+ * prompt lookup must be scoped to the caller's own user. Matching on prompt
+ * text alone reads whichever worker's row happens to be there.
+ */
+async function findOwnedChatEventByPrompt(args: {
+  readonly userId: string;
+  readonly prompt: string;
+  readonly filter: SQL | undefined;
+}): Promise<{ readonly eventId: string } | null> {
   const rows = await db()
     .select({
       eventId: chatEvents.id,
       userMessage: chatEvents.userMessage,
     })
     .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.eventType, "input.prompt"),
-        eq(chatEvents.contextType, "telegram"),
-      ),
-    );
+    .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+    .where(and(eq(chatThreads.userId, args.userId), args.filter));
   const row = rows.find((candidate) => {
     return candidate.userMessage?.parts.some((part) => {
-      return part.type === "text" && part.text === prompt;
+      return part.type === "text" && part.text === args.prompt;
     });
   });
   return row ?? null;
 }
 
-export async function findAgentphoneChatEventByPromptFixture(
-  prompt: string,
-): Promise<AgentphoneChatEventByPromptFixture | null> {
-  const rows = await db()
-    .select({
-      eventId: chatEvents.id,
-      userMessage: chatEvents.userMessage,
-    })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.eventType, "input.prompt"),
-        eq(chatEvents.contextType, "agentphone"),
-      ),
-    );
-  const row = rows.find((candidate) => {
-    return candidate.userMessage?.parts.some((part) => {
-      return part.type === "text" && part.text === prompt;
-    });
+export async function findTelegramChatEventByPromptFixture(args: {
+  readonly userId: string;
+  readonly prompt: string;
+}): Promise<TelegramChatEventByPromptFixture | null> {
+  return await findOwnedChatEventByPrompt({
+    userId: args.userId,
+    prompt: args.prompt,
+    filter: and(
+      eq(chatEvents.eventType, "input.prompt"),
+      eq(chatEvents.contextType, "telegram"),
+    ),
   });
-  return row ?? null;
 }
 
-export async function findPendingChatEventByPromptFixture(
-  prompt: string,
-): Promise<{ readonly eventId: string } | null> {
-  const rows = await db()
-    .select({
-      eventId: chatEvents.id,
-      userMessage: chatEvents.userMessage,
-    })
-    .from(chatEvents)
-    .where(isNull(chatEvents.runId));
-  const row = rows.find((candidate) => {
-    return candidate.userMessage?.parts.some((part) => {
-      return part.type === "text" && part.text === prompt;
-    });
+export async function findAgentphoneChatEventByPromptFixture(args: {
+  readonly userId: string;
+  readonly prompt: string;
+}): Promise<AgentphoneChatEventByPromptFixture | null> {
+  return await findOwnedChatEventByPrompt({
+    userId: args.userId,
+    prompt: args.prompt,
+    filter: and(
+      eq(chatEvents.eventType, "input.prompt"),
+      eq(chatEvents.contextType, "agentphone"),
+    ),
   });
-  return row ?? null;
+}
+
+export async function findPendingChatEventByPromptFixture(args: {
+  readonly userId: string;
+  readonly prompt: string;
+}): Promise<{ readonly eventId: string } | null> {
+  return await findOwnedChatEventByPrompt({
+    userId: args.userId,
+    prompt: args.prompt,
+    filter: isNull(chatEvents.runId),
+  });
 }
 
 /** Inserts a pending Slack event, then removes the context its claim requires. */
@@ -751,8 +752,6 @@ export async function replayPendingChatInputQueueEventFixture(args: {
       .select({
         chatThreadId: chatEvents.chatThreadId,
         userMessage: chatEvents.userMessage,
-        attachFiles: chatEvents.attachFiles,
-        generationTemplate: chatEvents.generationTemplate,
       })
       .from(chatEvents)
       .where(
@@ -772,8 +771,6 @@ export async function replayPendingChatInputQueueEventFixture(args: {
       eventType: "input.prompt",
       userMessage: event.userMessage,
       runId: null,
-      attachFiles: event.attachFiles ? [...event.attachFiles] : null,
-      generationTemplate: event.generationTemplate,
     });
     if (!replacement) {
       throw new Error("Expected the pending queue event replay to insert");
@@ -836,6 +833,28 @@ export async function setQueuedUserMessageCreatedAtFixture(args: {
   });
   if (updated.length !== 1) {
     throw new Error("Expected one queued user message to become historical");
+  }
+}
+
+/**
+ * Remove only the Stage 5/7 compatibility columns from one input row so BDD
+ * tests can prove queue and replacement paths read the canonical document.
+ * The public API cannot construct this canonical-only row while the required
+ * dual-write boundary remains active, so this is a persisted-history fixture.
+ */
+export async function clearLegacyChatEventInputColumnsFixture(
+  eventId: string,
+): Promise<void> {
+  const updated = await db().transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    return await tx
+      .update(chatEvents)
+      .set({ attachFiles: null, generationTemplate: null })
+      .where(eq(chatEvents.id, eventId))
+      .returning({ id: chatEvents.id });
+  });
+  if (updated.length !== 1) {
+    throw new Error("Expected one chat input compatibility projection");
   }
 }
 

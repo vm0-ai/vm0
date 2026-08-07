@@ -6,6 +6,7 @@ import {
   VIDEO_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
@@ -29,6 +30,15 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
+
+function templateTypeFromUserMessage(
+  document: UserMessageDocument | undefined,
+): string | undefined {
+  const part = document?.parts.find((candidate) => {
+    return candidate.type === "template";
+  });
+  return part?.type === "template" ? part.template.type : undefined;
+}
 
 function firstItem<Item>(items: readonly Item[]): Item {
   const item = items[0];
@@ -592,7 +602,8 @@ describe("onboarding flow", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        generationType = body.generationTemplate?.type;
+        expect(body.generationTemplate).toBeUndefined();
+        generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
 
@@ -630,7 +641,8 @@ describe("onboarding flow", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        generationType = body.generationTemplate?.type;
+        expect(body.generationTemplate).toBeUndefined();
+        generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
     context.mocks.api(
@@ -728,7 +740,8 @@ describe("onboarding flow", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        generationType = body.generationTemplate?.type;
+        expect(body.generationTemplate).toBeUndefined();
+        generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
     context.mocks.api(zeroBillingCheckoutContract.complete, ({ respond }) => {

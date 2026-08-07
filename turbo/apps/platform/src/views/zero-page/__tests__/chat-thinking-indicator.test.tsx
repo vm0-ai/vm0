@@ -3,7 +3,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { context, detachedSetupPage } from "./chat-lifecycle-test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
-const THREAD_ID = "thread-thinking-indicator-chunks";
+const THREAD_ID = "b0000000-0000-4000-a000-000000000210";
 const RUN_ID = "run-thinking-indicator-chunks";
 
 /**

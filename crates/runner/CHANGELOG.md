@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.160.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.5...runner-rs-v0.160.6) (2026-08-07)
+
+
+### Bug Fixes
+
+* **api:** account for pi edge model usage ([#25668](https://github.com/vm0-ai/vm0/issues/25668)) ([ec55732](https://github.com/vm0-ai/vm0/commit/ec55732fa303284e24b119ac8210438c650024d8))
+
 ## [0.160.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.4...runner-rs-v0.160.5) (2026-08-07)
 
 

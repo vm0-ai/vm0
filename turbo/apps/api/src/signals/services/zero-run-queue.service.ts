@@ -1,8 +1,5 @@
 import { command, type Computed } from "ccstate";
-import {
-  PI_STANDBY_PROFILE,
-  type RunSkillSnapshot,
-} from "@vm0/api-contracts/contracts/runners";
+import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -193,10 +190,7 @@ async function insertPromotedRunnerJob(
     .where(eq(zeroRuns.id, args.runId));
 
   const timestamps = runnerJobQueueTimestamps();
-  const profile =
-    args.payload.piEdge === undefined
-      ? args.payload.profile
-      : PI_STANDBY_PROFILE;
+  const profile = args.payload.profile;
   const [runnerJob] = await tx
     .insert(runnerJobQueue)
     .values({
@@ -401,6 +395,7 @@ async function promoteQueuedCandidate(
           reuseKey: payload.reuseKey,
           cliAgentSessionId: payload.cliAgentSessionId,
           historyGenerationRunId: payload.historyGenerationRunId,
+          piExecutionMode: payload.executionContext.piExecutionMode,
           createdAt: runnerJob.createdAt,
         },
       },

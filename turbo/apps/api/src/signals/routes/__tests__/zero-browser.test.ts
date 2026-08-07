@@ -496,9 +496,15 @@ describe("zero browser route", () => {
     acceptBrowserUseCdpSessions(providerIds);
     const providerCreateBodies: unknown[] = [];
     const deletedProfiles: string[] = [];
+    const stoppedProviderIds: string[] = [];
     let profileCreates = 0;
     let providerCreates = 0;
-    let providerStops = 0;
+    // The reconcile route is global, so count only this test's own instances.
+    const providerStops = () => {
+      return stoppedProviderIds.filter((stopped) => {
+        return (providerIds as readonly string[]).includes(stopped);
+      }).length;
+    };
     server.use(
       http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
         expect(request.headers.get("x-browser-use-api-key")).toBe(
@@ -557,7 +563,7 @@ describe("zero browser route", () => {
           await expect(request.json()).resolves.toStrictEqual({
             action: "stop",
           });
-          providerStops += 1;
+          stoppedProviderIds.push(String(params.id));
           return HttpResponse.json(
             providerBrowser(String(params.id), { status: "stopped" }),
           );
@@ -827,7 +833,7 @@ describe("zero browser route", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    expect(providerStops).toBe(0);
+    expect(providerStops()).toBe(0);
     const stillLive = await accept(
       client().get({
         headers: first.claim.browserHeaders,
@@ -846,7 +852,7 @@ describe("zero browser route", () => {
     await chat.deleteThread(actor, first.threadId);
     await chat.deleteThread(actor, other.threadId);
     await flushWaitUntilForTest();
-    expect(providerStops).toBe(2);
+    expect(providerStops()).toBe(2);
     expect(
       deletedProfiles.filter((profileId) => {
         return profileId === profileIds[0];
@@ -864,12 +870,10 @@ describe("zero browser route", () => {
     // is covered by the cleanup route integration tests.
     await deleteAgentRunRootFixture(first.runId);
     await deleteAgentRunRootFixture(other.runId);
-    const reconciled = await reconcileBrowsers();
-    expect(reconciled.body).toMatchObject({
-      checked: 1,
-      stopped: 1,
-      errors: 0,
-    });
+    // The reconcile route scans every active browser in the shared database,
+    // so this test's own provider instances and profiles carry the assertion.
+    await reconcileBrowsers();
+    expect(providerStops()).toBe(3);
     expect(
       deletedProfiles.filter((profileId) => {
         return profileId === profileIds[0];
@@ -880,12 +884,13 @@ describe("zero browser route", () => {
         return profileId === profileIds[1];
       }),
     ).toHaveLength(1);
-    const fullyRetired = await reconcileBrowsers();
-    expect(fullyRetired.body).toMatchObject({
-      checked: 0,
-      stopped: 0,
-      errors: 0,
-    });
+    await reconcileBrowsers();
+    expect(providerStops()).toBe(3);
+    expect(
+      deletedProfiles.filter((profileId) => {
+        return profileId === profileIds[0];
+      }),
+    ).toHaveLength(2);
   }, 120_000);
 
   it("fails browser start when its initial size cannot be applied", async () => {

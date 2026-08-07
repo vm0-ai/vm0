@@ -2971,6 +2971,19 @@ describe("chat composer templates", () => {
           role: "user",
           content: "invalidate",
           runId: undefined,
+          attachFiles: [
+            {
+              id: "legacy-recalled-file",
+              filename: "legacy-note.txt",
+              contentType: "text/plain",
+              size: 12,
+              url: "https://example.test/legacy-note.txt",
+            },
+          ],
+          generationTemplate: {
+            type: "presentation",
+            selection: { templateId: "legacy-presentation" },
+          },
           userMessage: {
             version: 1,
             parts: [
@@ -2978,6 +2991,12 @@ describe("chat composer templates", () => {
                 type: "template",
                 titleSnapshot: template.title,
                 template: generationTemplate,
+              },
+              {
+                type: "file",
+                fileId: "canonical-recalled-file",
+                filenameSnapshot: "canonical-note.txt",
+                contentType: "text/plain",
               },
               { type: "text", text: "Queue a recalled illustration" },
               { type: "morning_brief", briefDate: "2026-06-09" },
@@ -3008,11 +3027,15 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
       expect(composer).toHaveTextContent("Queue a recalled illustration");
+      expect(
+        screen.getByLabelText("Remove canonical-note.txt"),
+      ).toBeInTheDocument();
     });
     // The template comes back as an inline node, and the morning-brief part is
     // dropped from the restored draft.
     await expectInlineTemplateInComposer(template.title);
     expect(composer).not.toHaveTextContent("Morning Brief");
+    expect(screen.queryByText("legacy-note.txt")).not.toBeInTheDocument();
   });
 
   it("keeps newer template selections visible after an inline template steer", async () => {

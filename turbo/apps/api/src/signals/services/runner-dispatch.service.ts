@@ -1,5 +1,7 @@
-import { publishRunnerJobNotification } from "../external/realtime";
+import type { PiExecutionMode } from "@vm0/api-contracts/contracts/runners";
+
 import { recordSandboxOperations } from "../external/sandbox-op-log";
+import { publishRunnerJobNotification } from "../external/realtime";
 import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
@@ -21,6 +23,7 @@ export interface RunnerJobNotification {
   readonly reuseKey: string | null;
   readonly cliAgentSessionId: string | null;
   readonly historyGenerationRunId: string | undefined;
+  readonly piExecutionMode?: PiExecutionMode;
   readonly createdAt: Date;
 }
 
@@ -60,17 +63,18 @@ export async function notifyRunnerJob(
   );
   const preferenceFinishedAt = now();
   const publishStartedAt = now();
-  const published = await publishRunnerJobNotification(
-    args.runnerGroup,
-    args.runId,
-    args.profile,
-    {
+  const published = await publishRunnerJobNotification({
+    group: args.runnerGroup,
+    runId: args.runId,
+    profile: args.profile,
+    piExecutionMode: args.piExecutionMode,
+    metadata: {
       reuseKey: args.reuseKey,
       cliAgentSessionId: args.cliAgentSessionId,
       historyGenerationRunId: args.historyGenerationRunId,
       ...runnerPreferenceFields,
     },
-  );
+  });
   const publishFinishedAt = now();
 
   const dimensions: Record<string, string> = {

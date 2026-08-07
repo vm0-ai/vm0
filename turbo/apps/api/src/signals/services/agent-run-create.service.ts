@@ -220,7 +220,6 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   isPiEdgeCompatibleProviderType,
   piSandboxModelConfig,
-  PI_STANDBY_PROFILE,
   resolvePiEdgeModelConfig,
   type PiEdgeModelConfig,
   type PiEdgeUsageConfig,
@@ -228,10 +227,7 @@ import {
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
 import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
 import { resolveLiveCodexModelProviderAccessToken } from "./agent-webhook-firewall-auth.service";
-import {
-  recordSameThreadRunnerJobPersisted,
-  runnerJobQueueTimestamps,
-} from "./runner-job-queue-lifecycle.service";
+import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import {
   connectorRuntimeCredentialStatusWithMethod,
   type ConnectorCredentialStatus,
@@ -5909,6 +5905,7 @@ function storedExecutionContextWithPiResources(
   }
   return {
     ...context,
+    piExecutionMode: "standby",
     runSkillSnapshot: resources.snapshot,
     piSystemPrompt: resources.systemPrompt,
     piModelConfig: resources.modelConfig,
@@ -6384,9 +6381,7 @@ async function persistPendingAtomicLaunch(
       .values({
         runId: returnedCteId(context.insertedRun),
         runnerGroup: args.payload.runnerGroup,
-        profile: args.commit.launch.piEdge
-          ? PI_STANDBY_PROFILE
-          : args.payload.profile,
+        profile: args.payload.profile,
         cliAgentSessionId: args.payload.cliAgentSessionId,
         reuseKey: args.payload.reuseKey,
         executionContext: args.payload.executionContext,
@@ -8215,9 +8210,7 @@ async function committedAtomicLaunchResponse(args: {
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
-  const dispatchedProfile = args.launch.piEdge
-    ? PI_STANDBY_PROFILE
-    : args.committed.runnerJobPayload.profile;
+  const dispatchedProfile = args.committed.runnerJobPayload.profile;
   const pendingActivation: PendingRunActivation = {
     apiStartTime: args.createArgs.apiStartTime,
     chatThreadId: args.createArgs.chatThreadId,
@@ -8247,6 +8240,8 @@ async function committedAtomicLaunchResponse(args: {
       cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
       historyGenerationRunId:
         args.committed.runnerJobPayload.historyGenerationRunId,
+      piExecutionMode:
+        args.committed.runnerJobPayload.executionContext.piExecutionMode,
       createdAt: args.committed.runnerJobCreatedAt,
     },
   };

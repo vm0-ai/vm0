@@ -17,6 +17,13 @@ import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
+function templateFromUserMessage(document: UserMessageDocument | undefined) {
+  const part = document?.parts.find((candidate) => {
+    return candidate.type === "template";
+  });
+  return part?.type === "template" ? part.template : undefined;
+}
+
 function modelPolicy(
   model: OrgModelPolicy["model"],
   modelLabel: string,
@@ -142,9 +149,11 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
+        expect(body.generationTemplate).toBeUndefined();
+        const template = templateFromUserMessage(body.userMessage);
         stylePresetId =
-          body.generationTemplate?.type === "video"
-            ? body.generationTemplate.selection.stylePresetId
+          template?.type === "video"
+            ? template.selection.stylePresetId
             : undefined;
       },
     });
@@ -182,10 +191,10 @@ describe("prompt query parameter injection", () => {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
         userMessage = body.userMessage;
+        expect(body.generationTemplate).toBeUndefined();
+        const template = templateFromUserMessage(body.userMessage);
         selection =
-          body.generationTemplate?.type === "presentation"
-            ? body.generationTemplate.selection
-            : undefined;
+          template?.type === "presentation" ? template.selection : undefined;
       },
     });
 
@@ -230,9 +239,11 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
+        expect(body.generationTemplate).toBeUndefined();
+        const template = templateFromUserMessage(body.userMessage);
         illustrationStyleId =
-          body.generationTemplate?.type === "illustration"
-            ? body.generationTemplate.selection.illustrationStyleId
+          template?.type === "illustration"
+            ? template.selection.illustrationStyleId
             : undefined;
       },
     });
@@ -262,9 +273,11 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
+        expect(body.generationTemplate).toBeUndefined();
+        const template = templateFromUserMessage(body.userMessage);
         websiteTemplateId =
-          body.generationTemplate?.type === "website"
-            ? body.generationTemplate.selection.websiteTemplateId
+          template?.type === "website"
+            ? template.selection.websiteTemplateId
             : undefined;
       },
     });

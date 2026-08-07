@@ -1,8 +1,5 @@
 import { command } from "ccstate";
-import type {
-  AttachFile,
-  ChatPromptEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { ResolvedAttachFile } from "@vm0/api-contracts/contracts/chat-threads";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import type {
   DraftSignals,
@@ -22,16 +19,13 @@ const ATTACH_ONLY_PLACEHOLDER = "(see attached files)";
  * Prepared send-message payload derived from a draft.
  *
  * - `prompt` — clean text (or `ATTACH_ONLY_PLACEHOLDER` for file-only sends).
- * - `attachFiles` — structured `AttachFile[]` for the outbound request body.
- * - `attachments` — optimistic-UI shape including resolved URLs, matching the
- *   server's paged response so the optimistic row looks identical to a refetch.
+ * - `attachments` — upload metadata used only to build canonical file parts.
  * - `hasTextContent` — whether the user typed any non-whitespace text;
  *   used by the server to decide prompt-only vs. attachment-only rendering.
  */
 interface PreparedUserMessage {
   prompt: string;
-  attachFiles: AttachFile[] | undefined;
-  attachments: ChatPromptEvent["attachFiles"];
+  attachments: ResolvedAttachFile[] | undefined;
   hasTextContent: boolean;
 }
 
@@ -131,8 +125,7 @@ function attachmentUploadFailureMessage(
 /**
  * Resolves a draft's pending attachments (waits for uploads to finish,
  * rejects failed entries) and shapes the result into both the
- * outbound `AttachFile[]` for the send contract and the optimistic-UI
- * `ChatEvent["attachFiles"]` shape.
+ * canonical file parts for the outbound user-message document.
  *
  * Returns `null` when the user has typed nothing and no attachments are
  * ready — callers should abort the send in that case.
@@ -183,19 +176,7 @@ export const prepareUserMessageFromDraft$ = command(
     const finalPrompt =
       trimmedPrompt || (ready.length > 0 ? ATTACH_ONLY_PLACEHOLDER : "");
 
-    const attachFiles: AttachFile[] | undefined =
-      ready.length > 0
-        ? ready.map((r) => {
-            return {
-              id: r.info.id,
-              filename: r.attachment.filename,
-              contentType: r.attachment.contentType,
-              size: r.attachment.size,
-            };
-          })
-        : undefined;
-
-    const attachments: ChatPromptEvent["attachFiles"] =
+    const attachments: ResolvedAttachFile[] | undefined =
       ready.length > 0
         ? ready.map((r) => {
             return {
@@ -210,7 +191,6 @@ export const prepareUserMessageFromDraft$ = command(
 
     return {
       prompt: finalPrompt,
-      attachFiles,
       attachments,
       hasTextContent: trimmedPrompt.length > 0,
     };
