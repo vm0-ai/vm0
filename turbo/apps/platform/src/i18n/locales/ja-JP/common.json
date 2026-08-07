@@ -1151,24 +1151,17 @@
       "viewAgentProfile": "エージェントのプロフィールを表示する"
     },
     "attachments": {
-      "addLink": "リンクを追加",
       "attach": "添付する",
       "file": "ファイル {{filename}}",
       "fileTooLarge": "{{filename}} が 1 GB の制限を超えています",
       "imageUnavailable": "[画像は利用できません: {{filename}}]",
       "importing": "添付ファイルをインポートしています",
-      "invalidLink": "有効なリンクを入力してください",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "{{filename}} をロードしています",
       "previewFile": "{{filename}} のプレビュー",
-      "supportedTypes": "画像、ドキュメント、オーディオ、ビデオ、アーカイブ",
       "title": "添付ファイル",
       "unavailable": "添付ファイルが利用できません",
-      "upload": "アップロード",
       "uploadFailed": "{{filename}} のアップロードに失敗しました",
       "uploadFailedRetry": "{{filename}} のアップロードに失敗しました。もう一度やり直してください。",
-      "uploadFromComputer": "パソコンからアップロードする",
-      "uploadFromLink": "リンクからアップロード",
       "uploadsFailed": "一部の添付ファイルのアップロードに失敗しました。もう一度やり直してください。"
     },
     "automations": {

@@ -90,7 +90,6 @@ type ComposerTemplateEditorSignals = Pick<
   | "setTemplateAttachmentLifecycleRef$"
 >;
 
-type ComposerDraftUiSignals = ComposerUiSignalGroups["draft"];
 type ComposerModelUiSignals = ComposerUiSignalGroups["model"];
 type ComposerTemplateUiSignals = ComposerUiSignalGroups["template"];
 
@@ -127,7 +126,7 @@ interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
   readonly setReplaceWorkflowPromptOpen$: Command<void, [boolean]>;
 }
 
-interface ComposerDraftSignals extends ComposerDraftUiSignals {
+interface ComposerDraftSignals {
   readonly seed$: DraftSignals["seed$"];
   readonly setDraftInput$: Command<void, [string]>;
   readonly attachments$: Computed<ZeroChatAttachment[]>;
@@ -479,7 +478,6 @@ export function createComposerSignals(
     suggestion: composerSuggestionSignals(workflowComposer),
     connector: createComposerConnectorSignals(options.agent$),
     draft: {
-      ...ui.draft,
       seed$: draft.seed$,
       setDraftInput$: draft.setInput$,
       attachments$: draft.attachments$,

@@ -1151,24 +1151,17 @@
       "viewAgentProfile": "View agent profile"
     },
     "attachments": {
-      "addLink": "Add link",
       "attach": "Attach",
       "file": "File {{filename}}",
       "fileTooLarge": "{{filename}} exceeds the 1 GB limit",
       "imageUnavailable": "[Image unavailable: {{filename}}]",
       "importing": "Importing attachment",
-      "invalidLink": "Enter a valid link",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "Loading {{filename}}",
       "previewFile": "Preview {{filename}}",
-      "supportedTypes": "Images, docs, audio, video, and archives",
       "title": "Attachments",
       "unavailable": "Attachment unavailable",
-      "upload": "Upload",
       "uploadFailed": "Failed to upload {{filename}}",
       "uploadFailedRetry": "Failed to upload {{filename}}. Try again.",
-      "uploadFromComputer": "Upload from computer",
-      "uploadFromLink": "Upload from link",
       "uploadsFailed": "Some attachments failed to upload. Try again."
     },
     "automations": {

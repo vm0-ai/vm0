@@ -1151,24 +1151,17 @@
       "viewAgentProfile": "Agentenprofil anzeigen"
     },
     "attachments": {
-      "addLink": "Link hinzufügen",
       "attach": "Anhängen",
       "file": "Datei {{filename}}",
       "fileTooLarge": "{{filename}} überschreitet die 1-GB-Grenze",
       "imageUnavailable": "[Bild nicht verfügbar: {{filename}}]",
       "importing": "Anhang wird importiert",
-      "invalidLink": "Geben Sie einen gültigen Link ein",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "{{filename}} wird geladen",
       "previewFile": "Vorschau von {{filename}}",
-      "supportedTypes": "Bilder, Dokumente, Audio, Video und Archive",
       "title": "Anhänge",
       "unavailable": "Anhang nicht verfügbar",
-      "upload": "Hochladen",
       "uploadFailed": "Hochladen von {{filename}} fehlgeschlagen",
       "uploadFailedRetry": "Fehler beim Hochladen von {{filename}}. Versuchen Sie es erneut.",
-      "uploadFromComputer": "Vom Computer hochladen",
-      "uploadFromLink": "Über einen Link hochladen",
       "uploadsFailed": "Einige Anhänge konnten nicht hochgeladen werden. Versuchen Sie es erneut."
     },
     "automations": {

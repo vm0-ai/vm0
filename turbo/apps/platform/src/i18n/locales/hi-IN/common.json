@@ -1151,24 +1151,17 @@
       "viewAgentProfile": "एजेंट प्रोफ़ाइल देखें"
     },
     "attachments": {
-      "addLink": "लिंक जोड़ें",
       "attach": "अटैच करें",
       "file": "फ़ाइल {{filename}}",
       "fileTooLarge": "{{filename}} 1 GB सीमा से अधिक है",
       "imageUnavailable": "[छवि अनुपलब्ध: {{filename}}]",
       "importing": "अनुलग्नक आयात किया जा रहा है",
-      "invalidLink": "एक वैध लिंक दर्ज करें",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "{{filename}} लोड हो रहा है",
       "previewFile": "पूर्वावलोकन {{filename}}",
-      "supportedTypes": "छवियाँ, दस्तावेज़, ऑडियो, वीडियो और पुरालेख",
       "title": "संलग्नक",
       "unavailable": "अनुलग्नक अनुपलब्ध",
-      "upload": "अपलोड करें",
       "uploadFailed": "{{filename}} अपलोड करने में विफल",
       "uploadFailedRetry": "{{filename}} अपलोड करने में विफल. पुनः प्रयास करें।",
-      "uploadFromComputer": "कंप्यूटर से अपलोड करें",
-      "uploadFromLink": "लिंक से अपलोड करें",
       "uploadsFailed": "कुछ अनुलग्नक अपलोड करने में विफल रहे. पुनः प्रयास करें।"
     },
     "automations": {
