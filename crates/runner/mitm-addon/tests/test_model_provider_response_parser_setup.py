@@ -19,7 +19,7 @@ class TestResponseHeadersModelJsonParser:
         "content_type",
         [
             'application/json; profile="text/event-stream"',
-            "application/text/event-stream+json",
+            "text/event-stream+json",
         ],
     )
     def test_non_sse_media_type_uses_json_parser(self, real_flow, content_type):
