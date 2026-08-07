@@ -102,7 +102,6 @@ import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runt
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
 import { resolveConnectorRuntimeTargets } from "../services/connector-runtime-sync.service";
 import { replaceLoadedChatEvent } from "../services/zero-chat-event.service";
-import { withRunModelAnnotation } from "../services/zero-chat-user-message.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
@@ -2744,10 +2743,7 @@ async function loadRunningActiveInputRun(
   },
 ) {
   const [run] = await db
-    .select({
-      chatThreadId: zeroRuns.chatThreadId,
-      selectedModel: zeroRuns.selectedModel,
-    })
+    .select({ chatThreadId: zeroRuns.chatThreadId })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
@@ -2762,10 +2758,7 @@ async function loadRunningActiveInputRun(
   if (!run?.chatThreadId) {
     return null;
   }
-  return {
-    chatThreadId: run.chatThreadId,
-    selectedModel: run.selectedModel,
-  };
+  return { chatThreadId: run.chatThreadId };
 }
 
 function pendingActiveInputRows(
@@ -2809,7 +2802,6 @@ async function claimPendingActiveInputEvent(
   tx: ActiveInputClaimTransaction,
   event: PendingActiveInputRow,
   runId: string,
-  selectedModel: string | null,
 ): Promise<void> {
   if (!event.userMessage) {
     throw new Error("Pending active input has invalid prompt data");
@@ -2828,23 +2820,19 @@ async function claimPendingActiveInputEvent(
     contextType: event.contextType,
     contextId: event.contextId,
   };
-  const userMessage =
-    selectedModel === null
-      ? event.userMessage
-      : withRunModelAnnotation(event.userMessage, selectedModel);
   const replacement =
     event.eventType === "input.budget"
       ? await replaceLoadedChatEvent(tx, target, {
           chatThreadId: event.chatThreadId,
           eventType: "input.budget",
           runId,
-          userMessage,
+          userMessage: event.userMessage,
         })
       : await replaceLoadedChatEvent(tx, target, {
           chatThreadId: event.chatThreadId,
           eventType: "input.prompt",
           runId,
-          userMessage,
+          userMessage: event.userMessage,
           attachFiles: event.attachFiles,
           generationTemplate: event.generationTemplate,
         });
@@ -3011,7 +2999,7 @@ const claimActiveInputsInner$ = command(
         return null;
       }
       for (const event of events) {
-        await claimPendingActiveInputEvent(tx, event, runId, run.selectedModel);
+        await claimPendingActiveInputEvent(tx, event, runId);
       }
       return true;
     });

@@ -1461,6 +1461,7 @@
       "loadingGoal": "Ziel wird geladen...",
       "message_one": "{{count}} Nachricht",
       "message_other": "{{count}} Nachrichten",
+      "modelChangeAppliesNextRun": "Ihr ausgewähltes Modell wird bei Ihrer nächsten Ausführung verwendet.",
       "openGoalDetails": "Zieldetails öffnen",
       "pendingAutomationEvent": "Ausstehendes Automatisierungsereignis",
       "queuedMessage": "Nachricht in der Warteschlange",

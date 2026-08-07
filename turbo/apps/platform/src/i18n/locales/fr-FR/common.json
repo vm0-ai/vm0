@@ -1494,6 +1494,7 @@
       "message_one": "{{count}} message",
       "message_many": "{{count}} messages",
       "message_other": "{{count}} messages",
+      "modelChangeAppliesNextRun": "Votre modèle sélectionné sera appliqué à votre prochaine exécution.",
       "openGoalDetails": "Ouvrir les détails de l'objectif",
       "pendingAutomationEvent": "Événement d'automatisation en attente",
       "queuedMessage": "Message en file d'attente",

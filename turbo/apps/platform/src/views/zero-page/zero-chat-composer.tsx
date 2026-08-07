@@ -566,15 +566,37 @@ function ComposerStripRow({
 
 function PendingItemsStripHeader({
   label,
+  modelChangeAppliesNextRun,
   cancellationRecoveryPending,
 }: {
-  label: string;
+  label: string | null;
+  modelChangeAppliesNextRun: boolean;
   cancellationRecoveryPending: boolean;
 }) {
   const { t } = useTranslation();
   return (
     <div className="px-5 pt-3 pb-2">
-      <p className="text-sm text-muted-foreground">{label}</p>
+      {modelChangeAppliesNextRun ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="text-sm text-muted-foreground"
+        >
+          {t(($) => {
+            return $.chat.queue.modelChangeAppliesNextRun;
+          })}
+        </p>
+      ) : null}
+      {label ? (
+        <p
+          className={cn(
+            "text-sm text-muted-foreground",
+            modelChangeAppliesNextRun && "mt-1",
+          )}
+        >
+          {label}
+        </p>
+      ) : null}
       {cancellationRecoveryPending ? (
         <p
           role="status"
@@ -590,13 +612,42 @@ function PendingItemsStripHeader({
   );
 }
 
+function shouldShowNextRunModelNotice({
+  enabled,
+  selectedModel,
+  runningModel,
+}: {
+  enabled: boolean;
+  selectedModel: string | undefined;
+  runningModel: string | null | undefined;
+}): boolean {
+  return (
+    enabled &&
+    selectedModel !== undefined &&
+    runningModel !== undefined &&
+    runningModel !== null &&
+    selectedModel !== runningModel
+  );
+}
+
 function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
+  const nextRunModelNoticeEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatNextRunModelNotice] ?? false;
   const pendingEvents =
     useLastResolved(signals.queue.pendingEvents$) ??
     ([] satisfies readonly ComposerPendingEvent[]);
   const cancellationRecoveryPending =
     useLastResolved(signals.queue.cancellationRecoveryPending$) ?? false;
+  const selectedModel = useLastResolved(
+    signals.model.modelSelection$,
+  )?.selectedModel;
+  const runningModel = useLastResolved(signals.model.runningModel$);
+  const modelChangeAppliesNextRun = shouldShowNextRunModelNotice({
+    enabled: nextRunModelNoticeEnabled,
+    selectedModel,
+    runningModel,
+  });
   const activeGoalObjective = useLastResolved(
     signals.goal.activeGoalObjective$,
   );
@@ -657,18 +708,22 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
             items: queued.length > 0 ? messageLabel : eventLabel,
           },
         );
-  if (count === 0 && !activeGoal) {
+  if (count === 0 && !activeGoal && !modelChangeAppliesNextRun) {
     return null;
   }
   return (
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      {count > 0 ? (
+      {count > 0 || modelChangeAppliesNextRun ? (
         <PendingItemsStripHeader
-          label={label}
+          label={count > 0 ? label : null}
+          modelChangeAppliesNextRun={modelChangeAppliesNextRun}
           cancellationRecoveryPending={cancellationRecoveryPending}
         />
       ) : null}
-      <div className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1" role="list">
+      <div
+        className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1"
+        role={count > 0 || activeGoal ? "list" : undefined}
+      >
         {queued.map((item) => {
           return (
             <ComposerStripRow
