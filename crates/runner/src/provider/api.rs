@@ -660,13 +660,19 @@ impl JobProvider for ApiProvider {
             .claim(&candidate, &self.runner_id, self.heartbeat_generation)
             .await
         {
-            Ok(Some(mut ctx)) => {
+            Ok(Some(ctx)) => {
                 let pi_execution_mode = ctx.pi_execution_mode;
-                if pi_execution_mode.is_some()
-                    && (ctx.pi_system_prompt.is_none()
-                        || ctx.pi_model_config.is_none()
-                        || ctx.run_skill_snapshot.is_none())
-                {
+                let pi_resource_presence = [
+                    ctx.pi_system_prompt.is_some(),
+                    ctx.pi_model_config.is_some(),
+                    ctx.run_skill_snapshot.is_some(),
+                ];
+                let pi_execution_context_valid = if pi_execution_mode.is_some() {
+                    pi_resource_presence.iter().all(|present| *present)
+                } else {
+                    pi_resource_presence.iter().all(|present| !present)
+                };
+                if !pi_execution_context_valid {
                     self.record_claim_failure(
                         run_id,
                         ClaimFailureDecision {
@@ -679,11 +685,6 @@ impl JobProvider for ApiProvider {
                     )
                     .await;
                     return None;
-                }
-                if pi_execution_mode.is_none() {
-                    ctx.pi_system_prompt = None;
-                    ctx.pi_model_config = None;
-                    ctx.run_skill_snapshot = None;
                 }
                 let pi_standby_source = pi_execution_mode.map(|mode| {
                     let source = self.pi_standby_notifications.subscribe(run_id);
@@ -4433,7 +4434,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_mode_sanitizes_legacy_pi_resources_as_ordinary_work() {
+    async fn claim_rejects_pi_resources_without_execution_mode() {
         let server = MockServer::start_async().await;
         let run_id = RunId::nil();
         let claim_path = format!("/api/runners/jobs/{run_id}/claim");
@@ -4457,21 +4458,16 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let claimed = provider
-            .claim(JobCandidate::new(
-                run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
-            .await
-            .expect("legacy claim should follow the ordinary path");
-        let (context, _, active_input_source, pi_standby_source) = claimed.into_run_parts();
+        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
+            run_id,
+            crate::profile::DEFAULT_PROFILE.to_string(),
+        )))
+        .await;
 
-        assert!(context.pi_execution_mode.is_none());
-        assert!(context.pi_system_prompt.is_none());
-        assert!(context.pi_model_config.is_none());
-        assert!(context.run_skill_snapshot.is_none());
-        assert!(active_input_source.is_some());
-        assert!(pi_standby_source.is_none());
+        assert!(claimed.is_none());
+        let event = captured_event(&events, "claim failed, candidate cooling down");
+        assert_eq!(event_field(event, "failure_class"), "response_invariant");
+        assert_eq!(event_field(event, "response_run_id"), run_id.to_string());
         claim_mock.assert_calls_async(1).await;
     }
 
