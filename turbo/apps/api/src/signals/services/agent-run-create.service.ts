@@ -6995,7 +6995,12 @@ async function commitPreparedLaunchUnderLock(
   );
 
   if (concurrency) {
-    if (!args.createArgs.queueOnConcurrencyLimit) {
+    // Pi launch resources only live in this request and cannot be reconstructed
+    // when the durable organization queue promotes the run later.
+    if (
+      args.launch.piEdge !== undefined ||
+      !args.createArgs.queueOnConcurrencyLimit
+    ) {
       return concurrency;
     }
     if (!args.encryptedQueuedParams) {
