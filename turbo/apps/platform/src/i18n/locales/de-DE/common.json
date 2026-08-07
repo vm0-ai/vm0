@@ -1091,7 +1091,6 @@
     "actions": {
       "authorize": "Autorisieren",
       "cancel": "Abbrechen",
-      "configure": "Konfigurieren",
       "confirm": "Bestätigen",
       "continue": "Weiter",
       "copied": "Kopiert!",
@@ -1324,7 +1323,6 @@
       "available_other": "Verfügbare Integrationen ({{count}})",
       "configurePermissions": "Konfigurieren Sie {{connectorName}}-Berechtigungen",
       "customAuthorizeDescription": "Prüfen und verbinden Sie diese benutzerdefinierte Integration und autorisieren Sie sie für den Agenten.",
-      "customConnectDescription": "Prüfen und verbinden Sie diese benutzerdefinierte Integration.",
       "find": "Integrationen suchen...",
       "remove": "{{connectorName}} entfernen",
       "title": "Integrationen"
@@ -1934,19 +1932,6 @@
         "description": "Durch diese OAuth-Änderungen werden alle derzeit über OAuth verbundenen Mitglieder getrennt. Sie müssen diese benutzerdefinierte Integration erneut verbinden.",
         "title": "Bestehende OAuth-Verbindungen trennen?"
       }
-    },
-    "customProposal": {
-      "configure": "Konfigurieren Sie {{connector}}",
-      "descriptionAgent": "Durch das Speichern werden Ihre Werte verknüpft und {{agent}} autorisiert.",
-      "descriptionUser": "Durch das Speichern wird dieser benutzerdefinierte Integration für Ihr Konto verbunden.",
-      "documentTitle": "Benutzerdefinierte Integration konfigurieren",
-      "invalid": "Dieser Link zum Vorschlag für eine benutzerdefinierte Integration ist ungültig oder abgelaufen.",
-      "requestScope": "Umfang anfordern",
-      "returnToChat": "Kehren Sie zum Chat zurück und antworten Sie mit ACK, damit der Agent die Integration überprüfen kann.",
-      "saved": "Gespeichert",
-      "savedToast": "{{connector}} gespeichert",
-      "targetFallback": "dieser Agent",
-      "update": "Aktualisieren Sie {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Autorisieren Sie {{agent}}",

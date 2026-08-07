@@ -4166,7 +4166,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const exactPreference = {
       runnerIdentity: exactRunnerIdentity,
       reason: "exactHistoryGeneration" as const,
-      expiresAt: new Date(successorCreatedAt + 500).toISOString(),
+      expiresAt: new Date(successorCreatedAt + 1000).toISOString(),
     };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
@@ -4424,7 +4424,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const exactRunnerPreference = {
       runnerIdentity: preferredExactRunner,
       reason: "exactHistoryGeneration" as const,
-      expiresAt: new Date(queueInsertedAt + 500).toISOString(),
+      expiresAt: new Date(queueInsertedAt + 1000).toISOString(),
     };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
@@ -4532,7 +4532,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       threadId: first.threadId,
       prompt: "continue after exact generation protection expires",
     });
-    mockNow(generationExpiredAt + 600);
+    mockNow(generationExpiredAt + 1100);
     const generationExpiredPoll = await api.requestPollRunner(
       true,
       { group: runnerGroup, supportedProfiles: ["vm0/default"] },

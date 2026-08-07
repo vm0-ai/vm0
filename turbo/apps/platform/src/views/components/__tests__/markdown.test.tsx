@@ -610,7 +610,14 @@ describe("assistant markdown", () => {
       ].join("\n"),
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+    // The switch must be on explicitly: this asserts ascii output is unchanged
+    // *by the cjk plugins*, so it would stop guarding anything if it ran on the
+    // stock CommonMark path.
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.CjkFriendlyMarkdown]: true },
+    });
 
     await waitFor(() => {
       expect(

@@ -7,8 +7,6 @@ ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_browser_profile
 --> statement-breakpoint
 ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk";
 --> statement-breakpoint
-ALTER TABLE "mail_drafts" DROP CONSTRAINT "mail_drafts_follow_up_automation_id_zero_workflow_automations_id_fk";
---> statement-breakpoint
 ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_pkey";--> statement-breakpoint
 ALTER TABLE "browser_thread_profiles" DROP CONSTRAINT "browser_thread_profiles_pkey";--> statement-breakpoint
 DROP TABLE "browser_profiles" CASCADE;--> statement-breakpoint
@@ -16,7 +14,6 @@ DROP TABLE "image_artifact_edit_snapshots" CASCADE;--> statement-breakpoint
 DROP INDEX "idx_browser_session_instances_session";--> statement-breakpoint
 DROP INDEX "uq_browser_sessions_thread_owned";--> statement-breakpoint
 DROP INDEX "uq_browser_thread_profiles_thread";--> statement-breakpoint
-DROP INDEX "idx_mail_drafts_follow_up_automation";--> statement-breakpoint
 WITH "ranked_browser_sessions" AS (
   SELECT
     "id",
@@ -42,8 +39,6 @@ ALTER TABLE "browser_sessions" DROP COLUMN "id";--> statement-breakpoint
 ALTER TABLE "browser_sessions" DROP COLUMN "browser_profile_id";--> statement-breakpoint
 ALTER TABLE "browser_sessions" DROP COLUMN "browser_thread_profile_id";--> statement-breakpoint
 ALTER TABLE "browser_thread_profiles" DROP COLUMN "id";--> statement-breakpoint
-ALTER TABLE "mail_drafts" DROP COLUMN "draft";--> statement-breakpoint
-ALTER TABLE "mail_drafts" DROP COLUMN "follow_up_automation_id";--> statement-breakpoint
 ALTER TABLE "browser_sessions" ADD PRIMARY KEY ("chat_thread_id");--> statement-breakpoint
 ALTER TABLE "browser_thread_profiles" ADD PRIMARY KEY ("chat_thread_id");--> statement-breakpoint
 UPDATE "org_members_metadata"

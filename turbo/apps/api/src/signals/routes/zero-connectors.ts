@@ -3,7 +3,6 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOpenIdStartContract,
-  zeroConnectorOauthContinueContract,
   zeroConnectorOauthStartContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsBySlugContract,
@@ -45,17 +44,13 @@ import {
   type ConnectorSlugResolution,
 } from "../services/connector-action-resolver.service";
 import { isConnectorCatalogUnavailableError } from "../services/connector-catalog-reader.service";
-import { getConnectorOAuthAuthorizationUrl } from "../services/connector-oauth-state.service";
 import type { RouteEntry } from "../route-entry";
 import { settle } from "../utils";
 import {
   getConnectorOAuthCallbackUrlForMethod,
   getConnectorOpenIdCallbackOriginForMethod,
 } from "./connector-oauth-origin";
-import {
-  connectorOAuthRedirectResponse,
-  CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-} from "../../lib/connector-oauth-state";
+import { CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS } from "../../lib/connector-oauth-state";
 import {
   buildConnectorAuthCodeAuthUrlWithMethod,
   prepareConnectorAuthCodeStartWithMethod,
@@ -565,33 +560,6 @@ const startConnectorOauthInner$ = command(
   },
 );
 
-// Compatibility for handoff URLs issued before direct provider redirects.
-// Remove after the previous API is no longer rollback-eligible and every state
-// issued with CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS has expired.
-const continueConnectorOauthInner$ = command(
-  async ({ get }, signal: AbortSignal) => {
-    const params = get(
-      pathParamsOf(zeroConnectorOauthContinueContract.continue),
-    );
-    const query = get(queryOf(zeroConnectorOauthContinueContract.continue));
-    const resolution = await getConnectorOAuthAuthorizationUrl(
-      get(db$),
-      { state: query.state, connectorSlug: params.connectorSlug },
-      signal,
-    );
-
-    if (resolution.kind !== "usable") {
-      return notFound("OAuth handoff not found");
-    }
-
-    const response = connectorOAuthRedirectResponse(
-      resolution.authorizationUrl,
-    );
-    response.headers.set("Cache-Control", "no-store");
-    return response;
-  },
-);
-
 const startConnectorOpenIdInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParamsOf(zeroConnectorOpenIdStartContract.start));
@@ -728,10 +696,6 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorOauthStartContract.start,
     handler: authRoute(connectorWriteAuth, startConnectorOauthInner$),
-  },
-  {
-    route: zeroConnectorOauthContinueContract.continue,
-    handler: continueConnectorOauthInner$,
   },
   {
     route: zeroConnectorOpenIdStartContract.start,

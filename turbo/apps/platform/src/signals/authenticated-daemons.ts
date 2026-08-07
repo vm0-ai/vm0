@@ -10,6 +10,7 @@ import { setupChatEventBackgroundSync$ } from "./chat-page/chat-event-background
 import { subscribePermissionUpdate$ } from "./permission-allow/permission-allow-signals.ts";
 import { setupRealtime$ } from "./realtime.ts";
 import { setupBillingRealtime$ } from "./zero-page/billing.ts";
+import { subscribeCustomConnectorListChanged$ } from "./zero-page/settings/custom-connectors.ts";
 
 /** Start user-scoped background services after Clerk has resolved. */
 export const setupAuthenticatedDaemons$ = command(
@@ -29,6 +30,7 @@ export const setupAuthenticatedDaemons$ = command(
       set(subscribePermissionUpdate$, signal),
       set(setupBillingRealtime$, signal),
       set(setupChatEventBackgroundSync$, signal),
+      set(subscribeCustomConnectorListChanged$, signal),
     ]);
   },
 );

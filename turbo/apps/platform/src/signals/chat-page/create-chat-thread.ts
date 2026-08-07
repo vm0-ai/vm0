@@ -119,9 +119,7 @@ import {
 } from "./agent-reference-signals.ts";
 import {
   createConnectorCardSignalsRegistry,
-  createCustomConnectorCardSignalsRegistry,
   type ConnectorCardSignalsRegistry,
-  type CustomConnectorCardSignalsRegistry,
 } from "./connector-action-block.ts";
 import {
   createPermissionCardSignalsRegistry,
@@ -1584,7 +1582,6 @@ const FIRST_CHAT_EVENT_SEQ_ID = 1;
 interface BodyBlockRegistries {
   readonly artifactCardSignals: ArtifactCardSignalsRegistry;
   readonly connectorCardSignals: ConnectorCardSignalsRegistry;
-  readonly customConnectorCardSignals: CustomConnectorCardSignalsRegistry;
   readonly permissionCardSignals: PermissionCardSignalsRegistry;
   readonly computerUseAuthorizationCardSignals: ComputerUseAuthorizationCardSignalsRegistry;
   readonly planUpgradeCardSignals: PlanUpgradeCardSignalsRegistry;
@@ -1597,7 +1594,6 @@ interface BodyBlockRegistries {
 function createBodyBlocksRenderer({
   artifactCardSignals,
   connectorCardSignals,
-  customConnectorCardSignals,
   permissionCardSignals,
   computerUseAuthorizationCardSignals,
   planUpgradeCardSignals,
@@ -1631,16 +1627,6 @@ function createBodyBlocksRenderer({
                 resolution === "register"
                   ? connectorCardSignals.register(block.descriptor)
                   : connectorCardSignals.resolve(block.resourceKey),
-            };
-          }
-          case "custom-connector-action": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? customConnectorCardSignals.register(block.descriptor)
-                  : customConnectorCardSignals.resolve(block.resourceKey),
             };
           }
           case "permission-action": {
@@ -1778,7 +1764,6 @@ function createPagedEventResources(
   const bodyBlocksRenderer = createBodyBlocksRenderer({
     artifactCardSignals,
     connectorCardSignals: createConnectorCardSignalsRegistry(),
-    customConnectorCardSignals: createCustomConnectorCardSignalsRegistry(),
     permissionCardSignals: createPermissionCardSignalsRegistry(),
     computerUseAuthorizationCardSignals:
       createComputerUseAuthorizationCardSignalsRegistry(),
