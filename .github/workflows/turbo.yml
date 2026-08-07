@@ -1520,30 +1520,34 @@ jobs:
           trap 'rm -f "$document_body"' EXIT
           ready_passes=0
           for attempt in {1..60}; do
-            document_result="$(curl \
+            document_ready=false
+            if document_result="$(curl \
               --silent \
               --max-time 10 \
               --output "$document_body" \
               --write-out '%{http_code}|%{content_type}' \
-              "${PAGES_URL%/}/sign-up" 2>/dev/null || true)"
-            IFS='|' read -r document_status document_content_type \
-              <<< "$document_result"
-            document_ready=false
-            if [[ \
-              "$document_status" == 2?? &&
-              "$document_content_type" == *text/html* \
-            ]] && grep -Fq 'id="app-bootstrap-skeleton"' "$document_body"; then
-              document_ready=true
+              "${PAGES_URL%/}/sign-up" 2>/dev/null)"; then
+              IFS='|' read -r document_status document_content_type \
+                <<< "$document_result"
+              if [[ \
+                "$document_status" == 2?? &&
+                "$document_content_type" == *text/html* \
+              ]] && grep -Fq 'id="app-bootstrap-skeleton"' "$document_body"; then
+                document_ready=true
+              fi
             fi
 
-            probe_results="$(curl \
+            probe_succeeded=false
+            if probe_results="$(curl \
               --silent \
               --max-time 10 \
               --parallel \
               --parallel-immediate \
               --parallel-max 16 \
               --write-out $'%{http_code}|%{content_type}|%{url_effective}\n' \
-              "${probe_curl_args[@]}" 2>/dev/null || true)"
+              "${probe_curl_args[@]}" 2>/dev/null)"; then
+              probe_succeeded=true
+            fi
             probe_result_count="$(grep -c '|' <<< "$probe_results")"
             not_ready_files="$(
               while IFS='|' read -r status content_type asset_url; do
@@ -1554,6 +1558,9 @@ jobs:
             )"
             if (( probe_result_count != ${#probe_files[@]} )); then
               not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness response"
+            fi
+            if [[ "$probe_succeeded" != true ]]; then
+              not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness transfer"
             fi
             if [[ "$document_ready" != true ]]; then
               not_ready_files+="${not_ready_files:+$'\n'}application document"

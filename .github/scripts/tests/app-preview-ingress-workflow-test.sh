@@ -70,6 +70,15 @@ end
 unless readiness_source.include?("ready_passes >= 2")
   raise "Pages readiness must require consecutive successful passes"
 end
+unless readiness_source.include?('if document_result="$(curl')
+  raise "Pages document readiness must retain curl transfer status"
+end
+unless readiness_source.include?("probe_succeeded")
+  raise "Pages asset readiness must retain curl transfer status"
+end
+if readiness_source.include?("2>/dev/null || true")
+  raise "Pages readiness must not ignore curl transfer failures"
+end
 
 preview_step = find_step.call("Resolve app preview gateway URL")
 raise "app preview step id changed" unless preview_step["id"] == "app-preview"
