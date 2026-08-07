@@ -4,7 +4,7 @@ import { zeroBillingPortalContract } from "@vm0/api-contracts/contracts/zero-bil
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { createBillingPortalSession$ } from "../services/billing.service";
@@ -24,13 +24,6 @@ const portalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!optionalEnv("STRIPE_SECRET_KEY")) {
     return providerUnavailable("Billing not configured");
   }
-  const portalConfigurationId = env(
-    "STRIPE_PAYMENT_METHOD_PORTAL_CONFIGURATION_ID",
-  );
-  if (!portalConfigurationId) {
-    return providerUnavailable("Billing portal not configured");
-  }
-
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
     return adminRequired;
@@ -49,7 +42,7 @@ const portalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const url = await set(
     createBillingPortalSession$,
-    { orgId: auth.orgId, portalConfigurationId, returnUrl },
+    { orgId: auth.orgId, returnUrl },
     signal,
   );
   signal.throwIfAborted();

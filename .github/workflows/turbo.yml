@@ -991,13 +991,6 @@ jobs:
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
-      - name: Ensure Stripe payment method portal configuration
-        run: |
-          bash .github/scripts/ensure-stripe-payment-method-portal-configuration.sh "$API_ENV_FILE"
-        env:
-          API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-
       - name: Use Stripe CLI webhook secret for PR API preview
         # Staging uses its standing Stripe Dashboard webhook endpoint; only PR
         # previews should trust Stripe CLI webhooks.
