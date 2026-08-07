@@ -12,6 +12,7 @@ pub mod env;
 pub mod epoch_milliseconds;
 pub mod exec_limits;
 pub mod exec_terminal;
+pub mod pi_standby;
 pub mod process_containment;
 pub mod reuse_preparation;
 pub mod runtime_paths;

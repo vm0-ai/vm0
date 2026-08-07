@@ -10,7 +10,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 // Production deliberately has no endpoint that reveals whether inaccessible
 // email content still exists. Keep this test-only read surface narrow so the

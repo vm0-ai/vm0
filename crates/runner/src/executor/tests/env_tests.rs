@@ -27,7 +27,10 @@ use crate::host_env::{
 };
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
-use crate::types::{CodexRuntimeConfig, ExecutionContext, ResumeSession, SandboxReuseResult};
+use crate::types::{
+    CodexRuntimeConfig, ExecutionContext, PiModelConfig, ResumeSession, RunSkillSnapshot,
+    RunSkillSnapshotEntry, SandboxReuseResult,
+};
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
     let sandbox_id = SandboxId::new_v4().to_string();
@@ -1197,6 +1200,43 @@ fn build_run_payload_for_run_omits_absent_codex_runtime_config() {
     let payload = build_run_payload_for_run(&ctx).unwrap();
 
     assert!(payload.codex_runtime_config.is_empty());
+}
+
+#[test]
+fn build_run_payload_for_run_preserves_pi_resources() {
+    let mut ctx = minimal_context();
+    ctx.pi_system_prompt = Some("fixed Pi prompt".to_string());
+    ctx.pi_model_config = Some(PiModelConfig {
+        provider: "deepseek".to_string(),
+        base_url: "https://api.deepseek.com/".to_string(),
+        model: "deepseek-v4-flash".to_string(),
+        api_key_env: "OPENAI_API_KEY".to_string(),
+    });
+    ctx.run_skill_snapshot = Some(RunSkillSnapshot {
+        schema_version: 1,
+        policy_version: 1,
+        root: "/home/user/.pi/agent/skills".to_string(),
+        digest: format!("sha256:{}", "a".repeat(64)),
+        entries: vec![RunSkillSnapshotEntry {
+            logical_dir: "/home/user/.pi/agent/skills/demo".to_string(),
+            skill_file: "/home/user/.pi/agent/skills/demo/SKILL.md".to_string(),
+            org_id: "org-1".to_string(),
+            user_id: "user-1".to_string(),
+            storage_name: "skill-demo".to_string(),
+            storage_id: "storage-1".to_string(),
+            version_id: "version-1".to_string(),
+        }],
+    });
+
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+
+    assert_eq!(payload.pi_system_prompt, "fixed Pi prompt");
+    let model: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
+    assert_eq!(model["provider"], "deepseek");
+    assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");
+    let snapshot: serde_json::Value = serde_json::from_str(&payload.run_skill_snapshot).unwrap();
+    assert_eq!(snapshot["digest"], format!("sha256:{}", "a".repeat(64)));
+    assert_eq!(snapshot["entries"][0]["versionId"], "version-1");
 }
 
 #[test]

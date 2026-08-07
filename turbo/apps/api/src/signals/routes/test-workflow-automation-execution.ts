@@ -10,7 +10,7 @@ import { executeDueWorkflowAutomationsForAutomation$ } from "../services/zero-wo
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const body$ = bodyResultOf(testWorkflowAutomationExecutionContract.execute);
 

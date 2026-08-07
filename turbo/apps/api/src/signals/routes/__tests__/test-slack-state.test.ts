@@ -293,7 +293,6 @@ describe("GET /api/test/slack-state", () => {
 
   it("returns empty workspace diagnostics for an unknown team", async () => {
     mockEnv("ENV", "development");
-    mockOptionalEnv("SLACK_API_URL", "https://slack.example.test/api/");
 
     const response = await requestApp(`${SLACK_STATE_ROUTE}?team_id=T_UNKNOWN`);
     const body = await readJson<TestSlackStateResponse>(response);
@@ -307,21 +306,9 @@ describe("GET /api/test/slack-state", () => {
     expect(body.default_agent).toBeNull();
     expect(body.default_compose).toBeNull();
     expect(body.default_compose_version).toBeNull();
-    expect(body.resolved_slack_api_url).toBe("https://slack.example.test/api/");
-    expect(Array.isArray(body.mock_calls)).toBeTruthy();
   });
 
-  it("does not synthesize a Slack mock URL without an explicit API override", async () => {
-    mockEnv("ENV", "development");
-
-    const response = await requestApp(`${SLACK_STATE_ROUTE}?team_id=T_UNKNOWN`);
-    const body = await readJson<TestSlackStateResponse>(response);
-
-    expect(response.status).toBe(200);
-    expect(body.resolved_slack_api_url).toBeNull();
-  });
-
-  it("returns Slack installation diagnostics, recent runs, default agent metadata, and mock calls", async () => {
+  it("returns Slack installation diagnostics, recent runs, and default agent metadata", async () => {
     mockEnv("ENV", "development");
     const fixture = await seedSlackFixture({
       seedConnection: true,
@@ -382,7 +369,6 @@ describe("GET /api/test/slack-state", () => {
     expect(body.default_compose_version).toMatchObject({
       content_keys: expect.arrayContaining(["version", "agents"]),
     });
-    expect(Array.isArray(body.mock_calls)).toBeTruthy();
   });
 });
 
@@ -604,7 +590,6 @@ describe("DELETE /api/test/slack-state", () => {
     expect(deletedSlack.installation).toBeNull();
     expect(deletedSlack.connections).toStrictEqual([]);
     expect(deletedSlack.recent_runs).toStrictEqual([]);
-    expect(Array.isArray(deletedSlack.mock_calls)).toBeTruthy();
 
     const telegramState = await readTelegramState(telegram.botId);
     expect(telegramState.recent_runs).toStrictEqual(

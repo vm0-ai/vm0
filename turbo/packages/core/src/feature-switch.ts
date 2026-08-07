@@ -311,10 +311,22 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatNextRunModelNotice]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a composer notice when the selected model differs from the running chat model.",
+    enabled: true,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PiLoop]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Run web chat runs through the in-API Pi edge loop with sandbox handoff instead of dispatching a runner job immediately.",
     enabled: false,
   },
   [FeatureSwitchKey.ComposerUploadPopover]: {
@@ -328,6 +340,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable multiple inline artifact templates in structured chat prompts.",
     enabled: true,
+  },
+  [FeatureSwitchKey.TemplatePickerGlobalSearch]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Search presentation, website, illustration, and video templates from the shared template picker search field.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
@@ -352,8 +371,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatErrorRecovery]: {
     maintainer: "ethan@vm0.ai",

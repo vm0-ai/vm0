@@ -20,7 +20,7 @@ import {
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const actionBody$ = bodyResultOf(
   testConnectorCredentialStorageStateContract.action,

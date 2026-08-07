@@ -54,9 +54,11 @@ export enum FeatureSwitchKey {
   WorkdayConnector = "workdayConnector",
   CodexFastMode = "codexFastMode",
   NewChatDefaultModelAction = "newChatDefaultModelAction",
+  ChatNextRunModelNotice = "chatNextRunModelNotice",
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
   StructuredPromptInlineTemplates = "structuredPromptInlineTemplates",
+  TemplatePickerGlobalSearch = "templatePickerGlobalSearch",
   UsagePackPlans = "usagePackPlans",
 
   ZapierConnector = "zapierConnector",
@@ -72,5 +74,6 @@ export enum FeatureSwitchKey {
   ThreeColumnNav = "threeColumnNav",
   ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
   SharedThreadSharing = "sharedThreadSharing",
+  PiLoop = "piLoop",
   CjkFriendlyMarkdown = "cjkFriendlyMarkdown",
 }

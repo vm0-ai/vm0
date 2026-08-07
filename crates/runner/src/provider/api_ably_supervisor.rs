@@ -34,6 +34,7 @@ use super::{
 use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
+use crate::pi_standby::{PiStandbyNotifications, PiStandbySignal};
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::ConnectorRuntimeTarget;
@@ -440,6 +441,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) cancel_tokens: RunCancellationRegistry,
     pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
     pub(super) active_input_notifications: ActiveInputNotifications,
+    pub(super) pi_standby_notifications: PiStandbyNotifications,
     pub(super) provider_cancel: CancellationToken,
 }
 
@@ -452,6 +454,7 @@ struct SupervisorTaskConfig {
     cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
     active_input_notifications: ActiveInputNotifications,
+    pi_standby_notifications: PiStandbyNotifications,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
 }
@@ -469,6 +472,7 @@ impl AblySupervisor {
             cancel_tokens: config.cancel_tokens,
             network_policy_refresh: config.network_policy_refresh,
             active_input_notifications: config.active_input_notifications,
+            pi_standby_notifications: config.pi_standby_notifications,
             provider_cancel: config.provider_cancel,
             shutdown: task_shutdown,
         };
@@ -547,6 +551,10 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
+                        if let Some((run_id, signal)) = parse_pi_standby_notification(&msg) {
+                            config.pi_standby_notifications.notify(run_id, signal);
+                            continue;
+                        }
                         if let Some(run_id) = parse_active_input_notification(&msg) {
                             config.active_input_notifications.notify(run_id);
                             continue;
@@ -798,6 +806,24 @@ fn parse_active_input_notification(msg: &ably_subscriber::Message) -> Option<Run
         Ok(run_id) => Some(run_id),
         Err(error) => {
             warn!(value = %raw, error = %error, "ably: invalid active-input runId");
+            None
+        }
+    }
+}
+
+fn parse_pi_standby_notification(
+    msg: &ably_subscriber::Message,
+) -> Option<(RunId, PiStandbySignal)> {
+    let signal = match msg.name.as_deref()? {
+        "pi-handoff" => PiStandbySignal::Handoff,
+        "pi-standby-release" => PiStandbySignal::Release,
+        _ => return None,
+    };
+    let raw = msg.data.get("runId").and_then(|value| value.as_str())?;
+    match raw.parse() {
+        Ok(run_id) => Some((run_id, signal)),
+        Err(error) => {
+            warn!(value = %raw, error = %error, "ably: invalid Pi standby runId");
             None
         }
     }
@@ -2457,6 +2483,38 @@ mod tests {
                 .to_string(),
             "00000000-0000-0000-0000-000000000004"
         );
+    }
+
+    #[test]
+    fn parse_pi_standby_notifications_keep_handoff_and_release_distinct() {
+        let run_id = "00000000-0000-0000-0000-000000000005";
+        for (name, expected) in [
+            ("pi-handoff", PiStandbySignal::Handoff),
+            ("pi-standby-release", PiStandbySignal::Release),
+        ] {
+            let message = make_message(Some(name), serde_json::json!({ "runId": run_id }));
+
+            let (parsed_run_id, signal) =
+                parse_pi_standby_notification(&message).expect("Pi notification should parse");
+
+            assert_eq!(parsed_run_id.to_string(), run_id);
+            assert_eq!(signal, expected);
+        }
+    }
+
+    #[test]
+    fn parse_pi_standby_notification_rejects_other_names_and_invalid_ids() {
+        let other = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000005" }),
+        );
+        let invalid = make_message(
+            Some("pi-handoff"),
+            serde_json::json!({ "runId": "not-a-run-id" }),
+        );
+
+        assert!(parse_pi_standby_notification(&other).is_none());
+        assert!(parse_pi_standby_notification(&invalid).is_none());
     }
 
     #[test]

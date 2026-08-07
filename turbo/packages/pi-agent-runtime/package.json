@@ -1,0 +1,38 @@
+{
+  "name": "@vm0/pi-agent-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./node": {
+      "import": "./src/node.ts",
+      "types": "./src/node.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.83.0",
+    "@earendil-works/pi-ai": "0.83.0",
+    "@vm0/api-contracts": "workspace:*",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@vm0/eslint-config": "workspace:*",
+    "@vm0/typescript-config": "workspace:*",
+    "eslint": "^9.34.0",
+    "oxlint": "^1.75.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

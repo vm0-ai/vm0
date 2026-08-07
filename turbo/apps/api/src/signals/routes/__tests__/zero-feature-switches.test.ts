@@ -8,6 +8,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 
 const context = testContext();
+const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
 
 function client() {
   return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
@@ -16,6 +17,37 @@ function client() {
 }
 
 describe("/api/zero/feature-switches", () => {
+  it("forces the previous Platform Mail follow-up switch off", async () => {
+    createZeroRouteMocks(context).clerk.session(
+      "user_legacy_mail_follow_up_test",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      "org:member",
+    );
+    const response = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const previousPlatformSwitches: Record<string, boolean> = {
+      [LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH]: true,
+    };
+    for (const key of Object.keys(previousPlatformSwitches)) {
+      const value = response.body.effectiveSwitches[key];
+      if (value !== undefined) {
+        previousPlatformSwitches[key] = value;
+      }
+    }
+
+    expect(
+      response.body.effectiveSwitches[LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH],
+    ).toBeFalsy();
+    expect(
+      previousPlatformSwitches[LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH],
+    ).toBeFalsy();
+  });
+
   it("persists and activates inline templates for a non-staff org", async () => {
     createZeroRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",

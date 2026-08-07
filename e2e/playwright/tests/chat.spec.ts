@@ -48,6 +48,12 @@ async function waitForAgentDraftClear(
   await draftCleared;
 }
 
+async function clearComposerEditor(editor: Locator): Promise<void> {
+  await editor.press("ControlOrMeta+A");
+  await editor.press("Backspace");
+  await expect(editor).toHaveText("");
+}
+
 function isConnectorCatalogStatusResponse(
   value: unknown,
 ): value is ConnectorCatalogStatusResponse {
@@ -159,6 +165,24 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
+test("send a message through the deployed runner", async ({ page }) => {
+  test.setTimeout(120_000);
+  const marker = `PRODUCT_CHAT_E2E_${Date.now()}`;
+
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  const composer = page.locator(".zero-composer");
+  const editor = composer.getByRole("textbox", { name: "Message" });
+  await expect(editor).toBeVisible();
+  await editor.fill(`printf ${marker}`);
+  await composer.getByRole("button", { name: "Send" }).click();
+
+  await expect(
+    page.locator('[data-role="assistant"]').filter({ hasText: marker }).first(),
+  ).toBeVisible({ timeout: 90_000 });
+});
+
 test("chat composer keeps the Send button inside on narrow screens", async ({
   page,
 }) => {
@@ -210,7 +234,7 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   await expectInside(sendButton, composer);
 
   await waitForAgentDraftClear(page, async () => {
-    await editor.fill("");
+    await clearComposerEditor(editor);
   });
 });
 
@@ -420,6 +444,6 @@ test("selected avatar and voice cards keep a single border", async ({
 
   await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
   await waitForAgentDraftClear(page, async () => {
-    await page.getByRole("textbox", { name: "Message" }).fill("");
+    await clearComposerEditor(page.getByRole("textbox", { name: "Message" }));
   });
 });

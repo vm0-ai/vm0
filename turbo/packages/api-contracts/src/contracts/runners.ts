@@ -394,6 +394,15 @@ const runnerBuiltinFirewallsResolveResponseSchema = z.object({
 export const DEFAULT_PROFILE = "vm0/default";
 
 /**
+ * Prewarmed Pi Sandbox lane. Must stay in sync with
+ * `crates/runner/src/profile.rs`.
+ */
+export const PI_STANDBY_PROFILE = "vm0/pi-standby";
+
+/** Non-terminal Guest/Runner exit used to request Pi cold-start fallback. */
+export const PI_STANDBY_TTL_RELEASE_EXIT_CODE = 75;
+
+/**
  * Runner group format: vm0/<name> (e.g., "vm0/production")
  */
 export const runnerGroupSchema = z
@@ -667,6 +676,55 @@ export const secretConnectorMetadataMapSchema = z.record(
   secretConnectorMetadataSchema,
 );
 
+export const PI_SKILLS_ROOT = "/home/user/.pi/agent/skills";
+
+export const runSkillSnapshotEntrySchema = z
+  .object({
+    logicalDir: z.string().min(1),
+    skillFile: z.string().min(1),
+    orgId: z.string().min(1),
+    userId: z.string().min(1),
+    storageName: z.string().min(1),
+    storageId: z.string().min(1),
+    versionId: z.string().min(1),
+  })
+  .readonly();
+
+/**
+ * Immutable, exact-version Skill view resolved once for a Pi run. The ordered
+ * entries are a typed projection of the run's persisted Storage mounts; the
+ * digest deliberately excludes expiring archive URLs.
+ */
+export const runSkillSnapshotSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    policyVersion: z.literal(1),
+    root: z.literal(PI_SKILLS_ROOT),
+    digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    entries: z.array(runSkillSnapshotEntrySchema).readonly(),
+  })
+  .readonly();
+
+/**
+ * Non-secret Pi model metadata forwarded to the Sandbox. The API key remains
+ * in the existing model-provider environment; `apiKeyEnv` names the exact
+ * environment entry the Sandbox runtime must read.
+ */
+export const piModelConfigSchema = z
+  .object({
+    provider: z.enum([
+      "deepseek",
+      "moonshotai",
+      "openai",
+      "openrouter",
+      "vercel-ai-gateway",
+    ]),
+    baseUrl: z.url(),
+    model: z.string().min(1),
+    apiKeyEnv: z.enum(["ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"]),
+  })
+  .readonly();
+
 /**
  * Stored execution context (subset stored in database for late routing)
  * Contains prepared context without runtime-generated fields
@@ -740,6 +798,11 @@ export const storedExecutionContextSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
+  // Complete Pi prompt rendered once before the first model call and reused
+  // byte-for-byte by the API loop and the standby Sandbox.
+  piSystemPrompt: z.string().min(1).optional(),
+  piModelConfig: piModelConfigSchema.optional(),
+  runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
 /**
@@ -826,6 +889,9 @@ export const executionContextSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
+  piSystemPrompt: z.string().min(1).optional(),
+  piModelConfig: piModelConfigSchema.optional(),
+  runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
 /**
@@ -1072,6 +1138,9 @@ export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
 >;
+export type RunSkillSnapshot = z.infer<typeof runSkillSnapshotSchema>;
+export type RunSkillSnapshotEntry = z.infer<typeof runSkillSnapshotEntrySchema>;
+export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
 export type CompatibleStoredExecutionContext = z.infer<
   typeof compatibleStoredExecutionContextSchema
 >;

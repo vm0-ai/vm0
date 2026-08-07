@@ -280,13 +280,15 @@ export async function resolveWebChatSessionPrompt(args: {
   readonly threadId: string;
   readonly sessionAction: ChatThreadSessionResolutionAction;
   readonly context: WebChatSessionPromptContext;
+  readonly historyPolicy?: "default" | "none";
 }): Promise<string> {
+  const omitHistory = args.historyPolicy === "none";
   const incompleteContext =
-    args.sessionAction === "rotated"
+    omitHistory || args.sessionAction === "rotated"
       ? ""
       : await loadWebChatIncompleteContext(args.db, args.threadId);
   const priorContext =
-    incompleteContext.length > 0
+    omitHistory || incompleteContext.length > 0
       ? ""
       : buildWebChatPriorRunsContext(
           await getLatestRunsByThreadId(args.db, args.threadId),

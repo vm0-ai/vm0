@@ -947,11 +947,27 @@ describe("deepseek Responses provider", () => {
 
   it("scopes the firewall to the native Responses endpoint", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS.deepseek;
-    expect(config.apis).toHaveLength(1);
     expect(config.apis[0]!.base).toBe("https://api.deepseek.com/responses");
     expect(config.apis[0]!.auth.headers).toEqual({
       Authorization: "Bearer ${{ secrets.DEEPSEEK_API_KEY }}",
     });
+  });
+
+  it("also covers the Pi standby chat-completions path, still scoped", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS.deepseek;
+    expect(
+      config.apis.map((api) => {
+        return api.base;
+      }),
+    ).toEqual([
+      "https://api.deepseek.com/responses",
+      "https://api.deepseek.com/chat/completions",
+    ]);
+    for (const api of config.apis) {
+      expect(api.auth.headers).toEqual({
+        Authorization: "Bearer ${{ secrets.DEEPSEEK_API_KEY }}",
+      });
+    }
   });
 });
 
@@ -983,11 +999,22 @@ describe("openai-api-key codex provider", () => {
 
   it("firewall scopes to OpenAI Responses API", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["openai-api-key"];
-    expect(config.apis).toHaveLength(1);
     expect(config.apis[0]!.base).toBe("https://api.openai.com/v1/responses");
     expect(config.apis[0]!.auth.headers).toEqual({
       Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
     });
+  });
+
+  it("also covers the Pi standby chat-completions path, still scoped", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["openai-api-key"];
+    expect(
+      config.apis.map((api) => {
+        return api.base;
+      }),
+    ).toEqual([
+      "https://api.openai.com/v1/responses",
+      "https://api.openai.com/v1/chat/completions",
+    ]);
   });
 
   it("modelProviderTypeSchema accepts openai-api-key", () => {
@@ -1014,8 +1041,12 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
     "%s scopes firewall to /v1/messages path prefix",
     (type, expectedBase) => {
       const config = MODEL_PROVIDER_FIREWALL_CONFIGS[type];
-      expect(config.apis).toHaveLength(1);
+      // Pi-capable providers carry a second, equally scoped entry for the
+      // standby loop's chat-completions call; the Anthropic base stays first.
       expect(config.apis[0]!.base).toBe(expectedBase);
+      for (const api of config.apis) {
+        expect(api.base).toMatch(/\/(v1\/messages|chat\/completions)$/);
+      }
     },
   );
 

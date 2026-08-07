@@ -26,6 +26,7 @@ import {
   IconAlertTriangle,
   IconArrowUp,
   IconBolt,
+  IconCheck,
   IconColorSwatch,
   IconDeviceDesktop,
   IconDownload,
@@ -566,15 +567,37 @@ function ComposerStripRow({
 
 function PendingItemsStripHeader({
   label,
+  modelChangeAppliesNextRun,
   cancellationRecoveryPending,
 }: {
-  label: string;
+  label: string | null;
+  modelChangeAppliesNextRun: boolean;
   cancellationRecoveryPending: boolean;
 }) {
   const { t } = useTranslation();
   return (
     <div className="px-5 pt-3 pb-2">
-      <p className="text-sm text-muted-foreground">{label}</p>
+      {modelChangeAppliesNextRun ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="text-sm text-muted-foreground"
+        >
+          {t(($) => {
+            return $.chat.queue.modelChangeAppliesNextRun;
+          })}
+        </p>
+      ) : null}
+      {label ? (
+        <p
+          className={cn(
+            "text-sm text-muted-foreground",
+            modelChangeAppliesNextRun && "mt-1",
+          )}
+        >
+          {label}
+        </p>
+      ) : null}
       {cancellationRecoveryPending ? (
         <p
           role="status"
@@ -590,13 +613,42 @@ function PendingItemsStripHeader({
   );
 }
 
+function shouldShowNextRunModelNotice({
+  enabled,
+  selectedModel,
+  runningModel,
+}: {
+  enabled: boolean;
+  selectedModel: string | undefined;
+  runningModel: string | null | undefined;
+}): boolean {
+  return (
+    enabled &&
+    selectedModel !== undefined &&
+    runningModel !== undefined &&
+    runningModel !== null &&
+    selectedModel !== runningModel
+  );
+}
+
 function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
+  const nextRunModelNoticeEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatNextRunModelNotice] ?? false;
   const pendingEvents =
     useLastResolved(signals.queue.pendingEvents$) ??
     ([] satisfies readonly ComposerPendingEvent[]);
   const cancellationRecoveryPending =
     useLastResolved(signals.queue.cancellationRecoveryPending$) ?? false;
+  const selectedModel = useLastResolved(
+    signals.model.modelSelection$,
+  )?.selectedModel;
+  const runningModel = useLastResolved(signals.model.runningModel$);
+  const modelChangeAppliesNextRun = shouldShowNextRunModelNotice({
+    enabled: nextRunModelNoticeEnabled,
+    selectedModel,
+    runningModel,
+  });
   const activeGoalObjective = useLastResolved(
     signals.goal.activeGoalObjective$,
   );
@@ -657,18 +709,22 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
             items: queued.length > 0 ? messageLabel : eventLabel,
           },
         );
-  if (count === 0 && !activeGoal) {
+  if (count === 0 && !activeGoal && !modelChangeAppliesNextRun) {
     return null;
   }
   return (
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      {count > 0 ? (
+      {count > 0 || modelChangeAppliesNextRun ? (
         <PendingItemsStripHeader
-          label={label}
+          label={count > 0 ? label : null}
+          modelChangeAppliesNextRun={modelChangeAppliesNextRun}
           cancellationRecoveryPending={cancellationRecoveryPending}
         />
       ) : null}
-      <div className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1" role="list">
+      <div
+        className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1"
+        role={count > 0 || activeGoal ? "list" : undefined}
+      >
         {queued.map((item) => {
           return (
             <ComposerStripRow
@@ -877,6 +933,20 @@ function selectedWorkflowTemplateItem(
   return findWorkflowTemplateItem(value.selection.workflowTemplateId);
 }
 
+// The header search spans every catalogue, so each one narrows by title.
+function filterTemplatesByTitle<T extends { readonly title: string }>(
+  items: readonly T[],
+  query: string,
+): readonly T[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return items;
+  }
+  return items.filter((item) => {
+    return item.title.toLowerCase().includes(normalizedQuery);
+  });
+}
+
 function workflowTemplateMatchesSearch(
   item: WorkflowTemplateItem,
   query: string,
@@ -1054,6 +1124,29 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
 const TEMPLATE_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
 
+/**
+ * Gallery tile. The hover outline is a ring with an offset so it is drawn
+ * outside the card and keeps a gap from the artwork — the card itself keeps
+ * the full grid cell and never shrinks.
+ */
+const TEMPLATE_TILE_WRAPPER = "group/tile relative cursor-pointer";
+const TEMPLATE_TILE_RING =
+  "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
+const TEMPLATE_TILE_RING_HOVER = "ring-gray-400 group-hover/tile:ring-1";
+const TEMPLATE_TILE_RING_SELF_HOVER = "ring-gray-400 hover:ring-1";
+const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
+const TEMPLATE_TILE_MEDIA =
+  "relative overflow-hidden border border-gray-200 bg-muted";
+const TEMPLATE_TILE_SCRIM =
+  "pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-14 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100";
+const TEMPLATE_TILE_USE =
+  "absolute bottom-2 right-2 z-20 h-[30px] rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground opacity-100 transition-opacity duration-150 hover:bg-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover/tile:opacity-100";
+// Caption metrics track the illustration card: same text size, and enough
+// breathing room under the artwork that the title never crowds it.
+const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-2 pb-2 pt-2";
+const TEMPLATE_TILE_NAME =
+  "min-w-0 truncate text-sm font-medium leading-5 text-foreground";
+
 function VideoTemplateCard({
   item,
   selected,
@@ -1065,49 +1158,44 @@ function VideoTemplateCard({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className={cn(
-        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-      )}
-    >
-      <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
+    <div className={TEMPLATE_TILE_WRAPPER}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "aspect-[16/9]",
+          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+        )}
+      >
         <VideoTemplatePreview item={item} />
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <IconCheck size={14} stroke={2.6} />
+          </span>
+        ) : null}
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectVideo;
+            },
+            {
+              title: item.title,
+            },
+          )}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={TEMPLATE_TILE_USE}
+        >
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
+        </button>
       </div>
-      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            aria-label={t(
-              ($) => {
-                return $.artifacts.templates.selectVideo;
-              },
-              {
-                title: item.title,
-              },
-            )}
-            aria-pressed={selected}
-            onClick={() => {
-              onSelect(item);
-            }}
-            className={cn(
-              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              selected
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-background text-foreground hover:bg-muted",
-            )}
-          >
-            {t(($) => {
-              return $.artifacts.templates.use;
-            })}
-          </button>
-        </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
       </div>
     </div>
   );
@@ -1175,12 +1263,18 @@ function WebsiteTemplateCard({
         }
       }}
       className={cn(
-        "group flex cursor-zoom-in flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
+        TEMPLATE_TILE_WRAPPER,
+        "cursor-zoom-in focus-visible:outline-none",
       )}
     >
-      <div className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted">
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "aspect-[16/9] group-focus-visible/tile:ring-1 group-focus-visible/tile:ring-ring",
+          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+        )}
+      >
         <img
           alt={t(
             ($) => {
@@ -1205,13 +1299,12 @@ function WebsiteTemplateCard({
           draggable={false}
           className="pointer-events-none h-full w-full bg-background object-cover"
         />
-      </div>
-      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
-          </p>
-        </div>
+        <div className={TEMPLATE_TILE_SCRIM} />
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <IconCheck size={14} stroke={2.6} />
+          </span>
+        ) : null}
         <button
           type="button"
           aria-label={t(
@@ -1227,17 +1320,15 @@ function WebsiteTemplateCard({
             event.stopPropagation();
             onSelect(item);
           }}
-          className={cn(
-            "h-8 shrink-0 cursor-pointer rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            selected
-              ? "border-primary/40 bg-primary/10 text-primary"
-              : "border-border bg-background text-foreground hover:bg-muted",
-          )}
+          className={cn(TEMPLATE_TILE_USE, "cursor-pointer")}
         >
           {t(($) => {
             return $.artifacts.templates.use;
           })}
         </button>
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
       </div>
     </div>
   );
@@ -1347,9 +1438,10 @@ function WorkflowTemplateCard({
   return (
     <div
       className={cn(
-        "group flex flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
+        "group/tile flex flex-col border border-gray-200 bg-card p-4",
         TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
+        TEMPLATE_TILE_RING,
+        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_SELF_HOVER,
       )}
     >
       <p className="text-sm font-semibold text-foreground">{item.title}</p>
@@ -1434,7 +1526,7 @@ function WorkflowTemplatePillRow({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
+    <div className="flex flex-wrap items-center gap-1.5 px-6">
       {["all", ...pills].map((pill) => {
         const isActive = active === pill;
         return (
@@ -3448,7 +3540,7 @@ function TemplatePreviewPage({
     <>
       <DialogHeader
         data-presentation-template-detail-header=""
-        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left sm:pr-16"
+        className="flex h-[68px] shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none"
       >
         <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
@@ -3466,7 +3558,7 @@ function TemplatePreviewPage({
           </span>
         </DialogTitle>
       </DialogHeader>
-      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
@@ -3772,33 +3864,27 @@ function PptCard({
   );
 
   return (
-    <div
-      className={cn(
-        "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-      )}
-    >
-      <TemplatePreview
-        item={item}
-        onPreview={onPreview}
-        runtime={runtime}
-        signals={signals}
-        theme={selectedTheme}
-      />
-      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
-        <div className="min-w-0 flex-1">
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <p className="min-w-0 cursor-default truncate text-sm font-semibold leading-5 text-foreground">
-                  {item.title}
-                </p>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{item.title}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+    <div className={TEMPLATE_TILE_WRAPPER}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+        )}
+      >
+        <TemplatePreview
+          item={item}
+          onPreview={onPreview}
+          runtime={runtime}
+          signals={signals}
+          theme={selectedTheme}
+        />
+        <div className={TEMPLATE_TILE_SCRIM} />
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <IconCheck size={14} stroke={2.6} />
+          </span>
+        ) : null}
         <button
           type="button"
           aria-label={t(
@@ -3813,17 +3899,38 @@ function PptCard({
           onClick={() => {
             onSelect(item, presentationTemplateColorSystemId(selectedTheme.id));
           }}
-          className={cn(
-            "h-8 shrink-0 rounded-md border border-border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            selected
-              ? "bg-primary/10 text-primary"
-              : "bg-background text-foreground hover:bg-muted",
-          )}
+          className={TEMPLATE_TILE_USE}
         >
           {t(($) => {
             return $.artifacts.templates.use;
           })}
         </button>
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p className={cn(TEMPLATE_TILE_NAME, "cursor-default")}>
+                {item.title}
+              </p>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{item.title}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {presentationTemplateThemeAccentSwatches(item, selectedTheme).map(
+            (swatch) => {
+              return (
+                <span
+                  key={swatch.id}
+                  aria-hidden
+                  className="h-3 w-3 rounded-full ring-1 ring-inset ring-black/10"
+                  style={{ backgroundColor: swatch.color }}
+                />
+              );
+            },
+          )}
+        </span>
       </div>
     </div>
   );
@@ -3875,12 +3982,31 @@ function IllustrationTemplateHero({
         )}
         className={cn(
           "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
-          navigable && "cursor-pointer",
+          // Same affordance the detail preview uses for slide paging: the
+          // cursor points at the half that will be navigated to.
+          navigable &&
+            "data-[half=left]:cursor-w-resize data-[half=right]:cursor-e-resize",
         )}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
         fetchPriority={priority ? "high" : "low"}
         onMouseEnter={navigable ? preloadNeighbors : undefined}
+        onMouseMove={
+          navigable
+            ? (event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                event.currentTarget.dataset.half =
+                  event.clientX - rect.left < rect.width / 2 ? "left" : "right";
+              }
+            : undefined
+        }
+        onMouseLeave={
+          navigable
+            ? (event) => {
+                delete event.currentTarget.dataset.half;
+              }
+            : undefined
+        }
         onClick={
           navigable
             ? (event) => {
@@ -4268,11 +4394,10 @@ function IllustrationTemplateCard({
     <div
       data-illustration-template-card=""
       className={cn(
-        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card transition-colors",
+        "group/tile mb-4 break-inside-avoid overflow-hidden border border-gray-200 bg-card",
         TEMPLATE_CARD_SHADOW,
-        selected
-          ? "border-primary ring-1 ring-primary"
-          : "border-border hover:border-muted-foreground/30",
+        TEMPLATE_TILE_RING,
+        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_SELF_HOVER,
       )}
     >
       <IllustrationTemplateHero
@@ -4532,139 +4657,103 @@ function TemplatePickerCategoryNav({
           </SelectContent>
         </Select>
       </div>
-      <nav
-        role="tablist"
-        aria-label={t(($) => {
-          return $.artifacts.templates.categories;
-        })}
-        aria-orientation="vertical"
-        data-template-picker-sidebar=""
-        className="hidden w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-gray-50 p-3 sm:flex"
-      >
-        <div className="flex min-h-[50px] items-center px-2">
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">
-            {t(($) => {
-              return $.artifacts.templates.template;
+      <div className="hidden shrink-0 sm:flex">
+        <div className="flex w-56 shrink-0 flex-col border-r border-border bg-card">
+          <TemplatePickerHeader />
+          <nav
+            role="tablist"
+            aria-label={t(($) => {
+              return $.artifacts.templates.categories;
             })}
-          </h2>
+            aria-orientation="vertical"
+            data-template-picker-sidebar=""
+            className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3"
+          >
+            {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
+              const selected = value === selectedCategory;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => {
+                    onChange(value);
+                  }}
+                  onKeyDown={(event) => {
+                    let nextIndex: number | null = null;
+                    if (event.key === "ArrowDown") {
+                      nextIndex = (categoryIndex + 1) % categoryOptions.length;
+                    } else if (event.key === "ArrowUp") {
+                      nextIndex =
+                        (categoryIndex - 1 + categoryOptions.length) %
+                        categoryOptions.length;
+                    } else if (event.key === "Home") {
+                      nextIndex = 0;
+                    } else if (event.key === "End") {
+                      nextIndex = categoryOptions.length - 1;
+                    }
+                    if (nextIndex === null) {
+                      return;
+                    }
+                    event.preventDefault();
+                    const nextTab = event.currentTarget.parentElement
+                      ?.querySelectorAll<HTMLElement>("[role=tab]")
+                      .item(nextIndex);
+                    nextTab?.focus();
+                    onChange(categoryOptions[nextIndex]?.value ?? value);
+                  }}
+                  className={cn(
+                    "group flex h-9 w-full shrink-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                    selected
+                      ? "bg-gray-50 font-medium text-foreground"
+                      : "text-gray-800 hover:bg-gray-50 hover:text-foreground",
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-colors",
+                      selected
+                        ? "text-foreground"
+                        : "text-gray-700 group-hover:text-gray-800",
+                    )}
+                    stroke={1.8}
+                  />
+                  <span className="truncate">{label}</span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
-        {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
-          const selected = value === selectedCategory;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => {
-                onChange(value);
-              }}
-              onKeyDown={(event) => {
-                let nextIndex: number | null = null;
-                if (event.key === "ArrowDown") {
-                  nextIndex = (categoryIndex + 1) % categoryOptions.length;
-                } else if (event.key === "ArrowUp") {
-                  nextIndex =
-                    (categoryIndex - 1 + categoryOptions.length) %
-                    categoryOptions.length;
-                } else if (event.key === "Home") {
-                  nextIndex = 0;
-                } else if (event.key === "End") {
-                  nextIndex = categoryOptions.length - 1;
-                }
-                if (nextIndex === null) {
-                  return;
-                }
-                event.preventDefault();
-                const nextTab = event.currentTarget.parentElement
-                  ?.querySelectorAll<HTMLElement>("[role=tab]")
-                  .item(nextIndex);
-                nextTab?.focus();
-                onChange(categoryOptions[nextIndex]?.value ?? value);
-              }}
-              className={cn(
-                "flex h-8 w-full items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                selected
-                  ? "bg-gray-200 font-medium text-sidebar-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent focus-visible:bg-sidebar-accent",
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0 text-gray-700" stroke={1.8} />
-              <span className="truncate">{label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      </div>
     </>
   );
 }
 
-function TemplatePickerCategoryHeader({
-  selectedCategory,
-}: {
-  selectedCategory: string;
-}) {
+function TemplatePickerHeader() {
   const { t } = useTranslation();
-  const title =
-    selectedCategory === "slides"
-      ? t(($) => {
-          return $.artifacts.kinds.presentation;
-        })
-      : selectedCategory === "website"
-        ? t(($) => {
-            return $.artifacts.templates.website;
-          })
-        : selectedCategory === "illustration"
-          ? t(($) => {
-              return $.artifacts.templates.illustration;
-            })
-          : selectedCategory === "video"
-            ? t(($) => {
-                return $.artifacts.kinds.video;
-              })
-            : selectedCategory === "avatar"
-              ? t(($) => {
-                  return $.artifacts.templates.avatar;
-                })
-              : selectedCategory === "workflow"
-                ? t(($) => {
-                    return $.artifacts.templates.workflow;
-                  })
-                : t(($) => {
-                    return $.artifacts.templates.template;
-                  });
   return (
-    <header
-      className={cn(
-        "hidden min-h-[74px] shrink-0 items-center border-b border-border px-5 py-4 sm:flex",
-        selectedCategory === "workflow" ? "pr-[21rem]" : "pr-14",
-      )}
-    >
-      <div className="min-w-0">
-        <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
-          {title}
-        </h2>
-      </div>
+    <header className="flex h-[68px] shrink-0 items-center px-5">
+      <h2 className="text-lg font-semibold leading-6 tracking-tight text-foreground">
+        {t(($) => {
+          return $.artifacts.templates.template;
+        })}
+      </h2>
     </header>
   );
 }
 
-function TemplatePickerWorkflowSearch({
-  selectedCategory,
+function TemplatePickerSearch({
   search,
   onSearchChange,
 }: {
-  selectedCategory: string;
   search: string;
   onSearchChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
-  if (selectedCategory !== "workflow") {
-    return null;
-  }
   return (
-    <div className="shrink-0 border-b border-border px-4 py-3 sm:absolute sm:right-14 sm:top-[21px] sm:z-10 sm:w-64 sm:border-0 sm:p-0">
+    <div className="relative w-56 shrink-0">
       <div className="relative">
         <IconSearch
           className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -4674,7 +4763,7 @@ function TemplatePickerWorkflowSearch({
           aria-label={t(($) => {
             return $.artifacts.templates.searchConnectors;
           })}
-          className="h-9 pl-9 text-sm sm:h-8"
+          className="h-9 pl-9 text-sm"
           value={search}
           onChange={(event) => {
             onSearchChange(event.target.value);
@@ -4793,6 +4882,9 @@ function TemplatePickerDialog({
   const setCategory = useSet(signals.template.setTemplatePickerCategory$);
   const search = useGet(signals.template.templatePickerSearch$);
   const setSearch = useSet(signals.template.setTemplatePickerSearch$);
+  const templatePickerGlobalSearchEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.TemplatePickerGlobalSearch] ??
+    false;
   const previewSlug = useGet(signals.template.templatePickerPreviewSlug$);
   const restorePresentationGridScroll = useSet(
     signals.template.restoreTemplatePickerPresentationScroll$,
@@ -4837,14 +4929,25 @@ function TemplatePickerDialog({
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     skipEnterAnimation && "data-[state=open]:!animate-none",
-    isPreviewing
-      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button]:top-[7px]"
-      : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:top-[7px] sm:[&>button]:top-[19px]",
+    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
-  const filteredPptItems = presentationItems;
-  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
-  const filteredVideoItems = VIDEO_TEMPLATE_ITEMS;
-  const filteredWebsiteItems = WEBSITE_TEMPLATE_ITEMS;
+  const catalogueSearch = templatePickerGlobalSearchEnabled ? search : "";
+  const filteredPptItems = filterTemplatesByTitle(
+    presentationItems,
+    catalogueSearch,
+  );
+  const filteredIllustrationItems = filterTemplatesByTitle(
+    ILLUSTRATION_TEMPLATE_ITEMS,
+    catalogueSearch,
+  );
+  const filteredVideoItems = filterTemplatesByTitle(
+    VIDEO_TEMPLATE_ITEMS,
+    catalogueSearch,
+  );
+  const filteredWebsiteItems = filterTemplatesByTitle(
+    WEBSITE_TEMPLATE_ITEMS,
+    catalogueSearch,
+  );
   // A persona pill filters the grid, ideation-gallery style.
   // resolveWorkflowCatalog() keeps that logic out of this component to stay
   // under the complexity budget.
@@ -4867,6 +4970,9 @@ function TemplatePickerDialog({
     hasAvatarTab,
     hasWorkflowTab,
   });
+  const showTemplatePickerSearch =
+    selectedCategory === "workflow" ||
+    (templatePickerGlobalSearchEnabled && selectedCategory !== "avatar");
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
@@ -5120,14 +5226,19 @@ function TemplatePickerDialog({
                 onChange={handleCategoryChange}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                <TemplatePickerCategoryHeader
-                  selectedCategory={selectedCategory}
-                />
-                <TemplatePickerWorkflowSearch
-                  selectedCategory={selectedCategory}
-                  search={search}
-                  onSearchChange={handleSearchChange}
-                />
+                <div
+                  className={cn(
+                    "relative h-[68px] shrink-0 items-center px-6 pr-14",
+                    showTemplatePickerSearch ? "flex" : "hidden sm:flex",
+                  )}
+                >
+                  {showTemplatePickerSearch ? (
+                    <TemplatePickerSearch
+                      search={search}
+                      onSearchChange={handleSearchChange}
+                    />
+                  ) : null}
+                </div>
                 <TemplatePickerCategoryContent
                   signals={signals}
                   selectedCategory={selectedCategory}
@@ -5237,7 +5348,7 @@ function TemplatePickerCategoryContent({
       <div
         data-presentation-template-grid-scroll=""
         ref={onRestorePresentationScroll}
-        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-5 py-4"
+        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-6 pb-6 pt-0.5"
         onScroll={(event) => {
           onPresentationScroll(event.currentTarget.scrollTop);
         }}
@@ -5262,7 +5373,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-website-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
         {filteredWebsiteItems.length > 0 ? (
           <WebsiteTemplateGrid
@@ -5282,7 +5393,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-illustration-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
         onScroll={(event) => {
           prewarmIllustrationPreviewImagesNearScroll({
             items: filteredIllustrationItems,
@@ -5312,7 +5423,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-video-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
         {filteredVideoItems.length > 0 ? (
           <VideoTemplateGrid
@@ -5329,7 +5440,7 @@ function TemplatePickerCategoryContent({
 
   if (selectedCategory === "avatar" && hasAvatarTab) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4">
         <AvatarTemplatePickerContent
           signals={signals}
           value={value}
@@ -5352,7 +5463,7 @@ function TemplatePickerCategoryContent({
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             data-workflow-template-grid-scroll=""
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-4"
           >
             {workflowCatalog.items.length > 0 ? (
               <WorkflowTemplateGrid

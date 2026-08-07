@@ -43,6 +43,10 @@
             "release-type": "node",
             "skip-changelog": true
         },
+        "turbo/packages/pi-agent-runtime": {
+            "release-type": "node",
+            "skip-changelog": true
+        },
         "crates/ably-subscriber": {
             "release-type": "rust"
         },

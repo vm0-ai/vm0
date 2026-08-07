@@ -11,7 +11,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const STRIPE_LIVEMODE_VARIABLE_NAME = "STRIPE_LIVEMODE";
 const fixtureBody$ = bodyResultOf(testStripeInvoicePaidFixtureContract.apply);

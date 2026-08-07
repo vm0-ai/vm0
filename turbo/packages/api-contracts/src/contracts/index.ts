@@ -88,10 +88,6 @@ export {
   type ArtifactConfig,
 } from "./composes";
 export {
-  testAgentComposesContract,
-  type TestAgentComposesContract,
-} from "./test-agent-composes";
-export {
   ALL_RUN_STATUSES,
   runStatusSchema,
   unifiedRunRequestSchema,
@@ -139,10 +135,6 @@ export {
   type ConcurrencyInfo,
   type QueueResponse,
 } from "./runs";
-export {
-  testAgentRunsContract,
-  type TestAgentRunsContract,
-} from "./test-agent-runs";
 export {
   ZERO_RECOGNITION_MAX_FILE_BYTES,
   ZERO_RECOGNITION_MAX_PROMPT_CHARS,
@@ -322,41 +314,6 @@ export {
   type ConnectorsSlugCallbackContract,
 } from "./connectors-slug-callback";
 export {
-  testOAuthProviderAuthorizeContract,
-  testOAuthProviderAuthorizeErrorSchema,
-  testOAuthProviderAuthorizeQuerySchema,
-  type TestOAuthProviderAuthorizeContract,
-  type TestOAuthProviderAuthorizeQuery,
-} from "./test-oauth-provider-authorize";
-export {
-  testOAuthProviderEchoContract,
-  testOAuthProviderEchoErrorSchema,
-  testOAuthProviderEchoResponseSchema,
-  type TestOAuthProviderEchoContract,
-  type TestOAuthProviderEchoResponse,
-} from "./test-oauth-provider-echo";
-export {
-  testOAuthProviderTokenContract,
-  testOAuthProviderTokenErrorSchema,
-  testOAuthProviderTokenResponseSchema,
-  type TestOAuthProviderTokenContract,
-  type TestOAuthProviderTokenResponse,
-} from "./test-oauth-provider-token";
-export {
-  testOAuthProviderDeviceAuthContract,
-  testOAuthProviderDeviceAuthErrorSchema,
-  testOAuthProviderDeviceAuthResponseSchema,
-  type TestOAuthProviderDeviceAuthContract,
-  type TestOAuthProviderDeviceAuthResponse,
-} from "./test-oauth-provider-device-auth";
-export {
-  testOAuthProviderUserinfoContract,
-  testOAuthProviderUserinfoErrorSchema,
-  testOAuthProviderUserinfoResponseSchema,
-  type TestOAuthProviderUserinfoContract,
-  type TestOAuthProviderUserinfoResponse,
-} from "./test-oauth-provider-userinfo";
-export {
   testComputerUseStateContract,
   testComputerUseStateDeleteResponseSchema,
   testComputerUseStateGetResponseSchema,
@@ -375,15 +332,6 @@ export {
   type TestRuntimeStateActionResponse,
   type TestRuntimeStateContract,
 } from "./test-runtime-state";
-export {
-  testZeroAgentStateActionBodySchema,
-  testZeroAgentStateActionResponseSchema,
-  testZeroAgentStateContract,
-  testZeroAgentStateErrorSchema,
-  type TestZeroAgentStateActionBody,
-  type TestZeroAgentStateActionResponse,
-  type TestZeroAgentStateContract,
-} from "./test-zero-agent-state";
 export {
   testModelProviderStateActionBodySchema,
   testModelProviderStateActionResponseSchema,
@@ -431,32 +379,6 @@ export {
   type TestSlackStateContract,
   type TestSlackStateResponse,
 } from "./test-slack-state";
-export {
-  SLACK_E2E_FIXTURES,
-  SLACK_E2E_SCOPES,
-  testSlackMockAuthTestResponseSchema,
-  testSlackMockChatPostEphemeralResponseSchema,
-  testSlackMockChatPostMessageResponseSchema,
-  testSlackMockContract,
-  testSlackMockConversationMessagesResponseSchema,
-  testSlackMockConversationsOpenResponseSchema,
-  testSlackMockOauthAccessResponseSchema,
-  testSlackMockOkResponseSchema,
-  testSlackMockUsersInfoResponseSchema,
-  type TestSlackMockContract,
-  type TestSlackMockUsersInfoResponse,
-} from "./test-slack-mock";
-export {
-  testTelegramMockContract,
-  testTelegramMockErrorResponseSchema,
-  testTelegramMockPathParamsSchema,
-  testTelegramMockSuccessResponseSchema,
-  type TestTelegramMockContract,
-} from "./test-telegram-mock";
-export {
-  testTeamsMockContract,
-  type TestTeamsMockContract,
-} from "./test-teams-mock";
 export {
   testTeamsStateContract,
   testTeamsStateErrorSchema,
@@ -709,6 +631,8 @@ export {
   jobSchema,
   executionContextSchema,
   storedExecutionContextSchema,
+  runSkillSnapshotSchema,
+  runSkillSnapshotEntrySchema,
   secretConnectorMetadataSchema,
   secretConnectorMetadataMapSchema,
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
@@ -716,6 +640,7 @@ export {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
+  PI_SKILLS_ROOT,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -734,6 +659,8 @@ export {
   type Job,
   type ExecutionContext,
   type StoredExecutionContext,
+  type RunSkillSnapshot,
+  type RunSkillSnapshotEntry,
   type NetworkPolicyRefresh,
   type ConnectorRuntimeTarget,
   type ConnectorRuntimeCustomAbsentReason,

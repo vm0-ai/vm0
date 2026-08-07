@@ -31,6 +31,7 @@ mod diagnostics;
 mod event_delivery;
 mod exec_boundary;
 mod line_reader;
+mod pi_agent_loop;
 mod process_group;
 mod termination;
 
@@ -254,6 +255,23 @@ pub struct CliExecutionResult {
     /// Structured attribution for guest-agent initiated CLI process-group
     /// termination.
     pub cli_termination: Option<CliTerminationDiagnostic>,
+
+    /// Whether this child produced a terminal run result or only released an
+    /// unused Pi standby allocation.
+    pub completion_disposition: CliCompletionDisposition,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliCompletionDisposition {
+    Terminal,
+    PiCompleted,
+    PiStandbyReleased(PiStandbyReleaseReason),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PiStandbyReleaseReason {
+    ApiComplete,
+    Ttl,
 }
 
 /// Heartbeat completion signal observed by CLI execution.
@@ -651,6 +669,7 @@ pub async fn execute_cli_with_active_input_for_config_started_at(
 /// Run-scoped controls observed while the inner CLI is executing.
 pub struct CliExecutionControls<'a> {
     active_input: ActiveInputWriter,
+    pi_standby: crate::pi_standby::PiStandbyReader,
     user_cancellation: CancellationToken,
     codex_startup: Option<&'a CodexStartupTiming>,
 }
@@ -665,9 +684,16 @@ impl<'a> CliExecutionControls<'a> {
     ) -> Self {
         Self {
             active_input,
+            pi_standby: crate::pi_standby::PiStandbyReader::closed(),
             user_cancellation,
             codex_startup,
         }
+    }
+
+    #[must_use]
+    pub fn with_pi_standby_reader(mut self, reader: crate::pi_standby::PiStandbyReader) -> Self {
+        self.pi_standby = reader;
+        self
     }
 }
 
@@ -681,6 +707,18 @@ pub async fn execute_cli_with_controls_for_config_started_at(
     paths: &paths::GuestPaths,
     execution_started_at: Instant,
 ) -> Result<CliExecutionResult, AgentError> {
+    if pi_agent_loop::is_pi_standby_config(config)? {
+        return pi_agent_loop::execute_pi_standby(
+            masker,
+            heartbeat_monitor,
+            http,
+            controls,
+            config,
+            paths,
+            execution_started_at,
+        )
+        .await;
+    }
     let runtime = CliRuntimeConfig::from_config(config, paths, execution_started_at)?;
     execute_cli_inner(masker, heartbeat_monitor, http, controls, &runtime).await
 }
@@ -705,6 +743,7 @@ async fn execute_cli_inner(
 
     let CliExecutionControls {
         active_input,
+        pi_standby: _,
         user_cancellation,
         codex_startup: _,
     } = controls;
@@ -1473,6 +1512,7 @@ async fn execute_cli_inner(
         failure_diagnostic: event_ingestor.failure_diagnostic(),
         control_error,
         cli_termination,
+        completion_disposition: CliCompletionDisposition::Terminal,
     })
 }
 

@@ -229,21 +229,11 @@ interface TeamsCreateConversationBody {
   };
 }
 
-function isE2eTeamsMockEnabled(): boolean {
-  const flag = optionalEnv("E2E_TEAMS_MOCK_ENABLED");
-  return flag === "1" || flag === "true";
-}
-
 function teamsBotCredentials(): TeamsBotCredentials | undefined {
   const appId = env("MICROSOFT_TEAMS_BOT_APP_ID");
   const appPassword = env("MICROSOFT_TEAMS_BOT_APP_PASSWORD");
   if (!appId || !appPassword) {
-    return isE2eTeamsMockEnabled()
-      ? {
-          appId: "e2e-teams-bot-app-id",
-          appPassword: "e2e-teams-bot-app-password",
-        }
-      : undefined;
+    return undefined;
   }
   return { appId, appPassword };
 }
@@ -254,54 +244,10 @@ function tenantTokenUrl(tenantId: string): string {
   )}/oauth2/v2.0/token`;
 }
 
-function e2eTeamsMockBaseUrl(): string | undefined {
-  const explicitBaseUrl = optionalEnv("TEAMS_MOCK_BASE_URL");
-  if (explicitBaseUrl) {
-    return explicitBaseUrl.replace(/\/+$/u, "");
-  }
-
-  const mockEnabled = isE2eTeamsMockEnabled();
-  if (!mockEnabled) {
-    return undefined;
-  }
-
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (vercelUrl) {
-    return `https://${vercelUrl}/api/test/teams-mock`;
-  }
-
-  const apiBackendUrl = optionalEnv("VM0_API_BACKEND_URL");
-  if (apiBackendUrl) {
-    return `${apiBackendUrl.replace(/\/+$/u, "")}/api/test/teams-mock`;
-  }
-
-  throw new Error(
-    "E2E_TEAMS_MOCK_ENABLED=1 but VERCEL_URL and VM0_API_BACKEND_URL are unset; cannot redirect Microsoft Teams API traffic to the preview mock routes",
-  );
-}
-
-function e2eTeamsMockHeaders(): Record<string, string> {
-  if (!isE2eTeamsMockEnabled()) {
-    return {};
-  }
-  const bypass = optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET");
-  if (!bypass) {
-    return {};
-  }
-  return {
-    "x-vercel-protection-bypass": bypass,
-    "x-vm0-test-endpoint-bypass": bypass,
-  };
-}
-
 function botTokenUrl(): string | undefined {
   const configured = optionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL");
   if (configured) {
     return configured;
-  }
-  const mockBaseUrl = e2eTeamsMockBaseUrl();
-  if (mockBaseUrl) {
-    return `${mockBaseUrl}/token`;
   }
   const appTenantId = env("MICROSOFT_TEAMS_APP_TENANT_ID");
   return appTenantId ? tenantTokenUrl(appTenantId) : undefined;
@@ -312,8 +258,7 @@ function graphTokenUrl(tenantId: string): string {
   if (configured) {
     return configured;
   }
-  const mockBaseUrl = e2eTeamsMockBaseUrl();
-  return mockBaseUrl ? `${mockBaseUrl}/token` : tenantTokenUrl(tenantId);
+  return tenantTokenUrl(tenantId);
 }
 
 function graphBaseUrl(): string {
@@ -321,10 +266,7 @@ function graphBaseUrl(): string {
   if (configured) {
     return configured.replace(/\/+$/u, "");
   }
-  const mockBaseUrl = e2eTeamsMockBaseUrl();
-  return mockBaseUrl
-    ? `${mockBaseUrl}/graph`
-    : DEFAULT_MICROSOFT_GRAPH_BASE_URL;
+  return DEFAULT_MICROSOFT_GRAPH_BASE_URL;
 }
 
 function networkErrorMessage(error: unknown): string {
@@ -362,7 +304,6 @@ async function fetchClientCredentialsAccessToken(args: {
       method: "POST",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        ...e2eTeamsMockHeaders(),
       },
       body,
       signal: args.signal,
@@ -572,7 +513,6 @@ async function fetchTeamsGraphJson<T>(args: {
       method: "GET",
       headers: {
         authorization: `Bearer ${accessToken.accessToken}`,
-        ...e2eTeamsMockHeaders(),
       },
       signal: args.signal,
     }),
@@ -669,7 +609,6 @@ export async function fetchTeamsUsers(args: {
         method: "GET",
         headers: {
           authorization: `Bearer ${accessToken.accessToken}`,
-          ...e2eTeamsMockHeaders(),
         },
         signal: args.signal,
       }),
@@ -735,7 +674,6 @@ async function postTeamsActivity(args: {
       headers: {
         authorization: `Bearer ${accessToken.accessToken}`,
         "content-type": "application/json",
-        ...e2eTeamsMockHeaders(),
       },
       body: JSON.stringify(args.activity),
       signal: args.signal,
@@ -813,7 +751,6 @@ export async function createTeamsPersonalConversation(args: {
       headers: {
         authorization: `Bearer ${accessToken.accessToken}`,
         "content-type": "application/json",
-        ...e2eTeamsMockHeaders(),
       },
       body: JSON.stringify(body),
       signal: args.signal,
@@ -873,7 +810,6 @@ async function requestTeamsReaction(args: {
       method: args.method,
       headers: {
         authorization: `Bearer ${accessToken.accessToken}`,
-        ...e2eTeamsMockHeaders(),
       },
       signal: args.signal,
     }),

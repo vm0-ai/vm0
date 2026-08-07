@@ -49,6 +49,8 @@ import {
 } from "./zero-runs-create.service";
 import { isQueueFirstRunClaimLost } from "./agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import type { PiEdgeTurnArgs } from "./pi-edge-config";
+import { runPiEdgeTurn$ } from "./pi-edge-loop.service";
 import { childAutonomyBudget } from "./autonomy-budget.service";
 import {
   autonomyBudgetSchemaAvailable,
@@ -3046,6 +3048,21 @@ async function buildNormalChatRunArgs(
   return createRunArgs;
 }
 
+function piEdgeKickoff(
+  run: (turnArgs: PiEdgeTurnArgs) => Promise<unknown>,
+): (turnArgs: PiEdgeTurnArgs) => void {
+  return (turnArgs) => {
+    waitUntil(
+      tapError(run(turnArgs), (error) => {
+        L.error("Pi edge turn dispatch failed", {
+          runId: turnArgs.runId,
+          error,
+        });
+      }),
+    );
+  };
+}
+
 const createNormalChatRun$ = command(
   async (
     { set },
@@ -3123,6 +3140,9 @@ const createNormalChatRun$ = command(
       createQueueFirstZeroRun$,
       {
         ...createRunArgs,
+        kickoffPiEdgeTurn: piEdgeKickoff((turnArgs) => {
+          return set(runPiEdgeTurn$, turnArgs, signal);
+        }),
         apiStartTime: queuedMessage.createdAt.getTime(),
         zeroRunMetadata: {
           autonomyBudget: queuedMessage.autonomyBudget.autonomyBudget,
