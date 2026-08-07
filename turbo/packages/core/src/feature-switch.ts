@@ -323,6 +323,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
+  [FeatureSwitchKey.PiLoop]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Run web chat runs through the in-API Pi edge loop with sandbox handoff instead of dispatching a runner job immediately.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ComposerUploadPopover]: {
     maintainer: "bingjie@vm0.ai",
     description:

@@ -39,6 +39,7 @@
     "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",
     "@vm0/eslint-config": "workspace:*",
+    "@vm0/pi-agent-runtime": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "ably": "^2.21.0",
     "chalk": "^5.6.2",
@@ -56,6 +57,7 @@
     "typescript": "6.0.3",
     "undici": "^8.9.0",
     "vitest": "^4.1.10",
-    "yaml": "^2.3.4"
+    "yaml": "^2.3.4",
+    "zod": "4.3.6"
   }
 }

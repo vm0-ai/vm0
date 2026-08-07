@@ -5,6 +5,7 @@ import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  PI_STANDBY_PROFILE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersActiveInputsContract,
   runnersConnectorRuntimeSyncContract,
@@ -1009,24 +1010,13 @@ async function lockRunnerJob(
   return row;
 }
 
-async function transitionClaimedJobToRunning(
-  db: Db,
+function buildClaimTransitionSql(
   runId: string,
-  runnerIdentity: RunnerClaimIdentity | undefined,
-  signal: AbortSignal,
-  timing: ClaimRouteTimingCollector,
-): Promise<ClaimTransitionResult> {
-  const runnerId = runnerIdentity?.runnerId ?? null;
-  const runnerHeartbeatGeneration = runnerIdentity?.heartbeatGeneration ?? null;
-  return await db.transaction(async (tx) => {
-    const result = await timing.measure(
-      "claim_route_transition_execute",
-      "nested",
-      async () => {
-        // Materialized outputs make the row locks depend on run, then queue.
-        return await executeRawRows(
-          tx,
-          sql`
+  runnerId: string | null,
+  runnerHeartbeatGeneration: number | null,
+): SQL {
+  // Materialized outputs make the row locks depend on run, then queue.
+  return sql`
           WITH locked_run AS MATERIALIZED (
             SELECT
               ${agentRuns.id} AS "id",
@@ -1038,6 +1028,7 @@ async function transitionClaimedJobToRunning(
           locked_job AS MATERIALIZED (
             SELECT
               ${runnerJobQueue.runId} AS "runId",
+              ${runnerJobQueue.profile} AS "profile",
               ${lte(runnerJobQueue.expiresAt, sql`now()`)} AS "isExpired"
             FROM ${runnerJobQueue}
             INNER JOIN locked_run
@@ -1084,6 +1075,10 @@ async function transitionClaimedJobToRunning(
               sql`locked_job."runId" = locked_run."id"`,
               sql`(
                 locked_run."status" <> 'pending'
+                OR locked_job."profile" <> ${PI_STANDBY_PROFILE}
+              )`,
+              sql`(
+                locked_run."status" <> 'pending'
                 OR EXISTS (
                   SELECT 1
                   FROM updated_run
@@ -1092,6 +1087,17 @@ async function transitionClaimedJobToRunning(
               )`,
             )}
             RETURNING ${runnerJobQueue.runId} AS "runId"
+          ),
+          retained_pi_job AS (
+            SELECT locked_job."runId" AS "runId"
+            FROM locked_job
+            WHERE
+              locked_job."profile" = ${PI_STANDBY_PROFILE}
+              AND EXISTS (
+                SELECT 1
+                FROM updated_run
+                WHERE updated_run."id" = locked_job."runId"
+              )
           )
           SELECT
             CASE
@@ -1111,7 +1117,10 @@ async function transitionClaimedJobToRunning(
                 )
                 THEN 'job-not-found'
               WHEN EXISTS (SELECT 1 FROM updated_run)
-                AND EXISTS (SELECT 1 FROM deleted_job)
+                AND (
+                  EXISTS (SELECT 1 FROM deleted_job)
+                  OR EXISTS (SELECT 1 FROM retained_pi_job)
+                )
                 THEN 'claimed'
               ELSE 'invariant-error'
             END AS "status",
@@ -1122,9 +1131,27 @@ async function transitionClaimedJobToRunning(
                 )::double precision
               FROM updated_run
             ) AS "claimedAtMs"
-          `,
-          claimTransitionSqlRowSchema,
-        );
+          `;
+}
+
+async function transitionClaimedJobToRunning(
+  db: Db,
+  runId: string,
+  runnerIdentity: RunnerClaimIdentity | undefined,
+  signal: AbortSignal,
+  timing: ClaimRouteTimingCollector,
+): Promise<ClaimTransitionResult> {
+  const query = buildClaimTransitionSql(
+    runId,
+    runnerIdentity?.runnerId ?? null,
+    runnerIdentity?.heartbeatGeneration ?? null,
+  );
+  return await db.transaction(async (tx) => {
+    const result = await timing.measure(
+      "claim_route_transition_execute",
+      "nested",
+      async () => {
+        return await executeRawRows(tx, query, claimTransitionSqlRowSchema);
       },
     );
     signal.throwIfAborted();

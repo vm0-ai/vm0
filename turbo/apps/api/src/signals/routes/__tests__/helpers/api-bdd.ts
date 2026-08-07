@@ -9,6 +9,7 @@ import {
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import {
   zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
   zeroAgentsMainContract,
   type ZeroAgentMetadataRequest,
   type ZeroAgentRequest,
@@ -23,6 +24,7 @@ import { now } from "../../../../lib/time";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
+import { zeroAgentInstructionsRoutes } from "../../zero-agent-instructions";
 import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
@@ -157,6 +159,13 @@ export function createBddApi(context: TestContext) {
       context,
       routes: zeroAgentsRoutes,
     })(zeroAgentsByIdContract);
+  }
+
+  function agentInstructionsClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroAgentInstructionsRoutes,
+    })(zeroAgentInstructionsContract);
   }
 
   function user(options: ApiTestUserOptions = {}): ApiTestUser {
@@ -431,6 +440,22 @@ export function createBddApi(context: TestContext) {
           params: { id: agentId },
           headers: authenticate(nextUser),
           body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async updateAgentInstructions(
+      nextUser: ApiTestUser,
+      agentId: string,
+      content: string,
+    ): Promise<ZeroAgentResponse> {
+      const response = await accept(
+        agentInstructionsClient().update({
+          params: { id: agentId },
+          headers: authenticate(nextUser),
+          body: { content },
         }),
         [200],
       );

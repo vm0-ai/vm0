@@ -6,6 +6,7 @@ import {
 import { fileEntryWithHashSchema } from "../contracts/storages";
 import {
   webhookCheckpointsContract,
+  webhookPiTranscriptContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../contracts/webhooks";
@@ -61,6 +62,10 @@ export const rustTypeModuleDocs = [
     rustDoc: ["DTOs for creating recoverable agent checkpoints."],
   },
   {
+    rustModulePath: ["webhooks", "agent", "pi_transcript"],
+    rustDoc: ["DTOs for reading the immutable Pi transcript handoff state."],
+  },
+  {
     rustModulePath: ["webhooks", "agent", "storages"],
     rustDoc: [
       "Sandbox storage upload DTOs shared by guest agents and webhook handlers.",
@@ -77,6 +82,41 @@ export const rustTypeModuleDocs = [
 ] satisfies readonly RustTypeModuleDoc[];
 
 export const rustTypeBindings = [
+  {
+    schema: webhookPiTranscriptContract.read.responses[200],
+    rustModulePath: ["webhooks", "agent", "pi_transcript"],
+    rustTypeName: "Response",
+    direction: "response",
+    fieldTypeOverrides: {
+      payload: "serde_json::Value",
+    },
+    declarations: [
+      {
+        rustTypeName: "ResponseMessage",
+        rustDoc: ["One persisted Pi message in canonical transcript order."],
+        fields: {
+          ordinal: ["One-based ordinal in the chat thread transcript."],
+          messageId: ["Stable idempotency key for the persisted message."],
+          runId: ["Run that originally emitted the message."],
+          runEventSequenceNumber: [
+            "Event sequence assigned by the message's originating run.",
+          ],
+          role: ["Canonical Pi message role."],
+          payload: ["Complete native Pi message payload."],
+          createdAt: ["Persisted message timestamp."],
+        },
+      },
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Versioned transcript returned to a standby Pi agent."],
+        fields: {
+          version: ["CAS version shared by all messages in this transcript."],
+          lastOrdinal: ["Highest persisted transcript ordinal."],
+          messages: ["Canonical ordered Pi messages."],
+        },
+      },
+    ],
+  },
   {
     schema: artifactMissingRootPolicySchema,
     rustModulePath: ["runners", "storage"],

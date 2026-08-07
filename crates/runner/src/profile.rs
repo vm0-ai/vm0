@@ -13,6 +13,7 @@ pub struct ProfileDef {
 }
 
 pub const DEFAULT_PROFILE: &str = "vm0/default";
+pub const PI_STANDBY_PROFILE: &str = "vm0/pi-standby";
 
 /// Return the profile definition for a given profile name.
 pub fn get(name: &str) -> RunnerResult<&'static ProfileDef> {
@@ -24,10 +25,23 @@ pub fn get(name: &str) -> RunnerResult<&'static ProfileDef> {
     };
 
     match name {
-        "vm0/default" => Ok(&DEFAULT),
+        DEFAULT_PROFILE | PI_STANDBY_PROFILE => Ok(&DEFAULT),
         _ => Err(RunnerError::Config(format!(
-            "unknown profile: {name}. available profiles: vm0/default"
+            "unknown profile: {name}. available profiles: {DEFAULT_PROFILE}, {PI_STANDBY_PROFILE}"
         ))),
+    }
+}
+
+/// Return the profile whose sandbox factory backs `name`.
+///
+/// Pi standby reuses the default image and resource shape, so it must not
+/// start a second factory: a factory owns a CoW pool that warms up from the
+/// same base image, and duplicating it would double runner startup work and
+/// idle-pool footprint for no behavioral gain.
+pub fn canonical_factory_profile(name: &str) -> &str {
+    match name {
+        PI_STANDBY_PROFILE => DEFAULT_PROFILE,
+        _ => name,
     }
 }
 
@@ -80,6 +94,17 @@ mod tests {
         assert_eq!(def.memory_mb, 4096);
         assert_eq!(def.rootfs_disk_mb, 8192);
         assert_eq!(def.workspace_disk_mb, 16384);
+    }
+
+    #[test]
+    fn pi_standby_uses_default_resource_shape() {
+        let standby = get(PI_STANDBY_PROFILE).unwrap();
+        let default = get(DEFAULT_PROFILE).unwrap();
+
+        assert_eq!(standby.vcpu, default.vcpu);
+        assert_eq!(standby.memory_mb, default.memory_mb);
+        assert_eq!(standby.rootfs_disk_mb, default.rootfs_disk_mb);
+        assert_eq!(standby.workspace_disk_mb, default.workspace_disk_mb);
     }
 
     #[test]

@@ -40,9 +40,10 @@ fn as_optional(value: &str) -> Option<&str> {
     if value.is_empty() { None } else { Some(value) }
 }
 
-/// Report a successful run to the host. Only called after
-/// `checkpoint::create_checkpoint_for_runtime()` returns Ok, which guarantees
-/// the `checkpoints` row exists so the complete route can build `RunResult`.
+/// Report a successful run to the host. Normal CLI runs call this only after
+/// `checkpoint::create_checkpoint_for_runtime()` succeeds. Pi runs do not
+/// create CLI session checkpoints; their acknowledged terminal transcript
+/// message is the host-side completion proof instead.
 ///
 /// `sandbox_id` and `sandbox_reuse_result` are relayed analytics values;
 /// empty strings are serialized as absent so an unset env var is equivalent

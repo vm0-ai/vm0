@@ -2,12 +2,20 @@ import { PLAN_UPGRADE_CLI_HINT } from "@vm0/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunCreateBodySchema } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import {
+  isPiEdgeCompatibleProviderType,
+  type PiEdgeTurnArgs,
+} from "./pi-edge-config";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   agentComposeVersions,
@@ -142,6 +150,7 @@ interface CreateZeroRunCommandArgs {
   readonly auth: AuthContext & { readonly orgId: string };
   readonly body: ZeroRunCreateBody;
   readonly apiStartTime: number;
+  readonly kickoffPiEdgeTurn?: (turnArgs: PiEdgeTurnArgs) => void;
   readonly triggerSource?: TriggerSource;
   readonly appendSystemPrompt?: string;
   readonly userInfoExtras?: Pick<
@@ -796,6 +805,7 @@ function buildZeroCreateAgentRunArgs(args: {
       cloudBrowserEnabled: args.cloudBrowserEnabled,
     }),
     apiStartTime: command.apiStartTime,
+    kickoffPiEdgeTurn: command.kickoffPiEdgeTurn,
     modelProviderId: command.modelProviderId ?? agentModelProviderId,
     modelProviderCredentialScope: command.modelProviderCredentialScope,
     modelProviderType: command.body.modelProvider,
@@ -884,6 +894,10 @@ async function resolveThreadSessionForZeroRun(
     },
   );
   const webChatSessionPromptContext = input.command.webChatSessionPromptContext;
+  const piNoLegacyHistory =
+    isFeatureEnabled(FeatureSwitchKey.PiLoop, input.featureSwitchContext) &&
+    threadSessionRoute.modelProvider !== null &&
+    isPiEdgeCompatibleProviderType(threadSessionRoute.modelProvider);
   const appendSystemPrompt = webChatSessionPromptContext
     ? await measureZeroPreCreate(
         input.timing,
@@ -894,6 +908,7 @@ async function resolveThreadSessionForZeroRun(
             threadId,
             sessionAction: resolution.action,
             context: webChatSessionPromptContext,
+            historyPolicy: piNoLegacyHistory ? "none" : "default",
           });
         },
       )

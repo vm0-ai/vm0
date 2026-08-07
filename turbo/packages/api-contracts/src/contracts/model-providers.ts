@@ -14,6 +14,7 @@ import {
 } from "./model-provider-types";
 export {
   getModelProviderFirewall,
+  getModelProviderPiChatCompletionsUrl,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "./model-provider-firewalls";
