@@ -102,22 +102,6 @@ const runnerProcessIdentitySchema = z
   .strict();
 
 /**
- * Legacy advisory preference retained while deployed runners migrate to the
- * atomic decision contract.
- */
-export const runnerPreferenceSchema = z
-  .object({
-    runnerIdentity: runnerProcessIdentitySchema,
-    reason: z.enum([
-      "exactHistoryGeneration",
-      "matchingReuseKey",
-      "finalizingPredecessor",
-    ]),
-    expiresAt: z.string().datetime({ offset: true }),
-  })
-  .strict();
-
-/**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
  * runner is not an exclusive assignee; another runner with a better compatible
  * local resource remains eligible to claim.
@@ -465,9 +449,7 @@ export const jobSchema = z.object({
   reuseKey: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
   piExecutionMode: piExecutionModeSchema.optional(),
-  runnerPreferenceDecision: runnerPreferenceDecisionSchema.optional(),
-  runnerPreference: runnerPreferenceSchema.optional(),
-  runnerPreferenceResolution: runnerPreferenceResolutionSchema.optional(),
+  runnerPreferenceDecision: runnerPreferenceDecisionSchema,
 });
 
 const heldWorkspaceCacheSchema = z.object({
@@ -1204,7 +1186,6 @@ export type Job = z.infer<typeof jobSchema>;
 export type RunnerPreferenceDecision = z.infer<
   typeof runnerPreferenceDecisionSchema
 >;
-export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
 export type RunnerPreferenceResolution = z.infer<
   typeof runnerPreferenceResolutionSchema
 >;

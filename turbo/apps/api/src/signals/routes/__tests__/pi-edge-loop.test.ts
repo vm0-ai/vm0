@@ -2114,6 +2114,17 @@ describe("PiLoop edge turn", () => {
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
       "pending",
     );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "job",
+      expect.objectContaining({
+        runId: run.runId,
+        profile: DEFAULT_PROFILE,
+        runnerPreferenceDecision: {
+          kind: "noPreference",
+          reason: "noReuseKey",
+        },
+      }),
+    );
 
     const coldPoll = await api.requestPollRunner(
       true,

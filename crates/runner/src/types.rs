@@ -40,10 +40,6 @@ pub struct Job {
     pub history_generation_run_id: Option<RunId>,
     #[serde(default)]
     pub runner_preference_decision: Option<serde_json::Value>,
-    #[serde(default)]
-    pub runner_preference: Option<serde_json::Value>,
-    #[serde(default)]
-    pub runner_preference_resolution: Option<serde_json::Value>,
 }
 
 pub(crate) fn reuse_key_kind(reuse_key: &str) -> &'static str {
@@ -1667,13 +1663,14 @@ mod tests {
             "job": {
                 "runId": "550e8400-e29b-41d4-a716-446655440000",
                 "experimentalProfile": "browser",
-                "cliAgentSessionId": "legacy-session",
-                "runnerPreference": {
+                "cliAgentSessionId": "session-id",
+                "runnerPreferenceDecision": {
+                    "kind": "preference",
                     "runnerIdentity": {
                         "runnerId": "b85bb257-21c1-4b8f-8676-a4051f35b7b0",
                         "heartbeatGeneration": 7
                     },
-                    "reason": "matchingReuseKey",
+                    "tier": "reusableSandbox",
                     "expiresAt": "2026-08-03T12:00:00.000Z"
                 }
             }
@@ -1687,7 +1684,7 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(job.experimental_profile, "browser");
-        assert!(job.runner_preference.is_some());
+        assert!(job.runner_preference_decision.is_some());
         assert!(job.reuse_key().is_none());
     }
 

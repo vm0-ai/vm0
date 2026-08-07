@@ -7,7 +7,6 @@ import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import {
   runnerPreferenceDecisionTelemetryDimensions,
-  runnerPreferenceDeliveryFields,
   runnerReuseKeyTelemetryKind,
   runnerReusePreferenceLookupErrorDecision,
   resolveRunnerReusePreference,
@@ -56,9 +55,6 @@ export async function notifyRunnerJob(
         );
       },
     )) ?? runnerReusePreferenceLookupErrorDecision();
-  const runnerPreferenceFields = runnerPreferenceDeliveryFields(
-    runnerPreferenceDecision,
-  );
   const preferenceFinishedAt = now();
   const publishStartedAt = now();
   const published = await publishRunnerJobNotification({
@@ -66,11 +62,11 @@ export async function notifyRunnerJob(
     runId: args.runId,
     profile: args.profile,
     piExecutionMode: args.piExecutionMode,
+    runnerPreferenceDecision,
     metadata: {
       reuseKey: args.reuseKey,
       cliAgentSessionId: args.cliAgentSessionId,
       historyGenerationRunId: args.historyGenerationRunId,
-      ...runnerPreferenceFields,
     },
   });
   const publishFinishedAt = now();
