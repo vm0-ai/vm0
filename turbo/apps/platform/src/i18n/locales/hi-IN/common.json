@@ -1598,7 +1598,15 @@
       "removeTemplate": "टेम्प्लेट {{title}} हटाएँ",
       "removeVideo": "वीडियो टेम्प्लेट {{title}} हटाएं",
       "removeWebsite": "वेबसाइट टेम्पलेट {{title}} हटाएँ",
-      "removeWorkflow": "वर्कफ़्लो टेम्पलेट {{title}} हटाएँ"
+      "removeWorkflow": "वर्कफ़्लो टेम्पलेट {{title}} हटाएँ",
+      "videoOptions": "वीडियो विकल्प",
+      "videoOptionsAudio": "ऑडियो बनाएँ",
+      "videoOptionsDuration": "अवधि",
+      "videoOptionsLabel": "वीडियो विकल्प {{spec}}",
+      "videoOptionsModel": "मॉडल",
+      "videoOptionsRatio": "अनुपात",
+      "videoOptionsReset": "डिफ़ॉल्ट पर रीसेट करें",
+      "videoOptionsResolution": "रिज़ॉल्यूशन"
     },
     "thread": {
       "ariaLabel": "चैट थ्रेड",

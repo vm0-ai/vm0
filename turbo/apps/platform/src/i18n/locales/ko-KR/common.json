@@ -1597,7 +1597,15 @@
       "removeTemplate": "템플릿 삭제 {{title}}",
       "removeVideo": "비디오 템플릿 삭제 {{title}}",
       "removeWebsite": "웹사이트 템플릿 삭제 {{title}}",
-      "removeWorkflow": "워크플로 템플릿 삭제 {{title}}"
+      "removeWorkflow": "워크플로 템플릿 삭제 {{title}}",
+      "videoOptions": "동영상 옵션",
+      "videoOptionsAudio": "오디오 생성",
+      "videoOptionsDuration": "길이",
+      "videoOptionsLabel": "동영상 옵션 {{spec}}",
+      "videoOptionsModel": "모델",
+      "videoOptionsRatio": "비율",
+      "videoOptionsReset": "기본값으로 재설정",
+      "videoOptionsResolution": "해상도"
     },
     "thread": {
       "ariaLabel": "채팅 스레드",

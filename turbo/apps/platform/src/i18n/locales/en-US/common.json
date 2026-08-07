@@ -1598,7 +1598,15 @@
       "removeTemplate": "Remove template {{title}}",
       "removeVideo": "Remove video template {{title}}",
       "removeWebsite": "Remove website template {{title}}",
-      "removeWorkflow": "Remove workflow template {{title}}"
+      "removeWorkflow": "Remove workflow template {{title}}",
+      "videoOptions": "Video options",
+      "videoOptionsAudio": "Generate audio",
+      "videoOptionsDuration": "Duration",
+      "videoOptionsLabel": "Video options {{spec}}",
+      "videoOptionsModel": "Model",
+      "videoOptionsRatio": "Ratio",
+      "videoOptionsReset": "Reset to default",
+      "videoOptionsResolution": "Resolution"
     },
     "thread": {
       "ariaLabel": "Chat thread",

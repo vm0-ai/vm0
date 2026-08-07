@@ -317,6 +317,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
+  [FeatureSwitchKey.VideoTemplateOptions]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Let a video template chip in the chat composer set the generation model, aspect ratio, duration, resolution, and audio.",
+    enabled: false,
+  },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:

@@ -275,6 +275,14 @@ function createBasicComposerUiSignals() {
   };
 }
 
+/** Viewport-space box of the chip a video options popover is anchored to. */
+export interface VideoTemplateOptionsAnchor {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 function createTemplatePickerDialogSignals() {
   const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
   const internalWebsiteTemplatePreviewLoaded$ = state(false);
@@ -305,6 +313,33 @@ function createTemplatePickerDialogSignals() {
     },
   );
 
+  const internalVideoOptionsAnchor$ = state<VideoTemplateOptionsAnchor | null>(
+    null,
+  );
+  const internalVideoOptionsValue$ = state<GenerationTemplateRequest | null>(
+    null,
+  );
+  const videoTemplateOptionsAnchor$ = computed((get) => {
+    return get(internalVideoOptionsAnchor$);
+  });
+  const videoTemplateOptionsValue$ = computed((get) => {
+    return get(internalVideoOptionsValue$);
+  });
+  const openVideoTemplateOptions$ = command(
+    (
+      { set },
+      anchor: VideoTemplateOptionsAnchor,
+      value: GenerationTemplateRequest,
+    ) => {
+      set(internalVideoOptionsValue$, value);
+      set(internalVideoOptionsAnchor$, anchor);
+    },
+  );
+  const closeVideoTemplateOptions$ = command(({ set }) => {
+    set(internalVideoOptionsAnchor$, null);
+    set(internalVideoOptionsValue$, null);
+  });
+
   const websiteTemplatePreviewId$ = computed((get) => {
     return get(internalWebsiteTemplatePreviewId$);
   });
@@ -331,6 +366,10 @@ function createTemplatePickerDialogSignals() {
     setTemplatePickerOpen$,
     templatePickerReferenceValue$,
     setTemplatePickerReferenceValue$,
+    videoTemplateOptionsAnchor$,
+    videoTemplateOptionsValue$,
+    openVideoTemplateOptions$,
+    closeVideoTemplateOptions$,
     websiteTemplatePreviewId$,
     websiteTemplatePreviewLoaded$,
     markWebsiteTemplatePreviewLoaded$,

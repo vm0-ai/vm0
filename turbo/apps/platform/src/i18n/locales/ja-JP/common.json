@@ -1597,7 +1597,15 @@
       "removeTemplate": "テンプレート {{title}} を削除します",
       "removeVideo": "ビデオ テンプレート {{title}} を削除します",
       "removeWebsite": "Web サイト テンプレート {{title}} を削除します",
-      "removeWorkflow": "ワークフロー テンプレート {{title}} を削除します"
+      "removeWorkflow": "ワークフロー テンプレート {{title}} を削除します",
+      "videoOptions": "動画オプション",
+      "videoOptionsAudio": "音声を生成",
+      "videoOptionsDuration": "長さ",
+      "videoOptionsLabel": "動画オプション {{spec}}",
+      "videoOptionsModel": "モデル",
+      "videoOptionsRatio": "比率",
+      "videoOptionsReset": "既定値に戻す",
+      "videoOptionsResolution": "解像度"
     },
     "thread": {
       "ariaLabel": "チャットスレッド",

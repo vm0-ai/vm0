@@ -1638,7 +1638,15 @@
       "removeTemplate": "Supprimer le modèle {{title}}",
       "removeVideo": "Supprimer le modèle vidéo {{title}}",
       "removeWebsite": "Supprimer le modèle de site web {{title}}",
-      "removeWorkflow": "Supprimer le modèle de workflow {{title}}"
+      "removeWorkflow": "Supprimer le modèle de workflow {{title}}",
+      "videoOptions": "Options vidéo",
+      "videoOptionsAudio": "Générer l'audio",
+      "videoOptionsDuration": "Durée",
+      "videoOptionsLabel": "Options vidéo {{spec}}",
+      "videoOptionsModel": "Modèle",
+      "videoOptionsRatio": "Format",
+      "videoOptionsReset": "Rétablir les valeurs par défaut",
+      "videoOptionsResolution": "Résolution"
     },
     "thread": {
       "ariaLabel": "Fil de discussion",

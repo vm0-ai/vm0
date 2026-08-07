@@ -1597,7 +1597,15 @@
       "removeTemplate": "Hapus template {{title}}",
       "removeVideo": "Hapus template video {{title}}",
       "removeWebsite": "Hapus template situs web {{title}}",
-      "removeWorkflow": "Hapus template alur kerja {{title}}"
+      "removeWorkflow": "Hapus template alur kerja {{title}}",
+      "videoOptions": "Opsi video",
+      "videoOptionsAudio": "Hasilkan audio",
+      "videoOptionsDuration": "Durasi",
+      "videoOptionsLabel": "Opsi video {{spec}}",
+      "videoOptionsModel": "Model",
+      "videoOptionsRatio": "Rasio",
+      "videoOptionsReset": "Setel ulang ke bawaan",
+      "videoOptionsResolution": "Resolusi"
     },
     "thread": {
       "ariaLabel": "Thread chat",

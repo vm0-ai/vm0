@@ -134,6 +134,9 @@ describe("chat composer templates", () => {
         "-top-px",
         "bg-orange-500/10",
         "text-orange-600",
+      );
+      // Hover lives on the zones so each half of a split chip reacts alone.
+      expect(chip.querySelector("button")).toHaveClass(
         "hover:bg-orange-500/15",
       );
       expect(
@@ -162,6 +165,75 @@ describe("chat composer templates", () => {
         template: {
           type: "presentation",
           selection: { templateId: second.templateId },
+        },
+      });
+    });
+  });
+
+  it("edits video parameters from the second half of an inline chip", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = VIDEO_TEMPLATE_ITEMS[0]!;
+    let submittedUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedUserMessage = body.userMessage;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    await user.click(tabByText("Video"));
+    await user.click(
+      await screen.findByLabelText(`Select video template ${template.title}`),
+    );
+
+    // Catalog defaults are shown even though nothing is stored yet.
+    const spec = await screen.findByLabelText("Video options 16:9 \u00b7 8s");
+    const chip = document.querySelector("[data-composer-inline-template]");
+    expect(chip?.querySelectorAll("button")).toHaveLength(2);
+
+    await user.click(spec);
+    const ratio = await screen.findByRole("combobox", { name: "Ratio" });
+    await user.click(ratio);
+    await user.click(await screen.findByRole("option", { name: "9:16" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Video options 9:16 \u00b7 8s"),
+      ).toBeInTheDocument();
+    });
+    // The chip is rewritten in place rather than duplicated.
+    expect(
+      document.querySelectorAll("[data-composer-inline-template]"),
+    ).toHaveLength(1);
+
+    await user.click(screen.getByLabelText("Send"));
+    await waitFor(() => {
+      expect(submittedUserMessage?.parts[0]).toMatchObject({
+        type: "template",
+        template: {
+          type: "video",
+          selection: {
+            stylePresetId: template.id,
+            // Only the changed value is persisted.
+            videoOptions: { aspectRatio: "9:16" },
+          },
         },
       });
     });

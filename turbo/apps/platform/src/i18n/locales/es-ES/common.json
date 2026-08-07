@@ -1638,7 +1638,15 @@
       "removeTemplate": "Eliminar la plantilla {{title}}",
       "removeVideo": "Eliminar la plantilla de vídeo {{title}}",
       "removeWebsite": "Eliminar la plantilla de sitio web {{title}}",
-      "removeWorkflow": "Eliminar la plantilla de flujo de trabajo {{title}}"
+      "removeWorkflow": "Eliminar la plantilla de flujo de trabajo {{title}}",
+      "videoOptions": "Opciones de vídeo",
+      "videoOptionsAudio": "Generar audio",
+      "videoOptionsDuration": "Duración",
+      "videoOptionsLabel": "Opciones de vídeo {{spec}}",
+      "videoOptionsModel": "Modelo",
+      "videoOptionsRatio": "Proporción",
+      "videoOptionsReset": "Restablecer valores predeterminados",
+      "videoOptionsResolution": "Resolución"
     },
     "thread": {
       "ariaLabel": "Hilo de chat",
