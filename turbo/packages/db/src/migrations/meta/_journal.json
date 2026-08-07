@@ -351,6 +351,13 @@
       "when": 1786093185848,
       "tag": "0857_modern_firebrand",
       "breakpoints": true
+    },
+    {
+      "idx": 858,
+      "version": "7",
+      "when": 1786114286006,
+      "tag": "0858_aberrant_diamondback",
+      "breakpoints": true
     }
   ]
 }

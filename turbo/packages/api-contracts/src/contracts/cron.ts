@@ -81,6 +81,13 @@ const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   eventsPruned: z.number(),
 });
 
+const cronProjectChatEventSearchResponseSchema = z.object({
+  success: z.literal(true),
+  threads: z.number(),
+  indexedEvents: z.number(),
+  deletedDocs: z.number(),
+});
+
 const cronCompactUsageEventsResponseSchema = z.object({
   success: z.literal(true),
   cutoff: z.string(),
@@ -267,6 +274,19 @@ export const cronCompactChatThreadSnapshotsContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Compact chat thread snapshots from lifecycle events",
+  },
+});
+
+export const cronProjectChatEventSearchContract = c.router({
+  project: {
+    method: "GET",
+    path: "/api/cron/project-chat-event-search",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronProjectChatEventSearchResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Project chat events into the search docs table",
   },
 });
 
