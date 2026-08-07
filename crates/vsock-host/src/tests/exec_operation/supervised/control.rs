@@ -33,7 +33,11 @@ async fn supervised_exec_control_uses_exec_control_messages() {
     let control_task = tokio::spawn({
         async move {
             control_handle
-                .control("message-1", b"payload", Duration::from_secs(5))
+                .control_owned(
+                    "message-1".to_owned(),
+                    b"payload".to_vec(),
+                    Duration::from_secs(5),
+                )
                 .await
         }
     });
