@@ -390,7 +390,7 @@ async function outputMessages(actor: ApiTestUser, threadId: string) {
 }
 
 describe("PiLoop edge turn", () => {
-  it("uses the org gate, migrates memory paths in both directions, and completes in the API", async () => {
+  it("uses the org gate, migrates legacy memory into Pi, and completes in the API", async () => {
     const fixture = await piEdgeFixture();
     const legacyPrompt = "legacy context must not enter the Pi transcript";
     const legacy = await sendChatRun(fixture, legacyPrompt);
@@ -746,6 +746,81 @@ describe("PiLoop edge turn", () => {
       fixture,
       "continue after disabling PiLoop",
       edge.threadId,
+    );
+    expect((await api.readRun(fixture.actor, fallback.runId)).status).toBe(
+      "pending",
+    );
+    const fallbackPoll = await api.pollRunner(fixture.runnerGroup);
+    expect(fallbackPoll.body.job?.runId).toBe(fallback.runId);
+    const fallbackContext = await api.claimRunnerJob(fallback.runId);
+    expect(fallbackContext.storageManifest?.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+        missingRootPolicy: "preserveParentVersion",
+      }),
+    );
+    expect(fallbackContext.storageManifest?.storageMounts).not.toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        mountPath: PI_MEMORY_ROOT,
+      }),
+    );
+    await api.requestCancelRun(fixture.actor, fallback.runId, [200]);
+  });
+
+  it("migrates a Pi-first session memory path back to Codex", async () => {
+    const fixture = await piEdgeFixture();
+    await enablePiLoop(fixture);
+    const modelStarted = createDeferredPromise<void>(context.signal);
+    const releaseModel = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseModel.settled()) {
+        releaseModel.resolve();
+      }
+    });
+    server.use(
+      http.post(COMPLETIONS_URL, async () => {
+        modelStarted.resolve();
+        await releaseModel.promise;
+        return assistantTextStream("Pi-first answer", "Pi-first reasoning");
+      }),
+    );
+
+    const piFirst = await sendChatRun(fixture, "start this session in PiLoop");
+    await modelStarted.promise;
+    const standbyPoll = await api.requestPollRunner(
+      true,
+      {
+        group: fixture.runnerGroup,
+        supportedProfiles: [PI_STANDBY_PROFILE],
+      },
+      [200],
+    );
+    if (standbyPoll.status !== 200) {
+      throw new Error("Expected Pi standby poll to return 200");
+    }
+    expect(standbyPoll.body.job?.runId).toBe(piFirst.runId);
+    const piContext = await api.claimRunnerJob(piFirst.runId);
+    expect(piContext.storageManifest?.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        mountPath: PI_MEMORY_ROOT,
+        missingRootPolicy: "preserveParentVersion",
+      }),
+    );
+
+    releaseModel.resolve();
+    await flushWaitUntilForTest();
+    expect((await api.readRun(fixture.actor, piFirst.runId)).status).toBe(
+      "completed",
+    );
+
+    await disablePiLoop(fixture);
+    const fallback = await sendChatRun(
+      fixture,
+      "continue the Pi-first session after disabling PiLoop",
+      piFirst.threadId,
     );
     expect((await api.readRun(fixture.actor, fallback.runId)).status).toBe(
       "pending",
