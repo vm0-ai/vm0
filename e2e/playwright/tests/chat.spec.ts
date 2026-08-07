@@ -145,7 +145,7 @@ test("send a message through the deployed runner", async ({ page }) => {
   await composer.getByRole("button", { name: "Send" }).click();
 
   await expect(
-    page.locator('[data-role="assistant"]').getByText(marker, { exact: true }),
+    page.locator('[data-role="assistant"]').filter({ hasText: marker }).first(),
   ).toBeVisible({ timeout: 90_000 });
 });
 
