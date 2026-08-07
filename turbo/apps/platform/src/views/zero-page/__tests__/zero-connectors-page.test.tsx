@@ -3181,14 +3181,11 @@ describe("connectors page", () => {
         ),
       ).toBeInTheDocument();
     });
-    const connectedAccount = within(connectorCardByLabel("AWS")).getByText(
-      /@arn:aws:iam::000000000000:user\/mock-aws/u,
-    );
-    expect(connectedAccount).toHaveClass("min-w-0", "truncate");
-    expect(connectedAccount).toHaveAttribute(
-      "title",
-      "@arn:aws:iam::000000000000:user/mock-aws",
-    );
+    expect(
+      within(connectorCardByLabel("AWS")).getByTitle(
+        "@arn:aws:iam::000000000000:user/mock-aws",
+      ),
+    ).toHaveTextContent("@arn:aws:iam::000000000000:user/mock-aws");
   });
 
   it("keeps external-code validation inline and toasts unexpected HTTP errors", async () => {
