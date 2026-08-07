@@ -1410,7 +1410,7 @@ describe("CHAT-02: completed chat callback", () => {
         { type: "text", text: "first structured request" },
       ],
     };
-    const templatePrompt = `Select ${style.title} illustration template`;
+    const templatePrompt = `[Template #1: ${style.title} (illustration)]`;
 
     const first = await startChatRun(actor, {
       agentId,
