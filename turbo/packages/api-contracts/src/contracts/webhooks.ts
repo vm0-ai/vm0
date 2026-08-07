@@ -733,6 +733,8 @@ const sandboxOperationSchema = z.object({
   duration_ms: z.number(),
   success: z.boolean(),
   error: z.string().optional(),
+  outcome: z.string().max(64).optional(),
+  reason: z.string().max(64).optional(),
   runner_startup_path: runnerStartupPathSchema.optional(),
   sandbox_reuse_result: sandboxReuseResultSchema.optional(),
   encoding: sessionHistoryEncodingSchema.optional(),

@@ -31,7 +31,7 @@ use crate::executor::tests::support::{
     test_executor_config, test_telemetry,
 };
 use crate::executor::{
-    EXIT_SIGKILL, RestoredSessionIdentity, SessionHistoryMaterializer,
+    EXIT_SIGKILL, RestoredSessionIdentity, SessionHistoryCpuPool, SessionHistoryMaterializer,
     SessionHistoryRestoreFallback, SessionHistoryRestorePlan, effective_cli_framework,
 };
 use crate::restored_session_identity::{
@@ -1093,4 +1093,79 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
             .any(|op| op.0 == "session_history_identity_reuse_missing" && op.1),
         "expected identity reuse missing telemetry, got: {ops:?}"
     );
+}
+
+#[tokio::test]
+async fn reused_sandbox_fallback_materializes_prune_eligible_codex_zstd_as_raw() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let history =
+        b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n";
+    let compressed_history = zstd::encode_all(history.as_slice(), 0).unwrap();
+    config.session_history_cpu =
+        SessionHistoryCpuPool::with_test_codex_raw_restore_threshold(1, history.len() as u64 - 1);
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(&compressed_history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                encoding: ResumeSessionHistoryEncoding::Zstd,
+                raw_size: history.len() as u64,
+                encoded_size: compressed_history.len() as u64,
+                download_source: None,
+            },
+        },
+    });
+    sandbox.push_read_file_result(Ok(None));
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        &config.http,
+        &config.session_history_cpu,
+        ctx.resume_session.as_ref(),
+        effective_cli_framework(&ctx.cli_agent_type),
+        tokio_util::sync::CancellationToken::new(),
+        None,
+    );
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
+                materializer,
+                fallback: Some(SessionHistoryRestoreFallback::MissingIdleIdentity),
+            }),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    history_mock.assert_calls_async(1).await;
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
 }

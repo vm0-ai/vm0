@@ -10,6 +10,7 @@ use std::sync::{Condvar, Mutex};
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use flate2::read::MultiGzDecoder;
+use guest_contracts::session_history::CODEX_COMPACT_GENERATION_MAX_BYTES;
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
@@ -38,6 +39,8 @@ struct SessionHistoryCpuHooks {
     reader_gate: Option<SessionHistoryCpuTestGate>,
     #[cfg(test)]
     codex_timestamp_record_max_bytes: Option<usize>,
+    #[cfg(test)]
+    codex_raw_restore_threshold: Option<u64>,
 }
 
 struct CodexTimestampRecordScanner {
@@ -180,6 +183,7 @@ impl SessionHistoryCpuPool {
                 cpu_gate,
                 reader_gate,
                 codex_timestamp_record_max_bytes: None,
+                codex_raw_restore_threshold: None,
             },
         }
     }
@@ -195,6 +199,23 @@ impl SessionHistoryCpuPool {
                 cpu_gate: None,
                 reader_gate: None,
                 codex_timestamp_record_max_bytes: Some(max_record_bytes),
+                codex_raw_restore_threshold: None,
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::executor) fn with_test_codex_raw_restore_threshold(
+        capacity: usize,
+        threshold: u64,
+    ) -> Self {
+        Self {
+            permits: Arc::new(Semaphore::new(capacity.max(1))),
+            hooks: SessionHistoryCpuHooks {
+                cpu_gate: None,
+                reader_gate: None,
+                codex_timestamp_record_max_bytes: None,
+                codex_raw_restore_threshold: Some(threshold),
             },
         }
     }
@@ -308,6 +329,14 @@ impl SessionHistoryCpuHooks {
             return max_record_bytes;
         }
         CODEX_TIMESTAMP_RECORD_MAX_BYTES
+    }
+
+    fn codex_raw_restore_threshold(&self) -> u64 {
+        #[cfg(test)]
+        if let Some(threshold) = self.codex_raw_restore_threshold {
+            return threshold;
+        }
+        CODEX_COMPACT_GENERATION_MAX_BYTES
     }
 }
 
@@ -642,7 +671,7 @@ fn materialize_codex_zstd(
     let mut timings = SessionHistoryCpuTimings::default();
     let result = (|| {
         validate_compressed_raw_size(expected_raw_size, "zstd", &mut timings)?;
-        let (timestamp, prefix_outcome) = verify_codex_zstd(
+        let verified = verify_codex_zstd(
             &encoded_bytes,
             expected_raw_size,
             expected_hash,
@@ -651,13 +680,19 @@ fn materialize_codex_zstd(
             cancel,
             hooks,
         )?;
-        Ok(SessionHistoryCpuMaterialization {
-            session: MaterializedResumeSession::new_codex_zstd(
+        let session = match verified.raw_bytes {
+            Some(raw_bytes) => {
+                MaterializedResumeSession::new(cli_agent_session_id, raw_bytes, verified.timestamp)
+            }
+            None => MaterializedResumeSession::new_codex_zstd(
                 cli_agent_session_id,
                 encoded_bytes,
-                timestamp,
+                verified.timestamp,
             ),
-            prefix_outcome,
+        };
+        Ok(SessionHistoryCpuMaterialization {
+            session,
+            prefix_outcome: verified.prefix_outcome,
         })
     })();
     SessionHistoryCpuOutcome { timings, result }
@@ -887,6 +922,12 @@ fn read_compressed_history(
     Ok(bytes)
 }
 
+struct VerifiedCodexZstd {
+    timestamp: Option<chrono::DateTime<chrono::Utc>>,
+    prefix_outcome: Option<SessionHistoryPrefixOutcome>,
+    raw_bytes: Option<Vec<u8>>,
+}
+
 fn verify_codex_zstd(
     encoded_bytes: &[u8],
     expected_raw_size: u64,
@@ -895,10 +936,7 @@ fn verify_codex_zstd(
     timings: &mut SessionHistoryCpuTimings,
     cancel: &CancellationToken,
     hooks: &SessionHistoryCpuHooks,
-) -> RunnerResult<(
-    Option<chrono::DateTime<chrono::Utc>>,
-    Option<SessionHistoryPrefixOutcome>,
-)> {
+) -> RunnerResult<VerifiedCodexZstd> {
     let decompression_started = Instant::now();
     let input = CancellationReader::new(encoded_bytes, cancel.clone(), hooks.clone());
     let decoder = match zstd::stream::read::Decoder::new(input) {
@@ -913,6 +951,14 @@ fn verify_codex_zstd(
     let decoded = decoder.take(expected_raw_size.saturating_add(1));
     let mut output = CancellationReader::new(decoded, cancel.clone(), hooks.clone());
     let mut observer = SessionHistoryHashObserver::new(prefix_attribution);
+    let mut raw_bytes = if expected_raw_size > hooks.codex_raw_restore_threshold() {
+        let capacity = usize::try_from(expected_raw_size).map_err(|_| {
+            RunnerError::Internal("session history raw size does not fit in memory".into())
+        })?;
+        Some(Vec::with_capacity(capacity))
+    } else {
+        None
+    };
     let mut decoded_bytes = 0u64;
     let mut timestamp = None;
     let mut timestamp_scanner = Some(CodexTimestampRecordScanner::new(
@@ -949,6 +995,9 @@ fn verify_codex_zstd(
             RunnerError::Internal("invalid zstd session history read chunk length".into())
         })?;
         observer.update(chunk, cancel)?;
+        if let Some(raw_bytes) = &mut raw_bytes {
+            raw_bytes.extend_from_slice(chunk);
+        }
         if let Some(scanner) = &mut timestamp_scanner
             && let Some(discovered) = scanner.scan(chunk, cancel, hooks)?
         {
@@ -977,7 +1026,11 @@ fn verify_codex_zstd(
     let hash_result = observer.finish(expected_hash);
     timings.record_hash_verification(hash_started.elapsed(), hash_result.is_ok());
     let prefix_outcome = hash_result?;
-    Ok((timestamp, prefix_outcome))
+    Ok(VerifiedCodexZstd {
+        timestamp,
+        prefix_outcome,
+        raw_bytes,
+    })
 }
 
 impl CodexTimestampRecordScanner {
@@ -1430,6 +1483,16 @@ mod tests {
         )
     }
 
+    fn codex_zstd_job(history: &[u8]) -> SessionHistoryCpuJob {
+        SessionHistoryCpuJob::zstd(
+            "019e9154-c304-70f0-adde-36efb1be1701".into(),
+            zstd::encode_all(history, 0).expect("test history should compress"),
+            history.len() as u64,
+            hex::encode(Sha256::digest(history)),
+            EffectiveCliFramework::Codex,
+        )
+    }
+
     async fn wait_for<T>(future: impl Future<Output = T>) -> T {
         tokio::time::timeout(Duration::from_secs(5), future)
             .await
@@ -1680,6 +1743,46 @@ mod tests {
             .await
             .unwrap();
         assert!(outcome.result.unwrap().session.codex_timestamp().is_none());
+    }
+
+    #[tokio::test]
+    async fn codex_zstd_restore_materializes_raw_only_above_pruning_guard() {
+        let history =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-13T01:02:03Z\"}}\n";
+        let encoded = zstd::encode_all(history.as_slice(), 0).unwrap();
+
+        let encoded_outcome =
+            SessionHistoryCpuPool::with_test_codex_raw_restore_threshold(1, history.len() as u64)
+                .materialize(codex_zstd_job(history), &CancellationToken::new())
+                .await
+                .unwrap()
+                .result
+                .unwrap();
+        assert_eq!(encoded_outcome.session.history_bytes(), encoded);
+        assert_eq!(
+            encoded_outcome.session.codex_zstd_history(),
+            Some(encoded.as_slice())
+        );
+
+        let raw_outcome = SessionHistoryCpuPool::with_test_codex_raw_restore_threshold(
+            1,
+            history.len() as u64 - 1,
+        )
+        .materialize(codex_zstd_job(history), &CancellationToken::new())
+        .await
+        .unwrap()
+        .result
+        .unwrap();
+        assert_eq!(raw_outcome.session.history_bytes(), history);
+        assert!(raw_outcome.session.codex_zstd_history().is_none());
+        assert_eq!(
+            raw_outcome
+                .session
+                .codex_timestamp()
+                .map(|timestamp| timestamp.to_rfc3339())
+                .as_deref(),
+            Some("2026-07-13T01:02:03+00:00")
+        );
     }
 
     #[tokio::test]
