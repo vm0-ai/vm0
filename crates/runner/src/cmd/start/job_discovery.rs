@@ -15,8 +15,9 @@ use tokio::sync::OwnedMutexGuard;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
-use super::active_reuse_keys::{ActiveReuseKeyGuard, contains_active_reuse_key};
+use super::active_runs::{ActiveRunGuard, ActiveRunProof};
 use super::factory_lifecycle::SharedFactory;
+use super::finalizing_claim::{FinalizingClaimRequest, spawn_finalizing_claim};
 use super::idle_lifecycle::{
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
     add_running_run_with_idle_status_snapshot, destroy_idle_jobs_and_wait,
@@ -102,12 +103,27 @@ enum LocalAdmissionResource {
     Fresh(BudgetLease),
     Reusable(Box<ReservedIdleSandbox>),
     ExactSpeculative(Box<ReservedIdleSandbox>),
+    Finalizing(FinalizingAdmission),
 }
 
 enum AdmittedResource {
     Fresh(BudgetLease),
     Reusable(Box<ReservedIdleSandbox>),
     ExactSpeculation(ExactSpeculation),
+    Finalizing(FinalizingAdmission),
+}
+
+enum SandboxAdmittedResource {
+    Fresh(BudgetLease),
+    Reusable(Box<ReservedIdleSandbox>),
+    ExactSpeculation(ExactSpeculation),
+}
+
+pub(super) struct FinalizingAdmission {
+    pub(super) predecessor: ActiveRunProof,
+    pub(super) deadline: Instant,
+    pub(super) reuse_key: String,
+    pub(super) history_generation_run_id: RunId,
 }
 
 struct ExactSpeculation {
@@ -183,11 +199,11 @@ struct PreferenceCandidateRequest<'a> {
     ctx: &'a DiscoveredJobContext<'a>,
 }
 
-struct ReservedActivationRequest<'a> {
-    run_id: RunId,
-    profile_name: &'a str,
-    workspace_disk_mb: u32,
-    context: &'a ExecutionContext,
+pub(super) struct ReservedActivationRequest<'a> {
+    pub(super) run_id: RunId,
+    pub(super) profile_name: &'a str,
+    pub(super) workspace_disk_mb: u32,
+    pub(super) context: &'a ExecutionContext,
 }
 
 impl LocalAdmission {
@@ -264,8 +280,35 @@ pub(super) async fn handle_discovered_job(
         cancellation,
         claim_returned_at,
     } = admission;
+    let resource = match resource {
+        AdmittedResource::Finalizing(admission) => {
+            spawn_finalizing_claim(
+                FinalizingClaimRequest {
+                    claimed,
+                    cancellation,
+                    admission,
+                    claim_returned_at,
+                    profile_name,
+                    vcpu: job_vcpu,
+                    memory_mb: job_memory,
+                    workspace_disk_mb: job_workspace_disk_mb,
+                    restore_guest_state: *restore_guest_state,
+                    device_rate_limits,
+                    factory: Arc::clone(factory),
+                },
+                ctx.spawn_ctx,
+                ctx.jobs,
+            );
+            return DiscoveredJobResult::completed(false);
+        }
+        AdmittedResource::Fresh(lease) => SandboxAdmittedResource::Fresh(lease),
+        AdmittedResource::Reusable(reservation) => SandboxAdmittedResource::Reusable(reservation),
+        AdmittedResource::ExactSpeculation(speculation) => {
+            SandboxAdmittedResource::ExactSpeculation(speculation)
+        }
+    };
     if cancellation.handle().is_cancelled()
-        && matches!(&resource, AdmittedResource::ExactSpeculation(_))
+        && matches!(&resource, SandboxAdmittedResource::ExactSpeculation(_))
     {
         complete_claimed_without_sandbox(
             claimed,
@@ -286,7 +329,7 @@ pub(super) async fn handle_discovered_job(
     if let Some(error) = resume_session_error {
         let needs_reuse_state_refresh = matches!(
             &resource,
-            AdmittedResource::Reusable(_) | AdmittedResource::ExactSpeculation(_)
+            SandboxAdmittedResource::Reusable(_) | SandboxAdmittedResource::ExactSpeculation(_)
         );
         complete_claimed_without_sandbox(
             claimed,
@@ -307,10 +350,10 @@ pub(super) async fn handle_discovered_job(
     // Hide the claimed reuse key from heartbeats before unpark or fallback
     // cleanup can yield. Otherwise a concurrent heartbeat could briefly
     // advertise stale workspace-cache state for an active run.
-    let active_reuse_key_guard = ActiveReuseKeyGuard::new(
-        ctx.spawn_ctx.active_reuse_keys.clone(),
-        Arc::clone(&ctx.spawn_ctx.reuse_state_notify),
+    let active_run_guard = ctx.spawn_ctx.active_runs.register(
+        run_id,
         claimed.context().reuse_key().map(str::to_owned),
+        profile_name.clone(),
     );
 
     let (
@@ -321,7 +364,7 @@ pub(super) async fn handle_discovered_job(
         needs_reuse_state_refresh,
         activation_transfer_guard,
     ) = match resource {
-        AdmittedResource::Fresh(job_lease) => {
+        SandboxAdmittedResource::Fresh(job_lease) => {
             let (reuse_entry, active_lease, reuse_result, idle_snapshot, refresh) =
                 try_reuse_from_pool(
                     run_id,
@@ -345,7 +388,7 @@ pub(super) async fn handle_discovered_job(
                 None,
             )
         }
-        AdmittedResource::Reusable(reservation) => {
+        SandboxAdmittedResource::Reusable(reservation) => {
             match activate_reserved_idle(
                 *reservation,
                 ReservedActivationRequest {
@@ -354,7 +397,7 @@ pub(super) async fn handle_discovered_job(
                     workspace_disk_mb: job_workspace_disk_mb,
                     context: claimed.context(),
                 },
-                &mut ctx,
+                ctx.spawn_ctx,
                 &mut pre_spawn_timing,
             )
             .await
@@ -380,7 +423,7 @@ pub(super) async fn handle_discovered_job(
                     complete_claimed_without_sandbox(
                         claimed,
                         cancellation,
-                        AdmittedResource::Fresh(budget_lease),
+                        SandboxAdmittedResource::Fresh(budget_lease),
                         job_workspace_disk_mb,
                         Some(reuse_result),
                         crate::executor::ExecutionFailure::from_error(error),
@@ -391,7 +434,7 @@ pub(super) async fn handle_discovered_job(
                 }
             }
         }
-        AdmittedResource::ExactSpeculation(speculation) => {
+        SandboxAdmittedResource::ExactSpeculation(speculation) => {
             let pending = activate_speculated_exact(
                 speculation,
                 ReservedActivationRequest {
@@ -453,7 +496,7 @@ pub(super) async fn handle_discovered_job(
                     complete_claimed_without_sandbox(
                         claimed,
                         cancellation,
-                        AdmittedResource::Fresh(budget_lease),
+                        SandboxAdmittedResource::Fresh(budget_lease),
                         job_workspace_disk_mb,
                         Some(reuse_result),
                         crate::executor::ExecutionFailure::from_error(error),
@@ -466,10 +509,85 @@ pub(super) async fn handle_discovered_job(
         }
     };
 
+    let request = build_spawn_job_request(
+        ClaimedJobSetup {
+            claimed,
+            cancellation,
+            profile_name,
+            vcpu: job_vcpu,
+            memory_mb: job_memory,
+            workspace_disk_mb: job_workspace_disk_mb,
+            restore_guest_state: *restore_guest_state,
+            device_rate_limits,
+            factory: Arc::clone(factory),
+            resource: ReadyClaimedResource {
+                reuse_entry,
+                active_lease,
+                reuse_result,
+                idle_snapshot,
+            },
+            pre_spawn_timing,
+            active_run_guard,
+        },
+        ctx.spawn_ctx,
+    )
+    .await;
+    spawn_job(request, ctx.spawn_ctx, ctx.jobs);
+    drop(activation_transfer_guard);
+    DiscoveredJobResult::completed(needs_reuse_state_refresh)
+}
+
+pub(super) struct ReadyClaimedResource {
+    pub(super) reuse_entry: Option<ReusableIdleSandbox>,
+    pub(super) active_lease: BudgetLease,
+    pub(super) reuse_result: SandboxReuseResult,
+    pub(super) idle_snapshot: Option<IdlePoolSnapshot>,
+}
+
+pub(super) struct ClaimedJobSetup {
+    pub(super) claimed: ClaimedJob,
+    pub(super) cancellation: RunCancellationRegistration,
+    pub(super) profile_name: String,
+    pub(super) vcpu: u32,
+    pub(super) memory_mb: u32,
+    pub(super) workspace_disk_mb: u32,
+    pub(super) restore_guest_state: bool,
+    pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    pub(super) factory: SharedFactory,
+    pub(super) resource: ReadyClaimedResource,
+    pub(super) pre_spawn_timing: RunnerPreSpawnTiming,
+    pub(super) active_run_guard: ActiveRunGuard,
+}
+
+pub(super) async fn build_spawn_job_request(
+    setup: ClaimedJobSetup,
+    ctx: &SpawnContext,
+) -> SpawnJobRequest {
+    let ClaimedJobSetup {
+        claimed,
+        cancellation,
+        profile_name,
+        vcpu,
+        memory_mb,
+        workspace_disk_mb,
+        restore_guest_state,
+        device_rate_limits,
+        factory,
+        resource,
+        mut pre_spawn_timing,
+        active_run_guard,
+    } = setup;
+    let ReadyClaimedResource {
+        reuse_entry,
+        active_lease,
+        reuse_result,
+        idle_snapshot,
+    } = resource;
+    let run_id = claimed.context().run_id;
     let session_history_restore_plan =
         build_session_history_restore_plan(SessionHistoryRestorePlanInput {
-            http: &ctx.spawn_ctx.exec_config.http,
-            cpu: &ctx.spawn_ctx.exec_config.session_history_cpu,
+            http: &ctx.exec_config.http,
+            cpu: &ctx.exec_config.session_history_cpu,
             context: claimed.context(),
             cancel: cancellation.token(),
             reuse_result,
@@ -477,19 +595,15 @@ pub(super) async fn handle_discovered_job(
                 .as_ref()
                 .and_then(ReusableIdleSandbox::restored_session_identity),
             pre_spawn_timing: &mut pre_spawn_timing,
-            probe: Some(&ctx.spawn_ctx.exec_config.session_history_probe),
+            probe: Some(&ctx.exec_config.session_history_probe),
         });
-
-    // Determine sandbox_id after the reuse decision. On reuse, the sandbox keeps
-    // its original identity; on a fresh create, allocate a new UUID for the
-    // executor's SandboxConfig. This is the join key for doctor and kill.
     let sandbox_id = match &reuse_entry {
         Some(entry) => entry.sandbox_id(),
         None => SandboxId::new_v4(),
     };
     let started_at = Instant::now();
     publish_active_run_status(
-        ctx.status,
+        &ctx.status,
         run_id,
         sandbox_id,
         reuse_entry.is_some(),
@@ -497,38 +611,29 @@ pub(super) async fn handle_discovered_job(
     )
     .await;
     #[cfg(test)]
-    ctx.spawn_ctx
-        .test_observer
-        .notify_active_run_status_published(run_id);
+    ctx.test_observer.notify_active_run_status_published(run_id);
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ActiveStatusPublish, started_at);
 
-    let job_profile = JobProfile {
-        profile_name,
-        vcpu: job_vcpu,
-        memory_mb: job_memory,
-        workspace_disk_mb: job_workspace_disk_mb,
-        budget_lease: active_lease,
-        restore_guest_state: *restore_guest_state,
-        device_rate_limits,
-        factory: Arc::clone(factory),
-        cancellation,
-    };
-    spawn_job(
-        SpawnJobRequest {
-            claimed,
-            sandbox_id,
-            job_profile,
-            reuse_entry,
-            reuse_result,
-            pre_spawn_timing,
-            session_history_restore_plan,
-            active_reuse_key_guard,
+    SpawnJobRequest {
+        claimed,
+        sandbox_id,
+        job_profile: JobProfile {
+            profile_name,
+            vcpu,
+            memory_mb,
+            workspace_disk_mb,
+            budget_lease: active_lease,
+            restore_guest_state,
+            device_rate_limits,
+            factory,
+            cancellation,
         },
-        ctx.spawn_ctx,
-        ctx.jobs,
-    );
-    drop(activation_transfer_guard);
-    DiscoveredJobResult::completed(needs_reuse_state_refresh)
+        reuse_entry,
+        reuse_result,
+        pre_spawn_timing,
+        session_history_restore_plan,
+        active_run_guard,
+    }
 }
 
 async fn publish_active_run_status(
@@ -569,7 +674,10 @@ async fn claim_with_local_admission(
     candidate.mark_local_admission_started();
 
     // Reserve either the exact reusable sandbox or fresh capacity before
-    // claiming so a losing claim can restore all local ownership.
+    // claiming. A proven finalizing successor is the only exception: it can
+    // claim before its predecessor publishes the sandbox. This keeps ordinary
+    // admission races out of the provider claim path and makes rollback
+    // explicit when another runner wins.
     let resource = match resource {
         Some(resource) => resource,
         None => {
@@ -667,6 +775,14 @@ async fn claim_with_local_admission(
                 claimed,
                 AdmittedResource::ExactSpeculation(speculation),
                 claim_returned_at,
+            )
+        }
+        LocalAdmissionResource::Finalizing(finalizing) => {
+            let claimed = ctx.spawn_ctx.provider.claim(candidate).await;
+            (
+                claimed,
+                AdmittedResource::Finalizing(finalizing),
+                Instant::now(),
             )
         }
     };
@@ -890,9 +1006,17 @@ async fn prepare_legacy_preference_candidate(
             }
 
             if preference.targets(ctx.runner_id, ctx.heartbeat_generation) {
-                if !contains_active_reuse_key(&ctx.spawn_ctx.active_reuse_keys, reuse_key) {
-                    return ordinary_preparation(
-                        candidate.without_runner_preference(RunnerPreferenceRemovalReason::Cleared),
+                if let Some(predecessor) = ctx.spawn_ctx.active_runs.finalizing_predecessor(
+                    history_generation_run_id,
+                    reuse_key,
+                    profile_name,
+                ) {
+                    return finalizing_preparation(
+                        candidate,
+                        predecessor,
+                        preference.deadline(),
+                        reuse_key,
+                        history_generation_run_id,
                     );
                 }
                 return defer_preference_candidate(candidate, preference, reuse_key, ctx, true)
@@ -943,6 +1067,21 @@ async fn prepare_ranked_preference_candidate(
     }
 
     if advertised_tier == RunnerPreferenceTier::FinalizingPredecessor && selected {
+        if let Some(history_generation_run_id) = history_generation_run_id
+            && let Some(predecessor) = ctx.spawn_ctx.active_runs.finalizing_predecessor(
+                history_generation_run_id,
+                reuse_key,
+                profile_name,
+            )
+        {
+            return finalizing_preparation(
+                candidate,
+                predecessor,
+                preference.deadline(),
+                reuse_key,
+                history_generation_run_id,
+            );
+        }
         return defer_preference_candidate(candidate, preference, reuse_key, ctx, true).await;
     }
 
@@ -1028,6 +1167,24 @@ fn exact_speculative_preparation(
     })
 }
 
+fn finalizing_preparation(
+    candidate: JobCandidate,
+    predecessor: ActiveRunProof,
+    deadline: Instant,
+    reuse_key: &str,
+    history_generation_run_id: RunId,
+) -> PreferencePreparation {
+    PreferencePreparation::Ready(PreparedCandidate {
+        candidate,
+        resource: Some(LocalAdmissionResource::Finalizing(FinalizingAdmission {
+            predecessor,
+            deadline,
+            reuse_key: reuse_key.to_owned(),
+            history_generation_run_id,
+        })),
+    })
+}
+
 async fn defer_preference_candidate(
     candidate: JobCandidate,
     preference: &crate::provider::RunnerPreference,
@@ -1068,7 +1225,7 @@ fn diagnostic_reuse_key_fingerprint(reuse_key: &str) -> String {
 fn current_local_held_workspace_states(ctx: &DiscoveredJobContext<'_>) -> Vec<HeldWorkspaceState> {
     ctx.spawn_ctx
         .workspace_cache_snapshot
-        .current_held_workspace_states(&ctx.spawn_ctx.active_reuse_keys, None)
+        .current_held_workspace_states(&ctx.spawn_ctx.active_runs, None)
 }
 
 async fn acquire_local_admission_resource(
@@ -1125,6 +1282,23 @@ async fn reserve_reusable_idle(
     history_generation_run_id: Option<RunId>,
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<ReservedIdleSandbox> {
+    reserve_reusable_idle_for_spawn(
+        reuse_key,
+        profile_name,
+        device_rate_limits,
+        history_generation_run_id,
+        ctx.spawn_ctx,
+    )
+    .await
+}
+
+pub(super) async fn reserve_reusable_idle_for_spawn(
+    reuse_key: &str,
+    profile_name: &str,
+    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    history_generation_run_id: Option<RunId>,
+    ctx: &SpawnContext,
+) -> Option<ReservedIdleSandbox> {
     let (reservation, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
         let reservation = match history_generation_run_id {
@@ -1139,8 +1313,29 @@ async fn reserve_reusable_idle(
         let snapshot = pool.status_snapshot();
         (reservation, snapshot)
     };
-    set_idle_status_snapshot(ctx.status, snapshot).await;
+    set_idle_status_snapshot(&ctx.status, snapshot).await;
     Some(reservation)
+}
+
+pub(super) async fn rollback_reserved_idle_for_spawn(
+    reservation: ReservedIdleSandbox,
+    ctx: &SpawnContext,
+) {
+    let (restore_result, snapshot) = {
+        let mut pool = ctx.idle_pool.lock().await;
+        let restore_result = pool.restore_reserved(reservation);
+        let snapshot = pool.status_snapshot();
+        (restore_result, snapshot)
+    };
+    set_idle_status_snapshot(&ctx.status, snapshot).await;
+    if let RestoreReservedIdleResult::Rejected(destroy_job) = restore_result {
+        destroy_idle_jobs_and_wait(
+            vec![*destroy_job],
+            "finalizing_claim_reserved_idle_rollback",
+        )
+        .await;
+        ctx.reuse_state_notify.notify_one();
+    }
 }
 
 async fn rollback_untracked_resource(
@@ -1149,6 +1344,7 @@ async fn rollback_untracked_resource(
 ) {
     match resource {
         LocalAdmissionResource::Fresh(budget_lease) => drop(budget_lease),
+        LocalAdmissionResource::Finalizing(_) => {}
         LocalAdmissionResource::Reusable(reservation)
         | LocalAdmissionResource::ExactSpeculative(reservation) => {
             let (restore_result, snapshot) = {
@@ -1176,12 +1372,29 @@ async fn rollback_admitted_resource(
     workspace_disk_mb: u32,
     ctx: &mut DiscoveredJobContext<'_>,
 ) {
+    let resource = match resource {
+        AdmittedResource::Fresh(lease) => SandboxAdmittedResource::Fresh(lease),
+        AdmittedResource::Reusable(reservation) => SandboxAdmittedResource::Reusable(reservation),
+        AdmittedResource::ExactSpeculation(speculation) => {
+            SandboxAdmittedResource::ExactSpeculation(speculation)
+        }
+        AdmittedResource::Finalizing(_) => return,
+    };
+    rollback_sandbox_admitted_resource(resource, run_id, workspace_disk_mb, ctx).await;
+}
+
+async fn rollback_sandbox_admitted_resource(
+    resource: SandboxAdmittedResource,
+    run_id: RunId,
+    workspace_disk_mb: u32,
+    ctx: &mut DiscoveredJobContext<'_>,
+) {
     match resource {
-        AdmittedResource::Fresh(budget_lease) => drop(budget_lease),
-        AdmittedResource::Reusable(reservation) => {
+        SandboxAdmittedResource::Fresh(budget_lease) => drop(budget_lease),
+        SandboxAdmittedResource::Reusable(reservation) => {
             rollback_untracked_resource(LocalAdmissionResource::Reusable(reservation), ctx).await;
         }
-        AdmittedResource::ExactSpeculation(speculation) => {
+        SandboxAdmittedResource::ExactSpeculation(speculation) => {
             rollback_exact_speculation(speculation, run_id, workspace_disk_mb, ctx).await;
         }
     }
@@ -1253,7 +1466,7 @@ async fn rollback_exact_speculation_outcome(
     }
 }
 
-enum ReservedActivation {
+pub(super) enum ReservedActivation {
     Ready {
         reuse_entry: Option<Box<ReusableIdleSandbox>>,
         active_lease: BudgetLease,
@@ -1391,7 +1604,7 @@ async fn activate_speculated_exact(
                 *destroy_job,
                 SandboxReuseResult::UnparkFailed,
                 "speculative_exact_reuse_prepare_failed",
-                ctx,
+                ctx.spawn_ctx,
             )
             .await
             .into();
@@ -1415,7 +1628,7 @@ async fn activate_speculated_exact(
                 SandboxReuseResult::PoolMiss
             },
             "speculative_reuse_session_mismatch",
-            ctx,
+            ctx.spawn_ctx,
         )
         .await
         .into();
@@ -1445,7 +1658,7 @@ async fn activate_speculated_exact(
                 sandbox.into_destroy_job("speculative_workspace_promotion_mismatch"),
                 SandboxReuseResult::PoolMiss,
                 "speculative_workspace_promotion_mismatch",
-                ctx,
+                ctx.spawn_ctx,
             )
             .await
             .into();
@@ -1486,7 +1699,7 @@ async fn activate_speculated_exact(
                         sandbox.into_destroy_job("speculative_timezone_correction_failed"),
                         SandboxReuseResult::UnparkFailed,
                         "speculative_timezone_correction_failed",
-                        ctx,
+                        ctx.spawn_ctx,
                     )
                     .await
                     .into();
@@ -1507,7 +1720,7 @@ async fn activate_speculated_exact(
                         sandbox.into_destroy_job("speculative_timezone_correction_panicked"),
                         SandboxReuseResult::UnparkFailed,
                         "speculative_timezone_correction_panicked",
-                        ctx,
+                        ctx.spawn_ctx,
                     )
                     .await
                     .into();
@@ -1611,10 +1824,10 @@ async fn finish_exact_activation(
     }
 }
 
-async fn activate_reserved_idle(
+pub(super) async fn activate_reserved_idle(
     reservation: ReservedIdleSandbox,
     request: ReservedActivationRequest<'_>,
-    ctx: &mut DiscoveredJobContext<'_>,
+    ctx: &SpawnContext,
     pre_spawn_timing: &mut RunnerPreSpawnTiming,
 ) -> ReservedActivation {
     let ReservedActivationRequest {
@@ -1651,7 +1864,7 @@ async fn activate_reserved_idle(
         .into();
     }
 
-    if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
+    if let Some(cache) = ctx.exec_config.workspace_cache.as_ref() {
         let started_at = Instant::now();
         let validation = reservation.validate_workspace_promotion_identity(
             cache,
@@ -1728,7 +1941,7 @@ async fn cleanup_reserved_for_fresh_fallback(
     destroy_job: crate::idle_pool::IdleDestroyJob,
     reuse_result: SandboxReuseResult,
     cleanup_context: &'static str,
-    ctx: &DiscoveredJobContext<'_>,
+    ctx: &SpawnContext,
 ) -> FreshFallbackActivation {
     let cleanup = destroy_job.run_retaining_lease(cleanup_context).await;
     match cleanup.outcome {
@@ -1749,14 +1962,14 @@ async fn cleanup_reserved_for_fresh_fallback(
 async fn complete_claimed_without_sandbox(
     claimed: ClaimedJob,
     cancellation: RunCancellationRegistration,
-    resource: AdmittedResource,
+    resource: SandboxAdmittedResource,
     workspace_disk_mb: u32,
     reuse_result: Option<SandboxReuseResult>,
     failure: crate::executor::ExecutionFailure,
     ctx: &mut DiscoveredJobContext<'_>,
 ) {
     let run_id = complete_claimed_failure(claimed, cancellation, reuse_result, failure, ctx).await;
-    rollback_admitted_resource(resource, run_id, workspace_disk_mb, ctx).await;
+    rollback_sandbox_admitted_resource(resource, run_id, workspace_disk_mb, ctx).await;
 }
 
 async fn complete_claimed_failure(
