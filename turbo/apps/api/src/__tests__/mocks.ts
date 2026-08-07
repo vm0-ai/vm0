@@ -29,7 +29,7 @@ type BrowserUseCdpCommandMock = Mock<
 >;
 interface RequestOptionsLike {
   readonly family?: number;
-  readonly headers?: HeadersInit;
+  readonly headers?: RequestInit["headers"];
   readonly method?: string;
   readonly lookup?: LookupFunction;
 }
