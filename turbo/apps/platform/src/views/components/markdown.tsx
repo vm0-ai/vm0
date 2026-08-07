@@ -11,7 +11,6 @@ import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethroug
 import remarkMath from "remark-math";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { rehypeMermaid } from "../../lib/rehype-mermaid.ts";
-import { cjkFriendlyMarkdownEnabled$ } from "../../signals/external/feature-switch.ts";
 import { pageLifecycleId$ } from "../../signals/page-signal.ts";
 import { theme$ } from "../../signals/theme.ts";
 import {
@@ -434,15 +433,15 @@ const reorderCjkStrikethrough: PluginsFilter = (type, plugins) => {
 
 function buildRemarkPlugins(args: {
   mathEnabled: boolean;
-  cjkFriendlyEnabled: boolean;
   remarkPlugins: MarkdownPreviewProps["remarkPlugins"];
 }): RemarkPlugins {
   const mathPlugins: RemarkPlugins = args.mathEnabled
     ? [[remarkMath, { singleDollarTextMath: false }]]
     : [];
-  const cjkPlugins: RemarkPlugins = args.cjkFriendlyEnabled
-    ? [remarkCjkFriendly, remarkCjkFriendlyStrikethrough]
-    : [];
+  const cjkPlugins: RemarkPlugins = [
+    remarkCjkFriendly,
+    remarkCjkFriendlyStrikethrough,
+  ];
   return [...mathPlugins, ...cjkPlugins, ...(args.remarkPlugins ?? [])];
 }
 
@@ -482,7 +481,6 @@ export function Markdown({
 }) {
   const theme = useGet(theme$);
   const pageLifecycleId = useGet(pageLifecycleId$);
-  const cjkFriendlyEnabled = useGet(cjkFriendlyMarkdownEnabled$);
   const components = mediaPreview
     ? MEDIA_MARKDOWN_COMPONENTS
     : PLAIN_MARKDOWN_COMPONENTS;
@@ -500,10 +498,9 @@ export function Markdown({
       }}
       wrapperElement={{ "data-color-mode": theme }}
       rehypeRewrite={rehypeRewriteHandler}
-      pluginsFilter={cjkFriendlyEnabled ? reorderCjkStrikethrough : undefined}
+      pluginsFilter={reorderCjkStrikethrough}
       remarkPlugins={buildRemarkPlugins({
         mathEnabled,
-        cjkFriendlyEnabled,
         remarkPlugins,
       })}
       rehypePlugins={buildRehypePlugins({
