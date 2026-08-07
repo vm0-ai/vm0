@@ -503,7 +503,7 @@ async function loadCompactionCutoff(db: Pick<Db, "execute">): Promise<Date> {
     sql`
       SELECT (
         date_trunc('hour', timezone('UTC', statement_timestamp()))
-        - interval '1 hour'
+        - interval '7 days'
       )::timestamp AS cutoff
     `,
     cutoffRowSchema,

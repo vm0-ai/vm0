@@ -50,8 +50,8 @@ import { agentRuns } from "./agent-run";
  * Writers must keep the same UUID across retries of the same logical
  * event; the UNIQUE index blocks duplicate insertions.
  *
- * Healthy usage follows `pending -> processed -> hourly rollup`, after which
- * the source event is deleted.
+ * Healthy usage remains `processed` for at least seven days before hourly
+ * rollup replacement, after which the source event is deleted.
  */
 export const usageEvent = pgTable(
   "usage_event",

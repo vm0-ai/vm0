@@ -285,11 +285,17 @@ describe("usage event compaction cron", () => {
     expect(insight.body.grandTotalCredits).toBe(7);
   });
 
-  it("retains unstable hours and explicit diagnostic holds", async () => {
+  it("retains seven days of processed events and explicit diagnostic holds", async () => {
     const heldFixture = await seedFixture();
-    const currentHour = nowDate();
-    currentHour.setUTCMinutes(0, 0, 0);
-    const previousHour = new Date(currentHour.getTime() - 60 * 60 * 1000);
+    const startedHour = nowDate();
+    startedHour.setUTCMinutes(0, 0, 0);
+    const expectedCutoffAtStart = new Date(
+      startedHour.getTime() - 7 * 24 * 60 * 60 * 1000,
+    );
+    const retainedProcessedAt = new Date(
+      startedHour.getTime() - 6 * 24 * 60 * 60 * 1000,
+    );
+    const eligibleProcessedAt = new Date("0400-01-01T00:30:00.000Z");
 
     await store.set(
       insertUsageEvent$,
@@ -315,16 +321,7 @@ describe("usage event compaction cron", () => {
       {
         ...heldFixture,
         status: "processed",
-        processedAt: previousHour,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        ...heldFixture,
-        status: "processed",
-        processedAt: new Date(currentHour.getTime() + 1000),
+        processedAt: retainedProcessedAt,
       },
       context.signal,
     );
@@ -334,25 +331,34 @@ describe("usage event compaction cron", () => {
       {
         ...eligibleFixture,
         status: "processed",
-        processedAt: new Date("0400-01-01T00:30:00.000Z"),
+        processedAt: eligibleProcessedAt,
       },
       context.signal,
     );
     await seedZeroUsageEvents(eligibleFixture, {
-      processedAt: new Date("0400-01-01T00:30:00.000Z"),
+      processedAt: eligibleProcessedAt,
       count: RAW_SEED_LIMIT - 1,
     });
 
     const response = await compactUsage();
+    const completedHour = nowDate();
+    completedHour.setUTCMinutes(0, 0, 0);
+    const expectedCutoffAtCompletion = new Date(
+      completedHour.getTime() - 7 * 24 * 60 * 60 * 1000,
+    );
 
     expect(response.body).toMatchObject({
       rawRowsDeleted: RAW_SEED_LIMIT,
       hourlyRowsInserted: 1,
       billingErrorHeldRows: 1,
     });
+    expect([
+      expectedCutoffAtStart.toISOString(),
+      expectedCutoffAtCompletion.toISOString(),
+    ]).toContain(response.body.cutoff);
     await expect(readStorage(heldFixture)).resolves.toStrictEqual({
-      raw: 4,
-      processedRaw: 3,
+      raw: 3,
+      processedRaw: 2,
       hourly: 0,
     });
     await expect(readStorage(eligibleFixture)).resolves.toStrictEqual({
