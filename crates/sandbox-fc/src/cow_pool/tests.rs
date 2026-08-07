@@ -1440,6 +1440,7 @@ async fn destroy_slot_async_starts_teardown_before_returned_future_is_polled() {
     {
         Ok(Ok(workspace)) => workspace,
         result => {
+            // A regressed waiter may own the slot, so disconnect its gate before dropping it.
             drop(release_teardown);
             drop(teardown);
             panic!(
@@ -1602,6 +1603,7 @@ async fn destroy_prepared_slot_starts_teardown_before_waiter_is_polled() {
     {
         Ok(Ok(workspace)) => workspace,
         result => {
+            // A regressed waiter may own the slot, so disconnect its gate before dropping it.
             drop(release_teardown);
             drop(teardown);
             panic!(
