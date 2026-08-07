@@ -153,6 +153,7 @@ impl PiStandbyNotifications {
 }
 
 impl PiStandbySubscription {
+    /// Returns `None` when a newer subscription replaces this registration.
     pub(crate) async fn wait(mut self) -> Option<PiStandbySignal> {
         let result = (&mut self.receiver).await;
         match result {
