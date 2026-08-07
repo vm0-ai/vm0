@@ -182,6 +182,56 @@ describe("POST /api/zero/billing/portal", () => {
     ).toHaveBeenCalledWith({
       customer: fixture.stripeCustomerId,
       return_url: returnUrl,
+      flow_data: {
+        type: "payment_method_update",
+        after_completion: {
+          type: "redirect",
+          redirect: { return_url: returnUrl },
+        },
+      },
+    });
+  });
+
+  it("creates a customer for payment method updates without a subscription", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
+    const returnUrl = `${APP_ORIGIN}/settings/billing`;
+    mockEnv("APP_URL", APP_ORIGIN);
+    mocks.clerk.session(userId, orgId, "org:admin");
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
+      url: "https://billing.stripe.com/session/payment-method",
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      ).create({
+        body: { returnUrl },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://billing.stripe.com/session/payment-method",
+    });
+    expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
+      metadata: { orgId },
+    });
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).toHaveBeenCalledWith({
+      customer: customerId,
+      return_url: returnUrl,
+      flow_data: {
+        type: "payment_method_update",
+        after_completion: {
+          type: "redirect",
+          redirect: { return_url: returnUrl },
+        },
+      },
     });
   });
 
@@ -223,6 +273,15 @@ describe("POST /api/zero/billing/portal", () => {
     ).toHaveBeenCalledWith({
       customer: customerId,
       return_url: `${APP_ORIGIN}/settings/billing`,
+      flow_data: {
+        type: "payment_method_update",
+        after_completion: {
+          type: "redirect",
+          redirect: {
+            return_url: `${APP_ORIGIN}/settings/billing`,
+          },
+        },
+      },
     });
   });
 

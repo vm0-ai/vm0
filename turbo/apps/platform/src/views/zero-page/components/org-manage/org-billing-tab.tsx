@@ -2055,7 +2055,6 @@ export function OrgBillingTab() {
   );
   const showBuyCredits = capabilities.canBuyCredits;
   const showConcurrency = capabilities.canBuyConcurrency;
-  const canManageBilling = status?.hasSubscription === true;
   const openBillingPortal = () => {
     return detach(portal(pageSignal), Reason.DomCallback);
   };
@@ -2162,37 +2161,33 @@ export function OrgBillingTab() {
                   </div>
                 </>
               )}
-              {canManageBilling && (
-                <>
-                  <div className="h-0 zero-border-t mx-5" />
-                  <div className="flex items-center justify-between gap-4 px-5 py-4">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">
-                        {t(($) => {
-                          return $.billing.manage.title;
-                        })}
-                      </p>
-                      <p className="text-[13px] text-muted-foreground mt-0.5">
-                        {t(($) => {
-                          return $.billing.manage.description;
-                        })}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0 h-8 text-xs gap-1.5"
-                      disabled={loading}
-                      onClick={openBillingPortal}
-                    >
-                      {t(($) => {
-                        return $.billing.common.manage;
-                      })}
-                      <IconExternalLink size={13} stroke={1.5} />
-                    </Button>
-                  </div>
-                </>
-              )}
+              <div className="h-0 zero-border-t mx-5" />
+              <div className="flex items-center justify-between gap-4 px-5 py-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {t(($) => {
+                      return $.billing.manage.title;
+                    })}
+                  </p>
+                  <p className="text-[13px] text-muted-foreground mt-0.5">
+                    {t(($) => {
+                      return $.billing.manage.description;
+                    })}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 h-8 text-xs gap-1.5"
+                  disabled={loading}
+                  onClick={openBillingPortal}
+                >
+                  {t(($) => {
+                    return $.billing.common.manage;
+                  })}
+                  <IconExternalLink size={13} stroke={1.5} />
+                </Button>
+              </div>
               <div className="h-0 zero-border-t" />
               <button
                 type="button"

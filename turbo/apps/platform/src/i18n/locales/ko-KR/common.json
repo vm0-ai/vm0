@@ -906,8 +906,8 @@
       "to": "종료"
     },
     "manage": {
-      "description": "Stripe에서 구독, 결제 수단 및 청구서 관리.",
-      "title": "청구 관리"
+      "description": "Stripe에서 청구에 사용할 결제 수단을 업데이트합니다.",
+      "title": "결제 수단"
     },
     "plans": {
       "cancellationNotice": "{{plan}} 플랜이 취소되어 {{date}}에 종료됩니다.",

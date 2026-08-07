@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { getStripeClient } from "../external/stripe-client";
+import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 export function autoRechargeConfig(
@@ -56,27 +57,39 @@ async function stripeCustomerIdForOrg(
 }
 
 /**
- * Create a Stripe Billing Portal session for managing subscriptions.
- * Returns the portal URL and throws if the org has no Stripe customer yet.
+ * Create a Stripe Billing Portal session for updating the org's default
+ * payment method.
  */
 export const createBillingPortalSession$ = command(
   async (
-    { get },
+    { get, set },
     args: { readonly orgId: string; readonly returnUrl: string },
     signal: AbortSignal,
   ): Promise<string> => {
     const db = get(db$);
-    const stripeCustomerId = await stripeCustomerIdForOrg(db, args.orgId);
+    let stripeCustomerId = await stripeCustomerIdForOrg(db, args.orgId);
     signal.throwIfAborted();
 
     if (!stripeCustomerId) {
-      throw new Error("Org has no Stripe customer — subscribe first");
+      stripeCustomerId = await set(
+        getOrCreateStripeCustomer$,
+        { orgId: args.orgId },
+        signal,
+      );
+      signal.throwIfAborted();
     }
 
     const stripe = getStripeClient();
     const session = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
       return_url: args.returnUrl,
+      flow_data: {
+        type: "payment_method_update",
+        after_completion: {
+          type: "redirect",
+          redirect: { return_url: args.returnUrl },
+        },
+      },
     });
     signal.throwIfAborted();
 

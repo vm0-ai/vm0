@@ -927,8 +927,8 @@
       "to": "À"
     },
     "manage": {
-      "description": "Abonnement, méthode de paiement et factures dans Stripe.",
-      "title": "Gérer la facturation"
+      "description": "Mettez à jour le moyen de paiement utilisé pour la facturation dans Stripe.",
+      "title": "Moyen de paiement"
     },
     "plans": {
       "cancellationNotice": "Votre abonnement {{plan}} a été annulé et prendra fin le {{date}}.",

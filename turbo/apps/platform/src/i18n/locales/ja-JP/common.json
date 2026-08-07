@@ -906,8 +906,8 @@
       "to": "に"
     },
     "manage": {
-      "description": "Stripe のサブスクリプション、支払い方法、請求書。",
-      "title": "請求の管理"
+      "description": "Stripe で請求に使用する支払い方法を更新します。",
+      "title": "支払い方法"
     },
     "plans": {
       "cancellationNotice": "{{plan}} プランはキャンセルされ、{{date}} に終了します。",

@@ -313,7 +313,7 @@ describe("organization billing settings", () => {
         screen.getByRole("heading", { name: "Plano" }),
       ).toBeInTheDocument();
       expect(screen.getByText("Plano Pro")).toBeInTheDocument();
-      expect(screen.getByText("Gerenciar cobrança")).toBeInTheDocument();
+      expect(screen.getByText("Forma de pagamento")).toBeInTheDocument();
       expect(
         screen.getByRole("heading", { name: "Comprar créditos" }),
       ).toBeInTheDocument();
@@ -644,7 +644,7 @@ describe("organization billing settings", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          "Subscription, payment method, and invoices in Stripe.",
+          "Update the payment method used for billing in Stripe.",
         ),
       ).toBeInTheDocument();
     });
@@ -780,7 +780,7 @@ describe("organization billing settings", () => {
     await openBillingTab();
 
     await waitFor(() => {
-      expect(screen.getByText("Manage billing")).toBeInTheDocument();
+      expect(screen.getByText("Payment method")).toBeInTheDocument();
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
@@ -793,36 +793,25 @@ describe("organization billing settings", () => {
     });
   });
 
-  it("opens the Stripe customer portal for an add-on subscription", async () => {
+  it("opens the Stripe payment method portal without a subscription", async () => {
     context.mocks.data.org({
       id: "org_1",
-      name: "Add-on Org",
+      name: "No Subscription Org",
       role: "admin",
     });
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-      return respond(200, {
-        ...noActiveBillingStatus(),
-        hasSubscription: true,
-        concurrencySubscriptions: [
-          {
-            id: "sub_concurrency_12345678",
-            quantity: 2,
-            currentPeriodEnd: "2026-06-01T00:00:00Z",
-            cancelAtPeriodEnd: false,
-          },
-        ],
-      });
+      return respond(200, noActiveBillingStatus());
     });
     context.mocks.api(zeroBillingPortalContract.create, ({ respond }) => {
       return respond(200, {
-        url: "https://billing.stripe.com/customer-portal/add-on-org",
+        url: "https://billing.stripe.com/customer-portal/no-subscription",
       });
     });
 
     await openBillingTab();
 
     await waitFor(() => {
-      expect(screen.getByText("Manage billing")).toBeInTheDocument();
+      expect(screen.getByText("Payment method")).toBeInTheDocument();
       expect(screen.getByText("No active plan")).toBeInTheDocument();
     });
 
@@ -830,7 +819,7 @@ describe("organization billing settings", () => {
 
     await waitFor(() => {
       expect(window.location.href).toBe(
-        "https://billing.stripe.com/customer-portal/add-on-org",
+        "https://billing.stripe.com/customer-portal/no-subscription",
       );
     });
   });
@@ -853,8 +842,8 @@ describe("organization billing settings", () => {
         screen.getByText("Custom access with 10 concurrent runs"),
       ).toBeInTheDocument();
       expect(screen.getByText("10 concurrent runs")).toBeInTheDocument();
+      expect(screen.getByText("Payment method")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Manage billing")).not.toBeInTheDocument();
     expect(screen.queryByText("Upgrade")).not.toBeInTheDocument();
     expect(screen.queryByText("Downgrade")).not.toBeInTheDocument();
 

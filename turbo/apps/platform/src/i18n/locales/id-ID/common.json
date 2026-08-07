@@ -906,8 +906,8 @@
       "to": "Ke"
     },
     "manage": {
-      "description": "Langganan, metode pembayaran, dan faktur di Stripe.",
-      "title": "Kelola penagihan"
+      "description": "Perbarui metode pembayaran yang digunakan untuk penagihan di Stripe.",
+      "title": "Metode pembayaran"
     },
     "plans": {
       "cancellationNotice": "Paket {{plan}} Anda telah dibatalkan dan akan berakhir pada {{date}}.",

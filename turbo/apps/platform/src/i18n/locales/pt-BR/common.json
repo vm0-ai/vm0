@@ -927,8 +927,8 @@
       "to": "Até"
     },
     "manage": {
-      "description": "Assinatura, forma de pagamento e faturas no Stripe.",
-      "title": "Gerenciar cobrança"
+      "description": "Atualize a forma de pagamento usada para cobrança no Stripe.",
+      "title": "Forma de pagamento"
     },
     "plans": {
       "cancellationNotice": "Seu plano {{plan}} foi cancelado e terminará em {{date}}.",

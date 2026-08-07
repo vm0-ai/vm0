@@ -906,8 +906,8 @@
       "to": "Bis"
     },
     "manage": {
-      "description": "Abonnement, Zahlungsmethode und Rechnungen in Stripe.",
-      "title": "Abrechnung verwalten"
+      "description": "Aktualisiere die in Stripe für die Abrechnung verwendete Zahlungsmethode.",
+      "title": "Zahlungsmethode"
     },
     "plans": {
       "cancellationNotice": "Ihr {{plan}}-Plan wurde gekündigt und endet am {{date}}.",
