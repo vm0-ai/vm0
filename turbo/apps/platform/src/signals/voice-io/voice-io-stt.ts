@@ -16,6 +16,7 @@ import {
   jsonParseOr,
   resetSignal,
   tapError,
+  throwIfAbort,
   withCleanup,
 } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -128,6 +129,7 @@ function transcriptionFailedMessage(): string {
 }
 
 function reportMicStartFailure(error: unknown): void {
+  throwIfAbort(error);
   L.error("Microphone start failed", error);
   toast.error(microphoneAccessDeniedMessage());
 }
@@ -574,6 +576,7 @@ async function openMedia(signal: AbortSignal) {
     signal.throwIfAborted();
     return stream;
   } catch (error) {
+    throwIfAbort(error);
     L.error("Microphone access denied", error);
     toast.error(microphoneAccessDeniedMessage());
     return;

@@ -227,7 +227,9 @@ export async function tapError<T>(
 /**
  * Await `p` and invoke `fn` on any rejection (including abort), then re-throw.
  * Use as a `.catch(handler)` replacement when the caller needs to run a
- * cleanup side effect before the rejection propagates.
+ * cleanup side effect before the rejection propagates. `fn` runs on abort by
+ * design so cleanup still happens when the page is cancelled — that's why
+ * `ccstate/no-catch-abort` is muted here.
  */
 export async function onRejection<T>(
   p: Promise<T>,
@@ -237,6 +239,7 @@ export async function onRejection<T>(
   // eslint-disable-next-line no-restricted-syntax
   try {
     return await p;
+    // eslint-disable-next-line ccstate/no-catch-abort -- fn must run before abort propagates so cleanup happens on cancellation
   } catch (error) {
     await fn(error);
     throw error;

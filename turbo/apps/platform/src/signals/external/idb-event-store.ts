@@ -4,6 +4,7 @@ import {
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
+import { throwIfAbort } from "../utils.ts";
 import {
   CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
@@ -144,6 +145,7 @@ function createIdbEventStores(getChatIdb: GetDb) {
     try {
       return await getChatIdb();
     } catch (error) {
+      throwIfAbort(error);
       disableForSession(error);
       throw error;
     }

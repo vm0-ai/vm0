@@ -124,8 +124,7 @@
     },
     "packages/typescript-config": {
       "entry": [],
-      "project": ["*.json"],
-      "ignoreUnresolved": ["next"]
+      "project": ["*.json"]
     },
     "packages/proxy": {
       "entry": [],

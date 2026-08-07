@@ -280,6 +280,17 @@ export default [
       ],
     },
   },
+  // Every catch in production source must re-throw cancellation before it does
+  // anything else, so an aborted page never reports a failure or persists a
+  // fallback. Test and mock code carries no abort contract, matching the
+  // try-statement ban above.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/**/__tests__/**", "src/mocks/**"],
+    rules: {
+      "ccstate/no-catch-abort": "error",
+    },
+  },
   {
     ignores: [
       "dist/**",
@@ -288,7 +299,6 @@ export default [
       "vitest.config.ts",
       "src/mocks/**",
       "src/__tests__/**",
-      "eslint.config.ablation.mjs",
       // Asset files — not JS/TS, would cause parse errors when matched by
       // broad file globs in .oxlintrc.json overrides (e.g. src/views/**/*.*)
       "**/*.svg",
