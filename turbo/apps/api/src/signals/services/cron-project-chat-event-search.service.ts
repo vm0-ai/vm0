@@ -182,10 +182,10 @@ async function projectThread(
  */
 export const projectChatEventSearch$ = command(
   async (
-    { get },
+    { set },
     signal: AbortSignal,
   ): Promise<ChatEventSearchProjectionStats> => {
-    const db = get(writeDb$);
+    const db = set(writeDb$);
     // New-code-before-migration guard: this cron starts ticking as soon as the
     // new API is promoted, which can precede migration 0859 under promotion
     // drift or rollback (DB/API skew, observed up to ~102 minutes). Remove
