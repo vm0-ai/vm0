@@ -1507,7 +1507,13 @@ jobs:
           )
           echo "Checking ${#probe_files[@]} app and Clerk JavaScript assets"
 
-          probe_curl_args=()
+          document_body="$(mktemp)"
+          trap 'rm -f "$document_body"' EXIT
+          application_url="${PAGES_URL%/}/sign-up"
+          probe_curl_args=(
+            --output "$document_body"
+            --url "$application_url"
+          )
           for probe_file in "${probe_files[@]}"; do
             relative_path="${probe_file#"$PAGES_DIST"/}"
             probe_curl_args+=(
@@ -1516,27 +1522,9 @@ jobs:
             )
           done
 
-          document_body="$(mktemp)"
-          trap 'rm -f "$document_body"' EXIT
+          expected_probe_result_count=$((${#probe_files[@]} + 1))
           ready_passes=0
           for attempt in {1..60}; do
-            document_ready=false
-            if document_result="$(curl \
-              --silent \
-              --max-time 10 \
-              --output "$document_body" \
-              --write-out '%{http_code}|%{content_type}' \
-              "${PAGES_URL%/}/sign-up" 2>/dev/null)"; then
-              IFS='|' read -r document_status document_content_type \
-                <<< "$document_result"
-              if [[ \
-                "$document_status" == 2?? &&
-                "$document_content_type" == *text/html* \
-              ]] && grep -Fq 'id="app-bootstrap-skeleton"' "$document_body"; then
-                document_ready=true
-              fi
-            fi
-
             probe_succeeded=false
             if probe_results="$(curl \
               --silent \
@@ -1548,15 +1536,27 @@ jobs:
               "${probe_curl_args[@]}" 2>/dev/null)"; then
               probe_succeeded=true
             fi
-            probe_result_count="$(grep -c '|' <<< "$probe_results")"
-            not_ready_files="$(
-              while IFS='|' read -r status content_type asset_url; do
-                if [[ "$status" != 2?? || "$content_type" != *javascript* ]]; then
-                  printf "%s\n" "${asset_url#"${PAGES_URL%/}/"}"
+            probe_result_count=0
+            not_ready_files=""
+            document_ready=false
+            while IFS= read -r probe_result; do
+              if [[ "$probe_result" != *"|"* ]]; then
+                continue
+              fi
+              ((probe_result_count += 1))
+              IFS='|' read -r status content_type resource_url <<< "$probe_result"
+              if [[ "$resource_url" == "$application_url" ]]; then
+                if [[ \
+                  "$status" == 2?? &&
+                  "$content_type" == *text/html* \
+                ]] && grep -Fq 'id="app-bootstrap-skeleton"' "$document_body"; then
+                  document_ready=true
                 fi
-              done <<< "$probe_results"
-            )"
-            if (( probe_result_count != ${#probe_files[@]} )); then
+              elif [[ "$status" != 2?? || "$content_type" != *javascript* ]]; then
+                not_ready_files+="${not_ready_files:+$'\n'}${resource_url#"${PAGES_URL%/}/"}"
+              fi
+            done <<< "$probe_results"
+            if (( probe_result_count != expected_probe_result_count )); then
               not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness response"
             fi
             if [[ "$probe_succeeded" != true ]]; then

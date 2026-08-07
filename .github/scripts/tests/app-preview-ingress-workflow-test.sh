@@ -70,11 +70,11 @@ end
 unless readiness_source.include?("ready_passes >= 2")
   raise "Pages readiness must require consecutive successful passes"
 end
-unless readiness_source.include?('if document_result="$(curl')
-  raise "Pages document readiness must retain curl transfer status"
+unless readiness_source.include?('--output "$document_body"')
+  raise "Pages readiness must fetch the application document in the parallel probe"
 end
 unless readiness_source.include?("probe_succeeded")
-  raise "Pages asset readiness must retain curl transfer status"
+  raise "Pages readiness must retain curl transfer status"
 end
 if readiness_source.include?("2>/dev/null || true")
   raise "Pages readiness must not ignore curl transfer failures"
@@ -117,11 +117,11 @@ browser_run = browser_e2e.fetch("steps").find do |step|
 end
 raise "missing browser E2E run step" unless browser_run
 browser_env = browser_run.fetch("env")
-expected_downstream_preview = "${{ needs.deploy-app.outputs.deployment-url }}"
-unless browser_env.fetch("VM0_AUTH_URL") == expected_downstream_preview
+expected_downstream_deployment = "${{ needs.deploy-app.outputs.deployment-url }}"
+unless browser_env.fetch("VM0_AUTH_URL") == expected_downstream_deployment
   raise "browser E2E must use the verified immutable Pages deployment"
 end
-unless browser_env.fetch("VM0_AUTH_REDIRECT_URL") == "#{expected_downstream_preview}/_/skeleton"
+unless browser_env.fetch("VM0_AUTH_REDIRECT_URL") == "#{expected_downstream_deployment}/_/skeleton"
   raise "browser E2E redirect must stay on the immutable Pages deployment"
 end
 
@@ -129,7 +129,7 @@ playwright_run = playwright_e2e.fetch("steps").find do |step|
   step["name"] == "Run Playwright E2E tests"
 end
 raise "missing Playwright E2E run step" unless playwright_run
-unless playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_downstream_preview
+unless playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_downstream_deployment
   raise "Playwright E2E must use the verified immutable Pages deployment"
 end
 
