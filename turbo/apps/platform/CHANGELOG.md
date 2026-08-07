@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.706.4](https://github.com/vm0-ai/vm0/compare/app-v0.706.3...app-v0.706.4) (2026-08-07)
+
+
+### Refactoring
+
+* pass abort signals explicitly ([#25740](https://github.com/vm0-ai/vm0/issues/25740)) ([8618bd0](https://github.com/vm0-ai/vm0/commit/8618bd0c05833cea17fc5191e5c6d2afe522a11f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.3
+    * @vm0/connectors bumped to 1.204.3
+    * @vm0/core bumped to 8.530.3
+
 ## [0.706.3](https://github.com/vm0-ai/vm0/compare/app-v0.706.2...app-v0.706.3) (2026-08-07)
 
 
