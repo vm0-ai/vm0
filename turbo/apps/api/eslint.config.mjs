@@ -1,5 +1,36 @@
+import fs from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { config, oxlint } from "@vm0/eslint-config/base";
 import { apiLintPlugin } from "@vm0/eslint-rules/api";
+
+const packageRoot = dirname(fileURLToPath(import.meta.url));
+
+// The gateway type-check project (tsconfig.gateways.json) is the single source
+// of truth for which modules are allowed to resolve the isolated SDKs, so read
+// its file list rather than restating it here. Globs would silently under-
+// enforce the boundary, so reject them.
+const gatewayModules = JSON.parse(
+  fs.readFileSync(resolve(packageRoot, "tsconfig.gateways.json"), "utf8"),
+).include.map((entry) => {
+  if (entry.includes("*")) {
+    throw new Error(
+      `tsconfig.gateways.json must list files, not globs: ${entry}`,
+    );
+  }
+  return resolve(packageRoot, entry);
+});
+
+// Third-party declaration surfaces that only the gateway project may resolve.
+// Add a scope here once its clients move into tsconfig.gateways.json; see
+// the ablation numbers in PR #25714.
+const isolatedDependencies = ["@aws-sdk", "@smithy"];
+
+const gatewayBoundaryOptions = {
+  modules: gatewayModules,
+  isolatedDependencies,
+};
 
 const restrictedSyntax = [
   {
@@ -213,6 +244,15 @@ export default [
     files: ["src/**/*.ts"],
     rules: {
       "api/no-package-variable": "error",
+    },
+  },
+  // Gateway boundary. Tests are exempt: they type-check in their own smaller
+  // program, so an SDK import there does not land in the core program.
+  {
+    files: ["src/**/*.ts"],
+    ignores: ["src/**/__tests__/**/*.ts", "src/**/*.test.ts"],
+    rules: {
+      "api/gateway-typecheck-boundary": ["error", gatewayBoundaryOptions],
     },
   },
   {

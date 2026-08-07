@@ -1,6 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
-import { DecryptCommand, GenerateDataKeyCommand } from "@aws-sdk/client-kms";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
@@ -114,25 +113,12 @@ async function encryptSecretValueWithKms(
   plaintext: string,
 ): Promise<KmsCiphertext> {
   const keyId = requireSecretsKmsKeyId();
-  const response = await getSecretKmsClient().send(
-    new GenerateDataKeyCommand({
-      KeyId: keyId,
-      KeySpec: "AES_256",
-      EncryptionContext: KMS_ENCRYPTION_CONTEXT,
-    }),
-  );
-  if (!response.Plaintext) {
-    throw new Error(
-      "AWS KMS GenerateDataKey response did not include plaintext",
-    );
-  }
-  if (!response.CiphertextBlob) {
-    throw new Error(
-      "AWS KMS GenerateDataKey response did not include encrypted data key",
-    );
-  }
+  const dataKey = await getSecretKmsClient().generateDataKey({
+    keyId,
+    encryptionContext: KMS_ENCRYPTION_CONTEXT,
+  });
 
-  const plaintextDataKey = Buffer.from(response.Plaintext);
+  const plaintextDataKey = Buffer.from(dataKey.plaintext);
   if (plaintextDataKey.byteLength !== DATA_KEY_BYTE_LENGTH) {
     throw new Error(
       "AWS KMS GenerateDataKey response used an invalid key size",
@@ -142,8 +128,8 @@ async function encryptSecretValueWithKms(
   const encrypted = encryptSecretValueWithDataKey(plaintext, plaintextDataKey);
   plaintextDataKey.fill(0);
   return {
-    keyId: response.KeyId ?? keyId,
-    encryptedDataKey: Buffer.from(response.CiphertextBlob).toString("base64"),
+    keyId: dataKey.keyId,
+    encryptedDataKey: Buffer.from(dataKey.encryptedDataKey).toString("base64"),
     ...encrypted,
   };
 }
@@ -152,32 +138,22 @@ async function decryptSecretValueWithKms(
   ciphertext: KmsCiphertext,
 ): Promise<string> {
   if (!("encryptedDataKey" in ciphertext)) {
-    const response = await getSecretKmsClient().send(
-      new DecryptCommand({
-        KeyId: ciphertext.keyId,
-        CiphertextBlob: Buffer.from(ciphertext.ciphertext, "base64"),
-        EncryptionContext: KMS_ENCRYPTION_CONTEXT,
-      }),
-    );
-    if (!response.Plaintext) {
-      throw new Error("AWS KMS decrypt response did not include plaintext");
-    }
+    const decrypted = await getSecretKmsClient().decrypt({
+      keyId: ciphertext.keyId,
+      ciphertext: Buffer.from(ciphertext.ciphertext, "base64"),
+      encryptionContext: KMS_ENCRYPTION_CONTEXT,
+    });
 
-    return Buffer.from(response.Plaintext).toString("utf8");
+    return Buffer.from(decrypted).toString("utf8");
   }
 
-  const response = await getSecretKmsClient().send(
-    new DecryptCommand({
-      KeyId: ciphertext.keyId,
-      CiphertextBlob: Buffer.from(ciphertext.encryptedDataKey, "base64"),
-      EncryptionContext: KMS_ENCRYPTION_CONTEXT,
-    }),
-  );
-  if (!response.Plaintext) {
-    throw new Error("AWS KMS decrypt response did not include plaintext");
-  }
+  const decryptedDataKey = await getSecretKmsClient().decrypt({
+    keyId: ciphertext.keyId,
+    ciphertext: Buffer.from(ciphertext.encryptedDataKey, "base64"),
+    encryptionContext: KMS_ENCRYPTION_CONTEXT,
+  });
 
-  const plaintextDataKey = Buffer.from(response.Plaintext);
+  const plaintextDataKey = Buffer.from(decryptedDataKey);
   if (plaintextDataKey.byteLength !== DATA_KEY_BYTE_LENGTH) {
     throw new Error("AWS KMS decrypt response used an invalid key size");
   }

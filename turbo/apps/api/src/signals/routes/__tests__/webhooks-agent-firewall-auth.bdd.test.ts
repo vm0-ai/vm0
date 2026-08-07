@@ -1,11 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  DecryptCommand,
-  type DecryptCommandOutput,
-  GenerateDataKeyCommand,
-  type GenerateDataKeyCommandOutput,
-} from "@aws-sdk/client-kms";
 import { HttpResponse, http } from "msw";
 import { delay } from "signal-timers";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -16,6 +10,8 @@ import { mockOptionalEnv } from "../../../lib/env";
 import {
   setSecretKmsClientForTests,
   type SecretKmsClient,
+  type SecretKmsDataKey,
+  type SecretKmsGenerateDataKeyRequest,
 } from "../../../lib/secret-kms-client";
 import { now } from "../../../lib/time";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
@@ -111,36 +107,30 @@ function gateFirstStoredSecretDecrypt(): {
   };
   onTestFinished(release);
 
-  async function send(
-    command: GenerateDataKeyCommand,
-  ): Promise<GenerateDataKeyCommandOutput>;
-  async function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  async function send(
-    command: GenerateDataKeyCommand | DecryptCommand,
-  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
-    if (command instanceof GenerateDataKeyCommand) {
-      return {
-        $metadata: {},
-        KeyId: command.input.KeyId,
-        CiphertextBlob: Buffer.from(
-          `encrypted-data-key:${command.input.KeyId}`,
+  const client: SecretKmsClient = {
+    generateDataKey(
+      request: SecretKmsGenerateDataKeyRequest,
+    ): Promise<SecretKmsDataKey> {
+      return Promise.resolve({
+        keyId: request.keyId,
+        plaintext: TEST_DATA_KEY,
+        encryptedDataKey: Buffer.from(
+          `encrypted-data-key:${request.keyId}`,
           "utf8",
         ),
-        Plaintext: TEST_DATA_KEY,
-      };
-    }
-
-    decryptCalls += 1;
-    // The encrypted request payload is first. The second decrypt starts after
-    // the connector credential SELECT has captured its statement snapshot.
-    if (decryptCalls === 2) {
-      started.resolve(undefined);
-      await resume.promise;
-    }
-    return { $metadata: {}, Plaintext: TEST_DATA_KEY };
-  }
-
-  const client: SecretKmsClient = { send };
+      });
+    },
+    async decrypt(): Promise<Uint8Array> {
+      decryptCalls += 1;
+      // The encrypted request payload is first. The second decrypt starts after
+      // the connector credential SELECT has captured its statement snapshot.
+      if (decryptCalls === 2) {
+        started.resolve(undefined);
+        await resume.promise;
+      }
+      return TEST_DATA_KEY;
+    },
+  };
   setSecretKmsClientForTests(client);
   return { started: started.promise, release };
 }
