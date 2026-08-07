@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.159.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.22...runner-rs-v0.159.0) (2026-08-07)
+
+
+### Features
+
+* **connectors:** sync active run connector state ([#25420](https://github.com/vm0-ai/vm0/issues/25420)) ([87e716c](https://github.com/vm0-ai/vm0/commit/87e716cdf766fb3a1af51cdd20b7833717fe1133))
+
 ## [0.158.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.21...runner-rs-v0.158.22) (2026-08-06)
 
 
