@@ -317,80 +317,43 @@ body {
   animation: zero-thinking-in 0.3s ease-out;
 }
 
-/* Thinking indicator: 3x3 ripple loader.
- * A wave of energy sweeps the grid along the diagonal; each cell morphs from
- * square to circle as it lights up, which is what makes a static grid read as
- * soft rather than mechanical. */
+/* Thinking indicator: 3-block loader */
 .zero-blocks {
   display: inline-grid;
-  grid-template-columns: repeat(3, 3.5px);
-  grid-template-rows: repeat(3, 3.5px);
+  grid-template-columns: repeat(2, 5px);
+  grid-template-rows: repeat(2, 5px);
   gap: 1.5px;
 }
 .zero-blocks span {
-  border-radius: 1px;
-  background: hsl(var(--muted-foreground) / 0.3);
-  animation: zero-block-ripple 1.25s cubic-bezier(0.4, 0, 0.3, 1) infinite;
+  border-radius: 1.5px;
 }
-/* Delay follows each cell's diagonal distance from the top-left corner, so the
- * wave travels top-left to bottom-right across five steps. */
-.zero-blocks span:nth-child(2),
-.zero-blocks span:nth-child(4) {
-  animation-delay: 0.1s;
+.zero-blocks span:nth-child(1) {
+  background: var(--zb-c1);
+  grid-column: 2;
+  grid-row: 1;
+  animation: zero-block-pop 1.4s ease-in-out infinite;
 }
-.zero-blocks span:nth-child(3),
-.zero-blocks span:nth-child(5),
-.zero-blocks span:nth-child(7) {
-  animation-delay: 0.2s;
+.zero-blocks span:nth-child(2) {
+  background: var(--zb-c2);
+  grid-column: 1;
+  grid-row: 2;
+  animation: zero-block-pop 1.4s ease-in-out 0.2s infinite;
 }
-.zero-blocks span:nth-child(6),
-.zero-blocks span:nth-child(8) {
-  animation-delay: 0.3s;
+.zero-blocks span:nth-child(3) {
+  background: var(--zb-c3);
+  grid-column: 2;
+  grid-row: 2;
+  animation: zero-block-pop 1.4s ease-in-out 0.4s infinite;
 }
-.zero-blocks span:nth-child(9) {
-  animation-delay: 0.4s;
-}
-@keyframes zero-block-ripple {
-  0% {
-    transform: scale(0.78);
-    border-radius: 1px;
-    background: hsl(var(--muted-foreground) / 0.3);
-    box-shadow: 0 0 0 hsl(var(--primary) / 0);
-  }
-  16% {
-    transform: scale(1.18);
-    border-radius: 50%;
-    background: hsl(var(--primary));
-    box-shadow: 0 0 3px hsl(var(--primary) / 0.55);
-  }
-  28% {
-    transform: scale(1);
-    border-radius: 34%;
-    background: hsl(var(--primary));
-    box-shadow: 0 0 0 hsl(var(--primary) / 0);
-  }
-  52%,
-  100% {
-    transform: scale(0.78);
-    border-radius: 1px;
-    background: hsl(var(--muted-foreground) / 0.3);
-    box-shadow: 0 0 0 hsl(var(--primary) / 0);
-  }
-}
-/* Keep the wave legible without motion: colour still travels, nothing moves. */
-@media (prefers-reduced-motion: reduce) {
-  .zero-blocks span {
-    animation-name: zero-block-ripple-calm;
-    animation-duration: 2s;
-  }
-}
-@keyframes zero-block-ripple-calm {
+@keyframes zero-block-pop {
   0%,
   100% {
-    background: hsl(var(--muted-foreground) / 0.3);
+    transform: scale(0.8);
+    opacity: 0.5;
   }
-  40% {
-    background: hsl(var(--primary) / 0.75);
+  50% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 
