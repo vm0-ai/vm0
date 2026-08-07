@@ -17,22 +17,51 @@ const PI_CAPABLE_PROVIDERS = [
   "deepseek",
   "openai-api-key",
   "moonshot-api-key",
+  "codex-oauth-token",
 ] as const;
+type PiCapableProvider = (typeof PI_CAPABLE_PROVIDERS)[number];
 
-function firewallBases(provider: string): readonly string[] {
-  const configs: Record<string, { apis: readonly { base: string }[] }> =
-    MODEL_PROVIDER_FIREWALL_CONFIGS;
-  return (configs[provider]?.apis ?? []).map((api) => {
-    return api.base;
-  });
+/**
+ * Actual request URL the Pi runtime calls. Most providers hit the
+ * chat-completions URL directly; the Codex subscription runtime appends
+ * `/codex/responses` to its base URL.
+ */
+function piRequestUrl(provider: PiCapableProvider): string | undefined {
+  const url = getModelProviderPiChatCompletionsUrl(provider);
+  if (url === undefined) {
+    return undefined;
+  }
+  return provider === "codex-oauth-token" ? `${url}/codex/responses` : url;
+}
+
+function firewallAuthBases(provider: string): readonly string[] {
+  const configs: Record<
+    string,
+    {
+      apis: readonly {
+        base: string;
+        auth?: { headers?: Record<string, string> };
+      }[];
+    }
+  > = MODEL_PROVIDER_FIREWALL_CONFIGS;
+  return (configs[provider]?.apis ?? [])
+    .map((api) => {
+      return api;
+    })
+    .filter((api) => {
+      return Object.keys(api.auth?.headers ?? {}).length > 0;
+    })
+    .map((api) => {
+      return api.base;
+    });
 }
 
 describe("model provider firewall covers the Pi standby request", () => {
   it.each(PI_CAPABLE_PROVIDERS)("covers %s", (provider) => {
-    const requestUrl = getModelProviderPiChatCompletionsUrl(provider);
+    const requestUrl = piRequestUrl(provider);
     expect(requestUrl).toBeDefined();
 
-    const bases = firewallBases(provider);
+    const bases = firewallAuthBases(provider);
     const covered = bases.some((base) => {
       return requestUrl?.startsWith(base.replace(/\/+$/, ""));
     });
@@ -45,8 +74,10 @@ describe("model provider firewall covers the Pi standby request", () => {
 
   it("keeps credential injection scoped to inference paths", () => {
     for (const provider of PI_CAPABLE_PROVIDERS) {
-      for (const base of firewallBases(provider)) {
-        expect(base).toMatch(/\/(chat\/completions|responses|v1\/messages)$/);
+      for (const base of firewallAuthBases(provider)) {
+        expect(base).toMatch(
+          /\/(chat\/completions|responses|v1\/messages|codex)$/,
+        );
       }
     }
   });

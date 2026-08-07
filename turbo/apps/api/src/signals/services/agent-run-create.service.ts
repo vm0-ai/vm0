@@ -226,6 +226,7 @@ import {
 } from "./pi-edge-config";
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
 import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
+import { resolveLiveCodexModelProviderAccessToken } from "./agent-webhook-firewall-auth.service";
 import {
   recordSameThreadRunnerJobPersisted,
   runnerJobQueueTimestamps,
@@ -1906,6 +1907,7 @@ async function multiAuthModelProviderEnvironment(
     readonly authMethod: string | null;
     readonly selectedModel: string | null;
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly resolvePiEdgeCredentials: boolean;
   },
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (!args.authMethod) {
@@ -1964,6 +1966,8 @@ async function multiAuthModelProviderEnvironment(
     }
   }
 
+  const piEdgeApiKey = await resolveMultiAuthPiEdgeApiKey(db, args);
+
   const selectedModelEnvBindings = getModelProviderEnvBindings(args.type);
   const selectedModel = resolveModelProviderModel({
     type: args.type,
@@ -1989,9 +1993,38 @@ async function multiAuthModelProviderEnvironment(
     ),
     secrets: hasFirewallAuth ? {} : forwardableSecrets,
     selectedModel,
+    ...(piEdgeApiKey === undefined ? {} : { piEdgeApiKey }),
     secretConnectorMap: authMaps?.secretConnectorMap,
     secretConnectorMetadataMap: authMaps?.secretConnectorMetadataMap,
   };
+}
+
+/**
+ * Pi edge turns run inside the API with the real credential, but firewall
+ * providers above only expose lazy placeholders. Resolve and refresh the Codex
+ * access token (a JWT the Pi runtime must be able to parse) when the run is Pi
+ * eligible; it is carried only on the API-side edge config, never into the
+ * Sandbox environment.
+ */
+async function resolveMultiAuthPiEdgeApiKey(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly type: ModelProviderType;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly resolvePiEdgeCredentials: boolean;
+  },
+): Promise<string | undefined> {
+  if (!args.resolvePiEdgeCredentials || args.type !== "codex-oauth-token") {
+    return undefined;
+  }
+  return await resolveLiveCodexModelProviderAccessToken({
+    db,
+    orgId: args.orgId,
+    sourceUserId: args.userId,
+    featureSwitchContext: args.featureSwitchContext,
+  });
 }
 
 async function vm0ModelProviderEnvironment(
@@ -2206,6 +2239,7 @@ async function resolveCandidateModelProviderEnvironment(
       authMethod: row.authMethod,
       selectedModel: args.selectedModelOverride ?? row.selectedModel,
       featureSwitchContext: args.featureSwitchContext,
+      resolvePiEdgeCredentials: args.resolvePiEdgeCredentials,
     });
   }
 

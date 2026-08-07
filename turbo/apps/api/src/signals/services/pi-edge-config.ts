@@ -51,7 +51,9 @@ export function piSandboxModelConfig(config: PiEdgeModelConfig): PiModelConfig {
     apiKeyEnv:
       config.provider === "moonshotai"
         ? "ANTHROPIC_AUTH_TOKEN"
-        : "OPENAI_API_KEY",
+        : config.provider === "codex"
+          ? "CHATGPT_ACCESS_TOKEN"
+          : "OPENAI_API_KEY",
   };
 }
 
@@ -70,6 +72,7 @@ function piEdgeDefaultBaseUrl(concreteType: string): string | undefined {
 
 export function isPiEdgeCompatibleProviderType(type: string): boolean {
   return (
+    type === "codex-oauth-token" ||
     type === "openrouter-codex" ||
     type === "vercel-ai-gateway-codex" ||
     piEdgeDefaultBaseUrl(type) !== undefined
@@ -92,6 +95,9 @@ function piProvider(concreteType: string): PiOpenAICompatibleProvider | null {
     }
     case "vercel-ai-gateway-codex": {
       return "vercel-ai-gateway";
+    }
+    case "codex-oauth-token": {
+      return "codex";
     }
     default: {
       return null;

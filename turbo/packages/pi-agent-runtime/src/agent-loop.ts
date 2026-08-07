@@ -7,7 +7,9 @@ import {
   type ExecutionEnv,
   type StreamFn,
 } from "@earendil-works/pi-agent-core";
+import { streamSimple as streamSimpleCodex } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
+import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 import { moonshotaiProvider } from "@earendil-works/pi-ai/providers/moonshotai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
@@ -23,7 +25,10 @@ export type PiOpenAICompatibleProvider =
   | "moonshotai"
   | "openai"
   | "openrouter"
-  | "vercel-ai-gateway";
+  | "vercel-ai-gateway"
+  | "codex";
+
+type PiOpenAICompletionsProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
 
 export interface PiAgentModelConfig {
   readonly provider: PiOpenAICompatibleProvider;
@@ -32,7 +37,7 @@ export interface PiAgentModelConfig {
   readonly model: string;
 }
 
-function providerModels(provider: PiOpenAICompatibleProvider) {
+function providerModels(provider: PiOpenAICompletionsProvider) {
   switch (provider) {
     case "deepseek": {
       return deepseekProvider().getModels();
@@ -52,9 +57,12 @@ function providerModels(provider: PiOpenAICompatibleProvider) {
   }
 }
 
-function sourceModel(config: PiAgentModelConfig): Model<Api> | undefined {
-  return providerModels(config.provider).find((candidate) => {
-    return candidate.id === config.model;
+function sourceModel(
+  provider: PiOpenAICompletionsProvider,
+  model: string,
+): Model<Api> | undefined {
+  return providerModels(provider).find((candidate) => {
+    return candidate.id === model;
   });
 }
 
@@ -74,15 +82,90 @@ function isPiLlmMessage(message: AgentMessage): message is Message {
   );
 }
 
-const piOpenAICompletionsStream: StreamFn = (model, context, options) => {
+// ChatGPT backend account id carried by the firewall placeholder. The Codex
+// stream derives `chatgpt-account-id` from the token payload, so the sandbox
+// (which only ever holds the firewall placeholder, never a real JWT) needs a
+// JWT-shaped key carrying this claim; the egress firewall then replaces the
+// Authorization and ChatGPT-Account-Id headers with the real secrets for the
+// chatgpt.com backend base.
+const CODEX_ACCOUNT_ID_CLAIM_PATH = "https://api.openai.com/auth";
+const CODEX_PLACEHOLDER_ACCOUNT_ID = "ws_VM0_PLACEHOLDER_DO_NOT_TRUST";
+
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function codexAccountIdFromJwt(apiKey: string): string | null {
+  try {
+    const parts = apiKey.split(".");
+    const payloadPart = parts[1];
+    if (parts.length !== 3 || payloadPart === undefined) {
+      return null;
+    }
+    const payload = JSON.parse(
+      Buffer.from(payloadPart, "base64url").toString("utf8"),
+    ) as Record<string, unknown>;
+    const auth = payload[CODEX_ACCOUNT_ID_CLAIM_PATH] as
+      | { chatgpt_account_id?: unknown }
+      | undefined;
+    return typeof auth?.chatgpt_account_id === "string"
+      ? auth.chatgpt_account_id
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function codexJwtShape(accountId: string): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "none", typ: "JWT" }));
+  const payload = base64UrlEncode(
+    JSON.stringify({
+      [CODEX_ACCOUNT_ID_CLAIM_PATH]: { chatgpt_account_id: accountId },
+    }),
+  );
+  return `${header}.${payload}.vm0-placeholder`;
+}
+
+const piAgentStream: StreamFn = (model, context, options) => {
+  if (model.api === "openai-codex-responses") {
+    const apiKey = options?.apiKey;
+    const jwtApiKey =
+      apiKey !== undefined && codexAccountIdFromJwt(apiKey) !== null
+        ? apiKey
+        : codexJwtShape(CODEX_PLACEHOLDER_ACCOUNT_ID);
+    return streamSimpleCodex(
+      model as Model<"openai-codex-responses">,
+      context,
+      { ...options, apiKey: jwtApiKey, transport: "sse" },
+    );
+  }
   return streamSimple(model as Model<"openai-completions">, context, options);
 };
 
 /** Resolve model metadata from Pi's native provider catalog. */
 export function resolvePiAgentModel(
   config: PiAgentModelConfig,
-): Model<"openai-completions"> | null {
-  const source = sourceModel(config);
+): Model<"openai-completions" | "openai-codex-responses"> | null {
+  if (config.provider === "codex") {
+    const source = openaiCodexProvider()
+      .getModels()
+      .find((candidate) => {
+        return candidate.id === config.model;
+      });
+    return source
+      ? {
+          ...source,
+          provider: config.provider,
+          baseUrl: config.baseUrl,
+        }
+      : null;
+  }
+
+  const source = sourceModel(config.provider, config.model);
   if (!source) {
     return null;
   }
@@ -150,7 +233,7 @@ export async function runPiAgentPrompt(args: {
     },
     args.onEvent,
     args.signal,
-    piOpenAICompletionsStream,
+    piAgentStream,
   );
 }
 
@@ -201,7 +284,7 @@ export async function runPiAgentResume(args: {
     },
     args.onEvent,
     args.signal,
-    piOpenAICompletionsStream,
+    piAgentStream,
   );
   return [...toolResults, ...continued];
 }
