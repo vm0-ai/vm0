@@ -279,6 +279,7 @@ describe("GitHub zero file integration routes", () => {
   it("returns a presigned upload URL for GitHub file delivery", async () => {
     mockEnv("S3_ENDPOINT", "http://internal-s3.test");
     mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.test");
+    mocks.s3.listObjects([]);
     const fixture = await seedFixture();
     const client = setupApp({
       context,

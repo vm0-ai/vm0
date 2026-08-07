@@ -178,12 +178,42 @@ export function mockSubagentThread(context: TestContext, _threadId: string) {
   });
 }
 
+function mountedComposerEditor(): HTMLElement {
+  const editor = document.querySelector(
+    '.zero-composer [contenteditable="true"]',
+  );
+  if (!(editor instanceof HTMLElement)) {
+    throw new Error("Composer editor is not mounted");
+  }
+  return editor;
+}
+
+/**
+ * The composer editor is mounted on first paint and mounted again once page
+ * bootstrap settles, so an element captured too early can be detached by the
+ * time a test types into it — and typing into a detached editor silently does
+ * nothing. Type into the editor that is currently mounted and retry until the
+ * draft actually lands.
+ */
+export async function fillComposer(
+  input: Element,
+  text: string,
+): Promise<void> {
+  await waitFor(async () => {
+    await fill(input.isConnected ? input : mountedComposerEditor(), text);
+    const editor = input.isConnected ? input : mountedComposerEditor();
+    if (!(editor.textContent ?? "").includes(text)) {
+      throw new Error("Composer draft did not land in the mounted editor");
+    }
+  });
+}
+
 export async function sendMessageInUI(
   user: ReturnType<typeof userEvent.setup>,
   input: Element,
   text: string,
 ): Promise<void> {
-  await fill(input, text);
+  await fillComposer(input, text);
   await user.keyboard("{Enter}");
 }
 
