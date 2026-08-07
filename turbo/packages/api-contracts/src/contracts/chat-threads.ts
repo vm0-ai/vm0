@@ -890,10 +890,6 @@ export const chatThreadsContract = c.router({
         threadIds: z.array(z.string().uuid()),
       }),
       401: apiErrorSchema,
-      // A newly promoted app can briefly reach an API version from before
-      // this additive route existed. Remove after that API is outside the
-      // production rollback window.
-      404: apiErrorSchema,
     },
     summary:
       "List unread chat thread ids for the caller in the current organization.",
