@@ -820,9 +820,13 @@ describe("chat composer templates", () => {
         "overflow-y-auto",
         "[scrollbar-width:none]",
       );
-      expect(
-        avatarScroll.querySelector("[data-avatar-catalog-toolbar]"),
-      ).toHaveClass("sticky", "top-0");
+      expect(avatarScroll.parentElement).toHaveClass("px-6");
+      expect(avatarScroll.parentElement).not.toHaveClass("py-4");
+      const avatarToolbar = avatarScroll.querySelector(
+        "[data-avatar-catalog-toolbar]",
+      );
+      expect(avatarToolbar).toHaveClass("sticky", "top-0");
+      expect(avatarToolbar).not.toHaveClass("bg-background");
       Object.defineProperties(avatarScroll, {
         scrollHeight: { configurable: true, value: 1200 },
         clientHeight: { configurable: true, value: 500 },
@@ -864,6 +868,8 @@ describe("chat composer templates", () => {
         "[data-avatar-voice-list-scroll]",
       );
       expect(voicePicker).toHaveClass("overflow-hidden");
+      expect(voicePicker?.parentElement).toHaveClass("px-6");
+      expect(voicePicker?.parentElement).not.toHaveClass("py-4");
       expect(voiceScroll).toHaveClass(
         "overflow-y-auto",
         "[scrollbar-width:none]",

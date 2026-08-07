@@ -501,7 +501,7 @@ function AvatarCatalogFilters({
   return (
     <div
       data-avatar-catalog-toolbar=""
-      className="sticky top-0 z-10 mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-background pb-4"
+      className="sticky top-0 z-10 mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-4"
     >
       <AvatarAspectRatioPicker
         value={filters.aspectRatio}
