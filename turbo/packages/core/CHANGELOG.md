@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.529.0](https://github.com/vm0-ai/vm0/compare/core-v8.528.2...core-v8.529.0) (2026-08-07)
+
+
+### Features
+
+* add seedance 2.5 video generation ([#25706](https://github.com/vm0-ai/vm0/issues/25706)) ([4980128](https://github.com/vm0-ai/vm0/commit/49801285e195ef2ada1c42a721ca79cfce7b0c62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.0
+
 ## [8.528.2](https://github.com/vm0-ai/vm0/compare/core-v8.528.1...core-v8.528.2) (2026-08-07)
 
 

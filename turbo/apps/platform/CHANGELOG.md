@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.705.0](https://github.com/vm0-ai/vm0/compare/app-v0.704.0...app-v0.705.0) (2026-08-07)
+
+
+### Features
+
+* **platform:** move avatar catalog filters into the dialog header row ([#25705](https://github.com/vm0-ai/vm0/issues/25705)) ([3e52c0d](https://github.com/vm0-ai/vm0/commit/3e52c0d2716cb0f632e4cc075eca19885b51b3de))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.0
+    * @vm0/core bumped to 8.529.0
+
 ## [0.704.0](https://github.com/vm0-ai/vm0/compare/app-v0.703.2...app-v0.704.0) (2026-08-07)
 
 
