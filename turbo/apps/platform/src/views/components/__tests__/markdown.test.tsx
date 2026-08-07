@@ -5,7 +5,6 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { StoreProvider } from "ccstate-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
