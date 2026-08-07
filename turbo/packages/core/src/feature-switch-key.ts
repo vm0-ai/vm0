@@ -55,7 +55,6 @@ export enum FeatureSwitchKey {
   NewChatDefaultModelAction = "newChatDefaultModelAction",
   ChatNextRunModelNotice = "chatNextRunModelNotice",
   RealAgentInPreview = "realAgentInPreview",
-  TemplatePickerGlobalSearch = "templatePickerGlobalSearch",
   UsagePackPlans = "usagePackPlans",
 
   ZapierConnector = "zapierConnector",
