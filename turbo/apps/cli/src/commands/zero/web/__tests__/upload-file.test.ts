@@ -107,12 +107,10 @@ describe("zero web upload-file command", () => {
             filename: string;
             contentType: string;
             size: number;
-            supportsUploadHeaders: true;
           };
           expect(body.filename).toBe("report.pdf");
           expect(body.contentType).toBe("application/pdf");
           expect(body.size).toBe(13);
-          expect(body.supportsUploadHeaders).toBe(true);
 
           return HttpResponse.json(prepared, { status: 200 });
         }),

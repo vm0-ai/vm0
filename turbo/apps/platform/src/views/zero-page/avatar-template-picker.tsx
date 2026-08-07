@@ -501,7 +501,7 @@ function AvatarCatalogFilters({
   return (
     <div
       data-avatar-catalog-toolbar=""
-      className="sticky top-0 z-10 mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-background pb-4"
+      className="sticky top-0 z-10 mb-5 flex flex-wrap items-center justify-between gap-3 bg-card pb-4"
     >
       <AvatarAspectRatioPicker
         value={filters.aspectRatio}
@@ -845,13 +845,16 @@ function VoicePreviewControl({
 function AvatarVoiceCard({
   voice,
   selected,
+  recommended,
   onSelect,
 }: {
   readonly voice: ZeroAvatarVideoVoice;
   readonly selected: boolean;
+  readonly recommended: boolean;
   readonly onSelect: (voice: ZeroAvatarVideoVoice) => void;
 }) {
   const { t } = useTranslation();
+  const recommendedDescriptionId = `avatar-voice-recommendation-${encodeURIComponent(voice.id)}`;
   const metadata = Array.from(
     new Set(
       [voice.language, voice.gender, voice.age, voice.accent]
@@ -871,6 +874,7 @@ function AvatarVoiceCard({
     <div
       data-avatar-voice-card=""
       data-playing="false"
+      data-recommended={recommended ? "" : undefined}
       role="button"
       tabIndex={0}
       aria-label={t(
@@ -880,6 +884,7 @@ function AvatarVoiceCard({
         { title: voice.name },
       )}
       aria-pressed={selected}
+      aria-describedby={recommended ? recommendedDescriptionId : undefined}
       onClick={selectVoice}
       onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
         if (event.target !== event.currentTarget) {
@@ -893,7 +898,11 @@ function AvatarVoiceCard({
       className={cn(
         "group/voice flex cursor-pointer items-center gap-3 rounded-xl border bg-card p-3 transition-colors duration-200 hover:border-foreground/20 hover:bg-muted/25 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         AVATAR_CARD_SHADOW,
-        selected ? "border-primary bg-primary/[0.04]" : "border-border",
+        selected
+          ? "border-primary bg-primary/[0.04]"
+          : recommended
+            ? "border-primary/40 bg-primary/[0.025]"
+            : "border-border",
       )}
     >
       <VoicePreviewControl voice={voice} />
@@ -909,14 +918,26 @@ function AvatarVoiceCard({
               </p>
             )}
           </div>
-          {selected && (
-            <span
-              className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
-              aria-hidden="true"
-            >
-              <IconCheck size={13} stroke={2.2} />
-            </span>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {recommended && (
+              <span
+                id={recommendedDescriptionId}
+                className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary"
+              >
+                {t(($) => {
+                  return $.artifacts.templates.recommended;
+                })}
+              </span>
+            )}
+            {selected && (
+              <span
+                className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+                aria-hidden="true"
+              >
+                <IconCheck size={13} stroke={2.2} />
+              </span>
+            )}
+          </div>
         </div>
         {metadata.length > 0 && (
           <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
@@ -935,6 +956,21 @@ function AvatarVoiceCard({
       </div>
     </div>
   );
+}
+
+function recommendedVoiceFirst(
+  voices: readonly ZeroAvatarVideoVoice[],
+  recommendedVoice: ZeroAvatarVideoVoice | null,
+): readonly ZeroAvatarVideoVoice[] {
+  if (!recommendedVoice) {
+    return voices;
+  }
+  return [
+    recommendedVoice,
+    ...voices.filter((voice) => {
+      return voice.id !== recommendedVoice.id;
+    }),
+  ];
 }
 
 function SelectedAvatarCard({
@@ -975,24 +1011,19 @@ function SelectedAvatarCard({
   );
 }
 
-function AvatarVoicePickerContent({
+function AvatarVoiceCatalog({
   signals,
-  avatar,
   value,
-  onBack,
   onSelect,
 }: {
   readonly signals: ComposerSignals;
-  readonly avatar: ZeroAvatarVideoAvatar;
   readonly value: GenerationTemplateRequest | undefined;
-  readonly onBack: () => void;
-  readonly onSelect: (
-    avatar: ZeroAvatarVideoAvatar,
-    voice: ZeroAvatarVideoVoice,
-  ) => void;
+  readonly onSelect: (voice: ZeroAvatarVideoVoice) => void;
 }) {
-  const { t } = useTranslation();
   const catalog = useLoadable(signals.template.avatarTemplateVoiceCatalogPage$);
+  const recommendation = useLoadable(
+    signals.template.avatarTemplateRecommendedVoice$,
+  );
   const lastCatalog = useLastResolved(
     signals.template.avatarTemplateVoiceCatalogPage$,
   );
@@ -1010,9 +1041,16 @@ function AvatarVoicePickerContent({
   const pageSignal = useGet(pageSignal$);
   const selectedVoiceId =
     value?.type === "video" ? value.selection.voiceId : undefined;
-  const aspectRatio = useGet(
-    signals.template.avatarTemplateFilters$,
-  ).aspectRatio;
+  const recommendedVoice =
+    recommendation.state === "hasData"
+      ? (recommendation.data ?? visibleCatalog?.voices[0] ?? null)
+      : recommendation.state === "hasError"
+        ? null
+        : undefined;
+  const visibleVoices =
+    visibleCatalog && recommendedVoice !== undefined
+      ? recommendedVoiceFirst(visibleCatalog.voices, recommendedVoice)
+      : undefined;
   const handleVoiceScroll = (event: ReactUIEvent<HTMLElement>) => {
     if (catalog.state !== "hasData" || !catalog.data.hasNext) {
       return;
@@ -1025,6 +1063,61 @@ function AvatarVoicePickerContent({
     }
     detach(loadMore(pageSignal), Reason.DomCallback, "avatar voice paging");
   };
+
+  return (
+    <section className="flex min-h-0 min-w-0 flex-col">
+      <div
+        data-avatar-voice-list-scroll=""
+        className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        onScroll={handleVoiceScroll}
+      >
+        {catalog.state === "hasError" ? (
+          <AvatarTemplateEmpty error />
+        ) : visibleVoices === undefined ? (
+          <AvatarVoiceSkeletonGrid />
+        ) : visibleVoices.length > 0 ? (
+          <div className="grid grid-cols-1 gap-2.5">
+            {visibleVoices.map((voice) => {
+              return (
+                <AvatarVoiceCard
+                  key={voice.id}
+                  voice={voice}
+                  selected={voice.id === selectedVoiceId}
+                  recommended={voice.id === recommendedVoice?.id}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <AvatarTemplateEmpty error={false} />
+        )}
+        {loadingMore && <CatalogLoadingSpinner />}
+      </div>
+    </section>
+  );
+}
+
+function AvatarVoicePickerContent({
+  signals,
+  avatar,
+  value,
+  onBack,
+  onSelect,
+}: {
+  readonly signals: ComposerSignals;
+  readonly avatar: ZeroAvatarVideoAvatar;
+  readonly value: GenerationTemplateRequest | undefined;
+  readonly onBack: () => void;
+  readonly onSelect: (
+    avatar: ZeroAvatarVideoAvatar,
+    voice: ZeroAvatarVideoVoice,
+  ) => void;
+}) {
+  const { t } = useTranslation();
+  const aspectRatio = useGet(
+    signals.template.avatarTemplateFilters$,
+  ).aspectRatio;
 
   return (
     <div
@@ -1063,37 +1156,13 @@ function AvatarVoicePickerContent({
         >
           <SelectedAvatarCard avatar={avatar} aspectRatio={aspectRatio} />
         </div>
-        <section className="flex min-h-0 min-w-0 flex-col">
-          <div
-            data-avatar-voice-list-scroll=""
-            className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            onScroll={handleVoiceScroll}
-          >
-            {catalog.state === "hasError" ? (
-              <AvatarTemplateEmpty error />
-            ) : visibleCatalog === undefined ? (
-              <AvatarVoiceSkeletonGrid />
-            ) : visibleCatalog.voices.length > 0 ? (
-              <div className="grid grid-cols-1 gap-2.5">
-                {visibleCatalog.voices.map((voice) => {
-                  return (
-                    <AvatarVoiceCard
-                      key={voice.id}
-                      voice={voice}
-                      selected={voice.id === selectedVoiceId}
-                      onSelect={(selectedVoice) => {
-                        onSelect(avatar, selectedVoice);
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            ) : (
-              <AvatarTemplateEmpty error={false} />
-            )}
-            {loadingMore && <CatalogLoadingSpinner />}
-          </div>
-        </section>
+        <AvatarVoiceCatalog
+          signals={signals}
+          value={value}
+          onSelect={(voice) => {
+            onSelect(avatar, voice);
+          }}
+        />
       </div>
     </div>
   );

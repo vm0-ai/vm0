@@ -102,8 +102,15 @@ import {
   resolveConnectorCredentialAccess,
   type ConnectorCredentialAccess,
 } from "./connector-credential-access.service";
-import { resolveLiveCustomConnectorOAuth2AccessToken } from "./custom-connector-oauth2.service";
-import { CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY } from "./zero-custom-connector.service";
+import {
+  CustomConnectorOAuth2TokenRefreshError,
+  resolveLiveCustomConnectorOAuth2AccessToken,
+} from "./custom-connector-oauth2.service";
+import {
+  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+  customConnectorSecretKey,
+  loadCustomConnectorRuntimeData,
+} from "./zero-custom-connector.service";
 
 type AccessSecretSource = SecretConnectorMetadata["sourceType"];
 type StorageSecretSource = Exclude<AccessSecretSource, "platform-secret">;
@@ -141,6 +148,11 @@ interface FirewallAuthBody {
   readonly vars?: Record<string, string>;
   readonly firewallBillable?: boolean;
   readonly forceRefresh?: boolean;
+  readonly matchedFirewall?: {
+    readonly name: string;
+    readonly apiId: string;
+    readonly customConnectorId?: string;
+  };
 }
 
 interface FirewallAwsSigv4AuthConfig {
@@ -2991,6 +3003,7 @@ async function syncCustomConnectorRuntimeSecrets(args: {
   readonly secrets: Record<string, string>;
   readonly referencedKeys: Set<string>;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly forceRefresh: boolean;
 }): Promise<void> {
   const missingKeys = [...args.referencedKeys].filter((key) => {
     return !Object.hasOwn(args.secrets, key);
@@ -3020,27 +3033,32 @@ async function syncCustomConnectorRuntimeSecrets(args: {
     if (Object.hasOwn(args.secrets, row.secretName)) {
       continue;
     }
-    const encryptedValue =
-      row.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
-        ? await tapError(
-            resolveLiveCustomConnectorOAuth2AccessToken({
-              db: args.db,
-              orgId: args.orgId,
-              userId: args.userId,
-              connectorId: row.connectorId,
-              connectorRevision: row.connectorRevision,
-              featureContext: args.featureSwitchContext,
-              signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
-            }),
-            (error) => {
-              L.warn("Failed to resolve live custom connector OAuth token", {
-                runId: args.runId,
-                connectorId: row.connectorId,
-                error,
-              });
-            },
-          )
-        : row.encryptedValue;
+    let encryptedValue = row.encryptedValue;
+    if (row.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY) {
+      const accessToken = await tapError(
+        resolveLiveCustomConnectorOAuth2AccessToken({
+          db: args.db,
+          orgId: args.orgId,
+          userId: args.userId,
+          connectorId: row.connectorId,
+          connectorRevision: row.connectorRevision,
+          featureContext: args.featureSwitchContext,
+          signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+          forceRefresh: args.forceRefresh,
+        }),
+        (error) => {
+          L.warn("Failed to resolve live custom connector OAuth token", {
+            runId: args.runId,
+            connectorId: row.connectorId,
+            error,
+          });
+        },
+      );
+      encryptedValue =
+        accessToken?.kind === "available"
+          ? accessToken.encryptedAccessToken
+          : null;
+    }
     if (!encryptedValue) {
       continue;
     }
@@ -3099,6 +3117,7 @@ async function syncFirewallRuntimeSecrets(args: {
     secrets: args.secrets,
     referencedKeys: args.referencedKeys,
     featureSwitchContext: args.featureSwitchContext,
+    forceRefresh: args.body.forceRefresh === true,
   });
   syncPlatformRuntimeSecrets({
     secrets: args.secrets,
@@ -4116,11 +4135,358 @@ function hasEmptyAwsSigv4Credential(
   );
 }
 
+interface CurrentCustomConnectorAuthRef {
+  readonly secretName: string;
+  readonly connectorId: string;
+  readonly connectorRevision: number;
+  readonly key: string;
+  readonly encryptedValue: string | null;
+  readonly required: boolean;
+}
+
+async function loadCurrentCustomConnectorAuthRefs(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly customConnectorId: string;
+}): Promise<readonly CurrentCustomConnectorAuthRef[] | undefined> {
+  const [runtime] = await loadCustomConnectorRuntimeData(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorIds: [args.customConnectorId],
+  });
+  if (!runtime) {
+    return undefined;
+  }
+
+  const declaredFields = new Map(
+    runtime.connector.fields.map((field) => {
+      const secretName = customConnectorSecretKey({
+        connectorId: runtime.connector.id,
+        kind: field.kind,
+        key: field.key,
+      });
+      return [secretName, field] as const;
+    }),
+  );
+  const refs = new Map<string, CurrentCustomConnectorAuthRef>();
+  for (const value of runtime.values) {
+    const secretName = customConnectorSecretKey({
+      connectorId: runtime.connector.id,
+      kind: value.kind,
+      key: value.key,
+    });
+    const field = declaredFields.get(secretName);
+    if (!field) {
+      // Stored values survive definition edits, but removed fields are no
+      // longer part of the executable credential contract.
+      continue;
+    }
+    refs.set(secretName, {
+      secretName,
+      connectorId: runtime.connector.id,
+      connectorRevision: runtime.connector.revision,
+      key: value.key,
+      encryptedValue: value.encryptedValue,
+      required: field.required,
+    });
+  }
+  for (const [secretName, field] of declaredFields) {
+    if (refs.has(secretName)) {
+      continue;
+    }
+    refs.set(secretName, {
+      secretName,
+      connectorId: runtime.connector.id,
+      connectorRevision: runtime.connector.revision,
+      key: field.key,
+      encryptedValue: null,
+      required: field.required,
+    });
+  }
+  if (runtime.connector.authMode === "oauth") {
+    const secretName = customConnectorSecretKey({
+      connectorId: runtime.connector.id,
+      kind: "secret",
+      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+    });
+    refs.set(secretName, {
+      secretName,
+      connectorId: runtime.connector.id,
+      connectorRevision: runtime.connector.revision,
+      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+      encryptedValue: null,
+      required: true,
+    });
+  }
+  return [...refs.values()];
+}
+
+type CurrentCustomConnectorSecretsResolution =
+  | {
+      readonly kind: "available";
+      readonly secrets: Record<string, string>;
+      readonly missingOptionalSecrets: readonly string[];
+      readonly expiresAt: number | null;
+      readonly refreshedConnectors: readonly string[];
+      readonly refreshedSecrets: readonly string[];
+    }
+  | { readonly kind: "unavailable" }
+  | { readonly kind: "reconnect-required" }
+  | { readonly kind: "refresh-failed" };
+
+async function resolveCurrentCustomConnectorSecrets(args: {
+  readonly db: Db;
+  readonly auth: SandboxAuth;
+  readonly body: FirewallAuthBody;
+  readonly authRefs: readonly CurrentCustomConnectorAuthRef[];
+  readonly forceRefresh: boolean;
+}): Promise<CurrentCustomConnectorSecretsResolution> {
+  const referenced = collectReferencedKeys(
+    args.body.authHeaders,
+    args.body.authBase,
+    args.body.authQuery,
+    args.body.authAwsSigv4,
+  );
+  const refsByAlias = new Map(
+    args.authRefs.map((ref) => {
+      return [ref.secretName, ref] as const;
+    }),
+  );
+  if (
+    [...referenced.secrets].some((alias) => {
+      return !refsByAlias.has(alias);
+    })
+  ) {
+    return { kind: "unavailable" };
+  }
+
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    args.db,
+    args.auth.orgId,
+    args.auth.userId,
+  );
+  const currentSecrets: Record<string, string> = {};
+  const missingOptionalSecrets: string[] = [];
+  let expiresAt: number | null = null;
+  const refreshedConnectors: string[] = [];
+  const refreshedSecrets: string[] = [];
+  for (const alias of referenced.secrets) {
+    const ref = refsByAlias.get(alias);
+    if (!ref) {
+      return { kind: "unavailable" };
+    }
+    let encryptedValue = ref.encryptedValue;
+    if (
+      encryptedValue === null &&
+      ref.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
+    ) {
+      const accessToken = await settle(
+        resolveLiveCustomConnectorOAuth2AccessToken({
+          db: args.db,
+          orgId: args.auth.orgId,
+          userId: args.auth.userId,
+          connectorId: ref.connectorId,
+          connectorRevision: ref.connectorRevision,
+          featureContext: featureSwitchContext,
+          signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+          forceRefresh: args.forceRefresh,
+        }),
+      );
+      if (!accessToken.ok) {
+        if (
+          accessToken.error instanceof CustomConnectorOAuth2TokenRefreshError
+        ) {
+          return { kind: "refresh-failed" };
+        }
+        throw accessToken.error;
+      }
+      if (accessToken.value.kind === "unavailable") {
+        return { kind: "unavailable" };
+      }
+      if (accessToken.value.kind === "reconnect-required") {
+        return { kind: "reconnect-required" };
+      }
+      encryptedValue = accessToken.value.encryptedAccessToken;
+      expiresAt = accessToken.value.tokenExpiresAt
+        ? Math.floor(accessToken.value.tokenExpiresAt.getTime() / 1000)
+        : null;
+      if (accessToken.value.status === "refreshed") {
+        refreshedConnectors.push(ref.connectorId);
+        refreshedSecrets.push(alias);
+      }
+    }
+    if (!encryptedValue) {
+      if (!ref.required) {
+        missingOptionalSecrets.push(alias);
+        continue;
+      }
+      return { kind: "unavailable" };
+    }
+    currentSecrets[alias] = await decryptStoredSecretValue(
+      encryptedValue,
+      featureSwitchContext,
+    );
+  }
+  return {
+    kind: "available",
+    secrets: currentSecrets,
+    missingOptionalSecrets,
+    expiresAt,
+    refreshedConnectors,
+    refreshedSecrets,
+  };
+}
+
+function templateReferencesMissingOptionalSecret(args: {
+  readonly template: string;
+  readonly missingOptionalSecrets: ReadonlySet<string>;
+  readonly kind: "header" | "simple";
+}): boolean {
+  let referencesMissingSecret = false;
+  const collect = (namespace: string, key: string): void => {
+    if (namespace === "secrets" && args.missingOptionalSecrets.has(key)) {
+      referencesMissingSecret = true;
+    }
+  };
+  if (args.kind === "header") {
+    collectHeaderReferencedKeys(args.template, collect);
+  } else {
+    collectSimpleReferencedKeys(args.template, collect);
+  }
+  return referencesMissingSecret;
+}
+
+function omitMissingOptionalCustomAuthEntries(args: {
+  readonly authHeaders: Record<string, string>;
+  readonly authQuery: Record<string, string> | undefined;
+  readonly missingOptionalSecrets: readonly string[];
+}): {
+  readonly authHeaders: Record<string, string>;
+  readonly authQuery: Record<string, string> | undefined;
+} {
+  const missingOptionalSecrets = new Set(args.missingOptionalSecrets);
+  return {
+    authHeaders: Object.fromEntries(
+      Object.entries(args.authHeaders).filter(([, template]) => {
+        return !templateReferencesMissingOptionalSecret({
+          template,
+          missingOptionalSecrets,
+          kind: "header",
+        });
+      }),
+    ),
+    authQuery: args.authQuery
+      ? Object.fromEntries(
+          Object.entries(args.authQuery).filter(([, template]) => {
+            return !templateReferencesMissingOptionalSecret({
+              template,
+              missingOptionalSecrets,
+              kind: "simple",
+            });
+          }),
+        )
+      : undefined,
+  };
+}
+
+async function resolveCurrentCustomConnectorFirewallAuth(args: {
+  readonly db: Db;
+  readonly auth: SandboxAuth;
+  readonly body: FirewallAuthBody;
+  readonly customConnectorId: string;
+}): Promise<ResolveFirewallAuthResult> {
+  const orgId = await findRefreshRunOrgId(args.db, args.auth);
+  if (!orgId) {
+    return badRequestMessage("Run not found");
+  }
+  // The trusted host already matched this request against its effective
+  // firewall. Runtime sync owns firewall changes; auth resolves only the
+  // referenced values from the connector's current credential storage.
+  const authRefs = await loadCurrentCustomConnectorAuthRefs({
+    db: args.db,
+    orgId,
+    userId: args.auth.userId,
+    customConnectorId: args.customConnectorId,
+  });
+  if (!authRefs) {
+    return connectorNotConfigured();
+  }
+  const currentSecrets = await resolveCurrentCustomConnectorSecrets({
+    db: args.db,
+    auth: args.auth,
+    body: args.body,
+    authRefs,
+    forceRefresh: args.body.forceRefresh === true,
+  });
+  if (currentSecrets.kind === "unavailable") {
+    return connectorNotConfigured();
+  }
+  if (currentSecrets.kind === "refresh-failed") {
+    return tokenRefreshFailed([args.customConnectorId], "upstream_provider");
+  }
+  if (currentSecrets.kind === "reconnect-required") {
+    return connectorReconnectRequired([args.customConnectorId]);
+  }
+
+  const billableCacheExpiry = await resolveBillableFirewallCacheExpiry({
+    db: args.db,
+    auth: args.auth,
+    firewallBillable: args.body.firewallBillable,
+  });
+  if ("status" in billableCacheExpiry) {
+    return billableCacheExpiry;
+  }
+  // Runtime sync keeps firewall shape definition-driven. Optional credential
+  // availability affects only the auth entries returned for this request.
+  const availableAuth = omitMissingOptionalCustomAuthEntries({
+    authHeaders: args.body.authHeaders,
+    authQuery: args.body.authQuery,
+    missingOptionalSecrets: currentSecrets.missingOptionalSecrets,
+  });
+  const resolved = resolveTemplates({
+    authHeaders: availableAuth.authHeaders,
+    secrets: currentSecrets.secrets,
+    vars: args.body.vars ?? {},
+    authBase: args.body.authBase,
+    authQuery: availableAuth.authQuery,
+    authAwsSigv4: args.body.authAwsSigv4,
+  });
+  if (hasEmptyAwsSigv4Credential(resolved.awsSigv4)) {
+    return connectorNotConfigured();
+  }
+  return {
+    status: 200,
+    body: {
+      headers: resolved.headers,
+      base: resolved.base,
+      query: resolved.query,
+      awsSigv4: resolved.awsSigv4,
+      expiresAt: mergeExpiresAt(
+        billableCacheExpiry.expiresAt ?? null,
+        currentSecrets.expiresAt ?? undefined,
+      ),
+      resolvedSecrets: resolved.resolvedSecrets,
+      refreshedConnectors: currentSecrets.refreshedConnectors,
+      refreshedSecrets: currentSecrets.refreshedSecrets,
+    },
+  };
+}
+
 export async function resolveFirewallAuth(
   db: Db,
   auth: SandboxAuth,
   body: FirewallAuthBody,
 ): Promise<ResolveFirewallAuthResult> {
+  const customConnectorId = body.matchedFirewall?.customConnectorId;
+  if (customConnectorId) {
+    return await resolveCurrentCustomConnectorFirewallAuth({
+      db,
+      auth,
+      body,
+      customConnectorId,
+    });
+  }
   const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db);
   const forceRefreshStartedAtMicros =
     body.forceRefresh === true

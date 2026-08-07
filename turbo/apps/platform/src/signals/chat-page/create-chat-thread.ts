@@ -8,6 +8,7 @@ import {
 } from "ccstate";
 import { delay, timeout } from "signal-timers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
 import { onRef, onRejection, resetSignal, setLoop } from "../utils.ts";
@@ -118,9 +119,7 @@ import {
 } from "./agent-reference-signals.ts";
 import {
   createConnectorCardSignalsRegistry,
-  createCustomConnectorCardSignalsRegistry,
   type ConnectorCardSignalsRegistry,
-  type CustomConnectorCardSignalsRegistry,
 } from "./connector-action-block.ts";
 import {
   createPermissionCardSignalsRegistry,
@@ -515,7 +514,7 @@ function createModelSelectionForSend({
     ): Promise<ModelProviderSelection | null> => {
       const selectedModel = await get(selectedModel$);
       signal.throwIfAborted();
-      if (!selectedModel) {
+      if (!isSupportedRunModel(selectedModel)) {
         return null;
       }
       const codexFastModeActive = await get(codexFastModeActive$);
@@ -1583,7 +1582,6 @@ const FIRST_CHAT_EVENT_SEQ_ID = 1;
 interface BodyBlockRegistries {
   readonly artifactCardSignals: ArtifactCardSignalsRegistry;
   readonly connectorCardSignals: ConnectorCardSignalsRegistry;
-  readonly customConnectorCardSignals: CustomConnectorCardSignalsRegistry;
   readonly permissionCardSignals: PermissionCardSignalsRegistry;
   readonly computerUseAuthorizationCardSignals: ComputerUseAuthorizationCardSignalsRegistry;
   readonly planUpgradeCardSignals: PlanUpgradeCardSignalsRegistry;
@@ -1596,7 +1594,6 @@ interface BodyBlockRegistries {
 function createBodyBlocksRenderer({
   artifactCardSignals,
   connectorCardSignals,
-  customConnectorCardSignals,
   permissionCardSignals,
   computerUseAuthorizationCardSignals,
   planUpgradeCardSignals,
@@ -1630,16 +1627,6 @@ function createBodyBlocksRenderer({
                 resolution === "register"
                   ? connectorCardSignals.register(block.descriptor)
                   : connectorCardSignals.resolve(block.resourceKey),
-            };
-          }
-          case "custom-connector-action": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? customConnectorCardSignals.register(block.descriptor)
-                  : customConnectorCardSignals.resolve(block.resourceKey),
             };
           }
           case "permission-action": {
@@ -1777,7 +1764,6 @@ function createPagedEventResources(
   const bodyBlocksRenderer = createBodyBlocksRenderer({
     artifactCardSignals,
     connectorCardSignals: createConnectorCardSignalsRegistry(),
-    customConnectorCardSignals: createCustomConnectorCardSignalsRegistry(),
     permissionCardSignals: createPermissionCardSignalsRegistry(),
     computerUseAuthorizationCardSignals:
       createComputerUseAuthorizationCardSignalsRegistry(),
@@ -3612,7 +3598,7 @@ function createChatThreadComposerSignals(
   const composerModelSelection$ = computed(
     async (get): Promise<ModelProviderSelection | null> => {
       const selectedModel = get(modelSelection.selectedModel$);
-      if (!selectedModel) {
+      if (!isSupportedRunModel(selectedModel)) {
         return null;
       }
       return (await get(modelSelection.codexFastModeActive$))

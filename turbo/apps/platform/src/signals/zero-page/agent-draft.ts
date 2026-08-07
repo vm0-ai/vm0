@@ -5,15 +5,12 @@ import {
   zeroAgentDraftResponseSchema,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import type {
-  GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { collectSuccessfulAttachmentInfos } from "../chat-page/resolve-draft-attachments.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { resetSignal } from "../utils.ts";
 import {
   createDraftSignals,
@@ -45,7 +42,6 @@ export interface EnsuredAgentDraft extends AgentDraftEntry {
 interface RestoredAgentDraftState {
   readonly content: string;
   readonly userMessage: UserMessageDocument | null;
-  readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: PersistedAttachment[];
 }
 
@@ -69,38 +65,21 @@ function userMessageAgentDraftAttachments(
   });
 }
 
-function userMessageAgentDraftState(
-  args: {
-    readonly draftUserMessage?: UserMessageDocument | null;
-    readonly draftAttachments: PersistedAttachment[] | null;
-  },
-  inlineTemplatesEnabled: boolean,
-): RestoredAgentDraftState | null {
+function userMessageAgentDraftState(args: {
+  readonly draftUserMessage?: UserMessageDocument | null;
+  readonly draftAttachments: PersistedAttachment[] | null;
+}): RestoredAgentDraftState | null {
   const document = args.draftUserMessage;
-  if (
-    !document ||
-    messageDocumentToEditorDoc(document, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }) === null
-  ) {
+  if (!document || messageDocumentToEditorDoc(document) === null) {
     return null;
   }
-  const content = messageDocumentToPrompt(document, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  const content = messageDocumentToPrompt(document);
   if (content === null) {
     return null;
   }
-  const generationTemplate = document.parts.find((part) => {
-    return part.type === "template";
-  });
   return {
     content,
     userMessage: document,
-    generationTemplate:
-      !inlineTemplatesEnabled && generationTemplate?.type === "template"
-        ? generationTemplate.template
-        : undefined,
     attachments: userMessageAgentDraftAttachments(
       document,
       args.draftAttachments ?? [],
@@ -221,9 +200,14 @@ export const loadAgentDraft$ = command(
       return;
     }
 
-    const hasLocalDraft =
-      get(draft.input$).trim() !== "" || get(draft.attachments$).length > 0;
-    if (hasLocalDraft) {
+    const hasLocalDraft = (): boolean => {
+      return (
+        get(draft.input$).trim() !== "" ||
+        get(draft.generationTemplate$) !== undefined ||
+        get(draft.attachments$).length > 0
+      );
+    };
+    if (hasLocalDraft()) {
       return;
     }
 
@@ -237,14 +221,15 @@ export const loadAgentDraft$ = command(
     );
     signal.throwIfAborted();
 
+    // The composer is interactive while the remote draft loads. Preserve any
+    // input the user added after the request started instead of replacing it
+    // with the older server snapshot.
+    if (hasLocalDraft()) {
+      return;
+    }
+
     const response = zeroAgentDraftResponseSchema.parse(result.body);
-    const features = get(featureSwitch$);
-    const inlineTemplatesEnabled =
-      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
-    const restoredDraft = userMessageAgentDraftState(
-      response,
-      inlineTemplatesEnabled,
-    );
+    const restoredDraft = userMessageAgentDraftState(response);
     if (!restoredDraft) {
       return;
     }
@@ -259,7 +244,7 @@ export const loadAgentDraft$ = command(
     set(draft.seed$, {
       content: restoredDraft.content,
       userMessage: restoredDraft.userMessage,
-      generationTemplate: restoredDraft.generationTemplate,
+      generationTemplate: undefined,
       attachments: restoredDraft.attachments.map(createRestoredAttachment),
     });
   },

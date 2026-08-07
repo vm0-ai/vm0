@@ -6,6 +6,8 @@ import { z } from "zod";
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   compatibleStoredExecutionContextSchema,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
+  connectorRuntimeSyncResultSchema,
   elapsedSinceApiStartMs,
   executionContextSchema,
   heartbeatBodySchema,
@@ -21,6 +23,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
   runnersBuiltinFirewallsResolveContract,
+  runnersConnectorRuntimeSyncContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
   runnersPollContract,
@@ -106,6 +109,132 @@ describe("runner claim response contract", () => {
     });
 
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
+  });
+});
+
+describe("connector runtime synchronization contract", () => {
+  const customConnectorId = "00000000-0000-4000-8000-000000000001";
+
+  it("limits sync batches without limiting run targets", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const targets = Array.from(
+      { length: CONNECTOR_RUNTIME_SYNC_TARGETS_MAX + 1 },
+      (_, index) => {
+        return {
+          kind: "builtin" as const,
+          connectorSlug: `connector-${index}`,
+        };
+      },
+    );
+
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        connectorRuntimeTargets: targets,
+      }).success,
+    ).toBe(true);
+    expect(
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
+        targets,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires unique tagged targets", () => {
+    const target = {
+      kind: "custom" as const,
+      customConnectorId,
+    };
+
+    expect(
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
+        targets: [target, target],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires stable API identities on available custom firewalls", () => {
+    const result = {
+      target: { kind: "custom" as const, customConnectorId },
+      state: "available" as const,
+      firewall: {
+        kind: "inline" as const,
+        firewall: {
+          name: "custom_connector_fixture",
+          apis: [
+            {
+              id: "custom_connector_fixture:0",
+              base: "https://api.example.com",
+              auth: { headers: { Authorization: "Bearer token" } },
+            },
+          ],
+        },
+        customConnectorId,
+      },
+      networkPolicy: {
+        allow: [],
+        deny: [],
+        ask: [],
+        unknownPolicy: "allow" as const,
+      },
+    };
+
+    expect(connectorRuntimeSyncResultSchema.safeParse(result).success).toBe(
+      true,
+    );
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        ...result,
+        firewall: {
+          ...result.firewall,
+          firewall: {
+            ...result.firewall.firewall,
+            apis: result.firewall.firewall.apis.map((api) => {
+              return { base: api.base, auth: api.auth };
+            }),
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps builtin retry states distinct from custom authoritative absence", () => {
+    const builtinTarget = {
+      kind: "builtin" as const,
+      connectorSlug: "slack",
+    };
+    const customTarget = { kind: "custom" as const, customConnectorId };
+
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: builtinTarget,
+        state: "unresolved",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "absent",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: builtinTarget,
+        state: "absent",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "unresolved",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -496,7 +625,7 @@ describe("runner resume session contract", () => {
     ]);
   });
 
-  it("keeps the canonical runner preference optional", () => {
+  it("keeps runner preference delivery fields optional", () => {
     const job = jobSchema.parse({
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
@@ -505,8 +634,120 @@ describe("runner resume session contract", () => {
       vars: null,
       experimentalProfile: "vm0/default",
     });
+    expect(job.runnerPreferenceDecision).toBeUndefined();
     expect(job.runnerPreference).toBeUndefined();
     expect(job.runnerPreferenceResolution).toBeUndefined();
+  });
+
+  it("accepts every strict positive runner preference decision tier", () => {
+    const runnerPreferenceDecision = {
+      kind: "preference" as const,
+      runnerIdentity: {
+        runnerId: "22222222-2222-4222-8222-222222222222",
+        heartbeatGeneration: 7,
+      },
+      expiresAt: "2026-08-03T00:00:01.000Z",
+    };
+    const jobInput = {
+      runId: "33333333-3333-4333-8333-333333333333",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      experimentalProfile: "vm0/default",
+    };
+
+    for (const tier of [
+      "exactSandbox",
+      "finalizingPredecessor",
+      "reusableSandbox",
+      "workspaceCache",
+    ] as const) {
+      expect(
+        jobSchema.parse({
+          ...jobInput,
+          runnerPreferenceDecision: { ...runnerPreferenceDecision, tier },
+        }).runnerPreferenceDecision,
+      ).toStrictEqual({ ...runnerPreferenceDecision, tier });
+    }
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          ...runnerPreferenceDecision,
+          tier: "reusableSandbox",
+          reason: "noReuseKey",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          ...runnerPreferenceDecision,
+          tier: "reusableSandbox",
+          expiresAt: undefined,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          ...runnerPreferenceDecision,
+          runnerIdentity: {
+            ...runnerPreferenceDecision.runnerIdentity,
+            runnerId: "not-a-uuid",
+          },
+          tier: "reusableSandbox",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          ...runnerPreferenceDecision,
+          tier: "reusableSandbox",
+          expiresAt: "not-a-date",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts every strict no-preference decision reason", () => {
+    const jobInput = {
+      runId: "33333333-3333-4333-8333-333333333333",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      experimentalProfile: "vm0/default",
+    };
+
+    for (const reason of [
+      "noReuseKey",
+      "expired",
+      "noViableHolder",
+      "lookupError",
+    ] as const) {
+      expect(
+        jobSchema.parse({
+          ...jobInput,
+          runnerPreferenceDecision: { kind: "noPreference", reason },
+        }).runnerPreferenceDecision,
+      ).toStrictEqual({ kind: "noPreference", reason });
+    }
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          kind: "noPreference",
+          reason: "noReuseKey",
+          tier: "workspaceCache",
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts every optional runner preference resolution beside the strict preference", () => {

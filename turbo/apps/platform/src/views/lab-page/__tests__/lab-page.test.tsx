@@ -57,7 +57,7 @@ describe("lab page", () => {
   it("lets users toggle and reset feature switches", async () => {
     let switches: Partial<Record<FeatureSwitchKey, boolean>> = {
       [FeatureSwitchKey.Lab]: true,
-      [FeatureSwitchKey.AwsConnector]: false,
+      [FeatureSwitchKey.TestOauthConnector]: false,
     };
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches, effectiveSwitches: switches });
@@ -84,21 +84,20 @@ describe("lab page", () => {
       expect(screen.getByText("Other")).toBeInTheDocument();
       expect(screen.getAllByText("Connectors").length).toBeGreaterThan(0);
       expect(
-        screen.getByText(FeatureSwitchKey.ComposerUploadPopover),
-      ).toBeInTheDocument();
-      expect(
         screen.getAllByText("Maintainer: liangyou@vm0.ai").length,
       ).toBeGreaterThan(0);
     });
 
-    const awsSwitch = featureSwitchControl(FeatureSwitchKey.AwsConnector);
-    expect(awsSwitch).toHaveAttribute("aria-checked", "false");
+    const testOauthSwitch = featureSwitchControl(
+      FeatureSwitchKey.TestOauthConnector,
+    );
+    expect(testOauthSwitch).toHaveAttribute("aria-checked", "false");
 
-    click(awsSwitch);
+    click(testOauthSwitch);
 
     await waitFor(() => {
       expect(
-        featureSwitchControl(FeatureSwitchKey.AwsConnector),
+        featureSwitchControl(FeatureSwitchKey.TestOauthConnector),
       ).toHaveAttribute("aria-checked", "true");
     });
 
@@ -106,7 +105,7 @@ describe("lab page", () => {
 
     await waitFor(() => {
       expect(
-        featureSwitchControl(FeatureSwitchKey.AwsConnector),
+        featureSwitchControl(FeatureSwitchKey.TestOauthConnector),
       ).toHaveAttribute("aria-checked", "false");
     });
   });

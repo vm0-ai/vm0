@@ -5,9 +5,7 @@ use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{self, Instant};
-use vsock_proto::{
-    ExecControlNonce, ExecControlStatus, ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
-};
+use vsock_proto::{ExecControlNonce, ExecControlStatus, ExecTermination, MSG_EXEC_CANCEL};
 
 use crate::{ConnectionState, FrameWriteObserver, Shared};
 
@@ -16,7 +14,8 @@ use super::diagnostics::ExecOperationDiagnostic;
 use super::frame::{
     ExecCancelFrameWriteOutcome, clear_exec_operation_stream_sender, exec_cancel_write_observer,
     mark_pending_exec_control_possible_guest_write,
-    send_exec_cancel_frame_for_wait_with_write_start, write_frame, write_frame_with_pre_write,
+    send_exec_cancel_frame_for_wait_with_write_start, write_encoded_frame_with_pre_write,
+    write_frame,
 };
 use super::state::{PendingExecControl, PendingExecControlGuard};
 use super::types::{
@@ -789,6 +788,27 @@ impl ExecControlHandle {
         .into_ack()
     }
 
+    /// Send an owned exec-control request and require a delivered acknowledgement.
+    ///
+    /// This has the same behavior as [`Self::control`] but transfers ownership
+    /// of `message_id` and `payload` so callers that already own large request
+    /// data do not need to clone it before frame encoding.
+    pub async fn control_owned(
+        &self,
+        message_id: String,
+        payload: Vec<u8>,
+        timeout: Duration,
+    ) -> io::Result<ExecControlAck> {
+        self.control_owned_with_write_observer(
+            message_id,
+            payload,
+            timeout,
+            FrameWriteObserver::default(),
+        )
+        .await?
+        .into_ack()
+    }
+
     /// Send an exec-control request and return the raw guest outcome.
     ///
     /// This has the same input, timeout, cancellation, and connection-lifecycle
@@ -799,6 +819,31 @@ impl ExecControlHandle {
         &self,
         message_id: &str,
         payload: &[u8],
+        timeout: Duration,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<ExecControlOutcome> {
+        let request_timeout_ms = duration_to_request_timeout_ms(timeout);
+        vsock_proto::validate_exec_control(
+            self.target_seq,
+            self.control_nonce,
+            message_id,
+            payload,
+            request_timeout_ms,
+        )
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+        self.control_owned_with_write_observer(
+            message_id.to_owned(),
+            payload.to_vec(),
+            timeout,
+            write_observer,
+        )
+        .await
+    }
+
+    async fn control_owned_with_write_observer(
+        &self,
+        message_id: String,
+        payload: Vec<u8>,
         timeout: Duration,
         write_observer: FrameWriteObserver,
     ) -> io::Result<ExecControlOutcome> {
@@ -927,20 +972,20 @@ pub(in crate::exec_operation) async fn exec_control_on_shared(
     shared: &Arc<Shared>,
     target_seq: u32,
     control_nonce: ExecControlNonce,
-    message_id: &str,
-    control_payload: &[u8],
+    message_id: String,
+    control_payload: Vec<u8>,
     timeout: Duration,
     write_observer: FrameWriteObserver,
 ) -> io::Result<ExecControlOutcome> {
     let request_timeout_ms = duration_to_request_timeout_ms(timeout);
-    let payload = vsock_proto::encode_exec_control(
+    vsock_proto::validate_exec_control(
         target_seq,
         control_nonce,
-        message_id,
-        control_payload,
+        &message_id,
+        &control_payload,
         request_timeout_ms,
     )
-    .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
     let request_seq = shared.next_seq();
     let normal_operation = shared.reserve_normal_operation()?;
     let (response_tx, response_rx) = oneshot::channel();
@@ -959,7 +1004,7 @@ pub(in crate::exec_operation) async fn exec_control_on_shared(
                     request_seq,
                     PendingExecControl {
                         target_seq,
-                        message_id: message_id.to_owned(),
+                        message_id: message_id.clone(),
                         control_nonce,
                         response_tx,
                         normal_operation,
@@ -969,18 +1014,25 @@ pub(in crate::exec_operation) async fn exec_control_on_shared(
         }
     }
     let _pending_guard = PendingExecControlGuard::new(Arc::clone(shared), request_seq);
-    write_frame_with_pre_write(
-        shared,
-        MSG_EXEC_CONTROL,
+    let mut frame = Vec::new();
+    vsock_proto::encode_exec_control_frame_into(
+        &mut frame,
         request_seq,
-        &payload,
-        None,
-        || {
-            mark_pending_exec_control_possible_guest_write(shared, target_seq, request_seq)?;
-            write_observer.record_write_start()
-        },
+        target_seq,
+        control_nonce,
+        &message_id,
+        &control_payload,
+        request_timeout_ms,
     )
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+    drop(control_payload);
+    drop(message_id);
+    write_encoded_frame_with_pre_write(shared, &frame, None, || {
+        mark_pending_exec_control_possible_guest_write(shared, target_seq, request_seq)?;
+        write_observer.record_write_start()
+    })
     .await?;
+    drop(frame);
 
     tokio::select! {
         biased;

@@ -25,6 +25,7 @@ import {
   isUsageEvent,
   lastAssistantCancelledFromGroups,
   queuedEventsFromSemanticEvents,
+  runningModelFromChatEvents,
   semanticChatEventsFromChatEvents,
 } from "../chat-page/chat-event-state.ts";
 import { messageDocumentToDisplayText } from "./user-message-document-codec.ts";
@@ -84,12 +85,12 @@ type ComposerTemplateEditorSignals = Pick<
   | "templatePreview"
   | "hasTemplateAttachment$"
   | "insertTemplate$"
+  | "updateTemplateAt$"
   | "readSelectedTemplate$"
   | "prepareTemplateInsertion$"
   | "setTemplateAttachmentLifecycleRef$"
 >;
 
-type ComposerDraftUiSignals = ComposerUiSignalGroups["draft"];
 type ComposerModelUiSignals = ComposerUiSignalGroups["model"];
 type ComposerTemplateUiSignals = ComposerUiSignalGroups["template"];
 
@@ -126,7 +127,7 @@ interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
   readonly setReplaceWorkflowPromptOpen$: Command<void, [boolean]>;
 }
 
-interface ComposerDraftSignals extends ComposerDraftUiSignals {
+interface ComposerDraftSignals {
   readonly seed$: DraftSignals["seed$"];
   readonly setDraftInput$: Command<void, [string]>;
   readonly attachments$: Computed<ZeroChatAttachment[]>;
@@ -147,6 +148,7 @@ interface ComposerDraftSignals extends ComposerDraftUiSignals {
 interface ComposerModelSignals extends ComposerModelUiSignals {
   readonly explicitDefaultModelActionEnabled$: Computed<boolean>;
   readonly modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
+  readonly runningModel$: Computed<Promise<string | null>>;
   readonly selectedModelOauthAvailable$: Computed<Promise<boolean>>;
   readonly setModelSelection$: Command<
     Promise<void>,
@@ -316,6 +318,7 @@ function composerTemplateSignals(
     templatePreview: composer.templatePreview,
     hasTemplateAttachment$: composer.hasTemplateAttachment$,
     insertTemplate$: composer.insertTemplate$,
+    updateTemplateAt$: composer.updateTemplateAt$,
     readSelectedTemplate$: composer.readSelectedTemplate$,
     prepareTemplateInsertion$: composer.prepareTemplateInsertion$,
     setTemplateAttachmentLifecycleRef$:
@@ -439,12 +442,6 @@ export function createComposerSignals(
     return (await get(options.agent$)).agentId;
   });
   const feedback = createComposerFeedbackModel(options.threadId);
-  const inlineTemplatesEnabled$ = computed((get): boolean => {
-    return (
-      get(featureSwitch$)[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
-      false
-    );
-  });
   const explicitDefaultModelActionEnabled$ = computed((get): boolean => {
     return (
       options.threadId === undefined &&
@@ -454,7 +451,6 @@ export function createComposerSignals(
   const workflowComposer = createWorkflowComposerSignals(
     draft,
     agentId$,
-    inlineTemplatesEnabled$,
     {
       autoFocus: true,
       singleLineOnMobile: options.singleLineOnMobile,
@@ -484,7 +480,6 @@ export function createComposerSignals(
     suggestion: composerSuggestionSignals(workflowComposer),
     connector: createComposerConnectorSignals(options.agent$),
     draft: {
-      ...ui.draft,
       seed$: draft.seed$,
       setDraftInput$: draft.setInput$,
       attachments$: draft.attachments$,
@@ -501,6 +496,7 @@ export function createComposerSignals(
       ...ui.model,
       explicitDefaultModelActionEnabled$,
       modelSelection$: options.modelSelection$,
+      runningModel$: eventSignals.runningModel$,
       selectedModelOauthAvailable$: options.selectedModelOauthAvailable$,
       setModelSelection$: options.setModelSelection$,
       configureSelectedModel$: options.configureSelectedModel$,
@@ -556,6 +552,9 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   const runIndicatorState$ = computed((get) => {
     return deriveRunIndicatorStateFromChatEvents(get(chatEvents$));
   });
+  const runningModel$ = computed((get): Promise<string | null> => {
+    return Promise.resolve(runningModelFromChatEvents(get(chatEvents$)));
+  });
   const sending$ = computed((get): Promise<boolean> => {
     const running = get(runIndicatorState$) !== null;
     const lastAssistantCancelled = lastAssistantCancelledFromGroups(
@@ -606,6 +605,7 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   return {
     actionsLoading$,
     sending$,
+    runningModel$,
     pendingEvents$,
     activeGoalObjective$,
     hasEvents$,

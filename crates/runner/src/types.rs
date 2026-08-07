@@ -39,6 +39,8 @@ pub struct Job {
     #[serde(default)]
     pub history_generation_run_id: Option<RunId>,
     #[serde(default)]
+    pub runner_preference_decision: Option<serde_json::Value>,
+    #[serde(default)]
     pub runner_preference: Option<serde_json::Value>,
     #[serde(default)]
     pub runner_preference_resolution: Option<serde_json::Value>,
@@ -124,6 +126,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub network_policy_refreshes: Option<std::collections::HashMap<String, NetworkPolicyRefresh>>,
     #[serde(default)]
+    pub connector_runtime_targets: Option<Vec<ConnectorRuntimeTarget>>,
+    #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
     pub tools: Option<Vec<String>>,
@@ -138,6 +142,46 @@ pub struct ExecutionContext {
     pub model_usage_provider: Option<String>,
     #[serde(default)]
     pub codex_runtime_config: Option<CodexRuntimeConfig>,
+    /// Complete Pi system prompt rendered once by the API for this run.
+    #[serde(default)]
+    pub pi_system_prompt: Option<String>,
+    /// Non-secret model metadata for the Pi Sandbox runtime.
+    #[serde(default)]
+    pub pi_model_config: Option<PiModelConfig>,
+    /// Exact-version Skill resource view fixed before the first Pi model call.
+    #[serde(default)]
+    pub run_skill_snapshot: Option<RunSkillSnapshot>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PiModelConfig {
+    pub provider: String,
+    pub base_url: String,
+    pub model: String,
+    pub api_key_env: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunSkillSnapshot {
+    pub schema_version: u32,
+    pub policy_version: u32,
+    pub root: String,
+    pub digest: String,
+    pub entries: Vec<RunSkillSnapshotEntry>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunSkillSnapshotEntry {
+    pub logical_dir: String,
+    pub skill_file: String,
+    pub org_id: String,
+    pub user_id: String,
+    pub storage_name: String,
+    pub storage_id: String,
+    pub version_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -180,7 +224,11 @@ pub enum FirewallEntry {
     },
     /// Inline firewall body for org custom connectors.
     #[serde(rename = "inline", rename_all = "camelCase")]
-    Inline { firewall: Firewall },
+    Inline {
+        firewall: Firewall,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        custom_connector_id: Option<String>,
+    },
 }
 
 /// A firewall definition shared by inline execution entries and builtin catalogs.
@@ -209,15 +257,36 @@ impl Firewall {
     /// credentialed-destination and host-policy checks, matcher compilation,
     /// and request-time enforcement.
     pub(crate) fn validate_for_cache(&self) -> Result<(), String> {
+        self.validate_shape()?;
+        for (index, api) in self.apis.iter().enumerate() {
+            api.validate_for_cache()
+                .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_for_connector_runtime(&self) -> Result<(), String> {
+        self.validate_shape()?;
+        let mut api_ids = HashSet::new();
+        for (index, api) in self.apis.iter().enumerate() {
+            api.validate_for_connector_runtime()
+                .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
+            if !api_ids.insert(api.id.as_str()) {
+                return Err(format!(
+                    "firewall {} api id {:?} must be unique",
+                    self.name, api.id
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_shape(&self) -> Result<(), String> {
         if self.name.is_empty() {
             return Err("firewall name must be non-empty".to_string());
         }
         if self.apis.is_empty() {
             return Err(format!("firewall {} must have at least one api", self.name));
-        }
-        for (index, api) in self.apis.iter().enumerate() {
-            api.validate_for_cache()
-                .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
         }
         Ok(())
     }
@@ -227,8 +296,8 @@ impl Firewall {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FirewallApi {
     /// Stable API identifier used as one component of mitm-addon auth cache keys.
-    /// Filled by the Python registry loader after built-in catalog entries and
-    /// inline firewalls are resolved.
+    /// Builtin catalogs leave this empty for the Python registry loader to
+    /// assign. Synced custom connector firewalls provide a stable ID.
     #[serde(default)]
     pub id: String,
     pub base: String,
@@ -248,6 +317,17 @@ impl FirewallApi {
         if !self.id.is_empty() {
             return Err("id must be empty because the runner assigns api ids".to_string());
         }
+        self.validate_shape()
+    }
+
+    fn validate_for_connector_runtime(&self) -> Result<(), String> {
+        if self.id.is_empty() {
+            return Err("id must be non-empty".to_string());
+        }
+        self.validate_shape()
+    }
+
+    fn validate_shape(&self) -> Result<(), String> {
         if self.base.is_empty() {
             return Err("base must be non-empty".to_string());
         }
@@ -1171,6 +1251,86 @@ pub struct NetworkPolicyRefreshBatchResponse {
     pub refreshes: Vec<NetworkPolicyRefreshResponse>,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ConnectorRuntimeTarget {
+    #[serde(rename_all = "camelCase")]
+    Builtin { connector_slug: String },
+    #[serde(rename_all = "camelCase")]
+    Custom { custom_connector_id: String },
+}
+
+impl ConnectorRuntimeTarget {
+    pub(crate) fn log_identity(&self) -> String {
+        match self {
+            Self::Builtin { connector_slug } => format!("builtin:{connector_slug}"),
+            Self::Custom {
+                custom_connector_id,
+            } => format!("custom:{custom_connector_id}"),
+        }
+    }
+
+    pub(crate) fn builtin_connector_slug(&self) -> Option<&str> {
+        match self {
+            Self::Builtin { connector_slug } => Some(connector_slug),
+            Self::Custom { .. } => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorRuntimeSyncResult {
+    pub target: ConnectorRuntimeTarget,
+    pub next_sync_at: Option<String>,
+    #[serde(flatten)]
+    pub state: ConnectorRuntimeSyncState,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(
+    tag = "state",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
+pub enum ConnectorRuntimeSyncState {
+    Available {
+        network_policy: NetworkPolicy,
+        #[serde(default)]
+        firewall: Option<FirewallEntry>,
+    },
+    Unresolved {
+        reason: ConnectorRuntimeUnresolvedReason,
+    },
+    Absent {
+        reason: ConnectorRuntimeCustomAbsentReason,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub enum ConnectorRuntimeUnresolvedReason {
+    #[serde(rename = "connector-unavailable")]
+    Connector,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub enum ConnectorRuntimeCustomAbsentReason {
+    #[serde(rename = "connector-unavailable")]
+    Connector,
+    #[serde(rename = "grant-unavailable")]
+    Grant,
+    #[serde(rename = "permission-bundle-unavailable")]
+    PermissionBundle,
+    #[serde(rename = "runtime-configuration-unavailable")]
+    RuntimeConfiguration,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorRuntimeSyncBatchResponse {
+    pub results: Vec<ConnectorRuntimeSyncResult>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResumeSession {
@@ -1544,6 +1704,53 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000"
         });
         assert!(serde_json::from_value::<Job>(json).is_err());
+    }
+
+    #[test]
+    fn execution_context_deserializes_pi_resources_without_expiring_urls() {
+        let json = serde_json::json!({
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "codex",
+            "piSystemPrompt": "fixed Pi prompt",
+            "piModelConfig": {
+                "provider": "deepseek",
+                "baseUrl": "https://api.deepseek.com/",
+                "model": "deepseek-v4-flash",
+                "apiKeyEnv": "OPENAI_API_KEY"
+            },
+            "runSkillSnapshot": {
+                "schemaVersion": 1,
+                "policyVersion": 1,
+                "root": "/home/user/.pi/agent/skills",
+                "digest": format!("sha256:{}", "a".repeat(64)),
+                "entries": [{
+                    "logicalDir": "/home/user/.pi/agent/skills/demo",
+                    "skillFile": "/home/user/.pi/agent/skills/demo/SKILL.md",
+                    "orgId": "org-1",
+                    "userId": "user-1",
+                    "storageName": "skill-demo",
+                    "storageId": "storage-1",
+                    "versionId": "version-1"
+                }]
+            }
+        });
+
+        let context: ExecutionContext = serde_json::from_value(json).unwrap();
+
+        assert_eq!(context.pi_system_prompt.as_deref(), Some("fixed Pi prompt"));
+        assert_eq!(
+            context
+                .pi_model_config
+                .as_ref()
+                .map(|config| config.model.as_str()),
+            Some("deepseek-v4-flash")
+        );
+        let snapshot = context.run_skill_snapshot.as_ref().unwrap();
+        assert_eq!(snapshot.entries[0].version_id, "version-1");
+        let serialized = serde_json::to_string(snapshot).unwrap();
+        assert!(!serialized.contains("url"));
     }
 
     #[test]

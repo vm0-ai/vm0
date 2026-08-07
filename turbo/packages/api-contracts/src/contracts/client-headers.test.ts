@@ -1,18 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  addClientCapabilityToVersion,
-  clientVersionSupportsCapability,
-  CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
-  CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
-  CLIENT_CAPABILITY_ES_ES_LOCALE,
-  CLIENT_CAPABILITY_FR_FR_LOCALE,
-  CLIENT_CAPABILITY_HI_IN_LOCALE,
-  CLIENT_CAPABILITY_IT_IT_LOCALE,
-  CLIENT_CAPABILITY_JA_JP_LOCALE,
-  CLIENT_CAPABILITY_KO_KR_LOCALE,
-  CLIENT_CAPABILITY_ID_ID_LOCALE,
-  CLIENT_CAPABILITY_DE_DE_LOCALE,
-  CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_FORCE_UPGRADE_STATUS,
   CLIENT_HEADER_NAMES,
   CLIENT_REQUEST_ID_HEADER,
@@ -25,8 +12,6 @@ import {
   CLIENT_TYPE_MITM_ADDON,
   CLIENT_TYPE_RUNNER,
   CLIENT_VERSION_HEADER,
-  ZERO_MAIL_CLIENT_VERSION,
-  ZERO_MAIL_CLIENT_VERSION_HEADER,
 } from "./client-headers";
 
 describe("client header contract", () => {
@@ -54,117 +39,16 @@ describe("client header contract", () => {
       CLIENT_TYPE_HEADER,
       CLIENT_SESSION_ID_HEADER,
       CLIENT_REQUEST_ID_HEADER,
-      ZERO_MAIL_CLIENT_VERSION_HEADER,
     ]);
     expect(CLIENT_HEADER_NAMES).toStrictEqual([
       "X-Client-Version",
       "X-Client-Type",
       "X-Client-Session-Id",
       "X-Client-Request-Id",
-      "X-Zero-Mail-Client-Version",
     ]);
-  });
-
-  it("identifies clients that understand link-backed Gmail draft cards", () => {
-    expect(ZERO_MAIL_CLIENT_VERSION).toBe("3");
-  });
-
-  it("advertises capabilities through backward-compatible version metadata", () => {
-    const version = addClientCapabilityToVersion(
-      addClientCapabilityToVersion(
-        addClientCapabilityToVersion(
-          addClientCapabilityToVersion(
-            addClientCapabilityToVersion(
-              addClientCapabilityToVersion(
-                addClientCapabilityToVersion(
-                  addClientCapabilityToVersion(
-                    addClientCapabilityToVersion(
-                      addClientCapabilityToVersion(
-                        "0.636.1",
-                        CLIENT_CAPABILITY_PT_BR_LOCALE,
-                      ),
-                      CLIENT_CAPABILITY_JA_JP_LOCALE,
-                    ),
-                    CLIENT_CAPABILITY_KO_KR_LOCALE,
-                  ),
-                  CLIENT_CAPABILITY_ID_ID_LOCALE,
-                ),
-                CLIENT_CAPABILITY_DE_DE_LOCALE,
-              ),
-              CLIENT_CAPABILITY_ES_ES_LOCALE,
-            ),
-            CLIENT_CAPABILITY_IT_IT_LOCALE,
-          ),
-          CLIENT_CAPABILITY_FR_FR_LOCALE,
-        ),
-        CLIENT_CAPABILITY_HI_IN_LOCALE,
-      ),
-      CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
-    );
-    expect(version).toBe(
-      "0.636.1+pt-br-locale-v1.ja-jp-locale-v1.ko-kr-locale-v1.id-id-locale-v1.de-de-locale-v1.es-es-locale-v1.it-it-locale-v1.fr-fr-locale-v1.hi-in-locale-v1.agent-run-source-v1",
-    );
-    expect(
-      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_PT_BR_LOCALE),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_JA_JP_LOCALE),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_KO_KR_LOCALE),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_ID_ID_LOCALE),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_DE_DE_LOCALE),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_ES_ES_LOCALE),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_IT_IT_LOCALE),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_FR_FR_LOCALE),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_HI_IN_LOCALE),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(
-        version,
-        CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
-      ),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(
-        "0.631.1",
-        CLIENT_CAPABILITY_FR_FR_LOCALE,
-      ),
-    ).toBe(false);
   });
 
   it("keeps the force upgrade status stable for app clients", () => {
     expect(CLIENT_FORCE_UPGRADE_STATUS).toBe(426);
-  });
-
-  it("advertises canonical browser lifecycle event support", () => {
-    const version = addClientCapabilityToVersion(
-      "0.636.1",
-      CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
-    );
-    expect(
-      clientVersionSupportsCapability(
-        version,
-        CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
-      ),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(
-        "0.636.1",
-        CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
-      ),
-    ).toBe(false);
   });
 });

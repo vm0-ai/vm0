@@ -470,6 +470,9 @@ pub(super) fn build_run_payload_for_run(
         artifacts: serialize_artifacts_payload(context)?,
         feature_flags: serialize_feature_flags_payload(context)?,
         codex_runtime_config: serialize_codex_runtime_config_payload(context)?,
+        pi_system_prompt: context.pi_system_prompt.clone().unwrap_or_default(),
+        pi_model_config: serialize_pi_model_config_payload(context)?,
+        run_skill_snapshot: serialize_run_skill_snapshot_payload(context)?,
         ..guest_contracts::env::RunPayload::default()
     };
 
@@ -559,6 +562,22 @@ fn serialize_codex_runtime_config_payload(context: &ExecutionContext) -> RunnerR
     };
     serde_json::to_string(config)
         .map_err(|e| RunnerError::Internal(format!("serialize Codex runtime config: {e}")))
+}
+
+fn serialize_pi_model_config_payload(context: &ExecutionContext) -> RunnerResult<String> {
+    let Some(config) = &context.pi_model_config else {
+        return Ok(String::new());
+    };
+    serde_json::to_string(config)
+        .map_err(|e| RunnerError::Internal(format!("serialize Pi model config: {e}")))
+}
+
+fn serialize_run_skill_snapshot_payload(context: &ExecutionContext) -> RunnerResult<String> {
+    let Some(snapshot) = &context.run_skill_snapshot else {
+        return Ok(String::new());
+    };
+    serde_json::to_string(snapshot)
+        .map_err(|e| RunnerError::Internal(format!("serialize run Skill snapshot: {e}")))
 }
 
 fn validate_run_payload_for_guest(

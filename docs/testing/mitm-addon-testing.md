@@ -146,7 +146,7 @@ suites before committing the upgrade.
 | `test_runner_usage_flush_signal.py`                     | Runner-triggered usage and JSONL flush requests                                                                      |
 | `test_tls_clienthello_hook.py`                          | TLS clienthello admission behavior                                                                                   |
 | `test_tcp_hooks.py`                                     | TCP start, logging, message drain, end, and error hooks                                                              |
-| `test_state_file.py`                                    | Shared safe-open, descriptor identity, bounded-read, and cleanup contracts                                            |
+| `test_state_file.py`                                    | Shared safe-open, descriptor identity, bounded-read, and cleanup contracts                                           |
 | `test_registry_loading.py`                              | Registry loading, parsing, unavailable-state, and cache behavior                                                     |
 | `test_registry_auth_cache_eviction.py`                  | Registry-driven auth-cache ownership and eviction behavior                                                           |
 | `test_registry_context.py`                              | VM lookup and public compiled context API behavior                                                                   |
@@ -162,7 +162,6 @@ suites before committing the upgrade.
 | `test_matching_path_prefix.py`                          | Low-level firewall path-prefix matching                                                                              |
 | `test_matching_base_url_static.py`                      | Static firewall base URL matching and authority normalization                                                        |
 | `test_matching_base_url_parameterized.py`               | Parameterized firewall base URL matching                                                                             |
-| `test_matching_mixed_segments.py`                       | Mixed parameter-segment matcher regressions                                                                          |
 | `test_matching_anthropic_firewall_scope.py`             | Anthropic firewall scope matching regressions                                                                        |
 | `test_firewall_request_matching.py`                     | Raw firewall request matching through the compiled matcher                                                           |
 | `test_firewall_request_base_matching.py`                | Request-layer firewall base URL matching through raw firewall config                                                 |
@@ -195,7 +194,7 @@ suites before committing the upgrade.
 | `test_firewall_rewrite_safety.py`                       | Firewall auth URL rewrite fail-closed and safety behavior                                                            |
 | `test_auth_query_injection.py`                          | Firewall auth query injection and query rewrite behavior                                                             |
 | `test_host_normalization.py`                            | Shared hostname identity, ASCII fast-path, IDNA, and label-boundary contracts                                        |
-| `test_url_syntax.py`                                    | Shared raw URL code-point, whitespace, backslash, and safe-input fast-path contracts                                  |
+| `test_url_syntax.py`                                    | Shared raw URL code-point, whitespace, backslash, and safe-input fast-path contracts                                 |
 | `test_url_utils.py`                                     | Rewrite URL, path, query, and auth-base URL utility cases                                                            |
 | `test_url_utils_trusted_authority.py`                   | Trusted request authority success and URL reconstruction                                                             |
 | `test_url_utils_trusted_authority_rejection.py`         | Trusted request authority rejection matrices                                                                         |

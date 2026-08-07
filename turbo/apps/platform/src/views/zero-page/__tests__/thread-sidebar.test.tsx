@@ -53,6 +53,7 @@ function browserSession(
     status: "active",
     viewerUrl: `https://app.vm0.ai/browsers/${THREAD_ID}`,
     liveUrl: "https://live.browser-use.com/?wss=thread-browser",
+    screenshotUrl: null,
     proxyCountryCode: null,
     timeoutMinutes: 240,
     screen: { width: 1440, height: 900, resizable: true },
@@ -211,7 +212,10 @@ function setupChatThread({
   ]);
 
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-    return respond(200, { lastReadAt: null });
+    return respond(200, {
+      lastReadAt: null,
+      cancellationRecoveryPending: false,
+    });
   });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {

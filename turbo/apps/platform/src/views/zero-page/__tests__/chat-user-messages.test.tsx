@@ -5,7 +5,7 @@ import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/cha
 import { zeroAvatarVideoContract } from "@vm0/api-contracts/contracts/zero-avatar-video";
 import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { ILLUSTRATION_TEMPLATE_ITEMS, VIDEO_TEMPLATE_ITEMS } from "@vm0/core";
 
 import {
   detachedSetupPage,
@@ -70,9 +70,6 @@ describe("user messages", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
     });
 
     const userMessageElement = await waitFor(() => {
@@ -117,6 +114,56 @@ describe("user messages", () => {
     ).toBeNull();
   });
 
+  it("echoes the video parameters a sent template used", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000750";
+    const templateItem = VIDEO_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Sent video template",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000750",
+          role: "user",
+          content: "Make the clip",
+          runId: "d0000000-0000-4000-a000-000000000750",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: templateItem.title,
+                template: {
+                  type: "video",
+                  selection: {
+                    stylePresetId: templateItem.id,
+                    // Only the ratio was changed; the duration still resolves
+                    // from the catalog.
+                    videoOptions: { aspectRatio: "9:16" },
+                  },
+                },
+              },
+              { type: "text", text: "Make the clip" },
+            ],
+          },
+          createdAt: "2026-08-07T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+      },
+    });
+
+    const reference = await screen.findByLabelText(
+      `Message template ${templateItem.title}`,
+    );
+    expect(reference).toHaveTextContent("9:16 \u00b7 8s");
+  });
+
   it("opens avatar message templates at the voice picker", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000749";
@@ -132,14 +179,19 @@ describe("user messages", () => {
       language: "English",
       gender: "male",
     };
+    const avatarOptions = {
+      titleSnapshot: avatar.name,
+      previewUrl: avatar.coverUrl,
+      voiceId: voice.id,
+      aspectRatio: "landscape" as const,
+    };
+    // The stored message predates avatarOptions, so it carries only the flat
+    // fields; reopening it must still resolve the avatar and its voice.
     const template = {
       type: "video" as const,
       selection: {
         stylePresetId: avatarTemplateStylePresetId(avatar.id),
-        titleSnapshot: avatar.name,
-        previewUrl: avatar.coverUrl,
-        voiceId: voice.id,
-        aspectRatio: "landscape" as const,
+        ...avatarOptions,
       },
     };
     context.mocks.api(zeroAvatarVideoContract.voices, ({ respond }) => {
@@ -187,7 +239,6 @@ describe("user messages", () => {
       path: `/chats/${threadId}`,
       featureSwitches: {
         [FeatureSwitchKey.JoggAiBuiltIn]: true,
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
       },
     });
 
@@ -220,8 +271,13 @@ describe("user messages", () => {
     });
     await user.click(screen.getByLabelText("Send"));
 
+    // Re-selecting the voice rewrites the selection, which now nests the
+    // options and mirrors them flat.
     await waitFor(() => {
-      expect(submittedTemplate).toStrictEqual(template);
+      expect(submittedTemplate).toStrictEqual({
+        ...template,
+        selection: { ...template.selection, avatarOptions },
+      });
     });
   });
 
@@ -335,7 +391,7 @@ describe("user messages", () => {
       return element as HTMLElement;
     });
     expect(userMessageElement.textContent).toBe(
-      "Start Archived source with , then " +
+      "Archived deckStart Archived source with , then " +
         "TXTdeleted-notes.txt.\n" +
         "Use **literal** <span>.",
     );
@@ -347,12 +403,10 @@ describe("user messages", () => {
     expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
     const template = screen.getByLabelText("Message template Archived deck");
     const image = screen.getByLabelText("Preview reference.png");
-    expect(template).toBeInTheDocument();
     expect(image).toBeInTheDocument();
-    expect(
-      template.compareDocumentPosition(userMessageElement) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // Templates render inline at their position in the message, so the chip
+    // stays inside the bubble instead of being elevated above it.
+    expect(userMessageElement).toContainElement(template);
     expect(
       image.compareDocumentPosition(userMessageElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,

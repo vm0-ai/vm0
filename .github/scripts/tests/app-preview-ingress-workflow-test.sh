@@ -24,6 +24,25 @@ find_step = lambda do |name|
   steps.find { |step| step["name"] == name } || raise("missing step: #{name}")
 end
 
+expected_candidate_sha = "${{ github.sha }}"
+expected_concurrency_group = "deploy-app-#{expected_candidate_sha}"
+unless deploy_app.fetch("concurrency").fetch("group") == expected_concurrency_group
+  raise "deploy-app concurrency must use the checked merge candidate"
+end
+
+checkout_step = steps.find do |step|
+  step.fetch("uses", "").start_with?("actions/checkout@")
+end
+raise "missing deploy-app checkout step" unless checkout_step
+unless checkout_step.fetch("with").fetch("ref") == expected_candidate_sha
+  raise "deploy-app must check out the merge candidate"
+end
+
+artifact_step = find_step.call("Resolve artifact commit SHA")
+unless artifact_step.fetch("run").include?("resolve-build-commit-sha.sh")
+  raise "deploy-app artifact identity must derive from the checked-out commit"
+end
+
 expected_output = "${{ steps.pages-deploy.outputs.url }}"
 unless deploy_app.fetch("outputs").fetch("deployment-url") == expected_output
   raise "deploy-app deployment-url output changed"

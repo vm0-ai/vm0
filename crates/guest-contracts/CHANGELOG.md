@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.6.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.9...guest-contracts-v0.6.0) (2026-08-07)
+
+
+### Features
+
+* complete pi agent handoff end to end ([#25489](https://github.com/vm0-ai/vm0/issues/25489)) ([feeb1cb](https://github.com/vm0-ai/vm0/commit/feeb1cbc8e838b844945cf5efc3ed7e9820c10a4))
+
+
+### Bug Fixes
+
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
+## [0.5.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.8...guest-contracts-v0.5.9) (2026-08-07)
+
+
+### Refactoring
+
+* **runner:** remove obsolete codex event fallbacks ([#25511](https://github.com/vm0-ai/vm0/issues/25511)) ([94e8703](https://github.com/vm0-ai/vm0/commit/94e87037eef09c503c7280070237483fafad69fa))
+
+## [0.5.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.7...guest-contracts-v0.5.8) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
 ## [0.5.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.6...guest-contracts-v0.5.7) (2026-08-05)
 
 

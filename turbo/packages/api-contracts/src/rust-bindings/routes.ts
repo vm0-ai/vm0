@@ -1,6 +1,7 @@
 import { runnerRealtimeTokenContract } from "../contracts/realtime";
 import {
   runnersActiveInputsContract,
+  runnersConnectorRuntimeSyncContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -13,6 +14,7 @@ import {
   webhookCompleteContract,
   webhookEventsContract,
   webhookHeartbeatContract,
+  webhookPiTranscriptContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookTelemetryContract,
@@ -57,6 +59,17 @@ export const rustRouteBindings = [
     rustConstName: "REFRESH",
   },
   {
+    route: runnersConnectorRuntimeSyncContract.sync,
+    rustModulePath: [
+      "runners",
+      "runs",
+      "by_run_id",
+      "connector_runtime",
+      "sync",
+    ],
+    rustConstName: "SYNC",
+  },
+  {
     route: runnersBuiltinFirewallsResolveContract.resolve,
     rustModulePath: ["runners", "builtin_firewalls", "resolve"],
     rustConstName: "RESOLVE",
@@ -95,6 +108,11 @@ export const rustRouteBindings = [
     route: webhookHeartbeatContract.send,
     rustModulePath: ["webhooks", "agent", "heartbeat"],
     rustConstName: "SEND",
+  },
+  {
+    route: webhookPiTranscriptContract.read,
+    rustModulePath: ["webhooks", "agent", "pi_transcript"],
+    rustConstName: "READ",
   },
   {
     route: webhookTelemetryContract.send,

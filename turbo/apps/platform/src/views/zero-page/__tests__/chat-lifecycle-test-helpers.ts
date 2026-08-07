@@ -383,12 +383,13 @@ export function mockKeyboardNavigationThreads({
     }
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(
     chatThreadEventsContract.list,
     ({ params, query, respond }) => {
-      if (query.sinceSeqId || query.sinceId) {
+      if (query.sinceSeqId) {
         return respond(200, { events: [] });
       }
       const thread = byId.get(params.threadId);
@@ -581,17 +582,13 @@ export function mockServerQueuedThreadStories(): void {
     }
     return respond(200, {
       lastReadAt: "2026-06-09T10:00:00Z",
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(
     chatThreadEventsContract.list,
     ({ params, query, respond }) => {
-      if (
-        query.sinceSeqId ||
-        query.beforeSeqId ||
-        query.sinceId ||
-        query.beforeId
-      ) {
+      if (query.sinceSeqId || query.beforeSeqId) {
         return respond(200, { events: [] });
       }
       return respond(200, {

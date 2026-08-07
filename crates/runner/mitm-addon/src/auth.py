@@ -17,6 +17,7 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import http_local_responses
 import matching
 from auth_base_forwarder import (
     MAX_AUTH_BASE_REQUEST_BODY_BYTES,
@@ -52,10 +53,7 @@ from firewall_auth_client import (
     FirewallAuthRequest,
     InsufficientCreditsError,
 )
-from firewall_auth_config import (
-    auth_config_injects_credentials,
-    auth_config_injects_ordinary_upstream_credentials,
-)
+from firewall_auth_config import auth_config_injects_credentials
 from logging_utils import log_proxy_entry
 from runtime_url_parsing import split_runtime_url
 from url_syntax import has_unsafe_runtime_url_syntax
@@ -77,7 +75,7 @@ class FirewallHeaderPhaseAuthResult(Enum):
     FALLBACK = "fallback"
 
 
-type OrdinaryUpstreamCredentialsGuard = Callable[[], bool]
+type CurrentFirewallAuthorizationGuard = Callable[[], bool]
 
 
 _HTTP_STATUS_INFORMATIONAL_MIN = 100
@@ -172,6 +170,14 @@ def _build_firewall_auth_context(
     firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
     api_id = flow.metadata[metadata_keys.FIREWALL_API_ID]
     run_id = flow_metadata.run_id(flow.metadata)
+    custom_connector_id = api_entry.get("customConnectorId")
+    matched_firewall: dict | None = None
+    if isinstance(custom_connector_id, str):
+        matched_firewall = {
+            "name": allow.name,
+            "apiId": api_id,
+            "customConnectorId": custom_connector_id,
+        }
     auth_request = FirewallAuthRequest(
         sandbox_token=vm_info.get("sandboxToken", ""),
         encrypted_secrets=vm_info.get("encryptedSecrets") or "",
@@ -183,6 +189,7 @@ def _build_firewall_auth_context(
         secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
         vars_map=vm_info.get("vars"),
         firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
+        matched_firewall=matched_firewall,
     )
     auth_cache_key = FirewallAuthCacheKey(
         run_id=run_id,
@@ -303,10 +310,10 @@ def _set_matched_firewall_failure_response(
         body["connectors"] = connectors
     if failure_reason:
         body["failureReason"] = failure_reason
-    flow.response = http.Response.make(
+    flow.response = http_local_responses.make_local_json_response(
+        flow,
         status,
-        json.dumps(body).encode(),
-        {"Content-Type": "application/json"},
+        body,
     )
 
 
@@ -1257,14 +1264,13 @@ async def handle_firewall_request(
     allow: matching.FirewallAllow,
     vm_info: dict,
     *,
-    revalidate_ordinary_upstream_credentials: OrdinaryUpstreamCredentialsGuard,
+    revalidate_current_firewall_authorization: CurrentFirewallAuthorizationGuard,
 ) -> FirewallAuthHandlingResult:
     """Handle firewall auth and return who owns the next response lifecycle.
 
-    The required guard runs after resolution and before ordinary upstream
-    credential mutation. A rejecting caller must first create its local
-    response; this function then returns ``LOCAL_RESPONSE`` without applying
-    resolved credentials.
+    The required guard runs after resolution and before managed credential
+    application. A rejecting caller must first create its local response; this
+    function then returns ``LOCAL_RESPONSE`` without applying resolved data.
     """
     try:
         _prepare_firewall_metadata(flow, allow, vm_info)
@@ -1329,11 +1335,8 @@ async def handle_firewall_request(
         )
 
         if (
-            context.auth_request.auth_base is None
-            and auth_config_injects_ordinary_upstream_credentials(
-                context.allow.api_entry.get("auth")
-            )
-            and not revalidate_ordinary_upstream_credentials()
+            auth_config_injects_credentials(context.allow.api_entry.get("auth"))
+            and not revalidate_current_firewall_authorization()
         ):
             return _finish_firewall_auth_result(
                 flow,
@@ -1362,14 +1365,14 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
     allow: matching.FirewallAllow,
     vm_info: dict,
     *,
-    revalidate_ordinary_upstream_credentials: OrdinaryUpstreamCredentialsGuard,
+    revalidate_current_firewall_authorization: CurrentFirewallAuthorizationGuard,
 ) -> FirewallHeaderPhaseAuthResult:
     """Apply successful header/query firewall auth before request streaming.
 
     This helper intentionally falls back instead of creating local responses.
     The request hook owns auth failure semantics; requestheaders() only keeps a
     success that is safe before mitmproxy sends upstream request headers. A
-    rejected ordinary-credential guard restores the probe snapshot and falls
+    rejected current-authorization guard restores the probe snapshot and falls
     back before mutation.
     """
     auth_config = allow.api_entry.get("auth", {})
@@ -1454,7 +1457,7 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
         )
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
-    if injects_credentials and not revalidate_ordinary_upstream_credentials():
+    if injects_credentials and not revalidate_current_firewall_authorization():
         _restore_header_phase_probe_state(
             flow,
             metadata_snapshot=metadata_snapshot,

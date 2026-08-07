@@ -30,10 +30,9 @@ import {
   runUploadedFiles,
 } from "@vm0/db/schema/run-uploaded-file";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
-import { desc, eq, like, sql, type SQL } from "drizzle-orm";
+import { desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -51,27 +50,25 @@ import type { RouteEntry } from "../route-entry";
 import {
   createDeferredPromise,
   onRejection,
-  safeJsonParse,
   settleIncludingAbort,
 } from "../utils";
+import {
+  acquireVm0ManagedModelKeyFixture,
+  releaseVm0ManagedModelKeyFixture,
+} from "../services/test-vm0-managed-model-key-fixture.service";
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { chatAgentRunContextSchemaAvailable } from "../services/chat-agent-run-context-schema.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 // Test-only support actions for generic infrastructure fixtures.
 
 const actionBody$ = bodyResultOf(testRuntimeStateContract.action);
 const fakeKmsDataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 const VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
-const VM0_MANAGED_MODEL_KEY_FIXTURE_LABEL_KIND = "runtime-state-fixture";
-const vm0ManagedModelKeyFixtureLabelSchema = z.object({
-  kind: z.literal(VM0_MANAGED_MODEL_KEY_FIXTURE_LABEL_KIND),
-  fixtureIds: z.array(z.string().uuid()).min(1),
-});
 const fakeKmsDecryptCallCount = testOverride<number>(() => {
   return 0;
 });
@@ -237,40 +234,12 @@ async function seedVm0ManagedModelKey(
   signal: AbortSignal,
 ): Promise<string> {
   const vendor = getVm0Vendor(selectedModel);
-  await db.transaction(async (tx) => {
-    await tx
-      .insert(vm0ApiKeys)
-      .values({
-        vendor,
-        apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
-        label: vm0ManagedModelKeyFixtureLabel([fixtureId]),
-      })
-      .onConflictDoNothing({ target: vm0ApiKeys.vendor });
-
-    const [row] = await tx
-      .select({ id: vm0ApiKeys.id, label: vm0ApiKeys.label })
-      .from(vm0ApiKeys)
-      .where(eq(vm0ApiKeys.vendor, vendor))
-      .for("update")
-      .limit(1);
-    if (!row) {
-      throw new Error(`Expected VM0 managed key for vendor: ${vendor}`);
-    }
-    const fixtureLabel = parseVm0ManagedModelKeyFixtureLabel(row.label);
-    if (!fixtureLabel || fixtureLabel.fixtureIds.includes(fixtureId)) {
-      return;
-    }
-    await tx
-      .update(vm0ApiKeys)
-      .set({
-        label: vm0ManagedModelKeyFixtureLabel([
-          ...fixtureLabel.fixtureIds,
-          fixtureId,
-        ]),
-        updatedAt: nowDate(),
-      })
-      .where(eq(vm0ApiKeys.id, row.id));
-  });
+  await acquireVm0ManagedModelKeyFixture(db, fixtureId, [
+    {
+      vendor,
+      apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
+    },
+  ]);
   signal.throwIfAborted();
   return selectedModel;
 }
@@ -280,56 +249,8 @@ async function deleteVm0ManagedModelKey(
   fixtureId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ id: vm0ApiKeys.id, label: vm0ApiKeys.label })
-      .from(vm0ApiKeys)
-      .where(like(vm0ApiKeys.label, `%${fixtureId}%`))
-      .for("update")
-      .limit(1);
-    if (!row) {
-      return;
-    }
-    const fixtureLabel = parseVm0ManagedModelKeyFixtureLabel(row.label);
-    if (!fixtureLabel) {
-      return;
-    }
-    const remainingFixtureIds = fixtureLabel.fixtureIds.filter((id) => {
-      return id !== fixtureId;
-    });
-    if (remainingFixtureIds.length === fixtureLabel.fixtureIds.length) {
-      return;
-    }
-    if (remainingFixtureIds.length === 0) {
-      await tx.delete(vm0ApiKeys).where(eq(vm0ApiKeys.id, row.id));
-      return;
-    }
-    await tx
-      .update(vm0ApiKeys)
-      .set({
-        label: vm0ManagedModelKeyFixtureLabel(remainingFixtureIds),
-        updatedAt: nowDate(),
-      })
-      .where(eq(vm0ApiKeys.id, row.id));
-  });
+  await releaseVm0ManagedModelKeyFixture(db, fixtureId);
   signal.throwIfAborted();
-}
-
-function vm0ManagedModelKeyFixtureLabel(fixtureIds: readonly string[]): string {
-  return JSON.stringify({
-    kind: VM0_MANAGED_MODEL_KEY_FIXTURE_LABEL_KIND,
-    fixtureIds,
-  });
-}
-
-function parseVm0ManagedModelKeyFixtureLabel(label: string | null) {
-  if (!label) {
-    return null;
-  }
-  const parsed = vm0ManagedModelKeyFixtureLabelSchema.safeParse(
-    safeJsonParse(label),
-  );
-  return parsed.success ? parsed.data : null;
 }
 
 type Vm0ManagedModelKeyAction = Extract<

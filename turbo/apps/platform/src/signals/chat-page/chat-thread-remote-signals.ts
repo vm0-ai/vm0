@@ -5,7 +5,6 @@ import {
   chatThreadDraftSchema,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
-  type CodexServiceTier,
   type PersistedAttachment,
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -22,6 +21,7 @@ import {
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
+import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 
 interface ChatThreadRealtimeHandlers {
   readonly onThreadDetailChanged$: Command<
@@ -51,10 +51,7 @@ interface PatchDraftArgs {
 
 interface PatchModelSelectionArgs {
   readonly threadId: string;
-  readonly modelSelection: {
-    readonly selectedModel: string;
-    readonly codexServiceTier?: CodexServiceTier;
-  } | null;
+  readonly modelSelection: ModelProviderSelection | null;
 }
 
 interface PatchComputerUseHostArgs {
@@ -265,7 +262,7 @@ export function createCancellationRecoverySignals(threadId: string) {
     if (result.status === 404) {
       return false;
     }
-    return result.body.cancellationRecoveryPending ?? false;
+    return result.body.cancellationRecoveryPending;
   });
 
   const reload$ = command(({ set }) => {

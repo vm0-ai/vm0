@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.65.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.1...guest-agent-v0.65.2) (2026-08-07)
+
+
+### Documentation
+
+* **rust:** document pi standby lifecycle ([#25659](https://github.com/vm0-ai/vm0/issues/25659)) ([373a5b4](https://github.com/vm0-ai/vm0/commit/373a5b44a3cea5da393252623bf533ed8b0cf5fd))
+
+## [0.65.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.0...guest-agent-v0.65.1) (2026-08-07)
+
+## [0.65.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.9...guest-agent-v0.65.0) (2026-08-07)
+
+
+### Features
+
+* complete pi agent handoff end to end ([#25489](https://github.com/vm0-ai/vm0/issues/25489)) ([feeb1cb](https://github.com/vm0-ai/vm0/commit/feeb1cbc8e838b844945cf5efc3ed7e9820c10a4))
+
+
+### Bug Fixes
+
+* **guest-agent:** classify credit error envelopes ([#25580](https://github.com/vm0-ai/vm0/issues/25580)) ([61475bf](https://github.com/vm0-ai/vm0/commit/61475bf97e6750715d4db0115444219f16636fe5))
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
+## [0.64.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.8...guest-agent-v0.64.9) (2026-08-07)
+
+
+### Refactoring
+
+* **runner:** remove obsolete codex event fallbacks ([#25511](https://github.com/vm0-ai/vm0/issues/25511)) ([94e8703](https://github.com/vm0-ai/vm0/commit/94e87037eef09c503c7280070237483fafad69fa))
+
+## [0.64.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.7...guest-agent-v0.64.8) (2026-08-07)
+
+## [0.64.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.6...guest-agent-v0.64.7) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
 ## [0.64.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.5...guest-agent-v0.64.6) (2026-08-06)
 
 ## [0.64.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.4...guest-agent-v0.64.5) (2026-08-05)

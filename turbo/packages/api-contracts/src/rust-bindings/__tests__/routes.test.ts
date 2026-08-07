@@ -34,6 +34,18 @@ const expectedBindings = [
   },
   {
     method: "POST",
+    path: "/api/runners/runs/:runId/connector-runtime/sync",
+    rustModulePath: [
+      "runners",
+      "runs",
+      "by_run_id",
+      "connector_runtime",
+      "sync",
+    ],
+    rustConstName: "SYNC",
+  },
+  {
+    method: "POST",
     path: "/api/runners/builtin-firewalls/resolve",
     rustModulePath: ["runners", "builtin_firewalls", "resolve"],
     rustConstName: "RESOLVE",
@@ -79,6 +91,12 @@ const expectedBindings = [
     path: "/api/webhooks/agent/heartbeat",
     rustModulePath: ["webhooks", "agent", "heartbeat"],
     rustConstName: "SEND",
+  },
+  {
+    method: "GET",
+    path: "/api/webhooks/agent/pi-transcript",
+    rustModulePath: ["webhooks", "agent", "pi_transcript"],
+    rustConstName: "READ",
   },
   {
     method: "POST",

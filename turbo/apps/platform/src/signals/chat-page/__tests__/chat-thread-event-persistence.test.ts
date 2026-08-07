@@ -4,7 +4,6 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -78,25 +77,6 @@ function createCachedEvents(
       eventNumber === count ? latestTitle : `Cached title ${eventNumber}`,
     );
   });
-}
-
-function createLegacyRenamedEvent(
-  eventNumber: number,
-  title: string,
-): Omit<ChatThreadEvent, "seqId"> {
-  const current = createRenamedEvent(eventNumber, title);
-  return {
-    id: current.id,
-    kind: current.kind,
-    chatThreadId: current.chatThreadId,
-    agentId: current.agentId,
-    title: current.title,
-    selectedModel: current.selectedModel,
-    serviceTier: current.serviceTier,
-    computerUseHostId: current.computerUseHostId,
-    cloudBrowserEnabled: current.cloudBrowserEnabled,
-    createdAt: current.createdAt,
-  };
 }
 
 async function writeCachedThreadEventLog(args: {
@@ -370,74 +350,5 @@ describe("chat thread event persistence", () => {
     });
     expect(snapshotRequests).toBe(1);
     expect(errorToast).not.toHaveBeenCalled();
-  });
-
-  it("pages with UUID cursors while the new app is paired with the old API", async () => {
-    const userId = "thread-event-old-api-user";
-    const orgId = "thread-event-old-api-org";
-    const firstEvent = createLegacyRenamedEvent(1, "First legacy page");
-    const secondEvent = createLegacyRenamedEvent(2, "Second legacy page");
-    const promotedEvent = createRenamedEvent(3, "Post-promotion page");
-    const requestedCursors: {
-      readonly eventId: string | null;
-      readonly seqId: string | null;
-    }[] = [];
-    context.mocks.http.get("/api/zero/chat-threads/snapshot", () => {
-      return HttpResponse.json({
-        chatThreads: [snapshotThread],
-        latestEventId: SNAPSHOT_EVENT_ID,
-      });
-    });
-    context.mocks.http.get("/api/zero/chat-threads/events", ({ request }) => {
-      const url = new URL(request.url);
-      const eventId = url.searchParams.get("sinceEventId");
-      requestedCursors.push({
-        eventId,
-        seqId: url.searchParams.get("sinceSeqId"),
-      });
-      if (eventId === SNAPSHOT_EVENT_ID) {
-        return HttpResponse.json({ events: [firstEvent], hasMore: true });
-      }
-      if (eventId === firstEvent.id) {
-        return HttpResponse.json({ events: [secondEvent], hasMore: true });
-      }
-      if (eventId === secondEvent.id) {
-        return HttpResponse.json({ events: [promotedEvent], hasMore: false });
-      }
-      return HttpResponse.json({ events: [], hasMore: false });
-    });
-
-    await setupAuthenticatedPage(userId, orgId);
-
-    await vi.waitFor(async () => {
-      expect((await context.store.get(eventDrivenChatThreads$))[0]?.title).toBe(
-        "Post-promotion page",
-      );
-    });
-    expect(requestedCursors).toStrictEqual([
-      { eventId: SNAPSHOT_EVENT_ID, seqId: null },
-      { eventId: firstEvent.id, seqId: null },
-      { eventId: secondEvent.id, seqId: null },
-    ]);
-
-    const appDb = await context.store.get(chatIdb$);
-    try {
-      const tx = appDb.transaction(
-        [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
-        "readonly",
-      );
-      const [storedSnapshot, storedEvents] = await Promise.all([
-        tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).get("current"),
-        tx.objectStore(CHAT_THREAD_EVENTS_STORE).getAll(),
-        tx.done,
-      ]);
-      expect(storedSnapshot).toMatchObject({
-        latestEventId: SNAPSHOT_EVENT_ID,
-        latestSeqId: null,
-      });
-      expect(storedEvents).toStrictEqual([]);
-    } finally {
-      appDb.close();
-    }
   });
 });

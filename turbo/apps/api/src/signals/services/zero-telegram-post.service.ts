@@ -1802,7 +1802,6 @@ async function persistTelegramChatMessage(args: {
           }),
         }),
         runId: null,
-        triggerSource: "telegram",
         telegramContext: telegramLaunchContext(args),
         createdAt: currentTime,
       },

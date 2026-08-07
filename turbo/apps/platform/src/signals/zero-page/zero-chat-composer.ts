@@ -255,24 +255,20 @@ function createBasicComposerUiSignals() {
     set(internalModelPickerOpen$, open);
   });
 
-  const internalUploadPopoverOpen$ = state(false);
-  const uploadPopoverOpen$ = computed((get) => {
-    return get(internalUploadPopoverOpen$);
-  });
-  const setUploadPopoverOpen$ = command(({ set }, open: boolean) => {
-    set(internalUploadPopoverOpen$, open);
-  });
-
   return {
     model: {
       modelPickerOpen$,
       setModelPickerOpen$,
     },
-    draft: {
-      uploadPopoverOpen$,
-      setUploadPopoverOpen$,
-    },
   };
+}
+
+/** Viewport-space box of the chip a video options popover is anchored to. */
+export interface VideoTemplateOptionsAnchor {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 function createTemplatePickerDialogSignals() {
@@ -305,6 +301,46 @@ function createTemplatePickerDialogSignals() {
     },
   );
 
+  const internalVideoOptionsAnchor$ = state<VideoTemplateOptionsAnchor | null>(
+    null,
+  );
+  const internalVideoOptionsValue$ = state<GenerationTemplateRequest | null>(
+    null,
+  );
+  const internalVideoOptionsPosition$ = state<number | null>(null);
+  const videoTemplateOptionsAnchor$ = computed((get) => {
+    return get(internalVideoOptionsAnchor$);
+  });
+  const videoTemplateOptionsValue$ = computed((get) => {
+    return get(internalVideoOptionsValue$);
+  });
+  const videoTemplateOptionsPosition$ = computed((get) => {
+    return get(internalVideoOptionsPosition$);
+  });
+  const openVideoTemplateOptions$ = command(
+    (
+      { set },
+      anchor: VideoTemplateOptionsAnchor,
+      value: GenerationTemplateRequest,
+      position: number,
+    ) => {
+      set(internalVideoOptionsValue$, value);
+      set(internalVideoOptionsPosition$, position);
+      set(internalVideoOptionsAnchor$, anchor);
+    },
+  );
+  /** Keeps the open popover in step with the node it just rewrote. */
+  const setVideoTemplateOptionsValue$ = command(
+    ({ set }, value: GenerationTemplateRequest) => {
+      set(internalVideoOptionsValue$, value);
+    },
+  );
+  const closeVideoTemplateOptions$ = command(({ set }) => {
+    set(internalVideoOptionsAnchor$, null);
+    set(internalVideoOptionsValue$, null);
+    set(internalVideoOptionsPosition$, null);
+  });
+
   const websiteTemplatePreviewId$ = computed((get) => {
     return get(internalWebsiteTemplatePreviewId$);
   });
@@ -331,6 +367,12 @@ function createTemplatePickerDialogSignals() {
     setTemplatePickerOpen$,
     templatePickerReferenceValue$,
     setTemplatePickerReferenceValue$,
+    videoTemplateOptionsAnchor$,
+    videoTemplateOptionsValue$,
+    videoTemplateOptionsPosition$,
+    openVideoTemplateOptions$,
+    setVideoTemplateOptionsValue$,
+    closeVideoTemplateOptions$,
     websiteTemplatePreviewId$,
     websiteTemplatePreviewLoaded$,
     markWebsiteTemplatePreviewLoaded$,
@@ -819,7 +861,6 @@ export function createComposerUiSignals() {
 
   return {
     model: basic.model,
-    draft: basic.draft,
     template: {
       ...createTemplatePickerDialogSignals(),
       ...list.signals,

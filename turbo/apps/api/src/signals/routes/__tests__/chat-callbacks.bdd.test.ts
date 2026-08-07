@@ -8,6 +8,7 @@ import type {
   UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
+import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
@@ -229,7 +230,7 @@ async function startChatRun(
     readonly prompt: string;
     readonly clientEventId?: string;
     readonly threadId?: string;
-    readonly selectedModel?: string;
+    readonly selectedModel?: SupportedRunModel;
     readonly attachFiles?: readonly AttachFile[];
     readonly generationTemplate?: GenerationTemplateRequest;
     readonly userMessage?: UserMessageInputDocument;
@@ -244,6 +245,9 @@ async function startChatRun(
   readonly messageId: string;
 }> {
   const messageId = body.clientEventId ?? randomUUID();
+  const selectedModel: SupportedRunModel | undefined =
+    body.selectedModel ??
+    (body.threadId === undefined ? "claude-sonnet-4-6" : undefined);
   const requestBody = {
     agentId: body.agentId,
     prompt: body.prompt,
@@ -261,11 +265,7 @@ async function startChatRun(
     ...(body.revokesEventId === undefined
       ? {}
       : { revokesEventId: body.revokesEventId }),
-    ...(body.selectedModel === undefined
-      ? body.threadId === undefined
-        ? { model: "claude-sonnet-4-6" }
-        : {}
-      : { model: body.selectedModel }),
+    ...(selectedModel === undefined ? {} : { model: selectedModel }),
   };
   const sent = await chat.requestSendEvent(actor, requestBody, [201]);
   if (sent.status !== 201) {
@@ -1410,7 +1410,7 @@ describe("CHAT-02: completed chat callback", () => {
         { type: "text", text: "first structured request" },
       ],
     };
-    const templatePrompt = `Select ${style.title} illustration template`;
+    const templatePrompt = `[Template #1: ${style.title} (illustration)]`;
 
     const first = await startChatRun(actor, {
       agentId,
@@ -4065,7 +4065,7 @@ describe("CHAT-02: failed chat callbacks", () => {
 
     async function failAndReadError(params: {
       readonly prompt: string;
-      readonly selectedModel?: string;
+      readonly selectedModel?: SupportedRunModel;
       readonly orgRole?: TestOrgRole;
       readonly configureProvider?: (
         fixture: EntitledChatActor,

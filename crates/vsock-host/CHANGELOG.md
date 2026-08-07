@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.75](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.74...vsock-host-v0.17.75) (2026-08-07)
+
+
+### Documentation
+
+* **vsock-host:** document file-write cancellation ([#25616](https://github.com/vm0-ai/vm0/issues/25616)) ([48cb961](https://github.com/vm0-ai/vm0/commit/48cb9610226999ce2389f3e3101b9111a1a49f42))
+
+
+### Performance Improvements
+
+* **rust:** eliminate exec-control payload copies ([#25608](https://github.com/vm0-ai/vm0/issues/25608)) ([3f71e3b](https://github.com/vm0-ai/vm0/commit/3f71e3b491c2fb66e3c964494565aa9a9bcd4166))
+
 ## [0.17.74](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.73...vsock-host-v0.17.74) (2026-08-05)
 
 

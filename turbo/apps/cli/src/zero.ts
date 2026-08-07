@@ -26,6 +26,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   string,
   string | readonly string[] | null
 > = {
+  "__agent-loop": null,
   agent: "agent:read",
   workflow: "agent:read",
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
@@ -74,6 +75,14 @@ const COMMAND_CAPABILITY_MAP: Record<
 const RUN_ONLY_COMMANDS = new Set(["recognize", "translate"]);
 
 const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
+  {
+    name: "__agent-loop",
+    description: "Internal sandbox agent loop",
+    load: async () => {
+      return (await import("./commands/zero/__agent-loop"))
+        .zeroAgentLoopCommand;
+    },
+  },
   {
     name: "model",
     description: "List available models and model-switching guidance",
@@ -369,6 +378,7 @@ function shouldHideCommand(
   name: string,
   payload: ZeroTokenPayload | undefined,
 ): boolean {
+  if (name.startsWith("__")) return true;
   if (!payload) return RUN_ONLY_COMMANDS.has(name);
   const requiredCap = COMMAND_CAPABILITY_MAP[name];
   if (requiredCap === undefined) return true;

@@ -28,3 +28,35 @@ export function parseAvatarTemplateStylePresetId(
   const avatarId = Number(serializedAvatarId);
   return Number.isSafeInteger(avatarId) ? avatarId : undefined;
 }
+
+export interface AvatarTemplateOptions {
+  readonly titleSnapshot?: string;
+  readonly previewUrl?: string;
+  readonly voiceId?: string;
+  readonly aspectRatio?: "portrait" | "landscape" | "square";
+}
+
+/**
+ * Nested options win. The flat fields stay readable because messages and
+ * server-persisted drafts written by bundles deployed before the split still
+ * carry them, and an older bundle re-reading a newer draft drops the nested
+ * object during validation.
+ *
+ * This fallback outlives the mirrored flat write: rows persisted before the
+ * split only have the flat fields, so dropping the read without a jsonb
+ * backfill loses the voice and cover image on existing messages and drafts.
+ * See https://github.com/vm0-ai/vm0/issues/25620.
+ */
+export function readAvatarTemplateOptions(
+  selection: AvatarTemplateOptions & {
+    readonly avatarOptions?: AvatarTemplateOptions;
+  },
+): AvatarTemplateOptions {
+  const nested = selection.avatarOptions;
+  return {
+    titleSnapshot: nested?.titleSnapshot ?? selection.titleSnapshot,
+    previewUrl: nested?.previewUrl ?? selection.previewUrl,
+    voiceId: nested?.voiceId ?? selection.voiceId,
+    aspectRatio: nested?.aspectRatio ?? selection.aspectRatio,
+  };
+}

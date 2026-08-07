@@ -28,8 +28,11 @@ import {
   openConcurrencyConfirmDialog$,
   openConcurrencyPurchaseDialog$,
   restoreConcurrencySubscription$,
+  setConcurrencyChangeMode$,
+  setConcurrencyTargetQuantity$,
   startCheckout$,
   startConcurrencyCheckout$,
+  startConcurrencyReduction$,
   startDowngrade$,
   setConcurrencySubscriptionQuantity$,
   apiTierToBillingTier,
@@ -42,9 +45,11 @@ import {
   restoreDialogOpen$,
   restorePlan$,
   type BillingTier,
+  type ConcurrencyChangeMode,
 } from "../../../../signals/zero-page/billing.ts";
 import {
   Button,
+  Input,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -1356,10 +1361,15 @@ function ConcurrencySubscriptionRow({
 }: {
   changing: boolean;
   canceled: boolean;
-  onAction: (action: "cancel" | "restore", subscriptionId: string) => void;
+  onAction: (
+    action: "change" | "restore",
+    subscriptionId: string,
+    currentQuantity: number,
+    canReduce: boolean,
+  ) => void;
   subscription: ConcurrencySubscription;
 }) {
-  const action = canceled ? "restore" : "cancel";
+  const action = canceled ? "restore" : "change";
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
@@ -1382,7 +1392,12 @@ function ConcurrencySubscriptionRow({
         className="h-8 shrink-0 text-xs"
         disabled={changing}
         onClick={() => {
-          onAction(action, subscription.id);
+          onAction(
+            action,
+            subscription.id,
+            subscription.quantity,
+            subscription.canReduce === true,
+          );
         }}
       >
         {changing
@@ -1394,9 +1409,253 @@ function ConcurrencySubscriptionRow({
                 return $.billing.common.restore;
               })
             : i18n.t(($) => {
-                return $.billing.common.cancel;
+                return $.billing.concurrency.changeButton;
               })}
       </Button>
+    </div>
+  );
+}
+
+interface ConcurrencyConfirmCopy {
+  readonly title: string;
+  readonly description: string;
+}
+
+function concurrencyConfirmCopy(
+  action: "change" | "restore",
+): ConcurrencyConfirmCopy {
+  if (action === "restore") {
+    return {
+      title: i18n.t(($) => {
+        return $.billing.concurrency.restoreTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.billing.concurrency.restoreDescription;
+      }),
+    };
+  }
+  return {
+    title: i18n.t(($) => {
+      return $.billing.concurrency.changeTitle;
+    }),
+    description: i18n.t(($) => {
+      return $.billing.concurrency.changeDescription;
+    }),
+  };
+}
+
+function concurrencyMinimumChangeQuantity(
+  currentQuantity: number,
+  canReduce: boolean,
+): number {
+  return canReduce
+    ? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN
+    : Math.min(CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX, currentQuantity + 1);
+}
+
+function concurrencyChangeQuantityAllowed(
+  quantity: number | null,
+  currentQuantity: number,
+  canReduce: boolean,
+): boolean {
+  return (
+    quantity !== null &&
+    Number.isInteger(quantity) &&
+    quantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN &&
+    quantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX &&
+    (canReduce || quantity >= currentQuantity)
+  );
+}
+
+function concurrencyChangeQuantityValid(
+  quantity: number | null,
+  currentQuantity: number,
+  canReduce: boolean,
+): boolean {
+  return (
+    concurrencyChangeQuantityAllowed(quantity, currentQuantity, canReduce) &&
+    quantity !== currentQuantity
+  );
+}
+
+function concurrencyConfirmButtonLabel(
+  action: "change" | "restore",
+  changeMode: ConcurrencyChangeMode,
+  loading: boolean,
+): string {
+  if (loading) {
+    return action === "change" && changeMode === "quantity"
+      ? i18n.t(($) => {
+          return $.billing.common.redirecting;
+        })
+      : i18n.t(($) => {
+          return $.billing.common.updating;
+        });
+  }
+  if (action === "restore") {
+    return i18n.t(($) => {
+      return $.billing.concurrency.restoreSubscription;
+    });
+  }
+  return changeMode === "quantity"
+    ? i18n.t(($) => {
+        return $.billing.concurrency.continueToStripe;
+      })
+    : i18n.t(($) => {
+        return $.billing.downgrade.cancelSubscription;
+      });
+}
+
+function concurrencyConfirmDisabled(
+  action: "change" | "restore",
+  changeMode: ConcurrencyChangeMode,
+  loading: boolean,
+  changeQuantityValid: boolean,
+): boolean {
+  return (
+    loading ||
+    (action === "change" && changeMode === "quantity" && !changeQuantityValid)
+  );
+}
+
+function ConcurrencyChangeOptions({
+  currentQuantity,
+  canReduce,
+  changeMode,
+  targetQuantity,
+  loading,
+  onModeChange,
+  onQuantityChange,
+}: {
+  readonly currentQuantity: number;
+  readonly canReduce: boolean;
+  readonly changeMode: ConcurrencyChangeMode;
+  readonly targetQuantity: number | null;
+  readonly loading: boolean;
+  readonly onModeChange: (mode: ConcurrencyChangeMode) => void;
+  readonly onQuantityChange: (quantity: number | null) => void;
+}) {
+  const minimumChangeQuantity = concurrencyMinimumChangeQuantity(
+    currentQuantity,
+    canReduce,
+  );
+  const quantityAllowed = concurrencyChangeQuantityAllowed(
+    targetQuantity,
+    currentQuantity,
+    canReduce,
+  );
+
+  return (
+    <div className="mt-4 flex flex-col gap-3">
+      <div
+        role="radiogroup"
+        aria-label={i18n.t(($) => {
+          return $.billing.concurrency.changeOptionsAria;
+        })}
+        className="grid gap-2 sm:grid-cols-2"
+      >
+        <button
+          type="button"
+          role="radio"
+          aria-checked={changeMode === "quantity"}
+          disabled={loading}
+          className={`flex flex-col rounded-xl border px-4 py-3 text-left transition-colors ${
+            changeMode === "quantity"
+              ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+              : "border-border/70 hover:bg-muted/40"
+          }`}
+          onClick={() => {
+            onModeChange("quantity");
+          }}
+        >
+          <span className="text-sm font-medium text-foreground">
+            {i18n.t(($) => {
+              return $.billing.concurrency.changeQuantityOption;
+            })}
+          </span>
+          <span className="mt-1 text-[13px] text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.concurrency.changeQuantityOptionDescription;
+            })}
+          </span>
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={changeMode === "cancel"}
+          disabled={loading}
+          className={`flex flex-col rounded-xl border px-4 py-3 text-left transition-colors ${
+            changeMode === "cancel"
+              ? "border-destructive bg-destructive/5 ring-1 ring-destructive/20"
+              : "border-border/70 hover:bg-muted/40"
+          }`}
+          onClick={() => {
+            onModeChange("cancel");
+          }}
+        >
+          <span className="text-sm font-medium text-foreground">
+            {i18n.t(($) => {
+              return $.billing.concurrency.cancelEntireOption;
+            })}
+          </span>
+          <span className="mt-1 text-[13px] text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.concurrency.cancelDescription;
+            })}
+          </span>
+        </button>
+      </div>
+
+      {changeMode === "quantity" ? (
+        <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+          <label
+            htmlFor="concurrency-change-quantity"
+            className="text-sm font-medium text-foreground"
+          >
+            {i18n.t(($) => {
+              return $.billing.concurrency.newQuantity;
+            })}
+          </label>
+          <Input
+            id="concurrency-change-quantity"
+            type="text"
+            inputMode="numeric"
+            autoFocus
+            disabled={loading}
+            value={targetQuantity ?? ""}
+            aria-invalid={
+              targetQuantity !== null && !quantityAllowed ? true : undefined
+            }
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              if (value !== "" && !/^\d+$/.test(value)) {
+                return;
+              }
+              onQuantityChange(value === "" ? null : Number(value));
+            }}
+            className="mt-2 h-9"
+          />
+          <p className="mt-2 text-[13px] text-muted-foreground">
+            {i18n.t(
+              ($) => {
+                return $.billing.concurrency.quantityRange;
+              },
+              {
+                current: formatLocalizedNumber(currentQuantity),
+                maximum: formatLocalizedNumber(
+                  CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX,
+                ),
+                minimum: formatLocalizedNumber(minimumChangeQuantity),
+              },
+            )}
+          </p>
+          {quantityAllowed && targetQuantity !== null ? (
+            <p className="mt-2 text-sm font-medium text-foreground">
+              {concurrencyMonthlyPrice(targetQuantity)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1405,39 +1664,75 @@ function ConcurrencyConfirmDialog() {
   const pageSignal = useGet(pageSignal$);
   const dialog = useGet(concurrencyConfirmDialog$);
   const close = useSet(closeConcurrencyConfirmDialog$);
+  const setChangeMode = useSet(setConcurrencyChangeMode$);
+  const setTargetQuantity = useSet(setConcurrencyTargetQuantity$);
   const [cancelLoadable, cancelSubscription] = useLoadableSet(
     cancelConcurrencySubscription$,
+  );
+  const [checkoutLoadable, checkout] = useLoadableSet(
+    startConcurrencyCheckout$,
+  );
+  const [reduceLoadable, reduceSubscription] = useLoadableSet(
+    startConcurrencyReduction$,
   );
   const [restoreLoadable, restoreSubscription] = useLoadableSet(
     restoreConcurrencySubscription$,
   );
-  const loading =
-    cancelLoadable.state === "loading" || restoreLoadable.state === "loading";
-  const action = dialog?.action ?? "cancel";
-  const title =
-    action === "cancel"
-      ? i18n.t(($) => {
-          return $.billing.concurrency.cancelTitle;
-        })
-      : i18n.t(($) => {
-          return $.billing.concurrency.restoreTitle;
-        });
-  const description =
-    action === "cancel"
-      ? i18n.t(($) => {
-          return $.billing.concurrency.cancelDescription;
-        })
-      : i18n.t(($) => {
-          return $.billing.concurrency.restoreDescription;
-        });
+  const loading = [
+    cancelLoadable.state,
+    checkoutLoadable.state,
+    reduceLoadable.state,
+    restoreLoadable.state,
+  ].includes("loading");
+  const action = dialog?.action ?? "change";
+  const canChooseChangeMode = dialog?.action === "change";
+  const changeMode = dialog?.changeMode ?? "quantity";
+  const targetQuantity = dialog?.targetQuantity ?? null;
+  const changeQuantityValid = concurrencyChangeQuantityValid(
+    targetQuantity,
+    dialog?.currentQuantity ?? 1,
+    dialog?.canReduce ?? false,
+  );
+  const copy = concurrencyConfirmCopy(action);
 
   const handleConfirm = () => {
     if (!dialog) {
       return;
     }
-    const command =
-      action === "cancel" ? cancelSubscription : restoreSubscription;
-    detach(command(dialog.subscriptionId, pageSignal), Reason.DomCallback);
+    if (action === "restore") {
+      detach(
+        restoreSubscription(dialog.subscriptionId, pageSignal),
+        Reason.DomCallback,
+      );
+      return;
+    }
+    if (changeMode === "quantity") {
+      if (!changeQuantityValid || targetQuantity === null) {
+        return;
+      }
+      if (targetQuantity > dialog.currentQuantity) {
+        detach(
+          checkout(targetQuantity - dialog.currentQuantity, false, pageSignal),
+          Reason.DomCallback,
+        );
+      } else {
+        detach(
+          reduceSubscription(
+            {
+              subscriptionId: dialog.subscriptionId,
+              quantity: targetQuantity,
+            },
+            pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+      }
+      return;
+    }
+    detach(
+      cancelSubscription(dialog.subscriptionId, pageSignal),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -1449,9 +1744,21 @@ function ConcurrencyConfirmDialog() {
     >
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
+
+        {canChooseChangeMode && dialog ? (
+          <ConcurrencyChangeOptions
+            currentQuantity={dialog.currentQuantity}
+            canReduce={dialog.canReduce}
+            changeMode={changeMode}
+            targetQuantity={targetQuantity}
+            loading={loading}
+            onModeChange={setChangeMode}
+            onQuantityChange={setTargetQuantity}
+          />
+        ) : null}
 
         <div className="mt-4 flex justify-end gap-2">
           <Button
@@ -1466,21 +1773,20 @@ function ConcurrencyConfirmDialog() {
             })}
           </Button>
           <Button
-            variant={action === "cancel" ? "destructive" : "default"}
-            disabled={loading}
+            variant={
+              action === "change" && changeMode === "cancel"
+                ? "destructive"
+                : "default"
+            }
+            disabled={concurrencyConfirmDisabled(
+              action,
+              changeMode,
+              loading,
+              changeQuantityValid,
+            )}
             onClick={handleConfirm}
           >
-            {loading
-              ? i18n.t(($) => {
-                  return $.billing.common.updating;
-                })
-              : action === "cancel"
-                ? i18n.t(($) => {
-                    return $.billing.downgrade.cancelSubscription;
-                  })
-                : i18n.t(($) => {
-                    return $.billing.concurrency.restoreSubscription;
-                  })}
+            {concurrencyConfirmButtonLabel(action, changeMode, loading)}
           </Button>
         </div>
       </DialogContent>
@@ -1635,19 +1941,23 @@ function ConcurrencyBillingSection({
             );
           })
         )}
-        <div className="h-0 zero-border-t mx-5" />
-        <div className="flex justify-end px-5 py-4">
-          <Button
-            type="button"
-            size="sm"
-            className="h-9 px-4 text-sm font-medium"
-            onClick={openPurchaseDialog}
-          >
-            {i18n.t(($) => {
-              return $.billing.concurrency.buyButton;
-            })}
-          </Button>
-        </div>
+        {subscriptions.length === 0 ? (
+          <>
+            <div className="h-0 zero-border-t mx-5" />
+            <div className="flex justify-end px-5 py-4">
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 px-4 text-sm font-medium"
+                onClick={openPurchaseDialog}
+              >
+                {i18n.t(($) => {
+                  return $.billing.concurrency.buyButton;
+                })}
+              </Button>
+            </div>
+          </>
+        ) : null}
       </div>
       <ConcurrencyPurchaseDialog />
       <ConcurrencyConfirmDialog />

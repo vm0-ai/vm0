@@ -17,6 +17,7 @@ import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
+import { setAblyLoop$ } from "../../realtime.ts";
 import { setLoop, withCleanup } from "../../utils.ts";
 import { sanitizeTokenInput } from "./token-input.ts";
 
@@ -149,6 +150,25 @@ const bumpReload$ = command(({ set }) => {
     return v + 1;
   });
 });
+
+const reloadCustomConnectorsFromRealtime$ = command(({ set }) => {
+  set(bumpReload$);
+  return false;
+});
+
+export const subscribeCustomConnectorListChanged$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    await set(
+      setAblyLoop$,
+      {
+        topic: "customConnectorListChanged",
+        loopCommand$: reloadCustomConnectorsFromRealtime$,
+        options: { runOnSubscribe: true },
+      },
+      signal,
+    );
+  },
+);
 
 type CustomConnectorAuthorizationTarget =
   | { readonly kind: "visible-agents" }
@@ -378,7 +398,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
       readonly authorizationTarget: CustomConnectorAuthorizationTarget;
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const authWindow = window.open(
       "about:blank",
       "_blank",
@@ -425,11 +445,10 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     set(bumpReload$);
     const connectors = await get(customConnectors$);
     signal.throwIfAborted();
-    if (
-      connectors.some((connector) => {
-        return connector.id === args.id && connector.connected;
-      })
-    ) {
+    const connected = connectors.some((connector) => {
+      return connector.id === args.id && connector.connected;
+    });
+    if (connected) {
       await set(
         authorizeCustomConnectorForTarget$,
         {
@@ -439,12 +458,13 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
         signal,
       );
     }
+    return connected;
   },
 );
 
 export const connectCustomConnectorOAuth2$ = command(
-  async ({ set }, id: string, signal: AbortSignal): Promise<void> => {
-    await set(
+  async ({ set }, id: string, signal: AbortSignal): Promise<boolean> => {
+    return await set(
       connectCustomConnectorOAuth2ForTarget$,
       {
         id,
@@ -460,8 +480,8 @@ export const connectCustomConnectorOAuth2ForAgent$ = command(
     { set },
     args: { readonly id: string; readonly agentId: string },
     signal: AbortSignal,
-  ): Promise<void> => {
-    await set(
+  ): Promise<boolean> => {
+    return await set(
       connectCustomConnectorOAuth2ForTarget$,
       {
         id: args.id,

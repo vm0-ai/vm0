@@ -128,7 +128,12 @@ function configureFormsApi(): FormsApiRecorder {
         return HttpResponse.json({
           formId: FORM_ID,
           info: { title: FORM_TITLE },
-          publishSettings: { publishState: "PUBLISHED" },
+          publishSettings: {
+            publishState: {
+              isPublished: true,
+              isAcceptingResponses: true,
+            },
+          },
         });
       },
     ),
@@ -298,6 +303,7 @@ describe("Google Forms Pub/Sub webhook", () => {
       throw new Error("Expected a Google Forms response automation");
     }
     expect(created.body.eventConfig.connectorId).toBe(connector.id);
+    expect(created.body).not.toHaveProperty("warning");
 
     const watchId = formsApi.watchIds[0];
     if (!watchId) {

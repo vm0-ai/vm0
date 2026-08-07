@@ -72,8 +72,6 @@ import * as feishuOrgEventSchema from "./schema/feishu-org-event";
 import * as feishuChatThreadRouteSchema from "./schema/feishu-chat-thread-route";
 import * as feishuChatIngressSchema from "./schema/feishu-chat-ingress";
 import * as feishuUserAgentPreferenceSchema from "./schema/feishu-user-agent-preference";
-import * as e2eTeamsMockCallLogSchema from "./schema/e2e-teams-mock-call-log";
-import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-log";
 import * as orgSchema from "./schema/org-metadata";
 import * as orgPlanEntitlementSchema from "./schema/org-plan-entitlement";
 import * as orgConcurrencyEntitlementSchema from "./schema/org-concurrency-entitlement";
@@ -114,13 +112,13 @@ import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-va
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as artifactSchema from "./schema/artifact";
 import * as sharedThreadSchema from "./schema/shared-thread";
-import * as imageArtifactEditSnapshotSchema from "./schema/image-artifact-edit-snapshot";
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
 import * as strapiIntegrationSchema from "./schema/strapi-integration";
+import * as stripeWorkflowEventSchema from "./schema/stripe-workflow-event";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 import * as googleFormsEventSchema from "./schema/google-forms-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
@@ -176,8 +174,6 @@ export const schema = {
   ...feishuChatThreadRouteSchema,
   ...feishuChatIngressSchema,
   ...feishuUserAgentPreferenceSchema,
-  ...e2eTeamsMockCallLogSchema,
-  ...e2eTelegramMockCallLogSchema,
   ...variableSchema,
   ...composeJobSchema,
   ...connectorSchema,
@@ -245,13 +241,13 @@ export const schema = {
   ...hostedSiteSchema,
   ...artifactSchema,
   ...sharedThreadSchema,
-  ...imageArtifactEditSnapshotSchema,
   ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
   ...bankingSchema,
   ...gmailEventSchema,
   ...notionEventSchema,
   ...strapiIntegrationSchema,
+  ...stripeWorkflowEventSchema,
   ...googleCalendarEventSchema,
   ...googleFormsEventSchema,
   ...googleWorkspaceEventSchema,

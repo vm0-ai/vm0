@@ -1,3 +1,4 @@
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorOAuth2Contract,
@@ -16,6 +17,7 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorScopeDiffContract,
+  zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
@@ -221,25 +223,25 @@ function mockConnectors(
     oauthScopes?: string[];
     tokenExpiresAt?: string | null;
   }[],
-): void {
-  context.mocks.data.connectors(
-    connectors.map((connector) => {
-      return {
-        id: crypto.randomUUID(),
-        slug: connector.connectorSlug,
-        authMethod: connector.authMethod ?? "oauth",
-        externalId: null,
-        externalUsername: connector.externalUsername ?? null,
-        externalEmail: null,
-        oauthScopes: connector.oauthScopes ?? null,
-        connectionStatus: connector.connectionStatus ?? "connected",
-        reconnectReason: connector.reconnectReason ?? null,
-        tokenExpiresAt: connector.tokenExpiresAt ?? null,
-        createdAt: "2026-01-01T00:00:00Z",
-        updatedAt: "2026-01-01T00:00:00Z",
-      };
-    }),
-  );
+): ConnectorResponse[] {
+  const responses = connectors.map((connector) => {
+    return {
+      id: crypto.randomUUID(),
+      slug: connector.connectorSlug,
+      authMethod: connector.authMethod ?? "oauth",
+      externalId: null,
+      externalUsername: connector.externalUsername ?? null,
+      externalEmail: null,
+      oauthScopes: connector.oauthScopes ?? null,
+      connectionStatus: connector.connectionStatus ?? "connected",
+      reconnectReason: connector.reconnectReason ?? null,
+      tokenExpiresAt: connector.tokenExpiresAt ?? null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    } satisfies ConnectorResponse;
+  });
+  context.mocks.data.connectors(responses);
+  return responses;
 }
 
 async function setupAwsExternalCodeConnection(): Promise<{
@@ -251,7 +253,6 @@ async function setupAwsExternalCodeConnection(): Promise<{
   detachedSetupPage({
     context,
     path: "/connectors",
-    featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
   });
 
   await fill(await screen.findByPlaceholderText("Find connectors"), "aws");
@@ -571,6 +572,25 @@ describe("connectors page", () => {
       aiGroup.compareDocumentPosition(engineeringGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("shows only the update dialog when the client requires an upgrade", async () => {
+    context.mocks.http.get("*/api/zero/connector-catalog/status", () => {
+      return Response.json(
+        { error: "Client update required" },
+        { status: CLIENT_FORCE_UPGRADE_STATUS },
+      );
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Update required",
+    });
+    expect(dialog).toHaveTextContent(
+      "This version of VM0 is no longer supported.",
+    );
+    expect(screen.queryByText("HTTP 426")).not.toBeInTheDocument();
   });
 
   it("localizes the catalog, reconnect state, and access management in Portuguese", async () => {
@@ -1344,16 +1364,16 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.AwsConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "aws");
+    await fill(searchInput, "meta");
 
     await expect(
       screen.findByText(/No connectors matching/),
     ).resolves.toBeInTheDocument();
-    expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Connect Meta Ads")).not.toBeInTheDocument();
   });
 
   it("refreshes connector catalog status when connector feature switches change", async () => {
@@ -1362,11 +1382,11 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.AwsConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "aws");
+    await fill(searchInput, "meta");
 
     await expect(
       screen.findByText(/No connectors matching/),
@@ -1374,18 +1394,18 @@ describe("connectors page", () => {
 
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
-        switches: { [FeatureSwitchKey.AwsConnector]: true },
-        effectiveSwitches: { [FeatureSwitchKey.AwsConnector]: true },
+        switches: { [FeatureSwitchKey.MetaAdsConnector]: true },
+        effectiveSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
       });
     });
     await context.store.set(
       setFeatureSwitch$,
-      { [FeatureSwitchKey.AwsConnector]: true },
+      { [FeatureSwitchKey.MetaAdsConnector]: true },
       context.signal,
     );
 
     await expect(
-      screen.findByLabelText("Connect AWS"),
+      screen.findByLabelText("Connect Meta Ads"),
     ).resolves.toBeInTheDocument();
   });
 
@@ -2066,10 +2086,10 @@ describe("connectors page", () => {
     });
   });
 
-  it("connects Stripe OAuth from a legacy event for all visible agents", async () => {
+  it("ignores a null change before completing Stripe OAuth from a scoped event", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
-    mockConnectors([]);
+    let listedConnectors = mockConnectors([]);
     context.mocks.data.team([
       teamAgent(defaultAgentId, "Zero"),
       teamAgent(researchAgentId, "Research Agent"),
@@ -2131,6 +2151,22 @@ describe("connectors page", () => {
         return respond(200, { enabledConnectorSlugs: ["stripe"] });
       },
     );
+    let connectorListRequests = 0;
+    const catchUpObserved = context.mocks.deferred<void>();
+    context.mocks.api(zeroConnectorsMainContract.list, ({ respond }) => {
+      connectorListRequests += 1;
+      if (
+        context.mocks.ably.hasSubscription("connector:changed") &&
+        !catchUpObserved.settled()
+      ) {
+        catchUpObserved.resolve();
+      }
+      return respond(200, {
+        connectors: listedConnectors,
+        configuredConnectorSlugs: ["stripe"],
+        connectorProvidedBindings: [],
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -2155,14 +2191,41 @@ describe("connectors page", () => {
       expect(
         context.mocks.ably.hasSubscription("connector:changed"),
       ).toBeTruthy();
+      expect(within(dialog).getByText("Connecting...")).toBeInTheDocument();
     });
+    await catchUpObserved.promise;
+    const requestsBeforeNull = connectorListRequests;
 
-    context.mocks.ably.trigger("connector:changed", {
-      connectorSlug: "github",
+    context.mocks.ably.trigger("connector:changed", null);
+    authWindow.close();
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeFalsy();
+      expect(
+        within(dialog).queryByText("Connecting..."),
+      ).not.toBeInTheDocument();
     });
     expect(authorizedAgentIds).toStrictEqual([]);
+    expect(connectorListRequests - requestsBeforeNull).toBe(1);
 
-    mockConnectors([{ connectorSlug: "stripe", authMethod: "oauth" }]);
+    const completionWindow = createMockAuthWindow();
+    context.mocks.browser.open(completionWindow);
+    click(buttonByText("Connect", dialog));
+
+    await waitFor(() => {
+      expect(completionWindow.location.href).toBe(
+        "https://oauth.test/stripe/authorize",
+      );
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeTruthy();
+    });
+
+    listedConnectors = mockConnectors([
+      { connectorSlug: "stripe", authMethod: "oauth" },
+    ]);
     context.mocks.ably.trigger("connector:changed", {
       connectorSlug: "stripe",
     });
@@ -3088,7 +3151,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
     });
 
     await waitFor(() => {
@@ -3137,6 +3199,11 @@ describe("connectors page", () => {
         ),
       ).toBeInTheDocument();
     });
+    expect(
+      within(connectorCardByLabel("AWS")).getByTitle(
+        "@arn:aws:iam::000000000000:user/mock-aws",
+      ),
+    ).toHaveTextContent("@arn:aws:iam::000000000000:user/mock-aws");
   });
 
   it("keeps external-code validation inline and toasts unexpected HTTP errors", async () => {
@@ -3343,6 +3410,39 @@ describe("connectors page", () => {
     expect(
       screen.queryByText("https://api.acme.test/v1/"),
     ).not.toBeInTheDocument();
+  });
+
+  it("refreshes the cached custom connector list after a realtime create event", async () => {
+    let connectors: CustomConnectorResponse[] = [];
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors });
+    });
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    const emptyState = await screen.findByText(
+      "No custom connectors yet. Create one to register an API for every member to use.",
+    );
+    expect(emptyState).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("customConnectorListChanged"),
+      ).toBeTruthy();
+    });
+    click(tabByText("Built-in"));
+
+    connectors = [customConnector({ slug: "_acme-search" })];
+    context.mocks.ably.trigger("customConnectorListChanged");
+    click(tabByText("Custom"));
+
+    await waitFor(() => {
+      expect(connectorCardByLabel("Acme Search")).toBeInTheDocument();
+    });
   });
 
   it("localizes the custom connector OAuth entry flow in Portuguese", async () => {

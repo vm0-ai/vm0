@@ -743,15 +743,8 @@ function toChatEvent(
       row.eventType === "input.prompt" || row.eventType === "input.rejected"
         ? await get(chatEventAttachFiles(userId, row, canonicalAttachments))
         : undefined;
-    const eventType =
-      (row.eventType as string) === "browser.started"
-        ? "browser.open"
-        : (row.eventType as string) === "browser.stopped"
-          ? "browser.close"
-          : row.eventType;
-    const canonicalRow = { ...row, eventType };
-    const event = chatEventBuilders[eventType](
-      canonicalRow,
+    const event = chatEventBuilders[row.eventType](
+      row,
       baseChatEventFromRow(row, row.content),
       attachFiles,
     );
@@ -901,6 +894,37 @@ export function zeroChatThreadUnreadAgentIds(args: {
       );
     return rows.map((row) => {
       return row.agentId;
+    });
+  });
+}
+
+/** The user's unread thread ids in the current organization. */
+export function zeroChatThreadUnreadThreadIds(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Computed<Promise<readonly string[]>> {
+  return computed(async (get) => {
+    const db = get(db$);
+    const lastRunFinish = latestRunFinishEventSubquery(db, chatThreads.id);
+    const rows = await db
+      .select({ threadId: chatThreads.id })
+      .from(chatThreads)
+      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+      .crossJoinLateral(lastRunFinish)
+      .where(
+        and(
+          eq(chatThreads.userId, args.userId),
+          eq(zeroAgents.orgId, args.orgId),
+          or(
+            isNull(chatThreads.lastReadAt),
+            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
+          ),
+          noActiveRunsForCurrentThreadCondition(db),
+          noActiveGoalsForCurrentThreadCondition(db),
+        ),
+      );
+    return rows.map((row) => {
+      return row.threadId;
     });
   });
 }
@@ -1385,8 +1409,6 @@ export function zeroChatThreadEventsPage(args: {
   readonly userId: string;
   readonly sinceSeqId: number | undefined;
   readonly beforeSeqId: number | undefined;
-  readonly sinceId: string | undefined;
-  readonly beforeId: string | undefined;
   readonly limit: number;
 }): Computed<Promise<readonly ChatEvent[] | null>> {
   return computed(async (get) => {
@@ -1405,54 +1427,25 @@ export function zeroChatThreadEventsPage(args: {
       return null;
     }
 
-    const cursors = [
-      args.sinceSeqId,
-      args.beforeSeqId,
-      args.sinceId,
-      args.beforeId,
-    ].filter((cursor) => {
+    const cursors = [args.sinceSeqId, args.beforeSeqId].filter((cursor) => {
       return cursor !== undefined;
     });
     if (cursors.length > 1) {
       throw new Error("after and before cursors are mutually exclusive");
     }
 
-    // Previous browser bundles use UUID cursors. Resolve them to the immutable
-    // per-thread sequence until those clients can no longer remain active.
-    const legacyCursorId = args.sinceId ?? args.beforeId;
-    const [legacyCursor] =
-      legacyCursorId === undefined
-        ? []
-        : await db
-            .select({ seqId: chatEvents.seqId })
-            .from(chatEvents)
-            .where(
-              and(
-                eq(chatEvents.id, legacyCursorId),
-                eq(chatEvents.chatThreadId, args.threadId),
-              ),
-            )
-            .limit(1);
-    if (legacyCursorId !== undefined && !legacyCursor) {
-      return [];
-    }
-
-    const sinceSeqId =
-      args.sinceSeqId ?? (args.sinceId ? legacyCursor?.seqId : undefined);
-    const beforeSeqId =
-      args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
     const threadFilter = eq(chatEvents.chatThreadId, args.threadId);
     let rows: ChatEventRow[];
 
-    if (sinceSeqId !== undefined) {
+    if (args.sinceSeqId !== undefined) {
       rows = await selectChatEventsWithMetadata(db)
-        .where(and(threadFilter, gt(chatEvents.seqId, sinceSeqId)))
+        .where(and(threadFilter, gt(chatEvents.seqId, args.sinceSeqId)))
         .orderBy(asc(chatEvents.seqId))
         .limit(args.limit);
-    } else if (beforeSeqId !== undefined) {
+    } else if (args.beforeSeqId !== undefined) {
       rows = (
         await selectChatEventsWithMetadata(db)
-          .where(and(threadFilter, lt(chatEvents.seqId, beforeSeqId)))
+          .where(and(threadFilter, lt(chatEvents.seqId, args.beforeSeqId)))
           .orderBy(desc(chatEvents.seqId))
           .limit(args.limit)
       ).reverse();

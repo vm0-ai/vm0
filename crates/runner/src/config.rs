@@ -130,6 +130,21 @@ pub struct ProfileConfig {
     pub workspace_disk_mb: u32,
 }
 
+/// Add runtime-only profile aliases backed by an already validated image.
+///
+/// Runner configuration files do not need to duplicate the default image
+/// hashes for Pi standby. Keeping the alias in the runtime map makes provider
+/// advertisement, factory creation, resource accounting, and job admission
+/// all observe the same profile set.
+pub(crate) fn install_internal_profile_aliases(profiles: &mut BTreeMap<String, ProfileConfig>) {
+    let Some(default_profile) = profiles.get(crate::profile::DEFAULT_PROFILE).cloned() else {
+        return;
+    };
+    profiles
+        .entry(crate::profile::PI_STANDBY_PROFILE.to_string())
+        .or_insert(default_profile);
+}
+
 /// Sandbox-level knobs for concurrency and the idle-VM pool.
 ///
 /// All fields accept defaults via `#[serde(default)]`, so the whole

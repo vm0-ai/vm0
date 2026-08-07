@@ -443,20 +443,6 @@ function templateNode(part: Extract<UserMessagePart, { type: "template" }>) {
   } satisfies JSONContent;
 }
 
-function legacyTemplateNode(
-  part: Extract<UserMessagePart, { type: "template" }>,
-) {
-  return {
-    type: TEMPLATE_ATTACHMENT_NODE_NAME,
-    attrs: {
-      templateType: templateAttachmentType(part.template),
-      title: part.titleSnapshot,
-      category: templateCategory(part.template),
-      previewImageUrl: templatePreviewImageUrl(part.template),
-    },
-  } satisfies JSONContent;
-}
-
 function agentMentionNode(part: Extract<UserMessagePart, { type: "agent" }>) {
   return {
     type: AGENT_MENTION_NODE_NAME,
@@ -604,10 +590,7 @@ function appendRestoredText(state: RestoredEditorState, text: string): void {
  * the existing external attachment state and therefore do not become Tiptap
  * nodes. Newlines are canonically restored as paragraph boundaries.
  */
-export function messageDocumentToEditorDoc(
-  value: unknown,
-  options: { readonly inlineTemplates?: boolean } = {},
-): JSONContent | null {
+export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -618,7 +601,6 @@ export function messageDocumentToEditorDoc(
     paragraphContent: [],
     trailingParagraph: false,
   };
-  let legacyTemplateCount = 0;
   let feedbackIndex = 0;
   const feedbackCount = parsed.data.parts.filter((part) => {
     return part.type === "feedback";
@@ -671,19 +653,8 @@ export function messageDocumentToEditorDoc(
       continue;
     }
     if (part.type === "template") {
-      if (options.inlineTemplates === true) {
-        state.paragraphContent.push(templateNode(part));
-        state.trailingParagraph = false;
-        continue;
-      }
-      legacyTemplateCount += 1;
-      if (legacyTemplateCount > 1) {
-        return null;
-      }
-      if (state.paragraphContent.length > 0) {
-        flushRestoredParagraph(state);
-      }
-      state.content.push(legacyTemplateNode(part));
+      state.paragraphContent.push(templateNode(part));
+      state.trailingParagraph = false;
     }
   }
 
@@ -697,10 +668,7 @@ export function messageDocumentToEditorDoc(
 }
 
 /** Serializes the business document to the same plain prompt representation. */
-export function messageDocumentToPrompt(
-  value: unknown,
-  options: { readonly inlineTemplates?: boolean } = {},
-): string | null {
+export function messageDocumentToPrompt(value: unknown): string | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -738,7 +706,7 @@ export function messageDocumentToPrompt(
       );
     } else if (part.type === "agent") {
       inlineText += serializeAgentMention(part.agentId, part.nameSnapshot);
-    } else if (part.type === "template" && options.inlineTemplates === true) {
+    } else if (part.type === "template") {
       inlineText += `Select ${part.titleSnapshot} ${part.template.type} template`;
     }
   }
@@ -748,10 +716,7 @@ export function messageDocumentToPrompt(
 }
 
 /** Serializes the business document into a compact human-readable label. */
-export function messageDocumentToDisplayText(
-  value: unknown,
-  options: { readonly inlineTemplates?: boolean } = {},
-): string | null {
+export function messageDocumentToDisplayText(value: unknown): string | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -818,12 +783,7 @@ export function messageDocumentToDisplayText(
         },
         { title: part.titleSnapshot },
       );
-      if (options.inlineTemplates === true) {
-        inlineText += templateLabel;
-      } else {
-        flushInlineText();
-        blocks.push(templateLabel);
-      }
+      inlineText += templateLabel;
       continue;
     }
 

@@ -2290,69 +2290,6 @@ export const closeZeroBrowserForThread$ = command(
   },
 );
 
-// A browser bundle already loaded before the open/close rollout can still
-// call /stop. Preserve its prior response shape and provider-stop behavior for
-// one compatibility window; current clients only record close and leave
-// reclamation to the cron.
-export const stopZeroBrowserForThreadCompatibility$ = command(
-  async (
-    { set },
-    args: BrowserSessionAccess & { readonly lifecycleEventId: string },
-    signal: AbortSignal,
-  ): Promise<BrowserServiceResult<BrowserMutation>> => {
-    const closed = await set(closeZeroBrowserForThread$, args, signal);
-    signal.throwIfAborted();
-    if (closed.kind === "error") {
-      return closed;
-    }
-
-    const db = set(writeDb$);
-    const browser = await loadOwnedBrowser(db, args);
-    signal.throwIfAborted();
-    if (!browser) {
-      return notFound();
-    }
-
-    if (browser.status === "active") {
-      const instance = await loadActiveInstance(db, browser.chatThreadId);
-      signal.throwIfAborted();
-      if (instance) {
-        await stopActiveBrowserInstance(
-          db,
-          {
-            chatThreadId: browser.chatThreadId,
-            providerSessionId: instance.providerSessionId,
-            userId: browser.userId,
-          },
-          "user",
-          signal,
-          { emitCloseEvent: false, stopProvider: true },
-        );
-      } else {
-        await suspendBrowserWithoutActiveInstance(db, browser, "user", signal);
-      }
-    }
-
-    const stoppedBrowser = await loadOwnedBrowser(db, args);
-    signal.throwIfAborted();
-    if (!stoppedBrowser) {
-      throw new Error("Managed browser disappeared during compatibility stop");
-    }
-    const screenshotUrl = await loadBrowserScreenshotUrl(
-      db,
-      stoppedBrowser.chatThreadId,
-      signal,
-    );
-    return {
-      kind: "ok",
-      value: {
-        browser: publicBrowser(stoppedBrowser, null, screenshotUrl),
-        lifecycleEventId: closed.value.lifecycleEventId,
-      },
-    };
-  },
-);
-
 const leaseInstanceForBrowser$ = command(
   async (
     { set },

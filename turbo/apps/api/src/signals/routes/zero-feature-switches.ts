@@ -18,15 +18,11 @@ const featureSwitchesAuthOptions = {
 } as const;
 
 const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
-const LEGACY_CHAT_THREAD_SIDEBAR_AUTO_OPEN_SWITCH = "chatThreadSidebarAutoOpen";
+
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly switches: Record<string, boolean>;
-  readonly supportsStructuredInlineTemplates: boolean;
-  readonly supportsCustomConnectorOAuth2: boolean;
-  readonly supportsImageRecognition: boolean;
-  readonly supportsAvatarTemplates: boolean;
 }) {
   const registeredEffectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
@@ -36,22 +32,21 @@ function featureSwitchResponseBody(params: {
   // Platform bundles loaded before Mail follow-up removal still carry this
   // key. Force them off until their compatible follow-up endpoint can be
   // removed after the old frontend release drains.
-  // Platform bundles loaded before sidebar auto-open became permanent still
-  // gate that behavior on the removed switch. Keep it enabled until the old
-  // frontend release drains.
   const effectiveSwitches = {
     ...registeredEffectiveSwitches,
     [LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH]: false,
-    [LEGACY_CHAT_THREAD_SIDEBAR_AUTO_OPEN_SWITCH]: true,
   };
 
   return {
     switches: params.switches,
     effectiveSwitches,
-    supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
-    supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
-    supportsImageRecognition: params.supportsImageRecognition,
-    supportsAvatarTemplates: params.supportsAvatarTemplates,
+    // The pre-cleanup Platform bundle gates inline templates, image
+    // recognition, and avatar templates on these handshakes and disables each
+    // feature when the field is absent. Keep returning them until that
+    // frontend release has drained.
+    supportsStructuredInlineTemplates: true,
+    supportsImageRecognition: true,
+    supportsAvatarTemplates: true,
   };
 }
 
@@ -66,10 +61,6 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       orgId: auth.orgId,
       userId: auth.userId,
       switches,
-      supportsStructuredInlineTemplates: true,
-      supportsCustomConnectorOAuth2: true,
-      supportsImageRecognition: true,
-      supportsAvatarTemplates: true,
     }),
   };
 });
@@ -103,10 +94,6 @@ const updateFeatureSwitchesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         switches,
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-        supportsImageRecognition: true,
-        supportsAvatarTemplates: true,
       }),
     };
   },

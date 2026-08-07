@@ -6,6 +6,9 @@ describe("zero CLI program", () => {
   const commandNames = program.commands.map((cmd) => {
     return cmd.name();
   });
+  const publicCommandNames = commandNames.filter((name) => {
+    return !name.startsWith("__");
+  });
 
   it("should be named 'zero'", () => {
     expect(program.name()).toBe("zero");
@@ -77,7 +80,12 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 38 commands", () => {
-    expect(commandNames).toHaveLength(38);
+  it("should keep internal commands out of the public surface", () => {
+    expect(commandNames).toContain("__agent-loop");
+    expect(publicCommandNames).not.toContain("__agent-loop");
+  });
+
+  it("should have exactly 38 public commands", () => {
+    expect(publicCommandNames).toHaveLength(38);
   });
 });

@@ -14,7 +14,7 @@ import { workflowSkillStoragePresignedUrlCacheKey } from "../services/system-sto
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const actionBody$ = bodyResultOf(
   testWorkflowSkillStoragePresignedUrlCacheStateContract.action,

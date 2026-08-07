@@ -151,6 +151,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(
@@ -271,6 +272,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
@@ -460,6 +462,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {

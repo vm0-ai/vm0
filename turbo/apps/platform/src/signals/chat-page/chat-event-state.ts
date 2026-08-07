@@ -490,3 +490,30 @@ export function liveRunIdsFromChatEvents(
   }
   return liveRunIds;
 }
+
+export function runningModelFromChatEvents(
+  events: readonly ChatEvent[],
+): string | null {
+  const runningRunId = liveRunIdsFromChatEvents(events).at(-1);
+  if (runningRunId === undefined) {
+    return null;
+  }
+
+  const revokedEventIds = revokedChatEventIds(events);
+  for (const event of events) {
+    if (
+      event.eventType !== "input.prompt" ||
+      event.runId !== runningRunId ||
+      revokedEventIds.has(event.id)
+    ) {
+      continue;
+    }
+    const model = event.userMessage.parts.find((part) => {
+      return part.type === "model";
+    });
+    if (model?.type === "model") {
+      return model.selectedModel;
+    }
+  }
+  return null;
+}

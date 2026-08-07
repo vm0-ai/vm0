@@ -12,7 +12,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const FIXTURE_INSERT_BATCH_SIZE = 5000;
 const MAX_EXPIRED_COUNT = 10_001;

@@ -209,6 +209,11 @@ export const apiAgentsHandlers = [
     return respond(200, { threadIds: [] });
   }),
 
+  // GET /api/zero/chat-threads/unread-ids
+  mockApi(chatThreadsContract.unreadIds, ({ respond }) => {
+    return respond(200, { threadIds: [] });
+  }),
+
   // GET /api/zero/chat-thread-drafts
   mockApi(chatThreadsContract.drafts, ({ respond }) => {
     return respond(200, { draftThreadIds: [] });
@@ -220,6 +225,7 @@ export const apiAgentsHandlers = [
       id: body.clientThreadId ?? "b0000000-0000-4000-a000-000000000001",
       title: null,
       createdAt: "2026-03-10T00:00:00Z",
+      selectedModel: body.model ?? "claude-sonnet-4-6",
     });
   }),
 
@@ -237,6 +243,7 @@ export const apiAgentsHandlers = [
   mockApi(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
+      cancellationRecoveryPending: false,
     });
   }),
 

@@ -8,16 +8,21 @@ use tracing::{info, warn};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
-use super::drain_override::{remove_drain_restart_override, write_drain_restart_override};
+use super::drain_override::{
+    DrainRestartOverrideWrite, remove_drain_restart_override, write_drain_restart_override,
+};
 use super::gate::read_runner_status;
 use super::reload::{SystemdReloadRequirement, coordinate_systemd_reload};
-use super::signal::{ServiceSignalOutcome, signal_service_main};
+use super::signal::{ServiceSignalOutcome, signal_service_main, signal_service_main_bounded};
 use super::systemctl::{
-    SystemdUnitEnablement, get_service_restart_policy, is_unit_active, is_unit_active_bounded,
-    read_unit_enablement, restore_unit_enablement, run_systemctl,
+    CleanupUnitActiveState, SystemdUnitEnablement, cleanup_unit_active_state_bounded,
+    get_service_restart_policy, is_unit_active_bounded, read_unit_enablement,
+    restore_unit_enablement, run_systemctl,
 };
 use super::{RunnerServiceUnit, ServiceFuture, acquire_service_lock};
 
+const DRAIN_SIGNAL_CONVERGENCE_TIMEOUT: Duration = Duration::from_secs(10);
+const DRAIN_SIGNAL_CONVERGENCE_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const RESUME_ACKNOWLEDGEMENT_TIMEOUT: Duration = Duration::from_secs(10);
 const RESUME_ACKNOWLEDGEMENT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
@@ -49,12 +54,19 @@ fn ensure_drain_restart_policy_applied(
 }
 
 trait ServiceDrainOps {
-    fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
+    fn lifecycle_state<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        timeout: Duration,
+    ) -> ServiceFuture<'a, CleanupUnitActiveState>;
     fn enablement<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
     ) -> ServiceFuture<'a, SystemdUnitEnablement>;
-    fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
+    fn write_restart_override(
+        &mut self,
+        unit: &RunnerServiceUnit,
+    ) -> RunnerResult<DrainRestartOverrideWrite>;
     fn remove_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool>;
     fn daemon_reload<'a>(
         &'a mut self,
@@ -65,6 +77,11 @@ trait ServiceDrainOps {
     fn signal_drain<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ServiceSignalOutcome>;
+    fn signal_drain_bounded<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        timeout: Duration,
     ) -> ServiceFuture<'a, ServiceSignalOutcome>;
     fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
     fn restore_enablement<'a>(
@@ -107,8 +124,12 @@ struct RealServiceDrainOps;
 struct RealServiceResumeOps;
 
 impl ServiceDrainOps for RealServiceDrainOps {
-    fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
-        Box::pin(async move { is_unit_active(unit).await })
+    fn lifecycle_state<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        timeout: Duration,
+    ) -> ServiceFuture<'a, CleanupUnitActiveState> {
+        Box::pin(async move { cleanup_unit_active_state_bounded(unit, timeout).await })
     }
 
     fn enablement<'a>(
@@ -118,7 +139,10 @@ impl ServiceDrainOps for RealServiceDrainOps {
         Box::pin(async move { read_unit_enablement(unit).await })
     }
 
-    fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()> {
+    fn write_restart_override(
+        &mut self,
+        unit: &RunnerServiceUnit,
+    ) -> RunnerResult<DrainRestartOverrideWrite> {
         write_drain_restart_override(unit)
     }
 
@@ -147,6 +171,16 @@ impl ServiceDrainOps for RealServiceDrainOps {
         unit: &'a RunnerServiceUnit,
     ) -> ServiceFuture<'a, ServiceSignalOutcome> {
         Box::pin(async move { signal_service_main(unit, nix::sys::signal::Signal::SIGUSR1).await })
+    }
+
+    fn signal_drain_bounded<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        timeout: Duration,
+    ) -> ServiceFuture<'a, ServiceSignalOutcome> {
+        Box::pin(async move {
+            signal_service_main_bounded(unit, nix::sys::signal::Signal::SIGUSR1, timeout).await
+        })
     }
 
     fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
@@ -181,7 +215,7 @@ impl ServiceResumeOps for RealServiceResumeOps {
     }
 
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()> {
-        write_drain_restart_override(unit)
+        write_drain_restart_override(unit).map(|_| ())
     }
 
     fn remove_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool> {
@@ -236,14 +270,14 @@ fn transition_error_with_rollback_failure(
 
 async fn rollback_drain_transition(
     unit: &RunnerServiceUnit,
-    restart_override_written: bool,
+    restart_override_write: Option<DrainRestartOverrideWrite>,
     prior_enablement: Option<SystemdUnitEnablement>,
     ops: &mut impl ServiceDrainOps,
     context: &str,
 ) -> RunnerResult<()> {
     let mut failures = Vec::new();
 
-    if restart_override_written {
+    if restart_override_write == Some(DrainRestartOverrideWrite::Created) {
         match ops.remove_restart_override(unit) {
             Ok(_) => {}
             Err(error) => failures.push(format!("remove drain restart override: {error}")),
@@ -259,13 +293,30 @@ async fn rollback_drain_transition(
         None => failures.push("prior boot enablement is unavailable".to_string()),
     }
 
-    let reload_requirement = if restart_override_written {
-        SystemdReloadRequirement::dirty().with_drain_override(false)
-    } else {
-        SystemdReloadRequirement::dirty()
+    let reload_requirement = match restart_override_write {
+        Some(DrainRestartOverrideWrite::Created) => {
+            SystemdReloadRequirement::dirty().with_drain_override(false)
+        }
+        Some(DrainRestartOverrideWrite::Replaced) => {
+            SystemdReloadRequirement::dirty().with_drain_override(true)
+        }
+        None => SystemdReloadRequirement::dirty(),
     };
     if let Err(error) = ops.daemon_reload(unit, reload_requirement).await {
         failures.push(format!("reload restored systemd state: {error}"));
+    }
+
+    if restart_override_write == Some(DrainRestartOverrideWrite::Replaced) {
+        match ops.restart_policy(unit).await {
+            Ok(restart_policy) => {
+                if let Err(error) = ensure_drain_restart_policy_applied(unit, &restart_policy) {
+                    failures.push(format!("verify restored drain restart policy: {error}"));
+                }
+            }
+            Err(error) => {
+                failures.push(format!("verify restored drain restart policy: {error}"));
+            }
+        }
     }
 
     if failures.is_empty() {
@@ -323,20 +374,14 @@ async fn rollback_resume_transition(
 
 async fn drain_error_after_rollback(
     unit: &RunnerServiceUnit,
-    restart_override_written: bool,
+    restart_override_write: Option<DrainRestartOverrideWrite>,
     prior_enablement: Option<SystemdUnitEnablement>,
     ops: &mut impl ServiceDrainOps,
     context: &str,
     error: RunnerError,
 ) -> RunnerError {
-    match rollback_drain_transition(
-        unit,
-        restart_override_written,
-        prior_enablement,
-        ops,
-        context,
-    )
-    .await
+    match rollback_drain_transition(unit, restart_override_write, prior_enablement, ops, context)
+        .await
     {
         Ok(()) => error,
         Err(rollback_error) => {
@@ -419,20 +464,126 @@ async fn resume_enablement_before_transition(
     }
 }
 
+fn drain_signal_convergence_error(unit: &RunnerServiceUnit, detail: &str) -> RunnerError {
+    RunnerError::Internal(format!(
+        "cannot safely complete drain for {} while converging signal delivery: {detail}; \
+         Restart=no remains applied; retry service drain",
+        unit.unit_name()
+    ))
+}
+
+fn drain_signal_convergence_timeout_error(
+    unit: &RunnerServiceUnit,
+    last_active_state: &str,
+) -> RunnerError {
+    drain_signal_convergence_error(
+        unit,
+        &format!(
+            "timed out after {}s waiting to signal an active runner \
+             (last ActiveState={last_active_state:?})",
+            DRAIN_SIGNAL_CONVERGENCE_TIMEOUT.as_secs()
+        ),
+    )
+}
+
+async fn wait_for_drain_signal_convergence(
+    unit: &RunnerServiceUnit,
+    ops: &mut impl ServiceDrainOps,
+) -> RunnerResult<()> {
+    let deadline = Instant::now() + DRAIN_SIGNAL_CONVERGENCE_TIMEOUT;
+    let mut last_active_state = "unknown".to_string();
+
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(drain_signal_convergence_timeout_error(
+                unit,
+                &last_active_state,
+            ));
+        }
+
+        let state = ops
+            .lifecycle_state(unit, deadline - now)
+            .await
+            .map_err(|error| {
+                drain_signal_convergence_error(
+                    unit,
+                    &format!("cannot read systemd lifecycle state: {error}"),
+                )
+            })?;
+        last_active_state = state.active_state().to_string();
+
+        if !state.is_active_like() {
+            info!(
+                unit = %unit.unit_name(),
+                active_state = %state.active_state(),
+                "runner exited before drain signal convergence"
+            );
+            return Ok(());
+        }
+        if state.active_state() == "deactivating" {
+            // Restart=no was verified before signal delivery. While systemd is
+            // still deactivating it has not committed an auto-restart timer,
+            // so the loaded policy prevents a replacement from appearing.
+            info!(
+                unit = %unit.unit_name(),
+                "runner is deactivating with Restart=no applied; drain signal not needed"
+            );
+            return Ok(());
+        }
+
+        let now = Instant::now();
+        if now >= deadline {
+            continue;
+        }
+        let signal_result = ops
+            .signal_drain_bounded(unit, deadline - now)
+            .await
+            .map_err(|error| {
+                drain_signal_convergence_error(
+                    unit,
+                    &format!("cannot signal active runner: {error}"),
+                )
+            })?;
+
+        match signal_result {
+            ServiceSignalOutcome::Sent => {
+                info!(unit = %unit.unit_name(), "sent SIGUSR1 (drain) during signal convergence");
+                return Ok(());
+            }
+            ServiceSignalOutcome::AlreadyGone => {}
+        }
+
+        let now = Instant::now();
+        if now >= deadline {
+            continue;
+        }
+        tokio::time::sleep(std::cmp::min(
+            DRAIN_SIGNAL_CONVERGENCE_POLL_INTERVAL,
+            deadline - now,
+        ))
+        .await;
+    }
+}
+
 async fn drain_with_ops(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceDrainOps,
 ) -> RunnerResult<()> {
-    let mut should_signal = ops.is_active(unit).await?;
+    let initial_state = ops
+        .lifecycle_state(unit, DRAIN_SIGNAL_CONVERGENCE_TIMEOUT)
+        .await?;
+    let mut should_signal = initial_state.is_active_like();
     let prior_enablement = drain_enablement_before_transition(unit, ops).await;
     if !should_signal {
         info!(unit = %unit.unit_name(), "no active service found; drain signal not needed");
     }
 
-    let restart_override_written = should_signal;
-    if should_signal {
-        ops.write_restart_override(unit)?;
-    }
+    let restart_override_write = if should_signal {
+        Some(ops.write_restart_override(unit)?)
+    } else {
+        None
+    };
 
     if let Err(error) = ops.disable(unit).await {
         warn!(unit = %unit.unit_name(), error = %error, "failed to disable unit");
@@ -445,7 +596,7 @@ async fn drain_with_ops(
         info!(unit = %unit.unit_name(), "disabled (won't restart on reboot)");
     }
 
-    let reload_requirement = if restart_override_written {
+    let reload_requirement = if restart_override_write.is_some() {
         SystemdReloadRequirement::dirty().with_drain_override(true)
     } else {
         SystemdReloadRequirement::dirty()
@@ -453,7 +604,7 @@ async fn drain_with_ops(
     if let Err(error) = ops.daemon_reload(unit, reload_requirement).await {
         return Err(drain_error_after_rollback(
             unit,
-            restart_override_written,
+            restart_override_write,
             prior_enablement,
             ops,
             "daemon_reload",
@@ -468,7 +619,7 @@ async fn drain_with_ops(
                 if let Err(error) = ensure_drain_restart_policy_applied(unit, &restart_policy) {
                     return Err(drain_error_after_rollback(
                         unit,
-                        restart_override_written,
+                        restart_override_write,
                         prior_enablement,
                         ops,
                         "restart_policy",
@@ -478,11 +629,14 @@ async fn drain_with_ops(
                 }
             }
             Err(error) => {
-                match ops.is_active(unit).await {
-                    Ok(true) => {
+                match ops
+                    .lifecycle_state(unit, DRAIN_SIGNAL_CONVERGENCE_TIMEOUT)
+                    .await
+                {
+                    Ok(state) if state.is_active_like() => {
                         return Err(drain_error_after_rollback(
                             unit,
-                            restart_override_written,
+                            restart_override_write,
                             prior_enablement,
                             ops,
                             "restart_policy",
@@ -490,11 +644,11 @@ async fn drain_with_ops(
                         )
                         .await);
                     }
-                    Ok(false) => {}
+                    Ok(_) => {}
                     Err(active_err) => {
                         return Err(drain_error_after_rollback(
                             unit,
-                            restart_override_written,
+                            restart_override_write,
                             prior_enablement,
                             ops,
                             "restart_policy_active_check",
@@ -513,26 +667,24 @@ async fn drain_with_ops(
     }
 
     if should_signal {
-        // `is_unit_active` above can race against the runner exiting on its own.
-        // Both outcomes ("live, signal delivered" and "already gone") retain
-        // the already-applied disabled boot state.
+        // The lifecycle query above can race against the runner exiting or an
+        // already-committed auto-restart timer. Once the main process is gone,
+        // retain fail-closed state and converge instead of rolling protections
+        // back into a potentially restarting service.
         match ops.signal_drain(unit).await {
             Err(error) => {
-                return Err(drain_error_after_rollback(
-                    unit,
-                    restart_override_written,
-                    prior_enablement,
-                    ops,
-                    "signal_drain",
-                    error,
-                )
-                .await);
+                warn!(
+                    unit = %unit.unit_name(),
+                    error = %error,
+                    "initial drain signal failed; retaining Restart=no while converging"
+                );
+                wait_for_drain_signal_convergence(unit, ops).await?;
             }
             Ok(ServiceSignalOutcome::Sent) => {
                 info!(unit = %unit.unit_name(), "sent SIGUSR1 (drain)");
             }
             Ok(ServiceSignalOutcome::AlreadyGone) => {
-                info!(unit = %unit.unit_name(), "runner already exited; drain signal not needed");
+                wait_for_drain_signal_convergence(unit, ops).await?;
             }
         }
     }
@@ -731,7 +883,7 @@ async fn resume_with_ops(
     resume_after_preflight_with_ops(unit, &base_dir, status.started_at, ops).await
 }
 
-/// `service drain` — send SIGUSR1, disable unit, return immediately.
+/// `service drain` — send SIGUSR1 and disable the unit without waiting for jobs.
 pub(super) async fn run_drain(args: DrainArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;
@@ -778,6 +930,28 @@ mod tests {
         (0..count).map(|_| Ok(true)).collect()
     }
 
+    fn lifecycle_state(active_state: &str) -> RunnerResult<CleanupUnitActiveState> {
+        let active_like = matches!(
+            active_state,
+            "active" | "activating" | "reloading" | "refreshing" | "deactivating"
+        );
+        Ok(CleanupUnitActiveState::for_test(active_state, active_like))
+    }
+
+    fn lifecycle_states(
+        active_state: &str,
+        count: usize,
+    ) -> VecDeque<RunnerResult<CleanupUnitActiveState>> {
+        (0..count).map(|_| lifecycle_state(active_state)).collect()
+    }
+
+    fn signal_results(
+        outcome: ServiceSignalOutcome,
+        count: usize,
+    ) -> VecDeque<RunnerResult<ServiceSignalOutcome>> {
+        (0..count).map(|_| Ok(outcome)).collect()
+    }
+
     async fn write_test_status(base_dir: &Path, mode: &str, started_at: &str) {
         tokio::fs::create_dir_all(base_dir).await.unwrap();
         tokio::fs::write(
@@ -800,16 +974,17 @@ mod tests {
 
     struct FakeDrainOps {
         events: Vec<&'static str>,
-        active_results: VecDeque<RunnerResult<bool>>,
+        lifecycle_state_results: VecDeque<RunnerResult<CleanupUnitActiveState>>,
+        lifecycle_timeouts: Vec<Duration>,
         enablement_results: VecDeque<RunnerResult<SystemdUnitEnablement>>,
         write_error: bool,
+        restart_override_write: DrainRestartOverrideWrite,
         remove_error: bool,
         reload_errors: VecDeque<bool>,
         reload_requirements: Vec<SystemdReloadRequirement>,
-        restart_policy_error: bool,
-        restart_policy: String,
-        signal_error: bool,
-        signal_outcome: ServiceSignalOutcome,
+        restart_policy_results: VecDeque<RunnerResult<String>>,
+        signal_results: VecDeque<RunnerResult<ServiceSignalOutcome>>,
+        signal_timeouts: Vec<Duration>,
         disable_error: bool,
         restore_enablement_error: bool,
     }
@@ -834,16 +1009,17 @@ mod tests {
         fn default() -> Self {
             Self {
                 events: Vec::new(),
-                active_results: VecDeque::from([Ok(true)]),
+                lifecycle_state_results: lifecycle_states("active", 1),
+                lifecycle_timeouts: Vec::new(),
                 enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::Enabled)]),
                 write_error: false,
+                restart_override_write: DrainRestartOverrideWrite::Created,
                 remove_error: false,
                 reload_errors: VecDeque::new(),
                 reload_requirements: Vec::new(),
-                restart_policy_error: false,
-                restart_policy: "no".to_string(),
-                signal_error: false,
-                signal_outcome: ServiceSignalOutcome::Sent,
+                restart_policy_results: VecDeque::from([Ok("no".to_string())]),
+                signal_results: signal_results(ServiceSignalOutcome::Sent, 1),
+                signal_timeouts: Vec::new(),
                 disable_error: false,
                 restore_enablement_error: false,
             }
@@ -875,10 +1051,17 @@ mod tests {
     }
 
     impl ServiceDrainOps for FakeDrainOps {
-        fn is_active<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
-            self.events.push("is_active");
+        fn lifecycle_state<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            timeout: Duration,
+        ) -> ServiceFuture<'a, CleanupUnitActiveState> {
+            self.events.push("lifecycle_state");
+            self.lifecycle_timeouts.push(timeout);
             Box::pin(std::future::ready(
-                self.active_results.pop_front().unwrap_or(Ok(false)),
+                self.lifecycle_state_results
+                    .pop_front()
+                    .expect("missing fake lifecycle state result"),
             ))
         }
 
@@ -894,12 +1077,15 @@ mod tests {
             ))
         }
 
-        fn write_restart_override(&mut self, _unit: &RunnerServiceUnit) -> RunnerResult<()> {
+        fn write_restart_override(
+            &mut self,
+            _unit: &RunnerServiceUnit,
+        ) -> RunnerResult<DrainRestartOverrideWrite> {
             self.events.push("write_restart_override");
             if self.write_error {
                 Err(fake_error("write failed"))
             } else {
-                Ok(())
+                Ok(self.restart_override_write)
             }
         }
 
@@ -932,11 +1118,11 @@ mod tests {
             _unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, String> {
             self.events.push("restart_policy");
-            Box::pin(std::future::ready(if self.restart_policy_error {
-                Err(fake_error("restart policy failed"))
-            } else {
-                Ok(self.restart_policy.clone())
-            }))
+            Box::pin(std::future::ready(
+                self.restart_policy_results
+                    .pop_front()
+                    .expect("missing fake restart policy result"),
+            ))
         }
 
         fn signal_drain<'a>(
@@ -944,11 +1130,25 @@ mod tests {
             _unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, ServiceSignalOutcome> {
             self.events.push("signal_drain");
-            Box::pin(std::future::ready(if self.signal_error {
-                Err(fake_error("signal failed"))
-            } else {
-                Ok(self.signal_outcome)
-            }))
+            Box::pin(std::future::ready(
+                self.signal_results
+                    .pop_front()
+                    .expect("missing fake drain signal result"),
+            ))
+        }
+
+        fn signal_drain_bounded<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            timeout: Duration,
+        ) -> ServiceFuture<'a, ServiceSignalOutcome> {
+            self.events.push("signal_drain_bounded");
+            self.signal_timeouts.push(timeout);
+            Box::pin(std::future::ready(
+                self.signal_results
+                    .pop_front()
+                    .expect("missing fake bounded drain signal result"),
+            ))
         }
 
         fn disable<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
@@ -1096,7 +1296,7 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "is_active",
+                "lifecycle_state",
                 "is_enabled",
                 "write_restart_override",
                 "disable",
@@ -1124,7 +1324,7 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "is_active",
+                "lifecycle_state",
                 "is_enabled",
                 "write_restart_override",
                 "disable",
@@ -1139,7 +1339,7 @@ mod tests {
     async fn drain_inactive_service_skips_restart_override_and_signal() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            active_results: VecDeque::from([Ok(false)]),
+            lifecycle_state_results: VecDeque::from([lifecycle_state("inactive")]),
             ..FakeDrainOps::default()
         };
 
@@ -1147,7 +1347,7 @@ mod tests {
 
         assert_eq!(
             ops.events,
-            ["is_active", "is_enabled", "disable", "daemon_reload"]
+            ["lifecycle_state", "is_enabled", "disable", "daemon_reload"]
         );
         assert_eq!(ops.reload_requirements, [SystemdReloadRequirement::dirty()]);
     }
@@ -1165,7 +1365,7 @@ mod tests {
         assert!(err.to_string().contains("write failed"));
         assert_eq!(
             ops.events,
-            ["is_active", "is_enabled", "write_restart_override"]
+            ["lifecycle_state", "is_enabled", "write_restart_override"]
         );
     }
 
@@ -1183,7 +1383,7 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "is_active",
+                "lifecycle_state",
                 "is_enabled",
                 "write_restart_override",
                 "disable",
@@ -1198,6 +1398,41 @@ mod tests {
             [
                 SystemdReloadRequirement::dirty().with_drain_override(true),
                 SystemdReloadRequirement::dirty().with_drain_override(false),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_drain_reload_failure_preserves_restart_override() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::NotEnabled)]),
+            restart_override_write: DrainRestartOverrideWrite::Replaced,
+            reload_errors: VecDeque::from([true, false]),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("reload failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "lifecycle_state",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "restore_not_enabled",
+                "daemon_reload",
+                "restart_policy",
+            ]
+        );
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+                SystemdReloadRequirement::dirty().with_drain_override(true),
             ]
         );
     }
@@ -1222,7 +1457,7 @@ mod tests {
     async fn drain_restart_policy_mismatch_aborts_before_signal() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            restart_policy: "on-failure".to_string(),
+            restart_policy_results: VecDeque::from([Ok("on-failure".to_string())]),
             ..FakeDrainOps::default()
         };
 
@@ -1232,7 +1467,7 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "is_active",
+                "lifecycle_state",
                 "is_enabled",
                 "write_restart_override",
                 "disable",
@@ -1246,11 +1481,121 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn repeated_drain_policy_mismatch_restores_effective_override() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::NotEnabled)]),
+            restart_override_write: DrainRestartOverrideWrite::Replaced,
+            restart_policy_results: VecDeque::from([
+                Ok("on-failure".to_string()),
+                Ok("no".to_string()),
+            ]),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("Restart=\"on-failure\""));
+        assert!(!error.to_string().contains("additionally rollback failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "lifecycle_state",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "restart_policy",
+                "restore_not_enabled",
+                "daemon_reload",
+                "restart_policy",
+            ]
+        );
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_drain_persistent_policy_mismatch_reports_rollback_failure() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::NotEnabled)]),
+            restart_override_write: DrainRestartOverrideWrite::Replaced,
+            restart_policy_results: VecDeque::from([
+                Ok("on-failure".to_string()),
+                Ok("on-failure".to_string()),
+            ]),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("additionally rollback failed"));
+        assert!(message.contains("verify restored drain restart policy"));
+        assert!(!ops.events.contains(&"remove_restart_override"));
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_drain_policy_query_failure_restores_effective_override() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("active", 2),
+            enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::NotEnabled)]),
+            restart_override_write: DrainRestartOverrideWrite::Replaced,
+            restart_policy_results: VecDeque::from([
+                Err(fake_error("restart policy failed")),
+                Ok("no".to_string()),
+            ]),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("restart policy failed"));
+        assert!(!error.to_string().contains("additionally rollback failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "lifecycle_state",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "restart_policy",
+                "lifecycle_state",
+                "restore_not_enabled",
+                "daemon_reload",
+                "restart_policy",
+            ]
+        );
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn drain_restart_policy_error_for_still_active_service_aborts_before_signal() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            active_results: VecDeque::from([Ok(true), Ok(true)]),
-            restart_policy_error: true,
+            lifecycle_state_results: lifecycle_states("active", 2),
+            restart_policy_results: VecDeque::from([Err(fake_error("restart policy failed"))]),
             ..FakeDrainOps::default()
         };
 
@@ -1260,13 +1605,42 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "is_active",
+                "lifecycle_state",
                 "is_enabled",
                 "write_restart_override",
                 "disable",
                 "daemon_reload",
                 "restart_policy",
-                "is_active",
+                "lifecycle_state",
+                "remove_restart_override",
+                "restore_enabled",
+                "daemon_reload",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_restart_policy_error_for_deactivating_service_aborts_before_signal() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("deactivating", 2),
+            restart_policy_results: VecDeque::from([Err(fake_error("restart policy failed"))]),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("restart policy failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "lifecycle_state",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "restart_policy",
+                "lifecycle_state",
                 "remove_restart_override",
                 "restore_enabled",
                 "daemon_reload",
@@ -1278,8 +1652,11 @@ mod tests {
     async fn drain_restart_policy_error_with_failed_active_recheck_rolls_back() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            active_results: VecDeque::from([Ok(true), Err(fake_error("active recheck failed"))]),
-            restart_policy_error: true,
+            lifecycle_state_results: VecDeque::from([
+                lifecycle_state("active"),
+                Err(fake_error("active recheck failed")),
+            ]),
+            restart_policy_results: VecDeque::from([Err(fake_error("restart policy failed"))]),
             ..FakeDrainOps::default()
         };
 
@@ -1289,13 +1666,13 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "is_active",
+                "lifecycle_state",
                 "is_enabled",
                 "write_restart_override",
                 "disable",
                 "daemon_reload",
                 "restart_policy",
-                "is_active",
+                "lifecycle_state",
                 "remove_restart_override",
                 "restore_enabled",
                 "daemon_reload",
@@ -1307,8 +1684,11 @@ mod tests {
     async fn drain_restart_policy_error_for_exited_service_still_disables_unit() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            active_results: VecDeque::from([Ok(true), Ok(false)]),
-            restart_policy_error: true,
+            lifecycle_state_results: VecDeque::from([
+                lifecycle_state("active"),
+                lifecycle_state("inactive"),
+            ]),
+            restart_policy_results: VecDeque::from([Err(fake_error("restart policy failed"))]),
             ..FakeDrainOps::default()
         };
 
@@ -1317,145 +1697,26 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "is_active",
+                "lifecycle_state",
                 "is_enabled",
                 "write_restart_override",
                 "disable",
                 "daemon_reload",
                 "restart_policy",
-                "is_active",
+                "lifecycle_state",
             ]
         );
     }
 
-    #[tokio::test]
-    async fn drain_signal_failure_rolls_back_restart_override() {
+    #[tokio::test(start_paused = true)]
+    async fn drain_signal_failure_converges_without_rollback() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            signal_error: true,
-            ..FakeDrainOps::default()
-        };
-
-        let err = drain_with_ops(&unit, &mut ops).await.unwrap_err();
-
-        assert!(err.to_string().contains("signal failed"));
-        assert_eq!(
-            ops.events,
-            [
-                "is_active",
-                "is_enabled",
-                "write_restart_override",
-                "disable",
-                "daemon_reload",
-                "restart_policy",
-                "signal_drain",
-                "remove_restart_override",
-                "restore_enabled",
-                "daemon_reload",
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn drain_signal_failure_reports_rollback_failures() {
-        let unit = service_unit();
-        let mut ops = FakeDrainOps {
-            remove_error: true,
-            reload_errors: VecDeque::from([false, true]),
-            signal_error: true,
-            restore_enablement_error: true,
-            ..FakeDrainOps::default()
-        };
-
-        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
-        let message = error.to_string();
-
-        assert!(message.contains(
-            "drain failed for vm0-runner-test: internal error: signal failed; additionally rollback failed"
-        ));
-        assert!(
-            message.contains(
-                "failed to roll back drain transition for vm0-runner-test (signal_drain)"
-            )
-        );
-        assert!(message.contains("remove drain restart override: internal error: remove failed"));
-        assert!(
-            message.contains("restore boot enablement: internal error: restore enablement failed")
-        );
-        assert!(message.contains("reload restored systemd state: internal error: reload failed"));
-        assert_eq!(
-            ops.events,
-            [
-                "is_active",
-                "is_enabled",
-                "write_restart_override",
-                "disable",
-                "daemon_reload",
-                "restart_policy",
-                "signal_drain",
-                "remove_restart_override",
-                "restore_enabled",
-                "daemon_reload",
-            ]
-        );
-        assert_eq!(
-            ops.reload_requirements,
-            [
-                SystemdReloadRequirement::dirty().with_drain_override(true),
-                SystemdReloadRequirement::dirty().with_drain_override(false),
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn drain_signal_failure_reports_unavailable_prior_enablement() {
-        let unit = service_unit();
-        let mut ops = FakeDrainOps {
-            enablement_results: VecDeque::from([Err(fake_error("enablement read failed"))]),
-            signal_error: true,
-            ..FakeDrainOps::default()
-        };
-
-        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
-        let message = error.to_string();
-
-        assert!(message.contains(
-            "drain failed for vm0-runner-test: internal error: signal failed; additionally rollback failed"
-        ));
-        assert!(
-            message.contains(
-                "failed to roll back drain transition for vm0-runner-test (signal_drain)"
-            )
-        );
-        assert!(message.contains("prior boot enablement is unavailable"));
-        assert_eq!(
-            ops.events,
-            [
-                "is_active",
-                "is_enabled",
-                "write_restart_override",
-                "disable",
-                "daemon_reload",
-                "restart_policy",
-                "signal_drain",
-                "remove_restart_override",
-                "daemon_reload",
-            ]
-        );
-        assert_eq!(
-            ops.reload_requirements,
-            [
-                SystemdReloadRequirement::dirty().with_drain_override(true),
-                SystemdReloadRequirement::dirty().with_drain_override(false),
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn drain_already_gone_still_disables_unit() {
-        let unit = service_unit();
-        let mut ops = FakeDrainOps {
-            signal_outcome: ServiceSignalOutcome::AlreadyGone,
+            lifecycle_state_results: lifecycle_states("active", 2),
+            signal_results: VecDeque::from([
+                Err(fake_error("initial signal failed")),
+                Ok(ServiceSignalOutcome::Sent),
+            ]),
             ..FakeDrainOps::default()
         };
 
@@ -1464,14 +1725,205 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "is_active",
+                "lifecycle_state",
                 "is_enabled",
                 "write_restart_override",
                 "disable",
                 "daemon_reload",
                 "restart_policy",
                 "signal_drain",
+                "lifecycle_state",
+                "signal_drain_bounded",
             ]
+        );
+        assert_eq!(ops.signal_timeouts, [DRAIN_SIGNAL_CONVERGENCE_TIMEOUT]);
+        assert!(!ops.events.contains(&"remove_restart_override"));
+        assert!(!ops.events.contains(&"restore_enabled"));
+    }
+
+    #[tokio::test]
+    async fn drain_deactivating_service_applies_override_before_safe_completion() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("deactivating", 2),
+            signal_results: signal_results(ServiceSignalOutcome::AlreadyGone, 1),
+            ..FakeDrainOps::default()
+        };
+
+        drain_with_ops(&unit, &mut ops).await.unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "lifecycle_state",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "restart_policy",
+                "signal_drain",
+                "lifecycle_state",
+            ]
+        );
+        assert!(!ops.events.contains(&"remove_restart_override"));
+    }
+
+    #[tokio::test]
+    async fn drain_already_gone_inactive_service_still_disables_unit() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: VecDeque::from([
+                lifecycle_state("active"),
+                lifecycle_state("inactive"),
+            ]),
+            signal_results: signal_results(ServiceSignalOutcome::AlreadyGone, 1),
+            ..FakeDrainOps::default()
+        };
+
+        drain_with_ops(&unit, &mut ops).await.unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "lifecycle_state",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "restart_policy",
+                "signal_drain",
+                "lifecycle_state",
+            ]
+        );
+        assert!(!ops.events.contains(&"remove_restart_override"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn drain_signals_replacement_after_deactivating_restart_race() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: VecDeque::from([
+                lifecycle_state("deactivating"),
+                lifecycle_state("activating"),
+                lifecycle_state("active"),
+            ]),
+            signal_results: VecDeque::from([
+                Ok(ServiceSignalOutcome::AlreadyGone),
+                Ok(ServiceSignalOutcome::AlreadyGone),
+                Ok(ServiceSignalOutcome::Sent),
+            ]),
+            ..FakeDrainOps::default()
+        };
+        let started_at = Instant::now();
+
+        drain_with_ops(&unit, &mut ops).await.unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "lifecycle_state",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "restart_policy",
+                "signal_drain",
+                "lifecycle_state",
+                "signal_drain_bounded",
+                "lifecycle_state",
+                "signal_drain_bounded",
+            ]
+        );
+        assert_eq!(
+            Instant::now() - started_at,
+            DRAIN_SIGNAL_CONVERGENCE_POLL_INTERVAL
+        );
+        assert_eq!(
+            ops.lifecycle_timeouts,
+            [
+                DRAIN_SIGNAL_CONVERGENCE_TIMEOUT,
+                DRAIN_SIGNAL_CONVERGENCE_TIMEOUT,
+                DRAIN_SIGNAL_CONVERGENCE_TIMEOUT - DRAIN_SIGNAL_CONVERGENCE_POLL_INTERVAL,
+            ]
+        );
+        assert_eq!(
+            ops.signal_timeouts,
+            [
+                DRAIN_SIGNAL_CONVERGENCE_TIMEOUT,
+                DRAIN_SIGNAL_CONVERGENCE_TIMEOUT - DRAIN_SIGNAL_CONVERGENCE_POLL_INTERVAL,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_convergence_state_failure_retains_restart_override() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: VecDeque::from([
+                lifecycle_state("active"),
+                Err(fake_error("state recheck failed")),
+            ]),
+            signal_results: signal_results(ServiceSignalOutcome::AlreadyGone, 1),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("state recheck failed"));
+        assert!(error.to_string().contains("Restart=no remains applied"));
+        assert!(!ops.events.contains(&"remove_restart_override"));
+        assert!(!ops.events.contains(&"restore_enabled"));
+    }
+
+    #[tokio::test]
+    async fn drain_convergence_signal_failure_retains_restart_override() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: VecDeque::from([
+                lifecycle_state("active"),
+                lifecycle_state("activating"),
+            ]),
+            signal_results: VecDeque::from([
+                Ok(ServiceSignalOutcome::AlreadyGone),
+                Err(fake_error("replacement signal failed")),
+            ]),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("replacement signal failed"));
+        assert!(error.to_string().contains("Restart=no remains applied"));
+        assert!(!ops.events.contains(&"remove_restart_override"));
+        assert!(!ops.events.contains(&"restore_enabled"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn drain_convergence_timeout_is_bounded_and_retains_restart_override() {
+        let unit = service_unit();
+        let attempts = (DRAIN_SIGNAL_CONVERGENCE_TIMEOUT.as_millis()
+            / DRAIN_SIGNAL_CONVERGENCE_POLL_INTERVAL.as_millis()) as usize
+            + 1;
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("activating", attempts),
+            signal_results: signal_results(ServiceSignalOutcome::AlreadyGone, attempts),
+            ..FakeDrainOps::default()
+        };
+        let started_at = Instant::now();
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert_eq!(
+            Instant::now() - started_at,
+            DRAIN_SIGNAL_CONVERGENCE_TIMEOUT
+        );
+        assert!(error.to_string().contains("timed out after 10s"));
+        assert!(error.to_string().contains("Restart=no remains applied"));
+        assert!(!ops.events.contains(&"remove_restart_override"));
+        assert!(!ops.events.contains(&"restore_enabled"));
+        assert_eq!(
+            ops.reload_requirements,
+            [SystemdReloadRequirement::dirty().with_drain_override(true)]
         );
     }
 

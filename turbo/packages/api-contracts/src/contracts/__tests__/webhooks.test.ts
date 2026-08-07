@@ -60,6 +60,41 @@ describe("storage webhook manifest limits", () => {
 });
 
 describe("webhook telemetry contract", () => {
+  it("accepts bounded sandbox operation outcome dimensions", () => {
+    const result = webhookTelemetryContract.send.body.parse({
+      runId: "00000000-0000-4000-8000-000000000000",
+      sandboxOperations: [
+        {
+          ts: "2026-01-15T10:00:00.000Z",
+          action_type: "session_history_prune",
+          duration_ms: 10,
+          success: true,
+          outcome: "ineligible",
+          reason: "source_within_guard",
+        },
+      ],
+    });
+
+    expect(result.sandboxOperations?.[0]).toMatchObject({
+      outcome: "ineligible",
+      reason: "source_within_guard",
+    });
+    expect(
+      webhookTelemetryContract.send.body.safeParse({
+        runId: "00000000-0000-4000-8000-000000000000",
+        sandboxOperations: [
+          {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "session_history_prune",
+            duration_ms: 10,
+            success: true,
+            outcome: "x".repeat(65),
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts bounded startup outcomes and keeps them optional", () => {
     const startupOutcomes = [
       ["sandbox", "reused"],

@@ -91,7 +91,7 @@ async fn run_command_bounded(
     }
 }
 
-async fn run_command_output_bounded(
+pub(super) async fn run_command_output_bounded(
     program: &str,
     args: &[&str],
     duration: Duration,
@@ -609,10 +609,29 @@ pub(super) async fn has_service_main_process(unit: &RunnerServiceUnit) -> Runner
     let svc = unit.service_name();
     let properties = ["LoadState", "MainPID"];
     let output = run_systemctl_show(svc, &properties).await?;
-    let values = parse_systemctl_show_output(svc, &properties, &output)?;
+    service_main_process_from_output(svc, &properties, &output)
+}
+
+/// Check for a systemd main process while bounding the query and child cleanup.
+pub(super) async fn has_service_main_process_bounded(
+    unit: &RunnerServiceUnit,
+    duration: Duration,
+) -> RunnerResult<bool> {
+    let svc = unit.service_name();
+    let properties = ["LoadState", "MainPID"];
+    let output = run_systemctl_show_bounded(svc, &properties, duration).await?;
+    service_main_process_from_output(svc, &properties, &output)
+}
+
+fn service_main_process_from_output(
+    svc: &str,
+    properties: &[&str],
+    output: &Output,
+) -> RunnerResult<bool> {
+    let values = parse_systemctl_show_output(svc, properties, output)?;
     service_main_process_present_from_systemctl_show(
         svc,
-        &properties,
+        properties,
         &output.status,
         &values,
         &output.stderr,

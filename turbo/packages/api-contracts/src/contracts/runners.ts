@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
+  executionFirewallInlineEntrySchema,
   executionFirewallsSchema,
+  firewallApiSchema,
   firewallPolicyValueSchema,
   firewallSchema,
   networkPolicySchema,
@@ -38,6 +40,8 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX = 256;
 export const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
+export const CONNECTOR_RUNTIME_SYNC_TARGETS_MAX = 256;
+export const CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
 export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
 export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS + 30_000;
@@ -98,8 +102,8 @@ const runnerProcessIdentitySchema = z
   .strict();
 
 /**
- * Advisory cross-runner coordination, not an exclusive assignment. A runner
- * with an equivalent compatible local resource remains eligible to claim.
+ * Legacy advisory preference retained while deployed runners migrate to the
+ * atomic decision contract.
  */
 export const runnerPreferenceSchema = z
   .object({
@@ -112,6 +116,38 @@ export const runnerPreferenceSchema = z
     expiresAt: z.string().datetime({ offset: true }),
   })
   .strict();
+
+/**
+ * Atomic advisory decision for cross-runner reuse coordination. A preferred
+ * runner is not an exclusive assignee; another runner with a better compatible
+ * local resource remains eligible to claim.
+ */
+export const runnerPreferenceDecisionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("preference"),
+      runnerIdentity: runnerProcessIdentitySchema,
+      tier: z.enum([
+        "exactSandbox",
+        "finalizingPredecessor",
+        "reusableSandbox",
+        "workspaceCache",
+      ]),
+      expiresAt: z.string().datetime({ offset: true }),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("noPreference"),
+      reason: z.enum([
+        "noReuseKey",
+        "expired",
+        "noViableHolder",
+        "lookupError",
+      ]),
+    })
+    .strict(),
+]);
 
 export const runnerPreferenceResolutionSchema = z.enum([
   "exact_history_generation",
@@ -172,6 +208,112 @@ const networkPolicyRefreshesSchema = z.record(
   z.string(),
   networkPolicyRefreshSchema,
 );
+
+export const connectorRuntimeBuiltinTargetSchema = z.object({
+  kind: z.literal("builtin"),
+  connectorSlug: connectorSlugSchema,
+});
+
+export const connectorRuntimeCustomTargetSchema = z.object({
+  kind: z.literal("custom"),
+  customConnectorId: z.uuid(),
+});
+
+export const connectorRuntimeTargetSchema = z.discriminatedUnion("kind", [
+  connectorRuntimeBuiltinTargetSchema,
+  connectorRuntimeCustomTargetSchema,
+]);
+
+function connectorRuntimeTargetKey(
+  target: z.infer<typeof connectorRuntimeTargetSchema>,
+): string {
+  return target.kind === "builtin"
+    ? `builtin:${target.connectorSlug}`
+    : `custom:${target.customConnectorId}`;
+}
+
+function uniqueConnectorRuntimeTargets(
+  targets: readonly z.infer<typeof connectorRuntimeTargetSchema>[],
+  context: z.RefinementCtx,
+): void {
+  const seen = new Set<string>();
+  for (const [index, target] of targets.entries()) {
+    const key = connectorRuntimeTargetKey(target);
+    if (seen.has(key)) {
+      context.addIssue({
+        code: "custom",
+        path: [index],
+        message: "Connector runtime targets must be unique",
+      });
+      continue;
+    }
+    seen.add(key);
+  }
+}
+
+const connectorRuntimeTargetsSchema = z
+  .array(connectorRuntimeTargetSchema)
+  .superRefine(uniqueConnectorRuntimeTargets);
+
+const connectorRuntimeSyncTargetsSchema = connectorRuntimeTargetsSchema
+  .min(1)
+  .max(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX);
+
+export const connectorRuntimeCustomAbsentReasonSchema = z.enum([
+  "connector-unavailable",
+  "grant-unavailable",
+  "permission-bundle-unavailable",
+  "runtime-configuration-unavailable",
+]);
+
+const connectorRuntimeResultBaseSchema = z.object({
+  nextSyncAt: z.string().datetime({ offset: true }).optional(),
+});
+
+export const connectorRuntimeBuiltinAvailableResultSchema =
+  connectorRuntimeResultBaseSchema.extend({
+    target: connectorRuntimeBuiltinTargetSchema,
+    state: z.literal("available"),
+    networkPolicy: networkPolicySchema,
+  });
+
+export const connectorRuntimeBuiltinUnresolvedResultSchema =
+  connectorRuntimeResultBaseSchema.extend({
+    target: connectorRuntimeBuiltinTargetSchema,
+    state: z.literal("unresolved"),
+    reason: z.literal("connector-unavailable"),
+  });
+
+export const connectorRuntimeCustomAvailableResultSchema =
+  connectorRuntimeResultBaseSchema.extend({
+    target: connectorRuntimeCustomTargetSchema,
+    state: z.literal("available"),
+    firewall: executionFirewallInlineEntrySchema.extend({
+      customConnectorId: z.uuid(),
+      firewall: firewallSchema.extend({
+        apis: z.array(
+          firewallApiSchema.extend({
+            id: z.string().min(1),
+          }),
+        ),
+      }),
+    }),
+    networkPolicy: networkPolicySchema,
+  });
+
+export const connectorRuntimeCustomAbsentResultSchema =
+  connectorRuntimeResultBaseSchema.extend({
+    target: connectorRuntimeCustomTargetSchema,
+    state: z.literal("absent"),
+    reason: connectorRuntimeCustomAbsentReasonSchema,
+  });
+
+export const connectorRuntimeSyncResultSchema = z.union([
+  connectorRuntimeBuiltinAvailableResultSchema,
+  connectorRuntimeBuiltinUnresolvedResultSchema,
+  connectorRuntimeCustomAvailableResultSchema,
+  connectorRuntimeCustomAbsentResultSchema,
+]);
 const connectorPermissionNameListSchema = z
   .array(z.string().min(1))
   .superRefine((names, context) => {
@@ -283,6 +425,15 @@ const runnerBuiltinFirewallsResolveResponseSchema = z.object({
 export const DEFAULT_PROFILE = "vm0/default";
 
 /**
+ * Prewarmed Pi Sandbox lane. Must stay in sync with
+ * `crates/runner/src/profile.rs`.
+ */
+export const PI_STANDBY_PROFILE = "vm0/pi-standby";
+
+/** Non-terminal Guest/Runner exit used to request Pi cold-start fallback. */
+export const PI_STANDBY_TTL_RELEASE_EXIT_CODE = 75;
+
+/**
  * Runner group format: vm0/<name> (e.g., "vm0/production")
  */
 export const runnerGroupSchema = z
@@ -316,6 +467,7 @@ export const jobSchema = z.object({
   cliAgentSessionId: z.string().nullable().optional(),
   reuseKey: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
+  runnerPreferenceDecision: runnerPreferenceDecisionSchema.optional(),
   runnerPreference: runnerPreferenceSchema.optional(),
   runnerPreferenceResolution: runnerPreferenceResolutionSchema.optional(),
 });
@@ -556,6 +708,55 @@ export const secretConnectorMetadataMapSchema = z.record(
   secretConnectorMetadataSchema,
 );
 
+export const PI_SKILLS_ROOT = "/home/user/.pi/agent/skills";
+
+export const runSkillSnapshotEntrySchema = z
+  .object({
+    logicalDir: z.string().min(1),
+    skillFile: z.string().min(1),
+    orgId: z.string().min(1),
+    userId: z.string().min(1),
+    storageName: z.string().min(1),
+    storageId: z.string().min(1),
+    versionId: z.string().min(1),
+  })
+  .readonly();
+
+/**
+ * Immutable, exact-version Skill view resolved once for a Pi run. The ordered
+ * entries are a typed projection of the run's persisted Storage mounts; the
+ * digest deliberately excludes expiring archive URLs.
+ */
+export const runSkillSnapshotSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    policyVersion: z.literal(1),
+    root: z.literal(PI_SKILLS_ROOT),
+    digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    entries: z.array(runSkillSnapshotEntrySchema).readonly(),
+  })
+  .readonly();
+
+/**
+ * Non-secret Pi model metadata forwarded to the Sandbox. The API key remains
+ * in the existing model-provider environment; `apiKeyEnv` names the exact
+ * environment entry the Sandbox runtime must read.
+ */
+export const piModelConfigSchema = z
+  .object({
+    provider: z.enum([
+      "deepseek",
+      "moonshotai",
+      "openai",
+      "openrouter",
+      "vercel-ai-gateway",
+    ]),
+    baseUrl: z.url(),
+    model: z.string().min(1),
+    apiKeyEnv: z.enum(["ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"]),
+  })
+  .readonly();
+
 /**
  * Stored execution context (subset stored in database for late routing)
  * Contains prepared context without runtime-generated fields
@@ -606,6 +807,9 @@ export const storedExecutionContextSchema = z.object({
   // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
   // active sandbox policy when temporary allow grants expire.
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
+  // Stable connector targets pinned for this run. The runner owns this list
+  // after claim independently of whether each target is currently available.
+  connectorRuntimeTargets: connectorRuntimeTargetsSchema.optional(),
   // API-only catalog-derived permission defaults for claim-time grant refresh.
   connectorPermissionBaseline:
     storedConnectorPermissionBaselineSchema.optional(),
@@ -626,6 +830,11 @@ export const storedExecutionContextSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
+  // Complete Pi prompt rendered once before the first model call and reused
+  // byte-for-byte by the API loop and the standby Sandbox.
+  piSystemPrompt: z.string().min(1).optional(),
+  piModelConfig: piModelConfigSchema.optional(),
+  runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
 /**
@@ -692,6 +901,9 @@ export const executionContextSchema = z.object({
   // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
   // active sandbox policy when temporary allow grants expire.
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
+  // Stable connector targets pinned for this run. The runner owns this list
+  // after claim independently of whether each target is currently available.
+  connectorRuntimeTargets: connectorRuntimeTargetsSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -709,6 +921,9 @@ export const executionContextSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
+  piSystemPrompt: z.string().min(1).optional(),
+  piModelConfig: piModelConfigSchema.optional(),
+  runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
 /**
@@ -826,6 +1041,36 @@ export const runnersNetworkPolicyRefreshContract = c.router({
   },
 });
 
+export const runnersConnectorRuntimeSyncContract = c.router({
+  sync: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/connector-runtime/sync",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    body: z.object({
+      targets: connectorRuntimeSyncTargetsSchema,
+    }),
+    responses: {
+      200: z.object({
+        results: z.array(connectorRuntimeSyncResultSchema),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema.extend({
+        error: apiErrorSchema.shape.error.extend({
+          code: z.literal(CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE),
+        }),
+      }),
+      500: apiErrorSchema,
+    },
+    summary: "Sync active run connector runtime targets",
+  },
+});
+
 export const runnersBuiltinFirewallsResolveContract = c.router({
   resolve: {
     method: "POST",
@@ -906,10 +1151,15 @@ export type RunnersJobClaimContract = typeof runnersJobClaimContract;
 export type RunnersActiveInputsContract = typeof runnersActiveInputsContract;
 export type RunnersNetworkPolicyRefreshContract =
   typeof runnersNetworkPolicyRefreshContract;
+export type RunnersConnectorRuntimeSyncContract =
+  typeof runnersConnectorRuntimeSyncContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
+export type RunnerPreferenceDecision = z.infer<
+  typeof runnerPreferenceDecisionSchema
+>;
 export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
 export type RunnerPreferenceResolution = z.infer<
   typeof runnerPreferenceResolutionSchema
@@ -923,6 +1173,9 @@ export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
 >;
+export type RunSkillSnapshot = z.infer<typeof runSkillSnapshotSchema>;
+export type RunSkillSnapshotEntry = z.infer<typeof runSkillSnapshotEntrySchema>;
+export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
 export type CompatibleStoredExecutionContext = z.infer<
   typeof compatibleStoredExecutionContextSchema
 >;
@@ -930,6 +1183,15 @@ export type StoredConnectorPermissionBaseline = z.infer<
   typeof storedConnectorPermissionBaselineSchema
 >;
 export type NetworkPolicyRefresh = z.infer<typeof networkPolicyRefreshSchema>;
+export type ConnectorRuntimeTarget = z.infer<
+  typeof connectorRuntimeTargetSchema
+>;
+export type ConnectorRuntimeCustomAbsentReason = z.infer<
+  typeof connectorRuntimeCustomAbsentReasonSchema
+>;
+export type ConnectorRuntimeSyncResult = z.infer<
+  typeof connectorRuntimeSyncResultSchema
+>;
 export type RunnerBuiltinFirewallsResolveBody = z.infer<
   typeof runnerBuiltinFirewallsResolveBodySchema
 >;

@@ -201,6 +201,35 @@ function proSubscription(args: {
   };
 }
 
+function concurrencySubscription(args: {
+  readonly id: string;
+  readonly customerId: string;
+  readonly quantity: number;
+  readonly periodEnd: number;
+  readonly status?: string;
+  readonly cancelAtPeriodEnd?: boolean;
+}): Record<string, unknown> {
+  return {
+    id: args.id,
+    status: args.status ?? "active",
+    customer: args.customerId,
+    cancel_at: null,
+    cancel_at_period_end: args.cancelAtPeriodEnd ?? false,
+    schedule: null,
+    trial_end: null,
+    metadata: { purpose: "concurrency_subscription" },
+    items: {
+      data: [
+        {
+          price: { id: "price_bdd_concurrency" },
+          quantity: args.quantity,
+          current_period_end: args.periodEnd,
+        },
+      ],
+    },
+  };
+}
+
 function commandInput(command: unknown): Record<string, unknown> {
   if (
     typeof command === "object" &&
@@ -3631,7 +3660,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(suspended.hasSubscription).toBeFalsy();
   });
 
-  it("grants concurrency slots from invoice line quantity and drains the queue", async () => {
+  it("grants concurrency slots from Stripe subscription and drains the queue", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
@@ -3724,6 +3753,14 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       },
     };
 
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      concurrencySubscription({
+        id: subscriptionId,
+        customerId: granted.customerId,
+        quantity: 2,
+        periodEnd,
+      }),
+    );
     await api.postStripeEvent(
       stripeEvent({ type: "invoice.paid", object: invoice }),
       [200],
@@ -3731,12 +3768,12 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
     let billingStatus = await billing.readBillingStatus(actor);
     expect(billingStatus.concurrencySubscriptions).toStrictEqual([
-      {
+      expect.objectContaining({
         id: subscriptionId,
         quantity: 2,
         currentPeriodEnd: isoOf(periodEnd),
         cancelAtPeriodEnd: false,
-      },
+      }),
     ]);
 
     const after = await runs.readRunQueue(actor);
@@ -3766,6 +3803,15 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const afterReplay = await runs.readRunQueue(actor);
     expect(afterReplay.body.concurrency.limit).toBe(4);
 
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      concurrencySubscription({
+        id: subscriptionId,
+        customerId: granted.customerId,
+        quantity: 2,
+        periodEnd,
+        status: "past_due",
+      }),
+    );
     await api.postStripeEvent(
       stripeEvent({
         type: "customer.subscription.updated",
@@ -3797,6 +3843,15 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const afterPastDue = await runs.readRunQueue(actor);
     expect(afterPastDue.body.concurrency.limit).toBe(4);
 
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      concurrencySubscription({
+        id: subscriptionId,
+        customerId: granted.customerId,
+        quantity: 2,
+        periodEnd,
+        cancelAtPeriodEnd: true,
+      }),
+    );
     await api.postStripeEvent(
       stripeEvent({
         type: "customer.subscription.updated",
@@ -3815,6 +3870,14 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       cancelAtPeriodEnd: true,
     });
 
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      concurrencySubscription({
+        id: subscriptionId,
+        customerId: granted.customerId,
+        quantity: 2,
+        periodEnd,
+      }),
+    );
     await api.postStripeEvent(
       stripeEvent({
         type: "customer.subscription.updated",
@@ -3850,6 +3913,233 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(billingStatus.hasSubscription).toBeTruthy();
     const afterDeleted = await runs.readRunQueue(actor);
     expect(afterDeleted.body.concurrency.limit).toBe(2);
+  });
+
+  it("keeps Stripe quantity across prorations and stale concurrent events", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const granted = await createRunsApi(context).grantProEntitlement(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const subscriptionId = `sub_bdd_concurrency_proration_${suffix}`;
+    const initialInvoiceId = `in_bdd_concurrency_initial_${suffix}`;
+    const initialLineId = `il_bdd_concurrency_initial_${suffix}`;
+    const periodStart = epochSeconds(-1);
+    const periodEnd = epochSeconds(30);
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      concurrencySubscription({
+        id: subscriptionId,
+        customerId: granted.customerId,
+        quantity: 10,
+        periodEnd,
+      }),
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: initialInvoiceId,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: {
+              subscription: subscriptionId,
+              metadata: { purpose: "concurrency_subscription", orgId },
+            },
+          },
+          lines: {
+            data: [
+              {
+                id: initialLineId,
+                amount: 0,
+                quantity: 10,
+                price: { id: "price_bdd_concurrency" },
+                period: { start: periodStart, end: periodEnd },
+                parent: { type: "subscription_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    let billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({ id: subscriptionId, quantity: 10 }),
+    ]);
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      concurrencySubscription({
+        id: subscriptionId,
+        customerId: granted.customerId,
+        quantity: 2,
+        periodEnd,
+      }),
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: concurrencySubscription({
+          id: subscriptionId,
+          customerId: granted.customerId,
+          quantity: 2,
+          periodEnd,
+        }),
+      }),
+      [200],
+    );
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_concurrency_reduction_${suffix}`,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: {
+              subscription: subscriptionId,
+              metadata: { purpose: "concurrency_subscription", orgId },
+            },
+          },
+          lines: {
+            data: [
+              {
+                id: `il_bdd_concurrency_credit_${suffix}`,
+                amount: 0,
+                quantity: 10,
+                price: { id: "price_bdd_concurrency" },
+                period: { start: periodStart, end: periodEnd },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: {
+                    proration_details: {
+                      credited_items: {
+                        invoice: initialInvoiceId,
+                        invoice_line_items: [initialLineId],
+                      },
+                    },
+                  },
+                },
+              },
+              {
+                id: `il_bdd_concurrency_remaining_${suffix}`,
+                amount: 0,
+                quantity: 2,
+                price: { id: "price_bdd_concurrency" },
+                period: { start: periodStart, end: periodEnd },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: {
+                    proration_details: { credited_items: null },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({ id: subscriptionId, quantity: 2 }),
+    ]);
+
+    const staleState = concurrencySubscription({
+      id: subscriptionId,
+      customerId: granted.customerId,
+      quantity: 10,
+      periodEnd,
+    });
+    const currentState = concurrencySubscription({
+      id: subscriptionId,
+      customerId: granted.customerId,
+      quantity: 2,
+      periodEnd,
+    });
+    const staleRetrieve = createDeferredPromise<unknown>(context.signal);
+    const releaseStaleRetrieve = (): void => {
+      if (!staleRetrieve.settled()) {
+        staleRetrieve.resolve(staleState);
+      }
+    };
+    onTestFinished(releaseStaleRetrieve);
+    context.mocks.stripe.subscriptions.retrieve.mockReset();
+    context.mocks.stripe.subscriptions.retrieve
+      .mockImplementationOnce(() => {
+        return staleRetrieve.promise;
+      })
+      .mockResolvedValue(currentState);
+
+    const constructedEventsBefore =
+      context.mocks.stripe.webhooks.constructEvent.mock.calls.length;
+    const staleRequest = api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: staleState,
+      }),
+      [200],
+    );
+    await expect
+      .poll(() => {
+        return context.mocks.stripe.subscriptions.retrieve.mock.calls.length;
+      })
+      .toBe(1);
+
+    const currentRequest = api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: currentState,
+      }),
+      [200],
+    );
+    await expect
+      .poll(() => {
+        return context.mocks.stripe.webhooks.constructEvent.mock.calls.length;
+      })
+      .toBe(constructedEventsBefore + 2);
+    await billing.readBillingStatus(actor);
+    expect(context.mocks.stripe.subscriptions.retrieve).toHaveBeenCalledTimes(
+      1,
+    );
+
+    releaseStaleRetrieve();
+    await Promise.all([staleRequest, currentRequest]);
+    billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({ id: subscriptionId, quantity: 2 }),
+    ]);
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: concurrencySubscription({
+          id: subscriptionId,
+          customerId: granted.customerId,
+          quantity: 10,
+          periodEnd,
+        }),
+      }),
+      [200],
+    );
+
+    billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({ id: subscriptionId, quantity: 2 }),
+    ]);
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.deleted",
+        object: { id: subscriptionId },
+      }),
+      [200],
+    );
   });
 
   it("binds checkout and dashboard subscriptions to orgs without double-binding", async () => {

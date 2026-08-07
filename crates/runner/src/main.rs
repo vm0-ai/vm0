@@ -34,6 +34,7 @@ mod network_log_manager;
 mod network_log_process;
 mod network_logs;
 mod paths;
+mod pi_standby;
 mod prefetch;
 mod private_fs;
 mod process;

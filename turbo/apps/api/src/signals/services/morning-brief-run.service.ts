@@ -301,7 +301,6 @@ async function persistMorningBriefQueueEvent(
         },
       }),
       runId: null,
-      triggerSource: "workflow-schedule",
       morningBriefContext: {
         deliveryId: claimed.deliveryId,
         timezone: claimed.timezone,
@@ -485,7 +484,7 @@ async function hasPendingMorningBriefQueueEvent(
     .where(
       and(
         inArray(chatEvents.id, pendingMessageIds),
-        eq(chatEvents.triggerSource, "workflow-schedule"),
+        eq(chatEvents.contextType, "morning_brief"),
       ),
     );
   for (const message of messages) {

@@ -142,3 +142,51 @@ class TestRegistryBuiltinCatalogResolution:
                 builtin_vm("run-fallback", "fallback"),
                 builtin_firewall_catalog_snapshot=snapshot,
             )
+
+    def test_inline_custom_connector_id_is_preserved_on_firewall_and_apis(self):
+        custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
+        resolved = registry_firewalls.resolve_firewall_entries(
+            {
+                "runId": "run-custom-id",
+                "firewalls": [
+                    {
+                        "kind": "inline",
+                        "customConnectorId": custom_connector_id,
+                        "firewall": {
+                            "name": "custom_connector_test",
+                            "apis": [
+                                {
+                                    "id": "custom-api:0",
+                                    "base": "https://custom.example.test/api/",
+                                    "auth": {"headers": {}},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            },
+            builtin_firewall_catalog_snapshot=None,
+        )
+
+        assert resolved.firewalls is not None
+        assert resolved.firewalls[0]["customConnectorId"] == custom_connector_id
+        assert resolved.firewalls[0]["apis"][0]["customConnectorId"] == custom_connector_id
+
+    def test_inline_custom_connector_id_rejects_invalid_identity(self):
+        with pytest.raises(registry_firewalls.FirewallEntryResolutionError):
+            registry_firewalls.resolve_firewall_entries(
+                {
+                    "runId": "run-custom-id",
+                    "firewalls": [
+                        {
+                            "kind": "inline",
+                            "customConnectorId": "not-a-uuid",
+                            "firewall": {
+                                "name": "custom_connector_test",
+                                "apis": [],
+                            },
+                        }
+                    ],
+                },
+                builtin_firewall_catalog_snapshot=None,
+            )

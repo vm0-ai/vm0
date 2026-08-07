@@ -114,19 +114,17 @@ export function createThreadSidebarSignals(
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
   });
-  const selectedArtifactText$ = computed(
-    async (get, { signal }): Promise<string> => {
-      const detail = await get(artifactCatalog.selectedArtifactDetail$);
-      if (!detail) {
-        throw new Error("Selected artifact is unavailable");
-      }
-      const preview = artifactDetailPreview(detail);
-      if (!isTextPreviewKind(preview.kind)) {
-        throw new Error("Selected artifact is not a text preview");
-      }
-      return fetchPreviewText(preview.url, signal);
-    },
-  );
+  const selectedArtifactText$ = computed(async (get): Promise<string> => {
+    const detail = await get(artifactCatalog.selectedArtifactDetail$);
+    if (!detail) {
+      throw new Error("Selected artifact is unavailable");
+    }
+    const preview = artifactDetailPreview(detail);
+    if (!isTextPreviewKind(preview.kind)) {
+      throw new Error("Selected artifact is not a text preview");
+    }
+    return fetchPreviewText(preview.url);
+  });
 
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);

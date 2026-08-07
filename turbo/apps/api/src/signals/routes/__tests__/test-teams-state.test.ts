@@ -11,9 +11,7 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { sendTeamsMessageReply } from "../../external/teams-bot-client";
 import { testTeamsDispatchProbeRoutes } from "../test-teams-dispatch-probe";
-import { testTeamsMockRoutes } from "../test-teams-mock";
 import { testTeamsStateRoutes } from "../test-teams-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
@@ -44,11 +42,7 @@ function uniqueId(prefix: string): string {
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: [
-      ...testTeamsStateRoutes,
-      ...testTeamsDispatchProbeRoutes,
-      ...testTeamsMockRoutes,
-    ],
+    routes: [...testTeamsStateRoutes, ...testTeamsDispatchProbeRoutes],
   });
   return Promise.resolve(app.request(path, init));
 }
@@ -319,116 +313,6 @@ describe("GET /api/test/teams-state", () => {
     expect(body.default_compose_version).toMatchObject({
       content_keys: expect.arrayContaining(["version", "agents"]),
     });
-  });
-
-  it("returns persisted Teams mock calls for e2e assertions", async () => {
-    mockEnv("ENV", "development");
-    const fixture = await seedTeamsFixture();
-
-    const response = await requestApp(
-      "/api/test/teams-mock/service/v3/conversations/19%3Ae2e-dm%40thread.v2/activities/activity-e2e",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          type: "message",
-          text: "HELLO_FROM_TEAMS_E2E",
-          channelData: { tenant: { id: fixture.tenantId } },
-        }),
-      },
-    );
-    expect(response.status).toBe(200);
-
-    const body = await readTeamsState(fixture.tenantId);
-    expect(body.mock_calls).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          method: "replyActivity",
-          tenantId: fixture.tenantId,
-          activityId: "activity-e2e",
-          bodyJson: expect.objectContaining({
-            text: "HELLO_FROM_TEAMS_E2E",
-          }),
-        }),
-      ]),
-    );
-  });
-});
-
-describe("Teams e2e mock routing", () => {
-  it("uses the preview API mock URL and bypass headers for Teams callbacks", async () => {
-    mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", undefined);
-    mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", undefined);
-    mockOptionalEnv("E2E_TEAMS_MOCK_ENABLED", "1");
-    mockOptionalEnv("VERCEL_URL", undefined);
-    mockOptionalEnv("VM0_API_BACKEND_URL", "https://api-preview.test");
-    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
-
-    const tokenRequests: URLSearchParams[] = [];
-    const postedBodies: unknown[] = [];
-    server.use(
-      http.post(
-        "https://api-preview.test/api/test/teams-mock/token",
-        async ({ request }) => {
-          expect(request.headers.get("x-vercel-protection-bypass")).toBe(
-            "preview-secret",
-          );
-          expect(request.headers.get("x-vm0-test-endpoint-bypass")).toBe(
-            "preview-secret",
-          );
-          tokenRequests.push(new URLSearchParams(await request.text()));
-          return HttpResponse.json({
-            access_token: "teams-token",
-            token_type: "Bearer",
-            expires_in: 3600,
-          });
-        },
-      ),
-      http.post(
-        "https://api-preview.test/api/test/teams-mock/service/v3/conversations/:conversationId/activities/:activityId",
-        async ({ request }) => {
-          expect(request.headers.get("x-vercel-protection-bypass")).toBe(
-            "preview-secret",
-          );
-          expect(request.headers.get("x-vm0-test-endpoint-bypass")).toBe(
-            "preview-secret",
-          );
-          postedBodies.push(await request.json());
-          return HttpResponse.json({ id: "reply-activity" });
-        },
-      ),
-    );
-
-    const result = await sendTeamsMessageReply({
-      serviceUrl: "https://api-preview.test/api/test/teams-mock/service/",
-      conversationId: "19:e2e-dm@thread.v2",
-      activityId: "activity-e2e",
-      tenantId: "tenant-e2e",
-      text: "HELLO_FROM_TEAMS_E2E",
-      signal: context.signal,
-    });
-
-    expect(result).toStrictEqual({
-      kind: "ok",
-      activityId: "reply-activity",
-    });
-    expect(tokenRequests).toHaveLength(1);
-    expect(tokenRequests[0]?.get("client_id")).toBe("e2e-teams-bot-app-id");
-    expect(tokenRequests[0]?.get("client_secret")).toBe(
-      "e2e-teams-bot-app-password",
-    );
-    expect(tokenRequests[0]?.get("scope")).toBe(
-      "https://api.botframework.com/.default",
-    );
-    expect(postedBodies).toStrictEqual([
-      expect.objectContaining({
-        type: "message",
-        text: "HELLO_FROM_TEAMS_E2E",
-        channelData: {
-          tenant: { id: "tenant-e2e" },
-        },
-      }),
-    ]);
   });
 });
 

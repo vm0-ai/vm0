@@ -32,6 +32,7 @@ function browserSession(
     status: "active",
     viewerUrl: `https://app.vm0.ai/browsers/${threadId}`,
     liveUrl,
+    screenshotUrl: null,
     proxyCountryCode: null,
     timeoutMinutes: 240,
     idleExpiresAt: "2026-07-24T10:10:00.000Z",
@@ -134,7 +135,10 @@ describe("browser session page", () => {
     });
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
       expect(params.id).toBe(threadId);
-      return respond(200, { lastReadAt: null });
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending: false,
+      });
     });
 
     detachedSetupPage({

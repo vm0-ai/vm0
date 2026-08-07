@@ -355,7 +355,6 @@ async function persistCanonicalSlackMessage(
           }),
         }),
         runId: null,
-        triggerSource: "slack",
         slackContext: args.slackContext,
         createdAt: args.ingress.createdAt,
       },

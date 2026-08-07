@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.65](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.64...guest-common-v0.2.65) (2026-08-07)
+
+
+### Bug Fixes
+
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
+## [0.2.64](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.63...guest-common-v0.2.64) (2026-08-07)
+
+## [0.2.63](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.62...guest-common-v0.2.63) (2026-08-06)
+
 ## [0.2.62](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.61...guest-common-v0.2.62) (2026-08-05)
 
 ## [0.2.61](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.60...guest-common-v0.2.61) (2026-08-04)

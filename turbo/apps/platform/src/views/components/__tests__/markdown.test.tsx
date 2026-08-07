@@ -22,12 +22,7 @@ function mockThread(content: string): void {
   context.mocks.api(
     chatThreadEventsContract.list,
     ({ params, query, respond }) => {
-      if (
-        query.sinceSeqId !== undefined ||
-        query.beforeSeqId !== undefined ||
-        query.sinceId !== undefined ||
-        query.beforeId !== undefined
-      ) {
+      if (query.sinceSeqId !== undefined || query.beforeSeqId !== undefined) {
         return respond(200, { events: [] });
       }
 
@@ -48,6 +43,7 @@ function mockThread(content: string): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
 }
@@ -614,7 +610,14 @@ describe("assistant markdown", () => {
       ].join("\n"),
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+    // The switch must be on explicitly: this asserts ascii output is unchanged
+    // *by the cjk plugins*, so it would stop guarding anything if it ran on the
+    // stock CommonMark path.
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.CjkFriendlyMarkdown]: true },
+    });
 
     await waitFor(() => {
       expect(

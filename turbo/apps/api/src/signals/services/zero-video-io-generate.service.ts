@@ -3,6 +3,25 @@ import { Buffer } from "node:buffer";
 import { command, computed, type Computed } from "ccstate";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import {
+  DEFAULT_VIDEO_ASPECT_RATIO,
+  DEFAULT_VIDEO_DURATION,
+  DEFAULT_VIDEO_MODEL,
+  SEEDANCE_RESOLUTIONS,
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_DURATIONS,
+  VIDEO_MODEL_ALIASES,
+  VIDEO_MODEL_CONFIGS,
+  VIDEO_MODELS,
+  VIDEO_RESOLUTIONS,
+  type SeedanceResolution,
+  type VideoAspectRatio,
+  type VideoDuration,
+  type VideoModel,
+  type VideoModelConfig,
+  type VideoProvider,
+  type VideoResolution,
+} from "@vm0/core/video-model-catalog";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -17,7 +36,6 @@ import {
   type BuiltInGenerationUsageIdempotency,
 } from "./built-in-generation-usage-idempotency";
 
-const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
 const BYTEPLUS_VIDEO_TASKS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
 const MINIMAX_VIDEO_GENERATION_URL =
@@ -70,108 +88,7 @@ const VIDEO_PRICING_CATEGORIES = [
   ...MINIMAX_VIDEO_PRICING_CATEGORIES,
 ] as const;
 
-const VIDEO_ASPECT_RATIOS = [
-  "21:9",
-  "16:9",
-  "4:3",
-  "1:1",
-  "3:4",
-  "9:16",
-] as const;
-const STANDARD_VIDEO_ASPECT_RATIOS = ["16:9", "9:16"] as const;
-const VIDEO_DURATIONS = [
-  "2s",
-  "3s",
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-  "13s",
-  "14s",
-  "15s",
-] as const;
-const VEO_VIDEO_DURATIONS = ["4s", "6s", "8s"] as const;
-const KLING_VIDEO_DURATIONS = [
-  "3s",
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-  "13s",
-  "14s",
-  "15s",
-] as const;
-const SEEDANCE_2_DURATIONS = [
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-  "13s",
-  "14s",
-  "15s",
-] as const;
-const SEEDANCE_1_5_DURATIONS = [
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-] as const;
-const MINIMAX_H3_DURATIONS = [
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-  "13s",
-  "14s",
-  "15s",
-] as const;
-const VIDEO_RESOLUTIONS = [
-  "480p",
-  "720p",
-  "768p",
-  "1080p",
-  "2k",
-  "4k",
-] as const;
-const SEEDANCE_RESOLUTIONS = ["480p", "720p", "1080p"] as const;
-const SEEDANCE_FAST_RESOLUTIONS = ["480p", "720p"] as const;
-const VEO_VIDEO_RESOLUTIONS = ["720p", "1080p", "4k"] as const;
-const KLING_4K_VIDEO_RESOLUTIONS = ["4k"] as const;
-const MINIMAX_H3_RESOLUTIONS = ["768p", "2k"] as const;
-
-type VideoAspectRatio = (typeof VIDEO_ASPECT_RATIOS)[number];
-type VideoDuration = (typeof VIDEO_DURATIONS)[number];
-type VideoResolution = (typeof VIDEO_RESOLUTIONS)[number];
-type SeedanceResolution = (typeof SEEDANCE_RESOLUTIONS)[number];
 type VideoPricingCategory = (typeof VIDEO_PRICING_CATEGORIES)[number];
-type VideoProvider = "byteplus" | "fal" | "minimax";
-type VideoModelFamily = "seedance-2" | "seedance-1-5";
-type FalRequestFormat = "veo" | "kling";
 type VideoDimensions = {
   readonly width: number;
   readonly height: number;
@@ -180,44 +97,6 @@ type DimensionTable = Record<
   SeedanceResolution,
   Record<VideoAspectRatio, VideoDimensions>
 >;
-
-interface BaseVideoModelConfig {
-  readonly alias: string;
-  readonly aspectRatios: readonly VideoAspectRatio[];
-  readonly durations: readonly VideoDuration[];
-  readonly resolutions: readonly VideoResolution[];
-  readonly defaultResolution: VideoResolution;
-  readonly supportsGenerateAudio: boolean;
-  readonly supportsSeed: boolean;
-  readonly supportsNegativePrompt: boolean;
-  readonly supportsAutoFix: boolean;
-  readonly supportsSafetyTolerance: boolean;
-  readonly supportsReferenceImage: boolean;
-  readonly supportsReferenceVideo: boolean;
-  readonly supportsReferenceAudio: boolean;
-  readonly supportsFirstFrame: boolean;
-  readonly supportsLastFrame: boolean;
-  readonly public: boolean;
-}
-
-interface BytePlusVideoModelConfig extends BaseVideoModelConfig {
-  readonly provider: "byteplus";
-  readonly family: VideoModelFamily;
-}
-
-interface FalVideoModelConfig extends BaseVideoModelConfig {
-  readonly provider: "fal";
-  readonly requestFormat: FalRequestFormat;
-}
-
-interface MiniMaxVideoModelConfig extends BaseVideoModelConfig {
-  readonly provider: "minimax";
-}
-
-type VideoModelConfig =
-  | BytePlusVideoModelConfig
-  | FalVideoModelConfig
-  | MiniMaxVideoModelConfig;
 
 const SEEDANCE_2_DIMENSIONS = {
   "480p": {
@@ -245,147 +124,6 @@ const SEEDANCE_2_DIMENSIONS = {
     "9:16": { width: 1080, height: 1920 },
   },
 } as const satisfies DimensionTable;
-
-const VIDEO_MODEL_CONFIGS = {
-  "dreamina-seedance-2-0-260128": {
-    provider: "byteplus",
-    alias: "dreamina-seedance-2.0",
-    family: "seedance-2",
-    aspectRatios: VIDEO_ASPECT_RATIOS,
-    durations: SEEDANCE_2_DURATIONS,
-    resolutions: SEEDANCE_RESOLUTIONS,
-    defaultResolution: "720p",
-    supportsGenerateAudio: true,
-    supportsSeed: true,
-    supportsNegativePrompt: false,
-    supportsAutoFix: false,
-    supportsSafetyTolerance: false,
-    supportsReferenceImage: true,
-    supportsReferenceVideo: true,
-    supportsReferenceAudio: true,
-    supportsFirstFrame: true,
-    supportsLastFrame: true,
-    public: true,
-  },
-  "dreamina-seedance-2-0-fast-260128": {
-    provider: "byteplus",
-    alias: "dreamina-seedance-2.0-fast",
-    family: "seedance-2",
-    aspectRatios: VIDEO_ASPECT_RATIOS,
-    durations: SEEDANCE_2_DURATIONS,
-    resolutions: SEEDANCE_FAST_RESOLUTIONS,
-    defaultResolution: "720p",
-    supportsGenerateAudio: true,
-    supportsSeed: true,
-    supportsNegativePrompt: false,
-    supportsAutoFix: false,
-    supportsSafetyTolerance: false,
-    supportsReferenceImage: true,
-    supportsReferenceVideo: true,
-    supportsReferenceAudio: true,
-    supportsFirstFrame: true,
-    supportsLastFrame: true,
-    public: true,
-  },
-  "seedance-1-5-pro-251215": {
-    provider: "byteplus",
-    alias: "seedance-1.5-pro",
-    family: "seedance-1-5",
-    aspectRatios: VIDEO_ASPECT_RATIOS,
-    durations: SEEDANCE_1_5_DURATIONS,
-    resolutions: SEEDANCE_RESOLUTIONS,
-    defaultResolution: "720p",
-    supportsGenerateAudio: true,
-    supportsSeed: true,
-    supportsNegativePrompt: false,
-    supportsAutoFix: false,
-    supportsSafetyTolerance: false,
-    supportsReferenceImage: true,
-    supportsReferenceVideo: false,
-    supportsReferenceAudio: false,
-    supportsFirstFrame: true,
-    supportsLastFrame: true,
-    public: true,
-  },
-  "fal-ai/veo3.1/fast": {
-    provider: "fal",
-    alias: "veo3.1-fast",
-    requestFormat: "veo",
-    aspectRatios: STANDARD_VIDEO_ASPECT_RATIOS,
-    durations: VEO_VIDEO_DURATIONS,
-    resolutions: VEO_VIDEO_RESOLUTIONS,
-    defaultResolution: "720p",
-    supportsGenerateAudio: true,
-    supportsSeed: true,
-    supportsNegativePrompt: true,
-    supportsAutoFix: true,
-    supportsSafetyTolerance: true,
-    supportsReferenceImage: false,
-    supportsReferenceVideo: false,
-    supportsReferenceAudio: false,
-    supportsFirstFrame: false,
-    supportsLastFrame: false,
-    public: true,
-  },
-  "fal-ai/kling-video/v3/4k/text-to-video": {
-    provider: "fal",
-    alias: "kling-v3-4k",
-    requestFormat: "kling",
-    aspectRatios: STANDARD_VIDEO_ASPECT_RATIOS,
-    durations: KLING_VIDEO_DURATIONS,
-    resolutions: KLING_4K_VIDEO_RESOLUTIONS,
-    defaultResolution: "4k",
-    supportsGenerateAudio: true,
-    supportsSeed: false,
-    supportsNegativePrompt: true,
-    supportsAutoFix: false,
-    supportsSafetyTolerance: false,
-    supportsReferenceImage: false,
-    supportsReferenceVideo: false,
-    supportsReferenceAudio: false,
-    supportsFirstFrame: false,
-    supportsLastFrame: false,
-    public: true,
-  },
-  "MiniMax-H3": {
-    provider: "minimax",
-    alias: "minimax-h3",
-    aspectRatios: VIDEO_ASPECT_RATIOS,
-    durations: MINIMAX_H3_DURATIONS,
-    resolutions: MINIMAX_H3_RESOLUTIONS,
-    defaultResolution: "2k",
-    supportsGenerateAudio: true,
-    supportsSeed: false,
-    supportsNegativePrompt: false,
-    supportsAutoFix: false,
-    supportsSafetyTolerance: false,
-    supportsReferenceImage: true,
-    supportsReferenceVideo: true,
-    supportsReferenceAudio: true,
-    supportsFirstFrame: true,
-    supportsLastFrame: true,
-    public: true,
-  },
-} as const satisfies Record<string, VideoModelConfig>;
-
-type VideoModel = keyof typeof VIDEO_MODEL_CONFIGS;
-
-const VIDEO_MODELS = Object.keys(VIDEO_MODEL_CONFIGS) as VideoModel[];
-
-const VIDEO_MODEL_ALIASES = {
-  "dreamina-seedance-2.0": "dreamina-seedance-2-0-260128",
-  "dreamina-seedance-2-0": "dreamina-seedance-2-0-260128",
-  "dreamina-seedance-2.0-fast": "dreamina-seedance-2-0-fast-260128",
-  "dreamina-seedance-2-0-fast": "dreamina-seedance-2-0-fast-260128",
-  "seedance-1.5-pro": "seedance-1-5-pro-251215",
-  "seedance-1-5-pro": "seedance-1-5-pro-251215",
-  "seedance2.0": "dreamina-seedance-2-0-260128",
-  "seedance2.0-fast": "dreamina-seedance-2-0-fast-260128",
-  "veo3.1-fast": "fal-ai/veo3.1/fast",
-  "kling-v3-4k": "fal-ai/kling-video/v3/4k/text-to-video",
-  "minimax-h3": "MiniMax-H3",
-  h3: "MiniMax-H3",
-} as const satisfies Readonly<Record<string, VideoModel>>;
 
 type ErrorStatus = 400 | 402 | 500 | 502 | 503 | 504;
 
@@ -1046,7 +784,11 @@ function parseVideoAspectRatio(
   body: Record<string, unknown>,
   modelConfig: VideoModelConfig,
 ): VideoAspectRatio | VideoErrorResponse {
-  const aspectRatio = readString(body, "aspectRatio", "16:9");
+  const aspectRatio = readString(
+    body,
+    "aspectRatio",
+    DEFAULT_VIDEO_ASPECT_RATIO,
+  );
   if (!includesString(VIDEO_ASPECT_RATIOS, aspectRatio)) {
     return badRequest(`Unsupported video aspect ratio: ${aspectRatio}`);
   }
@@ -1070,7 +812,7 @@ export function parseVideoOptions(
     return prompt;
   }
 
-  const rawModel = readString(body, "model", VIDEO_IO_MODEL);
+  const rawModel = readString(body, "model", DEFAULT_VIDEO_MODEL);
   const model = normalizeVideoModel(rawModel);
   if (!model) {
     return badRequest(
@@ -1092,7 +834,7 @@ export function parseVideoOptions(
     return aspectRatio;
   }
 
-  const duration = readString(body, "duration", "8s");
+  const duration = readString(body, "duration", DEFAULT_VIDEO_DURATION);
   if (!includesString(VIDEO_DURATIONS, duration)) {
     return badRequest(`Unsupported video duration: ${duration}`);
   }

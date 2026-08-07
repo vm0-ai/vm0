@@ -47,6 +47,8 @@ const L = logger("webhooks:agent");
 
 interface SandboxOperationDimensionInput {
   readonly error?: string;
+  readonly outcome?: string;
+  readonly reason?: string;
   readonly runner_startup_path?: RunnerStartupPath;
   readonly sandbox_reuse_result?: SandboxReuseResult;
   readonly encoding?: string;
@@ -67,6 +69,8 @@ function sandboxOperationDimensions(
   return {
     source: "sandbox",
     ...(op.error ? { error: op.error } : {}),
+    ...(op.outcome ? { outcome: op.outcome } : {}),
+    ...(op.reason ? { reason: op.reason } : {}),
     ...(op.runner_startup_path
       ? { runner_startup_path: op.runner_startup_path }
       : {}),

@@ -7,7 +7,7 @@ import { accept } from "../../lib/accept.ts";
 export type SlackConnectStatus = "idle" | "success";
 
 export const slackConnectStatus$ = computed(
-  async (get, { signal }): Promise<SlackConnectStatus> => {
+  async (get): Promise<SlackConnectStatus> => {
     const params = get(searchParams$);
     const workspaceId = params.get("w");
     const initialStatus = params.get("status");
@@ -23,14 +23,8 @@ export const slackConnectStatus$ = computed(
 
     const client = get(zeroClient$)(zeroSlackConnectContract);
     const [result] = await Promise.allSettled([
-      accept(
-        client.getStatus({
-          fetchOptions: { signal },
-        }),
-        [200],
-      ),
+      accept(client.getStatus(), [200]),
     ]);
-    signal.throwIfAborted();
 
     return result?.status === "fulfilled" && result.value.body.isConnected
       ? "success"

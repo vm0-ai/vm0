@@ -8,12 +8,13 @@ use api_contracts::generated::constants::client::headers::{
     CLIENT_REQUEST_ID_HEADER, CLIENT_SESSION_ID_HEADER, CLIENT_TYPE_HEADER, CLIENT_VERSION_HEADER,
 };
 use api_contracts::generated::constants::client::types::CLIENT_TYPE_GUEST_AGENT;
+use api_contracts::generated::types::webhooks::agent::pi_transcript::Response as PiTranscriptResponse;
 use bytes::{Bytes, BytesMut};
 use guest_common::log_warn;
 use http_body::{Frame, SizeHint};
 use pin_project_lite::pin_project;
 use reqwest::header::CONTENT_TYPE;
-use reqwest::{Client, RequestBuilder, Response};
+use reqwest::{Client, RequestBuilder, Response, Url};
 use serde::Serialize;
 use serde_json::Value;
 use std::future::Future;
@@ -106,6 +107,7 @@ struct ApiUrls {
     checkpoint: String,
     complete: String,
     heartbeat: String,
+    pi_transcript: String,
     telemetry: String,
     checkpoint_prepare_history: String,
     storage_prepare: String,
@@ -260,6 +262,10 @@ impl HttpClient {
         Ok(&self.api_config()?.urls.heartbeat)
     }
 
+    pub(crate) fn pi_transcript_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.pi_transcript)
+    }
+
     pub(crate) fn telemetry_url(&self) -> Result<&str, AgentError> {
         Ok(&self.api_config()?.urls.telemetry)
     }
@@ -312,6 +318,7 @@ impl ApiUrls {
             checkpoint: urls::checkpoint_url(base_url),
             complete: urls::complete_url(base_url),
             heartbeat: urls::heartbeat_url(base_url),
+            pi_transcript: urls::pi_transcript_url(base_url),
             telemetry: urls::telemetry_url(base_url),
             checkpoint_prepare_history: urls::checkpoint_prepare_history_url(base_url),
             storage_prepare: urls::storage_prepare_url(base_url),
@@ -464,6 +471,64 @@ impl HttpClient {
     ) -> Result<Option<Value>, AgentError> {
         let body = Bytes::from(serde_json::to_vec(body)?);
         self.post_json_bytes(url, body, max_attempts).await
+    }
+
+    /// Read the canonical versioned Pi transcript for a standby handoff.
+    ///
+    /// The sandbox token remains inside guest-agent; the zero child receives
+    /// only the parsed response through its local JSONL protocol.
+    pub async fn get_pi_transcript(
+        &self,
+        run_id: &str,
+        max_attempts: u32,
+    ) -> Result<PiTranscriptResponse, AgentError> {
+        let client = self.inner()?;
+        let api = self.api_config()?;
+        let url = self.pi_transcript_url()?;
+        let mut transcript_url = Url::parse(url)
+            .map_err(|error| AgentError::Http(format!("invalid Pi transcript URL: {error}")))?;
+        transcript_url
+            .query_pairs_mut()
+            .append_pair("runId", run_id);
+        let response = send_with_retry(
+            "GET Pi transcript",
+            max_attempts,
+            self.retry_delay,
+            format!("GET Pi transcript failed after {max_attempts} attempts"),
+            || {
+                let request_id = Uuid::new_v4().to_string();
+                let mut request = client
+                    .get(transcript_url.clone())
+                    .header("Authorization", format!("Bearer {}", api.token))
+                    .header(CLIENT_VERSION_HEADER, GUEST_AGENT_CLIENT_VERSION)
+                    .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_GUEST_AGENT)
+                    .header(CLIENT_SESSION_ID_HEADER, api.client_session_id.as_str())
+                    .header(CLIENT_REQUEST_ID_HEADER, &request_id);
+                if !api.vercel_bypass.is_empty() {
+                    request =
+                        request.header("x-vercel-protection-bypass", &api.vercel_bypass);
+                }
+                std::future::ready(Ok(RetryRequest::observed(request, request_id)))
+            },
+            |response, attempt, max_attempts| async move {
+                let status = response.status();
+                log_warn!(
+                    LOG_TAG,
+                    "HTTP GET Pi transcript failed (attempt {attempt}/{max_attempts}): HTTP {status}",
+                );
+                AgentError::HttpStatus {
+                    status: status.as_u16(),
+                    message: format!("GET Pi transcript: HTTP {status}"),
+                }
+            },
+            None,
+        )
+        .await?;
+
+        response
+            .json::<PiTranscriptResponse>()
+            .await
+            .map_err(|error| AgentError::Http(format_reqwest_error(error)))
     }
 
     pub(crate) async fn post_json_bytes(

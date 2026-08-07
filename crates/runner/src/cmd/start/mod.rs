@@ -319,6 +319,7 @@ async fn run_start_with_home(
         .map_err(|e| RunnerError::Internal(format!("register signal handlers: {e}")))?;
 
     let mut runner_config = config::load_for_start(&args.config, args.api_url.as_deref()).await?;
+    config::install_internal_profile_aliases(&mut runner_config.profiles);
     let registry_config_path = tokio::fs::canonicalize(&args.config).await.map_err(|e| {
         RunnerError::Config(format!(
             "canonicalize config path {} for live runner registry: {e}",

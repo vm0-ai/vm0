@@ -38,8 +38,8 @@ _MALFORMED_SUCCESS_PREFIX = "Firewall auth endpoint returned malformed success r
 _MISSING_FIELD = object()
 
 
-def _fail_if_ordinary_upstream_credentials_are_revalidated() -> bool:
-    raise AssertionError("ordinary upstream credential guard must not run")
+def _fail_if_current_firewall_authorization_is_revalidated() -> bool:
+    raise AssertionError("current firewall authorization guard must not run")
 
 
 def _allow(
@@ -289,8 +289,8 @@ class TestHandleFirewallRequest:
                 flow,
                 allow,
                 vm_info,
-                revalidate_ordinary_upstream_credentials=(
-                    _fail_if_ordinary_upstream_credentials_are_revalidated
+                revalidate_current_firewall_authorization=(
+                    _fail_if_current_firewall_authorization_is_revalidated
                 ),
             )
 

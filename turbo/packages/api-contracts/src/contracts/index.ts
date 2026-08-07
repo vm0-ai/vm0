@@ -88,10 +88,6 @@ export {
   type ArtifactConfig,
 } from "./composes";
 export {
-  testAgentComposesContract,
-  type TestAgentComposesContract,
-} from "./test-agent-composes";
-export {
   ALL_RUN_STATUSES,
   runStatusSchema,
   unifiedRunRequestSchema,
@@ -139,10 +135,6 @@ export {
   type ConcurrencyInfo,
   type QueueResponse,
 } from "./runs";
-export {
-  testAgentRunsContract,
-  type TestAgentRunsContract,
-} from "./test-agent-runs";
 export {
   ZERO_RECOGNITION_MAX_FILE_BYTES,
   ZERO_RECOGNITION_MAX_PROMPT_CHARS,
@@ -322,41 +314,6 @@ export {
   type ConnectorsSlugCallbackContract,
 } from "./connectors-slug-callback";
 export {
-  testOAuthProviderAuthorizeContract,
-  testOAuthProviderAuthorizeErrorSchema,
-  testOAuthProviderAuthorizeQuerySchema,
-  type TestOAuthProviderAuthorizeContract,
-  type TestOAuthProviderAuthorizeQuery,
-} from "./test-oauth-provider-authorize";
-export {
-  testOAuthProviderEchoContract,
-  testOAuthProviderEchoErrorSchema,
-  testOAuthProviderEchoResponseSchema,
-  type TestOAuthProviderEchoContract,
-  type TestOAuthProviderEchoResponse,
-} from "./test-oauth-provider-echo";
-export {
-  testOAuthProviderTokenContract,
-  testOAuthProviderTokenErrorSchema,
-  testOAuthProviderTokenResponseSchema,
-  type TestOAuthProviderTokenContract,
-  type TestOAuthProviderTokenResponse,
-} from "./test-oauth-provider-token";
-export {
-  testOAuthProviderDeviceAuthContract,
-  testOAuthProviderDeviceAuthErrorSchema,
-  testOAuthProviderDeviceAuthResponseSchema,
-  type TestOAuthProviderDeviceAuthContract,
-  type TestOAuthProviderDeviceAuthResponse,
-} from "./test-oauth-provider-device-auth";
-export {
-  testOAuthProviderUserinfoContract,
-  testOAuthProviderUserinfoErrorSchema,
-  testOAuthProviderUserinfoResponseSchema,
-  type TestOAuthProviderUserinfoContract,
-  type TestOAuthProviderUserinfoResponse,
-} from "./test-oauth-provider-userinfo";
-export {
   testComputerUseStateContract,
   testComputerUseStateDeleteResponseSchema,
   testComputerUseStateGetResponseSchema,
@@ -375,15 +332,6 @@ export {
   type TestRuntimeStateActionResponse,
   type TestRuntimeStateContract,
 } from "./test-runtime-state";
-export {
-  testZeroAgentStateActionBodySchema,
-  testZeroAgentStateActionResponseSchema,
-  testZeroAgentStateContract,
-  testZeroAgentStateErrorSchema,
-  type TestZeroAgentStateActionBody,
-  type TestZeroAgentStateActionResponse,
-  type TestZeroAgentStateContract,
-} from "./test-zero-agent-state";
 export {
   testModelProviderStateActionBodySchema,
   testModelProviderStateActionResponseSchema,
@@ -431,32 +379,6 @@ export {
   type TestSlackStateContract,
   type TestSlackStateResponse,
 } from "./test-slack-state";
-export {
-  SLACK_E2E_FIXTURES,
-  SLACK_E2E_SCOPES,
-  testSlackMockAuthTestResponseSchema,
-  testSlackMockChatPostEphemeralResponseSchema,
-  testSlackMockChatPostMessageResponseSchema,
-  testSlackMockContract,
-  testSlackMockConversationMessagesResponseSchema,
-  testSlackMockConversationsOpenResponseSchema,
-  testSlackMockOauthAccessResponseSchema,
-  testSlackMockOkResponseSchema,
-  testSlackMockUsersInfoResponseSchema,
-  type TestSlackMockContract,
-  type TestSlackMockUsersInfoResponse,
-} from "./test-slack-mock";
-export {
-  testTelegramMockContract,
-  testTelegramMockErrorResponseSchema,
-  testTelegramMockPathParamsSchema,
-  testTelegramMockSuccessResponseSchema,
-  type TestTelegramMockContract,
-} from "./test-telegram-mock";
-export {
-  testTeamsMockContract,
-  type TestTeamsMockContract,
-} from "./test-teams-mock";
 export {
   testTeamsStateContract,
   testTeamsStateErrorSchema,
@@ -639,7 +561,6 @@ export {
   chatEventsContract,
   chatThreadEventsContract,
   chatThreadArtifactsContract,
-  artifactsContract,
   chatSearchContract,
   chatThreadSnapshotProjectionSchema,
   chatThreadEventSchema,
@@ -656,8 +577,6 @@ export {
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
-  imageArtifactEditSnapshotSchema,
-  imageArtifactEditSnapshotStateSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
@@ -676,7 +595,6 @@ export {
   type ChatEventsContract,
   type ChatThreadEventsContract,
   type ChatThreadArtifactsContract,
-  type ArtifactsContract,
   type ChatSearchContract,
   type ChatSearchResponse,
   type ChatSearchResult,
@@ -697,8 +615,6 @@ export {
   type PersistedAttachment,
   type AttachFile,
   type ResolvedAttachFile,
-  type ImageArtifactEditSnapshot,
-  type ImageArtifactEditSnapshotState,
   type ChatThreadArtifactFile,
   type ChatThreadArtifactGoogleDriveSync,
   type ChatThreadArtifactRun,
@@ -707,6 +623,7 @@ export {
   runnersPollContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
+  runnersConnectorRuntimeSyncContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   heartbeatBodySchema,
@@ -714,6 +631,8 @@ export {
   jobSchema,
   executionContextSchema,
   storedExecutionContextSchema,
+  runSkillSnapshotSchema,
+  runSkillSnapshotEntrySchema,
   secretConnectorMetadataSchema,
   secretConnectorMetadataMapSchema,
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
@@ -721,7 +640,9 @@ export {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
+  PI_SKILLS_ROOT,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
   storageMountEntrySchema,
@@ -732,12 +653,18 @@ export {
   type RunnersPollContract,
   type RunnersJobClaimContract,
   type RunnersNetworkPolicyRefreshContract,
+  type RunnersConnectorRuntimeSyncContract,
   type RunnersBuiltinFirewallsResolveContract,
   type RunnersHeartbeatContract,
   type Job,
   type ExecutionContext,
   type StoredExecutionContext,
+  type RunSkillSnapshot,
+  type RunSkillSnapshotEntry,
   type NetworkPolicyRefresh,
+  type ConnectorRuntimeTarget,
+  type ConnectorRuntimeCustomAbsentReason,
+  type ConnectorRuntimeSyncResult,
   type SecretConnectorMetadata,
   type CanonicalStorageManifest,
   type StorageMountEntry,
@@ -951,6 +878,9 @@ export {
   githubWorkflowJobCompletedEventConfigSchema,
   githubWorkflowRunCompletedEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
+  stripeInvoiceBillingReasonSchema,
+  stripeInvoicePaidEventCreateConfigSchema,
+  stripeInvoicePaidEventConfigSchema,
   zeroWorkflowScheduleSchema,
   zeroWorkflowAutomationSummarySchema,
   chatThreadWorkflowAutomationSchema,
@@ -992,6 +922,9 @@ export {
   type GithubWorkflowRunCompletedEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarWorkflowEventConfig,
+  type StripeInvoiceBillingReason,
+  type StripeInvoicePaidEventCreateConfig,
+  type StripeInvoicePaidEventConfig,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowAutomationSummary,
   type ChatThreadWorkflowAutomation,
@@ -1181,7 +1114,6 @@ export {
   setCustomConnectorValuesBodySchema,
   startCustomConnectorOAuth2BodySchema,
   startCustomConnectorOAuth2ResponseSchema,
-  patchCustomConnectorBodySchema,
   customConnectorAuthModeSchema,
   customConnectorOAuthConfigSchema,
   customConnectorOAuthConfigInputSchema,
@@ -1198,7 +1130,6 @@ export {
   type CustomConnectorValueInput,
   type SetCustomConnectorValuesBody,
   type UpdateCustomConnectorBody,
-  type PatchCustomConnectorBody,
 } from "./zero-custom-connectors";
 export {
   zeroAgentCustomConnectorsContract,
@@ -1660,20 +1591,6 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
-  ZERO_IMAGE_INTERPRET_MARKS_MAX_REGIONS,
-  ZERO_IMAGE_INTERPRET_MARKS_MAX_INSTRUCTION_LENGTH,
-  zeroImageIoInterpretMarksContract,
-  zeroImageIoInterpretMarksRegionSchema,
-  zeroImageIoInterpretMarksRequestSchema,
-  zeroImageIoInterpretMarksResultSchema,
-  zeroImageIoInterpretMarksResponseSchema,
-  type ZeroImageIoInterpretMarksContract,
-  type ZeroImageIoInterpretMarksRegion,
-  type ZeroImageIoInterpretMarksRequest,
-  type ZeroImageIoInterpretMarksResult,
-  type ZeroImageIoInterpretMarksResponse,
-} from "./zero-image-io-interpret-marks";
-export {
   zeroImageShareXContract,
   zeroImageShareXRequestSchema,
   zeroImageShareXResponseSchema,
@@ -1800,7 +1717,6 @@ export {
   zeroUploadsContract,
   type ZeroUploadsContract,
   type UploadPrepareResponse,
-  type UploadImportImageResponse,
 } from "./zero-uploads";
 export {
   zeroGoalsContract,

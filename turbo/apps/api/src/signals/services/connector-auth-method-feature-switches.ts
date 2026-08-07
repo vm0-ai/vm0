@@ -12,7 +12,6 @@ const FEATURE_SWITCH_BY_AUTH_METHOD = Object.freeze<
   Record<string, FeatureSwitchKey | undefined>
 >({
   "ahrefs\0oauth": FeatureSwitchKey.AhrefsConnector,
-  "aws\0cli": FeatureSwitchKey.AwsConnector,
   "bentoml\0api-token": FeatureSwitchKey.BentomlConnector,
   "bill\0api-token": FeatureSwitchKey.BillConnector,
   "box\0oauth": FeatureSwitchKey.BoxConnector,

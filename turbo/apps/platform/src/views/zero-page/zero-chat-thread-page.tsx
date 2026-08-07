@@ -119,7 +119,12 @@ import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  videoTemplateOptionsEnabled$,
+} from "../../signals/external/feature-switch.ts";
+import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+import { resolveVideoGenerationOptions } from "@vm0/core/video-model-catalog";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -149,6 +154,7 @@ import {
 import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
+  type CatalogConnectorSignals,
   type ConnectorSignals,
   type CustomConnectorSignals,
 } from "../../signals/chat-page/connector-action-block.ts";
@@ -179,6 +185,10 @@ import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
+import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
+import { connectorCurrentConnectionStatus } from "../../signals/zero-page/settings/connectors.ts";
+import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
@@ -4624,9 +4634,6 @@ function BodyRenderBlockView({
     case "connector-action": {
       return <ConnectorActionCard signals={block.signals} />;
     }
-    case "custom-connector-action": {
-      return <CustomConnectorActionCard signals={block.signals} />;
-    }
     case "permission-action": {
       return <PermissionActionCard signals={block.signals} />;
     }
@@ -4748,7 +4755,11 @@ function ConnectorActionCardSkeleton() {
   );
 }
 
-function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
+function CatalogConnectorActionCard({
+  signals,
+}: {
+  signals: CatalogConnectorSignals;
+}) {
   const pageSignal = useGet(pageSignal$);
   const catalogItemLoadable = useLastLoadable(signals.catalogItem$);
   const catalogItem = useLastResolved(signals.catalogItem$);
@@ -4774,9 +4785,14 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
         "justify-between overflow-hidden",
         CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
       )}
-      connector={catalogItem}
+      icon={<ConnectorIcon icon={catalogItem.icon} size={22} />}
+      label={catalogItem.label}
+      description={catalogItem.description}
       connected={connected}
       complete={complete}
+      reconnectRequired={
+        connectorCurrentConnectionStatus(catalogItem) === "reconnect-required"
+      }
       busy={loading}
       onActivate={() => {
         detach(activate(pageSignal), Reason.DomCallback);
@@ -4791,42 +4807,58 @@ function CustomConnectorActionCard({
   signals: CustomConnectorSignals;
 }) {
   const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const connectorLoadable = useLastLoadable(signals.connector$);
+  const connector = useLastResolved(signals.connector$);
+  const connected = useLastResolved(signals.connected$) ?? false;
+  const completeLoadable = useLoadable(signals.complete$);
+  const complete =
+    completeLoadable.state === "hasData" && completeLoadable.data;
+  const [activateLoadable, activate] = useLoadableSet(signals.activate$);
+  const loading =
+    completeLoadable.state === "loading" ||
+    activateLoadable.state === "loading";
+  if (!connector && connectorLoadable.state === "loading") {
+    return <ConnectorActionCardSkeleton />;
+  }
+  if (!connector) {
+    return null;
+  }
+
   return (
-    <div
-      data-testid="custom-connector-action-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <IconPackage size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {signals.displayName}
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {signals.agentId
-              ? t(($) => {
-                  return $.chat.connectors.customAuthorizeDescription;
-                })
-              : t(($) => {
-                  return $.chat.connectors.customConnectDescription;
-                })}
-          </div>
-        </div>
-      </div>
-      <a
-        href={signals.originalUrl}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
-      >
-        {t(($) => {
-          return $.chat.actions.configure;
-        })}
-        <IconArrowUpRight size={15} />
-      </a>
-    </div>
+    <ConnectorCard
+      variant="action"
+      className={cn(
+        "justify-between overflow-hidden",
+        CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
+      )}
+      icon={
+        <CustomConnectorIcon
+          id={connector.id}
+          displayName={connector.displayName}
+          size={22}
+        />
+      }
+      label={connector.displayName}
+      description={t(($) => {
+        return $.chat.connectors.customAuthorizeDescription;
+      })}
+      connected={connected}
+      complete={complete}
+      reconnectRequired={false}
+      busy={loading}
+      onActivate={() => {
+        detach(activate(pageSignal), Reason.DomCallback);
+      }}
+    />
+  );
+}
+
+function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
+  return signals.kind === "catalog" ? (
+    <CatalogConnectorActionCard signals={signals} />
+  ) : (
+    <CustomConnectorActionCard signals={signals} />
   );
 }
 
@@ -5642,27 +5674,44 @@ function ChatConnectorActionConnectModal() {
   const close = useSet(closeChatConnectorActionConnectDialog$);
   const runCallback = useSet(runChatActionCallback$);
   const pageSignal = useGet(pageSignal$);
+  const customConnectors = useLastResolved(customConnectors$);
 
   if (!active) {
     return null;
+  }
+
+  const onSuccess = async () => {
+    if (active.callbackPrompt && active.threadId) {
+      await runCallback(
+        {
+          threadId: active.threadId,
+          agentId: active.agentId,
+          callbackPrompt: active.callbackPrompt,
+        },
+        pageSignal,
+      );
+    }
+  };
+
+  if (active.kind === "custom") {
+    const connector = customConnectors?.find((candidate) => {
+      return candidate.slug === active.connectorSlug;
+    });
+    return connector ? (
+      <CustomConnectorConnectDialog
+        connector={connector}
+        agentId={active.agentId}
+        onClose={close}
+        onSuccess={onSuccess}
+      />
+    ) : null;
   }
 
   return (
     <ConnectModal
       agentId={active.agentId}
       onClose={close}
-      onSuccess={async () => {
-        if (active.callbackPrompt && active.threadId) {
-          await runCallback(
-            {
-              threadId: active.threadId,
-              agentId: active.agentId,
-              callbackPrompt: active.callbackPrompt,
-            },
-            pageSignal,
-          );
-        }
-      }}
+      onSuccess={onSuccess}
     />
   );
 }
@@ -7120,6 +7169,25 @@ const STRUCTURED_INLINE_REFERENCE_CLASS =
   "active:bg-orange-500/20 dark:bg-orange-400/15 dark:text-orange-300 " +
   "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
 
+/**
+ * Read-only echo of the parameters a sent video used, resolved the same way the
+ * composer chip resolves them. Talking-avatar templates share the "video"
+ * envelope but take none of these parameters.
+ */
+function sentVideoTemplateSpec(
+  template: GenerationTemplateRequest,
+): string | undefined {
+  if (template.type !== "video") {
+    return undefined;
+  }
+  const { selection } = template;
+  if (parseAvatarTemplateStylePresetId(selection.stylePresetId) !== undefined) {
+    return undefined;
+  }
+  const resolved = resolveVideoGenerationOptions(selection.videoOptions);
+  return `${resolved.aspectRatio} \u00b7 ${resolved.duration}`;
+}
+
 function templatePickerCategoryForReference(
   template: GenerationTemplateRequest,
 ): string {
@@ -7151,6 +7219,10 @@ function UserMessageTemplateReference({
 }) {
   const { t } = useTranslation();
   const typeLabel = generationTemplateTypeLabel(part.template);
+  const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
+  const spec = videoOptionsEnabled
+    ? sentVideoTemplateSpec(part.template)
+    : undefined;
   const setTemplatePickerCategory = useSet(
     signals.template.setTemplatePickerCategory$,
   );
@@ -7216,6 +7288,11 @@ function UserMessageTemplateReference({
     >
       <IconColorSwatch size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      {spec !== undefined && (
+        <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
+          {spec}
+        </span>
+      )}
     </button>
   );
 }
@@ -7633,14 +7710,12 @@ function UserMessageView({
   document,
   attachments,
   elevatedFileIds,
-  inlineTemplatesEnabled,
   agentReferenceSignalsForId,
   composerSignals,
 }: {
   document: UserMessageDocument;
   attachments: readonly ResolvedAttachFile[];
   elevatedFileIds: ReadonlySet<string>;
-  inlineTemplatesEnabled: boolean;
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }) {
@@ -7649,11 +7724,7 @@ function UserMessageView({
     (part): part is UserMessageContentPart => {
       return (
         !isUserMessageHiddenPart(part) &&
-        !isElevatedUserMessagePart(
-          part,
-          elevatedFileIds,
-          inlineTemplatesEnabled,
-        )
+        !isElevatedUserMessagePart(part, elevatedFileIds)
       );
     },
   );
@@ -7716,12 +7787,8 @@ function UserMessageView({
 function isElevatedUserMessagePart(
   part: UserMessagePart,
   elevatedFileIds: ReadonlySet<string>,
-  inlineTemplatesEnabled: boolean,
 ): boolean {
-  return (
-    (!inlineTemplatesEnabled && part.type === "template") ||
-    (part.type === "file" && elevatedFileIds.has(part.fileId))
-  );
+  return part.type === "file" && elevatedFileIds.has(part.fileId);
 }
 
 function UserMessageContent({
@@ -7729,7 +7796,6 @@ function UserMessageContent({
   attachments,
   referenceAttachments,
   onImageClick,
-  inlineTemplatesEnabled,
   agentReferenceSignalsForId,
   composerSignals,
 }: {
@@ -7737,7 +7803,6 @@ function UserMessageContent({
   attachments: ReturnType<typeof resolveAttachments>;
   referenceAttachments: readonly ResolvedAttachFile[];
   onImageClick: (url: string) => void;
-  inlineTemplatesEnabled: boolean;
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }) {
@@ -7752,33 +7817,15 @@ function UserMessageContent({
       return attachment.id ? [attachment.id] : [];
     }),
   );
-  const templateParts = inlineTemplatesEnabled
-    ? []
-    : document.parts.filter((part) => {
-        return part.type === "template";
-      });
   const hasBody = document.parts.some((part) => {
     return (
       !isUserMessageHiddenPart(part) &&
-      !isElevatedUserMessagePart(part, elevatedFileIds, inlineTemplatesEnabled)
+      !isElevatedUserMessagePart(part, elevatedFileIds)
     );
   });
 
   return (
     <>
-      {templateParts.length > 0 ? (
-        <div className="mb-1.5 flex max-w-[85%] flex-wrap justify-end gap-1.5">
-          {templateParts.map((part) => {
-            return (
-              <UserMessageTemplateReference
-                key={`${part.template.type}:${part.titleSnapshot}`}
-                part={part}
-                signals={composerSignals}
-              />
-            );
-          })}
-        </div>
-      ) : null}
       <UserMessageAttachments
         attachments={elevatedAttachments}
         onImageClick={onImageClick}
@@ -7790,7 +7837,6 @@ function UserMessageContent({
               document={document}
               attachments={referenceAttachments}
               elevatedFileIds={elevatedFileIds}
-              inlineTemplatesEnabled={inlineTemplatesEnabled}
               agentReferenceSignalsForId={agentReferenceSignalsForId}
               composerSignals={composerSignals}
             />
@@ -7899,25 +7945,14 @@ function GoalUserMessage({
   );
 }
 
-function useUserMessageRendering() {
-  const featureSwitches = useGet(featureSwitch$);
-  return {
-    inlineTemplates:
-      featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
-      false,
-  };
-}
-
 function resolvePagedUserMessageRendering({
   event,
   inputEvent,
   userMessage,
-  inlineTemplates,
 }: {
   event: EnrichedChatEvent;
   inputEvent: ChatInputEvent | undefined;
   userMessage: UserMessageDocument | undefined;
-  inlineTemplates: boolean;
 }) {
   const legacyContent = event.content ?? "";
   const { cleanContent, parsed } = parseInlineAttachments(
@@ -7929,9 +7964,7 @@ function resolvePagedUserMessageRendering({
       ? inputEvent.attachFiles
       : undefined;
   const copyText = canonicalUserMessage
-    ? (messageDocumentToPrompt(canonicalUserMessage, {
-        inlineTemplates,
-      }) ?? "")
+    ? (messageDocumentToPrompt(canonicalUserMessage) ?? "")
     : cleanContent;
   const legacyClipboardAttachments = clipboardAttachmentsFromEvent(
     event,
@@ -7975,7 +8008,6 @@ function PagedUserMessage({
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
 }) {
-  const { inlineTemplates } = useUserMessageRendering();
   const inputEvent = asInputChatEvent(event);
   const userMessage = visibleUserMessage(inputEvent);
   const {
@@ -7988,7 +8020,6 @@ function PagedUserMessage({
     event,
     inputEvent,
     userMessage,
-    inlineTemplates,
   });
   const bodyBlocks = event.blocks;
   const pageSignal = useGet(pageSignal$);
@@ -8065,7 +8096,6 @@ function PagedUserMessage({
               attachments={allAttachments}
               referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
-              inlineTemplatesEnabled={inlineTemplates}
               agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
               composerSignals={thread.composer}
             />

@@ -88,6 +88,26 @@ export const webhookStripeContract = c.router({
   },
 });
 
+/**
+ * Stripe Connect workflow-event webhook contract. This route is intentionally
+ * separate from the vm0 billing webhook above.
+ */
+export const webhookStripeWorkflowEventsContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/stripe-workflow-events",
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      500: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Stripe Connect workflow events",
+  },
+});
+
 const gmailWebhookResponseSchema = z.object({
   success: z.literal(true),
   watchStates: z.number(),
@@ -429,6 +449,12 @@ const firewallAuthResponseSchema = z.object({
   refreshedSecrets: z.array(z.string()),
 });
 
+const matchedFirewallAuthContextSchema = z.object({
+  name: z.string().min(1),
+  apiId: z.string().min(1),
+  customConnectorId: z.uuid().optional(),
+});
+
 export const webhookFirewallAuthContract = c.router({
   /**
    * POST /api/webhooks/agent/firewall/auth
@@ -453,6 +479,9 @@ export const webhookFirewallAuthContract = c.router({
       // alone is not enough to locate access storage.
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
       vars: z.record(z.string(), z.string()).optional(),
+      // Stable matched-firewall identity used to resolve custom connector auth.
+      // Older addons omit this field and retain run-scoped auth-reference behavior.
+      matchedFirewall: matchedFirewallAuthContextSchema.optional(),
       // Set by mitm from billableFirewalls. Server uses this only to bound
       // auth cache lifetime by the current credit authorization lease.
       firewallBillable: z.boolean().optional(),
@@ -497,10 +526,49 @@ export const webhookEventsContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
     summary: "Receive agent events from sandbox",
+  },
+});
+
+const piTranscriptMessageSchema = z.object({
+  ordinal: z.number().int().positive(),
+  messageId: z.string(),
+  runId: z.string(),
+  runEventSequenceNumber: z.number().int().nonnegative(),
+  role: z.string(),
+  payload: z.unknown(),
+  createdAt: z.string(),
+});
+
+export const piTranscriptResponseSchema = z.object({
+  version: z.number().int().positive(),
+  lastOrdinal: z.number().int().nonnegative(),
+  messages: z.array(piTranscriptMessageSchema),
+});
+
+/**
+ * Pi transcript read contract for /api/webhooks/agent/pi-transcript.
+ * Returns the latest-version Pi transcript of the chat thread the run
+ * belongs to, for sandbox handoff/resume.
+ */
+export const webhookPiTranscriptContract = c.router({
+  read: {
+    method: "GET",
+    path: "/api/webhooks/agent/pi-transcript",
+    headers: authHeadersSchema,
+    query: z.object({
+      runId: z.string().min(1, "runId is required"),
+    }),
+    responses: {
+      200: piTranscriptResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Read the Pi transcript for the run's chat thread",
   },
 });
 
@@ -534,7 +602,7 @@ export const webhookCompleteContract = c.router({
     responses: {
       200: z.object({
         success: z.boolean(),
-        status: z.enum(["completed", "failed"]),
+        status: z.enum(["completed", "failed", "released"]),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -724,6 +792,8 @@ const sandboxOperationSchema = z.object({
   duration_ms: z.number(),
   success: z.boolean(),
   error: z.string().optional(),
+  outcome: z.string().max(64).optional(),
+  reason: z.string().max(64).optional(),
   runner_startup_path: runnerStartupPathSchema.optional(),
   sandbox_reuse_result: sandboxReuseResultSchema.optional(),
   encoding: sessionHistoryEncodingSchema.optional(),
@@ -878,6 +948,8 @@ export type WebhookGoogleCalendarContract =
 export type WebhookGoogleWorkspaceEventsContract =
   typeof webhookGoogleWorkspaceEventsContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
+export type WebhookStripeWorkflowEventsContract =
+  typeof webhookStripeWorkflowEventsContract;
 export type WebhookWorkflowAutomationContract =
   typeof webhookWorkflowAutomationContract;
 export type WebhookBuiltInGenerationFalContract =

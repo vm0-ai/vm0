@@ -66,9 +66,12 @@ type OnboardingConnectorCardProps = {
 
 type ActionConnectorCardProps = {
   readonly variant: "action";
-  readonly connector: PlatformConnectorCatalogStatusItem;
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly description: string;
   readonly connected: boolean;
   readonly complete: boolean;
+  readonly reconnectRequired: boolean;
   readonly busy: boolean;
   readonly className?: string;
   readonly onActivate: () => void;
@@ -229,9 +232,11 @@ function ConnectorConnectionStatus({
             return $.connectors.card.connected;
           }));
     return (
-      <span className="flex items-center gap-2 truncate text-xs text-muted-foreground">
+      <span className="flex min-w-0 items-center gap-2 truncate text-xs text-muted-foreground">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-        <span className="truncate">{connectedText}</span>
+        <span className="min-w-0 truncate" title={connectedText}>
+          {connectedText}
+        </span>
       </span>
     );
   }
@@ -276,7 +281,7 @@ function ConnectionConnectorCard({
         </span>
       </div>
       <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
-        <div className="flex shrink-0 items-center gap-2 overflow-hidden">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <ConnectorConnectionStatus
             connector={connector}
             connected={connected}
@@ -432,16 +437,17 @@ function OnboardingConnectorCard({
 }
 
 function ActionConnectorCard({
-  connector,
+  icon,
+  label,
+  description,
   connected,
   complete,
+  reconnectRequired,
   busy,
   className,
   onActivate,
 }: ActionConnectorCardProps) {
   const { t } = useTranslation();
-  const reconnectRequired =
-    connectorCurrentConnectionStatus(connector) === "reconnect-required";
   const actionLabel = complete
     ? t(($) => {
         return $.connectors.card.authorized;
@@ -468,17 +474,17 @@ function ActionConnectorCard({
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon icon={connector.icon} size={22} />
+          {icon}
         </div>
         <div className="min-w-0">
           <div
             data-testid="connector-card-label"
             className="truncate text-[0.9375rem] font-medium text-foreground"
           >
-            {connector.label}
+            {label}
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {connector.description}
+            {description}
           </div>
         </div>
       </div>

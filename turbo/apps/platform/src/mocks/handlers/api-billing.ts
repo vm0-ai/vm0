@@ -120,6 +120,15 @@ export const apiBillingHandlers = [
   ),
 
   mockApi(
+    zeroBillingConcurrencySubscriptionContract.reduce,
+    ({ body, respond }) => {
+      return respond(200, {
+        url: `https://billing.stripe.com/test-concurrency-reduction?quantity=${body.quantity}`,
+      });
+    },
+  ),
+
+  mockApi(
     zeroBillingConcurrencySubscriptionContract.restore,
     ({ params, respond }) => {
       mockBillingStatus.concurrencySubscriptions =

@@ -11,9 +11,12 @@ import {
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
   type ModelProviderType,
+  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  type ConnectorRuntimeSyncResult,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -86,6 +89,11 @@ import {
   readAgentRunCallbacks$,
   seedAgentRunCallback$,
 } from "./helpers/agent-run-callback";
+import {
+  deleteSlackIntegrationFixture$,
+  seedSlackEnvironmentAgent$,
+  seedSlackOrgInstallation$,
+} from "./helpers/zero-integrations-slack";
 import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import {
   clearRunApiStart,
@@ -122,6 +130,7 @@ import {
 
 const context = testContext();
 const callbackStore = createStore();
+const fixtureStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const ASSISTANT_EVENT_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
@@ -130,6 +139,12 @@ function runnerPreference(
   job: RunnerJob | null | undefined,
 ): RunnerJob["runnerPreference"] {
   return job?.runnerPreference;
+}
+
+function runnerPreferenceDecision(
+  job: RunnerJob | null | undefined,
+): RunnerJob["runnerPreferenceDecision"] {
+  return job?.runnerPreferenceDecision;
 }
 
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
@@ -560,6 +575,50 @@ function inlineFirewallApis(
     throw new Error(`Expected inline firewall entry: ${name}`);
   }
   return entry.firewall.apis;
+}
+
+type AvailableCustomConnectorRuntime = Extract<
+  ConnectorRuntimeSyncResult,
+  { readonly state: "available"; readonly target: { readonly kind: "custom" } }
+>;
+
+function availableCustomConnectorRuntime(
+  result: ConnectorRuntimeSyncResult | undefined,
+): AvailableCustomConnectorRuntime {
+  if (
+    !result ||
+    result.state !== "available" ||
+    result.target.kind !== "custom" ||
+    !("firewall" in result)
+  ) {
+    throw new Error("Expected the custom runtime target to be available");
+  }
+  return result;
+}
+
+function customConnectorRuntimeAuthBody(
+  runtime: AvailableCustomConnectorRuntime,
+  encryptedSecrets: string,
+) {
+  const api = runtime.firewall.firewall.apis[0];
+  if (!api) {
+    throw new Error("Expected the synced custom firewall API");
+  }
+  return {
+    api,
+    body: {
+      encryptedSecrets,
+      authHeaders: api.auth.headers ?? {},
+      ...(api.auth.base ? { authBase: api.auth.base } : {}),
+      ...(api.auth.query ? { authQuery: api.auth.query } : {}),
+      ...(api.auth.awsSigv4 ? { authAwsSigv4: api.auth.awsSigv4 } : {}),
+      matchedFirewall: {
+        name: runtime.firewall.firewall.name,
+        apiId: api.id,
+        customConnectorId: runtime.firewall.customConnectorId,
+      },
+    },
+  };
 }
 
 async function waitForRunStatus(
@@ -3597,6 +3656,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(poll.body.job?.runId).toBe(resumed.runId);
     expect(poll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
     expect(poll.body.job?.reuseKey).toBeNull();
+    expect(runnerPreferenceDecision(poll.body.job)).toStrictEqual({
+      kind: "noPreference",
+      reason: "noReuseKey",
+    });
     expect(runnerPreference(poll.body.job)).toBeUndefined();
 
     const resumedClaim = await api.claimRunnerJob(resumed.runId);
@@ -3719,6 +3782,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       cliAgentSessionId,
     );
     expect(canonicalHeartbeatHolder.job?.reuseKey).toBe(reuseKey);
+    expect(
+      runnerPreferenceDecision(canonicalHeartbeatHolder.job),
+    ).toStrictEqual({
+      kind: "noPreference",
+      reason: "noViableHolder",
+    });
     expect(runnerPreference(canonicalHeartbeatHolder.job)).toBeUndefined();
     expect(canonicalHeartbeatHolder.job?.runnerPreferenceResolution).toBe(
       "no_viable_holder",
@@ -3745,6 +3814,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue with a workspace-only holder",
     );
     expect(workspaceOnlyHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(runnerPreferenceDecision(workspaceOnlyHolder.job)).toStrictEqual({
+      kind: "preference",
+      runnerIdentity: {
+        runnerId: reuseRunnerId,
+        heartbeatGeneration: 1,
+      },
+      tier: "workspaceCache",
+      expiresAt: expect.any(String),
+    });
     expect(runnerPreference(workspaceOnlyHolder.job)).toStrictEqual({
       runnerIdentity: {
         runnerId: reuseRunnerId,
@@ -3790,13 +3868,25 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const reusableOverWorkspace = await pollFollowUp(
       "prefer a reusable holder over a capable workspace holder",
     );
-    const reusablePreference = {
+    const reusableDecision = runnerPreferenceDecision(
+      reusableOverWorkspace.job,
+    );
+    expect(reusableDecision).toStrictEqual({
+      kind: "preference",
       runnerIdentity: {
         runnerId: reusableRunnerId,
         heartbeatGeneration: 1,
       },
-      reason: "matchingReuseKey" as const,
+      tier: "reusableSandbox",
       expiresAt: expect.any(String),
+    });
+    if (reusableDecision?.kind !== "preference") {
+      throw new Error("Expected a reusable sandbox preference decision");
+    }
+    const reusablePreference = {
+      runnerIdentity: reusableDecision.runnerIdentity,
+      reason: "matchingReuseKey" as const,
+      expiresAt: reusableDecision.expiresAt,
     };
     expect(runnerPreference(reusableOverWorkspace.job)).toStrictEqual(
       reusablePreference,
@@ -3808,6 +3898,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "job",
       expect.objectContaining({
         runId: reusableOverWorkspace.run.runId,
+        runnerPreferenceDecision: {
+          kind: "preference",
+          runnerIdentity: reusablePreference.runnerIdentity,
+          tier: "reusableSandbox",
+          expiresAt: reusablePreference.expiresAt,
+        },
         runnerPreference: reusablePreference,
         runnerPreferenceResolution: "matching_reusable_sandbox",
       }),
@@ -3828,6 +3924,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const mismatchedCapableWorkspace = await pollFollowUp(
       "continue with a mismatched capable workspace",
     );
+    expect(
+      runnerPreferenceDecision(mismatchedCapableWorkspace.job),
+    ).toStrictEqual({
+      kind: "noPreference",
+      reason: "noViableHolder",
+    });
     expect(runnerPreference(mismatchedCapableWorkspace.job)).toBeUndefined();
     expect(mismatchedCapableWorkspace.job?.runnerPreferenceResolution).toBe(
       "no_viable_holder",
@@ -3843,6 +3945,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const differentGenerationHolder = await pollFollowUp(
       "continue with a different reusable generation",
     );
+    expect(
+      runnerPreferenceDecision(differentGenerationHolder.job),
+    ).toStrictEqual({
+      kind: "preference",
+      runnerIdentity: {
+        runnerId: reuseRunnerId,
+        heartbeatGeneration: 1,
+      },
+      tier: "reusableSandbox",
+      expiresAt: expect.any(String),
+    });
     expect(runnerPreference(differentGenerationHolder.job)).toStrictEqual({
       runnerIdentity: {
         runnerId: reuseRunnerId,
@@ -3865,6 +3978,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const exactGenerationHolder = await pollFollowUp(
       "continue with exact reusable generation",
     );
+    expect(runnerPreferenceDecision(exactGenerationHolder.job)).toStrictEqual({
+      kind: "preference",
+      runnerIdentity: {
+        runnerId: reuseRunnerId,
+        heartbeatGeneration: 1,
+      },
+      tier: "exactSandbox",
+      expiresAt: expect.any(String),
+    });
     expect(runnerPreference(exactGenerationHolder.job)).toStrictEqual({
       runnerIdentity: {
         runnerId: reuseRunnerId,
@@ -3877,14 +3999,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "exact_history_generation",
     );
 
-    for (const { runId, resolution } of [
+    for (const { runId, resolution, tier } of [
       {
         runId: reusableOverWorkspace.run.runId,
         resolution: "matching_reusable_sandbox",
+        tier: "reusableSandbox",
       },
       {
         runId: capableWorkspaceHolder.run.runId,
         resolution: "matching_workspace_cache",
+        tier: "workspaceCache",
       },
     ]) {
       for (const actionType of [
@@ -3896,6 +4020,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         expect(events[0]).toStrictEqual(
           expect.objectContaining({
             runner_preference_resolution: resolution,
+            runner_preference_decision_kind: "preference",
+            runner_preference_tier: tier,
             reuse_key_kind: "thread",
           }),
         );
@@ -3952,12 +4078,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       reason: "finalizingPredecessor" as const,
       expiresAt: new Date(sourceCompletedAt + 1500).toISOString(),
     };
+    const finalizingDecision = {
+      kind: "preference" as const,
+      runnerIdentity: sourceRunnerIdentity,
+      tier: "finalizingPredecessor" as const,
+      expiresAt: finalizingPreference.expiresAt,
+    };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
       expect.objectContaining({
         runId: successor.runId,
         reuseKey,
         historyGenerationRunId: first.runId,
+        runnerPreferenceDecision: finalizingDecision,
         runnerPreference: finalizingPreference,
         runnerPreferenceResolution: "finalizing_predecessor",
       }),
@@ -3976,6 +4109,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected finalizing predecessor poll to succeed");
     }
     expect(sourcePoll.body.job?.runId).toBe(successor.runId);
+    expect(runnerPreferenceDecision(sourcePoll.body.job)).toStrictEqual(
+      finalizingDecision,
+    );
     expect(runnerPreference(sourcePoll.body.job)).toStrictEqual(
       finalizingPreference,
     );
@@ -3991,6 +4127,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ).toContainEqual(
         expect.objectContaining({
           runner_preference_resolution: "finalizing_predecessor",
+          runner_preference_decision_kind: "preference",
+          runner_preference_tier: "finalizingPredecessor",
           history_generation_run_id: first.runId,
         }),
       );
@@ -4119,12 +4257,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const exactPreference = {
       runnerIdentity: exactRunnerIdentity,
       reason: "exactHistoryGeneration" as const,
-      expiresAt: new Date(successorCreatedAt + 500).toISOString(),
+      expiresAt: new Date(successorCreatedAt + 1000).toISOString(),
+    };
+    const exactDecision = {
+      kind: "preference" as const,
+      runnerIdentity: exactRunnerIdentity,
+      tier: "exactSandbox" as const,
+      expiresAt: exactPreference.expiresAt,
     };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
       expect.objectContaining({
         runId: successor.runId,
+        runnerPreferenceDecision: exactDecision,
         runnerPreference: exactPreference,
       }),
     );
@@ -4141,6 +4286,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected exact-history poll to succeed");
     }
     expect(poll.body.job?.runId).toBe(successor.runId);
+    expect(runnerPreferenceDecision(poll.body.job)).toStrictEqual(
+      exactDecision,
+    );
     expect(runnerPreference(poll.body.job)).toStrictEqual(exactPreference);
 
     await api.requestCancelRun(actor, successor.runId, [200]);
@@ -4377,7 +4525,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const exactRunnerPreference = {
       runnerIdentity: preferredExactRunner,
       reason: "exactHistoryGeneration" as const,
-      expiresAt: new Date(queueInsertedAt + 500).toISOString(),
+      expiresAt: new Date(queueInsertedAt + 1000).toISOString(),
     };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
@@ -4485,7 +4633,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       threadId: first.threadId,
       prompt: "continue after exact generation protection expires",
     });
-    mockNow(generationExpiredAt + 600);
+    mockNow(generationExpiredAt + 1100);
     const generationExpiredPoll = await api.requestPollRunner(
       true,
       { group: runnerGroup, supportedProfiles: ["vm0/default"] },
@@ -4511,6 +4659,21 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       prompt: "continue after reuse-preference protection expires",
     });
     mockNow(now() + 60_000);
+    const expiredPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (expiredPoll.status !== 200) {
+      throw new Error("Expected expired reuse-preference poll to return 200");
+    }
+    expect(expiredPoll.body.job?.runId).toBe(expiredFollowUp.runId);
+    expect(runnerPreferenceDecision(expiredPoll.body.job)).toStrictEqual({
+      kind: "noPreference",
+      reason: "expired",
+    });
+    expect(runnerPreference(expiredPoll.body.job)).toBeUndefined();
+    expect(expiredPoll.body.job?.runnerPreferenceResolution).toBe("expired");
     const expiredClaim = await api.requestClaimRunnerJob(
       true,
       expiredFollowUp.runId,
@@ -5174,6 +5337,17 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(promotedStorageState.has_stored_storage_manifest).toBeFalsy();
     expect(promotedStorageState.canonical_mount_count).toBeGreaterThan(0);
     expect(promotedStorageState.has_run_context_storage).toBeFalsy();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "job",
+      expect.objectContaining({
+        runId: third.runId,
+        runnerPreferenceDecision: {
+          kind: "noPreference",
+          reason: "noReuseKey",
+        },
+        runnerPreferenceResolution: "no_reuse_key",
+      }),
+    );
     const decryptCountBeforeClaim = await readFakeKmsDecryptCallCount(context);
     await api.heartbeatRunner(runnerGroup);
     const thirdClaim = await api.claimRunnerJob(third.runId);
@@ -5224,6 +5398,8 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
           profile: "vm0/default",
           notification_target: "broadcast",
           runner_preference_resolution: "no_reuse_key",
+          runner_preference_decision_kind: "noPreference",
+          runner_preference_no_preference_reason: "noReuseKey",
           reuse_key_kind: "none",
         }),
       );
@@ -6046,6 +6222,66 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 
+  it("keeps VM0 DeepSeek admission after a Slack fixture releases its shared key", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const selectedModel = "deepseek-v4-flash";
+    const slackOrgId = `org_${randomUUID()}`;
+    const slackUserId = `user_${randomUUID()}`;
+    const slackFixture = await fixtureStore.set(
+      seedSlackOrgInstallation$,
+      { orgId: slackOrgId },
+      context.signal,
+    );
+    let slackReleased = false;
+    const releaseSlackFixture = async (): Promise<void> => {
+      if (slackReleased) {
+        return;
+      }
+      await fixtureStore.set(
+        deleteSlackIntegrationFixture$,
+        slackFixture,
+        context.signal,
+      );
+      slackReleased = true;
+    };
+    onTestFinished(releaseSlackFixture);
+    await fixtureStore.set(
+      seedSlackEnvironmentAgent$,
+      { orgId: slackOrgId, userId: slackUserId },
+      context.signal,
+    );
+    await seedVm0ManagedModelKey(selectedModel);
+    await releaseSlackFixture();
+
+    const { actor, agentId } = await entitledRunActor();
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: selectedModel,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "vm0 DeepSeek admission after shared fixture release",
+        model: selectedModel,
+      },
+      [201],
+    );
+    expect(sent.status).toBe(201);
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the DeepSeek chat send to create a run");
+    }
+    expect(sent.body.runId).not.toBeNull();
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
+  });
+
   it("claims vm0 DeepSeek V4 Flash runs with the Responses adapter", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -6161,7 +6397,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       },
     ]);
 
-    async function claimModel(model: string) {
+    async function claimModel(model: SupportedRunModel) {
       const sent = await chat.requestSendEvent(
         actor,
         {
@@ -8093,6 +8329,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
     expect(claim.secretValues).not.toContain("custom-secret-value");
+    expect(claim.connectorRuntimeTargets ?? []).not.toContainEqual({
+      kind: "custom",
+      customConnectorId: custom.id,
+    });
+    const legacyCustomFirewall = findFirewallEntry(
+      claim.firewalls,
+      internalName,
+    );
+    if (!legacyCustomFirewall || legacyCustomFirewall.kind !== "inline") {
+      throw new Error("Expected the legacy custom firewall snapshot");
+    }
+    expect(legacyCustomFirewall.customConnectorId).toBeUndefined();
 
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -8109,6 +8357,185 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(resolved.body.headers).toStrictEqual({
       Authorization: "Bearer custom-secret-value",
+    });
+
+    const target = { kind: "custom" as const, customConnectorId: custom.id };
+    const [initialRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const initialAvailable = availableCustomConnectorRuntime(initialRuntime);
+    expect(initialAvailable.nextSyncAt).toBeUndefined();
+    const { api: initialApi, body: currentAuthBody } =
+      customConnectorRuntimeAuthBody(
+        initialAvailable,
+        fw.encryptedSecretsBody({}),
+      );
+    expect(initialApi.id).toBe(`${internalName}:0`);
+    expect(initialAvailable.firewall.customConnectorId).toBe(custom.id);
+    expect(initialAvailable.networkPolicy.unknownPolicy).toBe("allow");
+    const initialCurrentAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(initialCurrentAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer custom-secret-value" },
+      expiresAt: null,
+    });
+
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "updated-custom-secret-value",
+    );
+    const currentUpdatedAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(currentUpdatedAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer updated-custom-secret-value" },
+      expiresAt: null,
+    });
+
+    const [updatedRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const updatedAvailable = availableCustomConnectorRuntime(updatedRuntime);
+    expect(updatedAvailable.firewall.customConnectorId).toBe(custom.id);
+    const { body: updatedAuthBody } = customConnectorRuntimeAuthBody(
+      updatedAvailable,
+      fw.encryptedSecretsBody({}),
+    );
+    const updatedCurrentAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      updatedAuthBody,
+      [200],
+    );
+    expect(updatedCurrentAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer updated-custom-secret-value" },
+    });
+
+    await connectors.deleteCustomConnectorSecret(actor, custom.id);
+    const [missingCredentialsRuntime] = await api.syncConnectorRuntime(
+      run.runId,
+      { targets: [target] },
+    );
+    const missingCredentialsAvailable = availableCustomConnectorRuntime(
+      missingCredentialsRuntime,
+    );
+    expect(missingCredentialsAvailable.firewall).toStrictEqual(
+      updatedAvailable.firewall,
+    );
+    expect(missingCredentialsAvailable.networkPolicy).toStrictEqual(
+      updatedAvailable.networkPolicy,
+    );
+    const { body: missingCredentialsAuthBody } = customConnectorRuntimeAuthBody(
+      missingCredentialsAvailable,
+      fw.encryptedSecretsBody({}),
+    );
+    const missingCredentialsAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      missingCredentialsAuthBody,
+      [424],
+    );
+    if (missingCredentialsAuth.status !== 424) {
+      throw new Error("Expected missing custom connector credentials");
+    }
+    expect(missingCredentialsAuth.body.error).toMatchObject({
+      code: "CONNECTOR_NOT_CONFIGURED",
+    });
+
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "restored-custom-secret-value",
+    );
+    const restoredCredentialsAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      missingCredentialsAuthBody,
+      [200],
+    );
+    expect(restoredCredentialsAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer restored-custom-secret-value" },
+    });
+
+    await connectors.updateAgentCustomConnectors(actor, agentId, []);
+    const [absentRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    if (!absentRuntime) {
+      throw new Error("Expected an absent custom connector runtime result");
+    }
+    expect(absentRuntime).toMatchObject({
+      target,
+      state: "absent",
+      reason: "grant-unavailable",
+    });
+    expect(absentRuntime.nextSyncAt).toBeUndefined();
+
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+    const [restoredRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(restoredRuntime).toMatchObject({
+      target,
+      state: "available",
+    });
+
+    await connectors.updateCustomConnector(actor, custom.id, {
+      displayName: "BDD Internal API Updated",
+      prefixTemplates: ["https://*.internal.example.com/v2/"],
+      fields: custom.fields,
+      headerInjections: [
+        {
+          name: "X-Authorization",
+          valueTemplate: "Token {{secrets.secret}}",
+        },
+      ],
+      queryInjections: custom.queryInjections,
+      authMode: custom.authMode,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+    const lastKnownGoodAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(lastKnownGoodAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer restored-custom-secret-value" },
+    });
+
+    await connectors.updateCustomConnector(actor, custom.id, {
+      displayName: "BDD Internal API Replaced Auth",
+      prefixTemplates: ["https://*.internal.example.com/v3/"],
+      fields: [
+        {
+          key: "replacement",
+          label: "Replacement token",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "X-Replacement",
+          valueTemplate: "Token {{secrets.replacement}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+    });
+    const orphanedFieldAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [424],
+    );
+    if (orphanedFieldAuth.status !== 424) {
+      throw new Error("Expected removed custom connector field to be rejected");
+    }
+    expect(orphanedFieldAuth.body.error).toMatchObject({
+      code: "CONNECTOR_NOT_CONFIGURED",
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -8189,12 +8616,21 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
       refreshResponse: (attempt) => {
-        if (attempt > 1) {
-          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+        if (attempt > 2) {
+          return HttpResponse.json(
+            { error: "temporarily_unavailable" },
+            { status: 503 },
+          );
         }
         return HttpResponse.json({
-          access_token: "custom-oauth-refreshed-access-token",
-          refresh_token: "custom-oauth-rotated-refresh-token",
+          access_token:
+            attempt === 1
+              ? "custom-oauth-refreshed-access-token"
+              : "custom-oauth-force-refreshed-access-token",
+          refresh_token:
+            attempt === 1
+              ? "custom-oauth-rotated-refresh-token"
+              : "custom-oauth-force-rotated-refresh-token",
           token_type: "Bearer",
           expires_in: 3600,
         });
@@ -8269,41 +8705,56 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.secretValues).not.toContain(
       "Bearer custom-oauth-initial-access-token",
     );
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ kind: "custom", customConnectorId: custom.id }],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
 
-    mockNow(now() + 2 * 3_600_000);
+    const firstRefreshAt = now() + 2 * 3_600_000;
+    mockNow(firstRefreshAt);
     onTestFinished(() => {
       clearMockNow();
     });
     const [firstResolved, secondResolved] = await Promise.all([
       fw.requestFirewallAuth(
         { authorization: `Bearer ${claim.sandboxToken}` },
-        {
-          encryptedSecrets: fw.encryptedSecretsBody({}),
-          authHeaders: {
-            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-          },
-        },
+        currentAuthBody,
         [200],
       ),
       fw.requestFirewallAuth(
         { authorization: `Bearer ${claim.sandboxToken}` },
-        {
-          encryptedSecrets: fw.encryptedSecretsBody({}),
-          authHeaders: {
-            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-          },
-        },
+        currentAuthBody,
         [200],
       ),
     ]);
-    for (const resolved of [firstResolved, secondResolved]) {
-      if (resolved.status !== 200) {
-        throw new Error("Expected custom OAuth firewall auth to resolve");
-      }
-      expect(resolved.body.headers).toStrictEqual({
-        Authorization: "Bearer custom-oauth-refreshed-access-token",
-      });
-    }
+    const concurrentResolvedBodies = [firstResolved, secondResolved].map(
+      (resolved) => {
+        if (resolved.status !== 200) {
+          throw new Error("Expected custom OAuth firewall auth to resolve");
+        }
+        expect(resolved.body.headers).toStrictEqual({
+          Authorization: "Bearer custom-oauth-refreshed-access-token",
+        });
+        expect(resolved.body.expiresAt).toBe(
+          Math.floor((firstRefreshAt + 3_600_000) / 1000),
+        );
+        return resolved.body;
+      },
+    );
+    expect(
+      concurrentResolvedBodies.flatMap((body) => {
+        return body.refreshedConnectors;
+      }),
+    ).toStrictEqual([custom.id]);
+    expect(
+      concurrentResolvedBodies.flatMap((body) => {
+        return body.refreshedSecrets;
+      }),
+    ).toStrictEqual([secretKey]);
     expect(
       provider.tokenBodies.map((body) => {
         return body.get("grant_type");
@@ -8317,18 +8768,78 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectedBasicAuthorization,
     ]);
 
+    const currentResolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(currentResolved.body).toMatchObject({
+      headers: {
+        Authorization: "Bearer custom-oauth-refreshed-access-token",
+      },
+      expiresAt: Math.floor((firstRefreshAt + 3_600_000) / 1000),
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+    });
+    expect(provider.tokenBodies).toHaveLength(2);
+
+    const forceRefreshAt = firstRefreshAt + 10 * 60_000;
+    mockNow(forceRefreshAt);
+    const forceResolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      { ...currentAuthBody, forceRefresh: true },
+      [200],
+    );
+    expect(forceResolved.body).toMatchObject({
+      headers: {
+        Authorization: "Bearer custom-oauth-force-refreshed-access-token",
+      },
+      expiresAt: Math.floor((forceRefreshAt + 3_600_000) / 1000),
+      refreshedConnectors: [custom.id],
+      refreshedSecrets: [secretKey],
+    });
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token", "refresh_token"]);
+    expect(provider.tokenBodies[2]?.get("refresh_token")).toBe(
+      "custom-oauth-rotated-refresh-token",
+    );
+    expect(provider.authorizationHeaders).toStrictEqual([
+      expectedBasicAuthorization,
+      expectedBasicAuthorization,
+      expectedBasicAuthorization,
+    ]);
+
+    const failedRefresh = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      { ...currentAuthBody, forceRefresh: true },
+      [502],
+    );
+    if (failedRefresh.status !== 502) {
+      throw new Error("Expected custom OAuth refresh failure");
+    }
+    expect(failedRefresh.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "upstream_provider",
+    });
+
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("marks a custom OAuth connection for reconnect after invalid_grant", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
       refreshResponse: () => {
         return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
       },
     });
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
-    const { actor, agentId } = await entitledRunActor();
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD Revoked OAuth 2.0 Runtime API",
@@ -8373,6 +8884,61 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "use the revoked OAuth custom connector",
       modelProvider: "anthropic-api-key",
     });
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code"]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(firstRun.runId);
+    const [runtimeResult] = await api.syncConnectorRuntime(firstRun.runId, {
+      targets: [{ kind: "custom", customConnectorId: custom.id }],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
+    mockNow(now() + 2 * 3_600_000);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const reconnectRequired = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [502],
+    );
+    if (reconnectRequired.status !== 502) {
+      throw new Error("Expected custom OAuth reconnect requirement");
+    }
+    expect(reconnectRequired.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "reconnect_required",
+    });
+    const stillReconnectRequired = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [502],
+    );
+    if (stillReconnectRequired.status !== 502) {
+      throw new Error("Expected persisted custom OAuth reconnect requirement");
+    }
+    expect(stillReconnectRequired.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "reconnect_required",
+    });
+    const [reconnectRuntimeResult] = await api.syncConnectorRuntime(
+      firstRun.runId,
+      { targets: [{ kind: "custom", customConnectorId: custom.id }] },
+    );
+    const reconnectRuntime = availableCustomConnectorRuntime(
+      reconnectRuntimeResult,
+    );
+    expect(reconnectRuntime.firewall).toStrictEqual(runtime.firewall);
+    expect(reconnectRuntime.networkPolicy).toStrictEqual(runtime.networkPolicy);
     expect(
       provider.tokenBodies.map((body) => {
         return body.get("grant_type");
@@ -8729,7 +9295,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("omits custom connector auth entries backed only by missing optional fields", async () => {
+  it("preserves runtime auth templates while omitting missing optional values", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
@@ -8803,6 +9369,29 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(JSON.stringify(customApis)).not.toContain(secondarySecretKey);
     expect(JSON.stringify(customApis)).not.toContain(tenantVarKey);
 
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { api: runtimeApi, body: runtimeAuthBody } =
+      customConnectorRuntimeAuthBody(runtime, fw.encryptedSecretsBody({}));
+    expect(runtimeApi.auth.headers).toStrictEqual({
+      Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+      "X-Secondary": `\${{ secrets.${secondarySecretKey} }}`,
+    });
+    expect(runtimeApi.auth.query).toStrictEqual({
+      tenant: `\${{ secrets.${tenantVarKey} }}`,
+    });
+    const runtimeResolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      runtimeAuthBody,
+      [200],
+    );
+    expect(runtimeResolved.body).toMatchObject({
+      headers: { Authorization: "Bearer optional-primary" },
+      query: {},
+    });
+
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
@@ -8825,9 +9414,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("skips custom connectors when all auth entries require missing optional fields", async () => {
+  it("keeps legacy omission while sync preserves optional-only firewall", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const rand = randomUUID().replace(/-/g, "").slice(0, 8);
 
@@ -8872,9 +9462,32 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    const idPart = saved.connector.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_SECRET`;
     expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
     expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    expect(runtime.firewall.customConnectorId).toBe(saved.connector.id);
+    const { api: runtimeApi, body: runtimeAuthBody } =
+      customConnectorRuntimeAuthBody(runtime, fw.encryptedSecretsBody({}));
+    expect(runtimeApi.auth.headers).toStrictEqual({
+      Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+    });
+    const resolvedAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      runtimeAuthBody,
+      [200],
+    );
+    if (resolvedAuth.status !== 200) {
+      throw new Error("Expected optional-only custom connector auth");
+    }
+    expect(resolvedAuth.body.headers).toStrictEqual({});
+    expect(resolvedAuth.body.query).toStrictEqual({});
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -9306,6 +9919,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(grantedContext.claim.networkPolicyRefreshes).not.toHaveProperty(
       "model-provider:anthropic-api-key",
     );
+    expect(grantedContext.claim.connectorRuntimeTargets).toContainEqual({
+      kind: "builtin",
+      connectorSlug: "slack",
+    });
     expect(granted.allow).toContain("chat:write");
     expect(granted.allow).toContain("files:read");
     expect(granted.deny).not.toContain("chat:write");
@@ -9370,6 +9987,27 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(sameUserRefresh.body.refreshes[0]).toMatchObject({
       connectorSlug: "slack",
     });
+    const sameUserRuntime = await api.requestSyncConnectorRuntimeAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      {
+        targets: [
+          { kind: "builtin", connectorSlug: "missing-builtin" },
+          { kind: "builtin", connectorSlug: "slack" },
+        ],
+      },
+      [200],
+    );
+    expect(sameUserRuntime.body.results[0]).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "missing-builtin" },
+      state: "unresolved",
+      reason: "connector-unavailable",
+    });
+    expect(sameUserRuntime.body.results[1]).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "slack" },
+      state: "available",
+      nextSyncAt: expect.any(String),
+    });
     const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${memberRunnerKey.token}`,
       snapshotRun.runId,
@@ -9382,6 +10020,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       );
     }
     expect(otherUserRefresh.body.error.message).toBe(
+      "Run does not belong to user",
+    );
+    const otherUserRuntime = await api.requestSyncConnectorRuntimeAs(
+      `Bearer ${memberRunnerKey.token}`,
+      snapshotRun.runId,
+      {
+        targets: [{ kind: "builtin", connectorSlug: "slack" }],
+      },
+      [403],
+    );
+    expect(otherUserRuntime.body.error.message).toBe(
       "Run does not belong to user",
     );
     context.mocks.ably.publish.mockClear();
@@ -9431,6 +10080,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(cancelledRefresh.body.error.code).toBe(
       NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
+    const cancelledRuntime = await api.requestSyncConnectorRuntimeAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      {
+        targets: [{ kind: "builtin", connectorSlug: "slack" }],
+      },
+      [409],
+    );
+    expect(cancelledRuntime.body.error.code).toBe(
+      CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
     );
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
@@ -12760,6 +13420,14 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             runner_startup_path: "workspace",
             sandbox_reuse_result: "poolMiss",
           },
+          {
+            ts: nowDate().toISOString(),
+            action_type: "session_history_prune",
+            duration_ms: 4,
+            success: true,
+            outcome: "ineligible",
+            reason: "source_within_guard",
+          },
         ],
       },
       sandboxHeaders,
@@ -12868,6 +13536,20 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
           success: true,
           runner_startup_path: "workspace",
           sandbox_reuse_result: "poolMiss",
+          source: "sandbox",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "session_history_prune",
+          run_id: created.runId,
+          duration_ms: 4,
+          success: true,
+          outcome: "ineligible",
+          reason: "source_within_guard",
           source: "sandbox",
         }),
       ],

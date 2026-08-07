@@ -114,6 +114,46 @@ async fn for_config_uses_config_api_url_for_webhook_routes()
 }
 
 #[tokio::test]
+async fn pi_transcript_read_keeps_sandbox_auth_inside_guest_http_client()
+-> Result<(), Box<dyn std::error::Error>> {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let config = shared_guest_config()?;
+    let mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/api/webhooks/agent/pi-transcript")
+            .query_param("runId", TEST_RUN_ID)
+            .header("Authorization", "Bearer test-token-abc123")
+            .header("x-vercel-protection-bypass", "test-bypass-value")
+            .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_GUEST_AGENT)
+            .header(CLIENT_SESSION_ID_HEADER, TEST_RUN_ID);
+        then.status(200).json_body(json!({
+            "version": 1,
+            "lastOrdinal": 2,
+            "messages": [{
+                "ordinal": 2,
+                "messageId": "origin-run/1",
+                "runId": "origin-run",
+                "runEventSequenceNumber": 1,
+                "role": "assistant",
+                "payload": { "role": "assistant", "content": [] },
+                "createdAt": "2026-08-07T00:00:00.000Z"
+            }]
+        }));
+    });
+
+    let transcript = guest_agent::http::HttpClient::for_config(&config)?
+        .get_pi_transcript(TEST_RUN_ID, 1)
+        .await?;
+
+    mock.assert_calls_async(1).await;
+    assert_eq!(transcript.version, 1);
+    assert_eq!(transcript.last_ordinal, 2);
+    assert_eq!(transcript.messages[0].payload["role"], "assistant");
+    Ok(())
+}
+
+#[tokio::test]
 async fn post_json_success_empty_response() {
     let api = SharedApiMock::new().await;
     let server = api.server();

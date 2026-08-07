@@ -1,7 +1,6 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
 import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -227,7 +226,6 @@ type InputPromptEvent = ChatEventIdentity &
     readonly eventType: "input.prompt";
     readonly content?: null;
     readonly contextType?: "web";
-    readonly triggerSource?: TriggerSource;
   };
 
 type InputAutomationEvent = ChatEventIdentity &
@@ -238,7 +236,6 @@ type InputAutomationEvent = ChatEventIdentity &
     readonly workflowName?: string;
     readonly workflowAutomationEventType?: WorkflowAutomationEventType;
     readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
-    readonly triggerSource: TriggerSource;
     readonly triggerBrief: string | null;
   };
 
@@ -265,7 +262,6 @@ type InputRejectedEvent = ChatEventIdentity &
     readonly content?: null;
     readonly error: string;
     readonly automationId?: string;
-    readonly triggerSource?: TriggerSource;
     readonly triggerBrief?: string | null;
   };
 
@@ -947,15 +943,6 @@ function persistedChatEventValues(
     values.eventType === "input.budget"
       ? { content: null }
       : {}),
-    // Keep the physical value compatible with the pre-deploy constraint and
-    // draining API instances. Readers project both generations to the
-    // canonical open/close vocabulary.
-    eventType:
-      values.eventType === "browser.open"
-        ? ("browser.started" as ChatEventInsert["eventType"])
-        : values.eventType === "browser.close"
-          ? ("browser.stopped" as ChatEventInsert["eventType"])
-          : values.eventType,
   };
 }
 

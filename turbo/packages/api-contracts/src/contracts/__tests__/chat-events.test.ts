@@ -13,12 +13,10 @@ import {
   terminatedChatRunIds,
 } from "../chat-events";
 import {
-  canonicalChatEvent,
   chatEventResponse,
   chatEventSchema,
   chatEventsContract,
   chatThreadEventsContract,
-  compatibleChatEventSchema,
   type ChatEvent,
 } from "../chat-threads";
 
@@ -396,59 +394,6 @@ describe("ChatEvent catalog", () => {
       expect(response).toStrictEqual(event);
       expect(chatEventSchema.parse(response)).toStrictEqual(response);
     }
-  });
-
-  it("normalizes browser lifecycle values from previous clients and storage", () => {
-    const browserOpen = chatEvents.find((event) => {
-      return event.eventType === "browser.open";
-    });
-    const browserClose = chatEvents.find((event) => {
-      return event.eventType === "browser.close";
-    });
-    expect(browserOpen).toBeDefined();
-    expect(browserClose).toBeDefined();
-
-    expect(
-      canonicalChatEvent(
-        compatibleChatEventSchema.parse({
-          ...browserOpen,
-          eventType: "browser.started",
-        }),
-      ),
-    ).toMatchObject({ eventType: "browser.open" });
-    expect(
-      canonicalChatEvent(
-        compatibleChatEventSchema.parse({
-          ...browserClose,
-          eventType: "browser.stopped",
-        }),
-      ),
-    ).toMatchObject({ eventType: "browser.close" });
-  });
-
-  it("normalizes completion attachments from previous clients and storage", () => {
-    const completed = chatEvents.find((event) => {
-      return event.eventType === "run.completed";
-    });
-    if (!completed) {
-      throw new Error("Expected a completed event fixture");
-    }
-
-    const compatible = compatibleChatEventSchema.parse({
-      ...completed,
-      attachFiles: [
-        {
-          id: "previous-completion-attachment",
-          filename: "report.pdf",
-          contentType: "application/pdf",
-          size: 1024,
-          url: "https://example.com/report.pdf",
-        },
-      ],
-    });
-
-    expect(compatible).toStrictEqual(completed);
-    expect(canonicalChatEvent(compatible)).toStrictEqual(completed);
   });
 
   it("rejects a response that only carries the retired rich-input field", () => {

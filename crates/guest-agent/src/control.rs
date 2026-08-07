@@ -19,6 +19,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::active_input::{ActiveInputControlOutcome, ActiveInputController};
+use crate::pi_standby::PiStandbyController;
 use guest_common::{log_info, log_warn};
 use tokio_util::sync::CancellationToken;
 
@@ -88,19 +89,27 @@ impl ControlHandle {
         shutdown: CancellationToken,
         active_input: ActiveInputController,
         cli_cancellation: CancellationToken,
+        pi_standby: PiStandbyController,
     ) -> Option<Self> {
         let endpoint = match std::env::var(process_control_ipc::BOOTSTRAP_ENV) {
             Ok(endpoint) if !endpoint.is_empty() => endpoint,
             _ => return None,
         };
-        Self::spawn_endpoint(endpoint, shutdown, active_input, cli_cancellation)
+        Self::spawn_endpoint_with_pi(
+            endpoint,
+            shutdown,
+            active_input,
+            cli_cancellation,
+            pi_standby,
+        )
     }
 
-    fn spawn_endpoint(
+    fn spawn_endpoint_with_pi(
         endpoint: String,
         shutdown: CancellationToken,
         active_input: ActiveInputController,
         cli_cancellation: CancellationToken,
+        pi_standby: PiStandbyController,
     ) -> Option<Self> {
         let stream = Arc::new(Mutex::new(None));
         let worker_stream = Arc::clone(&stream);
@@ -114,6 +123,7 @@ impl ControlHandle {
                     worker_stream,
                     active_input,
                     cli_cancellation,
+                    pi_standby,
                 );
             })
             .map_err(|error| {
@@ -125,6 +135,23 @@ impl ControlHandle {
             stream,
             shutdown,
         })
+    }
+
+    #[cfg(test)]
+    fn spawn_endpoint(
+        endpoint: String,
+        shutdown: CancellationToken,
+        active_input: ActiveInputController,
+        cli_cancellation: CancellationToken,
+    ) -> Option<Self> {
+        let pi_standby = crate::pi_standby::PiStandbyRuntime::new();
+        Self::spawn_endpoint_with_pi(
+            endpoint,
+            shutdown,
+            active_input,
+            cli_cancellation,
+            pi_standby.controller(),
+        )
     }
 
     /// Cancels and joins the process-control worker.
@@ -165,25 +192,28 @@ fn run(
     stream_slot: Arc<Mutex<Option<UnixStream>>>,
     active_input: ActiveInputController,
     cli_cancellation: CancellationToken,
+    pi_standby: PiStandbyController,
 ) {
-    match run_inner(
+    match run_inner_with_pi(
         &endpoint,
         shutdown,
         stream_slot,
         active_input,
         cli_cancellation,
+        pi_standby,
     ) {
         Ok(()) => log_info!(LOG_TAG, "Process control task stopped"),
         Err(error) => log_warn!(LOG_TAG, "Process control task stopped: {error}"),
     }
 }
 
-fn run_inner(
+fn run_inner_with_pi(
     endpoint: &str,
     shutdown: CancellationToken,
     stream_slot: Arc<Mutex<Option<UnixStream>>>,
     active_input: ActiveInputController,
     cli_cancellation: CancellationToken,
+    pi_standby: PiStandbyController,
 ) -> io::Result<()> {
     let mut stream = process_control_ipc::connect_abstract(endpoint)?;
     let shutdown_stream = stream.try_clone()?;
@@ -198,8 +228,12 @@ fn run_inner(
     while !shutdown.is_cancelled() {
         match process_control_ipc::read_request(&mut stream) {
             Ok(request) => {
-                let (status, diagnostic) =
-                    handle_control_payload(&request.payload, &active_input, &cli_cancellation);
+                let (status, diagnostic) = handle_control_payload_with_pi(
+                    &request.payload,
+                    &active_input,
+                    &cli_cancellation,
+                    &pi_standby,
+                );
                 process_control_ipc::write_response(
                     &mut stream,
                     &process_control_ipc::ControlResponse {
@@ -227,10 +261,30 @@ fn run_inner(
     Ok(())
 }
 
-fn handle_control_payload(
+#[cfg(test)]
+fn run_inner(
+    endpoint: &str,
+    shutdown: CancellationToken,
+    stream_slot: Arc<Mutex<Option<UnixStream>>>,
+    active_input: ActiveInputController,
+    cli_cancellation: CancellationToken,
+) -> io::Result<()> {
+    let pi_standby = crate::pi_standby::PiStandbyRuntime::new();
+    run_inner_with_pi(
+        endpoint,
+        shutdown,
+        stream_slot,
+        active_input,
+        cli_cancellation,
+        pi_standby.controller(),
+    )
+}
+
+fn handle_control_payload_with_pi(
     payload: &[u8],
     active_input: &ActiveInputController,
     cli_cancellation: &CancellationToken,
+    pi_standby: &PiStandbyController,
 ) -> (process_control_ipc::ControlResponseStatus, String) {
     if serde_json::from_slice::<ControlPayloadType>(payload)
         .is_ok_and(|payload| payload.payload_type == USER_CANCELLATION_PAYLOAD_TYPE)
@@ -251,7 +305,19 @@ fn handle_control_payload(
         };
     }
 
-    control_response_from_active_input(active_input.handle_control_payload(payload))
+    match pi_standby.handle_control_payload(payload) {
+        Ok(true) => (
+            process_control_ipc::ControlResponseStatus::Accepted,
+            String::new(),
+        ),
+        Ok(false) => {
+            control_response_from_active_input(active_input.handle_control_payload(payload))
+        }
+        Err(diagnostic) => (
+            process_control_ipc::ControlResponseStatus::Rejected,
+            diagnostic,
+        ),
+    }
 }
 
 fn control_response_from_active_input(

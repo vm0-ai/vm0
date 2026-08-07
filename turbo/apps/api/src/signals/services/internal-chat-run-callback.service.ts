@@ -130,12 +130,14 @@ import {
 } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
-import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import {
+  agentRunSourceAnnotation,
+  type ChatAgentRunSourceAnnotation,
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
+import { buildAgentRunSourceContext } from "./zero-web-chat-session-prompt.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
   integrationCompletionFallbackEventIdForRun,
@@ -143,8 +145,12 @@ import {
 } from "./assistant-event-id";
 import {
   failQueuedUserMessage,
+  isWebChatContextType,
   loadNextUnclaimedQueuedUserMessage,
+  queuedUserMessageTriggerSource,
   resolveAttachFileMetadata$,
+  type QueuedUserMessageContextType,
+  type QueuedUserMessageTriggerSource,
   type QueuedUserMessage,
 } from "./zero-chat-queued-event.service";
 import { handleMorningBriefEmailInternalCallback } from "./internal-morning-brief-run-callback.service";
@@ -283,7 +289,7 @@ export class ChatCallbackPreCreateTimingCollector {
 
   flush(
     runId: string,
-    triggerSource: QueuedUserMessage["triggerSource"] = "web",
+    triggerSource: QueuedUserMessageTriggerSource = "web",
   ): void {
     if (this.flushed) {
       return;
@@ -314,7 +320,7 @@ export class ChatCallbackPreCreateTimingCollector {
 function flushChatCallbackTimingOnRejection(args: {
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly getRunId: () => string | null;
-  readonly triggerSource: QueuedUserMessage["triggerSource"];
+  readonly triggerSource: QueuedUserMessageTriggerSource;
 }): (error: unknown) => void {
   return () => {
     const runId = args.getRunId();
@@ -643,7 +649,7 @@ interface CreateQueuedChatRunInput {
     readonly hostId: string;
     readonly displayName: string;
   } | null;
-  readonly triggerSource: QueuedUserMessage["triggerSource"];
+  readonly triggerSource: QueuedUserMessageTriggerSource;
   readonly attachFileMetadata: readonly ChatEventAttachFileMetadata[] | null;
   readonly realAgentInPreview?: boolean;
   readonly slackDelivery?: {
@@ -2259,19 +2265,14 @@ function truncatePrior(value: string): string {
   return `${value.slice(0, PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
-function formatPriorRunEvent(
-  event: PriorRunEvent,
-  inlineTemplatesEnabled: boolean,
-): string {
+function formatPriorRunEvent(event: PriorRunEvent): string {
   const roleLabel = event.role === "user" ? "User" : "Assistant";
   const userMessage = requiredUserMessageForEvent(
     event.eventType,
     event.userMessage,
   );
   if (userMessage) {
-    const prompt = projectUserMessage(userMessage, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }).agentPrompt;
+    const prompt = projectUserMessage(userMessage).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
   const body = `${roleLabel}: ${
@@ -2284,9 +2285,9 @@ function formatPriorRunEvent(
 }
 
 function priorRunsContextLabel(
-  triggerSource: QueuedUserMessage["triggerSource"],
+  contextType: QueuedUserMessageContextType,
 ): string {
-  switch (triggerSource) {
+  switch (contextType) {
     case "slack": {
       return "Slack";
     }
@@ -2302,26 +2303,34 @@ function priorRunsContextLabel(
     case "github": {
       return "GitHub";
     }
-    case "workflow-schedule": {
+    case "morning_brief": {
       return "Workflow Automation";
     }
-    default: {
+    case "web":
+    case "agent_run":
+    case "agentphone": {
       return "Web Chat";
+    }
+    case "automation":
+    case "goal": {
+      return unreachableQueuedMessageContext(contextType);
+    }
+    default: {
+      return unreachableQueuedContextType(contextType);
     }
   }
 }
 
 function buildChatPriorRunsContext(
   runs: readonly PriorRun[],
-  triggerSource: QueuedUserMessage["triggerSource"],
-  inlineTemplatesEnabled: boolean,
+  contextType: QueuedUserMessageContextType,
 ): string {
   if (runs.length === 0) {
     return "";
   }
   const sections = runs.map((run, index) => {
     const renderedEvents = run.events.map((event) => {
-      return formatPriorRunEvent(event, inlineTemplatesEnabled);
+      return formatPriorRunEvent(event);
     });
     const transcript =
       renderedEvents.length > 0
@@ -2340,7 +2349,7 @@ function buildChatPriorRunsContext(
     ].join("\n");
   });
   return [
-    `# ${priorRunsContextLabel(triggerSource)} Run Context`,
+    `# ${priorRunsContextLabel(contextType)} Run Context`,
     "The current CLI session is fresh, so recent visible chat rounds are provided here for continuity.",
     "- Treat the newest run below as the most recent prior round.",
     "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
@@ -2352,9 +2361,10 @@ function buildChatPriorRunsContext(
 async function getLatestRunsByThreadId(
   db: Db,
   threadId: string,
-  triggerSource: QueuedUserMessage["triggerSource"],
+  contextType: QueuedUserMessageContextType,
   limit: number,
 ): Promise<PriorRun[]> {
+  const triggerSource = queuedUserMessageTriggerSource(contextType);
   const runRows = await db
     .select({
       runId: zeroRuns.id,
@@ -2366,7 +2376,7 @@ async function getLatestRunsByThreadId(
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),
-        isWebChatTriggerSource(triggerSource)
+        isWebChatContextType(contextType)
           ? inArray(zeroRuns.triggerSource, ["web", "agent"])
           : eq(zeroRuns.triggerSource, triggerSource),
         or(
@@ -2509,8 +2519,7 @@ async function buildQueuedPriorContext(args: {
   readonly threadId: string;
   readonly startNewSession: boolean;
   readonly incompleteContext: string;
-  readonly triggerSource: QueuedUserMessage["triggerSource"];
-  readonly inlineTemplatesEnabled: boolean;
+  readonly contextType: QueuedUserMessageContextType;
 }): Promise<string> {
   if (!args.startNewSession || args.incompleteContext.length > 0) {
     return "";
@@ -2519,11 +2528,10 @@ async function buildQueuedPriorContext(args: {
     await getLatestRunsByThreadId(
       args.db,
       args.threadId,
-      args.triggerSource,
+      args.contextType,
       RECENT_CHAT_RUN_LIMIT,
     ),
-    args.triggerSource,
-    args.inlineTemplatesEnabled,
+    args.contextType,
   );
 }
 
@@ -2627,7 +2635,7 @@ async function resolveQueuedMessageModelRoute(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly triggerSource: QueuedUserMessage["triggerSource"];
+  readonly contextType: QueuedUserMessageContextType;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
 }): Promise<QueuedMessageModelRouteResolution> {
   const modelContext = await measureChatCallbackPreCreateTiming(
@@ -2644,7 +2652,7 @@ async function resolveQueuedMessageModelRoute(args: {
     },
   );
   if ("status" in modelContext) {
-    if (args.triggerSource === "slack") {
+    if (args.contextType === "slack") {
       const unpinnedRoute =
         await resolveUnpinnedSlackQueuedMessageModelRoute(args);
       if (unpinnedRoute) {
@@ -2708,8 +2716,8 @@ function loadQueuedMessageSessionState(
           cliAgentType: modelRoute.cliAgentType,
         },
       });
-      const incompleteContext = isWebChatTriggerSource(
-        args.queuedMessage.triggerSource,
+      const incompleteContext = isWebChatContextType(
+        args.queuedMessage.contextType,
       )
         ? await loadWebChatIncompleteContext(args.db, args.threadId)
         : "";
@@ -2744,6 +2752,7 @@ interface QueuedLaunchLoaderArgs {
   readonly chatThreadId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
   readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
   readonly resolveSignedUrls: (keys: {
     readonly inputKey: string;
@@ -2765,7 +2774,12 @@ type LaunchLoader = (
 const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
   return Promise.resolve({
     prompt: args.userMessageProjection.agentPrompt,
-    appendSystemPrompt: buildWebChatPrompt(),
+    appendSystemPrompt: [
+      buildWebChatPrompt(),
+      ...(args.agentRunSource
+        ? [buildAgentRunSourceContext(args.agentRunSource)]
+        : []),
+    ].join("\n\n"),
     delivery: {},
   });
 };
@@ -2804,11 +2818,11 @@ async function resolveQueuedLaunchMaterial(
     readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
   },
 ): Promise<QueuedLaunchMaterial> {
-  const triggerSource = args.queuedMessage.triggerSource;
+  const contextType = args.queuedMessage.contextType;
   let load: LaunchLoader;
-  switch (triggerSource) {
+  switch (contextType) {
     case "web":
-    case "agent": {
+    case "agent_run": {
       load = loadWebQueuedLaunchMaterial;
       break;
     }
@@ -2848,7 +2862,7 @@ async function resolveQueuedLaunchMaterial(
       });
       break;
     }
-    case "workflow-schedule": {
+    case "morning_brief": {
       load = launchLoader(loadMorningBriefQueuedLaunchMaterial, (material) => {
         return {
           morningBriefDelivery: {
@@ -2861,8 +2875,12 @@ async function resolveQueuedLaunchMaterial(
       });
       break;
     }
+    case "automation":
+    case "goal": {
+      return unreachableQueuedMessageContext(contextType);
+    }
     default: {
-      return unreachableQueuedTriggerSource(triggerSource);
+      return unreachableQueuedContextType(contextType);
     }
   }
   const material = await load(args.db, {
@@ -2871,6 +2889,7 @@ async function resolveQueuedLaunchMaterial(
     orgId: args.agent.orgId,
     userId: args.userId,
     userMessageProjection: args.userMessageProjection,
+    agentRunSource: agentRunSourceAnnotation(args.queuedMessage.userMessage),
     resolveSignedUrls: (keys) => {
       return args.resolveMorningBriefSignedUrls(keys, args.signal);
     },
@@ -2878,7 +2897,7 @@ async function resolveQueuedLaunchMaterial(
   if (material) {
     return material;
   }
-  throw new Error(`${triggerSource} queue item is missing launch material`);
+  throw new Error(`${contextType} queue item is missing launch material`);
 }
 
 function queuedIntegrationDeliveries(
@@ -2887,18 +2906,22 @@ function queuedIntegrationDeliveries(
   return launchMaterial.delivery;
 }
 
-function unreachableQueuedTriggerSource(triggerSource: never): never {
-  throw new Error(
-    `Unsupported queued trigger source: ${String(triggerSource)}`,
-  );
+function unreachableQueuedContextType(contextType: never): never {
+  throw new Error(`Unsupported queued context type: ${String(contextType)}`);
+}
+
+function unreachableQueuedMessageContext(
+  contextType: Extract<QueuedUserMessageContextType, "automation" | "goal">,
+): never {
+  throw new Error(`${contextType} context cannot route a queued user message`);
 }
 
 function requiredQueuedDelivery<Delivery>(
   delivery: Delivery | undefined,
-  triggerSource: QueuedUserMessage["triggerSource"],
+  contextType: QueuedUserMessageContextType,
 ): Delivery {
   if (!delivery) {
-    throw new Error(`${triggerSource} queue item is missing delivery material`);
+    throw new Error(`${contextType} queue item is missing delivery material`);
   }
   return delivery;
 }
@@ -2916,10 +2939,10 @@ function queuedMessageAdmissionFailure(
     queuedMessage: args.queuedMessage,
     error,
   };
-  const triggerSource = args.queuedMessage.triggerSource;
-  switch (triggerSource) {
+  const contextType = args.queuedMessage.contextType;
+  switch (contextType) {
     case "web":
-    case "agent": {
+    case "agent_run": {
       return { kind: "web_admission_failure", ...common };
     }
     case "slack": {
@@ -2928,7 +2951,7 @@ function queuedMessageAdmissionFailure(
         ...common,
         slackDelivery: requiredQueuedDelivery(
           launchMaterial.delivery.slackDelivery,
-          triggerSource,
+          contextType,
         ),
       };
     }
@@ -2938,7 +2961,7 @@ function queuedMessageAdmissionFailure(
         ...common,
         feishuDelivery: requiredQueuedDelivery(
           launchMaterial.delivery.feishuDelivery,
-          triggerSource,
+          contextType,
         ),
       };
     }
@@ -2948,7 +2971,7 @@ function queuedMessageAdmissionFailure(
         ...common,
         teamsDelivery: requiredQueuedDelivery(
           launchMaterial.delivery.teamsDelivery,
-          triggerSource,
+          contextType,
         ),
       };
     }
@@ -2958,7 +2981,7 @@ function queuedMessageAdmissionFailure(
         ...common,
         telegramDelivery: requiredQueuedDelivery(
           launchMaterial.delivery.telegramDelivery,
-          triggerSource,
+          contextType,
         ),
       };
     }
@@ -2968,7 +2991,7 @@ function queuedMessageAdmissionFailure(
         ...common,
         agentphoneDelivery: requiredQueuedDelivery(
           launchMaterial.delivery.agentphoneDelivery,
-          triggerSource,
+          contextType,
         ),
       };
     }
@@ -2978,23 +3001,27 @@ function queuedMessageAdmissionFailure(
         ...common,
         githubDelivery: requiredQueuedDelivery(
           launchMaterial.delivery.githubDelivery,
-          triggerSource,
+          contextType,
         ),
       };
     }
-    case "workflow-schedule": {
+    case "morning_brief": {
       return {
         kind: "morning_brief_admission_failure",
         ...common,
         morningBriefDelivery: requiredQueuedDelivery(
           launchMaterial.delivery.morningBriefDelivery,
-          triggerSource,
+          contextType,
         ),
         error,
       };
     }
+    case "automation":
+    case "goal": {
+      return unreachableQueuedMessageContext(contextType);
+    }
     default: {
-      return unreachableQueuedTriggerSource(triggerSource);
+      return unreachableQueuedContextType(contextType);
     }
   }
 }
@@ -3016,7 +3043,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly userMessageProjection:
     | ReturnType<typeof projectUserMessage>
     | undefined;
-  readonly inlineTemplatesEnabled: boolean;
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
@@ -3027,9 +3053,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
         explicit:
           args.userMessageProjection?.generationTemplate ??
           args.input.queuedMessage.generationTemplate,
-        explicitTemplates: args.inlineTemplatesEnabled
-          ? args.userMessageProjection?.generationTemplates
-          : undefined,
+        explicitTemplates: args.userMessageProjection?.generationTemplates,
       });
     },
   );
@@ -3045,7 +3069,6 @@ async function loadQueuedRunMaterial(
 
 function queuedUserMessageProjection(
   message: QueuedUserMessage["userMessage"],
-  inlineTemplatesEnabled: boolean,
 ) {
   const queuedUserMessage = requiredUserMessageForEvent(
     "input.prompt",
@@ -3054,9 +3077,7 @@ function queuedUserMessageProjection(
   if (!queuedUserMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
-  return projectUserMessage(queuedUserMessage, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  return projectUserMessage(queuedUserMessage);
 }
 
 function queuedIntegrationLaunchFields(launchMaterial: QueuedLaunchMaterial) {
@@ -3076,17 +3097,12 @@ async function buildCreateQueuedChatRunInput(
       threadId: args.threadId,
       userId: args.userId,
       orgId: args.agent.orgId,
-      triggerSource: args.queuedMessage.triggerSource,
+      contextType: args.queuedMessage.contextType,
       timing: args.timing,
     }),
   ]);
-  const inlineTemplatesEnabled = isFeatureEnabled(
-    FeatureSwitchKey.StructuredPromptInlineTemplates,
-    featureSwitchContext,
-  );
   const userMessageProjection = queuedUserMessageProjection(
     args.queuedMessage.userMessage,
-    inlineTemplatesEnabled,
   );
   const launchMaterial = await loadQueuedRunMaterial({
     ...args,
@@ -3132,8 +3148,7 @@ async function buildCreateQueuedChatRunInput(
         threadId: args.threadId,
         startNewSession,
         incompleteContext,
-        triggerSource: args.queuedMessage.triggerSource,
-        inlineTemplatesEnabled,
+        contextType: args.queuedMessage.contextType,
       });
     },
   );
@@ -3141,7 +3156,6 @@ async function buildCreateQueuedChatRunInput(
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args,
       userMessageProjection,
-      inlineTemplatesEnabled,
     });
   const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -3159,6 +3173,9 @@ async function buildCreateQueuedChatRunInput(
   const prompt = queuedMessagePrompt({
     launchMaterial,
   });
+  const triggerSource = queuedUserMessageTriggerSource(
+    args.queuedMessage.contextType,
+  );
 
   return {
     orgId: args.agent.orgId,
@@ -3181,7 +3198,7 @@ async function buildCreateQueuedChatRunInput(
     cliAgentType: modelRoute.cliAgentType,
     codexServiceTier: modelRoute.codexServiceTier,
     computerUseHostGrant,
-    triggerSource: args.queuedMessage.triggerSource,
+    triggerSource,
     attachFileMetadata,
     realAgentInPreview: isFeatureEnabled(
       FeatureSwitchKey.RealAgentInPreview,
@@ -3286,7 +3303,9 @@ function recordQueuedMessageAdmissionFailure(
   const fields = {
     threadId: failure.threadId,
     userMessageId: failure.queuedMessage.id,
-    triggerSource: failure.queuedMessage.triggerSource,
+    triggerSource: queuedUserMessageTriggerSource(
+      failure.queuedMessage.contextType,
+    ),
     code: failure.error.code,
   };
   if (failure.error.code === "INSUFFICIENT_CREDITS") {

@@ -120,12 +120,12 @@ describe("cron monitor chat event queue", () => {
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("does not alert for pointerless web, test, or agent prompts", async () => {
+  it("does not alert for web or agent-run prompts", async () => {
     const fixture = await trackFixture(seedFixture("orphan"));
 
     const response = await accept(
       stateClient().monitor({
-        body: { event_ids: fixture.eventIds.slice(0, 3) },
+        body: { event_ids: fixture.eventIds.slice(0, 2) },
       }),
       [200],
     );
@@ -141,7 +141,7 @@ describe("cron monitor chat event queue", () => {
     const fixture = await trackFixture(seedFixture("orphan"));
 
     const response = await accept(
-      stateClient().monitor({ body: { event_ids: fixture.eventIds.slice(3) } }),
+      stateClient().monitor({ body: { event_ids: fixture.eventIds.slice(2) } }),
       [500],
     );
 

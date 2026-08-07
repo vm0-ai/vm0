@@ -51,9 +51,7 @@ export const zeroBrowserSessionSchema = z
     status: zeroBrowserStatusSchema,
     viewerUrl: z.url(),
     liveUrl: z.url().nullable(),
-    // Additive for frontend/backend rollout compatibility. Old API versions
-    // omit this field; new versions return the latest captured foreground tab.
-    screenshotUrl: z.url().nullable().optional(),
+    screenshotUrl: z.url().nullable(),
     proxyCountryCode: z.string().length(2).nullable(),
     timeoutMinutes: z.number().int().positive(),
     // Only live provider instances have persisted window dimensions.
@@ -223,32 +221,6 @@ export const zeroBrowserContract = c.router({
       ...commonErrorResponses,
     },
     summary: "Record that the managed browser sidebar was closed",
-  },
-  // Compatibility aliases for browser bundles loaded before open/close.
-  // Remove after the stale web-client window has closed.
-  start: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:threadId/browser/start",
-    headers: authHeadersSchema,
-    pathParams: browserThreadParamsSchema,
-    body: browserLifecycleRequestSchema,
-    responses: {
-      200: browserMutationResponseSchema,
-      ...commonErrorResponses,
-    },
-    summary: "Compatibility alias for opening a managed browser",
-  },
-  stop: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:threadId/browser/stop",
-    headers: authHeadersSchema,
-    pathParams: browserThreadParamsSchema,
-    body: browserLifecycleRequestSchema,
-    responses: {
-      200: browserMutationResponseSchema,
-      ...commonErrorResponses,
-    },
-    summary: "Compatibility endpoint for a stale browser viewer",
   },
   resizeByThread: {
     method: "POST",

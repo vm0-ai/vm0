@@ -2,7 +2,7 @@
  * Test helpers for the presigned upload flow.
  *
  * Production uploads run in two steps:
- *   1. POST /api/zero/uploads/prepare  → JSON { id, uploadUrl, url, ... }
+ *   1. POST /api/zero/uploads/prepare  → JSON { id, uploadUrl, uploadHeaders, url, ... }
  *   2. PUT  <uploadUrl>                → 200 (direct to R2)
  *   3. POST /api/zero/uploads/complete → JSON { id, url, ... }
  *
@@ -36,11 +36,8 @@ function uploadUrlFor(id: string): string {
 export function mockUploadSuccess(result: MockUploadResult): HttpHandler[] {
   const uploadUrl = uploadUrlFor(result.id);
   return [
-    // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
-    // helper endpoint with no typed contract (see route.ts — returns
-    // presigned URLs, not domain data).
     http.post("*/api/zero/uploads/prepare", () => {
-      return HttpResponse.json({ ...result, uploadUrl });
+      return HttpResponse.json({ ...result, uploadUrl, uploadHeaders: {} });
     }),
     http.put(uploadUrl, () => {
       return new HttpResponse(null, { status: 200 });
@@ -62,10 +59,8 @@ export function mockUploadPending(
   const uploadUrl = uploadUrlFor(result.id);
   const mockHttp = createMockHttp(context);
   return [
-    // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
-    // helper endpoint with no typed contract.
     http.post("*/api/zero/uploads/prepare", () => {
-      return HttpResponse.json({ ...result, uploadUrl });
+      return HttpResponse.json({ ...result, uploadUrl, uploadHeaders: {} });
     }),
     mockHttp.put(uploadUrl, ({ signal }) => {
       return createDeferredPromise<never>(signal).promise;

@@ -27,15 +27,14 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
-use super::{
-    RunnerPreference, RunnerPreferenceResolution, parse_runner_preference,
-    parse_runner_preference_resolution,
-};
+use super::{RunnerPreferenceContext, parse_runner_preference_context};
 use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
+use crate::pi_standby::{PiStandbyNotifications, PiStandbySignal};
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::RunCancellationRegistry;
+use crate::types::ConnectorRuntimeTarget;
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -439,6 +438,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) cancel_tokens: RunCancellationRegistry,
     pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
     pub(super) active_input_notifications: ActiveInputNotifications,
+    pub(super) pi_standby_notifications: PiStandbyNotifications,
     pub(super) provider_cancel: CancellationToken,
 }
 
@@ -451,6 +451,7 @@ struct SupervisorTaskConfig {
     cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
     active_input_notifications: ActiveInputNotifications,
+    pi_standby_notifications: PiStandbyNotifications,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
 }
@@ -468,6 +469,7 @@ impl AblySupervisor {
             cancel_tokens: config.cancel_tokens,
             network_policy_refresh: config.network_policy_refresh,
             active_input_notifications: config.active_input_notifications,
+            pi_standby_notifications: config.pi_standby_notifications,
             provider_cancel: config.provider_cancel,
             shutdown: task_shutdown,
         };
@@ -546,6 +548,10 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
+                        if let Some((run_id, signal)) = parse_pi_standby_notification(&msg) {
+                            config.pi_standby_notifications.notify(run_id, signal);
+                            continue;
+                        }
                         if let Some(run_id) = parse_active_input_notification(&msg) {
                             config.active_input_notifications.notify(run_id);
                             continue;
@@ -692,6 +698,26 @@ async fn handle_ably_message_with_network_policy_refresh(
         return;
     }
 
+    if let Some(notification) = parse_connector_runtime_sync_notification(msg) {
+        let Some(network_policy_refresh) = network_policy_refresh else {
+            return;
+        };
+        if let Some(cancel) = network_policy_refresh_cancel {
+            network_policy_refresh
+                .notify_connector_runtime_sync_until_cancelled(
+                    notification.run_id,
+                    notification.target,
+                    cancel,
+                )
+                .await;
+        } else {
+            network_policy_refresh
+                .notify_connector_runtime_sync(notification.run_id, notification.target)
+                .await;
+        }
+        return;
+    }
+
     let action = {
         let Some(notif) = parse_job_notification(msg) else {
             return;
@@ -704,17 +730,16 @@ async fn handle_ably_message_with_network_policy_refresh(
                     profile = %profile,
                     "ably: job notification, queueing direct candidate"
                 );
-                JobNotificationAction::Direct(
+                JobNotificationAction::Direct(Box::new(
                     DirectJobCandidate::new_with_routing_metadata(
                         notif.run_id,
                         profile.to_owned(),
                         notification_received_at,
                         notif.reuse_key.map(str::to_owned),
-                        notif.runner_preference,
+                        notif.runner_preference_context,
                     )
-                    .with_runner_preference_resolution(notif.runner_preference_resolution)
                     .with_history_generation_run_id(notif.history_generation_run_id),
-                )
+                ))
             } else {
                 info!(
                     run_id = %notif.run_id,
@@ -737,14 +762,14 @@ async fn handle_ably_message_with_network_policy_refresh(
             poll_wakeups.request_immediate_poll().await;
         }
         JobNotificationAction::Direct(candidate) => {
-            enqueue_direct_candidate(candidate, direct_candidates, poll_wakeups).await;
+            enqueue_direct_candidate(*candidate, direct_candidates, poll_wakeups).await;
         }
         JobNotificationAction::Ignore => {}
     }
 }
 
 enum JobNotificationAction {
-    Direct(DirectJobCandidate),
+    Direct(Box<DirectJobCandidate>),
     Ignore,
     WakeNow,
 }
@@ -754,13 +779,17 @@ struct JobNotification<'a> {
     profile: Option<&'a str>,
     reuse_key: Option<&'a str>,
     history_generation_run_id: Option<RunId>,
-    runner_preference: Option<RunnerPreference>,
-    runner_preference_resolution: Option<RunnerPreferenceResolution>,
+    runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
 struct NetworkPolicyRefreshNotification {
     run_id: RunId,
     connector_slug: String,
+}
+
+struct ConnectorRuntimeSyncNotification {
+    run_id: RunId,
+    target: ConnectorRuntimeTarget,
 }
 
 fn parse_active_input_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
@@ -772,6 +801,24 @@ fn parse_active_input_notification(msg: &ably_subscriber::Message) -> Option<Run
         Ok(run_id) => Some(run_id),
         Err(error) => {
             warn!(value = %raw, error = %error, "ably: invalid active-input runId");
+            None
+        }
+    }
+}
+
+fn parse_pi_standby_notification(
+    msg: &ably_subscriber::Message,
+) -> Option<(RunId, PiStandbySignal)> {
+    let signal = match msg.name.as_deref()? {
+        "pi-handoff" => PiStandbySignal::Handoff,
+        "pi-standby-release" => PiStandbySignal::Release,
+        _ => return None,
+    };
+    let raw = msg.data.get("runId").and_then(|value| value.as_str())?;
+    match raw.parse() {
+        Ok(run_id) => Some((run_id, signal)),
+        Err(error) => {
+            warn!(value = %raw, error = %error, "ably: invalid Pi standby runId");
             None
         }
     }
@@ -917,6 +964,39 @@ fn parse_network_policy_refresh_notification(
     })
 }
 
+fn parse_connector_runtime_sync_notification(
+    msg: &ably_subscriber::Message,
+) -> Option<ConnectorRuntimeSyncNotification> {
+    if msg.name.as_deref() != Some("connector-runtime-sync") {
+        return None;
+    }
+    let run_id = match msg.data.get("runId").and_then(serde_json::Value::as_str) {
+        Some(value) => match value.parse() {
+            Ok(run_id) => run_id,
+            Err(error) => {
+                warn!(value, error = %error, "ably: invalid connector-runtime-sync runId");
+                return None;
+            }
+        },
+        None => {
+            warn!("ably: connector-runtime-sync message missing runId");
+            return None;
+        }
+    };
+    let target = match msg.data.get("target").cloned().map(serde_json::from_value) {
+        Some(Ok(target)) => target,
+        Some(Err(error)) => {
+            warn!(error = %error, "ably: connector-runtime-sync message has invalid target");
+            return None;
+        }
+        None => {
+            warn!("ably: connector-runtime-sync message missing target");
+            return None;
+        }
+    };
+    Some(ConnectorRuntimeSyncNotification { run_id, target })
+}
+
 fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification<'_>> {
     if msg.name.as_deref() != Some("job") {
         return None;
@@ -950,38 +1030,38 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("historyGenerationRunId")
         .and_then(|v| v.as_str())
         .and_then(|value| value.parse().ok());
-    let runner_preference = match parse_runner_preference(msg.data.get("runnerPreference").cloned())
-    {
-        Ok(runner_preference) => runner_preference,
-        Err(error) => {
-            warn!(
-                run_id = %run_id,
-                error = %error,
-                "ably: invalid runner preference, using ordinary admission"
-            );
-            None
-        }
-    };
-    let runner_preference_resolution = match parse_runner_preference_resolution(
+    let parsed_preference = parse_runner_preference_context(
+        msg.data.get("runnerPreferenceDecision").cloned(),
+        msg.data.get("runnerPreference").cloned(),
         msg.data.get("runnerPreferenceResolution").cloned(),
-    ) {
-        Ok(resolution) => resolution,
-        Err(error) => {
-            warn!(
-                run_id = %run_id,
-                error = %error,
-                "ably: invalid runner preference resolution, omitting telemetry context"
-            );
-            None
-        }
-    };
+    );
+    if let Some(error) = parsed_preference.decision_error {
+        warn!(
+            run_id = %run_id,
+            error = %error,
+            "ably: invalid runner preference decision, falling back to legacy preference"
+        );
+    }
+    if let Some(error) = parsed_preference.legacy_preference_error {
+        warn!(
+            run_id = %run_id,
+            error = %error,
+            "ably: invalid runner preference, using ordinary admission"
+        );
+    }
+    if let Some(error) = parsed_preference.legacy_resolution_error {
+        warn!(
+            run_id = %run_id,
+            error = %error,
+            "ably: invalid runner preference resolution, omitting telemetry context"
+        );
+    }
     Some(JobNotification {
         run_id,
         profile,
         reuse_key,
         history_generation_run_id,
-        runner_preference,
-        runner_preference_resolution,
+        runner_preference_context: parsed_preference.context,
     })
 }
 
@@ -1129,7 +1209,9 @@ impl AblyDisconnectState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::RunnerPreferenceReason;
+    use crate::provider::{
+        RunnerPreferenceAdmission, RunnerPreferenceResolution, RunnerPreferenceTier,
+    };
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
         ably_subscriber::Message {
@@ -1922,13 +2004,22 @@ mod tests {
                 "profile": "vm0/default",
                 "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
-                "runnerPreferenceResolution": "matching_reusable_sandbox",
-                "runnerPreference": {
+                "runnerPreferenceDecision": {
+                    "kind": "preference",
                     "runnerIdentity": {
                         "runnerId": "00000000-0000-0000-0000-000000000005",
                         "heartbeatGeneration": 7
                     },
-                    "reason": "matchingReuseKey",
+                    "tier": "reusableSandbox",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                },
+                "runnerPreferenceResolution": "matching_workspace_cache",
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000099",
+                        "heartbeatGeneration": 9
+                    },
+                    "reason": "exactHistoryGeneration",
                     "expiresAt": "2999-01-01T00:00:00.000Z"
                 }
             }),
@@ -1952,8 +2043,8 @@ mod tests {
             .runner_preference()
             .expect("canonical preference should be parsed");
         assert_eq!(
-            preference.reason(),
-            RunnerPreferenceReason::MatchingReuseKey
+            preference.admission(),
+            RunnerPreferenceAdmission::Ranked(RunnerPreferenceTier::ReusableSandbox)
         );
         assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
         assert_eq!(
@@ -1969,7 +2060,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_optional_preference_preserves_direct_candidate() {
+    async fn malformed_atomic_and_bridge_preferences_preserve_direct_candidate() {
         let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
@@ -1987,6 +2078,15 @@ mod tests {
                 "runId": "00000000-0000-0000-0000-000000000011",
                 "profile": "vm0/default",
                 "reuseKey": "thread:malformed-preference",
+                "runnerPreferenceDecision": {
+                    "kind": "preference",
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 0
+                    },
+                    "tier": "workspaceCache",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                },
                 "runnerPreferenceResolution": "future_resolution",
                 "runnerPreference": {
                     "runnerIdentity": {
@@ -2010,6 +2110,64 @@ mod tests {
             candidate
                 .runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,)
                 .is_none()
+        );
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn malformed_atomic_ably_decision_falls_back_to_valid_bridge() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000012",
+                "profile": "vm0/default",
+                "reuseKey": "thread:bridge-fallback",
+                "runnerPreferenceDecision": {
+                    "kind": "futureDecision"
+                },
+                "runnerPreferenceResolution": "matching_reusable_sandbox",
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 7
+                    },
+                    "reason": "matchingReuseKey",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                }
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates)
+            .await
+            .into_job_candidate();
+        assert_eq!(
+            candidate
+                .runner_preference()
+                .map(crate::provider::RunnerPreference::admission),
+            Some(RunnerPreferenceAdmission::Legacy(
+                crate::provider::RunnerPreferenceReason::MatchingReuseKey
+            ))
+        );
+        assert_eq!(
+            candidate.runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,),
+            Some(super::super::RunnerPreferenceClaimTelemetry {
+                resolution: RunnerPreferenceResolution::MatchingReusableSandbox,
+                state: super::super::RunnerPreferenceClaimState::Active,
+                targeted_self: Some(true),
+            })
         );
         assert_no_direct_candidate(&direct_candidates).await;
     }
@@ -2336,6 +2494,54 @@ mod tests {
     }
 
     #[test]
+    fn parse_connector_runtime_sync_notification_reads_tagged_target() {
+        let msg = make_message(
+            Some("connector-runtime-sync"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": {
+                    "kind": "custom",
+                    "customConnectorId": "550e8400-e29b-41d4-a716-446655440000"
+                }
+            }),
+        );
+
+        let notification = parse_connector_runtime_sync_notification(&msg)
+            .expect("tagged connector runtime notification should parse");
+
+        assert_eq!(
+            notification.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000003"
+        );
+        assert_eq!(
+            notification.target,
+            ConnectorRuntimeTarget::Custom {
+                custom_connector_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_connector_runtime_sync_notification_rejects_malformed_target() {
+        for data in [
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003"
+            }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": { "kind": "custom" }
+            }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": { "kind": "unknown", "connectorSlug": "slack" }
+            }),
+        ] {
+            let msg = make_message(Some("connector-runtime-sync"), data);
+            assert!(parse_connector_runtime_sync_notification(&msg).is_none());
+        }
+    }
+
+    #[test]
     fn parse_active_input_notification_reads_run_id() {
         let msg = make_message(
             Some("active-input"),
@@ -2350,6 +2556,38 @@ mod tests {
                 .to_string(),
             "00000000-0000-0000-0000-000000000004"
         );
+    }
+
+    #[test]
+    fn parse_pi_standby_notifications_keep_handoff_and_release_distinct() {
+        let run_id = "00000000-0000-0000-0000-000000000005";
+        for (name, expected) in [
+            ("pi-handoff", PiStandbySignal::Handoff),
+            ("pi-standby-release", PiStandbySignal::Release),
+        ] {
+            let message = make_message(Some(name), serde_json::json!({ "runId": run_id }));
+
+            let (parsed_run_id, signal) =
+                parse_pi_standby_notification(&message).expect("Pi notification should parse");
+
+            assert_eq!(parsed_run_id.to_string(), run_id);
+            assert_eq!(signal, expected);
+        }
+    }
+
+    #[test]
+    fn parse_pi_standby_notification_rejects_other_names_and_invalid_ids() {
+        let other = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000005" }),
+        );
+        let invalid = make_message(
+            Some("pi-handoff"),
+            serde_json::json!({ "runId": "not-a-run-id" }),
+        );
+
+        assert!(parse_pi_standby_notification(&other).is_none());
+        assert!(parse_pi_standby_notification(&invalid).is_none());
     }
 
     #[test]

@@ -606,13 +606,11 @@
   },
   "sidebar": {
     "clearSearch": "検索をクリア",
-    "description": "エージェントを選択して会話を開始します。",
     "descriptionWithChats": "エージェントを選択するか、チャットにジャンプします。",
     "leadDescription": "あなたの主任アシスタントがいつでもあなたのためにここにいます",
     "markAllRead": "すべて既読としてマークする",
     "more": "もっと見る",
     "new": "新しい",
-    "noAgents": "エージェントが見つかりませんでした",
     "noResults": "結果が見つかりませんでした",
     "noSubagents": "まだ利用可能なサブエージェントはありません。",
     "openConversation": "会話を開く",

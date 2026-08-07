@@ -15,7 +15,6 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
@@ -24,14 +23,12 @@ import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { variables } from "@vm0/db/schema/variable";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
-import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -39,11 +36,15 @@ import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import {
+  acquireVm0ManagedModelKeyFixture,
+  releaseVm0ManagedModelKeyFixture,
+} from "../services/test-vm0-managed-model-key-fixture.service";
 import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 import type { Tx } from "../../lib/db-types";
 
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
@@ -86,22 +87,6 @@ function contentKeys(value: unknown): string[] {
     return Object.keys(value);
   }
   return [];
-}
-
-function resolvedSlackApiUrl(): string | null {
-  const slackApiUrl = optionalEnv("SLACK_API_URL");
-  if (slackApiUrl) {
-    return slackApiUrl;
-  }
-
-  const flag = optionalEnv("E2E_SLACK_MOCK_ENABLED");
-  const mockEnabled = flag === "1" || flag === "true";
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (mockEnabled && vercelUrl) {
-    return `https://${vercelUrl}/api/test/slack-mock/`;
-  }
-
-  return null;
 }
 
 interface UpsertSlackInstallationInput {
@@ -247,11 +232,11 @@ async function seedDefaultAgent(
 }
 
 async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
-  await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, composeId));
-  await db
-    .insert(vm0ApiKeys)
-    .values(vm0ManagedKeyRows(composeId))
-    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
+  await acquireVm0ManagedModelKeyFixture(
+    db,
+    composeId,
+    vm0ManagedKeyRows(composeId),
+  );
 }
 
 function vm0ManagedKeyRows(composeId: string) {
@@ -293,17 +278,7 @@ async function deleteVm0ManagedKeysForSeededDefaultAgent(
     return;
   }
 
-  const apiKeys = vm0ManagedKeyRows(compose.id).map((row) => {
-    return row.apiKey;
-  });
-  await db
-    .delete(vm0ApiKeys)
-    .where(
-      and(
-        eq(vm0ApiKeys.label, compose.id),
-        inArray(vm0ApiKeys.apiKey, apiKeys),
-      ),
-    );
+  await releaseVm0ManagedModelKeyFixture(db, compose.id);
 }
 
 async function getOrInsertCompose(
@@ -573,7 +548,6 @@ function slackPendingChatEventRows(db: ReadonlyDb, teamId: string) {
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       eventType: chatEvents.eventType,
-      triggerSource: chatEvents.triggerSource,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)
@@ -794,20 +768,6 @@ async function seedUserVariablesForTest(
   }
 }
 
-function recentMockCalls(db: ReadonlyDb) {
-  return db
-    .select({
-      method: e2eSlackMockCallLog.method,
-      teamId: e2eSlackMockCallLog.teamId,
-      channelId: e2eSlackMockCallLog.channelId,
-      bodyJson: e2eSlackMockCallLog.bodyJson,
-      createdAt: e2eSlackMockCallLog.createdAt,
-    })
-    .from(e2eSlackMockCallLog)
-    .orderBy(desc(e2eSlackMockCallLog.createdAt))
-    .limit(50);
-}
-
 const getSlackState$ = computed(async (get) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -848,8 +808,6 @@ const getSlackState$ = computed(async (get) => {
     db,
     compose?.headVersionId,
   );
-  const mockCalls = await recentMockCalls(db);
-
   return {
     status: 200 as const,
     body: {
@@ -893,13 +851,6 @@ const getSlackState$ = computed(async (get) => {
             content_keys: contentKeys(composeVersion.content),
           }
         : null,
-      resolved_slack_api_url: resolvedSlackApiUrl(),
-      mock_calls: mockCalls.map((call) => {
-        return {
-          ...call,
-          createdAt: isoString(call.createdAt),
-        };
-      }),
     },
   };
 });

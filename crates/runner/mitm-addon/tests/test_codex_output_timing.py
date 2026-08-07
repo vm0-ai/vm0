@@ -154,6 +154,44 @@ def test_default_codex_excludes_prewarm_and_reports_content_free_milestones(
     assert secret not in read_jsonl_text_after_flush(proxy_log)
 
 
+def test_output_first_codex_reports_only_observed_content_free_milestones(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+    usage_webhook_server: UsageWebhookServer,
+    sync_usage_executor,
+) -> None:
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    secret = "output-first-provider-secret"
+
+    with mitm_ctx(api_url=usage_webhook_server.api_url):
+        mitm_addon.responseheaders(flow)
+        feed_websocket_server_message(
+            flow,
+            _event("response.output_item.added", secret=secret),
+        )
+
+        [output_request] = _timing_requests(usage_webhook_server)
+        assert [operation["action_type"] for operation in _operations([output_request])] == [
+            _FIRST_OUTPUT_ITEM_ADDED
+        ]
+
+        feed_websocket_server_message(
+            flow,
+            _event("response.output_text.delta", secret=secret),
+        )
+
+    requests = _timing_requests(usage_webhook_server)
+    operations = _operations(requests)
+    assert [operation["action_type"] for operation in operations] == [
+        _FIRST_OUTPUT_ITEM_ADDED,
+        _FIRST_OUTPUT_TEXT_DELTA,
+        _FIRST_TEXT_IN_FIRST_GENERATED_RESPONSE,
+    ]
+    assert all(request.json_body()["runId"] == "run-abc-123" for request in requests)
+    assert secret.encode() not in b"".join(request.body for request in requests)
+
+
 def test_tool_turns_reconnects_and_reused_sandboxes_preserve_run_boundaries(
     tmp_path: Path,
     real_flow,

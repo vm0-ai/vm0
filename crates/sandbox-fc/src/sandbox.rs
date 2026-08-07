@@ -875,9 +875,9 @@ impl FirecrackerSandbox {
         )?;
 
         let outcome = tokio::select! {
-            result = control.control(
-                &message_id,
-                &payload,
+            result = control.control_owned(
+                message_id,
+                payload,
                 timeout,
             ) => ControlOutcome::Returned(result),
             () = wait_for_backend_crash(state_rx) => ControlOutcome::BackendCrashed,

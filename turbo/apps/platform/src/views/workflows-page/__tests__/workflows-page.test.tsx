@@ -873,6 +873,68 @@ function mockConnectedAutomationConnectors(): void {
   ]);
 }
 
+function mockConfiguredEventAutomation(
+  body: Extract<
+    ZeroWorkflowAutomationCreateRequest,
+    { readonly kind: "event" }
+  >,
+): ZeroWorkflowAutomationSummary {
+  if (body.eventType === "stripe-invoice-paid") {
+    return {
+      ...gmailWorkflowAutomation(),
+      eventType: "stripe-invoice-paid",
+      eventConfig: {
+        ...body.eventConfig,
+        connectorId: "00000000-0000-4000-a000-000000000411",
+        stripeAccountId: "acct_mock_stripe_invoice_paid",
+        mode: "live",
+      },
+      health: {
+        lastMatchingEventReceivedAt: null,
+        lastDeliveryStatus: null,
+        lastDeliveryStatusAt: null,
+        warning: null,
+      },
+    };
+  }
+  return {
+    ...gmailWorkflowAutomation(),
+    eventType: body.eventType,
+    eventConfig: body.eventConfig,
+  } as ZeroWorkflowAutomationSummary;
+}
+
+function mockGoogleCalendarEventAutomation(
+  body: Extract<
+    ZeroWorkflowAutomationCreateRequest,
+    { readonly kind: "event" }
+  >,
+): ZeroWorkflowAutomationSummary {
+  switch (body.eventType) {
+    case "google-calendar-event-created": {
+      return {
+        ...googleCalendarWorkflowAutomation(),
+        eventConfig: body.eventConfig,
+      };
+    }
+    case "google-calendar-event-updated": {
+      return {
+        ...googleCalendarUpdatedWorkflowAutomation(),
+        eventConfig: body.eventConfig,
+      };
+    }
+    case "google-calendar-event-cancelled": {
+      return {
+        ...googleCalendarCancelledWorkflowAutomation(),
+        eventConfig: body.eventConfig,
+      };
+    }
+    default: {
+      throw new Error("Expected a Google Calendar event automation");
+    }
+  }
+}
+
 function mockCreateWorkflowAutomation(
   onCreate: (body: ZeroWorkflowAutomationCreateRequest) => void,
 ): void {
@@ -910,23 +972,8 @@ function mockCreateWorkflowAutomation(
           eventConfig: body.eventConfig,
         });
       }
-      if (body.eventType === "google-calendar-event-created") {
-        return respond(201, {
-          ...googleCalendarWorkflowAutomation(),
-          eventConfig: body.eventConfig,
-        });
-      }
-      if (body.eventType === "google-calendar-event-updated") {
-        return respond(201, {
-          ...googleCalendarUpdatedWorkflowAutomation(),
-          eventConfig: body.eventConfig,
-        });
-      }
-      if (body.eventType === "google-calendar-event-cancelled") {
-        return respond(201, {
-          ...googleCalendarCancelledWorkflowAutomation(),
-          eventConfig: body.eventConfig,
-        });
+      if (body.eventConfig.provider === "google-calendar") {
+        return respond(201, mockGoogleCalendarEventAutomation(body));
       }
       if (body.eventType === "google-meet-transcript-generated") {
         return respond(201, {
@@ -998,14 +1045,11 @@ function mockCreateWorkflowAutomation(
       if (
         body.eventConfig.provider === "github" ||
         body.eventConfig.provider === "google-forms" ||
+        body.eventConfig.provider === "stripe" ||
         body.eventConfig.provider === "strapi" ||
         body.eventConfig.provider === "chat"
       ) {
-        return respond(201, {
-          ...gmailWorkflowAutomation(),
-          eventType: body.eventType,
-          eventConfig: body.eventConfig,
-        } as ZeroWorkflowAutomationSummary);
+        return respond(201, mockConfiguredEventAutomation(body));
       }
       return respond(201, {
         ...gmailWorkflowAutomation(),
@@ -2576,6 +2620,7 @@ describe("workflow detail page", () => {
             message: "GitHub installation not found",
             code: "NOT_FOUND",
           },
+          installUrl: null,
         });
       },
     );

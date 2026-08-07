@@ -29,13 +29,10 @@ const init$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       userId: auth.userId,
       filename: body.filename,
-      allowV2: body.supportsUploadHeaders === true,
     },
     signal,
   );
-  const uploadHeaders = artifact.metadata
-    ? s3MetadataHeaders(artifact.metadata)
-    : undefined;
+  const uploadHeaders = s3MetadataHeaders(artifact.metadata);
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const uploadUrl = await get(
     generatePresignedPutUrl(

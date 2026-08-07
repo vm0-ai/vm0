@@ -211,8 +211,13 @@ function configureGoogleFormsCreationMock(args?: {
           formId: GOOGLE_FORM_ID,
           info: { title: "Customer survey" },
           publishSettings: args?.unpublished
-            ? {}
-            : { publishState: "PUBLISHED" },
+            ? { publishState: {} }
+            : {
+                publishState: {
+                  isPublished: true,
+                  isAcceptingResponses: true,
+                },
+              },
         });
       },
     ),

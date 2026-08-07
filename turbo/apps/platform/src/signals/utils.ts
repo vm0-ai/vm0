@@ -181,25 +181,6 @@ export function jsonParseOr<T>(value: string, fallback: T): T {
   }
 }
 
-const base64UrlPattern = /^[A-Za-z0-9_-]*$/;
-
-export function jsonParseBase64UrlOr<T>(value: string, fallback: T): T {
-  if (!base64UrlPattern.test(value) || value.length % 4 === 1) {
-    return fallback;
-  }
-
-  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
-  const padded = base64.padEnd(
-    base64.length + ((4 - (base64.length % 4)) % 4),
-    "=",
-  );
-  const raw = atob(padded);
-  const bytes = Uint8Array.from(raw, (char) => {
-    return char.charCodeAt(0);
-  });
-  return jsonParseOr(new TextDecoder().decode(bytes), fallback);
-}
-
 /**
  * Best-effort wrapper: await `p` and swallow non-abort errors.
  * Use for prefetch or fire-and-forget operations where failure is acceptable.
@@ -338,18 +319,9 @@ function runRetriedLoad<T>(load: () => Promise<T>): Promise<T> {
  * network or chunk-loading errors. Do not wrap mutations: `load` may run more
  * than once.
  */
-export function retryTransientLoad<T>(
-  load: (signal: AbortSignal) => Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
+export function retryTransientLoad<T>(load: () => Promise<T>): Promise<T> {
   async function attemptLoad(attempt: number): Promise<T> {
-    signal.throwIfAborted();
-    const result = await settle(
-      runRetriedLoad(() => {
-        return load(signal);
-      }),
-      signal,
-    );
+    const result = await settle(runRetriedLoad(load));
     if (result.ok) {
       return result.value;
     }
@@ -357,7 +329,7 @@ export function retryTransientLoad<T>(
     if (delayMs === undefined || !isRetryableError(result.error)) {
       throw result.error;
     }
-    await delay(IN_VITEST ? 0 : delayMs, { signal });
+    await delay(IN_VITEST ? 0 : delayMs);
     return attemptLoad(attempt + 1);
   }
 

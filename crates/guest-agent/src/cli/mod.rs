@@ -9,12 +9,15 @@
 //! - `diagnostics`: bounded stderr tail collection.
 //! - `event_delivery`: event sender watermark state.
 //! - `claude`: Claude result parsing and tool tracking.
+//! - `pi_agent_loop`: Pi standby child and JSONL protocol bridge.
 //! - `termination`: process-group termination FSM.
 //!
 //! `execute_cli` owns the Claude Code subprocess orchestration, while
-//! `codex_app_server_backend` owns the Codex JSON-RPC lifecycle. Each path
-//! retains ownership of its process, event delivery, heartbeat races, and
-//! child reaping until completion.
+//! `codex_app_server_backend` owns the Codex JSON-RPC lifecycle and
+//! `pi_agent_loop` owns the Pi standby child bridge. Each path retains
+//! ownership of its process, event delivery, heartbeat races, and child
+//! reaping until completion. See [`crate::pi_standby`] for the Pi lifecycle
+//! and cross-language protocol contract.
 
 mod child_env;
 mod child_exit_notifier;
@@ -31,6 +34,7 @@ mod diagnostics;
 mod event_delivery;
 mod exec_boundary;
 mod line_reader;
+mod pi_agent_loop;
 mod process_group;
 mod termination;
 
@@ -155,22 +159,22 @@ async fn write_claude_stream_json_to_stdin(
     Ok(())
 }
 
-/// Bounded terminal failure detail extracted from CLI stdout JSONL.
+/// Bounded terminal failure detail extracted from a CLI event stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliFailureDiagnostic {
-    /// Terminal failure message selected from CLI stdout JSONL.
+    /// Terminal failure message selected from a CLI event.
     ///
     /// When produced by [`execute_cli_with_active_input_for_config`], this
     /// message has already been secret-masked, line-break escaped, and bounded
     /// before exposure.
     pub message: String,
 
-    /// High-level source of the stdout-derived failure detail.
+    /// High-level source of the event-derived failure detail.
     ///
     /// Values produced by [`execute_cli_with_active_input_for_config`] use
     /// `ClaudeResult` for Claude Code terminal result events and `CodexJsonl`
-    /// for Codex JSONL failure events. The final run diagnostic may still
-    /// prefer stderr when this stdout message is generic.
+    /// for Codex compatibility JSONL failure events. The final run diagnostic
+    /// may still prefer stderr when this event message is generic.
     pub source: FailureDetailSource,
 
     /// Optional structured failure reason parsed from supported CLI payloads.
@@ -239,12 +243,12 @@ pub struct CliExecutionResult {
     /// drained stdout may contain another result event after cleanup starts.
     pub post_result_cleanup_result: Option<ClaudeResultSummary>,
 
-    /// Best-effort, secret-masked terminal failure diagnostic parsed from CLI
-    /// stdout JSONL.
+    /// Best-effort, secret-masked terminal failure diagnostic parsed from the
+    /// framework event stream.
     ///
-    /// Some frameworks report terminal failures as JSONL events on stdout, not
-    /// stderr. Keeping the diagnostic here lets the guest-agent surface the
-    /// actual failure reason in its final run error.
+    /// Frameworks can report terminal failures as structured events rather
+    /// than stderr. Keeping the diagnostic here lets the guest-agent surface
+    /// the actual failure reason in its final run error.
     pub failure_diagnostic: Option<CliFailureDiagnostic>,
 
     /// Guest-agent control-path error that caused the CLI process group to be
@@ -254,6 +258,40 @@ pub struct CliExecutionResult {
     /// Structured attribution for guest-agent initiated CLI process-group
     /// termination.
     pub cli_termination: Option<CliTerminationDiagnostic>,
+
+    /// Whether this child produced a terminal run result or only released an
+    /// unused Pi standby allocation.
+    pub completion_disposition: CliCompletionDisposition,
+}
+
+/// How top-level guest-agent handling should settle a finished CLI execution.
+///
+/// Pi distinguishes terminal model completion from releasing a standby
+/// allocation. See [`crate::pi_standby`] for the full lifecycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliCompletionDisposition {
+    /// The standard terminal completion and checkpoint path used for Claude,
+    /// Codex, and CLI execution errors.
+    Terminal,
+    /// A terminal Pi result that completes the run but skips the normal
+    /// successful CLI checkpoint because acknowledged Pi events persisted its
+    /// output.
+    PiCompleted,
+    /// A Pi standby allocation released without checkpointing or calling
+    /// `/complete` from guest-agent.
+    PiStandbyReleased(PiStandbyReleaseReason),
+}
+
+/// Why a Pi standby allocation ended without terminal run completion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PiStandbyReleaseReason {
+    /// API-side execution completed the run, so guest-agent exits successfully
+    /// without calling `/complete` again.
+    ApiComplete,
+    /// The unused standby expired, so guest-agent exits with
+    /// [`guest_contracts::pi_standby::TTL_RELEASE_EXIT_CODE`] for runner
+    /// requeue instead of completing the run.
+    Ttl,
 }
 
 /// Heartbeat completion signal observed by CLI execution.
@@ -651,6 +689,7 @@ pub async fn execute_cli_with_active_input_for_config_started_at(
 /// Run-scoped controls observed while the inner CLI is executing.
 pub struct CliExecutionControls<'a> {
     active_input: ActiveInputWriter,
+    pi_standby: crate::pi_standby::PiStandbyReader,
     user_cancellation: CancellationToken,
     codex_startup: Option<&'a CodexStartupTiming>,
 }
@@ -665,13 +704,30 @@ impl<'a> CliExecutionControls<'a> {
     ) -> Self {
         Self {
             active_input,
+            pi_standby: crate::pi_standby::PiStandbyReader::closed(),
             user_cancellation,
             codex_startup,
         }
     }
+
+    /// Supply the reader that connects runner handoff/release controls to the
+    /// Pi standby child.
+    ///
+    /// The default reader is closed. Non-Pi execution paths ignore this
+    /// control; see [`crate::pi_standby`] for the Pi lifecycle.
+    #[must_use]
+    pub fn with_pi_standby_reader(mut self, reader: crate::pi_standby::PiStandbyReader) -> Self {
+        self.pi_standby = reader;
+        self
+    }
 }
 
 /// Execute the CLI while observing run-scoped controls.
+///
+/// When the config contains a system prompt, model config, and Skill snapshot,
+/// this selects the Pi standby path described in [`crate::pi_standby`]. When
+/// all three are absent it selects the configured Claude or Codex path; a
+/// partial Pi configuration returns an execution error.
 pub async fn execute_cli_with_controls_for_config_started_at(
     masker: &SecretMasker,
     heartbeat_monitor: HeartbeatMonitor,
@@ -681,6 +737,18 @@ pub async fn execute_cli_with_controls_for_config_started_at(
     paths: &paths::GuestPaths,
     execution_started_at: Instant,
 ) -> Result<CliExecutionResult, AgentError> {
+    if pi_agent_loop::is_pi_standby_config(config)? {
+        return pi_agent_loop::execute_pi_standby(
+            masker,
+            heartbeat_monitor,
+            http,
+            controls,
+            config,
+            paths,
+            execution_started_at,
+        )
+        .await;
+    }
     let runtime = CliRuntimeConfig::from_config(config, paths, execution_started_at)?;
     execute_cli_inner(masker, heartbeat_monitor, http, controls, &runtime).await
 }
@@ -705,6 +773,7 @@ async fn execute_cli_inner(
 
     let CliExecutionControls {
         active_input,
+        pi_standby: _,
         user_cancellation,
         codex_startup: _,
     } = controls;
@@ -802,7 +871,7 @@ async fn execute_cli_inner(
         })
     });
 
-    // Stream stdout JSONL, racing against heartbeat and process exit.
+    // Stream Claude Code stdout JSONL, racing against heartbeat and process exit.
     //
     // Event sending is decoupled from stdout reading via an mpsc channel
     // to prevent a deadlock: Bun (Claude CLI runtime) uses blocking stdout
@@ -1473,6 +1542,7 @@ async fn execute_cli_inner(
         failure_diagnostic: event_ingestor.failure_diagnostic(),
         control_error,
         cli_termination,
+        completion_disposition: CliCompletionDisposition::Terminal,
     })
 }
 

@@ -114,7 +114,6 @@ Notes:
         filename,
         contentType,
         length: fileSize,
-        supportsUploadHeaders: true,
       });
       const uploadResponse = await fetch(prepared.uploadUrl, {
         method: "PUT",

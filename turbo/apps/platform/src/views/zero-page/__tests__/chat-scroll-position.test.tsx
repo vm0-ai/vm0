@@ -1315,11 +1315,7 @@ describe("chat scroll position", () => {
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (
-          query.beforeSeqId !== undefined ||
-          query.sinceSeqId !== undefined ||
-          query.sinceId !== undefined
-        ) {
+        if (query.beforeSeqId !== undefined || query.sinceSeqId !== undefined) {
           return respond(200, { events: [] });
         }
         const contentByThreadId = new Map([

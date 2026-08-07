@@ -486,7 +486,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId || query.sinceId) {
+        if (query.sinceSeqId) {
           return respond(200, { events: [] });
         }
         if (params.threadId === RUNNING_THREAD_ID) {
@@ -547,6 +547,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {

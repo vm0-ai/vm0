@@ -1,5 +1,6 @@
 import type {
   RunnerPreference,
+  RunnerPreferenceDecision,
   RunnerPreferenceResolution,
 } from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -26,7 +27,7 @@ import type { Db } from "../external/db";
 
 const RUNNER_REUSE_PROTECTION_MS = 2000;
 const RUNNER_EXACT_HISTORY_PROTECTION_MS = Math.min(
-  500,
+  1000,
   RUNNER_REUSE_PROTECTION_MS,
 );
 const RUNNER_FINALIZING_PREDECESSOR_PROTECTION_MS = 1500;
@@ -270,20 +271,103 @@ export function runnerReusePreferencePollPriority(args: {
   END`;
 }
 
-interface RunnerReusePreferenceResolution {
-  readonly runnerPreference: RunnerPreference | null;
-  readonly outcome: RunnerPreferenceResolution;
+type PositiveRunnerPreferenceDecision = Extract<
+  RunnerPreferenceDecision,
+  { kind: "preference" }
+>;
+type NoRunnerPreferenceDecision = Extract<
+  RunnerPreferenceDecision,
+  { kind: "noPreference" }
+>;
+
+interface RunnerPreferenceDeliveryFields {
+  readonly runnerPreferenceDecision: RunnerPreferenceDecision;
+  readonly runnerPreference?: RunnerPreference;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolution;
 }
 
-export function runnerReusePreferenceLookupError(): RunnerReusePreferenceResolution {
+// Remove this legacy projection in #25577 after old runners have drained.
+const legacyPreferenceByTier = {
+  exactSandbox: {
+    reason: "exactHistoryGeneration",
+    resolution: "exact_history_generation",
+  },
+  finalizingPredecessor: {
+    reason: "finalizingPredecessor",
+    resolution: "finalizing_predecessor",
+  },
+  reusableSandbox: {
+    reason: "matchingReuseKey",
+    resolution: "matching_reusable_sandbox",
+  },
+  workspaceCache: {
+    reason: "matchingReuseKey",
+    resolution: "matching_workspace_cache",
+  },
+} as const satisfies Record<
+  PositiveRunnerPreferenceDecision["tier"],
+  {
+    readonly reason: RunnerPreference["reason"];
+    readonly resolution: RunnerPreferenceResolution;
+  }
+>;
+
+const legacyResolutionByNoPreferenceReason = {
+  noReuseKey: "no_reuse_key",
+  expired: "expired",
+  noViableHolder: "no_viable_holder",
+  lookupError: "lookup_error",
+} as const satisfies Record<
+  NoRunnerPreferenceDecision["reason"],
+  RunnerPreferenceResolution
+>;
+
+export function runnerReusePreferenceLookupErrorDecision(): RunnerPreferenceDecision {
   return {
-    runnerPreference: null,
-    outcome: "lookup_error",
+    kind: "noPreference",
+    reason: "lookupError",
+  };
+}
+
+export function runnerPreferenceDeliveryFields(
+  decision: RunnerPreferenceDecision,
+): RunnerPreferenceDeliveryFields {
+  if (decision.kind === "noPreference") {
+    return {
+      runnerPreferenceDecision: decision,
+      runnerPreferenceResolution:
+        legacyResolutionByNoPreferenceReason[decision.reason],
+    };
+  }
+
+  const legacy = legacyPreferenceByTier[decision.tier];
+  return {
+    runnerPreferenceDecision: decision,
+    runnerPreference: {
+      runnerIdentity: decision.runnerIdentity,
+      reason: legacy.reason,
+      expiresAt: decision.expiresAt,
+    },
+    runnerPreferenceResolution: legacy.resolution,
+  };
+}
+
+export function runnerPreferenceDecisionTelemetryDimensions(
+  decision: RunnerPreferenceDecision,
+): Record<string, string> {
+  const { runnerPreferenceResolution } =
+    runnerPreferenceDeliveryFields(decision);
+  return {
+    runner_preference_resolution: runnerPreferenceResolution,
+    runner_preference_decision_kind: decision.kind,
+    ...(decision.kind === "preference"
+      ? { runner_preference_tier: decision.tier }
+      : { runner_preference_no_preference_reason: decision.reason }),
   };
 }
 
 interface RunnerReuseHolder {
-  readonly runnerIdentity: RunnerPreference["runnerIdentity"];
+  readonly runnerIdentity: PositiveRunnerPreferenceDecision["runnerIdentity"];
   readonly hasExactHistoryGeneration: boolean;
   readonly isFinalizingPredecessor: boolean;
   readonly hasReusableSandbox: boolean;
@@ -396,11 +480,11 @@ export async function resolveRunnerReusePreference(args: {
   readonly historyGenerationRunId: string | undefined;
   readonly createdAt: Date;
   readonly currentDate: Date;
-}): Promise<RunnerReusePreferenceResolution> {
+}): Promise<RunnerPreferenceDecision> {
   if (!args.reuseKey) {
     return {
-      runnerPreference: null,
-      outcome: "no_reuse_key",
+      kind: "noPreference",
+      reason: "noReuseKey",
     };
   }
   const matchingReuseExpiresAt = new Date(
@@ -412,8 +496,8 @@ export async function resolveRunnerReusePreference(args: {
   const shouldLookUpGenericReuse = matchingReuseExpiresAt > args.currentDate;
   if (!shouldLookUpGenericReuse && !args.historyGenerationRunId) {
     return {
-      runnerPreference: null,
-      outcome: "expired",
+      kind: "noPreference",
+      reason: "expired",
     };
   }
 
@@ -437,8 +521,8 @@ export async function resolveRunnerReusePreference(args: {
 
   if (!holder) {
     return {
-      runnerPreference: null,
-      outcome: shouldLookUpGenericReuse ? "no_viable_holder" : "expired",
+      kind: "noPreference",
+      reason: shouldLookUpGenericReuse ? "noViableHolder" : "expired",
     };
   }
 
@@ -447,12 +531,10 @@ export async function resolveRunnerReusePreference(args: {
       throw new Error("Exact history preference is missing its deadline");
     }
     return {
-      runnerPreference: {
-        runnerIdentity: holder.runnerIdentity,
-        reason: "exactHistoryGeneration",
-        expiresAt: exactHistoryExpiresAt.toISOString(),
-      },
-      outcome: "exact_history_generation",
+      kind: "preference",
+      runnerIdentity: holder.runnerIdentity,
+      tier: "exactSandbox",
+      expiresAt: exactHistoryExpiresAt.toISOString(),
     };
   }
 
@@ -461,27 +543,21 @@ export async function resolveRunnerReusePreference(args: {
       throw new Error("Finalizing predecessor is missing its completion time");
     }
     return {
-      runnerPreference: {
-        runnerIdentity: holder.runnerIdentity,
-        reason: "finalizingPredecessor",
-        expiresAt: new Date(
-          holder.sourceCompletedAt.getTime() +
-            RUNNER_FINALIZING_PREDECESSOR_PROTECTION_MS,
-        ).toISOString(),
-      },
-      outcome: "finalizing_predecessor",
+      kind: "preference",
+      runnerIdentity: holder.runnerIdentity,
+      tier: "finalizingPredecessor",
+      expiresAt: new Date(
+        holder.sourceCompletedAt.getTime() +
+          RUNNER_FINALIZING_PREDECESSOR_PROTECTION_MS,
+      ).toISOString(),
     };
   }
 
   return {
-    runnerPreference: {
-      runnerIdentity: holder.runnerIdentity,
-      reason: "matchingReuseKey",
-      expiresAt: matchingReuseExpiresAt.toISOString(),
-    },
-    outcome: holder.hasReusableSandbox
-      ? "matching_reusable_sandbox"
-      : "matching_workspace_cache",
+    kind: "preference",
+    runnerIdentity: holder.runnerIdentity,
+    tier: holder.hasReusableSandbox ? "reusableSandbox" : "workspaceCache",
+    expiresAt: matchingReuseExpiresAt.toISOString(),
   };
 }
 

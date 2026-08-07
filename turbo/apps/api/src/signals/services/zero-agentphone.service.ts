@@ -1494,7 +1494,6 @@ async function persistAgentPhoneChatMessage(args: {
           nonContentPart: createChatEventSourcePart({ kind: "agentphone" }),
         }),
         runId: null,
-        triggerSource: "agentphone",
         agentphoneContext: {
           messageText: args.prompt,
           threadContext: args.threadContext,

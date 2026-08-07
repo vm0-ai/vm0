@@ -105,7 +105,6 @@ async function loadGitHubLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "github"),
-        eq(chatEvents.triggerSource, "github"),
       ),
     )
     .limit(1);

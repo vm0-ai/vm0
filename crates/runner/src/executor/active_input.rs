@@ -128,7 +128,7 @@ async fn forward_text(
     // runner-internal and has no active-input identity or deduplication semantics.
     let correlation_id = format!("active-input:{run_id}:{delivery_sequence}");
     match control
-        .control(&correlation_id, &bytes, ACTIVE_INPUT_CONTROL_TIMEOUT)
+        .control_owned(correlation_id, bytes, ACTIVE_INPUT_CONTROL_TIMEOUT)
         .await
     {
         Ok(_) => debug!(run_id = %run_id, "forwarded active input"),

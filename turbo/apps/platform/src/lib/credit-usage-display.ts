@@ -53,24 +53,8 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
     finance: USAGE_DISPLAY_NAMES.finance,
     weather: USAGE_DISPLAY_NAMES.weather,
     "image-recognition": USAGE_DISPLAY_NAMES.imageRecognize,
-    "image-interpret-marks": USAGE_DISPLAY_NAMES.imageRecognize,
     translation: USAGE_DISPLAY_NAMES.translation,
   };
-
-// Current Settings responses retain raw usage kinds inside each provider.
-// Keep provider aliases for older APIs that only return the provider so app
-// and API promotions can serve different versions safely.
-const MANAGED_USAGE_PROVIDER_DISPLAY_NAMES: Readonly<
-  Record<string, () => string>
-> = {
-  firecrawl: USAGE_DISPLAY_NAMES.webFetch,
-  "google-maps": USAGE_DISPLAY_NAMES.maps,
-  openstreetmap: USAGE_DISPLAY_NAMES.maps,
-  perplexity: USAGE_DISPLAY_NAMES.webSearch,
-  apidojo: USAGE_DISPLAY_NAMES.finance,
-  "google-weather": USAGE_DISPLAY_NAMES.weather,
-  "google-air-quality": USAGE_DISPLAY_NAMES.weather,
-};
 
 const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
   // Rows recorded before image tasks moved to task-scoped kinds carry
@@ -159,12 +143,6 @@ export function getCreditUsageDisplayName(
   const normalizedProvider = provider.trim();
   if (baseKind === "model" || baseKind === "image" || baseKind === "video") {
     return usageModelDisplayName(normalizedProvider);
-  }
-
-  const managedProviderDisplayName =
-    MANAGED_USAGE_PROVIDER_DISPLAY_NAMES[normalizedProvider];
-  if (managedProviderDisplayName) {
-    return managedProviderDisplayName();
   }
 
   return formatUsageDisplayName(normalizedProvider);

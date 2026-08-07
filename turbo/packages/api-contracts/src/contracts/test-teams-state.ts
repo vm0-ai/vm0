@@ -139,17 +139,6 @@ export const testTeamsStateResponseSchema = z.object({
       content_keys: z.array(z.string()),
     })
     .nullable(),
-  resolved_teams_mock_base_url: z.string().nullable(),
-  mock_calls: z.array(
-    z.object({
-      method: z.string(),
-      tenantId: z.string().nullable(),
-      conversationId: z.string().nullable(),
-      activityId: z.string().nullable(),
-      bodyJson: z.unknown(),
-      createdAt: nullableDateStringSchema,
-    }),
-  ),
 });
 
 export const testTeamsStateContract = c.router({
@@ -165,7 +154,7 @@ export const testTeamsStateContract = c.router({
       400: testTeamsStateErrorSchema,
       404: z.string(),
     },
-    summary: "Read Teams e2e diagnostic state for a test tenant",
+    summary: "Read Teams API integration test state",
   },
   post: {
     method: "POST",
@@ -176,7 +165,7 @@ export const testTeamsStateContract = c.router({
       400: testTeamsStateErrorSchema,
       404: z.string(),
     },
-    summary: "Seed Teams e2e diagnostic state for a test tenant",
+    summary: "Seed Teams API integration test state",
   },
   delete: {
     method: "DELETE",
@@ -190,7 +179,7 @@ export const testTeamsStateContract = c.router({
       400: testTeamsStateErrorSchema,
       404: z.string(),
     },
-    summary: "Clear Teams e2e diagnostic state for a test tenant",
+    summary: "Clear Teams API integration test state",
   },
 });
 

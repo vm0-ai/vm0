@@ -26,6 +26,7 @@ import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.ser
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import {
+  type ChatAgentRunSourceAnnotation,
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
@@ -49,9 +50,9 @@ interface WebChatPriorRun {
 }
 
 export interface WebChatSessionPromptContext {
-  readonly inlineTemplatesEnabled: boolean;
   readonly generationTemplatePrompt: string;
   readonly computerUseHostDisplayName: string | null;
+  readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
 }
 
 function buildWebChatPrompt(): string {
@@ -59,6 +60,40 @@ function buildWebChatPrompt(): string {
     "# Current Integration\nYou are currently running inside: Web",
     "You are communicating with the user through the web chat UI.",
   ].join("\n\n");
+}
+
+/**
+ * Provenance for a run whose prompt arrived from an agent run in another chat
+ * thread. The message text is all that crosses the thread boundary, so without
+ * this block the run cannot tell that a person did not write it, and has no
+ * identifier for the conversation it came from.
+ *
+ * These are facts about how the run was created, not instructions about what
+ * to do with them. What the run needs from the source thread depends on the
+ * message, so the commands are listed and the choice is left to the run.
+ */
+export function buildAgentRunSourceContext(
+  source: ChatAgentRunSourceAnnotation,
+): string {
+  return [
+    "# This Run's Trigger",
+    "",
+    "The message this run was created for was sent by an agent run in another chat thread. A person did not type it here.",
+    "",
+    `- SOURCE_RUN_ID: ${source.runId}`,
+    `- SOURCE_THREAD_ID: ${source.threadId}`,
+    `- SOURCE_AGENT_ID: ${source.agentId}`,
+    `- SOURCE_THREAD_TITLE: ${source.titleSnapshot}`,
+    "",
+    "The message text is everything that run chose to carry across the thread boundary. Its own instructions, the conversation it came from, and whatever it already found stayed in the source thread and are not included above.",
+    "",
+    "Reading the source, each through ZERO_TOKEN:",
+    `- \`zero chat messages --thread-id ${source.threadId}\` prints the source thread's user and assistant messages (chat-event:read)`,
+    `- \`zero chat get --thread-id ${source.threadId}\` prints its title, agent, and model (chat-thread:read)`,
+    `- \`zero logs ${source.runId} --all\` prints the full event stream of the run that sent this message (agent-run:read)`,
+    "",
+    `This run's output is appended to this thread, where the user reads it. Nothing carries it back to the source run. \`zero chat send --thread-id ${source.threadId}\` posts a new message into the source thread, which starts a run there.`,
+  ].join("\n");
 }
 
 function buildComputerUseSystemPrompt(displayName: string): string {
@@ -77,6 +112,9 @@ export function buildWebChatAppendSystemPrompt(args: {
 }): string {
   return [
     buildWebChatPrompt(),
+    args.context.agentRunSource
+      ? buildAgentRunSourceContext(args.context.agentRunSource)
+      : "",
     args.priorContext,
     args.incompleteContext,
     args.context.generationTemplatePrompt,
@@ -110,19 +148,14 @@ function formatAttachFileIds(
     .join("\n");
 }
 
-function formatPriorRunEvent(
-  event: WebChatPriorRunEvent,
-  inlineTemplatesEnabled: boolean,
-): string {
+function formatPriorRunEvent(event: WebChatPriorRunEvent): string {
   const roleLabel = event.role === "user" ? "User" : "Assistant";
   const userMessage = requiredUserMessageForEvent(
     event.eventType,
     event.userMessage,
   );
   if (userMessage) {
-    const prompt = projectUserMessage(userMessage, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }).agentPrompt;
+    const prompt = projectUserMessage(userMessage).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
   const attach = formatAttachFileIds(event.attachFiles);
@@ -136,7 +169,6 @@ function formatPriorRunEvent(
 
 function buildWebChatPriorRunsContext(
   runs: readonly WebChatPriorRun[],
-  inlineTemplatesEnabled: boolean,
 ): string {
   if (runs.length === 0) {
     return "";
@@ -145,7 +177,7 @@ function buildWebChatPriorRunsContext(
   const blocks = runs.map((run, index) => {
     const relativeIndex = index - total + 1;
     const renderedEvents = run.events.map((event) => {
-      return formatPriorRunEvent(event, inlineTemplatesEnabled);
+      return formatPriorRunEvent(event);
     });
     const hasUserEvent = run.events.some((event) => {
       return event.role === "user";
@@ -280,17 +312,18 @@ export async function resolveWebChatSessionPrompt(args: {
   readonly threadId: string;
   readonly sessionAction: ChatThreadSessionResolutionAction;
   readonly context: WebChatSessionPromptContext;
+  readonly historyPolicy?: "default" | "none";
 }): Promise<string> {
+  const omitHistory = args.historyPolicy === "none";
   const incompleteContext =
-    args.sessionAction === "rotated"
+    omitHistory || args.sessionAction === "rotated"
       ? ""
       : await loadWebChatIncompleteContext(args.db, args.threadId);
   const priorContext =
-    incompleteContext.length > 0
+    omitHistory || incompleteContext.length > 0
       ? ""
       : buildWebChatPriorRunsContext(
           await getLatestRunsByThreadId(args.db, args.threadId),
-          args.context.inlineTemplatesEnabled,
         );
   return buildWebChatAppendSystemPrompt({
     incompleteContext,

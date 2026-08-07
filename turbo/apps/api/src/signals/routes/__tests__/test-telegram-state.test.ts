@@ -370,8 +370,6 @@ describe("GET /api/test/telegram-state", () => {
     expect(body.default_agent).toBeNull();
     expect(body.default_compose).toBeNull();
     expect(body.default_compose_version).toBeNull();
-    expect(body.resolved_telegram_api_url).toBeNull();
-    expect(Array.isArray(body.mock_calls)).toBeTruthy();
   });
 
   it("returns seeded Telegram diagnostic state", async () => {
@@ -430,8 +428,6 @@ describe("GET /api/test/telegram-state", () => {
     expect(body.default_compose_version).toMatchObject({
       content_keys: expect.arrayContaining(["version", "agents"]),
     });
-    expect(body.resolved_telegram_api_url).toBe("https://telegram.test/bot");
-    expect(Array.isArray(body.mock_calls)).toBeTruthy();
   });
 });
 

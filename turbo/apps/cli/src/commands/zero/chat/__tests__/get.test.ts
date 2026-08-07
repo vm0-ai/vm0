@@ -16,7 +16,9 @@ import { zeroChatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const AGENT_ID = "00000000-0000-4000-8000-000000000010";
+const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const GET_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
+const OTHER_GET_URL = `http://localhost:3000/api/zero/chat-threads/${OTHER_THREAD_ID}/metadata`;
 
 describe("zero chat get command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -109,7 +111,33 @@ describe("zero chat get command", () => {
     expect(output).toContain("Model:  (default)");
   });
 
-  it("requires ZERO_CHAT_THREAD_ID from the current web chat", async () => {
+  it("loads another chat thread passed with --thread-id", async () => {
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    server.use(
+      http.get(OTHER_GET_URL, () => {
+        return HttpResponse.json({
+          id: OTHER_THREAD_ID,
+          agentId: AGENT_ID,
+          title: "Delegation source",
+          selectedModel: "claude-sonnet-5",
+        });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync([
+      "node",
+      "cli",
+      "get",
+      "--thread-id",
+      OTHER_THREAD_ID,
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain(`Thread: ${OTHER_THREAD_ID}`);
+    expect(output).toContain("Title:  Delegation source");
+  });
+
+  it("requires a thread ID from the flag or the current web chat", async () => {
     vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
 
     await expect(async () => {
@@ -118,7 +146,7 @@ describe("zero chat get command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("ZERO_CHAT_THREAD_ID is not set");
-    expect(stderr).toContain("Run this command from a Zero web chat thread.");
+    expect(stderr).toContain("Pass --thread-id <thread-id>");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

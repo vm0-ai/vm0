@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.37.195](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.194...sandbox-fc-v0.37.195) (2026-08-07)
+
+
+### Performance Improvements
+
+* **rust:** eliminate exec-control payload copies ([#25608](https://github.com/vm0-ai/vm0/issues/25608)) ([3f71e3b](https://github.com/vm0-ai/vm0/commit/3f71e3b491c2fb66e3c964494565aa9a9bcd4166))
+
+## [0.37.194](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.193...sandbox-fc-v0.37.194) (2026-08-07)
+
+## [0.37.193](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.192...sandbox-fc-v0.37.193) (2026-08-07)
+
+## [0.37.192](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.191...sandbox-fc-v0.37.192) (2026-08-06)
+
 ## [0.37.191](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.190...sandbox-fc-v0.37.191) (2026-08-06)
 
 

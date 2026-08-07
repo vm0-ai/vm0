@@ -67,7 +67,6 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         contentType,
         size: body.length,
         checksumSha256: body.canonical.checksumSha256,
-        allowV2: body.supportsUploadHeaders === true,
         destination: {
           channelId: body.canonical.channel,
           ...(body.canonical.threadTs

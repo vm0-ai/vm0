@@ -28,6 +28,7 @@ import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
+  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   zeroModelProviderConnectionsByIdContract,
@@ -304,7 +305,7 @@ interface ChatRunSendBody {
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly clientEventId?: string;
-  readonly model?: string;
+  readonly model?: SupportedRunModel;
   readonly runOptions?: ChatRunOptionsRequest;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly attachFiles?: readonly AttachFile[];
@@ -326,7 +327,15 @@ async function entitledChatActor(
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   chatCallbacks.disableVapid();
   const runnerGroup = api.configureRunnerGroup();
-  await api.grantProEntitlement(actor);
+  await api.grantProEntitlement(
+    actor,
+    options.orgId === STAFF_ORG_ID
+      ? {
+          customerId: "cus_bdd_chat_events_staff",
+          subscriptionId: "sub_bdd_chat_events_staff",
+        }
+      : {},
+  );
   const { providerId } = await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
     displayName: "BDD chat messages agent",
@@ -952,7 +961,10 @@ async function readThreadProjection(actor: ApiTestUser, threadId: string) {
  */
 async function requestSendEventRaw(
   actor: ApiTestUser,
-  body: ChatRunSendBody & { readonly userMessage: UserMessageInputDocument },
+  body: ChatRunSendBody & {
+    readonly userMessage: UserMessageInputDocument;
+    readonly hasTextContent: boolean;
+  },
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
   const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
@@ -982,10 +994,13 @@ async function requestSendEventWithBearer(
       headers: { authorization: `Bearer ${token}` },
       body: {
         ...body,
-        userMessage: body.userMessage ?? {
-          version: 1,
-          parts: [{ type: "text", text: body.prompt }],
-        },
+        hasTextContent: true,
+        userMessage:
+          body.userMessage ??
+          ({
+            version: 1,
+            parts: [{ type: "text", text: body.prompt }],
+          } satisfies UserMessageInputDocument),
       },
     }),
     statuses,
@@ -1011,6 +1026,7 @@ describe("CHAT-02: web chat send and client ids", () => {
             version: 1,
             parts: [{ type: "text", text: prompt }],
           },
+          hasTextContent: true,
           clientThreadId,
           clientEventId,
           model,
@@ -1524,10 +1540,11 @@ describe("CHAT-02: queueing and recalling messages", () => {
       if (!claimedEvent || claimedEvent.eventType !== "input.prompt") {
         throw new Error("Expected the pending active input to be claimed");
       }
-      expect(claimedEvent.userMessage.parts).toContainEqual({
-        type: "model",
-        selectedModel: "claude-sonnet-4-6",
-      });
+      expect(
+        claimedEvent.userMessage.parts.some((part) => {
+          return part.type === "model";
+        }),
+      ).toBeFalsy();
     }
 
     const emptyControlPayloadBytes = Buffer.byteLength(
@@ -1701,10 +1718,11 @@ describe("CHAT-02: queueing and recalling messages", () => {
     if (!budgetEvent || budgetEvent.eventType !== "input.budget") {
       throw new Error("Expected the run time budget input to be claimed");
     }
-    expect(budgetEvent.userMessage.parts).toContainEqual({
-      type: "model",
-      selectedModel: "claude-sonnet-4-6",
-    });
+    expect(
+      budgetEvent.userMessage.parts.some((part) => {
+        return part.type === "model";
+      }),
+    ).toBeFalsy();
 
     mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
     await webhooks.requestAgentEvents(
@@ -2807,6 +2825,7 @@ describe("CHAT-02: model-first provider policies", () => {
         parts: [{ type: "text", text: vm0Prompt }],
       },
       model: "claude-sonnet-4-6",
+      hasTextContent: true,
     });
     expect([201, 503]).toContain(vm0Send.status);
     if (vm0Send.status === 503) {
@@ -4615,6 +4634,7 @@ describe("CHAT-02: run-level model overrides", () => {
         version: 1,
         parts: [{ type: "text", text: retryPrompt }],
       },
+      hasTextContent: true,
     });
 
     for (let attempt = 0; attempt < preparationAttempts; attempt += 1) {
@@ -5037,7 +5057,7 @@ describe("CHAT-02: run-level model overrides", () => {
         agentId: agent.agentId,
         prompt: "use an unsupported vm0 model",
         clientThreadId: vm0ThreadId,
-        model: "codex",
+        model: "codex" as never,
       },
       [400],
     );
@@ -5074,7 +5094,7 @@ describe("CHAT-02: run-level model overrides", () => {
           agentId: agent.agentId,
           prompt: `removed ${selectedModel}`,
           clientThreadId: removedThreadId,
-          model: selectedModel,
+          model: selectedModel as never,
         },
         [400],
       );
@@ -5691,20 +5711,8 @@ describe("CHAT-02: generation templates and attachments", () => {
   }, 90_000);
 
   it("projects multiple inline templates into one ordered prompt and one shared context", async () => {
-    const { actor, agentId } = await entitledChatActor({
-      orgId: STAFF_ORG_ID,
-    });
+    const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
-    );
 
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     const workflow = WORKFLOW_TEMPLATE_ITEMS[0];
@@ -5882,21 +5890,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
 
-  it("keeps legacy single-template context when inline templates are enabled", async () => {
-    const { actor, agentId } = await entitledChatActor({
-      orgId: STAFF_ORG_ID,
-    });
+  it("keeps single-template context for the legacy generationTemplate field", async () => {
+    const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
-    );
 
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     if (!style) {
@@ -5996,7 +5992,43 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(videoPrompt).toContain(
       `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
+    expect(videoPrompt).not.toContain("Parameters the user set explicitly");
     await cancelChatRun(actor, video.runId);
+
+    const videoWithOptions = await sendChatRun(actor, {
+      agentId,
+      prompt: "make a vertical product video",
+      generationTemplate: {
+        type: "video",
+        selection: {
+          stylePresetId: videoTemplate.id,
+          videoOptions: {
+            model: "fal-ai/veo3.1/fast",
+            aspectRatio: "9:16",
+            // Veo accepts only 4s, 6s, or 8s, so this one is dropped instead
+            // of being pinned into a request the service would reject.
+            duration: "5s",
+            resolution: "1080p",
+          },
+        },
+      },
+    });
+    const videoWithOptionsRun = await api.readRun(
+      actor,
+      videoWithOptions.runId,
+    );
+    const videoWithOptionsPrompt = videoWithOptionsRun.appendSystemPrompt ?? "";
+    expect(videoWithOptionsPrompt).toContain(
+      "Parameters the user set explicitly",
+    );
+    expect(videoWithOptionsPrompt).toContain("- Model: veo3.1-fast");
+    expect(videoWithOptionsPrompt).toContain("- Aspect ratio: 9:16");
+    expect(videoWithOptionsPrompt).toContain("- Resolution: 1080p");
+    expect(videoWithOptionsPrompt).not.toContain("Duration:");
+    expect(videoWithOptionsPrompt).toContain(
+      "`--model veo3.1-fast --aspect-ratio 9:16 --resolution 1080p` verbatim",
+    );
+    await cancelChatRun(actor, videoWithOptions.runId);
 
     const avatarId = 81;
     const avatarVoiceId = "en-US-ChristopherNeural";
@@ -7196,6 +7228,27 @@ describe("CHAT-02: shared user message queue", () => {
     await expect(
       readRunAutonomyBudgetFixture(context, firstTargetRunId),
     ).resolves.toBe(9);
+    const firstTargetRun = await api.readRun(actor, firstTargetRunId);
+    const firstTargetSystemPrompt = firstTargetRun.appendSystemPrompt ?? "";
+    expect(firstTargetSystemPrompt).toContain("# This Run's Trigger");
+    expect(firstTargetSystemPrompt).toContain(`SOURCE_RUN_ID: ${source.runId}`);
+    expect(firstTargetSystemPrompt).toContain(
+      `SOURCE_THREAD_ID: ${source.threadId}`,
+    );
+    expect(firstTargetSystemPrompt).toContain(`SOURCE_AGENT_ID: ${agentId}`);
+    expect(firstTargetSystemPrompt).toContain(
+      "SOURCE_THREAD_TITLE: New thread",
+    );
+    expect(firstTargetSystemPrompt).toContain(
+      `zero chat messages --thread-id ${source.threadId}`,
+    );
+    expect(firstTargetSystemPrompt).toContain(
+      `zero logs ${source.runId} --all`,
+    );
+    const sourceRun = await api.readRun(actor, source.runId);
+    expect(sourceRun.appendSystemPrompt ?? "").not.toContain(
+      "# This Run's Trigger",
+    );
     const firstMessages = await waitForThreadMessages(
       actor,
       firstTargetThread.id,
@@ -7229,32 +7282,6 @@ describe("CHAT-02: shared user message queue", () => {
       },
     });
     expect(firstInput?.runId).toBeUndefined();
-    const legacyFirstMessages = await chat.listThreadEvents(
-      actor,
-      firstTargetThread.id,
-      {},
-      "0.636.1",
-    );
-    const legacyFirstInput = userMessages(legacyFirstMessages.events).find(
-      (event): event is PromptMessage => {
-        return event.eventType === "input.prompt" && event.id === firstEventId;
-      },
-    );
-    expect(legacyFirstInput?.userMessage.parts).toStrictEqual([
-      { type: "text", text: "first delegated prompt" },
-    ]);
-    const legacyFirstById = await chat.getThreadEvent(
-      actor,
-      firstTargetThread.id,
-      firstEventId,
-      "0.636.1",
-    );
-    expect(
-      legacyFirstById.eventType === "input.prompt"
-        ? legacyFirstById.userMessage.parts
-        : null,
-    ).toStrictEqual([{ type: "text", text: "first delegated prompt" }]);
-
     await chat.renameThread(actor, source.threadId, "Delegation source");
     const secondEventId = randomUUID();
     const secondSend = await requestSendEventWithBearer(
@@ -7512,6 +7539,11 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(rotatedState.zero_run).toMatchObject({ triggerSource: "agent" });
     expect(rotatedSystemPrompt).toContain("# Web Chat Run Context");
+    expect(rotatedSystemPrompt).toContain("# This Run's Trigger");
+    expect(rotatedSystemPrompt).toContain(`SOURCE_RUN_ID: ${source.runId}`);
+    expect(rotatedSystemPrompt).toContain(
+      `SOURCE_THREAD_ID: ${source.threadId}`,
+    );
     expect(rotatedSystemPrompt).toContain(rotatedAnchorPrompt);
     expect(rotatedSystemPrompt).not.toContain("# Incomplete Rounds Context");
     expect(rotatedSystemPrompt).toContain("Web chat files: use");
@@ -7800,22 +7832,13 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, mockRunId);
   }, 90_000);
 
-  it("uses the claim-time inline-template switch for queued web launch material", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor({
-      orgId: STAFF_ORG_ID,
-    });
+  it("projects inline templates into queued web launch material", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    const actorWithOrg = { ...actor, orgId: actor.orgId };
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-    });
 
     const anchor = await sendChatRun(actor, {
       agentId,
-      prompt: "inline-template switch queue anchor",
+      prompt: "inline-template queue anchor",
     });
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
 
@@ -7844,7 +7867,7 @@ describe("CHAT-02: shared user message queue", () => {
       {
         agentId,
         threadId: anchor.threadId,
-        prompt: "legacy queued template projection",
+        prompt: "queued inline template projection",
         userMessage: queuedUserMessage,
         clientEventId: queuedMessageId,
       },
@@ -7852,9 +7875,6 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(queued.body).toMatchObject({ runId: null });
 
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-    });
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
 

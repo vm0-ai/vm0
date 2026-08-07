@@ -115,7 +115,6 @@ async function loadAgentPhoneLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "agentphone"),
-        eq(chatEvents.triggerSource, "agentphone"),
       ),
     )
     .limit(1);

@@ -4,7 +4,10 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  type PiModelConfig,
+  PI_SKILLS_ROOT,
   type SecretConnectorMetadata,
+  type RunSkillSnapshot,
   type StorageMountEntry,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
@@ -50,6 +53,7 @@ import {
   canonicalizeFirewallBaseUrlVarsForExecution,
   extractSecretNamesFromApis,
   type ExecutionFirewallEntry,
+  type ExecutionFirewallInlineEntry,
   type ExecutionFirewalls,
   type ExpandedFirewallConfig,
   FirewallBaseUrlResolutionError,
@@ -57,6 +61,7 @@ import {
   type FirewallPolicies,
   type FirewallPolicy,
   type NetworkPolicies,
+  type NetworkPolicy,
   normalizeFirewallFixedHost,
 } from "@vm0/connectors/firewall-types";
 import {
@@ -70,6 +75,7 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
@@ -111,8 +117,15 @@ import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { PersistedStorageMount } from "@vm0/db/types";
+import {
+  formatPiUserPrompt,
+  loadPiRunSkills,
+  renderPiSystemPrompt,
+  type ExecutionEnv,
+} from "@vm0/pi-agent-runtime";
 import {
   and,
   count,
@@ -202,6 +215,17 @@ import {
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import {
+  isPiEdgeCompatibleProviderType,
+  piSandboxModelConfig,
+  PI_STANDBY_PROFILE,
+  resolvePiEdgeModelConfig,
+  type PiEdgeModelConfig,
+  type PiEdgeTurnArgs,
+} from "./pi-edge-config";
+import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
+import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
 import {
   recordSameThreadRunnerJobPersisted,
   runnerJobQueueTimestamps,
@@ -532,6 +556,11 @@ interface CustomConnectorAuthRef {
 }
 
 interface PreparedRunnerLaunch {
+  readonly piEdge?: PiEdgeModelConfig;
+  readonly piExecutionEnv?: ExecutionEnv;
+  readonly piPrompt?: string;
+  readonly piSystemPrompt?: string;
+  readonly runSkillSnapshot?: RunSkillSnapshot;
   readonly runnerJobPayload: RunnerJobPayload;
   readonly runContextSnapshot: RunContextAxiomSnapshot;
   readonly runStorageMounts: readonly PersistedStorageMount[];
@@ -686,6 +715,9 @@ interface ResolvedModelProviderEnvironment {
   readonly concreteType?: ModelProviderType;
   readonly environment: Record<string, string>;
   readonly secrets: Record<string, string>;
+  // Server-only credential for the in-API Pi turn. Never persisted into the
+  // runner payload; firewall providers keep their sandbox secret placeholders.
+  readonly piEdgeApiKey?: string;
   readonly selectedModel: string | null;
   readonly firewall?: ExpandedFirewallConfig;
   readonly inlineFirewall?: boolean;
@@ -772,6 +804,7 @@ export interface CreateAgentRunArgs {
   readonly orgId: string;
   readonly body: CreateRunBody;
   readonly apiStartTime: number;
+  readonly kickoffPiEdgeTurn?: (turnArgs: PiEdgeTurnArgs) => void;
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
@@ -960,21 +993,16 @@ function frameworkSkillsMountPath(framework: SupportedFramework): string {
     : "/home/user/.claude/skills";
 }
 
-function skillMountPath(
-  framework: SupportedFramework,
-  skillName: string,
-): string {
-  return `${frameworkSkillsMountPath(framework)}/${skillName}`;
+function skillMountPath(skillsRoot: string, skillName: string): string {
+  return `${skillsRoot}/${skillName}`;
 }
 
-// Skill volume mount paths are framework-specific. The framework MUST be the
-// one resolved from the model provider (see prepareRunContext), never the one
-// declared in the compose — a run can execute on a provider whose framework
-// differs from the compose, and skills mounted at the wrong path are invisible
-// to the agent.
+// Legacy CLI runs use the framework resolved from the model provider, never
+// the framework declared in the compose. Eligible Pi runs instead receive the
+// fixed Pi root before Storage resolves any versions or overlays.
 function buildLegacySystemSkillVolumes(
   skillNames: readonly string[],
-  framework: SupportedFramework,
+  skillsRoot: string,
 ): readonly AdditionalVolume[] {
   return [...new Set(skillNames)].flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
@@ -985,7 +1013,7 @@ function buildLegacySystemSkillVolumes(
     return [
       {
         name: getSkillStorageName(parsed.fullPath),
-        mountPath: skillMountPath(framework, parsed.skillName),
+        mountPath: skillMountPath(skillsRoot, parsed.skillName),
         system: true,
       },
     ];
@@ -995,7 +1023,7 @@ function buildLegacySystemSkillVolumes(
 function buildConnectorSkillVolumes(
   connectorSlugs: readonly ConnectorSlug[],
   snapshot: ConnectorRuntimeSnapshot,
-  framework: SupportedFramework,
+  skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] {
   return connectorSlugs.flatMap((connectorSlug) => {
     const connector = getConnectorRuntimeConnector(snapshot, connectorSlug);
@@ -1009,7 +1037,7 @@ function buildConnectorSkillVolumes(
       volume: {
         name: connector.skill.storageName,
         version: connector.skill.versionId,
-        mountPath: skillMountPath(framework, connectorSlug),
+        mountPath: skillMountPath(skillsRoot, connectorSlug),
         system: true,
       },
       source: "connector_skill",
@@ -1020,7 +1048,7 @@ function buildConnectorSkillVolumes(
 
 function buildWorkflowSkillVolumes(
   workflows: readonly { readonly name: string; readonly workflowId: string }[],
-  framework: SupportedFramework,
+  skillsRoot: string,
 ): readonly AdditionalVolume[] {
   return workflows
     .filter((workflow) => {
@@ -1030,21 +1058,21 @@ function buildWorkflowSkillVolumes(
       return {
         // The volume is keyed by the workflow id; it mounts at the slug.
         name: getCustomSkillStorageName(workflow.workflowId),
-        mountPath: skillMountPath(framework, workflow.name),
+        mountPath: skillMountPath(skillsRoot, workflow.name),
       };
     });
 }
 
 function buildCustomConnectorSkillVolumes(
   skills: CustomConnectorRuntimeContext["skills"],
-  framework: SupportedFramework,
+  skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] {
   return skills.map((skill) => {
     return {
       volume: {
         name: getCustomConnectorSkillStorageName(skill.connectorId),
         mountPath: skillMountPath(
-          framework,
+          skillsRoot,
           getCustomConnectorSkillName(skill.connectorSlug, skill.connectorId),
         ),
       },
@@ -1059,7 +1087,7 @@ function buildInjectedSkillVolumes(
     readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
-  framework: SupportedFramework,
+  skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] | undefined {
   if (!args.injectSkillVolumes) {
     return undefined;
@@ -1070,19 +1098,19 @@ function buildInjectedSkillVolumes(
   // part of a run, its accepted catalog skill remains executable and mountable.
   const systemSkillVolumes = [
     ...(prepareAdditionalVolumesWithSource(
-      buildLegacySystemSkillVolumes(seedSkillNames, framework),
+      buildLegacySystemSkillVolumes(seedSkillNames, skillsRoot),
       "system_skill",
     ) ?? []),
     ...buildConnectorSkillVolumes(
       connectorSlugs,
       args.connectorCatalogSnapshot,
-      framework,
+      skillsRoot,
     ),
   ];
   return [
     ...systemSkillVolumes,
     ...(prepareAdditionalVolumesWithSource(
-      buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, framework),
+      buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, skillsRoot),
       "workflow_skill",
     ) ?? []),
   ];
@@ -1712,6 +1740,7 @@ function modelProviderEnvironment(args: {
   readonly type: ModelProviderType;
   readonly config: SingleSecretModelProviderConfig;
   readonly secretValue: string | undefined;
+  readonly piEdgeApiKey?: string;
   readonly sourceUserId: string;
   readonly selectedModel: string | null;
 }): ResolvedModelProviderEnvironment {
@@ -1751,6 +1780,7 @@ function modelProviderEnvironment(args: {
     type: args.type,
     environment,
     secrets,
+    ...(args.piEdgeApiKey ? { piEdgeApiKey: args.piEdgeApiKey } : {}),
     selectedModel: model,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
     ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
@@ -2008,6 +2038,7 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly resolvePiEdgeCredentials: boolean;
 }
 
 async function customGatewayModelProviderEnvironment(
@@ -2130,6 +2161,21 @@ function isCandidateModelProviderRow(
   return isModelProviderType(row.type);
 }
 
+async function resolveCandidatePiEdgeApiKey(
+  args: ResolveModelProviderEnvironmentArgs,
+  type: ModelProviderType,
+  encryptedValue: string,
+  decryptedValue?: string,
+): Promise<string | undefined> {
+  if (!args.resolvePiEdgeCredentials || !isPiEdgeCompatibleProviderType(type)) {
+    return undefined;
+  }
+  const apiKey =
+    decryptedValue ??
+    (await decryptStoredSecretValue(encryptedValue, args.featureSwitchContext));
+  return hasUsableModelProviderSecretValue(apiKey) ? apiKey : undefined;
+}
+
 async function resolveCandidateModelProviderEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
@@ -2168,11 +2214,17 @@ async function resolveCandidateModelProviderEnvironment(
     return null;
   }
   if (getModelProviderFirewall(row.type) !== undefined) {
+    const piEdgeApiKey = await resolveCandidatePiEdgeApiKey(
+      args,
+      row.type,
+      row.encryptedValue,
+    );
     return modelProviderEnvironment({
       id: row.id,
       type: row.type,
       config,
       secretValue: undefined,
+      ...(piEdgeApiKey ? { piEdgeApiKey } : {}),
       sourceUserId: row.userId,
       selectedModel: args.selectedModelOverride ?? row.selectedModel,
     });
@@ -2184,11 +2236,18 @@ async function resolveCandidateModelProviderEnvironment(
   if (!hasUsableModelProviderSecretValue(secretValue)) {
     return null;
   }
+  const piEdgeApiKey = await resolveCandidatePiEdgeApiKey(
+    args,
+    row.type,
+    row.encryptedValue,
+    secretValue,
+  );
   return modelProviderEnvironment({
     id: row.id,
     type: row.type,
     config,
     secretValue,
+    ...(piEdgeApiKey ? { piEdgeApiKey } : {}),
     sourceUserId: row.userId,
     selectedModel: args.selectedModelOverride ?? row.selectedModel,
   });
@@ -3482,7 +3541,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   );
 }
 
-type CustomConnectorRuntimeDataRows = Awaited<
+export type CustomConnectorRuntimeDataRows = Awaited<
   ReturnType<typeof loadCustomConnectorRuntimeData>
 >;
 
@@ -3627,7 +3686,7 @@ class CustomConnectorRuntimeBuildStats {
 
 function customConnectorRuntimeAuth(args: {
   readonly connector: CustomConnectorRuntimeDataRows[number]["connector"];
-  readonly valueMarkers: ReadonlySet<string>;
+  readonly valueMarkers: ReadonlySet<string> | undefined;
 }): {
   readonly headers: Record<string, string>;
   readonly query: Record<string, string>;
@@ -3713,10 +3772,11 @@ interface BuildCustomConnectorRuntimeContextArgs {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly grants: readonly AgentCustomConnectorGrant[] | undefined;
+  readonly preserveFirewallWithoutCredentials: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-async function loadEffectiveCustomConnectorPermissionBundle(args: {
+export async function loadEffectiveCustomConnectorPermissionBundle(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
   readonly snapshot: ConnectorRuntimeSnapshot;
 }): Promise<CustomConnectorPermissionBundle | null | undefined> {
@@ -3756,7 +3816,7 @@ function buildCustomConnectorPermissionPolicy(args: {
   };
 }
 
-async function buildCustomConnectorRuntimeContext(
+export async function buildCustomConnectorRuntimeContext(
   args: BuildCustomConnectorRuntimeContextArgs,
 ): Promise<CustomConnectorRuntimeContext> {
   const firewalls: ExpandedFirewallConfig[] = [];
@@ -3787,13 +3847,14 @@ async function buildCustomConnectorRuntimeContext(
       }),
     );
     const missingRequired =
-      (row.connector.authMode === "oauth" && !oauthConnected) ||
-      row.connector.fields.some((field) => {
-        return (
-          field.required &&
-          !valueMarkers.has(customConnectorValueMarkerKey(field))
-        );
-      });
+      !args.preserveFirewallWithoutCredentials &&
+      ((row.connector.authMode === "oauth" && !oauthConnected) ||
+        row.connector.fields.some((field) => {
+          return (
+            field.required &&
+            !valueMarkers.has(customConnectorValueMarkerKey(field))
+          );
+        }));
     stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
     if (missingRequired) {
       stats.recordMissingRequiredConnector();
@@ -3802,7 +3863,9 @@ async function buildCustomConnectorRuntimeContext(
     const authTemplateStartedAt = now();
     const { headers, query } = customConnectorRuntimeAuth({
       connector: row.connector,
-      valueMarkers,
+      valueMarkers: args.preserveFirewallWithoutCredentials
+        ? undefined
+        : valueMarkers,
     });
     stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
     if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
@@ -3871,6 +3934,64 @@ async function buildCustomConnectorRuntimeContext(
   stats.recordPhaseDuration("assembleFirewalls", finalAssemblyStartedAt);
   stats.flush(args.timing);
   return result;
+}
+
+interface CustomConnectorRuntimeExecutionState {
+  readonly firewall: Omit<ExecutionFirewallInlineEntry, "firewall"> & {
+    readonly firewall: Omit<Firewall, "apis"> & {
+      readonly apis: (Firewall["apis"][number] & {
+        readonly id: string;
+      })[];
+    };
+  };
+  readonly networkPolicy: NetworkPolicy;
+}
+
+export function customConnectorRuntimeExecutionState(args: {
+  readonly context: CustomConnectorRuntimeContext;
+  readonly connectorId: string;
+}): CustomConnectorRuntimeExecutionState | null {
+  const firewallName = customConnectorInternalName(args.connectorId);
+  const source = args.context.firewalls.find((firewall) => {
+    return firewall.name === firewallName;
+  });
+  if (!source) {
+    return null;
+  }
+
+  const permissionNames = collectPermissionNames(source.apis);
+  const defaultPolicy = allAllowPolicyForPermissions(permissionNames);
+  const policy = args.context.permissionPolicies?.[firewallName];
+  const networkPolicy = networkPolicyForFirewallPolicy(
+    permissionNames,
+    policy
+      ? {
+          ...policy,
+          unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
+        }
+      : defaultPolicy,
+  );
+
+  return {
+    firewall: {
+      kind: "inline",
+      firewall: {
+        name: source.name,
+        apis: source.apis.map((api, index) => {
+          return {
+            id: `${firewallName}:${index}`,
+            base: api.base,
+            ...(api.hostPolicy !== undefined
+              ? { hostPolicy: api.hostPolicy }
+              : {}),
+            auth: api.auth,
+            permissions: api.permissions ?? [],
+          };
+        }),
+      },
+    },
+    networkPolicy,
+  };
 }
 
 async function loadCustomConnectorContext(
@@ -3951,6 +4072,7 @@ async function loadCustomConnectorContext(
         featureSwitchContext: args.featureSwitchContext,
         connectorCatalogSnapshot: args.connectorCatalogSnapshot,
         grants: args.customConnectorGrants,
+        preserveFirewallWithoutCredentials: false,
         timing,
       });
     },
@@ -5686,6 +5808,7 @@ interface BuildRunnerJobPayloadInput {
   readonly body: CreateRunBody;
   readonly artifacts: readonly ContextArtifact[];
   readonly framework: SupportedFramework;
+  readonly piEdge: PiEdgeModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
@@ -5705,21 +5828,113 @@ interface BuildRunnerJobPayloadInput {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly timing?: ApiDispatchTimingCollector;
 }
+
+interface PreparedPiLaunchResources {
+  readonly executionEnv: ExecutionEnv;
+  readonly modelConfig: PiModelConfig;
+  readonly prompt: string;
+  readonly systemPrompt: string;
+  readonly snapshot: RunSkillSnapshot;
+}
+
+function storedExecutionContextWithPiResources(
+  context: StoredExecutionContext,
+  resources: PreparedPiLaunchResources | undefined,
+): StoredExecutionContext {
+  if (resources === undefined) {
+    return context;
+  }
+  return {
+    ...context,
+    runSkillSnapshot: resources.snapshot,
+    piSystemPrompt: resources.systemPrompt,
+    piModelConfig: resources.modelConfig,
+  };
+}
+
+async function resolvePiAgentName(db: Db, composeId: string): Promise<string> {
+  const [agent] = await db
+    .select({
+      displayName: zeroAgents.displayName,
+      name: zeroAgents.name,
+    })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, composeId))
+    .limit(1);
+
+  if (agent?.displayName?.trim()) {
+    return agent.displayName;
+  }
+  if (agent?.name.trim()) {
+    return agent.name;
+  }
+  return "Okou";
+}
+
+async function preparePiLaunchResources(args: {
+  readonly get: <T>(computedValue: Computed<T>) => T;
+  readonly db: Db;
+  readonly runId: string;
+  readonly body: CreateRunBody;
+  readonly composeId: string;
+  readonly piEdge: PiEdgeModelConfig | undefined;
+  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly additionalVolumeSources: AdditionalVolumeSources;
+  readonly persistedStorageMounts: readonly PersistedStorageMount[];
+}): Promise<PreparedPiLaunchResources | undefined> {
+  if (args.piEdge === undefined) {
+    return undefined;
+  }
+  const snapshot = buildRunSkillSnapshot({
+    additionalVolumes: args.additionalVolumes,
+    additionalVolumeSources: args.additionalVolumeSources,
+    persistedStorageMounts: args.persistedStorageMounts,
+  });
+  const [resources, agentName] = await Promise.all([
+    loadPiLaunchStorageResources(args.get, args.db, {
+      snapshot,
+      persistedStorageMounts: args.persistedStorageMounts,
+    }),
+    resolvePiAgentName(args.db, args.composeId),
+  ]);
+  const skills = await loadPiRunSkills(resources.env, snapshot);
+  if (skills.diagnostics.length > 0) {
+    L.warn("Pi run Skill catalog contains diagnostics", {
+      runId: args.runId,
+      diagnostics: skills.diagnostics,
+    });
+  }
+  return {
+    executionEnv: resources.env,
+    modelConfig: piSandboxModelConfig(args.piEdge),
+    prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
+    systemPrompt: renderPiSystemPrompt({
+      agentName,
+      appendSystemPrompt: args.body.appendSystemPrompt,
+      agentInstructions: resources.agentInstructions,
+      skills: skills.skills,
+    }),
+    snapshot,
+  };
+}
+
+function preparedRunnerGroup(content: AgentComposeContent): string {
+  const group = runnerGroup(content) ?? optionalEnv("RUNNER_DEFAULT_GROUP");
+  if (!group) {
+    throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
+  }
+  if (!isOfficialRunnerGroup(group)) {
+    throw new Error("Only vm0/* runner groups are supported");
+  }
+  return group;
+}
+
 function buildRunnerJobPayload(
   db: Db,
   args: BuildRunnerJobPayloadInput,
 ): Computed<Promise<PreparedRunnerLaunch>> {
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
-    const group =
-      runnerGroup(args.resolved.content) ?? optionalEnv("RUNNER_DEFAULT_GROUP");
-    if (!group) {
-      throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
-    }
-    if (!isOfficialRunnerGroup(group)) {
-      throw new Error("Only vm0/* runner groups are supported");
-    }
-
-    const profile = runnerProfile(args.resolved.content);
+    const group = preparedRunnerGroup(args.resolved.content);
     const featureSwitchOverrides = args.includeZeroTokenSecret
       ? args.featureSwitchContext.overrides
       : undefined;
@@ -5790,18 +6005,41 @@ function buildRunnerJobPayload(
       preparedStoragePromise,
       builtContextDraftPromise,
     );
+    const piResources = await preparePiLaunchResources({
+      get,
+      db,
+      runId: args.run.id,
+      body,
+      composeId: args.resolved.composeId,
+      piEdge: args.piEdge,
+      additionalVolumes: args.additionalVolumes,
+      additionalVolumeSources: args.additionalVolumeSources,
+      persistedStorageMounts: builtContext.persistedStorageMounts,
+    });
+    const storedContext = storedExecutionContextWithPiResources(
+      builtContext.context,
+      piResources,
+    );
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
       userId: args.userId,
       body,
-      builtContext,
+      builtContext: { ...builtContext, context: storedContext },
     });
-    const storedContext = builtContext.context;
     const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
     return {
+      ...(args.piEdge === undefined ? {} : { piEdge: args.piEdge }),
+      ...(piResources === undefined
+        ? {}
+        : {
+            piExecutionEnv: piResources.executionEnv,
+            piPrompt: piResources.prompt,
+            piSystemPrompt: piResources.systemPrompt,
+            runSkillSnapshot: piResources.snapshot,
+          }),
       runnerJobPayload: queuedRunnerJobPayload({
         runnerGroup: group,
-        profile,
+        profile: runnerProfile(args.resolved.content),
         cliAgentSessionId,
         reuseKey: runnerReuseKey(args.chatThreadId),
         executionContext: storedContext,
@@ -6049,7 +6287,9 @@ async function persistPendingAtomicLaunch(
       .values({
         runId: returnedCteId(context.insertedRun),
         runnerGroup: args.payload.runnerGroup,
-        profile: args.payload.profile,
+        profile: args.commit.launch.piEdge
+          ? PI_STANDBY_PROFILE
+          : args.payload.profile,
         cliAgentSessionId: args.payload.cliAgentSessionId,
         reuseKey: args.payload.reuseKey,
         executionContext: args.payload.executionContext,
@@ -6792,6 +7032,7 @@ function buildAtomicLaunchPayload(
     body: args.context.body,
     artifacts: args.context.artifacts,
     framework: args.context.framework,
+    piEdge: args.context.piEdge,
     modelProvider: args.context.modelProvider,
     connectorContext: args.context.connectorContext,
     customConnectorContext: args.context.customConnectorContext,
@@ -6853,6 +7094,7 @@ interface PreparedRunContext {
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
   readonly framework: SupportedFramework;
+  readonly piEdge: PiEdgeModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
@@ -6865,6 +7107,21 @@ interface PreparedRunContext {
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly imageRecognitionAvailable: boolean;
+}
+
+function resolvePreparedPiEdgeModelConfig(args: {
+  readonly createArgs: CreateAgentRunArgs;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+}): PiEdgeModelConfig | undefined {
+  if (
+    args.createArgs.chatThreadId === undefined ||
+    args.createArgs.kickoffPiEdgeTurn === undefined ||
+    !isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)
+  ) {
+    return undefined;
+  }
+  return resolvePiEdgeModelConfig(args.modelProvider) ?? undefined;
 }
 
 async function resolveRunModelProvider(
@@ -6896,6 +7153,13 @@ async function resolveRunModelProvider(
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
         featureSwitchContext: options.featureSwitchContext,
+        resolvePiEdgeCredentials:
+          args.chatThreadId !== undefined &&
+          args.kickoffPiEdgeTurn !== undefined &&
+          isFeatureEnabled(
+            FeatureSwitchKey.PiLoop,
+            options.featureSwitchContext,
+          ),
       })
     : null;
   options.signal.throwIfAborted();
@@ -7156,7 +7420,7 @@ function preparedRunAdditionalVolumes(args: {
   readonly connectorScope: EffectiveConnectorScope;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
-  readonly framework: SupportedFramework;
+  readonly skillsRoot: string;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
@@ -7168,13 +7432,13 @@ function preparedRunAdditionalVolumes(args: {
       allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
       connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     },
-    args.framework,
+    args.skillsRoot,
   );
   return mergeAdditionalVolumes({
     prepend: [
       ...buildCustomConnectorSkillVolumes(
         args.customConnectorContext.skills,
-        args.framework,
+        args.skillsRoot,
       ),
       ...(injectedSkillVolumes ?? []),
     ],
@@ -7608,6 +7872,7 @@ function prepareRunOutputMetadata(args: {
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly framework: SupportedFramework;
+  readonly piEdge: PiEdgeModelConfig | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
@@ -7621,7 +7886,10 @@ function prepareRunOutputMetadata(args: {
     connectorScope: args.connectorScope,
     connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     customConnectorContext: args.customConnectorContext,
-    framework: args.framework,
+    skillsRoot:
+      args.piEdge === undefined
+        ? frameworkSkillsMountPath(args.framework)
+        : PI_SKILLS_ROOT,
     featureSwitchContext: args.featureSwitchContext,
     body: args.body,
     resolved: args.resolved,
@@ -7705,8 +7973,12 @@ function prepareRunContext(input: {
       if (isRouteError(runtimeContext)) {
         return runtimeContext;
       }
-      const body = bodyContext.body;
-      const resolved = bodyContext.resolved;
+      const { body, resolved } = bodyContext;
+      const piEdge = resolvePreparedPiEdgeModelConfig({
+        createArgs: args,
+        featureSwitchContext: bodyContext.featureSwitchContext,
+        modelProvider: runtimeContext.modelProvider,
+      });
 
       const validation = await timing.measure(
         "api_dispatch_prepare_context_validate_environment",
@@ -7743,6 +8015,7 @@ function prepareRunContext(input: {
               connectorCatalogSnapshot: runtimeContext.connectorCatalogSnapshot,
               customConnectorContext: runtimeContext.customConnectorContext,
               framework: runtimeContext.framework,
+              piEdge,
               featureSwitchContext: bodyContext.featureSwitchContext,
               body,
               resolved,
@@ -7755,6 +8028,7 @@ function prepareRunContext(input: {
         body,
         resolved,
         framework: runtimeContext.framework,
+        piEdge,
         modelProvider: runtimeContext.modelProvider,
         connectorContext: runtimeContext.connectorContext,
         customConnectorContext: runtimeContext.customConnectorContext,
@@ -7782,6 +8056,7 @@ async function committedAtomicLaunchResponse(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
+  readonly launch: PreparedRunnerLaunch;
 }): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
   if (args.committed.threadSessionBinding) {
     recordThreadSessionBindingTelemetry({
@@ -7832,10 +8107,35 @@ async function committedAtomicLaunchResponse(args: {
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
+  const kickoffPiEdgeTurn = args.createArgs.kickoffPiEdgeTurn;
+  if (
+    args.launch.piEdge &&
+    args.launch.piExecutionEnv &&
+    args.launch.piPrompt &&
+    args.launch.piSystemPrompt &&
+    args.launch.runSkillSnapshot &&
+    kickoffPiEdgeTurn
+  ) {
+    kickoffPiEdgeTurn({
+      runId: args.committed.run.id,
+      userId: args.createArgs.userId,
+      orgId: args.createArgs.orgId,
+      prompt: args.launch.piPrompt,
+      systemPrompt: args.launch.piSystemPrompt,
+      model: args.launch.piEdge,
+      executionEnv: args.launch.piExecutionEnv,
+      skillSnapshot: args.launch.runSkillSnapshot,
+      runnerGroup: args.committed.runnerJobPayload.runnerGroup,
+      apiStartTime: args.createArgs.apiStartTime,
+    });
+  }
+  const dispatchedProfile = args.launch.piEdge
+    ? PI_STANDBY_PROFILE
+    : args.committed.runnerJobPayload.profile;
   await notifyRunnerJob(args.db, {
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
     runId: args.committed.run.id,
-    profile: args.committed.runnerJobPayload.profile,
+    profile: dispatchedProfile,
     reuseKey: args.committed.runnerJobPayload.reuseKey,
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
     historyGenerationRunId:
@@ -7845,7 +8145,7 @@ async function committedAtomicLaunchResponse(args: {
   args.timing.flush({
     runId: args.committed.run.id,
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
-    profile: args.committed.runnerJobPayload.profile,
+    profile: dispatchedProfile,
     dispatchPath: "direct",
     ...(args.createArgs.timingDimensions
       ? { dimensions: args.createArgs.timingDimensions }
@@ -7931,6 +8231,7 @@ async function finalizeAtomicLaunchCommit(args: {
     createArgs: args.input.args,
     committed: args.committed,
     timing: args.input.timing,
+    launch: args.launch,
   });
 }
 
@@ -8047,6 +8348,8 @@ function createAtomicLaunchRun(
       });
     }
 
+    const launch = launchResult.value;
+
     const commitLaunch: CommitAtomicLaunch = async (
       encryptedQueuedParams: string | undefined,
     ) => {
@@ -8060,7 +8363,7 @@ function createAtomicLaunchRun(
             context: input.context,
             identity,
             callbackRows,
-            launch: launchResult.value,
+            launch,
             encryptedQueuedParams,
             timing: input.timing,
           });
@@ -8072,7 +8375,7 @@ function createAtomicLaunchRun(
     const finalized = await finalizeAtomicLaunchCommit({
       input,
       identity,
-      launch: launchResult.value,
+      launch,
       committed,
     });
     if (isQueuePayloadRequiredResult(finalized)) {
@@ -8080,7 +8383,7 @@ function createAtomicLaunchRun(
         input,
         identity,
         callbackRows,
-        launch: launchResult.value,
+        launch,
         commitLaunch,
       });
     }

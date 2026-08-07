@@ -44,27 +44,31 @@ function chatAgentRunSourceHref(
   return `/chats/${source.threadId}#run-${source.runId}`;
 }
 
+/**
+ * Recover the provenance a send route wrote into the persisted document. The
+ * annotation is the only place a claimed queue item still carries its source
+ * run, because the queue head is read back as a document, not as a send body.
+ */
+export function agentRunSourceAnnotation(
+  document: UserMessageDocument,
+): ChatAgentRunSourceAnnotation | null {
+  for (const part of document.parts) {
+    if (part.type === "source" && part.kind === "agent") {
+      return {
+        runId: part.runId,
+        threadId: part.threadId,
+        agentId: part.agentId,
+        titleSnapshot: part.titleSnapshot,
+      };
+    }
+  }
+  return null;
+}
+
 export function hasAgentRunSourceAnnotation(
   document: UserMessageDocument,
 ): boolean {
-  return document.parts.some((part) => {
-    return part.type === "source" && part.kind === "agent";
-  });
-}
-
-/** Project the persisted document for clients that predate agent sources. */
-export function withoutAgentRunSourceAnnotation(
-  document: UserMessageDocument,
-): UserMessageDocument {
-  if (!hasAgentRunSourceAnnotation(document)) {
-    return document;
-  }
-  return {
-    version: 1,
-    parts: document.parts.filter((part) => {
-      return !(part.type === "source" && part.kind === "agent");
-    }),
-  };
+  return agentRunSourceAnnotation(document) !== null;
 }
 
 /** Replace client-owned annotations with authoritative agent-run provenance. */
@@ -182,7 +186,7 @@ function serializeFeedbackNote(
   parts: readonly FeedbackNotePart[],
   serializeTemplate: (
     part: Extract<FeedbackNotePart, { type: "template" }>,
-  ) => string = generationTemplatePrompt,
+  ) => string,
 ): string {
   return parts
     .map((part) => {
@@ -206,13 +210,6 @@ function webFilePrompt(part: {
   readonly contentType: string;
 }): string {
   return `[Web file] ${part.filenameSnapshot} (${part.contentType})\n   [ID] ${part.fileId}`;
-}
-
-function generationTemplatePrompt(part: {
-  readonly titleSnapshot: string;
-  readonly template: GenerationTemplateRequest;
-}): string {
-  return `Select ${part.titleSnapshot} ${generationTemplateTypeLabel(part.template)} template`;
 }
 
 function generationTemplateTypeLabel(
@@ -240,7 +237,7 @@ function inlineGenerationTemplatePrompt(
 
 function formatFeedbackParts(
   parts: readonly Extract<UserMessagePart, { type: "feedback" }>[],
-  serializeTemplate?: (
+  serializeTemplate: (
     part: Extract<FeedbackNotePart, { type: "template" }>,
   ) => string,
 ): string {
@@ -305,7 +302,6 @@ function formatFeedbackParts(
  */
 export function projectUserMessage(
   document: UserMessageDocument,
-  options: { readonly inlineTemplates?: boolean } = {},
 ): UserMessageProjection {
   const promptBlocks: string[] = [];
   const displayBlocks: string[] = [];
@@ -340,7 +336,7 @@ export function projectUserMessage(
     }
     const formatted = formatFeedbackParts(
       feedbackParts,
-      options.inlineTemplates === true ? registerInlineTemplate : undefined,
+      registerInlineTemplate,
     );
     promptBlocks.push(formatted);
     displayBlocks.push(formatted);
@@ -392,16 +388,8 @@ export function projectUserMessage(
     ) {
       continue;
     }
-    if (options.inlineTemplates === true) {
-      inlinePrompt += registerInlineTemplate(part);
-      inlineDisplayText += `[Template: ${part.titleSnapshot}]`;
-      continue;
-    }
-    flushInlinePrompt();
-    promptBlocks.push(generationTemplatePrompt(part));
-    displayBlocks.push(`[Template: ${part.titleSnapshot}]`);
-    generationTemplate ??= part.template;
-    generationTemplates.push(part.template);
+    inlinePrompt += registerInlineTemplate(part);
+    inlineDisplayText += `[Template: ${part.titleSnapshot}]`;
   }
   flushFeedback();
   flushInlinePrompt();

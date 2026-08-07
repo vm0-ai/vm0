@@ -9,7 +9,6 @@ import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 
 const context = testContext();
 const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
-const LEGACY_CHAT_THREAD_SIDEBAR_AUTO_OPEN_SWITCH = "chatThreadSidebarAutoOpen";
 
 function client() {
   return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
@@ -49,10 +48,10 @@ describe("/api/zero/feature-switches", () => {
     ).toBeFalsy();
   });
 
-  it("keeps sidebar auto-open enabled for previous Platform bundles", async () => {
+  it("keeps the capability handshakes the previous Platform bundle reads", async () => {
     createZeroRouteMocks(context).clerk.session(
-      "user_legacy_sidebar_auto_open_test",
-      "org_legacy_sidebar_auto_open_test",
+      "user_capability_handshake_test",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       "org:member",
     );
     const response = await accept(
@@ -62,27 +61,17 @@ describe("/api/zero/feature-switches", () => {
       [200],
     );
 
-    const previousPlatformSwitches: Record<string, boolean> = {
-      [LEGACY_CHAT_THREAD_SIDEBAR_AUTO_OPEN_SWITCH]: false,
-    };
-    for (const key of Object.keys(previousPlatformSwitches)) {
-      const value = response.body.effectiveSwitches[key];
-      if (value !== undefined) {
-        previousPlatformSwitches[key] = value;
-      }
-    }
-
-    expect(
-      response.body.effectiveSwitches[
-        LEGACY_CHAT_THREAD_SIDEBAR_AUTO_OPEN_SWITCH
-      ],
-    ).toBeTruthy();
-    expect(
-      previousPlatformSwitches[LEGACY_CHAT_THREAD_SIDEBAR_AUTO_OPEN_SWITCH],
-    ).toBeTruthy();
+    // The pre-cleanup Platform bundle disables inline templates, image
+    // recognition, and avatar templates when these fields are absent, so they
+    // must survive until that frontend release has drained.
+    expect(response.body).toMatchObject({
+      supportsStructuredInlineTemplates: true,
+      supportsImageRecognition: true,
+      supportsAvatarTemplates: true,
+    });
   });
 
-  it("persists and activates inline templates for a non-staff org", async () => {
+  it("persists and activates a user override for a non-staff org", async () => {
     createZeroRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",
       "org_nonstaff_feature_switch_test",
@@ -95,7 +84,7 @@ describe("/api/zero/feature-switches", () => {
         headers,
         body: {
           switches: {
-            [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+            [FeatureSwitchKey.Dummy]: true,
           },
         },
       }),
@@ -103,27 +92,14 @@ describe("/api/zero/feature-switches", () => {
     );
 
     expect(updated.body.switches).toStrictEqual({
-      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      [FeatureSwitchKey.Dummy]: true,
     });
-    expect(
-      updated.body.effectiveSwitches[
-        FeatureSwitchKey.StructuredPromptInlineTemplates
-      ],
-    ).toBeTruthy();
-    expect(updated.body.supportsImageRecognition).toBeTruthy();
-    expect(updated.body.supportsAvatarTemplates).toBeTruthy();
+    expect(updated.body.effectiveSwitches[FeatureSwitchKey.Dummy]).toBeTruthy();
 
     const current = await accept(client().get({ headers }), [200]);
     expect(current.body.switches).toStrictEqual({
-      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      [FeatureSwitchKey.Dummy]: true,
     });
-    expect(current.body.supportsCustomConnectorOAuth2).toBeTruthy();
-    expect(current.body.supportsImageRecognition).toBeTruthy();
-    expect(current.body.supportsAvatarTemplates).toBeTruthy();
-    expect(
-      current.body.effectiveSwitches[
-        FeatureSwitchKey.StructuredPromptInlineTemplates
-      ],
-    ).toBeTruthy();
+    expect(current.body.effectiveSwitches[FeatureSwitchKey.Dummy]).toBeTruthy();
   });
 });

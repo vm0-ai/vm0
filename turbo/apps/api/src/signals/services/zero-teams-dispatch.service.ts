@@ -1616,7 +1616,6 @@ async function persistTeamsChatMessage(args: {
           }),
         }),
         runId: null,
-        triggerSource: "teams",
         teamsContext: launchContext,
         createdAt: currentTime,
       },

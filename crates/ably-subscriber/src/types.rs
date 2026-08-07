@@ -116,10 +116,19 @@ impl fmt::Debug for TokenDetails {
 pub struct Message {
     /// Event name (e.g. "job", "events", "status").
     pub name: Option<String>,
-    /// Message payload.
+    /// Message payload after MessagePack normalization and supported Ably
+    /// `encoding` processing.
     ///
-    /// Binary payloads are exposed as base64 strings because this public API
-    /// uses `serde_json::Value`, which has no raw binary representation.
+    /// Missing, `nil`, and non-finite root wire values are exposed as JSON
+    /// `null`; those values nested inside arrays or maps are also JSON `null`.
+    /// Binary and extension payload bytes become standard-base64 strings, and
+    /// an extension's type tag is not retained. Invalid UTF-8 strings and map
+    /// keys become empty strings. Other non-string map keys are formatted as
+    /// strings, and duplicate converted keys use last-wins semantics.
+    ///
+    /// Supported `json` and `utf-8` encoding layers are processed after wire
+    /// normalization. An encoding stack containing a `base64` layer stays in
+    /// its normalized JSON form instead of being decoded to raw bytes.
     pub data: serde_json::Value,
     /// Unique message ID.
     pub id: Option<String>,

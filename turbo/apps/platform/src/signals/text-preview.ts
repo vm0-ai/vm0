@@ -51,13 +51,9 @@ async function readLimitedText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-export async function fetchPreviewText(
-  url: string,
-  signal?: AbortSignal,
-): Promise<string> {
+export async function fetchPreviewText(url: string): Promise<string> {
   const response = await fetch(url, {
     headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
-    signal,
   });
   if (!response.ok) {
     throw new Error(`HTTP ${String(response.status)}`);
@@ -66,18 +62,15 @@ export async function fetchPreviewText(
 }
 
 export function createTextPreviewComputed(url: string): TextPreviewComputed {
-  return computed((_get, { signal }) => {
-    return fetchPreviewText(url, signal);
+  return computed((_get) => {
+    return fetchPreviewText(url);
   });
 }
 
 export function createTextPreviewComputedFromBlob(
   blob: Blob,
 ): TextPreviewComputed {
-  return computed(async (_get, { signal }) => {
-    signal.throwIfAborted();
-    const text = await blob.slice(0, TEXT_PREVIEW_MAX_BYTES).text();
-    signal.throwIfAborted();
-    return text;
+  return computed((_get) => {
+    return blob.slice(0, TEXT_PREVIEW_MAX_BYTES).text();
   });
 }
