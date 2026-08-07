@@ -262,7 +262,6 @@ const connectorRuntimeSyncTargetsSchema = connectorRuntimeTargetsSchema
 export const connectorRuntimeCustomAbsentReasonSchema = z.enum([
   "connector-unavailable",
   "grant-unavailable",
-  "credentials-unavailable",
   "permission-bundle-unavailable",
   "runtime-configuration-unavailable",
 ]);

@@ -9,6 +9,7 @@
  * - no-catch-abort: Enforce throwIfAbort in catch blocks
  * - no-package-variable: Prevent mutable vars at package scope
  * - no-get-signal: Prevent getting AbortSignal from state
+ * - no-computed-signal: Prevent computed callbacks from consuming lifecycle options
  * - test-context-in-hooks: Ensure testContext() in test hooks
  * - computed-const-args-package-scope: Enforce package scope for constant functions
  * - no-store-in-params: Prevent Store type in function params
@@ -37,6 +38,7 @@ import tsxInViews from "./rules/tsx-in-views.ts";
 import noCatchAbort from "./rules/no-catch-abort.ts";
 import noPackageVariable from "./rules/no-package-variable.ts";
 import noGetSignal from "./rules/no-get-signal.ts";
+import noComputedSignal from "./rules/no-computed-signal.ts";
 import testContextInHooks from "./rules/test-context-in-hooks.ts";
 import computedConstArgsPackageScope from "./rules/computed-const-args-package-scope.ts";
 import noStoreInParams from "./rules/no-store-in-params.ts";
@@ -78,6 +80,7 @@ const plugin = {
     "no-catch-abort": noCatchAbort,
     "no-package-variable": noPackageVariable,
     "no-get-signal": noGetSignal,
+    "no-computed-signal": noComputedSignal,
     "test-context-in-hooks": testContextInHooks,
     "computed-const-args-package-scope": computedConstArgsPackageScope,
     "no-store-in-params": noStoreInParams,

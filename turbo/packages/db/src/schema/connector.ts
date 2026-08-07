@@ -50,6 +50,11 @@ export const connectors = pgTable(
   (table) => {
     return [
       index("idx_connectors_org").on(table.orgId),
+      index("idx_connectors_stripe_oauth_external_id")
+        .on(table.externalId)
+        .where(
+          sql`${table.connectorSlug} = 'stripe' AND ${table.authMethod} = 'oauth'`,
+        ),
       uniqueIndex("idx_connectors_org_user_custom_connector")
         .on(table.orgId, table.userId, table.customConnectorId)
         .where(sql`${table.customConnectorId} IS NOT NULL`),

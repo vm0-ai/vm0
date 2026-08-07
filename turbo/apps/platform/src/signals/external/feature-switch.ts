@@ -80,10 +80,6 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
 
-export const composerUploadPopoverEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
-});
-
 export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
   return (
     get(featureSwitch$)[FeatureSwitchKey.ComposerConnectorPermissions] ?? false

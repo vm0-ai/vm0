@@ -255,22 +255,10 @@ function createBasicComposerUiSignals() {
     set(internalModelPickerOpen$, open);
   });
 
-  const internalUploadPopoverOpen$ = state(false);
-  const uploadPopoverOpen$ = computed((get) => {
-    return get(internalUploadPopoverOpen$);
-  });
-  const setUploadPopoverOpen$ = command(({ set }, open: boolean) => {
-    set(internalUploadPopoverOpen$, open);
-  });
-
   return {
     model: {
       modelPickerOpen$,
       setModelPickerOpen$,
-    },
-    draft: {
-      uploadPopoverOpen$,
-      setUploadPopoverOpen$,
     },
   };
 }
@@ -819,7 +807,6 @@ export function createComposerUiSignals() {
 
   return {
     model: basic.model,
-    draft: basic.draft,
     template: {
       ...createTemplatePickerDialogSignals(),
       ...list.signals,

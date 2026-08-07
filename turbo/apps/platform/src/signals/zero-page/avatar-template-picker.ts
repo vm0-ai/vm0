@@ -57,7 +57,7 @@ interface OffsetCatalogPage<T> {
 
 type LoadOffsetCatalogPage<T> = (
   page: number,
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ) => Promise<OffsetCatalogPage<T>>;
 
 function emptyAvatarTemplateFilters(): AvatarTemplateFilters {
@@ -254,8 +254,8 @@ function createOffsetCatalogPagingSignals<T>(
   const internalRequestedPages$ = state<ReadonlySet<number>>(new Set());
   const internalLoadingMore$ = state(false);
   const internalGeneration$ = state(0);
-  const firstPage$ = computed((get, { signal }) => {
-    return get(loadPage$)(1, signal);
+  const firstPage$ = computed((get) => {
+    return get(loadPage$)(1);
   });
   const catalog$ = computed(async (get): Promise<OffsetCatalogPage<T>> => {
     const firstPage = await get(firstPage$);
@@ -375,7 +375,7 @@ function createAvatarTemplateCatalogSignals() {
         const result = await accept(
           client.avatars({
             query: avatarCatalogQuery(filters, page),
-            fetchOptions: { signal },
+            ...(signal ? { fetchOptions: { signal } } : {}),
           }),
           [200],
           signal,
@@ -433,7 +433,7 @@ function createAvatarTemplateVoiceCatalogSignals() {
         const result = await accept(
           client.voices({
             query: voiceCatalogQuery(filters, page),
-            fetchOptions: { signal },
+            ...(signal ? { fetchOptions: { signal } } : {}),
           }),
           [200],
           signal,
@@ -457,7 +457,7 @@ function createAvatarTemplateVoiceCatalogSignals() {
     },
   );
   const avatarTemplateVoiceFilterOptions$ = computed(
-    async (get, { signal }): Promise<AvatarTemplateVoiceFilterOptions> => {
+    async (get): Promise<AvatarTemplateVoiceFilterOptions> => {
       const client = get(zeroClient$)(zeroAvatarVideoContract, {
         apiBase: "api",
       });
@@ -467,10 +467,8 @@ function createAvatarTemplateVoiceCatalogSignals() {
             page: 1,
             pageSize: AVATAR_TEMPLATE_FILTER_OPTIONS_PAGE_SIZE,
           },
-          fetchOptions: { signal },
         }),
         [200],
-        signal,
       );
       return {
         languages: result.body.filterOptions?.languages ?? [],
@@ -509,7 +507,7 @@ export function createAvatarTemplatePickerSignals() {
     return get(internalSelectedAvatar$);
   });
   const avatarTemplateRecommendedVoice$ = computed(
-    async (get, { signal }): Promise<ZeroAvatarVideoVoice | null> => {
+    async (get): Promise<ZeroAvatarVideoVoice | null> => {
       const avatar = get(internalSelectedAvatar$);
       if (!avatar) {
         return null;
@@ -528,10 +526,8 @@ export function createAvatarTemplatePickerSignals() {
             voiceFilters,
             locale,
           ),
-          fetchOptions: { signal },
         }),
         [200],
-        signal,
       );
       return recommendedVoiceFromCandidates(
         result.body.voices,

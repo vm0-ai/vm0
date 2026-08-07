@@ -2,7 +2,6 @@
 // oxlint-disable max-lines-per-function
 import type {
   CSSProperties,
-  FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
@@ -31,7 +30,6 @@ import {
   IconDeviceDesktop,
   IconDownload,
   IconPresentation,
-  IconLink,
   IconMicrophone,
   IconPaperclip,
   IconPalette,
@@ -44,7 +42,6 @@ import {
   IconSearch,
   IconTarget,
   IconTemplate,
-  IconUpload,
   IconUser,
   IconVideo,
   IconWorld,
@@ -168,7 +165,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   codexFastModeEnabled$,
-  composerUploadPopoverEnabled$,
   composerConnectorPermissionsEnabled$,
   avatarTemplatesEnabled$,
   imageRecognitionAvailable$,
@@ -6968,134 +6964,6 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function ComposerUploadMenu({ signals }: { signals: ComposerSignals }) {
-  const { t } = useTranslation();
-  const uploadOpen = useGet(signals.draft.uploadPopoverOpen$);
-  const setUploadOpen = useSet(signals.draft.setUploadPopoverOpen$);
-  const appendText = useSet(signals.editor.appendText$);
-  const saveDraft = useSet(signals.draft.save$);
-  const fileInput = useGet(signals.draft.composerFileInput$);
-  const pageSignal = useGet(pageSignal$);
-  const addLink = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const trimmed = String(data.get("uploadLink") ?? "").trim();
-    if (!URL.canParse(trimmed)) {
-      toast.error(
-        t(($) => {
-          return $.chat.attachments.invalidLink;
-        }),
-      );
-      return;
-    }
-    const normalized = new URL(trimmed).toString();
-    appendText(normalized);
-    detach(saveDraft(pageSignal), Reason.DomCallback);
-    form.reset();
-    setUploadOpen(false);
-  };
-
-  return (
-    <div className="relative inline-flex">
-      <button
-        type="button"
-        className={cn(
-          "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
-          COMPOSER_CONTROL_FOCUS_CLASS,
-          uploadOpen && "bg-accent text-foreground",
-        )}
-        aria-label={t(($) => {
-          return $.chat.attachments.upload;
-        })}
-        aria-expanded={uploadOpen}
-        aria-haspopup="dialog"
-        title={t(($) => {
-          return $.chat.attachments.upload;
-        })}
-        data-testid="composer-upload"
-        onClick={() => {
-          setUploadOpen(!uploadOpen);
-        }}
-      >
-        <IconUpload size={18} stroke={1.5} />
-      </button>
-      {uploadOpen && (
-        <div
-          role="dialog"
-          aria-label={t(($) => {
-            return $.chat.attachments.upload;
-          })}
-          className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-2 text-foreground shadow-lg"
-        >
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent"
-            data-testid="composer-upload-local"
-            onClick={() => {
-              setUploadOpen(false);
-              fileInput?.click();
-            }}
-          >
-            <IconPaperclip size={16} stroke={1.6} />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-foreground">
-                {t(($) => {
-                  return $.chat.attachments.uploadFromComputer;
-                })}
-              </span>
-              <span className="block truncate text-xs text-muted-foreground">
-                {t(($) => {
-                  return $.chat.attachments.supportedTypes;
-                })}
-              </span>
-            </span>
-          </button>
-          <form
-            className="mt-2 rounded-lg border border-border/70 p-3"
-            onSubmit={addLink}
-          >
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <IconLink size={15} stroke={1.7} />
-              {t(($) => {
-                return $.chat.attachments.uploadFromLink;
-              })}
-            </div>
-            <Input
-              className="mt-2 h-9 text-sm"
-              name="uploadLink"
-              placeholder={t(($) => {
-                return $.chat.attachments.linkPlaceholder;
-              })}
-              type="url"
-              data-testid="composer-upload-link-input"
-            />
-            <Button
-              type="submit"
-              size="sm"
-              className="mt-2 h-8 w-full rounded-lg text-xs font-medium"
-              data-testid="composer-upload-link-add"
-            >
-              {t(($) => {
-                return $.chat.attachments.addLink;
-              })}
-            </Button>
-          </form>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ComposerUploadControl({ signals }: { signals: ComposerSignals }) {
-  const uploadPopoverEnabled = useGet(composerUploadPopoverEnabled$);
-  return uploadPopoverEnabled ? (
-    <ComposerUploadMenu signals={signals} />
-  ) : (
-    <ComposerAttachButton signals={signals} />
-  );
-}
-
 function toPersistedAttachments(
   attachments: readonly {
     id: string | null;
@@ -8125,7 +7993,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerInputSlot signals={signals} />
           <div className="flex items-center justify-between gap-1 px-2 pb-3 pt-1 sm:gap-2 sm:px-4">
             <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-              <ComposerUploadControl signals={signals} />
+              <ComposerAttachButton signals={signals} />
               <ComposerTemplatePickerSlot signals={signals} />
               <ComposerWorkflowPromptSlot signals={signals} />
               <ComposerConnectorsSlot signals={signals} />

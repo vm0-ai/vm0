@@ -295,6 +295,21 @@ const cases: readonly WorkflowAutomationContextCase[] = [
     policy: eventPolicy,
   },
   {
+    eventType: "stripe-invoice-paid",
+    payload: {
+      deliveryId: "delivery-stripe",
+      event: { id: "evt_stripe" },
+      invoice: { id: "in_stripe" },
+    },
+    trigger:
+      "Stripe event evt_stripe paid invoice in_stripe from the signed webhook snapshot (delivery delivery-stripe).",
+    notes: [
+      "The event below is the normalized, signed Stripe webhook snapshot, not live Stripe data.",
+      "No omitted invoice line-item pages were fetched; all line items embedded in the signed snapshot are included.",
+    ],
+    policy: eventPolicy,
+  },
+  {
     eventType: "webhook-received",
     payload: {
       receivedAt: "2026-08-01T12:00:04.000Z",

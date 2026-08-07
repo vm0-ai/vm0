@@ -1174,24 +1174,17 @@
       "viewAgentProfile": "Voir le profil de l'agent"
     },
     "attachments": {
-      "addLink": "Ajouter un lien",
       "attach": "Joindre",
       "file": "Fichier {{filename}}",
       "fileTooLarge": "{{filename}} dépasse la limite de 1 Go",
       "imageUnavailable": "[Image non disponible : {{filename}}]",
       "importing": "Importation de la pièce jointe",
-      "invalidLink": "Entrez un lien valide",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "Chargement de {{filename}}",
       "previewFile": "Aperçu de {{filename}}",
-      "supportedTypes": "Images, documents, audio, vidéo et archives",
       "title": "Pièces jointes",
       "unavailable": "Pièce jointe non disponible",
-      "upload": "Téléverser",
       "uploadFailed": "Échec du téléchargement de {{filename}}",
       "uploadFailedRetry": "Échec du téléchargement de {{filename}}. Réessayez.",
-      "uploadFromComputer": "Téléverser depuis l'ordinateur",
-      "uploadFromLink": "Téléverser depuis un lien",
       "uploadsFailed": "Certaines pièces jointes n'ont pas pu être téléchargées. Réessayez."
     },
     "automations": {

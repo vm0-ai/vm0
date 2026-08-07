@@ -4446,8 +4446,7 @@ mod tests {
                 .wait(),
         )
         .await
-        .expect("cold Pi claim should not wait for another Ably handoff")
-        .expect("cold Pi standby source should not be superseded");
+        .expect("cold Pi claim should not wait for another Ably handoff");
 
         assert_eq!(signal, crate::pi_standby::PiStandbySignal::Handoff);
         claim_mock.assert_calls_async(1).await;

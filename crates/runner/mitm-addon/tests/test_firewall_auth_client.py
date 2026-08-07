@@ -265,6 +265,35 @@ class TestFetchFirewallHeaders:
         assert result.refreshed_secrets == ["NOTION_TOKEN"]
         assert not hasattr(result, "futureField")
 
+    async def test_response_may_omit_configured_header_and_query_entries(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(
+            firewall_auth_success_response(
+                {"Authorization": "Bearer primary-token"},
+            )
+            | {"query": {}}
+        )
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+        ):
+            result = await auth_client.fetch_firewall_headers(
+                firewall_auth_request(
+                    auth_headers={
+                        "Authorization": "Bearer ${{ secrets.PRIMARY_TOKEN }}",
+                        "X-Secondary": "${{ secrets.SECONDARY_TOKEN }}",
+                    },
+                    auth_query={"tenant": "${{ secrets.TENANT }}"},
+                )
+            )
+
+        assert result.payload.headers == {
+            "Authorization": "Bearer primary-token",
+        }
+        assert result.payload.query == {}
+
     @pytest.mark.parametrize(
         "session_token",
         [

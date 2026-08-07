@@ -32,15 +32,12 @@ export const defaultAgentId$ = computed(async (get) => {
 const internalAgentByIdReload$ = state(0);
 
 export function agentById(id: string): Computed<Promise<ZeroAgentResponse>> {
-  return computed(async (get, { signal }) => {
+  return computed(async (get) => {
     get(internalAgentByIdReload$);
     const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await retryTransientLoad((loadSignal) => {
-      return accept(
-        client.get({ params: { id }, fetchOptions: { signal: loadSignal } }),
-        [200],
-      );
-    }, signal);
+    const result = await retryTransientLoad(() => {
+      return accept(client.get({ params: { id } }), [200]);
+    });
     return result.body;
   });
 }

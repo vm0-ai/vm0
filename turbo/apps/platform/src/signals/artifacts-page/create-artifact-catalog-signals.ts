@@ -54,26 +54,22 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
 } {
   const { chatThreadId } = paging;
 
-  const firstPage$ = computed(
-    async (get, { signal }): Promise<ArtifactCatalogPage> => {
-      get(paging.reloadVersion$);
-      const kind = get(paging.kind$);
-      const client = get(zeroClient$)(artifactCatalogContract);
-      const result = await accept(
-        client.list({
-          query: {
-            limit: ARTIFACT_CATALOG_PAGE_SIZE,
-            ...(kind ? { kind } : {}),
-            ...(chatThreadId ? { chatThreadId } : {}),
-          },
-          fetchOptions: { signal },
-        }),
-        [200],
-        signal,
-      );
-      return result.body;
-    },
-  );
+  const firstPage$ = computed(async (get): Promise<ArtifactCatalogPage> => {
+    get(paging.reloadVersion$);
+    const kind = get(paging.kind$);
+    const client = get(zeroClient$)(artifactCatalogContract);
+    const result = await accept(
+      client.list({
+        query: {
+          limit: ARTIFACT_CATALOG_PAGE_SIZE,
+          ...(kind ? { kind } : {}),
+          ...(chatThreadId ? { chatThreadId } : {}),
+        },
+      }),
+      [200],
+    );
+    return result.body;
+  });
 
   /**
    * Everything loaded so far, in server order. Reading this triggers the first
@@ -212,7 +208,7 @@ export function createArtifactCatalogSignals(
    * queries it does not render and a deleted artifact renders as unavailable.
    */
   const selectedArtifactDetail$ = computed(
-    async (get, { signal }): Promise<ArtifactDetail | null> => {
+    async (get): Promise<ArtifactDetail | null> => {
       get(internalReload$);
       const artifactId = get(internalSelectedArtifactId$);
       if (!artifactId) {
@@ -222,10 +218,8 @@ export function createArtifactCatalogSignals(
       const result = await accept(
         client.get({
           params: { artifactId },
-          fetchOptions: { signal },
         }),
         [200, 404],
-        signal,
       );
       return result.status === 404 ? null : result.body;
     },

@@ -933,6 +933,18 @@ export const zeroWorkflowStrapiEntryPublishedAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const stripeWorkflowAutomationHealthSchema = z.object({
+  lastMatchingEventReceivedAt: z.string().datetime().nullable(),
+  lastDeliveryStatus: z
+    .enum(["pending", "delivered", "skipped", "failed"])
+    .nullable(),
+  lastDeliveryStatusAt: z.string().datetime().nullable(),
+  warning: z.literal("delivery_failed").nullable(),
+});
+export type StripeWorkflowAutomationHealth = z.infer<
+  typeof stripeWorkflowAutomationHealthSchema
+>;
+
 export const zeroWorkflowStripeInvoicePaidAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -940,6 +952,7 @@ export const zeroWorkflowStripeInvoicePaidAutomationSummarySchema =
     eventConfig: stripeInvoicePaidEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
+    health: stripeWorkflowAutomationHealthSchema,
   });
 
 export const zeroWorkflowWebhookReceivedAutomationSummarySchema =
@@ -1181,6 +1194,7 @@ export const chatThreadWorkflowStripeInvoicePaidAutomationSchema =
     eventConfig: stripeInvoicePaidEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
+    health: stripeWorkflowAutomationHealthSchema,
   });
 
 export const chatThreadWorkflowWebhookReceivedAutomationSchema =

@@ -84,7 +84,7 @@ describe("/api/zero/feature-switches", () => {
         headers,
         body: {
           switches: {
-            [FeatureSwitchKey.ComposerUploadPopover]: true,
+            [FeatureSwitchKey.Dummy]: true,
           },
         },
       }),
@@ -92,18 +92,14 @@ describe("/api/zero/feature-switches", () => {
     );
 
     expect(updated.body.switches).toStrictEqual({
-      [FeatureSwitchKey.ComposerUploadPopover]: true,
+      [FeatureSwitchKey.Dummy]: true,
     });
-    expect(
-      updated.body.effectiveSwitches[FeatureSwitchKey.ComposerUploadPopover],
-    ).toBeTruthy();
+    expect(updated.body.effectiveSwitches[FeatureSwitchKey.Dummy]).toBeTruthy();
 
     const current = await accept(client().get({ headers }), [200]);
     expect(current.body.switches).toStrictEqual({
-      [FeatureSwitchKey.ComposerUploadPopover]: true,
+      [FeatureSwitchKey.Dummy]: true,
     });
-    expect(
-      current.body.effectiveSwitches[FeatureSwitchKey.ComposerUploadPopover],
-    ).toBeTruthy();
+    expect(current.body.effectiveSwitches[FeatureSwitchKey.Dummy]).toBeTruthy();
   });
 });
