@@ -29,6 +29,7 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+from generated.model_usage import MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS
 from logging_utils import log_proxy_entry
 
 from ..buffer import (
@@ -39,7 +40,6 @@ from ..buffer import (
     buffer_source_usage_events,
     buffer_usage_events,
 )
-from ..generated_model_usage import MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS
 from ..idempotency import (
     USAGE_EVENT_NAMESPACE_MODEL,
     USAGE_OBSERVATION_NAMESPACE_MODEL,

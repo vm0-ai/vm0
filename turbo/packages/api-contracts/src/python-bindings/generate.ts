@@ -6,7 +6,13 @@ import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "../contracts/model-pr
 
 const generatedModelUsagePath = fileURLToPath(
   new URL(
-    "../../../../../crates/runner/mitm-addon/src/usage/generated_model_usage.py",
+    "../../../../../crates/runner/mitm-addon/src/generated/model_usage.py",
+    import.meta.url,
+  ),
+);
+const generatedPackageInitPath = fileURLToPath(
+  new URL(
+    "../../../../../crates/runner/mitm-addon/src/generated/__init__.py",
     import.meta.url,
   ),
 );
@@ -40,6 +46,10 @@ function renderModelUsageContract(): string {
 
 export async function generatePythonBindings(): Promise<void> {
   await mkdir(dirname(generatedModelUsagePath), { recursive: true });
+  await writeFile(
+    generatedPackageInitPath,
+    '"""Generated Python bindings shared from TypeScript contracts."""\n',
+  );
   await writeFile(generatedModelUsagePath, renderModelUsageContract());
 }
 

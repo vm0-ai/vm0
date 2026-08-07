@@ -137,7 +137,7 @@ jobs:
           while IFS= read -r changed_file; do
             case "$changed_file" in
               crates/api-contracts/* | \
-              crates/runner/mitm-addon/src/usage/generated_model_usage.py | \
+              crates/runner/mitm-addon/src/generated/* | \
               turbo/packages/api-contracts/package.json | \
               turbo/packages/api-contracts/tsconfig.json | \
               turbo/packages/api-contracts/tsconfig.python-bindings.json | \
@@ -469,7 +469,7 @@ jobs:
           pnpm -F @vm0/api-contracts generate:python
           git diff --exit-code -- \
             ../crates/api-contracts/src/generated \
-            ../crates/runner/mitm-addon/src/usage/generated_model_usage.py
+            ../crates/runner/mitm-addon/src/generated
 
   runner-firewall-contract-test:
     runs-on: ubuntu-latest
