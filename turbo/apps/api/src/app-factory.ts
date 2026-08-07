@@ -8,7 +8,6 @@ interface CreateAppOptions {
   readonly routes: readonly RouteEntry[];
 }
 
-// Builds the Hono app instance from the provided route entries.
 export function createApp({ routes, signal }: CreateAppOptions): Hono {
   return createAppWithRoutes({ signal, routes });
 }
