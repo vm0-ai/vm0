@@ -24,14 +24,11 @@ jobs:
       matrix:
         variant:
           - head
-          - parent
-          - no-contracts
-          - no-services
-          - no-routes
-          - no-tests
-          - stub-pi-runtime
-          - no-contract-runners
-          - no-contract-webhooks
+          - stub-pi-agent-core
+          - stub-pi-ai
+          - stub-core-and-ai
+          - stub-mcp-sdk
+          - stub-runtime-own-src
     steps:
       - uses: actions/checkout@v7.0.1
         with:
