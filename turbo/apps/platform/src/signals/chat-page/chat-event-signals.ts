@@ -6,10 +6,7 @@ import {
   type State,
 } from "ccstate";
 import type {
-  AttachFile,
-  ChatPromptEvent,
   ChatRunOptionsRequest,
-  GenerationTemplateRequest,
   UserMessageInputDocument,
   ChatEvent as PersistedChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -42,9 +39,6 @@ export interface SendInputChatEvent {
   readonly agentId: string;
   readonly prompt: string;
   readonly hasTextContent: boolean;
-  readonly attachFiles: AttachFile[] | undefined;
-  readonly attachments: ChatPromptEvent["attachFiles"];
-  readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly userMessage: UserMessageInputDocument;
   readonly runOptions?: ChatRunOptionsRequest;
   readonly realAgentInPreview?: boolean;
@@ -116,8 +110,6 @@ function createSendInputChatEvent({
             threadId,
             eventType: "input.prompt",
             content: null,
-            attachFiles: input.attachments,
-            generationTemplate: input.generationTemplate,
             userMessage: input.userMessage,
             ...(input.revokesEventId === undefined
               ? {}
@@ -143,7 +135,6 @@ function createSendInputChatEvent({
           ...(input.realAgentInPreview === true
             ? { realAgentInPreview: true }
             : {}),
-          generationTemplate: input.generationTemplate,
           userMessage: input.userMessage,
           ...(input.computerUseHostId === undefined
             ? {}
@@ -151,7 +142,6 @@ function createSendInputChatEvent({
           ...(input.cloudBrowserEnabled === undefined
             ? {}
             : { cloudBrowserEnabled: input.cloudBrowserEnabled }),
-          attachFiles: input.attachFiles,
           ...(input.revokesEventId === undefined
             ? {}
             : { revokesEventId: input.revokesEventId }),

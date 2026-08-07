@@ -2142,6 +2142,9 @@ describe("chat lifecycle", () => {
   it("keeps the current model and alternatives for model capacity and retries", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000792";
     let retriedPrompt: string | undefined;
+    let retriedLegacyAttachFiles: unknown;
+    let retriedLegacyGenerationTemplate: unknown;
+    let retriedUserMessage: unknown;
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000976",
@@ -2185,6 +2188,9 @@ describe("chat lifecycle", () => {
       ],
       onRunCreate: (body) => {
         retriedPrompt = body.prompt;
+        retriedLegacyAttachFiles = body.attachFiles;
+        retriedLegacyGenerationTemplate = body.generationTemplate;
+        retriedUserMessage = body.userMessage;
       },
     });
 
@@ -2211,6 +2217,12 @@ describe("chat lifecycle", () => {
     click(buttonByText("Try again", card));
     await waitFor(() => {
       expect(retriedPrompt).toBe("try again");
+      expect(retriedLegacyAttachFiles).toBeUndefined();
+      expect(retriedLegacyGenerationTemplate).toBeUndefined();
+      expect(retriedUserMessage).toMatchObject({
+        version: 1,
+        parts: [{ type: "text", text: "try again" }],
+      });
     });
   });
 

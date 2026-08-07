@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
   type ChatRunOptionsRequest,
-  type PersistedAttachment,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   ModelProviderResponse,
@@ -51,8 +51,9 @@ interface ModelSelectionRequest {
 interface QueuedMessageCapture {
   content?: string;
   hasTextContent?: boolean;
-  attachments?: PersistedAttachment[];
+  attachments?: unknown;
   clientEventId: string;
+  userMessage?: UserMessageDocument;
   modelSelection?: ModelSelectionRequest | null;
   runOptions?: ChatRunOptionsRequest;
 }
@@ -986,15 +987,18 @@ describe("chat run queue", () => {
       expect(queuedBody).toMatchObject({
         content: "(see attached files)",
         hasTextContent: false,
-        attachments: [
-          {
-            id: "upload-queued-video",
-            filename: "queued.mp4",
-            contentType: "video/mp4",
-            size: 12,
-            url: "https://cdn.vm7.io/artifacts/test/upload-queued-video/queued.mp4",
-          },
-        ],
+        attachments: undefined,
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "upload-queued-video",
+              filenameSnapshot: "queued.mp4",
+              contentType: "video/mp4",
+            },
+          ],
+        },
       });
     });
   });

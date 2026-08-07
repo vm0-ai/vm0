@@ -1181,11 +1181,9 @@
       "file": "Archivo {{filename}}",
       "fileTooLarge": "{{filename}} supera el límite de 1 GB",
       "imageUnavailable": "[Imagen no disponible: {{filename}}]",
-      "importing": "Importando archivos adjuntos",
       "loadingFile": "Cargando {{filename}}",
       "previewFile": "Vista previa de {{filename}}",
       "title": "Archivos adjuntos",
-      "unavailable": "Adjunto no disponible",
       "uploadFailed": "No se pudo subir {{filename}}",
       "uploadFailedRetry": "No se pudo subir {{filename}}. Inténtalo de nuevo.",
       "uploadsFailed": "Algunos archivos adjuntos no se han subido. Inténtalo de nuevo."

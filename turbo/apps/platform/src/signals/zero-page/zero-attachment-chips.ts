@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { timeout } from "signal-timers";
 import { openArtifactInOpenSidebar$ } from "../chat-page/thread-sidebar-coordinator.ts";
 import type { ArtifactRefInput } from "../chat-page/thread-sidebar.ts";
+import { previewAttachmentFromUrl } from "../chat-page/parse-body-blocks.ts";
 import {
   createTextPreviewComputed,
   isTextPreviewKind,
@@ -160,6 +161,8 @@ export const closeLightboxWithDialogExit$ = command(
 type AttachmentSidebarPreviewInput = {
   readonly url: string;
   readonly file?: File;
+  readonly filename?: string;
+  readonly contentType?: string;
   readonly shareAvailable?: boolean;
   readonly splitViewAvailable?: boolean;
 };
@@ -173,6 +176,17 @@ export function attachmentSidebarRef(
       : { shareAvailable: value.shareAvailable };
   if (value.file) {
     return { file: value.file, url: value.url, ...share };
+  }
+  if (value.filename) {
+    const contentType =
+      value.contentType ??
+      previewAttachmentFromUrl(value.url, value.filename).contentType;
+    return {
+      url: value.url,
+      filename: value.filename,
+      ...(contentType ? { contentType } : {}),
+      ...share,
+    };
   }
   return value.url;
 }

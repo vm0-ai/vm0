@@ -751,8 +751,6 @@ export async function replayPendingChatInputQueueEventFixture(args: {
       .select({
         chatThreadId: chatEvents.chatThreadId,
         userMessage: chatEvents.userMessage,
-        attachFiles: chatEvents.attachFiles,
-        generationTemplate: chatEvents.generationTemplate,
       })
       .from(chatEvents)
       .where(
@@ -772,8 +770,6 @@ export async function replayPendingChatInputQueueEventFixture(args: {
       eventType: "input.prompt",
       userMessage: event.userMessage,
       runId: null,
-      attachFiles: event.attachFiles ? [...event.attachFiles] : null,
-      generationTemplate: event.generationTemplate,
     });
     if (!replacement) {
       throw new Error("Expected the pending queue event replay to insert");
@@ -836,6 +832,28 @@ export async function setQueuedUserMessageCreatedAtFixture(args: {
   });
   if (updated.length !== 1) {
     throw new Error("Expected one queued user message to become historical");
+  }
+}
+
+/**
+ * Remove only the Stage 5/7 compatibility columns from one input row so BDD
+ * tests can prove queue and replacement paths read the canonical document.
+ * The public API cannot construct this canonical-only row while the required
+ * dual-write boundary remains active, so this is a persisted-history fixture.
+ */
+export async function clearLegacyChatEventInputColumnsFixture(
+  eventId: string,
+): Promise<void> {
+  const updated = await db().transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    return await tx
+      .update(chatEvents)
+      .set({ attachFiles: null, generationTemplate: null })
+      .where(eq(chatEvents.id, eventId))
+      .returning({ id: chatEvents.id });
+  });
+  if (updated.length !== 1) {
+    throw new Error("Expected one chat input compatibility projection");
   }
 }
 

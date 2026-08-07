@@ -1158,11 +1158,9 @@
       "file": "File {{filename}}",
       "fileTooLarge": "{{filename}} exceeds the 1 GB limit",
       "imageUnavailable": "[Image unavailable: {{filename}}]",
-      "importing": "Importing attachment",
       "loadingFile": "Loading {{filename}}",
       "previewFile": "Preview {{filename}}",
       "title": "Attachments",
-      "unavailable": "Attachment unavailable",
       "uploadFailed": "Failed to upload {{filename}}",
       "uploadFailedRetry": "Failed to upload {{filename}}. Try again.",
       "uploadsFailed": "Some attachments failed to upload. Try again."

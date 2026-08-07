@@ -1158,11 +1158,9 @@
       "file": "Datei {{filename}}",
       "fileTooLarge": "{{filename}} überschreitet die 1-GB-Grenze",
       "imageUnavailable": "[Bild nicht verfügbar: {{filename}}]",
-      "importing": "Anhang wird importiert",
       "loadingFile": "{{filename}} wird geladen",
       "previewFile": "Vorschau von {{filename}}",
       "title": "Anhänge",
-      "unavailable": "Anhang nicht verfügbar",
       "uploadFailed": "Hochladen von {{filename}} fehlgeschlagen",
       "uploadFailedRetry": "Fehler beim Hochladen von {{filename}}. Versuchen Sie es erneut.",
       "uploadsFailed": "Einige Anhänge konnten nicht hochgeladen werden. Versuchen Sie es erneut."

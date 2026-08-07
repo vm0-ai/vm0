@@ -1158,11 +1158,9 @@
       "file": "ファイル {{filename}}",
       "fileTooLarge": "{{filename}} が 1 GB の制限を超えています",
       "imageUnavailable": "[画像は利用できません: {{filename}}]",
-      "importing": "添付ファイルをインポートしています",
       "loadingFile": "{{filename}} をロードしています",
       "previewFile": "{{filename}} のプレビュー",
       "title": "添付ファイル",
-      "unavailable": "添付ファイルが利用できません",
       "uploadFailed": "{{filename}} のアップロードに失敗しました",
       "uploadFailedRetry": "{{filename}} のアップロードに失敗しました。もう一度やり直してください。",
       "uploadsFailed": "一部の添付ファイルのアップロードに失敗しました。もう一度やり直してください。"

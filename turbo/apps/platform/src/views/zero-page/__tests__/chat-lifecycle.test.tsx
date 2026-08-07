@@ -1,7 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadEventsContract,
+  type UserMessageDocument,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -498,14 +501,8 @@ describe("chat lifecycle", () => {
 
   it("starts a new fallback-enabled text-only chat with an image above the direct recognition limit", async () => {
     const user = userEvent.setup({ delay: null });
-    let sentAttachFiles:
-      | {
-          id: string;
-          filename: string;
-          contentType: string;
-          size: number;
-        }[]
-      | undefined;
+    let sentUserMessage: UserMessageDocument | undefined;
+    let sentLegacyAttachFiles: unknown;
     context.mocks.data.userModelPreference({
       selectedModel: "glm-5.1",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -527,7 +524,8 @@ describe("chat lifecycle", () => {
     ]);
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
-        sentAttachFiles = body.attachFiles;
+        sentUserMessage = body.userMessage;
+        sentLegacyAttachFiles = body.attachFiles;
       },
     });
     context.mocks.upload.success({
@@ -575,28 +573,21 @@ describe("chat lifecycle", () => {
         screen.getByText("Summarize this visual brief"),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(sentAttachFiles).toStrictEqual([
-        {
-          id: "upload-visual-brief",
-          filename: "brief.png",
-          contentType: "image/png",
-          size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
-        },
-      ]);
+      expect(sentLegacyAttachFiles).toBeUndefined();
+      expect(sentUserMessage?.parts).toContainEqual({
+        type: "file",
+        fileId: "upload-visual-brief",
+        filenameSnapshot: "brief.png",
+        contentType: "image/png",
+      });
     });
   });
 
   it("sends a video attachment in an existing fallback-enabled text-only chat", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000994";
-    let sentAttachFiles:
-      | {
-          id: string;
-          filename: string;
-          contentType: string;
-          size: number;
-        }[]
-      | undefined;
+    let sentUserMessage: UserMessageDocument | undefined;
+    let sentLegacyAttachFiles: unknown;
     context.mocks.data.userModelPreference({
       selectedModel: "glm-5.1",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -620,7 +611,8 @@ describe("chat lifecycle", () => {
       threadId,
       selectedModel: "glm-5.1",
       onRunCreate: (body) => {
-        sentAttachFiles = body.attachFiles;
+        sentUserMessage = body.userMessage;
+        sentLegacyAttachFiles = body.attachFiles;
       },
     });
     context.mocks.upload.success({
@@ -658,14 +650,13 @@ describe("chat lifecycle", () => {
     await sendMessageInUI(user, textarea, "Inspect this existing video");
 
     await waitFor(() => {
-      expect(sentAttachFiles).toStrictEqual([
-        {
-          id: "upload-existing-visual",
-          filename: "existing.mov",
-          contentType: "video/quicktime",
-          size: 64,
-        },
-      ]);
+      expect(sentLegacyAttachFiles).toBeUndefined();
+      expect(sentUserMessage?.parts).toContainEqual({
+        type: "file",
+        fileId: "upload-existing-visual",
+        filenameSnapshot: "existing.mov",
+        contentType: "video/quicktime",
+      });
     });
   });
 

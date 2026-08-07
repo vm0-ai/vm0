@@ -1,12 +1,14 @@
 import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
+  UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   type BodyRenderBlock,
   classifyChatAttachment,
 } from "../../signals/chat-page/parse-body-blocks.ts";
 import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
+import { userMessageFileAttachments } from "../../signals/chat-page/user-message-files.ts";
 
 export type ImageArtifactNavigationItem = {
   readonly url: string;
@@ -31,16 +33,11 @@ type ImageArtifactNavigation = {
 
 /**
  * Minimal shape of a chat event needed to scope image navigation. Images in a
- * event come from two sources: `attachFiles` (files the user attached) and the
- * rendered body `blocks` (image previews parsed from event content, e.g.
- * agent-generated images). Structurally satisfied by `EnrichedChatEvent`.
+ * event come from canonical user-message file parts and rendered body `blocks`
+ * (image previews parsed from event content, e.g. agent-generated images).
  */
 type EventImageSource = {
-  readonly attachFiles?: readonly {
-    readonly url: string;
-    readonly filename: string;
-    readonly contentType: string;
-  }[];
+  readonly userMessage?: UserMessageDocument;
   readonly blocks?: readonly BodyRenderBlock[];
 };
 
@@ -114,7 +111,9 @@ function eventImages(event: EventImageSource): EventImage[] {
     }
   };
 
-  for (const file of event.attachFiles ?? []) {
+  for (const file of event.userMessage
+    ? userMessageFileAttachments(event.userMessage)
+    : []) {
     if (isImageDescriptor(file)) {
       add(file.url, file.filename);
     }
