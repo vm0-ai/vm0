@@ -8,9 +8,8 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import {
-  completeUploadExternal,
   createSlackClient,
-  getFileInfo,
+  type SlackClient,
   type SlackFileInfo,
 } from "../external/slack-message-client";
 import { completeCanonicalSlackDelivery$ } from "../services/canonical-slack-asset-delivery.service";
@@ -51,7 +50,7 @@ interface CanonicalCompletionArgs {
   readonly body: SlackUploadCompleteBody;
   readonly runId: string | undefined;
   readonly userId: string;
-  readonly client: ReturnType<typeof createSlackClient>;
+  readonly client: SlackClient;
 }
 
 const completeCanonicalUpload$ = command(
@@ -125,13 +124,13 @@ interface DirectCompletionArgs {
   readonly runId: string | undefined;
   readonly userId: string;
   readonly orgId: string;
-  readonly client: ReturnType<typeof createSlackClient>;
+  readonly client: SlackClient;
 }
 
 const completeDirectUpload$ = command(
   async ({ set }, args: DirectCompletionArgs, signal: AbortSignal) => {
     const { body, client } = args;
-    const completeResult = await completeUploadExternal(client, {
+    const completeResult = await client.completeUploadExternal({
       fileId: body.fileId,
       channel: body.channel,
       threadTs: body.threadTs,
@@ -151,7 +150,7 @@ const completeDirectUpload$ = command(
       };
     }
 
-    const infoResult = await getFileInfo(client, body.fileId);
+    const infoResult = await client.getFileInfo(body.fileId);
     signal.throwIfAborted();
     if (infoResult.kind === "slack_error") {
       return {

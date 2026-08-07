@@ -4,10 +4,7 @@ import { integrationsSlackUploadInitContract } from "@vm0/api-contracts/contract
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import {
-  createSlackClient,
-  getUploadUrlExternal,
-} from "../external/slack-message-client";
+import { createSlackClient } from "../external/slack-message-client";
 import { MAX_SLACK_FILE_SIZE_BYTES } from "../external/slack-file-fetcher";
 import { prepareCanonicalPublishedAsset$ } from "../services/canonical-asset.service";
 import { zeroSlackOrgInstallation } from "../services/zero-slack-data.service";
@@ -99,7 +96,7 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const client = createSlackClient(installation.botToken);
-  const result = await getUploadUrlExternal(client, {
+  const result = await client.getUploadUrlExternal({
     filename: body.filename,
     length: body.length,
   });

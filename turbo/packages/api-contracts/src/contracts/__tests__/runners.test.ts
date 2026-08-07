@@ -144,6 +144,10 @@ describe("Pi execution mode contract", () => {
     agentComposeVersionId: null,
     vars: null,
     experimentalProfile: "vm0/large",
+    runnerPreferenceDecision: {
+      kind: "noPreference" as const,
+      reason: "noReuseKey" as const,
+    },
   };
 
   it.each(["standby", "cold-start"])(
@@ -461,6 +465,10 @@ describe("runner poll response contract", () => {
     appendSystemPrompt: null,
     agentComposeVersionId: null,
     vars: null,
+    runnerPreferenceDecision: {
+      kind: "noPreference" as const,
+      reason: "noReuseKey" as const,
+    },
   };
 
   it.each(["vm0/default", "vm0/large"])(
@@ -717,6 +725,10 @@ describe("runner resume session contract", () => {
       vars: null,
       experimentalProfile: "vm0/default",
       historyGenerationRunId,
+      runnerPreferenceDecision: {
+        kind: "noPreference",
+        reason: "noReuseKey",
+      },
     });
     expect(job.historyGenerationRunId).toBe(historyGenerationRunId);
 
@@ -747,18 +759,26 @@ describe("runner resume session contract", () => {
     ]);
   });
 
-  it("keeps runner preference delivery fields optional", () => {
-    const job = jobSchema.parse({
+  it("requires one atomic runner preference decision", () => {
+    const jobInput = {
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
       appendSystemPrompt: null,
       agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
-    });
-    expect(job.runnerPreferenceDecision).toBeUndefined();
-    expect(job.runnerPreference).toBeUndefined();
-    expect(job.runnerPreferenceResolution).toBeUndefined();
+    };
+
+    expect(jobSchema.safeParse(jobInput).success).toBe(false);
+    expect(
+      jobSchema.parse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          kind: "noPreference",
+          reason: "noReuseKey",
+        },
+      }).runnerPreferenceDecision,
+    ).toStrictEqual({ kind: "noPreference", reason: "noReuseKey" });
   });
 
   it("accepts every strict positive runner preference decision tier", () => {
@@ -867,99 +887,6 @@ describe("runner resume session contract", () => {
           kind: "noPreference",
           reason: "noReuseKey",
           tier: "workspaceCache",
-        },
-      }).success,
-    ).toBe(false);
-  });
-
-  it("accepts every optional runner preference resolution beside the strict preference", () => {
-    const jobInput = {
-      runId: "33333333-3333-4333-8333-333333333333",
-      prompt: "continue",
-      appendSystemPrompt: null,
-      agentComposeVersionId: null,
-      vars: null,
-      experimentalProfile: "vm0/default",
-    };
-
-    for (const runnerPreferenceResolution of [
-      "exact_history_generation",
-      "finalizing_predecessor",
-      "matching_reusable_sandbox",
-      "matching_workspace_cache",
-      "no_reuse_key",
-      "expired",
-      "no_viable_holder",
-      "lookup_error",
-    ] as const) {
-      expect(
-        jobSchema.parse({ ...jobInput, runnerPreferenceResolution })
-          .runnerPreferenceResolution,
-      ).toBe(runnerPreferenceResolution);
-    }
-  });
-
-  it("accepts one strict optional runner preference", () => {
-    const runnerPreference = {
-      runnerIdentity: {
-        runnerId: "22222222-2222-4222-8222-222222222222",
-        heartbeatGeneration: 7,
-      },
-      expiresAt: "2026-08-03T00:00:01.000Z",
-    };
-    const jobInput = {
-      runId: "33333333-3333-4333-8333-333333333333",
-      prompt: "continue",
-      appendSystemPrompt: null,
-      agentComposeVersionId: null,
-      vars: null,
-      experimentalProfile: "vm0/default",
-    };
-
-    for (const reason of [
-      "exactHistoryGeneration",
-      "matchingReuseKey",
-      "finalizingPredecessor",
-    ] as const) {
-      const job = jobSchema.parse({
-        ...jobInput,
-        runnerPreference: { ...runnerPreference, reason },
-      });
-      expect(job.runnerPreference).toStrictEqual({
-        ...runnerPreference,
-        reason,
-      });
-    }
-    expect(
-      jobSchema.safeParse({
-        ...jobInput,
-        runnerPreference: {
-          ...runnerPreference,
-          reason: "matchingReuseKey",
-          expiresAt: undefined,
-        },
-      }).success,
-    ).toBe(false);
-    expect(
-      jobSchema.safeParse({
-        ...jobInput,
-        runnerPreference: {
-          ...runnerPreference,
-          reason: "matchingReuseKey",
-          resource: "reusableSandbox",
-        },
-      }).success,
-    ).toBe(false);
-    expect(
-      jobSchema.safeParse({
-        ...jobInput,
-        runnerPreference: {
-          ...runnerPreference,
-          reason: "matchingReuseKey",
-          runnerIdentity: {
-            ...runnerPreference.runnerIdentity,
-            resource: "reusableSandbox",
-          },
         },
       }).success,
     ).toBe(false);

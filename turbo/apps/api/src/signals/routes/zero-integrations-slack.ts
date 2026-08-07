@@ -1,7 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { z } from "zod";
-import type { View } from "@slack/web-api";
 import {
   slackOrgStatusSchema,
   zeroIntegrationsSlackContract,
@@ -33,6 +32,7 @@ import {
   isSlackFileFetchError,
   MAX_SLACK_FILE_SIZE_BYTES,
 } from "../external/slack-file-fetcher";
+import type { SlackView } from "../external/slack-block-kit";
 import { createSlackClient } from "../external/slack-message-client";
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
@@ -213,14 +213,6 @@ function contractErrorResponse(
   };
 }
 
-async function publishAppHome(
-  client: ReturnType<typeof createSlackClient>,
-  userId: string,
-  view: View,
-): Promise<void> {
-  await client.views.publish({ user_id: userId, view });
-}
-
 function buildConnectUrl(workspaceId: string, slackUserId: string): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
   return `${env("APP_URL")}/settings/slack?${params.toString()}`;
@@ -229,7 +221,7 @@ function buildConnectUrl(workspaceId: string, slackUserId: string): string {
 function buildDisconnectedAppHomeView(args: {
   readonly workspaceId: string;
   readonly slackUserId: string;
-}): View {
+}): SlackView {
   return {
     type: "home",
     blocks: [
@@ -265,7 +257,7 @@ function buildDisconnectedAppHomeView(args: {
   };
 }
 
-function buildUninstalledAppHomeView(): View {
+function buildUninstalledAppHomeView(): SlackView {
   return {
     type: "home",
     blocks: [
@@ -370,7 +362,7 @@ const uninstallSlackIntegration$ = command(
       const view = buildUninstalledAppHomeView();
       await Promise.allSettled(
         connections.map((connection) => {
-          return publishAppHome(client, connection.slackUserId, view);
+          return client.publishAppHome(connection.slackUserId, view);
         }),
       );
       signal.throwIfAborted();
@@ -486,8 +478,7 @@ const disconnectSlackIntegration$ = command(
       ),
     );
     await bestEffort(
-      publishAppHome(
-        client,
+      client.publishAppHome(
         connection.slackUserId,
         buildDisconnectedAppHomeView({
           workspaceId: installation.slackWorkspaceId,
