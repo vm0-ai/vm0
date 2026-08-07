@@ -8,7 +8,9 @@ use super::super::support::{
 
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
 use crate::paths::RunnerPaths;
-use crate::types::{SandboxReuseResult, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability};
+use crate::types::{
+    HeartbeatState, SandboxReuseResult, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability,
+};
 use crate::workspace_image_cache::WorkspaceImageCache;
 
 fn reusable_candidate(
@@ -20,31 +22,17 @@ fn reusable_candidate(
         .with_reuse_key(Some(reuse_key.to_string()))
 }
 
-async fn wait_heartbeat_with_workspace_after(
+async fn wait_heartbeat_matching_after(
     handle: &crate::provider::mock::MockProviderHandle,
     mut cursor: usize,
-    reuse_key: &str,
-    expected_workspace: &WorkspaceCacheCapability,
-    absent_sandbox_reuse_key: Option<&str>,
     timeout: Duration,
+    matches: impl Fn(&HeartbeatState) -> bool,
 ) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         {
             let heartbeats = handle.heartbeats.lock().unwrap_or_else(|e| e.into_inner());
-            if heartbeats[cursor..].iter().any(|heartbeat| {
-                let has_expected_workspace = heartbeat.held_workspace_states.iter().any(|state| {
-                    state.reuse_key == reuse_key
-                        && state.workspace_caches.contains(expected_workspace)
-                });
-                let omits_claimed_sandbox = absent_sandbox_reuse_key.is_none_or(|reuse_key| {
-                    heartbeat
-                        .held_sandbox_states
-                        .iter()
-                        .all(|state| state.reuse_key != reuse_key)
-                });
-                has_expected_workspace && omits_claimed_sandbox
-            }) {
+            if heartbeats[cursor..].iter().any(&matches) {
                 return true;
             }
             cursor = heartbeats.len();
@@ -127,14 +115,11 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     );
 
     assert!(
-        wait_heartbeat_with_workspace_after(
-            &env.handle,
-            before,
-            reuse_key,
-            &expected_workspace,
-            None,
-            Duration::from_secs(5),
-        )
+        wait_heartbeat_matching_after(&env.handle, before, Duration::from_secs(5), |heartbeat| {
+            heartbeat.held_workspace_states.iter().any(|state| {
+                state.reuse_key == reuse_key && state.workspace_caches.contains(&expected_workspace)
+            })
+        },)
         .await,
         "immediate heartbeat should advertise the promoted workspace cache",
     );
@@ -152,12 +137,18 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
         .wait_entered(1, Duration::from_secs(5))
         .await
         .expect("second wait_process should enter before heartbeat assertion");
-    assert!(
-        env.handle
-            .wait_heartbeat_past(second_before, Duration::from_secs(5))
-            .await,
-        "claiming a workspace-cache-only reuse key should trigger an immediate heartbeat",
-    );
+    let omitted_active_workspace = wait_heartbeat_matching_after(
+        &env.handle,
+        second_before,
+        Duration::from_secs(5),
+        |heartbeat| {
+            heartbeat
+                .held_workspace_states
+                .iter()
+                .all(|state| state.reuse_key != reuse_key)
+        },
+    )
+    .await;
     let post_claim_heartbeats = {
         let heartbeats = env
             .handle
@@ -167,12 +158,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
         heartbeats[second_before..].to_vec()
     };
     assert!(
-        post_claim_heartbeats.iter().any(|heartbeat| {
-            heartbeat
-                .held_workspace_states
-                .iter()
-                .all(|state| state.reuse_key != reuse_key)
-        }),
+        omitted_active_workspace,
         "post-claim heartbeat should stop advertising the active workspace cache; heartbeats: {post_claim_heartbeats:?}",
     );
     overrides.clear_wait_process_lifecycle_gate();
@@ -332,13 +318,16 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
         .expect("cache seed job should complete");
     assert_eq!(cache_completion.exit_code, 1);
     assert!(
-        wait_heartbeat_with_workspace_after(
+        wait_heartbeat_matching_after(
             &env.handle,
             promotion_heartbeat_count,
-            "sess-cached",
-            &expected_workspace,
-            None,
             Duration::from_secs(5),
+            |heartbeat| {
+                heartbeat.held_workspace_states.iter().any(|state| {
+                    state.reuse_key == "sess-cached"
+                        && state.workspace_caches.contains(&expected_workspace)
+                })
+            },
         )
         .await,
         "workspace cache promotion should advertise the expected workspace before claim"
@@ -357,13 +346,21 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
         .await
         .expect("reused wait_process should enter before the post-take heartbeat assertion");
     assert!(
-        wait_heartbeat_with_workspace_after(
+        wait_heartbeat_matching_after(
             &env.handle,
             reuse_heartbeat_count,
-            "sess-cached",
-            &expected_workspace,
-            Some("sess-refresh"),
             Duration::from_secs(5),
+            |heartbeat| {
+                let has_expected_workspace = heartbeat.held_workspace_states.iter().any(|state| {
+                    state.reuse_key == "sess-cached"
+                        && state.workspace_caches.contains(&expected_workspace)
+                });
+                let omits_claimed_sandbox = heartbeat
+                    .held_sandbox_states
+                    .iter()
+                    .all(|state| state.reuse_key != "sess-refresh");
+                has_expected_workspace && omits_claimed_sandbox
+            },
         )
         .await,
         "idle take should preserve the unrelated cached workspace in the immediate heartbeat"
