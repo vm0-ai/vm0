@@ -112,6 +112,127 @@ describe("runner claim response contract", () => {
   });
 });
 
+describe("Pi execution mode contract", () => {
+  const storedContext = {
+    storageMounts: [],
+    environment: null,
+    secretValueEnvironmentKeys: null,
+    resumeSession: null,
+    encryptedSecrets: null,
+    cliAgentType: "claude-code",
+  };
+  const piRuntimeContext = {
+    piSystemPrompt: "Pinned Pi system prompt",
+    piModelConfig: {
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com/",
+      model: "deepseek-v4-flash",
+      apiKeyEnv: "OPENAI_API_KEY",
+    },
+    runSkillSnapshot: {
+      schemaVersion: 1,
+      policyVersion: 1,
+      root: "/home/user/.pi/agent/skills",
+      digest: `sha256:${"a".repeat(64)}`,
+      entries: [],
+    },
+  };
+  const pollJob = {
+    runId: "22222222-2222-4222-8222-222222222222",
+    prompt: "continue",
+    appendSystemPrompt: null,
+    agentComposeVersionId: null,
+    vars: null,
+    experimentalProfile: "vm0/large",
+  };
+
+  it.each(["standby", "cold-start"])(
+    "preserves complete %s state across stored and Runner-facing contexts",
+    (piExecutionMode) => {
+      expect(
+        storedExecutionContextSchema.parse({
+          ...storedContext,
+          ...piRuntimeContext,
+          piExecutionMode,
+        }).piExecutionMode,
+      ).toBe(piExecutionMode);
+      expect(
+        compatibleStoredExecutionContextSchema.parse({
+          ...storedContext,
+          ...piRuntimeContext,
+          piExecutionMode,
+        }).piExecutionMode,
+      ).toBe(piExecutionMode);
+      expect(
+        executionContextSchema.parse({
+          ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
+          ...piRuntimeContext,
+          piExecutionMode,
+        }).piExecutionMode,
+      ).toBe(piExecutionMode);
+      expect(
+        jobSchema.parse({ ...pollJob, piExecutionMode }).piExecutionMode,
+      ).toBe(piExecutionMode);
+    },
+  );
+
+  it("rejects unknown modes on persisted and Runner-facing boundaries", () => {
+    const invalidModeContext = {
+      ...piRuntimeContext,
+      piExecutionMode: "future-mode",
+    };
+
+    expect(
+      storedExecutionContextSchema.safeParse({
+        ...storedContext,
+        ...invalidModeContext,
+      }).success,
+    ).toBe(false);
+    expect(
+      executionContextSchema.safeParse({
+        ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
+        ...invalidModeContext,
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({ ...pollJob, piExecutionMode: "future-mode" })
+        .success,
+    ).toBe(false);
+  });
+
+  it.each(["piSystemPrompt", "piModelConfig", "runSkillSnapshot"])(
+    "rejects a Pi mode without %s",
+    (missingField) => {
+      const incompleteContext = { ...piRuntimeContext };
+      Reflect.deleteProperty(incompleteContext, missingField);
+
+      expect(
+        storedExecutionContextSchema.safeParse({
+          ...storedContext,
+          ...incompleteContext,
+          piExecutionMode: "standby",
+        }).success,
+      ).toBe(false);
+      expect(
+        executionContextSchema.safeParse({
+          ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
+          ...incompleteContext,
+          piExecutionMode: "cold-start",
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("does not infer a mode from historical Pi-shaped context", () => {
+    const parsed = storedExecutionContextSchema.parse({
+      ...storedContext,
+      ...piRuntimeContext,
+    });
+
+    expect(parsed).not.toHaveProperty("piExecutionMode");
+  });
+});
+
 describe("connector runtime synchronization contract", () => {
   const customConnectorId = "00000000-0000-4000-8000-000000000001";
 
@@ -319,8 +440,9 @@ describe("stored connector permission baseline contract", () => {
   });
 
   it("allows a previous reader to ignore the new optional field", () => {
-    const previousStoredExecutionContextSchema =
-      storedExecutionContextSchema.omit({
+    const previousStoredExecutionContextSchema = z
+      .object(storedExecutionContextSchema.shape)
+      .omit({
         connectorPermissionBaseline: true,
       });
     const parsed = previousStoredExecutionContextSchema.parse({

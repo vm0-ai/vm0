@@ -424,14 +424,11 @@ const runnerBuiltinFirewallsResolveResponseSchema = z.object({
  */
 export const DEFAULT_PROFILE = "vm0/default";
 
-/**
- * Prewarmed Pi Sandbox lane. Must stay in sync with
- * `crates/runner/src/profile.rs`.
- */
-export const PI_STANDBY_PROFILE = "vm0/pi-standby";
-
 /** Non-terminal Guest/Runner exit used to request Pi cold-start fallback. */
 export const PI_STANDBY_TTL_RELEASE_EXIT_CODE = 75;
+
+export const piExecutionModeSchema = z.enum(["standby", "cold-start"]);
+export type PiExecutionMode = z.infer<typeof piExecutionModeSchema>;
 
 /**
  * Runner group format: vm0/<name> (e.g., "vm0/production")
@@ -467,6 +464,7 @@ export const jobSchema = z.object({
   cliAgentSessionId: z.string().nullable().optional(),
   reuseKey: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
+  piExecutionMode: piExecutionModeSchema.optional(),
   runnerPreferenceDecision: runnerPreferenceDecisionSchema.optional(),
   runnerPreference: runnerPreferenceSchema.optional(),
   runnerPreferenceResolution: runnerPreferenceResolutionSchema.optional(),
@@ -763,12 +761,39 @@ export const piModelConfigSchema = z
   })
   .readonly();
 
+function requireCompletePiExecutionContext(
+  context: {
+    readonly piExecutionMode?: PiExecutionMode;
+    readonly piSystemPrompt?: unknown;
+    readonly piModelConfig?: unknown;
+    readonly runSkillSnapshot?: unknown;
+  },
+  refinement: z.RefinementCtx,
+): void {
+  if (context.piExecutionMode === undefined) {
+    return;
+  }
+  for (const field of [
+    "piSystemPrompt",
+    "piModelConfig",
+    "runSkillSnapshot",
+  ] as const) {
+    if (context[field] === undefined) {
+      refinement.addIssue({
+        code: "custom",
+        path: [field],
+        message: `${field} is required for Pi execution mode`,
+      });
+    }
+  }
+}
+
 /**
  * Stored execution context (subset stored in database for late routing)
  * Contains prepared context without runtime-generated fields
  * Secrets are encrypted with AES-256-GCM before storage
  */
-export const storedExecutionContextSchema = z.object({
+const storedExecutionContextObjectSchema = z.object({
   storageMounts: z
     .array(storedStorageMountEntrySchema)
     .superRefine(uniqueStorageMountPaths),
@@ -838,10 +863,16 @@ export const storedExecutionContextSchema = z.object({
     .optional(),
   // Complete Pi prompt rendered once before the first model call and reused
   // byte-for-byte by the API loop and the standby Sandbox.
+  piExecutionMode: piExecutionModeSchema.optional(),
   piSystemPrompt: z.string().min(1).optional(),
   piModelConfig: piModelConfigSchema.optional(),
   runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
+
+export const storedExecutionContextSchema =
+  storedExecutionContextObjectSchema.superRefine(
+    requireCompletePiExecutionContext,
+  );
 
 /**
  * Tolerant reader for execution contexts already persisted in a database or
@@ -850,9 +881,11 @@ export const storedExecutionContextSchema = z.object({
  * than invalidating the complete queued execution context.
  */
 export const compatibleStoredExecutionContextSchema =
-  storedExecutionContextSchema.extend({
-    connectorPermissionBaseline: z.unknown().optional(),
-  });
+  storedExecutionContextObjectSchema
+    .extend({
+      connectorPermissionBaseline: z.unknown().optional(),
+    })
+    .superRefine(requireCompletePiExecutionContext);
 
 /**
  * Execution context returned when claiming a job.
@@ -861,7 +894,7 @@ export const compatibleStoredExecutionContextSchema =
  * tolerant consumer projection and intentionally does not mirror every field.
  * See `crates/runner/src/types.rs`.
  */
-export const executionContextSchema = z.object({
+const executionContextObjectSchema = z.object({
   runId: z.uuid(),
   reuseKey: z.string().nullable().optional(),
   prompt: z.string(),
@@ -927,10 +960,15 @@ export const executionContextSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
+  piExecutionMode: piExecutionModeSchema.optional(),
   piSystemPrompt: z.string().min(1).optional(),
   piModelConfig: piModelConfigSchema.optional(),
   runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
+
+export const executionContextSchema = executionContextObjectSchema.superRefine(
+  requireCompletePiExecutionContext,
+);
 
 /**
  * Runners job claim contract - POST /api/runners/jobs/:id/claim
