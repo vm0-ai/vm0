@@ -3008,17 +3008,18 @@ describe("chat event action cards", () => {
     );
   });
 
-  it("cancels stale permission loading when a confirmed grant reloads cards", async () => {
+  it("does not cancel stale permission loading when a confirmed grant reloads cards", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
     const requestStarted = context.mocks.deferred<void>();
-    const requestAborted = context.mocks.deferred<void>();
+    const releaseRequest = context.mocks.deferred<void>();
+    const requestFinished = context.mocks.deferred<void>();
     const threadId = "b0000000-0000-4000-a000-000000000951";
     const reloadedAgentId = "c0000000-0000-4000-a000-000000000002";
     const gmailPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow`;
     const youtubePermissionUrl = `https://app.vm0.ai/agents/${reloadedAgentId}/permissions?connectorSlug=youtube&permission=videos.write&action=allow`;
     let pendingRequest = true;
-    let abortObserved = false;
+    let staleRequestSignal: AbortSignal | undefined;
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
       return respond(200, {
@@ -3035,7 +3036,7 @@ describe("chat event action cards", () => {
     });
     context.mocks.api(
       zeroUserPermissionGrantsContract.list,
-      ({ query, signal, never, respond }) => {
+      async ({ query, signal, respond }) => {
         if (query.agentId !== reloadedAgentId) {
           return respond(200, []);
         }
@@ -3043,18 +3044,11 @@ describe("chat event action cards", () => {
           return respond(200, []);
         }
         pendingRequest = false;
+        staleRequestSignal = signal;
         requestStarted.resolve();
-        signal.addEventListener(
-          "abort",
-          () => {
-            if (!abortObserved) {
-              abortObserved = true;
-              requestAborted.resolve();
-            }
-          },
-          { once: true },
-        );
-        return never();
+        await releaseRequest.promise;
+        requestFinished.resolve();
+        return respond(200, []);
       },
     );
     context.mocks.api(
@@ -3104,28 +3098,35 @@ describe("chat event action cards", () => {
     });
 
     await requestStarted.promise;
-    const permissionCards = await screen.findAllByTestId(
-      "permission-action-card",
-    );
-    expect(permissionCards).toHaveLength(2);
-    const [gmailCard, youtubeCard] = permissionCards;
-    if (!gmailCard || !youtubeCard) {
-      throw new Error("Expected two permission cards");
+    try {
+      const permissionCards = await screen.findAllByTestId(
+        "permission-action-card",
+      );
+      expect(permissionCards).toHaveLength(2);
+      const [gmailCard, youtubeCard] = permissionCards;
+      if (!gmailCard || !youtubeCard) {
+        throw new Error("Expected two permission cards");
+      }
+      await waitForButtonByText("Confirm", gmailCard);
+
+      await confirmPermissionAction(user, gmailCard);
+
+      await waitFor(() => {
+        expect(
+          within(gmailCard).getByText("Permissions updated"),
+        ).toBeInTheDocument();
+        expect(
+          within(youtubeCard).getByText("Allow videos.write"),
+        ).toBeInTheDocument();
+        expect(buttonByText("Confirm", youtubeCard)).toBeEnabled();
+      });
+      expect(staleRequestSignal).toBeDefined();
+      expect(staleRequestSignal?.aborted).toBeFalsy();
+    } finally {
+      releaseRequest.resolve();
+      await requestFinished.promise;
     }
-    await waitForButtonByText("Confirm", gmailCard);
-
-    await confirmPermissionAction(user, gmailCard);
-
-    await requestAborted.promise;
-    await waitFor(() => {
-      expect(
-        within(gmailCard).getByText("Permissions updated"),
-      ).toBeInTheDocument();
-      expect(
-        within(youtubeCard).getByText("Allow videos.write"),
-      ).toBeInTheDocument();
-      expect(buttonByText("Confirm", youtubeCard)).toBeEnabled();
-    });
+    expect(staleRequestSignal?.aborted).toBeFalsy();
   });
 
   it("automatically retries permission action loading before showing an error", async () => {
