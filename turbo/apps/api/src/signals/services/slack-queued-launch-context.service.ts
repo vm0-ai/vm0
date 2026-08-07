@@ -141,7 +141,6 @@ async function loadSlackLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "slack"),
-        eq(chatEvents.triggerSource, "slack"),
       ),
     )
     .limit(1);

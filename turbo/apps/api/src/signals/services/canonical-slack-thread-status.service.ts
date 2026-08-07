@@ -145,7 +145,7 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
       and(
         inArray(chatEvents.chatThreadId, chatThreadIds),
         chatEventTypeIn(["input.prompt"]),
-        eq(chatEvents.triggerSource, "slack"),
+        eq(chatEvents.contextType, "slack"),
         isNull(chatEvents.runId),
         notExists(
           db

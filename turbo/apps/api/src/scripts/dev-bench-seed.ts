@@ -654,6 +654,7 @@ function appendRunEvents(
     chatThreadId: args.threadId,
     runId,
     eventType: "input.prompt",
+    contextType: args.workflowAutomationBrief ? "automation" : "web",
     userMessage: { version: 1, parts: [{ type: "text", text: prompt }] },
     createdAt: baseCreatedAt,
   };
@@ -849,19 +850,23 @@ function appendNullRunControlRows(args: {
       ),
       500,
     );
+    const prompt = userPromptLorem(args.profile, controlIndex);
+    const isInputPrompt = controlIndex % 2 === 0;
     args.eventRows.push({
       id: randomUUID(),
       chatThreadId: args.threadId,
       runId: null,
-      eventType: controlIndex % 2 === 0 ? "input.prompt" : "output.thinking",
-      content:
-        controlIndex % 2 === 0
-          ? userPromptLorem(args.profile, controlIndex)
-          : null,
-      thinking:
-        controlIndex % 2 === 0
-          ? null
-          : `Synthetic background state ${String(controlIndex)}`,
+      eventType: isInputPrompt ? "input.prompt" : "output.thinking",
+      content: null,
+      ...(isInputPrompt
+        ? {
+            contextType: "web",
+            userMessage: {
+              version: 1,
+              parts: [{ type: "text", text: prompt }],
+            },
+          }
+        : { thinking: `Synthetic background state ${String(controlIndex)}` }),
       createdAt,
     });
   }

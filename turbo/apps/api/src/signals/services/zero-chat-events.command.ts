@@ -1584,6 +1584,7 @@ async function appendAssociatedUserMessage(params: {
   readonly userMessage: UserMessageDocument;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
+  readonly triggerSource: "web" | "agent";
   // When false, the thread's in-progress draft is preserved. Automation posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
@@ -1601,7 +1602,7 @@ async function appendAssociatedUserMessage(params: {
       eventType: "input.prompt",
       userMessage: params.userMessage,
       runId: params.runId,
-      contextType: "web",
+      ...(params.triggerSource === "web" ? { contextType: "web" } : {}),
       attachFiles: fileIds,
       generationTemplate: params.generationTemplate,
     };
@@ -2458,6 +2459,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly appendInitialThinking: boolean;
   readonly touchThreadSort: boolean;
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
+  readonly triggerSource: "web" | "agent";
 }): void {
   waitUntil(
     (async () => {
@@ -2477,6 +2479,7 @@ function scheduleAssociatedUserMessage(params: {
         userMessage: params.body.userMessage,
         generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
+        triggerSource: params.triggerSource,
         clearDraft: true,
       });
       if (inserted) {
@@ -2518,6 +2521,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly initialThinkingEnabled: boolean;
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly touchThreadSort: boolean;
+  readonly triggerSource: "web" | "agent";
   readonly queueFirstClaim:
     | {
         readonly createdAt: Date;
@@ -2560,6 +2564,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     appendInitialThinking,
     touchThreadSort: params.touchThreadSort,
     attachFileMetadata: params.attachFileMetadata,
+    triggerSource: params.triggerSource,
   });
 }
 
@@ -3010,6 +3015,7 @@ function scheduleNormalChatRunSideEffects(params: {
       params.args.zeroPreCreateSource,
       params.prepared.thread.isNewThread,
     ),
+    triggerSource: params.prepared.triggerSource,
     queueFirstClaim: {
       createdAt: params.queueFirstClaimedAt,
     },

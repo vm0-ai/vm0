@@ -1,10 +1,10 @@
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type {
   ChatEventGenerationTemplate,
   ChatEventUserMessage,
+  chatEvents,
 } from "@vm0/db/schema/chat-event";
 
 import type { Db } from "../external/db";
@@ -20,7 +20,11 @@ import {
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
 
-type ContextBackedTriggerSource =
+type ChatEventContextType = NonNullable<
+  (typeof chatEvents.$inferSelect)["contextType"]
+>;
+
+type ContextBackedContextType =
   | "slack"
   | "feishu"
   | "teams"
@@ -31,7 +35,7 @@ interface ActiveInputPromptEvent {
   readonly id: string;
   readonly chatThreadId: string;
   readonly eventType: "input.prompt" | "input.budget";
-  readonly triggerSource: TriggerSource | null;
+  readonly contextType: ChatEventContextType;
   readonly userMessage: ChatEventUserMessage;
   readonly generationTemplate: ChatEventGenerationTemplate | null;
 }
@@ -41,7 +45,7 @@ interface IntegrationPromptMaterial {
   readonly appendSystemPrompt: string;
 }
 
-const CONTEXT_BACKED_TRIGGER_SOURCES: readonly ContextBackedTriggerSource[] = [
+const CONTEXT_BACKED_CONTEXT_TYPES: readonly ContextBackedContextType[] = [
   "slack",
   "feishu",
   "teams",
@@ -57,11 +61,11 @@ export function activeInputPromptFitsControlPayload(prompt: string): boolean {
   );
 }
 
-function isContextBackedTriggerSource(
-  source: TriggerSource | null,
-): source is ContextBackedTriggerSource {
-  return CONTEXT_BACKED_TRIGGER_SOURCES.some((candidate) => {
-    return candidate === source;
+function isContextBackedContextType(
+  contextType: ChatEventContextType,
+): contextType is ContextBackedContextType {
+  return CONTEXT_BACKED_CONTEXT_TYPES.some((candidate) => {
+    return candidate === contextType;
   });
 }
 
@@ -76,7 +80,7 @@ async function loadIntegrationPromptMaterial(
     orgId: args.orgId,
     userId: args.userId,
   };
-  switch (event.triggerSource) {
+  switch (event.contextType) {
     case "slack": {
       return await loadSlackQueuedLaunchMaterial(db, loaderArgs);
     }
@@ -92,10 +96,22 @@ async function loadIntegrationPromptMaterial(
     case "agentphone": {
       return await loadAgentPhoneQueuedLaunchMaterial(db, loaderArgs);
     }
-    default: {
+    case "web":
+    case "github":
+    case "automation":
+    case "goal":
+    case "morning_brief":
+    case "agent_run": {
       return null;
     }
+    default: {
+      return unreachableActiveInputContextType(event.contextType);
+    }
   }
+}
+
+function unreachableActiveInputContextType(contextType: never): never {
+  throw new Error(`Unsupported active input context type: ${contextType}`);
 }
 
 /** Materialize one claimed input prompt into the same text capability as a run prompt. */
@@ -127,9 +143,9 @@ export async function materializeActiveInputPrompt(
     inlineTemplates: inlineTemplatesEnabled,
   });
   const integration = await loadIntegrationPromptMaterial(db, args.event, args);
-  if (isContextBackedTriggerSource(args.event.triggerSource) && !integration) {
+  if (isContextBackedContextType(args.event.contextType) && !integration) {
     throw new Error(
-      `${args.event.triggerSource} active input is missing launch material`,
+      `${args.event.contextType} active input is missing launch material`,
     );
   }
   const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({

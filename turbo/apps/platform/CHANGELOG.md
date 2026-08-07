@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.698.1](https://github.com/vm0-ai/vm0/compare/app-v0.698.0...app-v0.698.1) (2026-08-07)
+
+
+### Refactoring
+
+* remove retired compatibility contracts, routes, and schema fields ([#25540](https://github.com/vm0-ai/vm0/issues/25540)) ([67ce1c1](https://github.com/vm0-ai/vm0/commit/67ce1c11aa712b1933fd71e6653212b92996ff70))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.286.1
+    * @vm0/core bumped to 8.524.7
+
 ## [0.698.0](https://github.com/vm0-ai/vm0/compare/app-v0.697.1...app-v0.698.0) (2026-08-07)
 
 
