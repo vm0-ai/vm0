@@ -28,8 +28,8 @@ import {
   openConcurrencyConfirmDialog$,
   openConcurrencyPurchaseDialog$,
   restoreConcurrencySubscription$,
-  setConcurrencyCancellationMode$,
-  setConcurrencyReductionQuantity$,
+  setConcurrencyChangeMode$,
+  setConcurrencyTargetQuantity$,
   startCheckout$,
   startConcurrencyCheckout$,
   startConcurrencyReduction$,
@@ -45,7 +45,7 @@ import {
   restoreDialogOpen$,
   restorePlan$,
   type BillingTier,
-  type ConcurrencyCancellationMode,
+  type ConcurrencyChangeMode,
 } from "../../../../signals/zero-page/billing.ts";
 import {
   Button,
@@ -1362,14 +1362,14 @@ function ConcurrencySubscriptionRow({
   changing: boolean;
   canceled: boolean;
   onAction: (
-    action: "cancel" | "restore",
+    action: "change" | "restore",
     subscriptionId: string,
     currentQuantity: number,
     canReduce: boolean,
   ) => void;
   subscription: ConcurrencySubscription;
 }) {
-  const action = canceled ? "restore" : "cancel";
+  const action = canceled ? "restore" : "change";
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
@@ -1408,13 +1408,9 @@ function ConcurrencySubscriptionRow({
             ? i18n.t(($) => {
                 return $.billing.common.restore;
               })
-            : subscription.canReduce === true
-              ? i18n.t(($) => {
-                  return $.billing.concurrency.changeButton;
-                })
-              : i18n.t(($) => {
-                  return $.billing.common.cancel;
-                })}
+            : i18n.t(($) => {
+                return $.billing.concurrency.changeButton;
+              })}
       </Button>
     </div>
   );
@@ -1426,8 +1422,7 @@ interface ConcurrencyConfirmCopy {
 }
 
 function concurrencyConfirmCopy(
-  action: "cancel" | "restore",
-  canChooseCancellationMode: boolean,
+  action: "change" | "restore",
 ): ConcurrencyConfirmCopy {
   if (action === "restore") {
     return {
@@ -1439,49 +1434,57 @@ function concurrencyConfirmCopy(
       }),
     };
   }
-  if (canChooseCancellationMode) {
-    return {
-      title: i18n.t(($) => {
-        return $.billing.concurrency.changeTitle;
-      }),
-      description: i18n.t(($) => {
-        return $.billing.concurrency.changeDescription;
-      }),
-    };
-  }
   return {
     title: i18n.t(($) => {
-      return $.billing.concurrency.cancelTitle;
+      return $.billing.concurrency.changeTitle;
     }),
     description: i18n.t(($) => {
-      return $.billing.concurrency.cancelDescription;
+      return $.billing.concurrency.changeDescription;
     }),
   };
 }
 
-function concurrencyReductionQuantityValid(
+function concurrencyMinimumChangeQuantity(
+  currentQuantity: number,
+  canReduce: boolean,
+): number {
+  return canReduce
+    ? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN
+    : Math.min(CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX, currentQuantity + 1);
+}
+
+function concurrencyChangeQuantityAllowed(
   quantity: number | null,
   currentQuantity: number,
+  canReduce: boolean,
 ): boolean {
-  const maximum = Math.max(
-    CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN,
-    currentQuantity - 1,
-  );
   return (
     quantity !== null &&
     Number.isInteger(quantity) &&
     quantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN &&
-    quantity <= maximum
+    quantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX &&
+    (canReduce || quantity >= currentQuantity)
+  );
+}
+
+function concurrencyChangeQuantityValid(
+  quantity: number | null,
+  currentQuantity: number,
+  canReduce: boolean,
+): boolean {
+  return (
+    concurrencyChangeQuantityAllowed(quantity, currentQuantity, canReduce) &&
+    quantity !== currentQuantity
   );
 }
 
 function concurrencyConfirmButtonLabel(
-  action: "cancel" | "restore",
-  cancellationMode: ConcurrencyCancellationMode,
+  action: "change" | "restore",
+  changeMode: ConcurrencyChangeMode,
   loading: boolean,
 ): string {
   if (loading) {
-    return action === "cancel" && cancellationMode === "reduce"
+    return action === "change" && changeMode === "quantity"
       ? i18n.t(($) => {
           return $.billing.common.redirecting;
         })
@@ -1494,7 +1497,7 @@ function concurrencyConfirmButtonLabel(
       return $.billing.concurrency.restoreSubscription;
     });
   }
-  return cancellationMode === "reduce"
+  return changeMode === "quantity"
     ? i18n.t(($) => {
         return $.billing.concurrency.continueToStripe;
       })
@@ -1504,41 +1507,42 @@ function concurrencyConfirmButtonLabel(
 }
 
 function concurrencyConfirmDisabled(
-  action: "cancel" | "restore",
-  cancellationMode: ConcurrencyCancellationMode,
+  action: "change" | "restore",
+  changeMode: ConcurrencyChangeMode,
   loading: boolean,
-  reductionQuantityValid: boolean,
+  changeQuantityValid: boolean,
 ): boolean {
   return (
     loading ||
-    (action === "cancel" &&
-      cancellationMode === "reduce" &&
-      !reductionQuantityValid)
+    (action === "change" && changeMode === "quantity" && !changeQuantityValid)
   );
 }
 
-function ConcurrencyCancellationOptions({
+function ConcurrencyChangeOptions({
   currentQuantity,
-  cancellationMode,
-  reductionQuantity,
+  canReduce,
+  changeMode,
+  targetQuantity,
   loading,
   onModeChange,
   onQuantityChange,
 }: {
   readonly currentQuantity: number;
-  readonly cancellationMode: ConcurrencyCancellationMode;
-  readonly reductionQuantity: number | null;
+  readonly canReduce: boolean;
+  readonly changeMode: ConcurrencyChangeMode;
+  readonly targetQuantity: number | null;
   readonly loading: boolean;
-  readonly onModeChange: (mode: ConcurrencyCancellationMode) => void;
+  readonly onModeChange: (mode: ConcurrencyChangeMode) => void;
   readonly onQuantityChange: (quantity: number | null) => void;
 }) {
-  const maximumReductionQuantity = Math.max(
-    CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN,
-    currentQuantity - 1,
-  );
-  const quantityValid = concurrencyReductionQuantityValid(
-    reductionQuantity,
+  const minimumChangeQuantity = concurrencyMinimumChangeQuantity(
     currentQuantity,
+    canReduce,
+  );
+  const quantityAllowed = concurrencyChangeQuantityAllowed(
+    targetQuantity,
+    currentQuantity,
+    canReduce,
   );
 
   return (
@@ -1553,35 +1557,35 @@ function ConcurrencyCancellationOptions({
         <button
           type="button"
           role="radio"
-          aria-checked={cancellationMode === "reduce"}
+          aria-checked={changeMode === "quantity"}
           disabled={loading}
           className={`flex flex-col rounded-xl border px-4 py-3 text-left transition-colors ${
-            cancellationMode === "reduce"
+            changeMode === "quantity"
               ? "border-primary bg-primary/5 ring-1 ring-primary/20"
               : "border-border/70 hover:bg-muted/40"
           }`}
           onClick={() => {
-            onModeChange("reduce");
+            onModeChange("quantity");
           }}
         >
           <span className="text-sm font-medium text-foreground">
             {i18n.t(($) => {
-              return $.billing.concurrency.reduceOption;
+              return $.billing.concurrency.changeQuantityOption;
             })}
           </span>
           <span className="mt-1 text-[13px] text-muted-foreground">
             {i18n.t(($) => {
-              return $.billing.concurrency.reduceOptionDescription;
+              return $.billing.concurrency.changeQuantityOptionDescription;
             })}
           </span>
         </button>
         <button
           type="button"
           role="radio"
-          aria-checked={cancellationMode === "cancel"}
+          aria-checked={changeMode === "cancel"}
           disabled={loading}
           className={`flex flex-col rounded-xl border px-4 py-3 text-left transition-colors ${
-            cancellationMode === "cancel"
+            changeMode === "cancel"
               ? "border-destructive bg-destructive/5 ring-1 ring-destructive/20"
               : "border-border/70 hover:bg-muted/40"
           }`}
@@ -1602,10 +1606,10 @@ function ConcurrencyCancellationOptions({
         </button>
       </div>
 
-      {cancellationMode === "reduce" ? (
+      {changeMode === "quantity" ? (
         <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
           <label
-            htmlFor="concurrency-reduction-quantity"
+            htmlFor="concurrency-change-quantity"
             className="text-sm font-medium text-foreground"
           >
             {i18n.t(($) => {
@@ -1613,13 +1617,15 @@ function ConcurrencyCancellationOptions({
             })}
           </label>
           <Input
-            id="concurrency-reduction-quantity"
+            id="concurrency-change-quantity"
             type="text"
             inputMode="numeric"
             autoFocus
             disabled={loading}
-            value={reductionQuantity ?? ""}
-            aria-invalid={!quantityValid}
+            value={targetQuantity ?? ""}
+            aria-invalid={
+              targetQuantity !== null && !quantityAllowed ? true : undefined
+            }
             onChange={(event) => {
               const value = event.currentTarget.value;
               if (value !== "" && !/^\d+$/.test(value)) {
@@ -1636,13 +1642,16 @@ function ConcurrencyCancellationOptions({
               },
               {
                 current: formatLocalizedNumber(currentQuantity),
-                maximum: formatLocalizedNumber(maximumReductionQuantity),
+                maximum: formatLocalizedNumber(
+                  CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX,
+                ),
+                minimum: formatLocalizedNumber(minimumChangeQuantity),
               },
             )}
           </p>
-          {quantityValid && reductionQuantity !== null ? (
+          {quantityAllowed && targetQuantity !== null ? (
             <p className="mt-2 text-sm font-medium text-foreground">
-              {concurrencyMonthlyPrice(reductionQuantity)}
+              {concurrencyMonthlyPrice(targetQuantity)}
             </p>
           ) : null}
         </div>
@@ -1655,10 +1664,13 @@ function ConcurrencyConfirmDialog() {
   const pageSignal = useGet(pageSignal$);
   const dialog = useGet(concurrencyConfirmDialog$);
   const close = useSet(closeConcurrencyConfirmDialog$);
-  const setCancellationMode = useSet(setConcurrencyCancellationMode$);
-  const setReductionQuantity = useSet(setConcurrencyReductionQuantity$);
+  const setChangeMode = useSet(setConcurrencyChangeMode$);
+  const setTargetQuantity = useSet(setConcurrencyTargetQuantity$);
   const [cancelLoadable, cancelSubscription] = useLoadableSet(
     cancelConcurrencySubscription$,
+  );
+  const [checkoutLoadable, checkout] = useLoadableSet(
+    startConcurrencyCheckout$,
   );
   const [reduceLoadable, reduceSubscription] = useLoadableSet(
     startConcurrencyReduction$,
@@ -1668,19 +1680,20 @@ function ConcurrencyConfirmDialog() {
   );
   const loading = [
     cancelLoadable.state,
+    checkoutLoadable.state,
     reduceLoadable.state,
     restoreLoadable.state,
   ].includes("loading");
-  const action = dialog?.action ?? "cancel";
-  const canChooseCancellationMode =
-    dialog?.action === "cancel" && dialog.canReduce;
-  const cancellationMode = dialog?.cancellationMode ?? "cancel";
-  const reductionQuantity = dialog?.reductionQuantity ?? null;
-  const reductionQuantityValid = concurrencyReductionQuantityValid(
-    reductionQuantity,
+  const action = dialog?.action ?? "change";
+  const canChooseChangeMode = dialog?.action === "change";
+  const changeMode = dialog?.changeMode ?? "quantity";
+  const targetQuantity = dialog?.targetQuantity ?? null;
+  const changeQuantityValid = concurrencyChangeQuantityValid(
+    targetQuantity,
     dialog?.currentQuantity ?? 1,
+    dialog?.canReduce ?? false,
   );
-  const copy = concurrencyConfirmCopy(action, canChooseCancellationMode);
+  const copy = concurrencyConfirmCopy(action);
 
   const handleConfirm = () => {
     if (!dialog) {
@@ -1693,20 +1706,27 @@ function ConcurrencyConfirmDialog() {
       );
       return;
     }
-    if (cancellationMode === "reduce") {
-      if (!reductionQuantityValid || reductionQuantity === null) {
+    if (changeMode === "quantity") {
+      if (!changeQuantityValid || targetQuantity === null) {
         return;
       }
-      detach(
-        reduceSubscription(
-          {
-            subscriptionId: dialog.subscriptionId,
-            quantity: reductionQuantity,
-          },
-          pageSignal,
-        ),
-        Reason.DomCallback,
-      );
+      if (targetQuantity > dialog.currentQuantity) {
+        detach(
+          checkout(targetQuantity - dialog.currentQuantity, false, pageSignal),
+          Reason.DomCallback,
+        );
+      } else {
+        detach(
+          reduceSubscription(
+            {
+              subscriptionId: dialog.subscriptionId,
+              quantity: targetQuantity,
+            },
+            pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+      }
       return;
     }
     detach(
@@ -1728,14 +1748,15 @@ function ConcurrencyConfirmDialog() {
           <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
 
-        {canChooseCancellationMode && dialog ? (
-          <ConcurrencyCancellationOptions
+        {canChooseChangeMode && dialog ? (
+          <ConcurrencyChangeOptions
             currentQuantity={dialog.currentQuantity}
-            cancellationMode={cancellationMode}
-            reductionQuantity={reductionQuantity}
+            canReduce={dialog.canReduce}
+            changeMode={changeMode}
+            targetQuantity={targetQuantity}
             loading={loading}
-            onModeChange={setCancellationMode}
-            onQuantityChange={setReductionQuantity}
+            onModeChange={setChangeMode}
+            onQuantityChange={setTargetQuantity}
           />
         ) : null}
 
@@ -1753,19 +1774,19 @@ function ConcurrencyConfirmDialog() {
           </Button>
           <Button
             variant={
-              action === "cancel" && cancellationMode === "cancel"
+              action === "change" && changeMode === "cancel"
                 ? "destructive"
                 : "default"
             }
             disabled={concurrencyConfirmDisabled(
               action,
-              cancellationMode,
+              changeMode,
               loading,
-              reductionQuantityValid,
+              changeQuantityValid,
             )}
             onClick={handleConfirm}
           >
-            {concurrencyConfirmButtonLabel(action, cancellationMode, loading)}
+            {concurrencyConfirmButtonLabel(action, changeMode, loading)}
           </Button>
         </div>
       </DialogContent>
@@ -1920,19 +1941,23 @@ function ConcurrencyBillingSection({
             );
           })
         )}
-        <div className="h-0 zero-border-t mx-5" />
-        <div className="flex justify-end px-5 py-4">
-          <Button
-            type="button"
-            size="sm"
-            className="h-9 px-4 text-sm font-medium"
-            onClick={openPurchaseDialog}
-          >
-            {i18n.t(($) => {
-              return $.billing.concurrency.buyButton;
-            })}
-          </Button>
-        </div>
+        {subscriptions.length === 0 ? (
+          <>
+            <div className="h-0 zero-border-t mx-5" />
+            <div className="flex justify-end px-5 py-4">
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 px-4 text-sm font-medium"
+                onClick={openPurchaseDialog}
+              >
+                {i18n.t(($) => {
+                  return $.billing.concurrency.buyButton;
+                })}
+              </Button>
+            </div>
+          </>
+        ) : null}
       </div>
       <ConcurrencyPurchaseDialog />
       <ConcurrencyConfirmDialog />

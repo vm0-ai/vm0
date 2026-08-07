@@ -2,9 +2,10 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq, gt, isNull, notExists } from "drizzle-orm";
+import { and, eq, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
@@ -31,7 +32,6 @@ import {
 import { lockGoalThread } from "./zero-goal-lock.service";
 
 const goalEventRevoker = alias(chatEvents, "goal_event_revoker");
-const laterGoalChange = alias(chatEvents, "later_goal_change");
 
 export type GoalQueueAdmission =
   | { readonly kind: "inserted"; readonly eventId: string }
@@ -55,11 +55,13 @@ export interface GoalQueueTarget {
   readonly objective: string;
   readonly objectiveBrief: string;
   readonly autonomyBudget: number;
+  readonly stateRevision: string;
 }
 
 type FailedGoalQueueSettlement =
   | { readonly kind: "not_pending" }
   | { readonly kind: "revoked" }
+  | { readonly kind: "stale" }
   | { readonly kind: "rejected"; readonly goalId: string };
 
 async function pendingGoalEventExists(
@@ -122,21 +124,6 @@ export async function admitGoalQueueEvent(
     }
     return { kind: "inserted", eventId: inserted.id };
   });
-}
-
-export function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
-  return notExists(
-    db
-      .select({ id: laterGoalChange.id })
-      .from(laterGoalChange)
-      .where(
-        and(
-          eq(laterGoalChange.chatThreadId, chatEvents.chatThreadId),
-          eq(laterGoalChange.eventType, "goal.changed"),
-          gt(laterGoalChange.seqId, chatEvents.seqId),
-        ),
-      ),
-  );
 }
 
 /** Load the next runnable goal trigger. */
@@ -205,6 +192,8 @@ export async function loadGoalQueueTarget(
         threadGoals.autonomyBudget,
       ),
       status: threadGoals.status,
+      // A Date decoder drops PostgreSQL microseconds needed by the final CAS.
+      stateRevision: sql`${threadGoals.updatedAt}::text`.mapWith(pgTextDecoder),
     })
     .from(threadGoals)
     .innerJoin(
@@ -220,7 +209,6 @@ export async function loadGoalQueueTarget(
         eq(threadGoals.chatThreadId, event.chatThreadId),
         eq(threadGoals.orgId, event.orgId),
         eq(threadGoals.ownerUserId, event.userId),
-        noGoalChangeAfterQueueEvent(db),
       ),
     )
     .limit(1);
@@ -236,6 +224,7 @@ export async function loadGoalQueueTarget(
     objective: goal.objective,
     objectiveBrief: goal.objectiveBrief,
     autonomyBudget: goal.autonomyBudget,
+    stateRevision: goal.stateRevision,
   };
 }
 
@@ -245,6 +234,25 @@ async function pendingGoalEventStillExists(
 ): Promise<boolean> {
   const pending = await loadPendingChatQueueEvent(db, args);
   return pending?.eventType === "input.goal";
+}
+
+async function lockGoalQueueTarget(
+  db: Db,
+  event: PendingGoalQueueEvent,
+): Promise<void> {
+  await db
+    .select({ id: threadGoals.id })
+    .from(threadGoals)
+    .where(
+      and(
+        eq(threadGoals.id, event.goalId),
+        eq(threadGoals.chatThreadId, event.chatThreadId),
+        eq(threadGoals.orgId, event.orgId),
+        eq(threadGoals.ownerUserId, event.userId),
+      ),
+    )
+    .for("update")
+    .limit(1);
 }
 
 /** Remove a goal trigger invalidated by a normal goal lifecycle change. */
@@ -273,19 +281,21 @@ export async function revokeGoalQueueEvent(
 
 /**
  * Settle a failed launch against the final goal state. Goal lifecycle writers
- * take the advisory lock before appending their queue marker, so this keeps
- * validity, event transition, and the exact-goal pause in one serialization
- * order and one transaction.
+ * take the advisory lock before changing the goal row. Lock the exact source
+ * row before the chat queue row so validity, event transition, and the
+ * exact-goal pause share the same serialization order as final run claim.
  */
 export async function settleFailedGoalQueueEvent(
   db: Db,
   args: {
     readonly event: PendingGoalQueueEvent;
+    readonly expectedGoalStateRevision: string;
     readonly reason: string;
   },
 ): Promise<FailedGoalQueueSettlement> {
   return await db.transaction(async (tx) => {
     await lockGoalThread(tx, args.event.chatThreadId);
+    await lockGoalQueueTarget(tx, args.event);
     if (!(await lockChatQueueThread(tx, args.event.chatThreadId))) {
       return { kind: "not_pending" };
     }
@@ -306,6 +316,9 @@ export async function settleFailedGoalQueueEvent(
         runId: null,
       });
       return revoked ? { kind: "revoked" } : { kind: "not_pending" };
+    }
+    if (goal.stateRevision !== args.expectedGoalStateRevision) {
+      return { kind: "stale" };
     }
 
     const [payload] = await tx

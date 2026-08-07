@@ -933,20 +933,6 @@ function selectedWorkflowTemplateItem(
   return findWorkflowTemplateItem(value.selection.workflowTemplateId);
 }
 
-// The header search spans every catalogue, so each one narrows by title.
-function filterTemplatesByTitle<T extends { readonly title: string }>(
-  items: readonly T[],
-  query: string,
-): readonly T[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return items;
-  }
-  return items.filter((item) => {
-    return item.title.toLowerCase().includes(normalizedQuery);
-  });
-}
-
 function workflowTemplateMatchesSearch(
   item: WorkflowTemplateItem,
   query: string,
@@ -1125,15 +1111,14 @@ const TEMPLATE_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
 
 /**
- * Gallery tile. The hover outline is a ring with an offset so it is drawn
- * outside the card and keeps a gap from the artwork — the card itself keeps
- * the full grid cell and never shrinks.
+ * Gallery tile. Hover feedback comes from the scrim and the Use pill alone —
+ * the card already carries a hairline border, so a hover ring only doubled it.
+ * The ring is reserved for the selected state, offset so it is drawn outside
+ * the card and keeps a gap from the artwork.
  */
 const TEMPLATE_TILE_WRAPPER = "group/tile relative cursor-pointer";
 const TEMPLATE_TILE_RING =
   "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
-const TEMPLATE_TILE_RING_HOVER = "ring-gray-400 group-hover/tile:ring-1";
-const TEMPLATE_TILE_RING_SELF_HOVER = "ring-gray-400 hover:ring-1";
 const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
 const TEMPLATE_TILE_MEDIA =
   "relative overflow-hidden border border-gray-200 bg-muted";
@@ -1164,7 +1149,7 @@ function VideoTemplateCard({
           TEMPLATE_TILE_MEDIA,
           TEMPLATE_TILE_RING,
           "aspect-[16/9]",
-          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+          selected && TEMPLATE_TILE_RING_SELECTED,
         )}
       >
         <VideoTemplatePreview item={item} />
@@ -1272,7 +1257,7 @@ function WebsiteTemplateCard({
           TEMPLATE_TILE_MEDIA,
           TEMPLATE_TILE_RING,
           "aspect-[16/9] group-focus-visible/tile:ring-1 group-focus-visible/tile:ring-ring",
-          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+          selected && TEMPLATE_TILE_RING_SELECTED,
         )}
       >
         <img
@@ -1441,7 +1426,7 @@ function WorkflowTemplateCard({
         "group/tile flex flex-col border border-gray-200 bg-card p-4",
         TEMPLATE_CARD_SHADOW,
         TEMPLATE_TILE_RING,
-        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_SELF_HOVER,
+        selected && TEMPLATE_TILE_RING_SELECTED,
       )}
     >
       <p className="text-sm font-semibold text-foreground">{item.title}</p>
@@ -3869,7 +3854,7 @@ function PptCard({
         className={cn(
           TEMPLATE_TILE_MEDIA,
           TEMPLATE_TILE_RING,
-          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+          selected && TEMPLATE_TILE_RING_SELECTED,
         )}
       >
         <TemplatePreview
@@ -4397,7 +4382,7 @@ function IllustrationTemplateCard({
         "group/tile mb-4 break-inside-avoid overflow-hidden border border-gray-200 bg-card",
         TEMPLATE_CARD_SHADOW,
         TEMPLATE_TILE_RING,
-        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_SELF_HOVER,
+        selected && TEMPLATE_TILE_RING_SELECTED,
       )}
     >
       <IllustrationTemplateHero
@@ -4744,7 +4729,7 @@ function TemplatePickerHeader() {
   );
 }
 
-function TemplatePickerSearch({
+function TemplatePickerWorkflowSearch({
   search,
   onSearchChange,
 }: {
@@ -4882,9 +4867,6 @@ function TemplatePickerDialog({
   const setCategory = useSet(signals.template.setTemplatePickerCategory$);
   const search = useGet(signals.template.templatePickerSearch$);
   const setSearch = useSet(signals.template.setTemplatePickerSearch$);
-  const templatePickerGlobalSearchEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.TemplatePickerGlobalSearch] ??
-    false;
   const previewSlug = useGet(signals.template.templatePickerPreviewSlug$);
   const restorePresentationGridScroll = useSet(
     signals.template.restoreTemplatePickerPresentationScroll$,
@@ -4931,23 +4913,6 @@ function TemplatePickerDialog({
     skipEnterAnimation && "data-[state=open]:!animate-none",
     "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
-  const catalogueSearch = templatePickerGlobalSearchEnabled ? search : "";
-  const filteredPptItems = filterTemplatesByTitle(
-    presentationItems,
-    catalogueSearch,
-  );
-  const filteredIllustrationItems = filterTemplatesByTitle(
-    ILLUSTRATION_TEMPLATE_ITEMS,
-    catalogueSearch,
-  );
-  const filteredVideoItems = filterTemplatesByTitle(
-    VIDEO_TEMPLATE_ITEMS,
-    catalogueSearch,
-  );
-  const filteredWebsiteItems = filterTemplatesByTitle(
-    WEBSITE_TEMPLATE_ITEMS,
-    catalogueSearch,
-  );
   // A persona pill filters the grid, ideation-gallery style.
   // resolveWorkflowCatalog() keeps that logic out of this component to stay
   // under the complexity budget.
@@ -4970,9 +4935,7 @@ function TemplatePickerDialog({
     hasAvatarTab,
     hasWorkflowTab,
   });
-  const showTemplatePickerSearch =
-    selectedCategory === "workflow" ||
-    (templatePickerGlobalSearchEnabled && selectedCategory !== "avatar");
+  const showTemplatePickerSearch = selectedCategory === "workflow";
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
@@ -5233,7 +5196,7 @@ function TemplatePickerDialog({
                   )}
                 >
                   {showTemplatePickerSearch ? (
-                    <TemplatePickerSearch
+                    <TemplatePickerWorkflowSearch
                       search={search}
                       onSearchChange={handleSearchChange}
                     />
@@ -5246,10 +5209,10 @@ function TemplatePickerDialog({
                   hasVideoTab={hasVideoTab}
                   hasAvatarTab={hasAvatarTab}
                   hasWorkflowTab={hasWorkflowTab}
-                  filteredPptItems={filteredPptItems}
-                  filteredWebsiteItems={filteredWebsiteItems}
-                  filteredIllustrationItems={filteredIllustrationItems}
-                  filteredVideoItems={filteredVideoItems}
+                  pptItems={presentationItems}
+                  websiteItems={WEBSITE_TEMPLATE_ITEMS}
+                  illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
+                  videoItems={VIDEO_TEMPLATE_ITEMS}
                   workflowCatalog={workflowCatalog}
                   value={value}
                   illustrationVariantIndex={illustrationVariantIndex}
@@ -5285,10 +5248,10 @@ function TemplatePickerCategoryContent({
   hasVideoTab,
   hasAvatarTab,
   hasWorkflowTab,
-  filteredPptItems,
-  filteredWebsiteItems,
-  filteredIllustrationItems,
-  filteredVideoItems,
+  pptItems,
+  websiteItems,
+  illustrationItems,
+  videoItems,
   workflowCatalog,
   value,
   illustrationVariantIndex,
@@ -5312,10 +5275,10 @@ function TemplatePickerCategoryContent({
   hasVideoTab: boolean;
   hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
-  filteredPptItems: readonly PresentationTemplateItem[];
-  filteredWebsiteItems: readonly WebsiteTemplateItem[];
-  filteredIllustrationItems: readonly IllustrationTemplateItem[];
-  filteredVideoItems: readonly VideoTemplateItem[];
+  pptItems: readonly PresentationTemplateItem[];
+  websiteItems: readonly WebsiteTemplateItem[];
+  illustrationItems: readonly IllustrationTemplateItem[];
+  videoItems: readonly VideoTemplateItem[];
   workflowCatalog: ResolvedWorkflowTemplateCatalog;
   value: GenerationTemplateRequest | undefined;
   illustrationVariantIndex: Readonly<Record<string, number>>;
@@ -5353,9 +5316,9 @@ function TemplatePickerCategoryContent({
           onPresentationScroll(event.currentTarget.scrollTop);
         }}
       >
-        {filteredPptItems.length > 0 ? (
+        {pptItems.length > 0 ? (
           <PptTemplateGrid
-            items={filteredPptItems}
+            items={pptItems}
             value={value}
             onSelect={onSelectPresentation}
             onPreview={onPreviewPresentation}
@@ -5375,9 +5338,9 @@ function TemplatePickerCategoryContent({
         data-website-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {filteredWebsiteItems.length > 0 ? (
+        {websiteItems.length > 0 ? (
           <WebsiteTemplateGrid
-            items={filteredWebsiteItems}
+            items={websiteItems}
             value={value}
             onSelect={onSelectWebsite}
             onPreview={onPreviewWebsite}
@@ -5396,16 +5359,16 @@ function TemplatePickerCategoryContent({
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
         onScroll={(event) => {
           prewarmIllustrationPreviewImagesNearScroll({
-            items: filteredIllustrationItems,
+            items: illustrationItems,
             runtime,
             scrollContainer: event.currentTarget,
             variantIndexBySlug: illustrationVariantIndex,
           });
         }}
       >
-        {filteredIllustrationItems.length > 0 ? (
+        {illustrationItems.length > 0 ? (
           <IllustrationTemplateGrid
-            items={filteredIllustrationItems}
+            items={illustrationItems}
             value={value}
             variantIndexBySlug={illustrationVariantIndex}
             onSelect={onSelectIllustration}
@@ -5425,9 +5388,9 @@ function TemplatePickerCategoryContent({
         data-video-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {filteredVideoItems.length > 0 ? (
+        {videoItems.length > 0 ? (
           <VideoTemplateGrid
-            items={filteredVideoItems}
+            items={videoItems}
             value={value}
             onSelect={onSelectVideo}
           />

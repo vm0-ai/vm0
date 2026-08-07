@@ -23,7 +23,6 @@ import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { variables } from "@vm0/db/schema/variable";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
@@ -37,6 +36,10 @@ import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import {
+  acquireVm0ManagedModelKeyFixture,
+  releaseVm0ManagedModelKeyFixture,
+} from "../services/test-vm0-managed-model-key-fixture.service";
 import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
 import {
   isTestEndpointAllowed,
@@ -229,11 +232,11 @@ async function seedDefaultAgent(
 }
 
 async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
-  await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, composeId));
-  await db
-    .insert(vm0ApiKeys)
-    .values(vm0ManagedKeyRows(composeId))
-    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
+  await acquireVm0ManagedModelKeyFixture(
+    db,
+    composeId,
+    vm0ManagedKeyRows(composeId),
+  );
 }
 
 function vm0ManagedKeyRows(composeId: string) {
@@ -275,17 +278,7 @@ async function deleteVm0ManagedKeysForSeededDefaultAgent(
     return;
   }
 
-  const apiKeys = vm0ManagedKeyRows(compose.id).map((row) => {
-    return row.apiKey;
-  });
-  await db
-    .delete(vm0ApiKeys)
-    .where(
-      and(
-        eq(vm0ApiKeys.label, compose.id),
-        inArray(vm0ApiKeys.apiKey, apiKeys),
-      ),
-    );
+  await releaseVm0ManagedModelKeyFixture(db, compose.id);
 }
 
 async function getOrInsertCompose(

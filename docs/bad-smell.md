@@ -31,6 +31,7 @@ const data: UserData = fetchData();
 **PROHIBITION**: Zero tolerance for suppression comments.
 
 **Prohibited comments**:
+
 - `// eslint-disable` or `/* eslint-disable */`
 - `// oxlint-disable` or `/* oxlint-disable */`
 - `// @ts-ignore`
@@ -39,9 +40,11 @@ const data: UserData = fetchData();
 - `// prettier-ignore`
 
 **Prohibited plugins**:
+
 - `eslint-plugin-only-warn`
 
 **Always fix the root cause**:
+
 ```typescript
 // ❌ Bad: Suppressing the warning
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,11 +74,13 @@ if (isValidData(data)) {
 **PROHIBITION**: Zero tolerance for dynamic `import()` in production code - use static imports only.
 
 **Prohibited patterns:**
+
 - `await import("module")` - Use static `import` at file top instead
 - `import("module").then(...)` - Use static `import` at file top instead
 - Conditional imports like `if (condition) { await import(...) }` - Restructure code to use static imports
 
 **Why dynamic imports are harmful:**
+
 - Break tree-shaking and bundle optimization
 - Add unnecessary async complexity to synchronous operations
 - Make dependency analysis harder for tools
@@ -83,6 +88,7 @@ if (isValidData(data)) {
 - Hide import errors until runtime instead of catching at build time
 
 **Always use static imports:**
+
 ```typescript
 // ❌ Bad: Dynamic import adds unnecessary async
 async function generateToken() {
@@ -112,6 +118,7 @@ async function handleClick() {
 ```
 
 **Rare exceptions (must be justified):**
+
 - Truly optional dependencies that may not exist (e.g., dev-only tools)
 - Route-based code splitting in Next.js (handled by framework automatically)
 - Testing utilities that need to be mocked (prefer static imports with mocking instead)
@@ -144,14 +151,15 @@ if (!process.env.API_URL) {
 
 **PROHIBITION**: No fallback/recovery logic - errors should fail immediately and visibly.
 
+See `docs/fallback.md` for the full rules on compatibility fallbacks, feature-switched features, and negative tests against removed code.
+
 - Fallback patterns increase complexity and hide configuration problems
 - When critical dependencies are missing, throw errors instead of falling back
 
 ```typescript
 // ❌ Bad: Fallback to another secret
-const jwtSecret = process.env.JWT_SECRET ||
-                  process.env.SOME_OTHER_SECRET ||
-                  "default-secret";
+const jwtSecret =
+  process.env.JWT_SECRET || process.env.SOME_OTHER_SECRET || "default-secret";
 
 // ❌ Bad: Silent fallback behavior
 if (!config) {
@@ -166,6 +174,7 @@ if (!jwtSecret) {
 ```
 
 **Rationale:**
+
 - Fallbacks make debugging harder - you don't know which path was taken
 - Configuration errors should be caught during deployment, not hidden
 - Explicit failures are easier to fix than subtle wrong behavior

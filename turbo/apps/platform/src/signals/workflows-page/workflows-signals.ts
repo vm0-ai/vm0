@@ -10,6 +10,7 @@ import {
   type GoogleCalendarEventCancelledEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarEventUpdatedEventConfig,
+  type GoogleFormsResponseSubmittedEventCreateConfig,
   type GoogleMeetTranscriptGeneratedEventConfig,
   type GithubDeploymentStatusCreatedEventConfig,
   type GithubIssueCommentCreatedEventConfig,
@@ -105,6 +106,7 @@ export type WorkflowAutomationCreateDialog =
   | "google-calendar-created"
   | "google-calendar-updated"
   | "google-calendar-cancelled"
+  | "google-forms"
   | "google-meet-transcript-generated"
   | "notion-child-page"
   | "notion-database-item"
@@ -117,6 +119,7 @@ type WorkflowAutomationCategoryKey =
   | "schedule"
   | "email"
   | "calendar"
+  | "forms"
   | "notion"
   | "integrations";
 type WorkflowWebhookAutomationSummary = Extract<
@@ -1171,6 +1174,41 @@ export const createWorkflowGoogleCalendarEventAutomation$ = command(
     );
     signal.throwIfAborted();
     set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowGoogleFormsResponseSubmittedAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GoogleFormsResponseSubmittedEventCreateConfig;
+    },
+    signal: AbortSignal,
+  ): Promise<string | undefined> => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const result = await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+      signal,
+    );
+    signal.throwIfAborted();
+    if (
+      result.body.kind !== "event" ||
+      result.body.eventType !== "google-forms-response-submitted"
+    ) {
+      throw new Error("Expected Google Forms workflow automation summary");
+    }
+    set(reloadWorkflows$);
+    return result.body.warning;
   },
 );
 

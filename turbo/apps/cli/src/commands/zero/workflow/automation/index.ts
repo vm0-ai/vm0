@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import type {
   ChatRunFinishedRunStatus,
@@ -6,10 +6,14 @@ import type {
   GithubLabelAppliedSubjectFilter,
   GithubPullRequestReviewState,
   GithubWorkflowRunConclusion,
+  StripeInvoiceBillingReason,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   type ZeroWorkflowAutomationCreateRequest,
@@ -85,6 +89,7 @@ interface AddOptions extends GmailAutomationOptions {
   readonly chatThreadId?: string;
   readonly runStatus?: string;
   readonly outputPattern?: string;
+  readonly billingReason?: string;
 }
 
 interface UpdateOptions extends GmailAutomationOptions {
@@ -139,11 +144,23 @@ const GITHUB_WEBHOOK_EVENT_KINDS = [
   "github-issue-comment-created",
 ] as const;
 const STRAPI_EVENT_KINDS = ["strapi-entry-published"] as const;
+const STRIPE_EVENT_KINDS = ["stripe-invoice-paid"] as const;
 const CHAT_RUN_FINISHED_STATUSES = [
   "completed",
   "failed",
   "cancelled",
 ] as const;
+const STRIPE_INVOICE_BILLING_REASONS: readonly StripeInvoiceBillingReason[] = [
+  "automatic_pending_invoice_item_invoice",
+  "manual",
+  "quote_accept",
+  "subscription",
+  "subscription_create",
+  "subscription_cycle",
+  "subscription_threshold",
+  "subscription_update",
+  "upcoming",
+];
 
 function githubWebhookAutomationsEnabled(): boolean {
   const payload = decodeZeroTokenPayload();
@@ -161,12 +178,29 @@ function strapiIntegrationEnabled(): boolean {
   });
 }
 
-function automationKinds(): readonly string[] {
+function stripeInvoicePaidWorkflowAutomationsEnabled(
+  overrides?: FeatureSwitchContext["overrides"],
+): boolean {
+  const payload = decodeZeroTokenPayload();
+  return isFeatureEnabled(
+    FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations,
+    {
+      userId: payload?.userId,
+      orgId: payload?.orgId,
+      overrides,
+    },
+  );
+}
+
+function automationKinds(
+  stripeInvoicePaidEnabled = stripeInvoicePaidWorkflowAutomationsEnabled(),
+): readonly string[] {
   return [
     ...SCHEDULE_KINDS,
     ...EVENT_KINDS,
     ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
     ...(strapiIntegrationEnabled() ? STRAPI_EVENT_KINDS : []),
+    ...(stripeInvoicePaidEnabled ? STRIPE_EVENT_KINDS : []),
   ];
 }
 
@@ -1673,6 +1707,61 @@ function buildStrapiEntryPublishedCreateRequest(
   };
 }
 
+function parseStripeInvoiceBillingReasons(
+  value: string,
+): StripeInvoiceBillingReason[] {
+  const values = value.split(",").map((billingReason) => {
+    return billingReason.trim();
+  });
+  if (
+    values.some((billingReason) => {
+      return billingReason.length === 0;
+    })
+  ) {
+    throw new Error("--billing-reason cannot contain empty values");
+  }
+
+  const billingReasons: StripeInvoiceBillingReason[] = [];
+  for (const value of values) {
+    const billingReason = STRIPE_INVOICE_BILLING_REASONS.find((candidate) => {
+      return candidate === value;
+    });
+    if (!billingReason) {
+      throw new Error(
+        `Invalid --billing-reason value "${value}"; expected one of: ${STRIPE_INVOICE_BILLING_REASONS.join(", ")}`,
+      );
+    }
+    if (!billingReasons.includes(billingReason)) {
+      billingReasons.push(billingReason);
+    }
+  }
+  return billingReasons;
+}
+
+function buildStripeInvoicePaidCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasEventAddOptions(options)) {
+    throw new Error(
+      "Only --billing-reason applies to stripe-invoice-paid automations",
+    );
+  }
+  const billingReasons =
+    options.billingReason === undefined
+      ? undefined
+      : parseStripeInvoiceBillingReasons(options.billingReason);
+  return {
+    kind: "event",
+    eventType: "stripe-invoice-paid",
+    eventConfig: {
+      provider: "stripe",
+      event: "invoice_paid",
+      ...(billingReasons ? { billingReasons } : {}),
+    },
+  };
+}
+
 function buildScheduleCreateRequest(
   kind: string,
   options: AddOptions,
@@ -1683,7 +1772,7 @@ function buildScheduleCreateRequest(
   return { schedule: buildSchedule(kind, options) };
 }
 
-function buildCreateRequest(
+function buildNonStripeCreateRequest(
   kind: string,
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
@@ -1729,6 +1818,21 @@ function buildCreateRequest(
     default:
       return buildScheduleCreateRequest(kind, options);
   }
+}
+
+function buildCreateRequest(
+  kind: string,
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  if (kind === "stripe-invoice-paid") {
+    return buildStripeInvoicePaidCreateRequest(options);
+  }
+  if (options.billingReason !== undefined) {
+    throw new Error(
+      "--billing-reason only applies to stripe-invoice-paid automations",
+    );
+  }
+  return buildNonStripeCreateRequest(kind, options);
 }
 
 function buildGithubWorkflowEventUpdate(
@@ -1880,6 +1984,12 @@ function buildEventUpdate(
     );
   }
 
+  if (existing.eventType === "stripe-invoice-paid") {
+    throw new Error(
+      "Stripe billing reasons cannot be updated; delete and recreate the automation",
+    );
+  }
+
   if (existing.eventType === "github-label-applied") {
     if (hasGmailOptions) {
       throw new Error(
@@ -1992,70 +2102,98 @@ function buildUpdate(
   return buildScheduleUpdate(options);
 }
 
-const addCommand = addGithubAutomationOptions(
-  addGmailAutomationOptions(
-    new Command()
-      .name("add")
-      .description("Add an automation to a workflow")
-      .argument("<workflow>", "Workflow ID or name")
-      .argument("<kind>", `Automation type: ${automationKinds().join(" | ")}`)
-      .option("--expr <expression>", 'Cron expression for kind "cron"')
-      .option("--at <iso-time>", 'Fire time for kind "once"')
-      .option(
-        "--every <duration>",
-        'Interval for kind "loop" (e.g. 15m, 1h, 90s)',
-      )
-      .option(
-        "-z, --timezone <tz>",
-        "IANA timezone for cron/once (default: UTC)",
-      ),
-  ),
-)
-  .option(
-    "--calendar-id <id>",
-    "Google Calendar ID for Google Calendar event automations (default: primary)",
+function stripeBillingReasonOption(stripeInvoicePaidEnabled: boolean): Option {
+  const option = new Option(
+    "--billing-reason <reasons>",
+    "Comma-separated Stripe invoice billing reasons (default: any)",
+  );
+  if (!stripeInvoicePaidEnabled) {
+    option.hideHelp();
+  }
+  return option;
+}
+
+export function createAutomationAddCommand(
+  commandOptions: {
+    readonly featureSwitchOverrides?: FeatureSwitchContext["overrides"];
+  } = {},
+): Command {
+  const stripeInvoicePaidEnabledForHelp =
+    stripeInvoicePaidWorkflowAutomationsEnabled(
+      commandOptions.featureSwitchOverrides,
+    );
+  const stripeExample = stripeInvoicePaidEnabledForHelp
+    ? "  zero workflow automation add invoice-follow-up --agent <agent-id> stripe-invoice-paid --billing-reason subscription_create,subscription_cycle\n"
+    : "";
+
+  return addGithubAutomationOptions(
+    addGmailAutomationOptions(
+      new Command()
+        .name("add")
+        .description("Add an automation to a workflow")
+        .argument("<workflow>", "Workflow ID or name")
+        .argument(
+          "<kind>",
+          `Automation type: ${automationKinds(stripeInvoicePaidEnabledForHelp).join(" | ")}`,
+        )
+        .option("--expr <expression>", 'Cron expression for kind "cron"')
+        .option("--at <iso-time>", 'Fire time for kind "once"')
+        .option(
+          "--every <duration>",
+          'Interval for kind "loop" (e.g. 15m, 1h, 90s)',
+        )
+        .option(
+          "-z, --timezone <tz>",
+          "IANA timezone for cron/once (default: UTC)",
+        ),
+    ),
   )
-  .option(
-    "--form-url <url>",
-    "Google Form edit-page URL or bare form ID for response automations",
-  )
-  .option(
-    "--page-url <url>",
-    "Notion page URL for notion-page-content-updated automations",
-  )
-  .option(
-    "--parent-page-url <url>",
-    "Parent Notion page URL for notion-child-page-created automations",
-  )
-  .option(
-    "--database-url <url>",
-    "Notion database URL for notion-database-item-created or notion-page-content-updated automations",
-  )
-  .option(
-    "--integration-id <uuid>",
-    "Strapi integration ID for Strapi event automations",
-  )
-  .option(
-    "--content-type-uid <uid>",
-    "Optional Strapi content type UID, for example api::article.article",
-  )
-  .option("--locale <locale>", "Optional Strapi locale filter")
-  .option(
-    "--chat-thread-id <uuid>",
-    "Watched chat thread ID for chat-run-finished automations",
-  )
-  .option(
-    "--run-status <statuses>",
-    "Comma-separated finish statuses for chat-run-finished automations: completed, failed, cancelled (default: all)",
-  )
-  .option(
-    "--output-pattern <pattern>",
-    "Optional * wildcard matched against the finished run's final assistant text",
-  )
-  .option("--agent <id>", "Agent ID for resolving a workflow name")
-  .addHelpText(
-    "after",
-    `
+    .option(
+      "--calendar-id <id>",
+      "Google Calendar ID for Google Calendar event automations (default: primary)",
+    )
+    .option(
+      "--form-url <url>",
+      "Google Form edit-page URL or bare form ID for response automations",
+    )
+    .option(
+      "--page-url <url>",
+      "Notion page URL for notion-page-content-updated automations",
+    )
+    .option(
+      "--parent-page-url <url>",
+      "Parent Notion page URL for notion-child-page-created automations",
+    )
+    .option(
+      "--database-url <url>",
+      "Notion database URL for notion-database-item-created or notion-page-content-updated automations",
+    )
+    .option(
+      "--integration-id <uuid>",
+      "Strapi integration ID for Strapi event automations",
+    )
+    .option(
+      "--content-type-uid <uid>",
+      "Optional Strapi content type UID, for example api::article.article",
+    )
+    .option("--locale <locale>", "Optional Strapi locale filter")
+    .option(
+      "--chat-thread-id <uuid>",
+      "Watched chat thread ID for chat-run-finished automations",
+    )
+    .option(
+      "--run-status <statuses>",
+      "Comma-separated finish statuses for chat-run-finished automations: completed, failed, cancelled (default: all)",
+    )
+    .option(
+      "--output-pattern <pattern>",
+      "Optional * wildcard matched against the finished run's final assistant text",
+    )
+    .addOption(stripeBillingReasonOption(stripeInvoicePaidEnabledForHelp))
+    .option("--agent <id>", "Agent ID for resolving a workflow name")
+    .addHelpText(
+      "after",
+      `
 Examples:
   zero workflow automation add tell-a-joke --agent <agent-id> cron --expr "0 9 * * *" -z Asia/Shanghai
   zero workflow automation add tell-a-joke --agent <agent-id> once --at "2026-06-10T09:00" -z Asia/Shanghai
@@ -2075,7 +2213,7 @@ Examples:
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow automation add deploy-blog --agent <agent-id> strapi-entry-published --integration-id <uuid> --content-type-uid api::article.article
-  zero workflow automation add triage --agent <agent-id> webhook
+${stripeExample}  zero workflow automation add triage --agent <agent-id> webhook
   zero workflow automation add follow-up --agent <agent-id> chat-run-finished --chat-thread-id <thread-uuid> --run-status completed,failed --output-pattern "*deploy failed*"
 
 Notes:
@@ -2086,50 +2224,66 @@ Notes:
   - Google Meet automations run only when a meeting you organize generates a transcript
   - Webhook automations print the signing secret only once after creation
   - Use the workflow ID when a name is ambiguous`,
-  )
-  .action(
-    withErrorHandler(
-      async (workflowRef: string, kind: string, options: AddOptions) => {
-        if (
-          githubWebhookEventKind(kind) &&
-          !githubWebhookAutomationsEnabled()
-        ) {
-          throw new Error(
-            "GitHub webhook automations are not enabled for this workspace",
-          );
-        }
-        if (kind === "strapi-entry-published" && !strapiIntegrationEnabled()) {
-          throw new Error(
-            "Strapi workflow automations are not enabled for this workspace",
-          );
-        }
-        if (
-          options.timezone &&
-          kind !== "cron" &&
-          kind !== "once" &&
-          kind !== "gmail-new-message"
-        ) {
-          throw new Error(
-            "--timezone only applies to cron and once automations",
-          );
-        }
-        const workflowId = await resolveWorkflowRef(workflowRef, options);
-        const body = buildCreateRequest(kind, options);
-        const automation = await createWorkflowAutomation(workflowId, body);
+    )
+    .action(
+      withErrorHandler(
+        async (workflowRef: string, kind: string, options: AddOptions) => {
+          if (
+            githubWebhookEventKind(kind) &&
+            !githubWebhookAutomationsEnabled()
+          ) {
+            throw new Error(
+              "GitHub webhook automations are not enabled for this workspace",
+            );
+          }
+          if (
+            kind === "strapi-entry-published" &&
+            !strapiIntegrationEnabled()
+          ) {
+            throw new Error(
+              "Strapi workflow automations are not enabled for this workspace",
+            );
+          }
+          if (
+            kind === "stripe-invoice-paid" &&
+            !stripeInvoicePaidWorkflowAutomationsEnabled(
+              commandOptions.featureSwitchOverrides,
+            )
+          ) {
+            throw new Error(
+              "Stripe invoice-paid workflow automations are not enabled for this workspace",
+            );
+          }
+          if (
+            options.timezone &&
+            kind !== "cron" &&
+            kind !== "once" &&
+            kind !== "gmail-new-message"
+          ) {
+            throw new Error(
+              "--timezone only applies to cron and once automations",
+            );
+          }
+          const workflowId = await resolveWorkflowRef(workflowRef, options);
+          const body = buildCreateRequest(kind, options);
+          const automation = await createWorkflowAutomation(workflowId, body);
 
-        console.log(
-          chalk.green(`✓ Automation added to workflow "${workflowRef}"`),
-        );
-        const threadModel =
-          await tryLoadWorkflowAutomationThreadModel(automation);
-        printWorkflowAutomationDetails(automation, {
-          workflowRef,
-          workflowId,
-          threadModel,
-        });
-      },
-    ),
-  );
+          console.log(
+            chalk.green(`✓ Automation added to workflow "${workflowRef}"`),
+          );
+          const threadModel =
+            await tryLoadWorkflowAutomationThreadModel(automation);
+          printWorkflowAutomationDetails(automation, {
+            workflowRef,
+            workflowId,
+            threadModel,
+          });
+        },
+      ),
+    );
+}
+
+const addCommand = createAutomationAddCommand();
 
 const updateCommand = addGithubAutomationOptions(
   addGmailAutomationOptions(
@@ -2201,7 +2355,9 @@ Examples:
           return;
         }
 
-        printWorkflowAutomationsTable(automations);
+        printWorkflowAutomationsTable(automations, {
+          showStripeDetails: true,
+        });
       },
     ),
   );

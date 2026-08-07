@@ -461,9 +461,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.TemplatePickerGlobalSearch]: false,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -550,80 +547,6 @@ describe("chat composer templates", () => {
         "true",
       );
     });
-  });
-
-  it("filters every non-avatar template catalogue when global search is enabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: {
-        [FeatureSwitchKey.TemplatePickerGlobalSearch]: true,
-      },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-
-    const catalogues = [
-      {
-        category: "Presentation",
-        item: PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!,
-        selectLabel: (title: string) => {
-          return `Select template ${title}`;
-        },
-      },
-      {
-        category: "Website",
-        item: WEBSITE_TEMPLATE_ITEMS[0]!,
-        selectLabel: (title: string) => {
-          return `Select website template ${title}`;
-        },
-      },
-      {
-        category: "Illustration",
-        item: ILLUSTRATION_TEMPLATE_ITEMS[0]!,
-        selectLabel: (title: string) => {
-          return `Select template ${title}`;
-        },
-      },
-      {
-        category: "Video",
-        item: VIDEO_TEMPLATE_ITEMS[0]!,
-        selectLabel: (title: string) => {
-          return `Select video template ${title}`;
-        },
-      },
-    ] as const;
-
-    for (const { category, item, selectLabel } of catalogues) {
-      await user.click(tabByText(category));
-      await waitFor(() => {
-        expect(tabByText(category)).toHaveAttribute("aria-selected", "true");
-      });
-
-      const search = screen.getByLabelText("Search templates");
-      await fill(search, "no matching template title");
-      await waitFor(() => {
-        expect(screen.getByText("No matches")).toBeInTheDocument();
-      });
-
-      await fill(search, item.title);
-      await waitFor(() => {
-        expect(screen.queryByText("No matches")).not.toBeInTheDocument();
-        expect(
-          screen.getByLabelText(selectLabel(item.title)),
-        ).toBeInTheDocument();
-      });
-    }
   });
 
   it("previews avatars and sends the selected avatar and voice", async () => {
