@@ -422,6 +422,7 @@ export const materializeHourlyUsage$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly runId: string | null;
+      readonly sourceEventCountKnown?: boolean;
     },
     signal: AbortSignal,
   ): Promise<number> => {
@@ -430,6 +431,7 @@ export const materializeHourlyUsage$ = command(
       org_id: args.orgId,
       user_id: args.userId,
       run_id: args.runId,
+      source_event_count_known: args.sourceEventCountKnown,
     });
     if (response.hourly_count === undefined) {
       throw new Error("materializeHourlyUsage$: response missing hourly_count");
@@ -495,6 +497,29 @@ export const readUsageCompactionStorageCounts$ = command(
       processedRaw: response.processed_raw_count,
       hourly: response.hourly_count,
     };
+  },
+);
+
+export const readHourlySourceEventCount$ = command(
+  async (
+    _,
+    args: {
+      readonly scope: "organization" | "user";
+      readonly id: string;
+    },
+    signal: AbortSignal,
+  ): Promise<number | null> => {
+    const response = await postAction(signal, {
+      action: "read-usage-storage-counts",
+      scope: args.scope,
+      id: args.id,
+    });
+    if (response.hourly_source_event_count === undefined) {
+      throw new Error(
+        "readHourlySourceEventCount$: response missing source event count",
+      );
+    }
+    return response.hourly_source_event_count;
   },
 );
 

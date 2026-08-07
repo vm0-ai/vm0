@@ -323,6 +323,13 @@
       "when": 1786075491448,
       "tag": "0853_fearless_marvel_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 854,
+      "version": "7",
+      "when": 1786081955386,
+      "tag": "0854_amusing_boomer",
+      "breakpoints": true
     }
   ]
 }

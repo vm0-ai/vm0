@@ -239,7 +239,8 @@ function lockedSourceCtes(cutoff: string): SQL {
         hourly.weekly_window_id,
         hourly.quantity,
         hourly.credits_charged,
-        hourly.allowance_units
+        hourly.allowance_units,
+        hourly.source_event_count
       FROM selected_grains grain
       INNER JOIN ${usageEventHourlyRollup} ${hourly}
         ON ${and(
@@ -254,13 +255,19 @@ function lockedSourceCtes(cutoff: string): SQL {
           sql`${hourly.weeklyWindowId} IS NOT DISTINCT FROM grain.weekly_window_id`,
         )}
       FOR UPDATE OF hourly
-    ),
+    )
+  `;
+}
+
+function consolidatedSourceCtes(): SQL {
+  return sql`
     source_facts AS MATERIALIZED (
       SELECT
         ${physicalGrainColumns("locked_raw")},
         locked_raw.quantity::numeric AS quantity,
         locked_raw.credits_charged::numeric AS credits_charged,
-        locked_raw.allowance_units::numeric AS allowance_units
+        locked_raw.allowance_units::numeric AS allowance_units,
+        1::numeric AS source_event_count
       FROM locked_raw
 
       UNION ALL
@@ -269,7 +276,8 @@ function lockedSourceCtes(cutoff: string): SQL {
         ${physicalGrainColumns("locked_hourly")},
         locked_hourly.quantity::numeric AS quantity,
         locked_hourly.credits_charged::numeric AS credits_charged,
-        locked_hourly.allowance_units::numeric AS allowance_units
+        locked_hourly.allowance_units::numeric AS allowance_units,
+        locked_hourly.source_event_count::numeric AS source_event_count
       FROM locked_hourly
     ),
     consolidated AS MATERIALIZED (
@@ -277,7 +285,12 @@ function lockedSourceCtes(cutoff: string): SQL {
         ${physicalGrainColumns("source_facts")},
         SUM(source_facts.quantity) AS quantity,
         SUM(source_facts.credits_charged) AS credits_charged,
-        SUM(source_facts.allowance_units) AS allowance_units
+        SUM(source_facts.allowance_units) AS allowance_units,
+        CASE
+          WHEN COUNT(source_facts.source_event_count) = COUNT(*)
+            THEN SUM(source_facts.source_event_count)
+          ELSE NULL
+        END AS source_event_count
       FROM source_facts
       GROUP BY ${physicalGrainColumns("source_facts")}
     )
@@ -305,13 +318,15 @@ function mutationCtes(): SQL {
         weekly_window_id,
         quantity,
         credits_charged,
-        allowance_units
+        allowance_units,
+        source_event_count
       )
       SELECT
         ${physicalGrainColumns("consolidated")},
         consolidated.quantity,
         consolidated.credits_charged,
-        consolidated.allowance_units
+        consolidated.allowance_units,
+        consolidated.source_event_count
       FROM consolidated
       RETURNING
         processed_hour,
@@ -325,7 +340,8 @@ function mutationCtes(): SQL {
         weekly_window_id,
         quantity,
         credits_charged,
-        allowance_units
+        allowance_units,
+        source_event_count
     ),
     deleted_raw AS (
       DELETE FROM ${usageEvent} ${event}
@@ -368,6 +384,22 @@ function productTotalCtes(): SQL {
         COALESCE(SUM(quantity), 0)::numeric AS quantity,
         COALESCE(SUM(credits_charged), 0)::numeric AS credits_charged,
         COALESCE(SUM(allowance_units), 0)::numeric AS allowance_units
+      FROM inserted_hourly
+    ),
+    consolidated_count_totals AS (
+      SELECT
+        COALESCE(SUM(source_event_count), 0)::numeric
+          AS known_source_event_count,
+        COUNT(*) FILTER (WHERE source_event_count IS NULL)::int
+          AS unknown_source_event_grains
+      FROM consolidated
+    ),
+    inserted_count_totals AS (
+      SELECT
+        COALESCE(SUM(source_event_count), 0)::numeric
+          AS known_source_event_count,
+        COUNT(*) FILTER (WHERE source_event_count IS NULL)::int
+          AS unknown_source_event_grains
       FROM inserted_hourly
     )
   `;
@@ -468,6 +500,10 @@ function compactionSummarySelect(): SQL {
         source_totals.quantity = inserted_totals.quantity
         AND source_totals.credits_charged = inserted_totals.credits_charged
         AND source_totals.allowance_units = inserted_totals.allowance_units
+        AND consolidated_count_totals.known_source_event_count
+          = inserted_count_totals.known_source_event_count
+        AND consolidated_count_totals.unknown_source_event_grains
+          = inserted_count_totals.unknown_source_event_grains
         AND window_reconciliation.reconciled
         AND row_counts.locked_raw_rows = row_counts.raw_rows_deleted
         AND row_counts.locked_hourly_rows = row_counts.hourly_rows_deleted
@@ -475,6 +511,8 @@ function compactionSummarySelect(): SQL {
       ) AS "reconciled"
     FROM source_totals
     CROSS JOIN inserted_totals
+    CROSS JOIN consolidated_count_totals
+    CROSS JOIN inserted_count_totals
     CROSS JOIN window_reconciliation
     CROSS JOIN row_counts
   `;
@@ -488,6 +526,7 @@ function compactUsageEventsSql(args: {
     WITH
     ${candidateCtes(args)},
     ${lockedSourceCtes(args.cutoff)},
+    ${consolidatedSourceCtes()},
     ${mutationCtes()},
     ${rowCountCte()},
     ${productTotalCtes()},

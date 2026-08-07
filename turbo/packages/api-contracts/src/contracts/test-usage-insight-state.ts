@@ -128,6 +128,7 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       org_id: z.string(),
       user_id: z.string(),
       run_id: z.string().nullable(),
+      source_event_count_known: z.boolean().optional(),
     }),
     z.object({
       action: z.literal("read-usage-storage-counts"),
@@ -162,6 +163,12 @@ export const testUsageInsightStateActionResponseSchema = z.object({
   raw_count: z.number().optional(),
   processed_raw_count: z.number().optional(),
   hourly_count: z.number().optional(),
+  hourly_source_event_count: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullable()
+    .optional(),
   short_window_id: z.string().optional(),
   weekly_window_id: z.string().optional(),
   short_window_consumed_units: z.string().optional(),

@@ -773,6 +773,7 @@ async function seedUsageOverflowGrain(
       quantity: 1,
       creditsCharged: 0,
       allowanceUnits: 0,
+      sourceEventCount: 1,
     });
   });
 }
@@ -810,6 +811,7 @@ async function materializeHourlyUsage(
     readonly orgId: string;
     readonly userId: string;
     readonly runId: string | null;
+    readonly sourceEventCountKnown?: boolean;
   },
   signal: AbortSignal,
 ): Promise<number> {
@@ -871,6 +873,7 @@ async function materializeHourlyUsage(
           quantity: row.quantity,
           creditsCharged: row.creditsCharged ?? 0,
           allowanceUnits: row.allowanceUnits ?? 0,
+          sourceEventCount: args.sourceEventCountKnown === false ? null : 1,
         };
       }),
     );
@@ -899,6 +902,7 @@ async function readUsageStorageCounts(
   readonly raw: number;
   readonly processedRaw: number;
   readonly hourly: number;
+  readonly hourlySourceEventCount: number | null;
 }> {
   const rawPredicate =
     args.scope === "organization"
@@ -908,21 +912,35 @@ async function readUsageStorageCounts(
     args.scope === "organization"
       ? eq(usageEventHourlyRollup.orgId, args.id)
       : eq(usageEventHourlyRollup.userId, args.id);
-  const [[raw], [processedRaw], [hourly]] = await Promise.all([
-    db.select({ value: count() }).from(usageEvent).where(rawPredicate),
-    db
-      .select({ value: count() })
-      .from(usageEvent)
-      .where(and(rawPredicate, eq(usageEvent.status, "processed"))),
-    db
-      .select({ value: count() })
-      .from(usageEventHourlyRollup)
-      .where(hourlyPredicate),
-  ]);
+  const [[raw], [processedRaw], [hourly], hourlySourceCounts] =
+    await Promise.all([
+      db.select({ value: count() }).from(usageEvent).where(rawPredicate),
+      db
+        .select({ value: count() })
+        .from(usageEvent)
+        .where(and(rawPredicate, eq(usageEvent.status, "processed"))),
+      db
+        .select({ value: count() })
+        .from(usageEventHourlyRollup)
+        .where(hourlyPredicate),
+      db
+        .select({ sourceEventCount: usageEventHourlyRollup.sourceEventCount })
+        .from(usageEventHourlyRollup)
+        .where(hourlyPredicate),
+    ]);
+  let hourlySourceEventCount: number | null = 0;
+  for (const row of hourlySourceCounts) {
+    if (row.sourceEventCount === null) {
+      hourlySourceEventCount = null;
+      break;
+    }
+    hourlySourceEventCount += row.sourceEventCount;
+  }
   return {
     raw: raw?.value ?? 0,
     processedRaw: processedRaw?.value ?? 0,
     hourly: hourly?.value ?? 0,
+    hourlySourceEventCount,
   };
 }
 
@@ -1240,6 +1258,7 @@ async function mutateUsageInsightEventMaterializationState(
           orgId: body.org_id,
           userId: body.user_id,
           runId: body.run_id,
+          sourceEventCountKnown: body.source_event_count_known,
         },
         signal,
       );
@@ -1261,6 +1280,7 @@ async function mutateUsageInsightEventMaterializationState(
           raw_count: counts.raw,
           processed_raw_count: counts.processedRaw,
           hourly_count: counts.hourly,
+          hourly_source_event_count: counts.hourlySourceEventCount,
         },
       };
     }

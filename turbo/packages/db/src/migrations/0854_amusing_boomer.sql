@@ -1,0 +1,2 @@
+ALTER TABLE "usage_event_hourly_rollup" ADD COLUMN "source_event_count" bigint;--> statement-breakpoint
+ALTER TABLE "usage_event_hourly_rollup" ADD CONSTRAINT "chk_usage_event_hourly_rollup_source_event_count" CHECK ("usage_event_hourly_rollup"."source_event_count" IS NULL OR "usage_event_hourly_rollup"."source_event_count" > 0);

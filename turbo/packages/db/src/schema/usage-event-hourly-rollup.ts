@@ -20,6 +20,8 @@ import { orgUsageAllowanceWindows } from "./org-usage-allowance";
  * Product readers regroup across the nullable allowance-window pair. The pair
  * identifies only the allowance portion of a row and supports reconciliation
  * with retained source allocations before any later physical cleanup.
+ * `sourceEventCount` is the exact number of represented source events when
+ * known. NULL preserves unknown cardinality for historical or legacy writes.
  */
 export const usageEventHourlyRollup = pgTable(
   "usage_event_hourly_rollup",
@@ -42,6 +44,7 @@ export const usageEventHourlyRollup = pgTable(
     quantity: bigint("quantity", { mode: "number" }).notNull(),
     creditsCharged: bigint("credits_charged", { mode: "number" }).notNull(),
     allowanceUnits: bigint("allowance_units", { mode: "number" }).notNull(),
+    sourceEventCount: bigint("source_event_count", { mode: "number" }),
   },
   (table) => {
     return [
@@ -93,6 +96,10 @@ export const usageEventHourlyRollup = pgTable(
       check(
         "chk_usage_event_hourly_rollup_allowance_units",
         sql`${table.allowanceUnits} >= 0`,
+      ),
+      check(
+        "chk_usage_event_hourly_rollup_source_event_count",
+        sql`${table.sourceEventCount} IS NULL OR ${table.sourceEventCount} > 0`,
       ),
       check(
         "chk_usage_event_hourly_rollup_allowance_window_pair",
