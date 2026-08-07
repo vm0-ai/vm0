@@ -101,7 +101,10 @@ pub(crate) enum IdleParkFailureParts {
 }
 
 struct IdleParkTransitionInput {
-    run_id: RunId,
+    /// Run that triggered this transition and owns its diagnostics.
+    operation_run_id: RunId,
+    /// Run whose guest runtime directory must survive reuse cleanup.
+    current_runtime_run_id: RunId,
     resources: IdleSandboxResources,
     metadata: IdleSandboxMetadata,
     budget_lease: BudgetLease,
@@ -172,7 +175,8 @@ impl IdleParkRequest {
 
         park_idle_transition(
             IdleParkTransitionInput {
-                run_id,
+                operation_run_id: run_id,
+                current_runtime_run_id: run_id,
                 resources: IdleSandboxResources {
                     sandbox,
                     factory,
@@ -193,7 +197,8 @@ async fn park_idle_transition(
     observer: Option<&mut dyn SandboxFinalExecParkObserver>,
 ) -> Result<IdleParkOutcome, IdleParkFailure> {
     let IdleParkTransitionInput {
-        run_id,
+        operation_run_id,
+        current_runtime_run_id,
         resources,
         metadata,
         budget_lease,
@@ -242,24 +247,28 @@ async fn park_idle_transition(
         });
     }
 
-    let preparation =
-        match IdleReusePreparation::new(sandbox.id(), run_id, retained_runtime_dir.as_deref()) {
-            Ok(preparation) => preparation,
-            Err(error) => {
-                return Err(IdleParkFailure {
-                    ownership: IdleParkFailureOwnership::Active {
-                        resources: IdleSandboxResources {
-                            sandbox,
-                            factory,
-                            workspace_promotion,
-                        },
-                        budget_lease,
+    let preparation = match IdleReusePreparation::new(
+        sandbox.id(),
+        operation_run_id,
+        current_runtime_run_id,
+        retained_runtime_dir.as_deref(),
+    ) {
+        Ok(preparation) => preparation,
+        Err(error) => {
+            return Err(IdleParkFailure {
+                ownership: IdleParkFailureOwnership::Active {
+                    resources: IdleSandboxResources {
+                        sandbox,
+                        factory,
+                        workspace_promotion,
                     },
-                    reason: "reuse_preparation_failed",
-                    error: error.to_string(),
-                });
-            }
-        };
+                    budget_lease,
+                },
+                reason: "reuse_preparation_failed",
+                error: error.to_string(),
+            });
+        }
+    };
 
     let final_exec_and_park = {
         let request = preparation.exec_request();
@@ -335,9 +344,17 @@ async fn park_idle_transition(
 impl SpeculativeIdleSandbox {
     pub(crate) async fn repark_for_claim_rollback(
         self,
-        run_id: RunId,
+        operation_run_id: RunId,
         workspace_image_size_bytes: u64,
     ) -> SpeculativeReparkResult {
+        let Some(current_runtime_run_id) = self.entry.metadata.history_generation_run_id else {
+            const REASON: &str = "speculative_repark_missing_history_generation";
+            return SpeculativeReparkResult::Destroy {
+                destroy_job: Box::new(self.into_destroy_job(REASON)),
+                reason: REASON,
+                error: "speculative exact-reuse entry is missing a history generation".into(),
+            };
+        };
         let Self { entry } = self;
         let IdleEntry {
             resources,
@@ -350,7 +367,8 @@ impl SpeculativeIdleSandbox {
         let profile_name = metadata.profile_name.clone();
         match park_idle_transition(
             IdleParkTransitionInput {
-                run_id,
+                operation_run_id,
+                current_runtime_run_id,
                 resources,
                 metadata,
                 budget_lease,

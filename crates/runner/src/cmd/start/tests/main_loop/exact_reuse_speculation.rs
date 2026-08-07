@@ -8,6 +8,10 @@ use super::super::support::{
 };
 use std::sync::Arc;
 
+use guest_contracts::reuse_preparation::{
+    REUSE_PREPARATION_EXIT_CLEANUP_FAILED, ReusePreparationRequest,
+};
+
 use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
 use crate::provider::{JobCandidate, RunnerPreference, RunnerPreferenceTier};
@@ -50,6 +54,24 @@ fn timezone_correction_commands(overrides: &sandbox_mock::MockSandboxOverrides) 
         .into_iter()
         .filter(|call| call.cmd.contains("/etc/timezone") && !call.cmd.contains("guest-reseed"))
         .map(|call| call.cmd)
+        .collect()
+}
+
+fn reuse_preparation_requests(
+    overrides: &sandbox_mock::MockSandboxOverrides,
+) -> Vec<ReusePreparationRequest> {
+    overrides
+        .exec_calls()
+        .into_iter()
+        .filter(|call| call.cmd.contains("guest-agent prepare-for-reuse"))
+        .map(|call| {
+            serde_json::from_slice(
+                call.stdin_bytes
+                    .as_deref()
+                    .expect("reuse preparation request should use stdin"),
+            )
+            .expect("reuse preparation request should be valid")
+        })
         .collect()
 }
 
@@ -388,7 +410,7 @@ async fn unavailable_claim_reparks_speculative_sandbox() {
     add_healthy_reuse_preparation_matcher(&overrides);
     let reuse_key = RunId::new_v4().to_string();
     let generation_run_id = RunId::new_v4();
-    seed_idle_pool_with_speculative_timezone(
+    let sandbox_id = seed_idle_pool_with_speculative_timezone(
         &env.idle_pool,
         &budget,
         &overrides,
@@ -431,10 +453,97 @@ async fn unavailable_claim_reparks_speculative_sandbox() {
 
     wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
     wait_idle_pool_reuse_keys(&env.idle_pool, &[&reuse_key], Duration::from_secs(5)).await;
+    assert_eq!(budget.allocated(), (2, 4096, 1));
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(overrides.park_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 0);
     assert!(overrides.start_process_calls().is_empty());
+    assert!(!env.start_observer.active_run_status_was_published(run_id));
+    let requests = reuse_preparation_requests(&overrides);
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0].current_runtime_dir,
+        format!("/home/user/.vm0/guest-agent/runs/{generation_run_id}")
+    );
+    assert_ne!(
+        requests[0].current_runtime_dir,
+        format!("/home/user/.vm0/guest-agent/runs/{run_id}")
+    );
+
+    let followup_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        followup_run_id,
+        Some(claimed_context(followup_run_id, &reuse_key, None)),
+    );
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            followup_run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    let completion = env
+        .handle
+        .wait_completion(followup_run_id, Duration::from_secs(30))
+        .await
+        .expect("restored speculative sandbox should serve the next exact claim");
+    assert_eq!(completion.sandbox_id, Some(sandbox_id));
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn cleanup_failure_destroys_lost_speculative_sandbox() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "prepare-for-reuse".into(),
+        exit_code: REUSE_PREPARATION_EXIT_CLEANUP_FAILED,
+        stdout: Vec::new(),
+        stderr: b"runtime cleanup failed: protected generation disappeared".to_vec(),
+    });
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Default,
+            timing: None,
+        },
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(run_id, None);
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.park_call_count(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_process_calls().is_empty());
+    assert!(!env.start_observer.active_run_status_was_published(run_id));
 
     shutdown(&env, run_handle).await;
 }
