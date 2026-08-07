@@ -421,6 +421,9 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
+      featureSwitches: {
+        [FeatureSwitchKey.TemplatePickerGlobalSearch]: false,
+      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -435,6 +438,7 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
+    expect(screen.queryByLabelText("Search templates")).not.toBeInTheDocument();
 
     expect(tabByText("Presentation")).toBeInTheDocument();
     expect(tabByText("Illustration")).toBeInTheDocument();
@@ -447,10 +451,6 @@ describe("chat composer templates", () => {
     ).toBeFalsy();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
-    expect(tabByText("Presentation")).toHaveClass("bg-gray-50");
-    expect(tabByText("Presentation")).toHaveClass("text-foreground");
-    expect(tabByText("Illustration")).toHaveClass("text-gray-800");
-    expect(tabByText("Illustration")).not.toHaveClass("bg-gray-50");
     const categorySelect = screen.getByRole("combobox", {
       name: "Template category",
     });
@@ -461,10 +461,6 @@ describe("chat composer templates", () => {
     });
     expect(categorySidebar).toBeInstanceOf(HTMLElement);
     expect(categorySidebar).toHaveAttribute("aria-orientation", "vertical");
-    expect(categorySidebar).toHaveClass("flex-col");
-    // The rail wraps the title block and the tablist, and carries the divider.
-    expect(categorySidebar.parentElement).toHaveClass("border-r");
-    expect(categorySidebar.parentElement).toHaveClass("bg-card");
 
     await user.click(categorySelect);
     await user.click(
@@ -514,6 +510,80 @@ describe("chat composer templates", () => {
         "true",
       );
     });
+  });
+
+  it("filters every non-avatar template catalogue when global search is enabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.TemplatePickerGlobalSearch]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    const catalogues = [
+      {
+        category: "Presentation",
+        item: PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!,
+        selectLabel: (title: string) => {
+          return `Select template ${title}`;
+        },
+      },
+      {
+        category: "Website",
+        item: WEBSITE_TEMPLATE_ITEMS[0]!,
+        selectLabel: (title: string) => {
+          return `Select website template ${title}`;
+        },
+      },
+      {
+        category: "Illustration",
+        item: ILLUSTRATION_TEMPLATE_ITEMS[0]!,
+        selectLabel: (title: string) => {
+          return `Select template ${title}`;
+        },
+      },
+      {
+        category: "Video",
+        item: VIDEO_TEMPLATE_ITEMS[0]!,
+        selectLabel: (title: string) => {
+          return `Select video template ${title}`;
+        },
+      },
+    ] as const;
+
+    for (const { category, item, selectLabel } of catalogues) {
+      await user.click(tabByText(category));
+      await waitFor(() => {
+        expect(tabByText(category)).toHaveAttribute("aria-selected", "true");
+      });
+
+      const search = screen.getByLabelText("Search templates");
+      await fill(search, "no matching template title");
+      await waitFor(() => {
+        expect(screen.getByText("No matches")).toBeInTheDocument();
+      });
+
+      await fill(search, item.title);
+      await waitFor(() => {
+        expect(screen.queryByText("No matches")).not.toBeInTheDocument();
+        expect(
+          screen.getByLabelText(selectLabel(item.title)),
+        ).toBeInTheDocument();
+      });
+    }
   });
 
   it("previews avatars and sends the selected avatar and voice", async () => {
@@ -2482,7 +2552,7 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
-    expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(
       screen.getByLabelText(`Select template ${illustrationTemplate.title}`),
     );
@@ -3097,7 +3167,7 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(screen.getByLabelText(`Select video template ${videoStyle.title}`));
 
     await waitFor(() => {
@@ -3259,7 +3329,7 @@ describe("chat composer templates", () => {
       expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
       expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
     });
-    expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(
       screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
     );

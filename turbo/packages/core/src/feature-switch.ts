@@ -323,6 +323,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.TemplatePickerGlobalSearch]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Search presentation, website, illustration, and video templates from the shared template picker search field.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.CustomModelGateways]: {
     maintainer: "ethan@vm0.ai",
     description:

@@ -1078,13 +1078,14 @@ const TEMPLATE_TILE_WRAPPER = "group/tile relative cursor-pointer";
 const TEMPLATE_TILE_RING =
   "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
 const TEMPLATE_TILE_RING_HOVER = "ring-gray-400 group-hover/tile:ring-1";
+const TEMPLATE_TILE_RING_SELF_HOVER = "ring-gray-400 hover:ring-1";
 const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
 const TEMPLATE_TILE_MEDIA =
   "relative overflow-hidden border border-gray-200 bg-muted";
 const TEMPLATE_TILE_SCRIM =
   "pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-14 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100";
 const TEMPLATE_TILE_USE =
-  "absolute bottom-2 right-2 z-20 h-[30px] rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground opacity-0 transition-opacity duration-150 hover:bg-primary-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/tile:opacity-100";
+  "absolute bottom-2 right-2 z-20 h-[30px] rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground opacity-100 transition-opacity duration-150 hover:bg-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover/tile:opacity-100";
 // Caption metrics track the illustration card: same text size, and enough
 // breathing room under the artwork that the title never crowds it.
 const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-2 pb-2 pt-2";
@@ -1385,7 +1386,7 @@ function WorkflowTemplateCard({
         "group/tile flex flex-col border border-gray-200 bg-card p-4",
         TEMPLATE_CARD_SHADOW,
         TEMPLATE_TILE_RING,
-        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_SELF_HOVER,
       )}
     >
       <p className="text-sm font-semibold text-foreground">{item.title}</p>
@@ -4341,7 +4342,7 @@ function IllustrationTemplateCard({
         "group/tile mb-4 break-inside-avoid overflow-hidden border border-gray-200 bg-card",
         TEMPLATE_CARD_SHADOW,
         TEMPLATE_TILE_RING,
-        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_SELF_HOVER,
       )}
     >
       <IllustrationTemplateHero
@@ -4826,6 +4827,9 @@ function TemplatePickerDialog({
   const setCategory = useSet(signals.template.setTemplatePickerCategory$);
   const search = useGet(signals.template.templatePickerSearch$);
   const setSearch = useSet(signals.template.setTemplatePickerSearch$);
+  const templatePickerGlobalSearchEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.TemplatePickerGlobalSearch] ??
+    false;
   const previewSlug = useGet(signals.template.templatePickerPreviewSlug$);
   const restorePresentationGridScroll = useSet(
     signals.template.restoreTemplatePickerPresentationScroll$,
@@ -4872,18 +4876,22 @@ function TemplatePickerDialog({
     skipEnterAnimation && "data-[state=open]:!animate-none",
     "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
-  const filteredPptItems = filterTemplatesByTitle(presentationItems, search);
+  const catalogueSearch = templatePickerGlobalSearchEnabled ? search : "";
+  const filteredPptItems = filterTemplatesByTitle(
+    presentationItems,
+    catalogueSearch,
+  );
   const filteredIllustrationItems = filterTemplatesByTitle(
     ILLUSTRATION_TEMPLATE_ITEMS,
-    search,
+    catalogueSearch,
   );
   const filteredVideoItems = filterTemplatesByTitle(
     VIDEO_TEMPLATE_ITEMS,
-    search,
+    catalogueSearch,
   );
   const filteredWebsiteItems = filterTemplatesByTitle(
     WEBSITE_TEMPLATE_ITEMS,
-    search,
+    catalogueSearch,
   );
   // A persona pill filters the grid, ideation-gallery style.
   // resolveWorkflowCatalog() keeps that logic out of this component to stay
@@ -5161,13 +5169,15 @@ function TemplatePickerDialog({
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="relative flex h-[68px] shrink-0 items-center px-6 pr-14">
-                  <TemplatePickerSearch
-                    search={search}
-                    onSearchChange={handleSearchChange}
-                  />
+                  {selectedCategory === "workflow" ||
+                  (templatePickerGlobalSearchEnabled &&
+                    selectedCategory !== "avatar") ? (
+                    <TemplatePickerSearch
+                      search={search}
+                      onSearchChange={handleSearchChange}
+                    />
+                  ) : null}
                 </div>
-                {/* Cards dissolve into the header instead of being clipped by it:
-                    a white wash whose own blur fades out over the same 32px. */}
                 <TemplatePickerCategoryContent
                   signals={signals}
                   selectedCategory={selectedCategory}
