@@ -221,7 +221,6 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   isPiEdgeCompatibleProviderType,
   piSandboxModelConfig,
-  PI_STANDBY_PROFILE,
   resolvePiEdgeModelConfig,
   type PiEdgeModelConfig,
   type PiEdgeTurnArgs,
@@ -5903,6 +5902,7 @@ function storedExecutionContextWithPiResources(
   }
   return {
     ...context,
+    piExecutionMode: "standby",
     runSkillSnapshot: resources.snapshot,
     piSystemPrompt: resources.systemPrompt,
     piModelConfig: resources.modelConfig,
@@ -6365,9 +6365,7 @@ async function persistPendingAtomicLaunch(
       .values({
         runId: returnedCteId(context.insertedRun),
         runnerGroup: args.payload.runnerGroup,
-        profile: args.commit.launch.piEdge
-          ? PI_STANDBY_PROFILE
-          : args.payload.profile,
+        profile: args.payload.profile,
         cliAgentSessionId: args.payload.cliAgentSessionId,
         reuseKey: args.payload.reuseKey,
         executionContext: args.payload.executionContext,
@@ -8234,9 +8232,7 @@ async function committedAtomicLaunchResponse(args: {
       apiStartTime: args.createArgs.apiStartTime,
     });
   }
-  const dispatchedProfile = args.launch.piEdge
-    ? PI_STANDBY_PROFILE
-    : args.committed.runnerJobPayload.profile;
+  const dispatchedProfile = args.committed.runnerJobPayload.profile;
   await notifyRunnerJob(args.db, {
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
     runId: args.committed.run.id,
@@ -8245,6 +8241,8 @@ async function committedAtomicLaunchResponse(args: {
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
     historyGenerationRunId:
       args.committed.runnerJobPayload.historyGenerationRunId,
+    piExecutionMode:
+      args.committed.runnerJobPayload.executionContext.piExecutionMode,
     createdAt: args.committed.runnerJobCreatedAt,
   });
   args.timing.flush({
