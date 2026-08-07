@@ -14,12 +14,12 @@ function columnNames(table: Parameters<typeof getTableConfig>[0]): Set<string> {
 }
 
 describe("retired column contraction", () => {
-  it("keeps follow_up_automation_id declared while the pre-cleanup API drains", () => {
-    // The outgoing API release still selects this column explicitly in
-    // linkMailFollowUp$, and migrations run before API traffic is promoted.
-    // Dropping the physical column in the same release would fail those
-    // statements with 42703 until the old API finishes draining.
-    expect(columnNames(mailDrafts).has("follow_up_automation_id")).toBe(true);
+  it("drops follow_up_automation_id now that the pre-cleanup API has drained", () => {
+    // Release 1 (PR #25540) removed every reader and kept the physical column
+    // so the outgoing API, which still selected it explicitly in
+    // linkMailFollowUp$, survived its drain window. That release has since been
+    // promoted, so release 2 drops the column.
+    expect(columnNames(mailDrafts).has("follow_up_automation_id")).toBe(false);
   });
 
   it("drops mail draft and chat thread columns no deployed reader names", () => {
