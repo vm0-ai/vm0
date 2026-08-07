@@ -5,7 +5,7 @@ import {
   type RunSkillSnapshot,
 } from "@vm0/api-contracts/contracts/runners";
 import {
-  NodeExecutionEnv,
+  createPiNodeExecutionEnv,
   type PiAgentMessage,
 } from "@vm0/pi-agent-runtime/node";
 import { describe, expect, it } from "vitest";
@@ -154,7 +154,7 @@ describe("internal Pi standby agent loop", () => {
     const io = new FakeIo([
       { type: "pi-standby-release", reason: "api-complete" },
     ]);
-    const executionEnv = new NodeExecutionEnv({ cwd: tmpdir() });
+    const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
     let resumed = false;
     const resume = (async () => {
       resumed = true;
@@ -204,7 +204,7 @@ describe("internal Pi standby agent loop", () => {
     }
 
     const io = new SilentIo();
-    const executionEnv = new NodeExecutionEnv({ cwd: tmpdir() });
+    const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
     let resumed = false;
     const resume = (async () => {
       resumed = true;
@@ -247,12 +247,11 @@ describe("internal Pi standby agent loop", () => {
         status: 200,
       },
     ]);
-    const executionEnv = new NodeExecutionEnv({ cwd: tmpdir() });
+    const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
     const resume = (async (args) => {
       expect(args.systemPrompt).toBe(CONFIG.systemPrompt);
-      await args.onEvent({ type: "message_end", message: TOOL_RESULT });
-      await args.onEvent({ type: "message_end", message: FINAL_ASSISTANT });
-      return [TOOL_RESULT, FINAL_ASSISTANT];
+      await args.onMessage(TOOL_RESULT);
+      await args.onMessage(FINAL_ASSISTANT);
     }) satisfies PiAgentResume;
 
     try {
@@ -318,12 +317,11 @@ describe("internal Pi standby agent loop", () => {
         status: 200,
       },
     ]);
-    const executionEnv = new NodeExecutionEnv({ cwd: tmpdir() });
+    const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
     let resumeCount = 0;
     const resume = (async (args) => {
       resumeCount += 1;
-      await args.onEvent({ type: "message_end", message: TOOL_RESULT });
-      return [TOOL_RESULT];
+      await args.onMessage(TOOL_RESULT);
     }) satisfies PiAgentResume;
 
     try {

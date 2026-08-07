@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { AgentEvent } from "@earendil-works/pi-agent-core";
+import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import type {
   AssistantMessage,
   Message,
@@ -11,9 +13,7 @@ import type {
 import {
   executePiUnresolvedToolBatch,
   findPiUnresolvedToolBatch,
-  NodeExecutionEnv,
-  type PiAgentEvent,
-} from "./node";
+} from "./recovery";
 
 const ZERO_USAGE = {
   input: 0,
@@ -99,7 +99,7 @@ describe("Pi handoff recovery", () => {
         },
       ]),
     ];
-    const events: PiAgentEvent[] = [];
+    const events: AgentEvent[] = [];
 
     try {
       const results = await executePiUnresolvedToolBatch({

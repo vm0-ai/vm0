@@ -10,11 +10,10 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import { piTranscriptResponseSchema } from "@vm0/api-contracts/contracts/webhooks";
 import {
-  NodeExecutionEnv,
+  createPiNodeExecutionEnv as createNodeExecutionEnv,
   parsePiAgentMessages,
   runPiAgentResume,
   type ExecutionEnv,
-  type PiAgentEvent,
   type PiAgentMessage,
   type PiAgentModelConfig,
 } from "@vm0/pi-agent-runtime/node";
@@ -262,12 +261,9 @@ async function resumeFromTranscript(args: {
     messages,
     executionEnv: args.executionEnv,
     signal: args.signal,
-    async onEvent(event: PiAgentEvent) {
-      if (event.type !== "message_end") {
-        return;
-      }
-      await acknowledgeMessage(args.io, args.config, tail, event.message);
-      failure ??= messageFailure(event.message);
+    async onMessage(message: PiAgentMessage) {
+      await acknowledgeMessage(args.io, args.config, tail, message);
+      failure ??= messageFailure(message);
     },
   });
   return {
@@ -380,8 +376,8 @@ export class StdioPiAgentLoopIo implements PiAgentLoopIo {
   }
 }
 
-export function createPiNodeExecutionEnv(): NodeExecutionEnv {
-  return new NodeExecutionEnv({
+export function createPiNodeExecutionEnv(): ExecutionEnv {
+  return createNodeExecutionEnv({
     cwd: process.cwd(),
     shellEnv: process.env,
   });

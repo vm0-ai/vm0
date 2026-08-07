@@ -1,0 +1,35 @@
+name: Perf API RSS Ablation
+
+on:
+  push:
+    branches:
+      - "perf/api-rss-**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-api-rss-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ablate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - head
+          - base
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 10
+      - uses: ./.github/actions/toolchain-init
+      - name: Apply ablation
+        run: bash .github/scripts/rss-ablate.sh "${{ matrix.variant }}"
+      - name: Measure tsc peak RSS
+        run: bash .github/scripts/rss-measure.sh "${{ matrix.variant }}"
