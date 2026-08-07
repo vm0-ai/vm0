@@ -15,6 +15,7 @@
     "src/lib/log.ts",
     "src/lib/secret-kms-client.ts",
     "src/lib/singleton.ts",
+    "src/signals/external/clerk.ts",
     "src/signals/external/s3.ts",
     "src/signals/external/slack-block-kit.ts",
     "src/signals/external/slack-message-client.ts",

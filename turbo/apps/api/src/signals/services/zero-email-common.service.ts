@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 
-import type { createClerkClient } from "@clerk/backend";
 import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { emailSuppressions } from "@vm0/db/schema/email-suppression";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -16,10 +15,10 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
+import type { ClerkClient } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import type { Tx } from "../../lib/db-types";
 
-type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Tx;
 
 interface EmailOutboxDrainContext {

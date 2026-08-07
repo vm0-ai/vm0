@@ -1,21 +1,16 @@
-import type { createClerkClient } from "@clerk/backend";
-
-type ClerkClient = ReturnType<typeof createClerkClient>;
-type ClerkOrganizations = ClerkClient["organizations"];
-type OrganizationMembership = Awaited<
-  ReturnType<ClerkOrganizations["getOrganizationMembershipList"]>
->["data"][number];
-type OrganizationInvitation = Awaited<
-  ReturnType<ClerkOrganizations["getOrganizationInvitationList"]>
->["data"][number];
+import type {
+  ClerkOrganizationInvitation,
+  ClerkOrganizationMembership,
+  ClerkOrganizationsApi,
+} from "./clerk";
 
 const ORGANIZATION_LIST_PAGE_SIZE = 100;
 
 export async function listAllOrganizationMemberships(
-  organizations: Pick<ClerkOrganizations, "getOrganizationMembershipList">,
+  organizations: Pick<ClerkOrganizationsApi, "getOrganizationMembershipList">,
   organizationId: string,
-): Promise<OrganizationMembership[]> {
-  const memberships: OrganizationMembership[] = [];
+): Promise<ClerkOrganizationMembership[]> {
+  const memberships: ClerkOrganizationMembership[] = [];
   for (let offset = 0; ; offset += ORGANIZATION_LIST_PAGE_SIZE) {
     const page = await organizations.getOrganizationMembershipList({
       organizationId,
@@ -30,10 +25,10 @@ export async function listAllOrganizationMemberships(
 }
 
 export async function listAllPendingOrganizationInvitations(
-  organizations: Pick<ClerkOrganizations, "getOrganizationInvitationList">,
+  organizations: Pick<ClerkOrganizationsApi, "getOrganizationInvitationList">,
   organizationId: string,
-): Promise<OrganizationInvitation[]> {
-  const invitations: OrganizationInvitation[] = [];
+): Promise<ClerkOrganizationInvitation[]> {
+  const invitations: ClerkOrganizationInvitation[] = [];
   for (let offset = 0; ; offset += ORGANIZATION_LIST_PAGE_SIZE) {
     const page = await organizations.getOrganizationInvitationList({
       organizationId,
