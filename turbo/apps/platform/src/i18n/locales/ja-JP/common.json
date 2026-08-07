@@ -4781,6 +4781,13 @@
         "second_other": "{{count}} 秒"
       },
       "forms": {
+        "addAction": "Google Forms オートメーションを追加",
+        "addAria": "Google Forms 回答オートメーションを追加",
+        "addDescription": "選択した Google フォームに新しい回答が届いたときに、このワークフローを実行します。",
+        "addTitle": "Google Forms オートメーションを追加",
+        "formUrl": "フォームのリンク",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "Google フォームに新しい回答が届いたときに実行します。",
         "responseSubmittedTitle": "Google Forms の回答が送信されました",
         "rule": "{{form}} に回答が送信されたとき",
         "summary": "フォーム {{form}}"
@@ -5026,6 +5033,7 @@
       "picker": {
         "calendar": "カレンダー",
         "email": "メール",
+        "forms": "Google Forms",
         "integrations": "統合",
         "notion": "Notion",
         "schedule": "スケジュール"
