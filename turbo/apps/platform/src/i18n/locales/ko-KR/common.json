@@ -906,6 +906,10 @@
       "to": "종료"
     },
     "manage": {
+      "description": "Stripe에서 구독, 결제 수단 및 청구서 관리.",
+      "title": "청구 관리"
+    },
+    "paymentMethods": {
       "description": "Stripe에서 청구에 사용되는 결제 수단을 관리합니다.",
       "title": "결제 수단"
     },

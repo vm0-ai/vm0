@@ -1,5 +1,7 @@
 import { command } from "ccstate";
 import { zeroBillingPortalContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -8,6 +10,7 @@ import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { createBillingPortalSession$ } from "../services/billing.service";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -29,6 +32,19 @@ const portalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return adminRequired;
   }
 
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  signal.throwIfAborted();
+  const paymentMethodManagementEnabled = isFeatureEnabled(
+    FeatureSwitchKey.PaymentMethodManagement,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    },
+  );
+
   const bodyResult = await get(bodyResultOf(zeroBillingPortalContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -42,7 +58,7 @@ const portalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const url = await set(
     createBillingPortalSession$,
-    { orgId: auth.orgId, returnUrl },
+    { orgId: auth.orgId, returnUrl, paymentMethodManagementEnabled },
     signal,
   );
   signal.throwIfAborted();

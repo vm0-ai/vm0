@@ -57,6 +57,7 @@ export enum FeatureSwitchKey {
   RealAgentInPreview = "realAgentInPreview",
   TemplatePickerGlobalSearch = "templatePickerGlobalSearch",
   UsagePackPlans = "usagePackPlans",
+  PaymentMethodManagement = "paymentMethodManagement",
 
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",

@@ -906,6 +906,10 @@
       "to": "To"
     },
     "manage": {
+      "description": "Subscription, payment method, and invoices in Stripe.",
+      "title": "Manage billing"
+    },
+    "paymentMethods": {
       "description": "Manage the payment methods used for billing in Stripe.",
       "title": "Payment methods"
     },

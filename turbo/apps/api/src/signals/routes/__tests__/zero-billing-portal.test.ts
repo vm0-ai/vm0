@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroBillingPortalContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -21,6 +22,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { zeroBillingPortalRoutes } from "../zero-billing-portal";
 
 const context = testContext();
@@ -209,6 +211,54 @@ describe("POST /api/zero/billing/portal", () => {
     });
   });
 
+  it("keeps the existing billing portal when payment methods are disabled", async () => {
+    const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: `sub-portal-${randomUUID().slice(0, 8)}`,
+          subscriptionStatus: "active",
+          tier: "pro",
+        },
+        context.signal,
+      ),
+    );
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.PaymentMethodManagement]: false,
+    });
+    mockEnv("APP_URL", APP_ORIGIN);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
+      url: "https://billing.stripe.com/session/manage-billing",
+    });
+
+    const returnUrl = `${APP_ORIGIN}/settings/billing`;
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      ).create({
+        body: { returnUrl },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://billing.stripe.com/session/manage-billing",
+    });
+    expect(
+      context.mocks.stripe.billingPortal.configurations.list,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).toHaveBeenCalledWith({
+      customer: customerId,
+      return_url: returnUrl,
+    });
+  });
+
   it("creates a customer for payment method management without a subscription", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -270,6 +320,37 @@ describe("POST /api/zero/billing/portal", () => {
       configuration: PORTAL_CONFIGURATION_ID,
       return_url: returnUrl,
     });
+  });
+
+  it("does not create a customer without a subscription when payment methods are disabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId, orgId, orgRole: "org:admin" },
+      { [FeatureSwitchKey.PaymentMethodManagement]: false },
+    );
+    mockEnv("APP_URL", APP_ORIGIN);
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      ).create({
+        body: { returnUrl: `${APP_ORIGIN}/settings/billing` },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.billingPortal.configurations.list,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).not.toHaveBeenCalled();
   });
 
   it("repairs a managed portal configuration before creating a session", async () => {

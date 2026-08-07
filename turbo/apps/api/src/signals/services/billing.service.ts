@@ -153,12 +153,17 @@ export const createBillingPortalSession$ = command(
     args: {
       readonly orgId: string;
       readonly returnUrl: string;
+      readonly paymentMethodManagementEnabled: boolean;
     },
     signal: AbortSignal,
   ): Promise<string> => {
     const db = get(db$);
     let stripeCustomerId = await stripeCustomerIdForOrg(db, args.orgId);
     signal.throwIfAborted();
+
+    if (!stripeCustomerId && !args.paymentMethodManagementEnabled) {
+      throw new Error("Org has no Stripe customer — subscribe first");
+    }
 
     if (!stripeCustomerId) {
       stripeCustomerId = await set(
@@ -170,6 +175,15 @@ export const createBillingPortalSession$ = command(
     }
 
     const stripe = getStripeClient();
+    if (!args.paymentMethodManagementEnabled) {
+      const session = await stripe.billingPortal.sessions.create({
+        customer: stripeCustomerId,
+        return_url: args.returnUrl,
+      });
+      signal.throwIfAborted();
+      return session.url;
+    }
+
     const portalConfigurationId = await ensurePaymentMethodPortalConfiguration(
       stripe,
       signal,

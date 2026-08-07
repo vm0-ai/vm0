@@ -927,6 +927,10 @@
       "to": "Até"
     },
     "manage": {
+      "description": "Assinatura, forma de pagamento e faturas no Stripe.",
+      "title": "Gerenciar cobrança"
+    },
+    "paymentMethods": {
       "description": "Gerencie os métodos de pagamento usados para cobrança no Stripe.",
       "title": "Métodos de pagamento"
     },

@@ -235,8 +235,11 @@ function mockBillingStory(): void {
   });
 }
 
-async function openBillingTab(path = "/?settings=billing"): Promise<void> {
-  detachedSetupPage({ context, path });
+async function openBillingTab(
+  path = "/?settings=billing",
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
+): Promise<void> {
+  detachedSetupPage({ context, path, featureSwitches });
   await waitFor(() => {
     expect(
       screen.getByRole("dialog", { name: "Settings" }),
@@ -777,10 +780,17 @@ describe("organization billing settings", () => {
       });
     });
 
-    await openBillingTab();
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.PaymentMethodManagement]: false,
+    });
 
     await waitFor(() => {
-      expect(screen.getByText("Payment methods")).toBeInTheDocument();
+      expect(screen.getByText("Manage billing")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Subscription, payment method, and invoices in Stripe.",
+        ),
+      ).toBeInTheDocument();
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
@@ -822,6 +832,27 @@ describe("organization billing settings", () => {
         "https://billing.stripe.com/customer-portal/no-subscription",
       );
     });
+  });
+
+  it("hides payment method management without a subscription when disabled", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Disabled Payment Methods Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, noActiveBillingStatus());
+    });
+
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.PaymentMethodManagement]: false,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Payment methods")).not.toBeInTheDocument();
+    expect(screen.queryByText("Manage billing")).not.toBeInTheDocument();
   });
 
   it("shows custom tier access and disables Pro and Team checkout", async () => {
