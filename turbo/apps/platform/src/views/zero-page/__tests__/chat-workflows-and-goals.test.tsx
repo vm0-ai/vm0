@@ -26,6 +26,7 @@ import {
   expectQueuedMessages,
   mockChatLifecycle,
 } from "./chat-test-helpers.ts";
+import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../../signals/chat-page/workflow-prompt-action";
 import {
   context,
@@ -1670,20 +1671,27 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     const item = await readSingleRichClipboardWrite(clipboard);
     const plainText = await readClipboardItemText(item, "text/plain");
+    const canonicalImageUrl = canonicalUserMessageFileUrl("attachment-chart");
+    const canonicalVideoUrl = canonicalUserMessageFileUrl("attachment-demo");
+    const canonicalAudioUrl = canonicalUserMessageFileUrl(
+      "attachment-briefing",
+    );
+    const canonicalMarkdownUrl =
+      canonicalUserMessageFileUrl("attachment-notes");
     expect(plainText).toBe(
       [
         messageText,
         "",
         "Attachments:",
-        `- chart.png: ${imageUrl}`,
-        `- demo.mp4: ${videoUrl}`,
-        `- briefing.mp3: ${audioUrl}`,
-        `- notes.md: ${markdownUrl}`,
+        `- chart.png: ${canonicalImageUrl}`,
+        `- demo.mp4: ${canonicalVideoUrl}`,
+        `- briefing.mp3: ${canonicalAudioUrl}`,
+        `- notes.md: ${canonicalMarkdownUrl}`,
       ].join("\n"),
     );
     const html = await readClipboardItemText(item, "text/html");
     expect(html).toContain("data-vm0-chat-message");
-    expect(html).toContain(`<a href="${imageUrl}"`);
+    expect(html).toContain(`<a href="${canonicalImageUrl}"`);
     expect(html).not.toContain("<img");
     const payload = parseChatClipboardPayload(html);
     expect(payload.text).toBe(messageText);
@@ -1691,9 +1699,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     expect(payload.attachments[0]).toStrictEqual({
       id: "attachment-chart",
       filename: "chart.png",
-      url: imageUrl,
+      url: canonicalImageUrl,
       contentType: "image/png",
-      size: 1024,
+      size: 0,
     });
   });
 
@@ -1734,12 +1742,18 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     const item = await readSingleRichClipboardWrite(clipboard);
     const plainText = await readClipboardItemText(item, "text/plain");
+    const canonicalImageUrl = canonicalUserMessageFileUrl("attachment-photo");
     expect(plainText).toBe(
-      [messageText, "", "Attachments:", `- photo.png: ${imageUrl}`].join("\n"),
+      [
+        messageText,
+        "",
+        "Attachments:",
+        `- photo.png: ${canonicalImageUrl}`,
+      ].join("\n"),
     );
     const html = await readClipboardItemText(item, "text/html");
     expect(html).toContain("data-vm0-chat-message");
-    expect(html).toContain(`<a href="${imageUrl}"`);
+    expect(html).toContain(`<a href="${canonicalImageUrl}"`);
     expect(html).not.toContain("<img");
     expect(parseChatClipboardPayload(html)).toStrictEqual({
       text: messageText,
@@ -1747,9 +1761,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         {
           id: "attachment-photo",
           filename: "photo.png",
-          url: imageUrl,
+          url: canonicalImageUrl,
           contentType: "image/png",
-          size: 2048,
+          size: 0,
         },
       ],
       userMessage: {
@@ -1860,7 +1874,13 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` +
         "Feedback on this part of your reply:\n\n" +
         "> The roadmap lacks dates\n\nAdd the launch milestones",
-      attachments: [secondAttachment, firstAttachment],
+      attachments: [secondAttachment, firstAttachment].map((attachment) => {
+        return {
+          ...attachment,
+          size: 0,
+          url: canonicalUserMessageFileUrl(attachment.id),
+        };
+      }),
       userMessage,
     });
   });
