@@ -157,25 +157,6 @@ async function cardEdgeAppearance(locator: Locator) {
   });
 }
 
-async function toolbarSurfaceAppearance(locator: Locator) {
-  return locator.evaluate((element) => {
-    const style = getComputedStyle(element);
-    const canvas = document.createElement("canvas");
-    canvas.width = 1;
-    canvas.height = 1;
-    const context = canvas.getContext("2d");
-    if (!context) {
-      throw new Error("Canvas context unavailable");
-    }
-    context.fillStyle = style.backgroundColor;
-    context.fillRect(0, 0, 1, 1);
-    return {
-      backgroundAlpha: context.getImageData(0, 0, 1, 1).data[3],
-      borderBottomWidth: style.borderBottomWidth,
-    };
-  });
-}
-
 test("chat page displays tagline after onboarding", async ({ page }) => {
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
@@ -436,8 +417,13 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
   await page.getByRole("tab", { name: "Avatar" }).click();
   const dialog = page.getByRole("dialog");
   const avatarScroll = dialog.locator("[data-avatar-template-grid-scroll]");
-  const avatarToolbar = avatarScroll.locator("[data-avatar-catalog-toolbar]");
+  const avatarToolbar = dialog.locator("[data-avatar-catalog-toolbar]");
   await expect(avatarToolbar).toBeVisible();
+  // The toolbar shares the dialog header row with the close button, so catalog
+  // cards can never scroll underneath it.
+  await expect(
+    avatarScroll.locator("[data-avatar-catalog-toolbar]"),
+  ).toHaveCount(0);
   await avatarScroll.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
     element.dispatchEvent(new Event("scroll"));
@@ -450,11 +436,6 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
     })
     .toBeGreaterThan(0);
   await expect(avatarToolbar).toBeInViewport();
-  await expect
-    .poll(async () => {
-      return toolbarSurfaceAppearance(avatarToolbar);
-    })
-    .toEqual({ backgroundAlpha: 255, borderBottomWidth: "0px" });
 
   await page.getByRole("button", { name: "Select template Ada" }).click();
   await page.getByRole("button", { name: "Select voice Christopher" }).click();
