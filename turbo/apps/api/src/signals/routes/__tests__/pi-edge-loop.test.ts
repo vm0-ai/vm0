@@ -36,6 +36,7 @@ const workflows = createWorkflowsBddApi(context);
 
 const MODEL = "deepseek-v4-flash";
 const COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
+const AGENT_DISPLAY_NAME = "Pi edge integration agent";
 
 function recordOf(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
@@ -207,6 +208,7 @@ interface PiEdgeFixture {
   readonly agentId: string;
   readonly orgId: string;
   readonly runnerGroup: string;
+  readonly agentDisplayName: string;
   readonly agentInstructions: string;
   readonly workflowSkillName: string;
 }
@@ -237,7 +239,7 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
     },
   ]);
   const agent = await bdd.createAgent(actor, {
-    displayName: "Pi edge integration agent",
+    displayName: AGENT_DISPLAY_NAME,
     description: "Exercises the in-API Pi edge turn.",
     visibility: "private",
   });
@@ -255,6 +257,7 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
     agentId: agent.agentId,
     orgId,
     runnerGroup,
+    agentDisplayName: AGENT_DISPLAY_NAME,
     agentInstructions,
     workflowSkillName,
   };
@@ -415,6 +418,9 @@ describe("PiLoop edge turn", () => {
     );
     expect(piSystemPrompt).toContain(
       `<location>${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md</location>`,
+    );
+    expect(piSystemPrompt).toContain(
+      `As ${fixture.agentDisplayName}, you are an excellent communicator`,
     );
     expect(piSystemPrompt).toContain(fixture.agentInstructions);
     expect(piSystemPrompt).not.toContain("/home/user/.codex/skills/");

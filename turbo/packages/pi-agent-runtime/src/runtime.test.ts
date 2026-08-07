@@ -66,6 +66,17 @@ describe("Pi run Skill runtime", () => {
     expect(piMessageRequiresSandbox(assistantToolCall("bash"))).toBe(true);
   });
 
+  it("falls back to Okou when the agent name is blank", () => {
+    const systemPrompt = renderPiSystemPrompt({
+      agentName: " \n ",
+      skills: [],
+    });
+    expect(systemPrompt).toContain("You are Okou, an AI agent.");
+    expect(systemPrompt).toContain(
+      "As Okou, you are an excellent communicator",
+    );
+  });
+
   it("loads only snapshot Skills and preserves prompt and read semantics", async () => {
     await mkdir(PI_SKILLS_ROOT, { recursive: true });
     const testRoot = await mkdtemp(join(PI_SKILLS_ROOT, "vm0-runtime-test-"));
@@ -116,10 +127,16 @@ describe("Pi run Skill runtime", () => {
       ).toEqual(["pinned-skill"]);
 
       const systemPrompt = renderPiSystemPrompt({
+        agentName: "Test Pi Agent",
         appendSystemPrompt: "vm0 append prompt",
         agentInstructions: "Pi agent instructions",
         skills: resources.skills,
       });
+      expect(systemPrompt).toContain("You are Test Pi Agent, an AI agent.");
+      expect(systemPrompt).toContain(
+        "As Test Pi Agent, you are an excellent communicator",
+      );
+      expect(systemPrompt).not.toContain("{{agent_name}}");
       expect(systemPrompt).toContain("<name>pinned-skill</name>");
       expect(systemPrompt).toContain(
         `<location>${skillDirectory}/SKILL.md</location>`,
@@ -128,6 +145,7 @@ describe("Pi run Skill runtime", () => {
       expect(systemPrompt).not.toContain("Read references/answer.txt");
       expect(
         renderPiSystemPrompt({
+          agentName: "Test Pi Agent",
           appendSystemPrompt: "vm0 append prompt",
           agentInstructions: "Pi agent instructions",
           skills: resources.skills,
