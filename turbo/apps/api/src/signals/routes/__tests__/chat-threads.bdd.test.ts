@@ -1534,10 +1534,56 @@ describe("CHAT-01 chat thread read state", () => {
       })
     ).agentId;
 
+    const unauthenticated = await chat.requestListUnreadChatThreadIds(
+      null,
+      [401],
+    );
+    expectApiError(unauthenticated.body);
+    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
+    const orgless = await chat.requestListUnreadChatThreadIds(
+      bdd.user({ orgId: null }),
+      [401],
+    );
+    expectApiError(orgless.body);
+    expect(orgless.body.error.code).toBe("UNAUTHORIZED");
+
+    const peer = bdd.user({ orgId: owner.orgId });
+    await api.ensureOrgModelProvider(peer);
+    const peerAgent = await bdd.createAgent(peer, {
+      displayName: "Unread peer agent",
+      visibility: "private",
+    });
+    const peerRun = await completeChatRunInThread(peer, runnerGroup, {
+      agentId: peerAgent.agentId,
+      prompt: "peer unread thread stays isolated",
+    });
+
+    const sameUserOtherOrg = bdd.user({ userId: owner.userId });
+    await api.grantProEntitlement(sameUserOtherOrg);
+    await api.ensureOrgModelProvider(sameUserOtherOrg);
+    const otherOrgAgent = await bdd.createAgent(sameUserOtherOrg, {
+      displayName: "Unread other org agent",
+      visibility: "private",
+    });
+    const otherOrgRun = await completeChatRunInThread(
+      sameUserOtherOrg,
+      runnerGroup,
+      {
+        agentId: otherOrgAgent.agentId,
+        prompt: "other org unread thread stays isolated",
+      },
+    );
+
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
     await expect(chat.listUnreadChatThreadIds(owner)).resolves.toStrictEqual(
       [],
     );
+    await expect(chat.listUnreadChatThreadIds(peer)).resolves.toStrictEqual([
+      peerRun.threadId,
+    ]);
+    await expect(
+      chat.listUnreadChatThreadIds(sameUserOtherOrg),
+    ).resolves.toStrictEqual([otherOrgRun.threadId]);
 
     // An active (claimed) run keeps its thread out of the unread aggregate
     // until it completes and leaves a run-finished marker.

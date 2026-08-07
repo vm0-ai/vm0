@@ -12,6 +12,7 @@ import {
   mockOrganization,
   mockUser,
 } from "../../../__tests__/mock-auth.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { CHAT_MESSAGES_STORE } from "../../external/chat-idb-schema.ts";
@@ -93,13 +94,30 @@ function mockSignedInUser(): void {
   });
 }
 
+async function setupAuthenticatedBackgroundSync(): Promise<void> {
+  await setupPage({
+    context,
+    path: "/error",
+    withoutRender: true,
+    user: {
+      id: USER_ID,
+      fullName: "Background Sync User",
+      email: "background-sync@example.com",
+    },
+    session: { token: "test-token" },
+    org: {
+      activeOrg: { id: ORG_ID, name: "Background Sync Org" },
+      memberships: [{ id: ORG_ID }],
+    },
+  });
+}
+
 describe("chat event background sync", () => {
   afterEach(() => {
     clearMockedAuth();
   });
 
   it("subscribes while prefetching unread and active threads once", async () => {
-    mockSignedInUser();
     const initialThreadIdsReady = context.mocks.deferred<void>();
     const requestedThreadIds: string[] = [];
 
@@ -116,34 +134,44 @@ describe("chat event background sync", () => {
       return respond(200, { events: [] });
     });
 
-    await context.store.set(setupRealtime$, context.signal);
-    const subscriberSignal = context.store.set(
-      resetSubscriberSignal$,
-      context.signal,
+    await setupAuthenticatedBackgroundSync();
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+
+    expect(requestedThreadIds).toStrictEqual([]);
+    initialThreadIdsReady.resolve();
+
+    await waitFor(() => {
+      expect(requestedThreadIds).toHaveLength(3);
+    });
+    expect(new Set(requestedThreadIds)).toStrictEqual(
+      new Set([THREAD_ID, OTHER_THREAD_ID, THIRD_THREAD_ID]),
     );
-    const subscription = context.store.set(
-      setupChatEventBackgroundSync$,
-      subscriberSignal,
-    );
+  });
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+  it("continues active prefetch against an API without unread ids", async () => {
+    const requestedThreadIds: string[] = [];
+    context.mocks.api(chatThreadsContract.unreadIds, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
       });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+      return respond(200, { threadIds: [THREAD_ID] });
+    });
+    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
+      requestedThreadIds.push(params.threadId);
+      return respond(200, { events: [] });
+    });
 
-      expect(requestedThreadIds).toStrictEqual([]);
-      initialThreadIdsReady.resolve();
+    await setupAuthenticatedBackgroundSync();
 
-      await waitFor(() => {
-        expect(requestedThreadIds).toHaveLength(3);
-      });
-      expect(new Set(requestedThreadIds)).toStrictEqual(
-        new Set([THREAD_ID, OTHER_THREAD_ID, THIRD_THREAD_ID]),
-      );
-    } finally {
-      context.store.set(resetSubscriberSignal$, context.signal);
-      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
-    }
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      expect(requestedThreadIds).toStrictEqual([THREAD_ID]);
+    });
   });
 
   it("fills only messages after the cached thread end", async () => {
