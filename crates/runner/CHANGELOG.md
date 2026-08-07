@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.160.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.1...runner-rs-v0.160.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* **connectors:** preserve firewall without credentials ([#25564](https://github.com/vm0-ai/vm0/issues/25564)) ([9a423f0](https://github.com/vm0-ai/vm0/commit/9a423f0231495c12c50da29c7bf5ca08a5f4bf0a))
+* **python:** classify sse from exact media type ([#25627](https://github.com/vm0-ai/vm0/issues/25627)) ([97cdc74](https://github.com/vm0-ai/vm0/commit/97cdc745c32641a11cdad35f3caa3f0c321d23a7))
+* **python:** revalidate auth.base authorization after auth waits ([#25633](https://github.com/vm0-ai/vm0/issues/25633)) ([7b94627](https://github.com/vm0-ai/vm0/commit/7b94627e68e7da040bd2f46591177a33770c1f73))
+* **runner:** isolate pi standby notifications by run ([#25629](https://github.com/vm0-ai/vm0/issues/25629)) ([d1d2d41](https://github.com/vm0-ai/vm0/commit/d1d2d4161e16c36680ab7674c59baa510ec6cdb8))
+
+
+### Refactoring
+
+* **python:** clarify model token category ownership ([#25635](https://github.com/vm0-ai/vm0/issues/25635)) ([0a8d0f2](https://github.com/vm0-ai/vm0/commit/0a8d0f2c71d7b4c9f46aeef0f70236163a6788c4))
+* **runner:** enforce unique pi standby subscriptions ([#25648](https://github.com/vm0-ai/vm0/issues/25648)) ([b18c5ad](https://github.com/vm0-ai/vm0/commit/b18c5ad34e8fa717d9541f9d9b03c44c71b97b45))
+
+
+### Performance Improvements
+
+* **runner:** enforce rank-aware resource admission ([#25626](https://github.com/vm0-ai/vm0/issues/25626)) ([333fa02](https://github.com/vm0-ai/vm0/commit/333fa02b3d60e2038abcd35b38c0bce56fa85634))
+
 ## [0.160.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.0...runner-rs-v0.160.1) (2026-08-07)
 
 
