@@ -118,7 +118,12 @@ import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  videoTemplateOptionsEnabled$,
+} from "../../signals/external/feature-switch.ts";
+import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+import { resolveVideoGenerationOptions } from "@vm0/core/video-model-catalog";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -7156,6 +7161,25 @@ const STRUCTURED_INLINE_REFERENCE_CLASS =
   "active:bg-orange-500/20 dark:bg-orange-400/15 dark:text-orange-300 " +
   "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
 
+/**
+ * Read-only echo of the parameters a sent video used, resolved the same way the
+ * composer chip resolves them. Talking-avatar templates share the "video"
+ * envelope but take none of these parameters.
+ */
+function sentVideoTemplateSpec(
+  template: GenerationTemplateRequest,
+): string | undefined {
+  if (template.type !== "video") {
+    return undefined;
+  }
+  const { selection } = template;
+  if (parseAvatarTemplateStylePresetId(selection.stylePresetId) !== undefined) {
+    return undefined;
+  }
+  const resolved = resolveVideoGenerationOptions(selection.videoOptions);
+  return `${resolved.aspectRatio} \u00b7 ${resolved.duration}`;
+}
+
 function templatePickerCategoryForReference(
   template: GenerationTemplateRequest,
 ): string {
@@ -7187,6 +7211,10 @@ function UserMessageTemplateReference({
 }) {
   const { t } = useTranslation();
   const typeLabel = generationTemplateTypeLabel(part.template);
+  const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
+  const spec = videoOptionsEnabled
+    ? sentVideoTemplateSpec(part.template)
+    : undefined;
   const setTemplatePickerCategory = useSet(
     signals.template.setTemplatePickerCategory$,
   );
@@ -7252,6 +7280,11 @@ function UserMessageTemplateReference({
     >
       <IconColorSwatch size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      {spec !== undefined && (
+        <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
+          {spec}
+        </span>
+      )}
     </button>
   );
 }

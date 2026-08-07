@@ -5,7 +5,7 @@ import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/cha
 import { zeroAvatarVideoContract } from "@vm0/api-contracts/contracts/zero-avatar-video";
 import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { ILLUSTRATION_TEMPLATE_ITEMS, VIDEO_TEMPLATE_ITEMS } from "@vm0/core";
 
 import {
   detachedSetupPage,
@@ -112,6 +112,57 @@ describe("user messages", () => {
     expect(
       document.querySelector("[data-composer-inline-template]"),
     ).toBeNull();
+  });
+
+  it("echoes the video parameters a sent template used", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000750";
+    const templateItem = VIDEO_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Sent video template",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000750",
+          role: "user",
+          content: "Make the clip",
+          runId: "d0000000-0000-4000-a000-000000000750",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: templateItem.title,
+                template: {
+                  type: "video",
+                  selection: {
+                    stylePresetId: templateItem.id,
+                    // Only the ratio was changed; the duration still resolves
+                    // from the catalog.
+                    videoOptions: { aspectRatio: "9:16" },
+                  },
+                },
+              },
+              { type: "text", text: "Make the clip" },
+            ],
+          },
+          createdAt: "2026-08-07T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+      },
+    });
+
+    const reference = await screen.findByLabelText(
+      `Message template ${templateItem.title}`,
+    );
+    expect(reference).toHaveTextContent("9:16 \u00b7 8s");
   });
 
   it("opens avatar message templates at the voice picker", async () => {
