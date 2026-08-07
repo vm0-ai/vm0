@@ -699,7 +699,7 @@ describe("PiLoop edge turn", () => {
         runId: run.runId,
         exitCode: PI_STANDBY_TTL_RELEASE_EXIT_CODE,
       },
-      webhooks.sandboxWebhookHeaders({ runId: run.runId }),
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
       [200],
     );
     expect(released.body).toStrictEqual({ success: true, status: "released" });
@@ -937,7 +937,7 @@ describe("PiLoop edge turn", () => {
     );
     await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 0, lastEventSequence: 4 },
-      sandboxHeaders,
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
       [200],
     );
     await flushWaitUntilForTest();

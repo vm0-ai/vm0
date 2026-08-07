@@ -172,7 +172,19 @@ async function transitionRunStatus(
   if (!updated) {
     return false;
   }
-  await db.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
+  // Pi standby jobs stay in the queue after being claimed so a later handoff
+  // can wake the prewarmed sandbox. Nothing consumes them once the run settles,
+  // so drop them here. Every other profile is already removed by the normal
+  // claim/expiry lifecycle, and deleting those rows here would turn a stale
+  // claim's "Run not found" into "Job not found in queue".
+  await db
+    .delete(runnerJobQueue)
+    .where(
+      and(
+        eq(runnerJobQueue.runId, runId),
+        eq(runnerJobQueue.profile, PI_STANDBY_PROFILE),
+      ),
+    );
   recordSandboxOperation({
     sandboxType: "runner",
     actionType: "run_terminal_transition_committed",
