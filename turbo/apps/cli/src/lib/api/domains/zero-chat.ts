@@ -173,22 +173,7 @@ export async function getZeroChatThreadAgentId(options: {
   threadId: string;
 }): Promise<string> {
   const thread = await getZeroChatThread(options);
-  if (thread.agentId) {
-    return thread.agentId;
-  }
-
-  // Compatibility fallback for an API version that predates agentId on the
-  // narrow metadata response.
-  const snapshot = await getZeroChatThreadSnapshot();
-  const projection = snapshot.chatThreads.find((candidate) => {
-    return candidate.id === options.threadId;
-  });
-  if (!projection) {
-    throw new Error(
-      `Chat thread "${options.threadId}" was not found in the thread snapshot`,
-    );
-  }
-  return projection.agentId;
+  return thread.agentId;
 }
 
 export async function sendZeroChatEvent(

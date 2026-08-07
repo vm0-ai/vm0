@@ -36,7 +36,6 @@ import {
   type CustomConnectorPermissionBundleResponse,
   type CustomConnectorResponse,
   type CustomConnectorValueInput,
-  type PatchCustomConnectorBody,
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
   type UpdateCustomConnectorBody,
@@ -77,7 +76,6 @@ import { zeroCustomConnectorsRoutes } from "../../zero-custom-connectors";
 import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-delete";
 import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
 import { zeroCustomConnectorOAuth2Routes } from "../../zero-custom-connectors-oauth2";
-import { zeroCustomConnectorsPatchRoutes } from "../../zero-custom-connectors-patch";
 import { zeroCustomConnectorProposalRoutes } from "../../zero-custom-connectors-proposal";
 import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connectors-secret-delete";
 import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
@@ -88,7 +86,6 @@ import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 const zeroCustomConnectorByIdTestRoutes = Object.freeze([
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsGetRoutes,
-  ...zeroCustomConnectorsPatchRoutes,
   ...zeroCustomConnectorsUpdateRoutes,
 ]);
 
@@ -136,6 +133,8 @@ const SLOCK_DEVICE_CODE_URL = "https://api.slock.ai/api/auth/device/authorize";
 const SLOCK_TOKEN_URL = "https://api.slock.ai/api/auth/device/token";
 const SLOCK_USERINFO_URL = "https://api.slock.ai/api/auth/me";
 const SLOCK_SERVERS_URL = "https://api.slock.ai/api/servers";
+const STRIPE_OAUTH_TOKEN_URL = "https://connect.stripe.com/oauth/token";
+const STRIPE_ACCOUNT_URL = "https://api.stripe.com/v1/account";
 const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
 const STRIPE_CLI_BROWSER_URL =
   "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI";
@@ -245,6 +244,52 @@ export function mockGitHubConnectorOAuth(): void {
       });
     }),
   );
+}
+
+interface StripeConnectorOAuthOptions {
+  readonly accountId?: string;
+  readonly livemode?: boolean;
+  readonly accessToken?: string;
+  readonly refreshToken?: string;
+}
+
+interface StripeConnectorOAuthRecorder {
+  readonly tokenBodies: URLSearchParams[];
+  readonly accountAuthorizationHeaders: (string | null)[];
+}
+
+export function mockStripeConnectorOAuth(
+  options: StripeConnectorOAuthOptions = {},
+): StripeConnectorOAuthRecorder {
+  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockOptionalEnv("STRIPE_OAUTH_CLIENT_ID", "stripe-client-id");
+  mockOptionalEnv("STRIPE_SECRET_KEY", "stripe-client-secret");
+
+  const tokenBodies: URLSearchParams[] = [];
+  const accountAuthorizationHeaders: (string | null)[] = [];
+  const accessToken = options.accessToken ?? "stripe-live-access-token";
+  const accountId = options.accountId ?? "acct_live_workflow";
+  server.use(
+    http.post(STRIPE_OAUTH_TOKEN_URL, async ({ request }) => {
+      tokenBodies.push(new URLSearchParams(await request.text()));
+      return HttpResponse.json({
+        access_token: accessToken,
+        livemode: options.livemode ?? true,
+        refresh_token: options.refreshToken ?? "stripe-refresh-token",
+        stripe_user_id: accountId,
+        scope: "read_write",
+      });
+    }),
+    http.get(STRIPE_ACCOUNT_URL, ({ request }) => {
+      accountAuthorizationHeaders.push(request.headers.get("authorization"));
+      return HttpResponse.json({
+        id: accountId,
+        business_profile: { name: "BDD Stripe Account" },
+        email: "stripe-workflow@example.test",
+      });
+    }),
+  );
+  return { tokenBodies, accountAuthorizationHeaders };
 }
 
 interface DatadogOAuthProviderRecorder {
@@ -1786,41 +1831,6 @@ export function createConnectorBddApi(context: TestContext) {
       const response = await api.requestCustomConnectorPermissions(
         actor,
         connectorId,
-        [200],
-      );
-      expectStatus(response, 200);
-      return response.body;
-    },
-
-    async requestPatchCustomConnector(
-      actor: ApiTestUser | null,
-      connectorId: string,
-      body: PatchCustomConnectorBody,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
-    ) {
-      const client = setupApp({
-        context,
-        routes: zeroCustomConnectorByIdTestRoutes,
-      })(zeroCustomConnectorByIdContract);
-      return await accept(
-        client.patch({
-          params: { id: connectorId },
-          headers: authenticate(actor),
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async patchCustomConnector(
-      actor: ApiTestUser,
-      connectorId: string,
-      body: PatchCustomConnectorBody,
-    ): Promise<CustomConnectorResponse> {
-      const response = await api.requestPatchCustomConnector(
-        actor,
-        connectorId,
-        body,
         [200],
       );
       expectStatus(response, 200);

@@ -27,18 +27,13 @@ function stubBillingStatus(
     readonly tier?: string;
     readonly canBuyCredits?: boolean;
     readonly videoGenerationAllowed?: boolean;
-    readonly omitPlanCapabilities?: boolean;
   } = {},
 ) {
   return http.get("http://localhost:3000/api/zero/billing/status", () => {
     return HttpResponse.json({
       tier: overrides.tier ?? "pro",
-      ...(overrides.omitPlanCapabilities
-        ? {}
-        : {
-            canBuyCredits: overrides.canBuyCredits ?? true,
-            videoGenerationAllowed: overrides.videoGenerationAllowed ?? true,
-          }),
+      canBuyCredits: overrides.canBuyCredits ?? true,
+      videoGenerationAllowed: overrides.videoGenerationAllowed ?? true,
       credits: 12345,
       onboardingPaymentPending: false,
       subscriptionStatus: "active",
@@ -93,36 +88,6 @@ describe("zero credit command", () => {
     expect(output()).toContain("Auto-recharge: enabled");
     expect(output()).toContain("Threshold: 5,000");
     expect(output()).toContain("Amount: 20,000");
-    expect(output()).toContain("Can purchase credits: yes");
-    expect(output()).toContain("Built-in video generation: available");
-  });
-
-  it("preserves legacy limited-free restrictions when capability fields are omitted", async () => {
-    server.use(
-      stubBillingStatus({
-        tier: "limited-free-1",
-        omitPlanCapabilities: true,
-      }),
-    );
-
-    await zeroCreditCommand.parseAsync(["node", "cli"]);
-
-    expect(output()).toContain("Tier: limited-free-1");
-    expect(output()).toContain("Can purchase credits: no");
-    expect(output()).toContain("Built-in video generation: unavailable");
-  });
-
-  it("preserves legacy free access when capability fields are omitted", async () => {
-    server.use(
-      stubBillingStatus({
-        tier: "free",
-        omitPlanCapabilities: true,
-      }),
-    );
-
-    await zeroCreditCommand.parseAsync(["node", "cli"]);
-
-    expect(output()).toContain("Tier: free");
     expect(output()).toContain("Can purchase credits: yes");
     expect(output()).toContain("Built-in video generation: available");
   });

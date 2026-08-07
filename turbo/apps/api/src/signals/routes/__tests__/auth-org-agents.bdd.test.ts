@@ -764,10 +764,6 @@ describe("AGENT-01 and AGENT-02", () => {
     );
     expect(cleared.enabledIds).toStrictEqual([]);
 
-    const renamed = await api.patchCustomConnector(admin, connector.id, {
-      displayName: "BDD Custom Connector Renamed",
-    });
-    expect(renamed.displayName).toBe("BDD Custom Connector Renamed");
     await api.deleteCustomConnectorSecret(admin, connector.id);
     const afterSecretDelete = await api.listCustomConnectors(admin);
     expect(

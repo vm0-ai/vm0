@@ -514,7 +514,7 @@ export function serialiseCustomConnector(args: {
   };
 }
 
-export function validateDisplayName(raw: string): string | BadRequestResponse {
+function validateDisplayName(raw: string): string | BadRequestResponse {
   const displayName = raw.trim();
   if (displayName.length < 1 || displayName.length > 128) {
     return badRequestMessage(

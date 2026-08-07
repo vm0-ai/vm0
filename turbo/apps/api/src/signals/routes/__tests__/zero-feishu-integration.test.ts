@@ -65,7 +65,6 @@ import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
 import { zeroCustomConnectorsDeleteRoutes } from "../zero-custom-connectors-delete";
 import { zeroCustomConnectorsGetRoutes } from "../zero-custom-connectors-get";
 import { zeroCustomConnectorOAuth2Routes } from "../zero-custom-connectors-oauth2";
-import { zeroCustomConnectorsPatchRoutes } from "../zero-custom-connectors-patch";
 import { zeroCustomConnectorSecretDeleteRoutes } from "../zero-custom-connectors-secret-delete";
 import { zeroCustomConnectorsSecretSetRoutes } from "../zero-custom-connectors-secret-set";
 import { zeroCustomConnectorsUpdateRoutes } from "../zero-custom-connectors-update";
@@ -74,7 +73,6 @@ import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
 const zeroCustomConnectorByIdTestRoutes = Object.freeze([
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsGetRoutes,
-  ...zeroCustomConnectorsPatchRoutes,
   ...zeroCustomConnectorsUpdateRoutes,
 ]);
 
