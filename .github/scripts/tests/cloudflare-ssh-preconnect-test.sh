@@ -107,7 +107,7 @@ case "$FAKE_SSH_SCENARIO" in
     fi
     ;;
   reconnect-window-success)
-    if [ "$count" -le 3 ]; then
+    if [ "$count" -le 6 ]; then
       echo "Connection closed by UNKNOWN port 65535 --secret super-secret" >&2
       echo "TUNNEL_SERVICE_TOKEN_ID=client-id" >&2
       exit 255
@@ -229,15 +229,18 @@ assert_runner_temp_empty "$tmp/transient/runner-temp"
 run_case reconnect-window reconnect-window-success "dev-1.aws.vm3.ai"
 assert_contains "$tmp/reconnect-window/status" "0"
 assert_contains "$tmp/reconnect-window/stdout" "Established replay-safe SSH transport to dev-1.aws.vm3.ai"
-assert_contains "$tmp/reconnect-window/stderr" "attempt 3/4"
+assert_contains "$tmp/reconnect-window/stderr" "attempt 6/7"
 assert_not_contains "$tmp/reconnect-window/stderr" "::error"
 assert_not_contains "$tmp/reconnect-window/stderr" "super-secret"
 assert_not_contains "$tmp/reconnect-window/stderr" "client-id"
-assert_line_count "$tmp/reconnect-window/ssh-invocations" 4 "-n -M -N -f metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/reconnect-window/ssh-invocations" 7 "-n -M -N -f metal@dev-1.aws.vm3.ai"
 assert_line_count "$tmp/reconnect-window/ssh-invocations" 1 "-n -O check metal@dev-1.aws.vm3.ai"
 assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "1"
 assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "2"
 assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "3"
+assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "4"
+assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "5"
+assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "6"
 if [ -e "$tmp/reconnect-window/outer-summary" ]; then
   echo "expected recovered attempts not to write the job summary" >&2
   cat "$tmp/reconnect-window/outer-summary" >&2
@@ -328,7 +331,7 @@ assert_runner_temp_empty "$tmp/partial-best-effort/runner-temp"
 
 run_case exhaustion exhaustion "dev-1.aws.vm3.ai"
 assert_contains "$tmp/exhaustion/status" "255"
-assert_contains "$tmp/exhaustion/stderr" "retry limit reached after 4 attempts"
+assert_contains "$tmp/exhaustion/stderr" "retry limit reached after 7 attempts"
 assert_contains "$tmp/exhaustion/stderr" "--secret [redacted]"
 assert_contains "$tmp/exhaustion/stderr" "--id [redacted]"
 assert_not_contains "$tmp/exhaustion/stderr" "super-secret"
@@ -338,10 +341,13 @@ if [ "$(grep -c '^::error' "$tmp/exhaustion/stderr")" -ne 1 ]; then
   cat "$tmp/exhaustion/stderr" >&2
   exit 1
 fi
-assert_line_count "$tmp/exhaustion/ssh-invocations" 4 "-n -M -N -f metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/exhaustion/ssh-invocations" 7 "-n -M -N -f metal@dev-1.aws.vm3.ai"
 assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "1"
 assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "2"
 assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "3"
+assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "4"
+assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "5"
+assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "6"
 assert_runner_temp_empty "$tmp/exhaustion/runner-temp"
 
 run_case multiple success $' dev-1.aws.vm3.ai,dev-11.gcp.aws.vm3.ai\nDEV-1.AWS.VM3.AI '
