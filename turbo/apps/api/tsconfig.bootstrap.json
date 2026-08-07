@@ -18,5 +18,8 @@
     "src/signals/route.ts"
   ],
   "exclude": ["node_modules", "dist"],
-  "references": [{ "path": "./tsconfig.core.json" }]
+  "references": [
+    { "path": "./tsconfig.gateways.json" },
+    { "path": "./tsconfig.core.json" }
+  ]
 }

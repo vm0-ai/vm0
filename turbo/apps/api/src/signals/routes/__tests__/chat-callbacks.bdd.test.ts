@@ -1849,12 +1849,12 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       context.signal,
     );
     const releaseGoalRunPreparation = deferredGate();
-    useSecretKmsProbe((command) => {
+    useSecretKmsProbe((request) => {
       if (!goalRunPreparationStarted.settled()) {
         goalRunPreparationStarted.resolve(undefined);
       }
       return releaseGoalRunPreparation.wait().then(() => {
-        return generateDataKeyOutput(command);
+        return generateDataKeyOutput(request);
       });
     });
     chatCallbacks.mockChatOutputEvents([
@@ -1925,7 +1925,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await createGoalForRun(actor, first.runId, objectiveBrief);
     const runPreparationStarted = createDeferredPromise<void>(context.signal);
     const releaseRunPreparation = deferredGate();
-    useSecretKmsProbe((command) => {
+    useSecretKmsProbe((request) => {
       // The terminal callback drain and the goal enqueue drain may both prepare
       // this queued run. Hold every preparation so neither can win the final
       // claim before the goal is deleted.
@@ -1933,7 +1933,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         runPreparationStarted.resolve(undefined);
       }
       return releaseRunPreparation.wait().then(() => {
-        return generateDataKeyOutput(command);
+        return generateDataKeyOutput(request);
       });
     });
     chatCallbacks.mockChatOutputEvents([
@@ -2340,12 +2340,12 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       context.signal,
     );
     const releaseGoalRunPreparation = deferredGate();
-    useSecretKmsProbe((command) => {
+    useSecretKmsProbe((request) => {
       if (!goalRunPreparationStarted.settled()) {
         goalRunPreparationStarted.resolve(undefined);
       }
       return releaseGoalRunPreparation.wait().then(() => {
-        return generateDataKeyOutput(command);
+        return generateDataKeyOutput(request);
       });
     });
 
