@@ -1549,6 +1549,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn repeated_drain_policy_query_failure_restores_effective_override() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("active", 2),
+            enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::NotEnabled)]),
+            restart_override_write: DrainRestartOverrideWrite::Replaced,
+            restart_policy_results: VecDeque::from([
+                Err(fake_error("restart policy failed")),
+                Ok("no".to_string()),
+            ]),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("restart policy failed"));
+        assert!(!error.to_string().contains("additionally rollback failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "lifecycle_state",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "restart_policy",
+                "lifecycle_state",
+                "restore_not_enabled",
+                "daemon_reload",
+                "restart_policy",
+            ]
+        );
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn drain_restart_policy_error_for_still_active_service_aborts_before_signal() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
