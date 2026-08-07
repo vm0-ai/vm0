@@ -2782,7 +2782,6 @@ function pendingActiveInputRows(
       eventType: chatEvents.eventType,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
-      triggerSource: chatEvents.triggerSource,
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
       generationTemplate: chatEvents.generationTemplate,
@@ -2848,9 +2847,6 @@ async function claimPendingActiveInputEvent(
           userMessage,
           attachFiles: event.attachFiles,
           generationTemplate: event.generationTemplate,
-          ...(event.triggerSource
-            ? { triggerSource: event.triggerSource }
-            : {}),
         });
   if (!replacement) {
     throw new Error("Active input claim lost after locking the thread");
@@ -2871,6 +2867,9 @@ async function materializePendingActiveInputPrompts(
     ) {
       return null;
     }
+    if (event.contextType === null) {
+      throw new Error("Pending active input is missing its context type");
+    }
     prompts.set(
       event.id,
       await materializeActiveInputPrompt(db, {
@@ -2878,7 +2877,7 @@ async function materializePendingActiveInputPrompts(
           id: event.id,
           chatThreadId: event.chatThreadId,
           eventType: event.eventType,
-          triggerSource: event.triggerSource,
+          contextType: event.contextType,
           userMessage: event.userMessage,
           generationTemplate: event.generationTemplate,
         },

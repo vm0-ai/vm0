@@ -27,6 +27,7 @@ import type {
   WorkflowAutomationEventType,
 } from "./workflow-automation-context.service";
 import type { Tx } from "../../lib/db-types";
+import { manualTriggerSource } from "./workflow-automation-trigger-source";
 
 const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
 
@@ -222,8 +223,8 @@ export async function loadNextWorkflowQueueEvent(
         id: chatEvents.id,
         userId: chatThreads.userId,
         automationId: chatAutomationContext.automationId,
+        automationKind: zeroWorkflowAutomations.kind,
         chatThreadId: chatEvents.chatThreadId,
-        triggerSource: chatEvents.triggerSource,
         triggerBrief: chatAutomationContext.triggerBrief,
         workflowName: chatAutomationContext.workflowName,
         workflowAutomationEventType: chatAutomationContext.eventType,
@@ -238,12 +239,16 @@ export async function loadNextWorkflowQueueEvent(
           eq(chatAutomationContext.id, chatEvents.contextId),
         ),
       )
+      .leftJoin(
+        zeroWorkflowAutomations,
+        eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
+      )
       .where(eq(chatEvents.id, head.id))
       .limit(1);
     if (!event) {
       return null;
     }
-    if (!event.automationId || !event.triggerSource) {
+    if (!event.automationId || !event.automationKind) {
       throw new Error(
         `Workflow queue event ${event.id} is missing its typed payload`,
       );
@@ -251,7 +256,7 @@ export async function loadNextWorkflowQueueEvent(
     return {
       ...event,
       automationId: event.automationId,
-      triggerSource: event.triggerSource,
+      triggerSource: manualTriggerSource({ kind: event.automationKind }),
     };
   });
 }
@@ -263,7 +268,7 @@ async function loadAutomationRejectionPayload(
   const [event] = await db
     .select({
       automationId: chatAutomationContext.automationId,
-      triggerSource: chatEvents.triggerSource,
+      automationKind: zeroWorkflowAutomations.kind,
       triggerBrief: chatAutomationContext.triggerBrief,
       userMessage: chatEvents.userMessage,
       workflowId: zeroWorkflows.id,
@@ -321,7 +326,7 @@ export async function rejectWorkflowQueueEvent(
       return false;
     }
     const payload = await loadAutomationRejectionPayload(tx, args.eventId);
-    if (!payload?.automationId || !payload.triggerSource) {
+    if (!payload?.automationId || !payload.automationKind) {
       return false;
     }
     const userMessage =
@@ -351,7 +356,7 @@ export async function rejectWorkflowQueueEvent(
       runId: null,
       error: args.reason,
       automationId: payload.automationId,
-      triggerSource: payload.triggerSource,
+      triggerSource: manualTriggerSource({ kind: payload.automationKind }),
       triggerBrief: payload.triggerBrief,
     });
     return rejected !== null;

@@ -16,17 +16,10 @@ import {
   inArray,
   isNull,
   lt,
-  not,
   notExists,
-  notInArray,
   or,
-  sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import {
-  nullableDriverValueDecoder,
-  pgTextDecoder,
-} from "../../lib/db-structured-result";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { STALE_QUEUE_ITEM_AGE_MS } from "./chat-thread-queue-drain.service";
@@ -192,10 +185,7 @@ async function monitorChatEventQueue(
   eventIds?: readonly string[],
 ) {
   const staleBefore = new Date(nowDate().getTime() - STALE_QUEUE_ITEM_AGE_MS);
-  const orphanedSource =
-    sql`coalesce(${chatEvents.contextType}, ${chatEvents.triggerSource})`.mapWith(
-      nullableDriverValueDecoder(pgTextDecoder),
-    );
+  const orphanedSource = chatEvents.contextType;
   const results = await db
     .select({
       eventType: chatEvents.eventType,
@@ -218,14 +208,6 @@ async function monitorChatEventQueue(
         ),
         lt(chatEvents.createdAt, staleBefore),
         or(
-          and(
-            isNull(chatEvents.contextType),
-            not(chatEventTypeIn(["input.goal"])),
-            or(
-              isNull(chatEvents.triggerSource),
-              notInArray(chatEvents.triggerSource, ["web", "test", "agent"]),
-            ),
-          ),
           missingChatIntegrationContextRowCondition(db),
           missingScheduledContextRowCondition(db),
           missingGoalRowCondition(db),

@@ -123,6 +123,7 @@ import {
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type { RunWorkflowAutomationResult } from "./zero-workflow-automation-launch.service";
+import { manualTriggerSource } from "./workflow-automation-trigger-source";
 import {
   ensureWorkflowUserAutomationThread,
   loadWorkflowUserAutomationThreadId,
@@ -3011,10 +3012,6 @@ interface AutomationActionInput {
   readonly automationId: string;
   readonly sourceRunId?: string;
   readonly autonomyBudgetCeiling?: number;
-}
-
-function manualTriggerSource(automation: AutomationRow) {
-  return automation.kind === "event" ? "workflow-event" : "workflow-schedule";
 }
 
 /**
