@@ -117,6 +117,33 @@ export const runnerPreferenceSchema = z
   })
   .strict();
 
+export const runnerPreferenceDecisionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("preference"),
+      runnerIdentity: runnerProcessIdentitySchema,
+      tier: z.enum([
+        "exactSandbox",
+        "finalizingPredecessor",
+        "reusableSandbox",
+        "workspaceCache",
+      ]),
+      expiresAt: z.string().datetime({ offset: true }),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("noPreference"),
+      reason: z.enum([
+        "noReuseKey",
+        "expired",
+        "noViableHolder",
+        "lookupError",
+      ]),
+    })
+    .strict(),
+]);
+
 export const runnerPreferenceResolutionSchema = z.enum([
   "exact_history_generation",
   "finalizing_predecessor",
@@ -427,6 +454,7 @@ export const jobSchema = z.object({
   cliAgentSessionId: z.string().nullable().optional(),
   reuseKey: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
+  runnerPreferenceDecision: runnerPreferenceDecisionSchema.optional(),
   runnerPreference: runnerPreferenceSchema.optional(),
   runnerPreferenceResolution: runnerPreferenceResolutionSchema.optional(),
 });
@@ -1059,6 +1087,9 @@ export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
+export type RunnerPreferenceDecision = z.infer<
+  typeof runnerPreferenceDecisionSchema
+>;
 export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
 export type RunnerPreferenceResolution = z.infer<
   typeof runnerPreferenceResolutionSchema

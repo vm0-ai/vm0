@@ -625,7 +625,7 @@ describe("runner resume session contract", () => {
     ]);
   });
 
-  it("keeps the canonical runner preference optional", () => {
+  it("keeps runner preference delivery fields optional", () => {
     const job = jobSchema.parse({
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
@@ -634,8 +634,120 @@ describe("runner resume session contract", () => {
       vars: null,
       experimentalProfile: "vm0/default",
     });
+    expect(job.runnerPreferenceDecision).toBeUndefined();
     expect(job.runnerPreference).toBeUndefined();
     expect(job.runnerPreferenceResolution).toBeUndefined();
+  });
+
+  it("accepts every strict positive runner preference decision tier", () => {
+    const runnerPreferenceDecision = {
+      kind: "preference" as const,
+      runnerIdentity: {
+        runnerId: "22222222-2222-4222-8222-222222222222",
+        heartbeatGeneration: 7,
+      },
+      expiresAt: "2026-08-03T00:00:01.000Z",
+    };
+    const jobInput = {
+      runId: "33333333-3333-4333-8333-333333333333",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      experimentalProfile: "vm0/default",
+    };
+
+    for (const tier of [
+      "exactSandbox",
+      "finalizingPredecessor",
+      "reusableSandbox",
+      "workspaceCache",
+    ] as const) {
+      expect(
+        jobSchema.parse({
+          ...jobInput,
+          runnerPreferenceDecision: { ...runnerPreferenceDecision, tier },
+        }).runnerPreferenceDecision,
+      ).toStrictEqual({ ...runnerPreferenceDecision, tier });
+    }
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          ...runnerPreferenceDecision,
+          tier: "reusableSandbox",
+          reason: "noReuseKey",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          ...runnerPreferenceDecision,
+          tier: "reusableSandbox",
+          expiresAt: undefined,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          ...runnerPreferenceDecision,
+          runnerIdentity: {
+            ...runnerPreferenceDecision.runnerIdentity,
+            runnerId: "not-a-uuid",
+          },
+          tier: "reusableSandbox",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          ...runnerPreferenceDecision,
+          tier: "reusableSandbox",
+          expiresAt: "not-a-date",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts every strict no-preference decision reason", () => {
+    const jobInput = {
+      runId: "33333333-3333-4333-8333-333333333333",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      experimentalProfile: "vm0/default",
+    };
+
+    for (const reason of [
+      "noReuseKey",
+      "expired",
+      "noViableHolder",
+      "lookupError",
+    ] as const) {
+      expect(
+        jobSchema.parse({
+          ...jobInput,
+          runnerPreferenceDecision: { kind: "noPreference", reason },
+        }).runnerPreferenceDecision,
+      ).toStrictEqual({ kind: "noPreference", reason });
+    }
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreferenceDecision: {
+          kind: "noPreference",
+          reason: "noReuseKey",
+          tier: "workspaceCache",
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts every optional runner preference resolution beside the strict preference", () => {
