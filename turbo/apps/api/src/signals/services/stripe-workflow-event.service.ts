@@ -72,6 +72,103 @@ const stripeSupportedEventBaseSchema = z
   })
   .passthrough();
 
+const nullableIdentifierObjectSchema = z
+  .object({ id: z.string().trim().min(1).max(255) })
+  .passthrough();
+
+const stripeIdentifierValueSchema = z.union([
+  z.string(),
+  nullableIdentifierObjectSchema,
+]);
+
+function optionalStripeSnapshotField<T>(schema: z.ZodType<T>) {
+  // Optional Stripe expansions must not invalidate an otherwise usable invoice.
+  const nullableSchema = schema.nullable();
+  return z
+    .preprocess((value) => {
+      const parsed = nullableSchema.safeParse(value);
+      return parsed.success ? parsed.data : null;
+    }, nullableSchema)
+    .optional();
+}
+
+const stripeCustomerSchema = z
+  .object({
+    id: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const stripeCustomerValueSchema = z.union([z.string(), stripeCustomerSchema]);
+
+const stripeLinePriceSchema = z
+  .object({
+    id: z.string().nullable().optional(),
+    product: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+    currency: z.string().nullable().optional(),
+    unit_amount: z.number().nullable().optional(),
+    recurring: z
+      .object({ interval: z.string().nullable().optional() })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+const stripeLinePricingSchema = z
+  .object({
+    type: z.string().nullable().optional(),
+    price_details: z
+      .object({
+        price: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+        product: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+      })
+      .nullable()
+      .optional(),
+    unit_amount_decimal: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const stripeInvoiceParentSchema = z
+  .object({
+    subscription_details: z
+      .object({
+        subscription: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+      })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+const stripeInvoicePaymentRelationshipSchema = z
+  .object({
+    payment_intent: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+    charge: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+    payment_record: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+  })
+  .passthrough();
+
+const stripeInvoicePaymentValueSchema = z.union([
+  stripeIdentifierValueSchema,
+  stripeInvoicePaymentRelationshipSchema,
+]);
+
+const stripeInvoicePaymentsSchema = z
+  .object({
+    data: z.array(
+      z
+        .object({
+          id: z.string().trim().min(1).max(255).nullable().optional(),
+          payment: optionalStripeSnapshotField(stripeInvoicePaymentValueSchema),
+          payment_intent: optionalStripeSnapshotField(
+            stripeIdentifierValueSchema,
+          ),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
 const stripeInvoiceLineSchema = z
   .object({
     id: z.string().nullable().optional(),
@@ -88,8 +185,8 @@ const stripeInvoiceLineSchema = z
       })
       .nullable()
       .optional(),
-    price: z.unknown().optional(),
-    pricing: z.unknown().optional(),
+    price: optionalStripeSnapshotField(stripeLinePriceSchema),
+    pricing: optionalStripeSnapshotField(stripeLinePricingSchema),
   })
   .passthrough();
 
@@ -111,11 +208,11 @@ const stripeInvoiceSchema = z
       has_more: z.boolean(),
       total_count: z.number().int().nonnegative().nullable().optional(),
     }),
-    customer: z.unknown().optional(),
-    subscription: z.unknown().optional(),
-    payment_intent: z.unknown().optional(),
-    payments: z.unknown().optional(),
-    parent: z.unknown().optional(),
+    customer: optionalStripeSnapshotField(stripeCustomerValueSchema),
+    subscription: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+    payment_intent: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+    payments: optionalStripeSnapshotField(stripeInvoicePaymentsSchema),
+    parent: optionalStripeSnapshotField(stripeInvoiceParentSchema),
   })
   .passthrough();
 
@@ -140,54 +237,6 @@ const stripeDeauthorizedEventSchema = stripeDeauthorizedEventBaseSchema.extend({
   account: z.string().trim().min(1).max(255),
   livemode: z.literal(true),
 });
-
-const nullableIdentifierObjectSchema = z
-  .object({ id: z.string().trim().min(1).max(255) })
-  .passthrough();
-
-const stripeLinePriceSchema = z
-  .object({
-    id: z.string().nullable().optional(),
-    product: z.unknown().optional(),
-    currency: z.string().nullable().optional(),
-    unit_amount: z.number().nullable().optional(),
-    recurring: z
-      .object({ interval: z.string().nullable().optional() })
-      .nullable()
-      .optional(),
-  })
-  .passthrough();
-
-const stripeLinePricingSchema = z
-  .object({
-    type: z.string().nullable().optional(),
-    price_details: z
-      .object({
-        price: z.unknown().optional(),
-        product: z.unknown().optional(),
-      })
-      .nullable()
-      .optional(),
-    unit_amount_decimal: z.string().nullable().optional(),
-  })
-  .passthrough();
-
-const stripeInvoiceParentSchema = z
-  .object({
-    subscription_details: z
-      .object({ subscription: z.unknown().optional() })
-      .nullable()
-      .optional(),
-  })
-  .passthrough();
-
-const stripeInvoicePaymentRelationshipSchema = z
-  .object({
-    payment_intent: z.unknown().optional(),
-    charge: z.unknown().optional(),
-    payment_record: z.unknown().optional(),
-  })
-  .passthrough();
 
 type StripeWorkflowDeliveryRow = typeof stripeWorkflowDeliveries.$inferSelect;
 type StripeWorkflowTransaction = Tx;
@@ -299,14 +348,7 @@ function normalizeCustomer(
   if (typeof value === "string") {
     return { id: value, name: null, email: null };
   }
-  const customer = z
-    .object({
-      id: z.string().nullable().optional(),
-      name: z.string().nullable().optional(),
-      email: z.string().nullable().optional(),
-    })
-    .passthrough()
-    .safeParse(value);
+  const customer = stripeCustomerSchema.safeParse(value);
   return customer.success
     ? {
         id: customer.data.id ?? null,
@@ -322,20 +364,7 @@ function normalizePayments(value: unknown): {
   readonly chargeIds: readonly string[];
   readonly paymentRecordIds: readonly string[];
 } {
-  const payments = z
-    .object({
-      data: z.array(
-        z
-          .object({
-            id: z.string().trim().min(1).max(255).nullable().optional(),
-            payment: z.unknown().optional(),
-            payment_intent: z.unknown().optional(),
-          })
-          .passthrough(),
-      ),
-    })
-    .passthrough()
-    .safeParse(value);
+  const payments = stripeInvoicePaymentsSchema.safeParse(value);
   if (!payments.success) {
     return {
       paymentIds: [],
