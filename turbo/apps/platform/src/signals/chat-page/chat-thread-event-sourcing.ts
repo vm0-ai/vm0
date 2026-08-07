@@ -19,8 +19,9 @@ import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { logger } from "../log.ts";
 import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { rootSignal$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
-import { bestEffort } from "../utils.ts";
+import { bestEffort, createDeferredPromise } from "../utils.ts";
 import { i18n } from "../../i18n/index.ts";
 import type {
   ChatThreadEventView,
@@ -87,6 +88,22 @@ const chatThreadEventState$ = state<ChatThreadEventState>({
   events: [],
   latestEventId: null,
   latestSeqId: null,
+});
+
+const initialLocalChatThreadEventsLoadedDeferred$ = computed((get) => {
+  return createDeferredPromise<void>(get(rootSignal$));
+});
+
+const initialRemoteChatThreadEventsSyncedDeferred$ = computed((get) => {
+  return createDeferredPromise<void>(get(rootSignal$));
+});
+
+export const initialLocalChatThreadEventsLoaded$ = computed((get) => {
+  return get(initialLocalChatThreadEventsLoadedDeferred$).promise;
+});
+
+export const initialRemoteChatThreadEventsSynced$ = computed((get) => {
+  return get(initialRemoteChatThreadEventsSyncedDeferred$).promise;
 });
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
@@ -302,6 +319,10 @@ const initializeChatThreadEventState$ = command(
       events: state.events,
     });
     set(syncCurrentChatThreadDocumentTitle$, signal);
+    const loaded = get(initialLocalChatThreadEventsLoadedDeferred$);
+    if (!loaded.settled()) {
+      loaded.resolve();
+    }
   },
 );
 
@@ -322,33 +343,43 @@ const syncChatThreadEvents$ = command(
       signal,
     );
     signal.throwIfAborted();
+    let result: ChatThreadEventSyncResult;
     if (!update) {
-      return {
+      result = {
         eventCount: state.events.length,
         snapshotReplaced: false,
       };
+    } else {
+      const persistableNewEvents = update.newEvents;
+      if (update.replacementSnapshot) {
+        await store.writeStore.replaceFromSnapshot(
+          update.replacementSnapshot,
+          persistableNewEvents,
+          signal,
+        );
+      } else {
+        await store.writeStore.upsertEvents(persistableNewEvents, signal);
+      }
+      signal.throwIfAborted();
+      set(chatThreadEventState$, update.state);
+      set(reconcileOptimisticChatThreadEvents$, {
+        snapshot: update.state.snapshot?.chatThreads ?? [],
+        events: update.state.events,
+      });
+      set(syncCurrentChatThreadDocumentTitle$, signal);
+      result = {
+        eventCount: update.state.events.length,
+        snapshotReplaced: update.replacementSnapshot !== null,
+      };
     }
 
-    const persistableNewEvents = update.newEvents;
-    if (update.replacementSnapshot) {
-      await store.writeStore.replaceFromSnapshot(
-        update.replacementSnapshot,
-        persistableNewEvents,
-        signal,
-      );
-    } else {
-      await store.writeStore.upsertEvents(persistableNewEvents, signal);
+    if (mode === "incremental") {
+      const synced = get(initialRemoteChatThreadEventsSyncedDeferred$);
+      if (!synced.settled()) {
+        synced.resolve();
+      }
     }
-    set(chatThreadEventState$, update.state);
-    set(reconcileOptimisticChatThreadEvents$, {
-      snapshot: update.state.snapshot?.chatThreads ?? [],
-      events: update.state.events,
-    });
-    set(syncCurrentChatThreadDocumentTitle$, signal);
-    return {
-      eventCount: update.state.events.length,
-      snapshotReplaced: update.replacementSnapshot !== null,
-    };
+    return result;
   },
 );
 

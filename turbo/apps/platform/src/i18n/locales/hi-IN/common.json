@@ -1621,6 +1621,7 @@
       "icon": "चैट थ्रेड आइकन",
       "loadingEarlier": "पहले के संदेश लोड हो रहे हैं",
       "noEmojiFound": "कोई इमोजी नहीं मिला",
+      "notFound": "चैट थ्रेड नहीं मिला",
       "openArtifacts": "आर्टिफ़ैक्ट खोलें",
       "openBrowser": "खुला ब्राउज़र",
       "openNamedAgent": "ओपन एजेंट {{name}}",

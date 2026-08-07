@@ -1621,6 +1621,7 @@
       "icon": "Chat-Thread-Symbol",
       "loadingEarlier": "Frühere Nachrichten werden geladen",
       "noEmojiFound": "Kein Emoji gefunden",
+      "notFound": "Chat-Thread nicht gefunden",
       "openArtifacts": "Artefakte öffnen",
       "openBrowser": "Browser öffnen",
       "openNamedAgent": "Agent {{name}} öffnen",

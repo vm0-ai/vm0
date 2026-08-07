@@ -1661,6 +1661,7 @@
       "icon": "Icono del hilo de chat",
       "loadingEarlier": "Cargando mensajes anteriores",
       "noEmojiFound": "No se ha encontrado ningún emoji",
+      "notFound": "Hilo de chat no encontrado",
       "openArtifacts": "Abrir artefactos",
       "openBrowser": "Abrir navegador",
       "openNamedAgent": "Abrir agente {{name}}",

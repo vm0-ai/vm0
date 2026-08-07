@@ -3708,7 +3708,28 @@ function ChatHistoryBackfillSkeleton({ thread }: { thread: ChatPanelSignals }) {
   );
 }
 
+function ChatThreadNotFound() {
+  const { t } = useTranslation();
+  return (
+    <main
+      data-chat-thread-not-found
+      className="flex min-h-0 flex-1 items-center justify-center px-6 py-16 text-center"
+    >
+      <h1 className="text-lg font-semibold text-foreground">
+        {t(($) => {
+          return $.chat.thread.notFound;
+        })}
+      </h1>
+    </main>
+  );
+}
+
 function ChatThreadContent({ thread }: { thread: ChatPanelSignals }) {
+  const threadMeta = useGet(thread.threadMeta$);
+  if (!threadMeta) {
+    return <ChatThreadNotFound />;
+  }
+
   return (
     <>
       <ChatThreadHeader thread={thread} />

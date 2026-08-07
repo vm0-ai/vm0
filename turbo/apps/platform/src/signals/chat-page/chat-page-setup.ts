@@ -4,7 +4,6 @@ import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.
 import { updatePage$ } from "../react-router.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { searchParams$ } from "../route.ts";
 import {
   SIDEBAR_PARAM,
@@ -46,7 +45,6 @@ export const setupChatPage$ = command(async ({ set }, signal: AbortSignal) => {
   await Promise.all([
     set(onboardGuard$, signal),
     set(internalSetupChatPage$, signal),
-    set(hideAppSkeleton$, signal),
   ]);
   signal.throwIfAborted();
 });

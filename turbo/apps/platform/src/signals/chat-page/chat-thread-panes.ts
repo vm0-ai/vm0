@@ -5,6 +5,7 @@ import type {
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { currentChatThreadId$ } from "../agent-chat.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { logger } from "../log.ts";
 import {
   detachedNavigateTo$,
@@ -21,6 +22,11 @@ import {
 import { createCachedChatPanelSignals$ } from "./create-chat-thread.ts";
 import { createChatEventSignals } from "./chat-event-signals.ts";
 import type { ChatPanelSignals } from "./chat-panel-signals.ts";
+import {
+  initialLocalChatThreadEventsLoaded$,
+  initialRemoteChatThreadEventsSynced$,
+  threadMeta,
+} from "./chat-thread-event-sourcing.ts";
 import {
   currentLeftThread$,
   currentRightThread$,
@@ -64,6 +70,7 @@ export const unloadRightThread$ = command(({ get, set }) => {
 interface PaneSpec {
   setPaneThread$: Command<void, [ChatPanelSignals | null]>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
+  onReady$?: Command<void, [AbortSignal]>;
 }
 
 interface RestoredDraftState {
@@ -171,9 +178,23 @@ const resolvePaneThread$ = command(
   },
 );
 
+const waitForThreadMetaResolution$ = command(
+  async ({ get }, threadId: string, signal: AbortSignal): Promise<void> => {
+    await get(initialLocalChatThreadEventsLoaded$);
+    signal.throwIfAborted();
+
+    if (get(threadMeta(threadId))) {
+      return;
+    }
+
+    await get(initialRemoteChatThreadEventsSynced$);
+    signal.throwIfAborted();
+  },
+);
+
 const setupPaneThread$ = command(
   async (
-    { set },
+    { get, set },
     spec: PaneSpec,
     threadId: string,
     parentSignal: AbortSignal,
@@ -181,6 +202,8 @@ const setupPaneThread$ = command(
     const signal = set(spec.resetSetupSignal$, parentSignal);
 
     L.debug("setupPaneThread$ start", { threadId });
+    await set(waitForThreadMetaResolution$, threadId, signal);
+    signal.throwIfAborted();
 
     const chatEvents = createChatEventSignals(threadId);
     const { thread, isNew } = set(
@@ -189,6 +212,13 @@ const setupPaneThread$ = command(
       signal,
     );
     set(spec.setPaneThread$, thread);
+    if (spec.onReady$) {
+      set(spec.onReady$, signal);
+    }
+
+    if (!get(thread.threadMeta$)) {
+      return;
+    }
 
     await set(
       resolvePaneThread$,
@@ -207,6 +237,9 @@ export const setupLeftThread$ = command(
     threadId: string,
     parentSignal: AbortSignal,
   ): Promise<void> => {
+    await set(waitForThreadMetaResolution$, threadId, parentSignal);
+    parentSignal.throwIfAborted();
+
     await Promise.all([
       set(syncPrimaryThread$, threadId, parentSignal),
       set(
@@ -214,6 +247,7 @@ export const setupLeftThread$ = command(
         {
           setPaneThread$: setCurrentLeftThread$,
           resetSetupSignal$: resetLeftSetupSignal$,
+          onReady$: hideAppSkeleton$,
         },
         threadId,
         parentSignal,

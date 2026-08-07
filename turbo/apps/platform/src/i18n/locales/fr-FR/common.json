@@ -1661,6 +1661,7 @@
       "icon": "Icône de fil de discussion",
       "loadingEarlier": "Chargement des messages précédents",
       "noEmojiFound": "Aucun emoji trouvé",
+      "notFound": "Fil de discussion introuvable",
       "openArtifacts": "Ouvrir les artéfacts",
       "openBrowser": "Ouvrir le navigateur",
       "openNamedAgent": "Ouvrir l'agent {{name}}",

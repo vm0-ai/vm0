@@ -1661,6 +1661,7 @@
       "icon": "Icona del thread di chat",
       "loadingEarlier": "Caricamento dei messaggi precedenti",
       "noEmojiFound": "Nessuna emoji trovata",
+      "notFound": "Conversazione non trovata",
       "openArtifacts": "Artefatti aperti",
       "openBrowser": "Apri il browser",
       "openNamedAgent": "Apri agente {{name}}",
