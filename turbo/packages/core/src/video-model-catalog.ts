@@ -46,6 +46,35 @@ const KLING_VIDEO_DURATIONS = [
   "14s",
   "15s",
 ] as const;
+const SEEDANCE_2_5_DURATIONS = [
+  "4s",
+  "5s",
+  "6s",
+  "7s",
+  "8s",
+  "9s",
+  "10s",
+  "11s",
+  "12s",
+  "13s",
+  "14s",
+  "15s",
+  "16s",
+  "17s",
+  "18s",
+  "19s",
+  "20s",
+  "21s",
+  "22s",
+  "23s",
+  "24s",
+  "25s",
+  "26s",
+  "27s",
+  "28s",
+  "29s",
+  "30s",
+] as const;
 const SEEDANCE_2_DURATIONS = [
   "4s",
   "5s",
@@ -94,7 +123,7 @@ const MINIMAX_H3_RESOLUTIONS = ["768p", "2k"] as const;
 export type SeedanceResolution = (typeof SEEDANCE_RESOLUTIONS)[number];
 
 export type VideoProvider = "byteplus" | "fal" | "minimax";
-type VideoModelFamily = "seedance-2" | "seedance-1-5";
+type VideoModelFamily = "seedance-2-5" | "seedance-2" | "seedance-1-5";
 type FalRequestFormat = "veo" | "kling";
 
 interface BaseVideoModelConfig {
@@ -139,6 +168,27 @@ export type VideoModelConfig =
   | MiniMaxVideoModelConfig;
 
 export const VIDEO_MODEL_CONFIGS = {
+  "dreamina-seedance-2-5-260628": {
+    provider: "byteplus",
+    alias: "dreamina-seedance-2.5",
+    label: "Seedance 2.5",
+    family: "seedance-2-5",
+    aspectRatios: VIDEO_ASPECT_RATIOS,
+    durations: SEEDANCE_2_5_DURATIONS,
+    resolutions: SEEDANCE_FAST_RESOLUTIONS,
+    defaultResolution: "720p",
+    supportsGenerateAudio: true,
+    supportsSeed: false,
+    supportsNegativePrompt: false,
+    supportsAutoFix: false,
+    supportsSafetyTolerance: false,
+    supportsReferenceImage: true,
+    supportsReferenceVideo: true,
+    supportsReferenceAudio: true,
+    supportsFirstFrame: true,
+    supportsLastFrame: true,
+    public: true,
+  },
   "dreamina-seedance-2-0-260128": {
     provider: "byteplus",
     alias: "dreamina-seedance-2.0",
@@ -271,12 +321,15 @@ export type VideoModel = VideoModelId;
 export const VIDEO_MODELS = Object.keys(VIDEO_MODEL_CONFIGS) as VideoModel[];
 
 export const VIDEO_MODEL_ALIASES = {
+  "dreamina-seedance-2.5": "dreamina-seedance-2-5-260628",
+  "dreamina-seedance-2-5": "dreamina-seedance-2-5-260628",
   "dreamina-seedance-2.0": "dreamina-seedance-2-0-260128",
   "dreamina-seedance-2-0": "dreamina-seedance-2-0-260128",
   "dreamina-seedance-2.0-fast": "dreamina-seedance-2-0-fast-260128",
   "dreamina-seedance-2-0-fast": "dreamina-seedance-2-0-fast-260128",
   "seedance-1.5-pro": "seedance-1-5-pro-251215",
   "seedance-1-5-pro": "seedance-1-5-pro-251215",
+  "seedance2.5": "dreamina-seedance-2-5-260628",
   "seedance2.0": "dreamina-seedance-2-0-260128",
   "seedance2.0-fast": "dreamina-seedance-2-0-fast-260128",
   "veo3.1-fast": "fal-ai/veo3.1/fast",

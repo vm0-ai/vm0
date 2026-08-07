@@ -55,6 +55,7 @@ export enum FeatureSwitchKey {
   ChatNextRunModelNotice = "chatNextRunModelNotice",
   RealAgentInPreview = "realAgentInPreview",
   UsagePackPlans = "usagePackPlans",
+  PaymentMethodManagement = "paymentMethodManagement",
 
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",

@@ -93,10 +93,28 @@ type VideoDimensions = {
   readonly width: number;
   readonly height: number;
 };
-type DimensionTable = Record<
-  SeedanceResolution,
-  Record<VideoAspectRatio, VideoDimensions>
+type DimensionTable = Partial<
+  Record<SeedanceResolution, Record<VideoAspectRatio, VideoDimensions>>
 >;
+
+const SEEDANCE_2_5_DIMENSIONS = {
+  "480p": {
+    "21:9": { width: 992, height: 432 },
+    "16:9": { width: 854, height: 480 },
+    "4:3": { width: 752, height: 560 },
+    "1:1": { width: 640, height: 640 },
+    "3:4": { width: 560, height: 752 },
+    "9:16": { width: 480, height: 854 },
+  },
+  "720p": {
+    "21:9": { width: 1470, height: 630 },
+    "16:9": { width: 1280, height: 720 },
+    "4:3": { width: 1112, height: 834 },
+    "1:1": { width: 960, height: 960 },
+    "3:4": { width: 834, height: 1112 },
+    "9:16": { width: 720, height: 1280 },
+  },
+} as const satisfies DimensionTable;
 
 const SEEDANCE_2_DIMENSIONS = {
   "480p": {
@@ -680,8 +698,15 @@ function validateMiniMaxVideoReferences(
 }
 
 function validateReferenceAudioDependency(
+  modelConfig: VideoModelConfig,
   options: VideoReferenceOptions,
 ): VideoErrorResponse | null {
+  if (
+    modelConfig.provider === "byteplus" &&
+    modelConfig.family === "seedance-2-5"
+  ) {
+    return null;
+  }
   if (
     options.referenceAudioUrls.length > 0 &&
     options.referenceImageUrls.length === 0 &&
@@ -691,6 +716,52 @@ function validateReferenceAudioDependency(
   ) {
     return badRequest(
       "reference audio requires at least one image or video reference",
+    );
+  }
+  return null;
+}
+
+function videoReferenceLimits(modelConfig: VideoModelConfig): {
+  readonly image: number | undefined;
+  readonly video: number;
+  readonly audio: number;
+} {
+  if (
+    modelConfig.provider === "byteplus" &&
+    modelConfig.family === "seedance-2-5"
+  ) {
+    return { image: 30, video: 10, audio: 10 };
+  }
+  return {
+    image: undefined,
+    video: 3,
+    audio: modelConfig.provider === "minimax" ? 3 : 1,
+  };
+}
+
+function validateVideoReferenceCounts(
+  modelConfig: VideoModelConfig,
+  options: VideoReferenceOptions,
+): VideoErrorResponse | null {
+  const limits = videoReferenceLimits(modelConfig);
+  if (
+    limits.image !== undefined &&
+    options.referenceImageUrls.length > limits.image
+  ) {
+    return badRequest(
+      `reference image URLs cannot exceed ${limits.image} items`,
+    );
+  }
+  if (options.inputVideoUrls.length > limits.video) {
+    return badRequest(
+      `reference video URLs cannot exceed ${limits.video} items`,
+    );
+  }
+  if (options.referenceAudioUrls.length > limits.audio) {
+    return badRequest(
+      `reference audio URLs cannot exceed ${limits.audio} ${
+        limits.audio === 1 ? "item" : "items"
+      }`,
     );
   }
   return null;
@@ -730,16 +801,12 @@ function validateVideoReferences(
   if (options.lastFrameImageUrl && !modelConfig.supportsLastFrame) {
     return badRequest(`Last frame image is not supported for ${options.alias}`);
   }
-  if (options.inputVideoUrls.length > 3) {
-    return badRequest("reference video URLs cannot exceed 3 items");
-  }
-  const maxReferenceAudioCount = modelConfig.provider === "minimax" ? 3 : 1;
-  if (options.referenceAudioUrls.length > maxReferenceAudioCount) {
-    return badRequest(
-      maxReferenceAudioCount === 1
-        ? "reference audio URLs cannot exceed 1 item"
-        : "reference audio URLs cannot exceed 3 items",
-    );
+  const referenceCountError = validateVideoReferenceCounts(
+    modelConfig,
+    options,
+  );
+  if (referenceCountError) {
+    return referenceCountError;
   }
   if (modelConfig.provider === "minimax") {
     const miniMaxError = validateMiniMaxVideoReferences(options);
@@ -747,7 +814,7 @@ function validateVideoReferences(
       return miniMaxError;
     }
   }
-  return validateReferenceAudioDependency(options);
+  return validateReferenceAudioDependency(modelConfig, options);
 }
 
 function parseVideoGenerateAudio(
@@ -984,7 +1051,7 @@ function videoPricingCategoryForOptions(
     }
     return options.generateAudio ? VIDEO_AUDIO_CATEGORY : VIDEO_SILENT_CATEGORY;
   }
-  if (config.family === "seedance-2") {
+  if (config.family === "seedance-2-5" || config.family === "seedance-2") {
     const hasInputVideo = options.inputVideoUrls.length > 0;
     if (options.resolution === "1080p") {
       return hasInputVideo
@@ -1183,6 +1250,9 @@ function parseBytePlusTaskHandle(value: unknown): BytePlusTaskHandle | null {
 function multimodalVideoContent(
   options: VideoOptions,
 ): readonly MultimodalVideoContent[] {
+  const config = VIDEO_MODEL_CONFIGS[options.model];
+  const requiresExplicitFrameRole =
+    config.provider === "byteplus" && config.family === "seedance-2-5";
   const content: MultimodalVideoContent[] = [
     {
       type: "text",
@@ -1195,7 +1265,9 @@ function multimodalVideoContent(
     content.push({
       type: "image_url",
       image_url: { url: options.firstFrameImageUrl },
-      ...(hasFirstAndLastFrame ? { role: "first_frame" } : {}),
+      ...(hasFirstAndLastFrame || requiresExplicitFrameRole
+        ? { role: "first_frame" }
+        : {}),
     });
   }
   if (options.lastFrameImageUrl) {
@@ -1234,12 +1306,16 @@ function bytePlusVideoInput(
   webhookUrl: string,
 ): Record<string, unknown> {
   const config = VIDEO_MODEL_CONFIGS[options.model];
+  const usesAdaptiveFrameRatio =
+    config.provider === "byteplus" &&
+    config.family === "seedance-2-5" &&
+    Boolean(options.firstFrameImageUrl || options.lastFrameImageUrl);
   return compactObject({
     model: options.model,
     content: multimodalVideoContent(options),
     callback_url: webhookUrl,
     resolution: options.resolution,
-    ratio: options.aspectRatio,
+    ratio: usesAdaptiveFrameRatio ? "adaptive" : options.aspectRatio,
     duration: options.durationSeconds,
     ...(config.supportsGenerateAudio
       ? { generate_audio: options.generateAudio }
@@ -1818,7 +1894,15 @@ function seedanceDimensions(
   if (config.provider !== "byteplus") {
     throw new Error("Expected a BytePlus video model");
   }
-  return SEEDANCE_2_DIMENSIONS[resolution][aspectRatio];
+  const dimensionTable: DimensionTable =
+    config.family === "seedance-2-5"
+      ? SEEDANCE_2_5_DIMENSIONS
+      : SEEDANCE_2_DIMENSIONS;
+  const dimensions = dimensionTable[resolution];
+  if (!dimensions) {
+    throw new Error(`Unsupported Seedance resolution: ${resolution}`);
+  }
+  return dimensions[aspectRatio];
 }
 
 function seedanceOutputTokens(
