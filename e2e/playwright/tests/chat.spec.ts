@@ -140,12 +140,15 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
 
   const composer = page.locator(".zero-composer");
-  const editor = page.getByRole("textbox", { name: "Message" });
-  const workflowButton = page.getByRole("button", {
+  const editor = composer.getByRole("textbox", { name: "Message" });
+  const workflowButton = composer.getByRole("button", {
     name: "Create workflow",
   });
-  const connectorsButton = page.getByRole("button", { name: "Connectors" });
-  const sendButton = page.getByRole("button", { name: "Send" });
+  const connectorsButton = composer.getByRole("button", {
+    name: "Connectors",
+    exact: true,
+  });
+  const sendButton = composer.getByRole("button", { name: "Send" });
 
   await expect(connectorsButton.locator("img")).toHaveCount(3);
   await connectorsButton.click();
