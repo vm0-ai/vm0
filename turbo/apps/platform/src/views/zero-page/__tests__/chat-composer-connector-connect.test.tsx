@@ -15,7 +15,6 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   detachedSetupPage,
@@ -175,9 +174,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
     });
 
     const composer = composerElementFrom(
@@ -229,9 +225,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
     });
 
     const composer = composerElementFrom(
@@ -291,9 +284,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
     });
 
     const dialog = await openAddConnectorsDialog(user);
@@ -360,9 +350,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
     });
 
     const dialog = await openAddConnectorsDialog(user);
@@ -445,9 +432,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
     });
 
     const dialog = await openAddConnectorsDialog(user);
@@ -497,9 +481,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
     });
 
     const dialog = await openAddConnectorsDialog(user);

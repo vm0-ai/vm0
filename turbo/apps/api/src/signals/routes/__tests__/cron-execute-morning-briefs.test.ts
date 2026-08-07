@@ -1065,7 +1065,9 @@ describe("cron execute morning briefs", () => {
     const sourceThread = threads?.find((item) => {
       return item.threadId === thread.id;
     });
-    const userMessageContent = `[Template: ${style.title}]\n\nReview the structured brief`;
+    // Templates render inline in the text flow, so the marker sits directly
+    // against the following text instead of forming its own block.
+    const userMessageContent = `[Template: ${style.title}]Review the structured brief`;
     const legacyContent = "stale morning brief content";
     expect(sourceThread?.recentMessages).toContainEqual({
       role: "user",

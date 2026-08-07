@@ -335,12 +335,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
     enabled: false,
   },
-  [FeatureSwitchKey.StructuredPromptInlineTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable multiple inline artifact templates in structured chat prompts.",
-    enabled: true,
-  },
   [FeatureSwitchKey.TemplatePickerGlobalSearch]: {
     maintainer: "bingjie@vm0.ai",
     description:

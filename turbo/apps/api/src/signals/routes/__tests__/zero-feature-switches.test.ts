@@ -71,7 +71,7 @@ describe("/api/zero/feature-switches", () => {
     });
   });
 
-  it("persists and activates inline templates for a non-staff org", async () => {
+  it("persists and activates a user override for a non-staff org", async () => {
     createZeroRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",
       "org_nonstaff_feature_switch_test",
@@ -84,7 +84,7 @@ describe("/api/zero/feature-switches", () => {
         headers,
         body: {
           switches: {
-            [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+            [FeatureSwitchKey.ComposerUploadPopover]: true,
           },
         },
       }),
@@ -92,22 +92,18 @@ describe("/api/zero/feature-switches", () => {
     );
 
     expect(updated.body.switches).toStrictEqual({
-      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      [FeatureSwitchKey.ComposerUploadPopover]: true,
     });
     expect(
-      updated.body.effectiveSwitches[
-        FeatureSwitchKey.StructuredPromptInlineTemplates
-      ],
+      updated.body.effectiveSwitches[FeatureSwitchKey.ComposerUploadPopover],
     ).toBeTruthy();
 
     const current = await accept(client().get({ headers }), [200]);
     expect(current.body.switches).toStrictEqual({
-      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      [FeatureSwitchKey.ComposerUploadPopover]: true,
     });
     expect(
-      current.body.effectiveSwitches[
-        FeatureSwitchKey.StructuredPromptInlineTemplates
-      ],
+      current.body.effectiveSwitches[FeatureSwitchKey.ComposerUploadPopover],
     ).toBeTruthy();
   });
 });

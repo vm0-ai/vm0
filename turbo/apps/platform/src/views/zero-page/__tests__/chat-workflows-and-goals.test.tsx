@@ -1,6 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -1860,9 +1859,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
 
     detachedSetupPage({
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
       context,
       path: `/chats/${threadId}`,
     });
@@ -1877,7 +1873,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const item = await readSingleRichClipboardWrite(clipboard);
     const html = await readClipboardItemText(item, "text/html");
     expect(parseChatClipboardPayload(html)).toStrictEqual({
+      // The template part renders inline into the copied prompt text.
       text:
+        `Select ${style.title} illustration template` +
         `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` +
         "Feedback on this part of your reply:\n\n" +
         "> The roadmap lacks dates\n\nAdd the launch milestones",
@@ -1929,9 +1927,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
 
     detachedSetupPage({
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
       context,
       path: `/chats/${threadId}`,
     });
@@ -1961,8 +1956,8 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     await waitFor(() => {
       expect(composer).toHaveTextContent(messageText);
       expect(
-        screen.getByLabelText(`Remove template ${style.title}`),
-      ).toBeInTheDocument();
+        composer.querySelector("[data-composer-inline-template]"),
+      ).toHaveTextContent(style.title);
       const feedbackItem = composer.querySelector("[data-feedback-item]");
       expect(feedbackItem).toHaveTextContent(feedbackQuote);
       expect(feedbackItem).toHaveTextContent(feedbackNote);

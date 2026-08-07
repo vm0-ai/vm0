@@ -2,7 +2,6 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -708,9 +707,6 @@ describe("chat drafts", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
       path: `/chats/${threadId}`,
     });
 
@@ -755,6 +751,8 @@ describe("chat drafts", () => {
         draftUserMessage: {
           version: 1,
           parts: [
+            // Elevated file parts lead the document; the inline template keeps
+            // its place in the text flow behind them.
             {
               type: "file",
               fileId: secondAttachment.id,

@@ -57,7 +57,6 @@ export enum FeatureSwitchKey {
   ChatNextRunModelNotice = "chatNextRunModelNotice",
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
-  StructuredPromptInlineTemplates = "structuredPromptInlineTemplates",
   TemplatePickerGlobalSearch = "templatePickerGlobalSearch",
   UsagePackPlans = "usagePackPlans",
 

@@ -5711,20 +5711,8 @@ describe("CHAT-02: generation templates and attachments", () => {
   }, 90_000);
 
   it("projects multiple inline templates into one ordered prompt and one shared context", async () => {
-    const { actor, agentId } = await entitledChatActor({
-      orgId: STAFF_ORG_ID,
-    });
+    const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
-    );
 
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     const workflow = WORKFLOW_TEMPLATE_ITEMS[0];
@@ -5902,21 +5890,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
 
-  it("keeps legacy single-template context when inline templates are enabled", async () => {
-    const { actor, agentId } = await entitledChatActor({
-      orgId: STAFF_ORG_ID,
-    });
+  it("keeps single-template context for the legacy generationTemplate field", async () => {
+    const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
-    );
 
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     if (!style) {
@@ -7820,22 +7796,13 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, mockRunId);
   }, 90_000);
 
-  it("uses the claim-time inline-template switch for queued web launch material", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor({
-      orgId: STAFF_ORG_ID,
-    });
+  it("projects inline templates into queued web launch material", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    const actorWithOrg = { ...actor, orgId: actor.orgId };
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-    });
 
     const anchor = await sendChatRun(actor, {
       agentId,
-      prompt: "inline-template switch queue anchor",
+      prompt: "inline-template queue anchor",
     });
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
 
@@ -7864,7 +7831,7 @@ describe("CHAT-02: shared user message queue", () => {
       {
         agentId,
         threadId: anchor.threadId,
-        prompt: "legacy queued template projection",
+        prompt: "queued inline template projection",
         userMessage: queuedUserMessage,
         clientEventId: queuedMessageId,
       },
@@ -7872,9 +7839,6 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(queued.body).toMatchObject({ runId: null });
 
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-    });
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
 

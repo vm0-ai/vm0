@@ -138,7 +138,6 @@ import {
   type WorkflowTemplateItem,
 } from "@vm0/core/workflow-template-items";
 import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -172,9 +171,10 @@ import {
   composerUploadPopoverEnabled$,
   composerConnectorPermissionsEnabled$,
   avatarTemplatesEnabled$,
-  featureSwitch$,
   imageRecognitionAvailable$,
+  featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   computerUseHosts$,
   selectedComputerUseHostId,
@@ -5548,19 +5548,17 @@ function selectedComposerTemplateAttachment(
 
 function inlineComposerTemplatePicker({
   picker,
-  enabled,
   insertTemplate,
   onDraftChange,
 }: {
   picker: ComposerTemplatePicker | undefined;
-  enabled: boolean;
   insertTemplate: (
     value: GenerationTemplateRequest,
     attachment: ComposerTemplateAttachment,
   ) => void;
   onDraftChange: (() => void) | undefined;
 }): ComposerTemplatePicker | undefined {
-  if (!picker || !enabled) {
+  if (!picker) {
     return picker;
   }
   return {
@@ -5577,14 +5575,6 @@ function inlineComposerTemplatePicker({
       onDraftChange?.();
     },
   };
-}
-
-function userMessageInlineTemplatesEnabled(
-  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>,
-): boolean {
-  return (
-    featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] === true
-  );
 }
 
 function composerTemplateAttachmentLifecycleKey(
@@ -7132,23 +7122,17 @@ function toPersistedAttachments(
 
 function restoreChatClipboardPayload({
   event,
-  inlineTemplatesEnabled,
   visualAttachmentUnsupported,
   insertPromptMarkdown,
   insertUserMessage,
   restoreAttachments,
-  onTemplateChange,
   onDraftChange,
 }: {
   event: ComposerPasteEvent;
-  inlineTemplatesEnabled: boolean;
   visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
   insertPromptMarkdown: (value: string) => void;
   insertUserMessage: (value: UserMessageDocument) => void;
   restoreAttachments: (attachments: PersistedAttachment[]) => void;
-  onTemplateChange:
-    | ((value: GenerationTemplateRequest | undefined) => void)
-    | undefined;
   onDraftChange: (() => void) | undefined;
 }): boolean {
   if (!event.clipboardData) {
@@ -7184,19 +7168,13 @@ function restoreChatClipboardPayload({
       part.type === "chat_thread" ||
       part.type === "agent" ||
       part.type === "feedback" ||
-      (inlineTemplatesEnabled && part.type === "template")
+      part.type === "template"
     );
   });
   if (userMessage && hasInsertableUserMessagePart) {
     insertUserMessage(userMessage);
   } else if (payload.text) {
     insertPromptMarkdown(payload.text);
-  }
-  const templatePart = userMessage?.parts.find((part) => {
-    return part.type === "template";
-  });
-  if (!inlineTemplatesEnabled && templatePart?.type === "template") {
-    onTemplateChange?.(templatePart.template);
   }
   if (allowedAttachments.length > 0) {
     restoreAttachments(allowedAttachments);
@@ -7230,7 +7208,6 @@ function useComposerVisualAttachmentUnsupported(
 function useComposerTemplatePicker(
   signals: ComposerSignals,
 ): ComposerTemplatePicker {
-  const featureSwitches = useGet(featureSwitch$);
   const value = useGet(signals.template.generationTemplate$);
   const setValue = useSet(signals.template.setGenerationTemplate$);
   const insertTemplate = useSet(signals.template.insertTemplate$);
@@ -7238,7 +7215,6 @@ function useComposerTemplatePicker(
   return (
     inlineComposerTemplatePicker({
       picker: { value, onChange: setValue },
-      enabled: userMessageInlineTemplatesEnabled(featureSwitches),
       insertTemplate,
       onDraftChange: notifyDraftChanged,
     }) ?? { value, onChange: setValue }
@@ -7317,14 +7293,10 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   const notifyDraftChanged = useComposerDraftChange(signals);
   const visualAttachmentUnsupported =
     useComposerVisualAttachmentUnsupported(signals);
-  const inlineTemplatesEnabled = userMessageInlineTemplatesEnabled(
-    useGet(featureSwitch$),
-  );
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
   const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
   const insertUserMessage = useSet(signals.editor.insertUserMessage$);
   const uploadFile = useComposerFileUpload(signals);
-  const templatePicker = useComposerTemplatePicker(signals);
   const primaryAction = useComposerPrimaryAction(signals);
   const submitCurrentInput = useSet(signals.submission.submitCurrentInput$);
   const completeVoiceInput = useSet(stopAndTranscribe$);
@@ -7338,12 +7310,10 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
     if (
       restoreChatClipboardPayload({
         event,
-        inlineTemplatesEnabled,
         visualAttachmentUnsupported,
         insertPromptMarkdown,
         insertUserMessage,
         restoreAttachments,
-        onTemplateChange: templatePicker.onChange,
         onDraftChange: notifyDraftChanged,
       })
     ) {

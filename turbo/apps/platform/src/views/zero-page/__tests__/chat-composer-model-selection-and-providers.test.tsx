@@ -2260,9 +2260,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
     });
 
     const composer = composerElementFrom(
@@ -2290,9 +2287,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
     });
 
     const composer = composerElementFrom(

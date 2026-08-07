@@ -9,7 +9,6 @@ import {
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -43,6 +42,16 @@ interface RunCreateCapture {
   modelSelection?: ModelSelectionRequest | null;
   computerUseHostId?: string | null;
   clientEventId?: string;
+}
+
+function findInlineTemplate(): HTMLElement {
+  const inlineTemplate = document.querySelector(
+    "[data-composer-inline-template]",
+  );
+  if (!(inlineTemplate instanceof HTMLElement)) {
+    throw new Error("Inline template not found in the composer");
+  }
+  return inlineTemplate;
 }
 
 function selectTextRangeForInlineFeedback(element: HTMLElement): void {
@@ -255,9 +264,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -511,7 +517,6 @@ describe("chat inline feedback", () => {
         { type: "morning_brief", briefDate: "2026-07-26" },
       ],
     } satisfies UserMessageDocument;
-    const draftPatches: Record<string, unknown>[] = [];
 
     mockChatLifecycle(context, {
       threadId,
@@ -542,8 +547,7 @@ describe("chat inline feedback", () => {
       ],
       activeRunIds: ["run-queued-feedback"],
     });
-    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
+    context.mocks.api(chatThreadByIdContract.patch, ({ respond }) => {
       return respond(204);
     });
 
@@ -560,9 +564,11 @@ describe("chat inline feedback", () => {
 
     const composer = await findComposerEditor();
     await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
+      const inlineTemplate = composer.querySelector(
+        "[data-composer-inline-template]",
+      );
+      expect(inlineTemplate).toBeInTheDocument();
+      expect(inlineTemplate).toHaveTextContent(template.title);
     });
     await waitFor(() => {
       const feedbackItem = composer.querySelector("[data-feedback-item]");
@@ -575,12 +581,6 @@ describe("chat inline feedback", () => {
       "Feedback on this part of your reply:",
     );
     expect(composer).not.toHaveTextContent(`> ${assistantReply}`);
-    await waitFor(() => {
-      expect(draftPatches).toContainEqual({
-        draftUserMessage: recalledUserMessage,
-        draftAttachments: null,
-      });
-    });
   });
 
   it.each([
@@ -1380,9 +1380,6 @@ describe("chat inline feedback", () => {
     });
 
     detachedSetupPage({
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
-      },
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
     });
@@ -1398,9 +1395,7 @@ describe("chat inline feedback", () => {
     click(await screen.findByLabelText("Select style Award night"));
     click(await screen.findByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${templateChipLabel}`),
-      ).toBeInTheDocument();
+      expect(findInlineTemplate()).toHaveTextContent(templateChipLabel);
     });
 
     const fileInput =
@@ -1430,9 +1425,7 @@ describe("chat inline feedback", () => {
       await findFeedbackNote(),
       "Use the attached brief as supporting context.",
     );
-    expect(
-      screen.getByLabelText(`Remove template ${templateChipLabel}`),
-    ).toBeInTheDocument();
+    expect(findInlineTemplate()).toHaveTextContent(templateChipLabel);
     expect(
       screen.getByLabelText("Remove feedback-brief.txt"),
     ).toBeInTheDocument();
@@ -1449,20 +1442,27 @@ describe("chat inline feedback", () => {
             size: 14,
           },
         ],
-        generationTemplate: {
-          type: "presentation",
-          selection: {
-            colorSystemId: "color-system:gold-luxe",
-            templateId: template.templateId,
-            previewUrl: template.embedUrl,
-          },
-        },
       });
     });
     const sentBody = sentBodies[0];
     if (!sentBody) {
       throw new Error("feedback send body not captured");
     }
+    // Inline templates travel inside the structured userMessage, so the
+    // legacy top-level generationTemplate field stays unset.
+    expect(sentBody.generationTemplate).toBeUndefined();
+    expect(sentBody.userMessage?.parts).toContainEqual({
+      type: "template",
+      titleSnapshot: templateChipLabel,
+      template: {
+        type: "presentation",
+        selection: {
+          colorSystemId: "color-system:gold-luxe",
+          templateId: template.templateId,
+          previewUrl: template.embedUrl,
+        },
+      },
+    });
     expect(sentBody?.prompt).toContain(
       "Use the attached brief as supporting context.",
     );

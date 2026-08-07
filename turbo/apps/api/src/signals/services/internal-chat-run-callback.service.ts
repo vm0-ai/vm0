@@ -2265,19 +2265,14 @@ function truncatePrior(value: string): string {
   return `${value.slice(0, PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
-function formatPriorRunEvent(
-  event: PriorRunEvent,
-  inlineTemplatesEnabled: boolean,
-): string {
+function formatPriorRunEvent(event: PriorRunEvent): string {
   const roleLabel = event.role === "user" ? "User" : "Assistant";
   const userMessage = requiredUserMessageForEvent(
     event.eventType,
     event.userMessage,
   );
   if (userMessage) {
-    const prompt = projectUserMessage(userMessage, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }).agentPrompt;
+    const prompt = projectUserMessage(userMessage).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
   const body = `${roleLabel}: ${
@@ -2329,14 +2324,13 @@ function priorRunsContextLabel(
 function buildChatPriorRunsContext(
   runs: readonly PriorRun[],
   contextType: QueuedUserMessageContextType,
-  inlineTemplatesEnabled: boolean,
 ): string {
   if (runs.length === 0) {
     return "";
   }
   const sections = runs.map((run, index) => {
     const renderedEvents = run.events.map((event) => {
-      return formatPriorRunEvent(event, inlineTemplatesEnabled);
+      return formatPriorRunEvent(event);
     });
     const transcript =
       renderedEvents.length > 0
@@ -2526,7 +2520,6 @@ async function buildQueuedPriorContext(args: {
   readonly startNewSession: boolean;
   readonly incompleteContext: string;
   readonly contextType: QueuedUserMessageContextType;
-  readonly inlineTemplatesEnabled: boolean;
 }): Promise<string> {
   if (!args.startNewSession || args.incompleteContext.length > 0) {
     return "";
@@ -2539,7 +2532,6 @@ async function buildQueuedPriorContext(args: {
       RECENT_CHAT_RUN_LIMIT,
     ),
     args.contextType,
-    args.inlineTemplatesEnabled,
   );
 }
 
@@ -3051,7 +3043,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly userMessageProjection:
     | ReturnType<typeof projectUserMessage>
     | undefined;
-  readonly inlineTemplatesEnabled: boolean;
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
@@ -3062,9 +3053,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
         explicit:
           args.userMessageProjection?.generationTemplate ??
           args.input.queuedMessage.generationTemplate,
-        explicitTemplates: args.inlineTemplatesEnabled
-          ? args.userMessageProjection?.generationTemplates
-          : undefined,
+        explicitTemplates: args.userMessageProjection?.generationTemplates,
       });
     },
   );
@@ -3080,7 +3069,6 @@ async function loadQueuedRunMaterial(
 
 function queuedUserMessageProjection(
   message: QueuedUserMessage["userMessage"],
-  inlineTemplatesEnabled: boolean,
 ) {
   const queuedUserMessage = requiredUserMessageForEvent(
     "input.prompt",
@@ -3089,9 +3077,7 @@ function queuedUserMessageProjection(
   if (!queuedUserMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
-  return projectUserMessage(queuedUserMessage, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  return projectUserMessage(queuedUserMessage);
 }
 
 function queuedIntegrationLaunchFields(launchMaterial: QueuedLaunchMaterial) {
@@ -3115,13 +3101,8 @@ async function buildCreateQueuedChatRunInput(
       timing: args.timing,
     }),
   ]);
-  const inlineTemplatesEnabled = isFeatureEnabled(
-    FeatureSwitchKey.StructuredPromptInlineTemplates,
-    featureSwitchContext,
-  );
   const userMessageProjection = queuedUserMessageProjection(
     args.queuedMessage.userMessage,
-    inlineTemplatesEnabled,
   );
   const launchMaterial = await loadQueuedRunMaterial({
     ...args,
@@ -3168,7 +3149,6 @@ async function buildCreateQueuedChatRunInput(
         startNewSession,
         incompleteContext,
         contextType: args.queuedMessage.contextType,
-        inlineTemplatesEnabled,
       });
     },
   );
@@ -3176,7 +3156,6 @@ async function buildCreateQueuedChatRunInput(
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args,
       userMessageProjection,
-      inlineTemplatesEnabled,
     });
   const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
     args.timing,

@@ -1368,7 +1368,8 @@ describe("OPS-01: user data export", () => {
     }[];
     expect(messages[0]).toMatchObject({
       role: "user",
-      content: `[Template: ${style.title}]\n\nExport the structured request`,
+      // Templates render inline in the text flow rather than as their own block.
+      content: `[Template: ${style.title}]Export the structured request`,
       userMessage,
     });
     expect(messages[0]?.content).not.toContain("stale export content");

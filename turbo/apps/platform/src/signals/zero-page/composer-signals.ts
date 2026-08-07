@@ -441,12 +441,6 @@ export function createComposerSignals(
     return (await get(options.agent$)).agentId;
   });
   const feedback = createComposerFeedbackModel(options.threadId);
-  const inlineTemplatesEnabled$ = computed((get): boolean => {
-    return (
-      get(featureSwitch$)[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
-      false
-    );
-  });
   const explicitDefaultModelActionEnabled$ = computed((get): boolean => {
     return (
       options.threadId === undefined &&
@@ -456,7 +450,6 @@ export function createComposerSignals(
   const workflowComposer = createWorkflowComposerSignals(
     draft,
     agentId$,
-    inlineTemplatesEnabled$,
     {
       autoFocus: true,
       singleLineOnMobile: options.singleLineOnMobile,
