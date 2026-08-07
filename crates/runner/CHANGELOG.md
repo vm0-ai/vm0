@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.160.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.0...runner-rs-v0.160.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **runner:** preserve drain override across repeated rollback ([#25621](https://github.com/vm0-ai/vm0/issues/25621)) ([48382ee](https://github.com/vm0-ai/vm0/commit/48382ee364afe215c694363a6e6efedb013efab4))
+
+
+### Performance Improvements
+
+* **rust:** eliminate exec-control payload copies ([#25608](https://github.com/vm0-ai/vm0/issues/25608)) ([3f71e3b](https://github.com/vm0-ai/vm0/commit/3f71e3b491c2fb66e3c964494565aa9a9bcd4166))
+
 ## [0.160.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.159.2...runner-rs-v0.160.0) (2026-08-07)
 
 

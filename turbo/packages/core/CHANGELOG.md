@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.526.1](https://github.com/vm0-ai/vm0/compare/core-v8.526.0...core-v8.526.1) (2026-08-07)
+
+
+### Refactoring
+
+* **core:** share the built-in video model catalog ([#25603](https://github.com/vm0-ai/vm0/issues/25603)) ([a995454](https://github.com/vm0-ai/vm0/commit/a9954548b8cc4c1edb79f986fad552b89d4a29bd))
+* remove ChatThreadUnifiedSearch feature switch ([#25600](https://github.com/vm0-ai/vm0/issues/25600)) ([3b6b0af](https://github.com/vm0-ai/vm0/commit/3b6b0af8818889df98b48d0713db9901b13b2e19))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.289.0
+
 ## [8.526.0](https://github.com/vm0-ai/vm0/compare/core-v8.525.0...core-v8.526.0) (2026-08-07)
 
 
