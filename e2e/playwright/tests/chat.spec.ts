@@ -143,7 +143,12 @@ async function expectInside(inner: Locator, outer: Locator): Promise<void> {
 }
 
 async function cardEdgeAppearance(locator: Locator) {
-  return locator.evaluate((element) => {
+  return locator.evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => {
+        return animation.finished;
+      }),
+    );
     const style = getComputedStyle(element);
     return {
       borderWidths: [
