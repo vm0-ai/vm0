@@ -458,7 +458,7 @@ describe("chat lifecycle", () => {
 
   it("opens the Computer Use download dialog from the chat composer", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-download";
+    const threadId = "e2000000-0000-4000-a000-000000000001";
     mockChatLifecycle(context, { threadId });
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
@@ -501,7 +501,7 @@ describe("chat lifecycle", () => {
   it("blocks the Computer Use download dialog on Intel Macs", async () => {
     mockMacUserAgentData("x86");
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-download-intel";
+    const threadId = "e2000000-0000-4000-a000-000000000002";
     mockChatLifecycle(context, { threadId });
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
@@ -532,7 +532,7 @@ describe("chat lifecycle", () => {
 
   it("does not auto-select the only online Computer Use host", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-manual-selection";
+    const threadId = "e2000000-0000-4000-a000-000000000003";
     let sentComputerUseHostId: string | null | undefined;
     mockChatLifecycle(context, {
       threadId,
@@ -586,7 +586,7 @@ describe("chat lifecycle", () => {
 
   it("refreshes computers when the computer-use hosts Ably event arrives", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-refresh";
+    const threadId = "e2000000-0000-4000-a000-000000000004";
     let hostOnline = true;
     let requestCount = 0;
     mockChatLifecycle(context, { threadId });
@@ -852,7 +852,7 @@ describe("chat lifecycle", () => {
 
   it("shows a computer use empty state when host listing is unavailable", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-forbidden";
+    const threadId = "e2000000-0000-4000-a000-000000000005";
     mockChatLifecycle(context, { threadId });
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(403, {
@@ -881,7 +881,7 @@ describe("chat lifecycle", () => {
 
   it("transcribes voice input into the composer", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000006";
     const draftPatches: unknown[] = [];
     const toastError = vi.spyOn(toast, "error");
     context.mocks.browser.voiceInput({ rms: 0.1 });
@@ -1070,7 +1070,7 @@ describe("chat lifecycle", () => {
 
   it("transcribes a voice input segment after silence while recording", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-segment-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000007";
     const draftPatches: unknown[] = [];
     const uploadedAudio: string[] = [];
     const transcriptionRequested = context.mocks.deferred<void>();
@@ -1138,7 +1138,7 @@ describe("chat lifecycle", () => {
 
   it("uploads voice input segments one at a time", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-serialized-segments-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000008";
     const firstRequestStarted = context.mocks.deferred<void>();
     const releaseFirstRequest = context.mocks.deferred<void>();
     const speechResumed = context.mocks.deferred<void>();
@@ -1221,7 +1221,7 @@ describe("chat lifecycle", () => {
 
   it("automatically stops voice input after extended silence", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-auto-stop-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000009";
     let transcriptionCalls = 0;
     context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
     mockChatLifecycle(context, { threadId });
@@ -1255,7 +1255,7 @@ describe("chat lifecycle", () => {
 
   it("appends a delayed voice input segment to the current composer text", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-append-current-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000010";
     const transcriptionReady = context.mocks.deferred<void>();
     const transcriptionRequested = context.mocks.deferred<void>();
     context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
@@ -1293,7 +1293,7 @@ describe("chat lifecycle", () => {
 
   it("shows voice input starting state while the browser opens the microphone", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-starting-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000011";
     const micReady = context.mocks.deferred<void>();
     context.mocks.browser.voiceInput({
       getUserMediaReady: micReady.promise,
@@ -1323,7 +1323,7 @@ describe("chat lifecycle", () => {
 
   it("starts recording before the voice activity monitor is ready", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-monitor-pending-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000012";
     const audioReady = context.mocks.deferred<void>();
     context.mocks.browser.voiceInput({
       audioContextReady: audioReady.promise,
@@ -1364,7 +1364,7 @@ describe("chat lifecycle", () => {
 
   it("cancels silent voice input without calling transcription", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "silent-voice-input-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000013";
     context.mocks.browser.voiceInput({ rms: 0 });
     mockChatLifecycle(context, { threadId });
     let transcriptionCalled = false;
@@ -1399,7 +1399,7 @@ describe("chat lifecycle", () => {
   it("opens billing recovery when voice input quota is depleted", async () => {
     const user = userEvent.setup({ delay: null });
     const toastError = vi.spyOn(toast, "error");
-    const threadId = "voice-input-quota-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000014";
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.post("*/api/zero/voice-io/stt", () => {
@@ -1454,7 +1454,7 @@ describe("chat lifecycle", () => {
   it("opens billing recovery before recording when voice input quota is already depleted", async () => {
     const user = userEvent.setup({ delay: null });
     const toastError = vi.spyOn(toast, "error");
-    const threadId = "voice-input-preflight-quota-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000015";
     let transcriptionCalls = 0;
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
@@ -1495,7 +1495,7 @@ describe("chat lifecycle", () => {
   it("opens billing recovery when voice input daily request limit is reached", async () => {
     const user = userEvent.setup({ delay: null });
     const toastError = vi.spyOn(toast, "error");
-    const threadId = "voice-input-daily-rate-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000016";
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.post("*/api/zero/voice-io/stt", () => {
