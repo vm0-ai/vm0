@@ -193,7 +193,7 @@ function buildQueueFirstGoalRunInput(args: {
       prompt,
       goalId: normalizedGoal.goalId,
       goalObjectiveBrief: normalizedGoal.objectiveBrief,
-      goalUpdatedAt: normalizedGoal.updatedAt,
+      goalStateRevision: normalizedGoal.stateRevision,
       orgId: normalizedGoal.orgId,
       userId: normalizedGoal.userId,
     },
@@ -458,7 +458,7 @@ export const drainGoalQueueForThread$ = command(
           await revokeGoalEvent(db, event, signal);
           return;
         }
-        if (stillValid.updatedAt.getTime() !== goal.updatedAt.getTime()) {
+        if (stillValid.stateRevision !== goal.stateRevision) {
           continue;
         }
         return;
@@ -466,7 +466,7 @@ export const drainGoalQueueForThread$ = command(
 
       const settlement = await settleFailedGoalQueueEvent(db, {
         event,
-        expectedGoalUpdatedAt: goal.updatedAt,
+        expectedGoalStateRevision: goal.stateRevision,
         reason: result.response.body.error.message,
       });
       signal.throwIfAborted();

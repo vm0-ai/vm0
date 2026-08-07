@@ -2,9 +2,10 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq, isNull, notExists } from "drizzle-orm";
+import { and, eq, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
@@ -54,7 +55,7 @@ export interface GoalQueueTarget {
   readonly objective: string;
   readonly objectiveBrief: string;
   readonly autonomyBudget: number;
-  readonly updatedAt: Date;
+  readonly stateRevision: string;
 }
 
 type FailedGoalQueueSettlement =
@@ -191,7 +192,8 @@ export async function loadGoalQueueTarget(
         threadGoals.autonomyBudget,
       ),
       status: threadGoals.status,
-      updatedAt: threadGoals.updatedAt,
+      // A Date decoder drops PostgreSQL microseconds needed by the final CAS.
+      stateRevision: sql`${threadGoals.updatedAt}::text`.mapWith(pgTextDecoder),
     })
     .from(threadGoals)
     .innerJoin(
@@ -222,7 +224,7 @@ export async function loadGoalQueueTarget(
     objective: goal.objective,
     objectiveBrief: goal.objectiveBrief,
     autonomyBudget: goal.autonomyBudget,
-    updatedAt: goal.updatedAt,
+    stateRevision: goal.stateRevision,
   };
 }
 
@@ -287,7 +289,7 @@ export async function settleFailedGoalQueueEvent(
   db: Db,
   args: {
     readonly event: PendingGoalQueueEvent;
-    readonly expectedGoalUpdatedAt: Date;
+    readonly expectedGoalStateRevision: string;
     readonly reason: string;
   },
 ): Promise<FailedGoalQueueSettlement> {
@@ -315,7 +317,7 @@ export async function settleFailedGoalQueueEvent(
       });
       return revoked ? { kind: "revoked" } : { kind: "not_pending" };
     }
-    if (goal.updatedAt.getTime() !== args.expectedGoalUpdatedAt.getTime()) {
+    if (goal.stateRevision !== args.expectedGoalStateRevision) {
       return { kind: "stale" };
     }
 

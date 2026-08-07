@@ -195,7 +195,7 @@ export type QueueFirstRunAssociation =
       readonly prompt: string;
       readonly goalId: string;
       readonly goalObjectiveBrief: string;
-      readonly goalUpdatedAt: Date;
+      readonly goalStateRevision: string;
       readonly orgId: string;
       readonly userId: string;
     };
@@ -571,7 +571,8 @@ async function resolveGoalQueueFirstClaimSnapshot(
         eq(threadGoals.orgId, args.orgId),
         eq(threadGoals.ownerUserId, args.userId),
         eq(chatEvents.runGroupId, threadGoals.id),
-        eq(threadGoals.updatedAt, args.goalUpdatedAt),
+        // Match the lossless revision captured before run preparation.
+        eq(sql`${threadGoals.updatedAt}::text`, args.goalStateRevision),
       ),
     )
     .where(
