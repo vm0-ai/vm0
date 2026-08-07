@@ -637,6 +637,7 @@ async function collectMemoryFiles(
 }
 
 interface ResolveSessionHistoryArgs {
+  readonly sessionId: string;
   readonly hash: string | null;
   readonly encoding: string | null;
   readonly rawSize: number | null;
@@ -647,28 +648,28 @@ async function resolveSessionHistory(
   runtime: ExportRuntime,
   args: ResolveSessionHistoryArgs,
   signal: AbortSignal,
-): Promise<Buffer | string | null> {
-  if (args.hash) {
-    const normalizedEncoding = normalizeSessionHistoryBlobEncoding(
-      args.encoding,
+): Promise<Buffer> {
+  if (!args.hash) {
+    throw new Error(
+      `Session history invariant violated: agent session "${args.sessionId}" has no blob hash`,
     );
-    const rawSize = args.rawSize && args.rawSize > 0 ? args.rawSize : undefined;
-    const encodedSize =
-      args.encodedSize && args.encodedSize > 0 ? args.encodedSize : undefined;
-    const key = resumeSessionHistoryBlobKey(args.hash, normalizedEncoding);
-    const result = await loadSessionHistoryBlob(runtime, {
-      encoding: normalizedEncoding,
-      encodedSize,
-      hash: args.hash,
-      key,
-      rawSize,
-    });
-    signal.throwIfAborted();
-
-    return result;
   }
 
-  return null;
+  const normalizedEncoding = normalizeSessionHistoryBlobEncoding(args.encoding);
+  const rawSize = args.rawSize && args.rawSize > 0 ? args.rawSize : undefined;
+  const encodedSize =
+    args.encodedSize && args.encodedSize > 0 ? args.encodedSize : undefined;
+  const key = resumeSessionHistoryBlobKey(args.hash, normalizedEncoding);
+  const result = await loadSessionHistoryBlob(runtime, {
+    encoding: normalizedEncoding,
+    encodedSize,
+    hash: args.hash,
+    key,
+    rawSize,
+  });
+  signal.throwIfAborted();
+
+  return result;
 }
 
 async function loadSessionHistoryBlob(
@@ -831,6 +832,7 @@ async function collectConversationMessages(
     const history = await resolveSessionHistory(
       runtime,
       {
+        sessionId: session.id,
         hash: session.cliAgentSessionHistoryHash,
         encoding: session.sessionHistoryBlobEncoding,
         rawSize: session.sessionHistoryBlobRawSize,
@@ -839,13 +841,11 @@ async function collectConversationMessages(
       signal,
     );
 
-    if (history) {
-      entries.push({
-        path: `conversations/${session.id}-history.jsonl`,
-        content: history,
-      });
-      sessionHistoryCount += 1;
-    }
+    entries.push({
+      path: `conversations/${session.id}-history.jsonl`,
+      content: history,
+    });
+    sessionHistoryCount += 1;
   }
 
   return { entries, threadCount, sessionHistoryCount };
