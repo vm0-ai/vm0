@@ -186,6 +186,48 @@ describe("internal Pi standby agent loop", () => {
     });
   });
 
+  it("releases itself when the standby TTL expires with no control frame", async () => {
+    // A prewarmed standby waits with its control stream open and no frame
+    // pending. FakeIo cannot express that: an empty queue resolves `read()`
+    // with null, which makes `readFrame` throw before the TTL timer can win
+    // the race. This IO keeps the read pending so the TTL path is reachable.
+    class SilentIo implements PiAgentLoopIo {
+      readonly outputs: Array<Record<string, unknown>> = [];
+
+      async read(): Promise<unknown | null> {
+        return await new Promise<never>(() => {});
+      }
+
+      async write(frame: Readonly<Record<string, unknown>>): Promise<void> {
+        this.outputs.push({ ...frame });
+      }
+    }
+
+    const io = new SilentIo();
+    const executionEnv = new NodeExecutionEnv({ cwd: tmpdir() });
+    let resumed = false;
+    const resume = (async () => {
+      resumed = true;
+      return [];
+    }) as PiAgentResume;
+
+    try {
+      await runPiStandbyAgentLoop({
+        io,
+        config: CONFIG,
+        executionEnv,
+        signal: new AbortController().signal,
+        standbyTtlSeconds: 0.05,
+        resume,
+      });
+    } finally {
+      await executionEnv.cleanup();
+    }
+
+    expect(resumed).toBe(false);
+    expect(io.outputs.at(-1)).toEqual({ type: "pi-released", reason: "ttl" });
+  });
+
   it("acks every message before reporting completion", async () => {
     const io = new FakeIo([
       { type: "pi-handoff" },
