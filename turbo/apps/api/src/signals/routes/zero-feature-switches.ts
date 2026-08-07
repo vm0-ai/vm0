@@ -40,6 +40,13 @@ function featureSwitchResponseBody(params: {
   return {
     switches: params.switches,
     effectiveSwitches,
+    // The pre-cleanup Platform bundle gates inline templates, image
+    // recognition, and avatar templates on these handshakes and disables each
+    // feature when the field is absent. Keep returning them until that
+    // frontend release has drained.
+    supportsStructuredInlineTemplates: true,
+    supportsImageRecognition: true,
+    supportsAvatarTemplates: true,
   };
 }
 
