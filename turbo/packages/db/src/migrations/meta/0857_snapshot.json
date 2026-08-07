@@ -1,6 +1,6 @@
 {
-  "id": "b0a61c6e-c608-4715-aef7-350fa850a94e",
-  "prevId": "ec7bc0e3-31a8-448c-97cb-a8abbfee825a",
+  "id": "f9b11a49-a3cc-4c1e-a553-e09c8b69dda4",
+  "prevId": "b0a61c6e-c608-4715-aef7-350fa850a94e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -12283,12 +12283,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "follow_up_automation_id": {
-          "name": "follow_up_automation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -12350,21 +12344,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_mail_drafts_follow_up_automation": {
-          "name": "idx_mail_drafts_follow_up_automation",
-          "columns": [
-            {
-              "expression": "follow_up_automation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "mail_drafts_connector_gmail_draft_unique": {
           "name": "mail_drafts_connector_gmail_draft_unique",
           "columns": [
@@ -12407,19 +12386,6 @@
           "tableTo": "connectors",
           "columnsFrom": [
             "connector_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "mail_drafts_follow_up_automation_id_zero_workflow_automations_id_fk": {
-          "name": "mail_drafts_follow_up_automation_id_zero_workflow_automations_id_fk",
-          "tableFrom": "mail_drafts",
-          "tableTo": "zero_workflow_automations",
-          "columnsFrom": [
-            "follow_up_automation_id"
           ],
           "columnsTo": [
             "id"

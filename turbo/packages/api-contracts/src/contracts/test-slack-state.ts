@@ -93,7 +93,6 @@ export const testSlackStateResponseSchema = z.object({
       id: z.string(),
       chatThreadId: z.string(),
       eventType: z.enum(["input.prompt", "input.automation"]),
-      triggerSource: z.string().nullable(),
       createdAt: z.string(),
     }),
   ),

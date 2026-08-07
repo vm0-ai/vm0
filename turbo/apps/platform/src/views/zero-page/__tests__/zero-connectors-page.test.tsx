@@ -1,3 +1,4 @@
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorOAuth2Contract,
@@ -571,6 +572,25 @@ describe("connectors page", () => {
       aiGroup.compareDocumentPosition(engineeringGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("shows only the update dialog when the client requires an upgrade", async () => {
+    context.mocks.http.get("*/api/zero/connector-catalog/status", () => {
+      return Response.json(
+        { error: "Client update required" },
+        { status: CLIENT_FORCE_UPGRADE_STATUS },
+      );
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Update required",
+    });
+    expect(dialog).toHaveTextContent(
+      "This version of VM0 is no longer supported.",
+    );
+    expect(screen.queryByText("HTTP 426")).not.toBeInTheDocument();
   });
 
   it("localizes the catalog, reconnect state, and access management in Portuguese", async () => {
