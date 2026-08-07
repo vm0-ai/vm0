@@ -2576,6 +2576,7 @@ describe("workflow detail page", () => {
             message: "GitHub installation not found",
             code: "NOT_FOUND",
           },
+          installUrl: null,
         });
       },
     );

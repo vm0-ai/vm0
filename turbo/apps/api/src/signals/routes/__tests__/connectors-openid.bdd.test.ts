@@ -317,9 +317,10 @@ describe("Steam OpenID connector", () => {
     const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
       zeroConnectorCatalogContract,
     );
-    const visible = await accept(client.status({ headers: authHeaders() }), [
-      200,
-    ]);
+    const visible = await accept(
+      client.status({ headers: authHeaders() }),
+      [200],
+    );
     const steam = visible.body.connectors.find((connector) => {
       return connector.slug === "steam";
     });
