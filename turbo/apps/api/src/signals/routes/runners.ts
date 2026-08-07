@@ -1034,7 +1034,13 @@ async function lockRunnerJob(
 
 function piExecutionContextValidSql(): SQL {
   return sql`
-    NOT (${runnerJobQueue.executionContext} ? 'piExecutionMode')
+    (
+      NOT (${runnerJobQueue.executionContext} ? 'piExecutionMode')
+      AND NOT (
+        ${runnerJobQueue.executionContext}
+          ?| ARRAY['piSystemPrompt', 'piModelConfig', 'runSkillSnapshot']
+      )
+    )
     OR COALESCE(
       (
         ${runnerJobQueue.executionContext}->>'piExecutionMode'
