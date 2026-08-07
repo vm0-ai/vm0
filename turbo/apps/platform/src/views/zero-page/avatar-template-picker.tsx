@@ -501,7 +501,7 @@ function AvatarCatalogFilters({
   return (
     <div
       data-avatar-catalog-toolbar=""
-      className="sticky top-0 z-10 mb-5 flex flex-wrap items-center justify-between gap-3 bg-card pb-4"
+      className="flex w-full flex-wrap items-center justify-between gap-3"
     >
       <AvatarAspectRatioPicker
         value={filters.aspectRatio}
@@ -1211,7 +1211,6 @@ function AvatarCatalogPickerContent({
       className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       onScroll={handleAvatarScroll}
     >
-      <AvatarCatalogFilters signals={signals} />
       {catalog.state === "hasError" ? (
         <AvatarTemplateEmpty error />
       ) : visibleCatalog === undefined ? (
@@ -1247,6 +1246,25 @@ function AvatarCatalogPickerContent({
       {loadingMore && <CatalogLoadingSpinner />}
     </div>
   );
+}
+
+/**
+ * Avatar catalog filters, rendered by the template dialog into the header row
+ * that already reserves space for the close button. Returns null on the voice
+ * step, which carries its own back/title/filters row.
+ */
+export function AvatarTemplatePickerToolbar({
+  signals,
+}: {
+  readonly signals: ComposerSignals;
+}) {
+  const selectedAvatar = useGet(
+    signals.template.selectedAvatarTemplateForVoice$,
+  );
+  if (selectedAvatar) {
+    return null;
+  }
+  return <AvatarCatalogFilters signals={signals} />;
 }
 
 export function AvatarTemplatePickerContent({
