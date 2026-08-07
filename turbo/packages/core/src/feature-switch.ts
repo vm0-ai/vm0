@@ -322,6 +322,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let a video template chip in the chat composer set the generation model, aspect ratio, duration, resolution, and audio.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",

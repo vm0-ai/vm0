@@ -252,7 +252,7 @@ function CollapsedExpandButton() {
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
               onClick={onCollapse}
               aria-label={expandLabel}
             >
@@ -321,7 +321,7 @@ function CollapsedNavList() {
                       }}
                       className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                         isActive
-                          ? "bg-gray-200 text-gray-900"
+                          ? "bg-sidebar-accent-active text-sidebar-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent"
                       }`}
                       aria-label={label}
@@ -370,7 +370,7 @@ function CollapsedFooter() {
               }}
               className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                 activeId === "insights"
-                  ? "bg-gray-200 text-gray-900"
+                  ? "bg-sidebar-accent-active text-sidebar-foreground"
                   : "text-sidebar-foreground hover:bg-sidebar-accent"
               }`}
               aria-label={insightsLabel}
@@ -433,7 +433,7 @@ function ExpandedHeader() {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                 onClick={onCollapse}
                 aria-label={collapseLabel}
               >
@@ -514,7 +514,7 @@ function ExpandedManageSection() {
                   aria-current={isActive ? "page" : undefined}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                     isActive
-                      ? "bg-gray-200 text-gray-900 font-medium"
+                      ? "bg-sidebar-accent-active text-sidebar-foreground font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
                 >
@@ -580,7 +580,7 @@ function ExpandedFooter() {
                 }}
                 className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                   isActive
-                    ? "bg-gray-200 text-gray-900 font-medium"
+                    ? "bg-sidebar-accent-active text-sidebar-foreground font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >
@@ -641,7 +641,7 @@ function ExpandedFooterAccountInsights() {
               }}
               className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                 activeId === "insights"
-                  ? "bg-gray-200 text-gray-900"
+                  ? "bg-sidebar-accent-active text-sidebar-foreground"
                   : "text-sidebar-foreground hover:bg-sidebar-accent"
               }`}
               aria-label={insightsLabel}
@@ -724,7 +724,7 @@ function LabeledRailLink({
       <span
         className={`relative inline-flex h-9 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
           isActive
-            ? "bg-gray-200 text-gray-900"
+            ? "bg-sidebar-accent-active text-sidebar-foreground"
             : "text-sidebar-foreground group-hover:bg-sidebar-accent"
         }`}
       >

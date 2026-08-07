@@ -89,6 +89,11 @@ import {
   readAgentRunCallbacks$,
   seedAgentRunCallback$,
 } from "./helpers/agent-run-callback";
+import {
+  deleteSlackIntegrationFixture$,
+  seedSlackEnvironmentAgent$,
+  seedSlackOrgInstallation$,
+} from "./helpers/zero-integrations-slack";
 import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import {
   clearRunApiStart,
@@ -125,6 +130,7 @@ import {
 
 const context = testContext();
 const callbackStore = createStore();
+const fixtureStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const ASSISTANT_EVENT_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
@@ -6213,6 +6219,66 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.billableFirewalls).toContain("model-provider:openai-api-key");
     expect(claim.modelUsageProvider).toBe(selectedModel);
 
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
+  });
+
+  it("keeps VM0 DeepSeek admission after a Slack fixture releases its shared key", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const selectedModel = "deepseek-v4-flash";
+    const slackOrgId = `org_${randomUUID()}`;
+    const slackUserId = `user_${randomUUID()}`;
+    const slackFixture = await fixtureStore.set(
+      seedSlackOrgInstallation$,
+      { orgId: slackOrgId },
+      context.signal,
+    );
+    let slackReleased = false;
+    const releaseSlackFixture = async (): Promise<void> => {
+      if (slackReleased) {
+        return;
+      }
+      await fixtureStore.set(
+        deleteSlackIntegrationFixture$,
+        slackFixture,
+        context.signal,
+      );
+      slackReleased = true;
+    };
+    onTestFinished(releaseSlackFixture);
+    await fixtureStore.set(
+      seedSlackEnvironmentAgent$,
+      { orgId: slackOrgId, userId: slackUserId },
+      context.signal,
+    );
+    await seedVm0ManagedModelKey(selectedModel);
+    await releaseSlackFixture();
+
+    const { actor, agentId } = await entitledRunActor();
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: selectedModel,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "vm0 DeepSeek admission after shared fixture release",
+        model: selectedModel,
+      },
+      [201],
+    );
+    expect(sent.status).toBe(201);
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the DeepSeek chat send to create a run");
+    }
+    expect(sent.body.runId).not.toBeNull();
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 

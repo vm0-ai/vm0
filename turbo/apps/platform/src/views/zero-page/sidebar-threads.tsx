@@ -204,8 +204,8 @@ function ChatThreadMenu({
               showMobileTrigger ? "visible" : "invisible"
             } md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
               isHighlighted
-                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-accent-strong"
+                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-accent-active"
             }`}
             aria-label={t(($) => {
               return $.chat.sidebar.openChatMenu;
@@ -379,7 +379,7 @@ function ChatThreadItemLink({
       }}
       className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
         isHighlighted
-          ? "bg-gray-200 text-gray-900 font-medium"
+          ? "bg-sidebar-accent-active text-sidebar-foreground font-medium"
           : isUnread
             ? "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
             : "text-sidebar-foreground hover:bg-sidebar-accent"
@@ -733,7 +733,7 @@ function ChatThreadsTitle() {
                 onClick={(e) => {
                   e.stopPropagation();
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent-active transition-colors"
                 aria-label={t(($) => {
                   return $.chat.sidebar.openListMenu;
                 })}

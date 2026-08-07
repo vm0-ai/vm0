@@ -33,13 +33,20 @@ afterEach(async () => {
   document.documentElement.lang = "en-US";
 });
 
+function queryButtonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement | undefined {
+  return queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+}
+
 function buttonByText(
   text: string,
   container: ParentNode = document.body,
 ): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
+  const button = queryButtonByText(text, container);
   if (!button) {
     throw new Error(`${text} button not found`);
   }
@@ -900,7 +907,7 @@ describe("organization billing settings", () => {
     });
   });
 
-  it("shows team concurrency add-on and starts checkout for more slots", async () => {
+  it("manages an active concurrency subscription through Change", async () => {
     let requestedQuantity: number | null = null;
     let canceledSubscriptionId: string | null = null;
     let restoredSubscriptionId: string | null = null;
@@ -981,10 +988,11 @@ describe("organization billing settings", () => {
       expect(screen.getByText("12 concurrent runs")).toBeInTheDocument();
       expect(screen.getByText("Renews Jun 1, 2026")).toBeInTheDocument();
     });
+    expect(queryButtonByText("Buy concurrency")).toBeUndefined();
 
     click(buttonByText("Change"));
     const cancelDialog = await screen.findByRole("dialog", {
-      name: "Change concurrency subscription",
+      name: "Change concurrency",
     });
     expect(canceledSubscriptionId).toBeNull();
     click(
@@ -1020,8 +1028,57 @@ describe("organization billing settings", () => {
       expect(screen.getByText("Renews Jun 1, 2026")).toBeInTheDocument();
     });
 
-    click(buttonByText("Buy concurrent"));
+    click(buttonByText("Change"));
+    const changeDialog = await screen.findByRole("dialog", {
+      name: "Change concurrency",
+    });
+    expect(
+      within(changeDialog).getByRole("radio", { name: /Change slots/u }),
+    ).toHaveAttribute("aria-checked", "true");
+    const quantityInput = within(changeDialog).getByLabelText(
+      "New total slot quantity",
+    );
+    expect(quantityInput).toHaveValue("2");
+    await fill(quantityInput, "4");
 
+    await waitFor(() => {
+      expect(within(changeDialog).getByText("$400/month")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Continue to Stripe", changeDialog));
+
+    await waitFor(() => {
+      expect(requestedQuantity).toBe(2);
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/concurrency?quantity=2",
+      );
+    });
+  });
+
+  it("starts an initial concurrency checkout before a subscription exists", async () => {
+    let requestedQuantity: number | null = null;
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Team Concurrency Purchase Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeTeamBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.create,
+      ({ body, respond }) => {
+        requestedQuantity = body.quantity;
+        return respond(200, {
+          url: `https://checkout.stripe.com/concurrency?quantity=${body.quantity}`,
+        });
+      },
+    );
+
+    await openBillingTab();
+
+    click(buttonByText("Buy concurrency"));
     const purchaseDialog = await screen.findByRole("dialog", {
       name: "Buy concurrency",
     });
@@ -1088,13 +1145,15 @@ describe("organization billing settings", () => {
 
     click(buttonByText("Change"));
     const dialog = await screen.findByRole("dialog", {
-      name: "Change concurrency subscription",
+      name: "Change concurrency",
     });
     expect(
-      within(dialog).getByRole("radio", { name: /Reduce slots/u }),
+      within(dialog).getByRole("radio", { name: /Change slots/u }),
     ).toHaveAttribute("aria-checked", "true");
-    const quantityInput = within(dialog).getByLabelText("New slot quantity");
-    expect(quantityInput).toHaveValue("4");
+    const quantityInput = within(dialog).getByLabelText(
+      "New total slot quantity",
+    );
+    expect(quantityInput).toHaveValue("5");
     await fill(quantityInput, "3");
     expect(within(dialog).getByText("$300/month")).toBeInTheDocument();
 
@@ -1142,12 +1201,21 @@ describe("organization billing settings", () => {
 
     await openBillingTab();
 
-    expect(buttonByText("Cancel")).toBeInTheDocument();
-    click(buttonByText("Cancel"));
+    expect(buttonByText("Change")).toBeInTheDocument();
+    click(buttonByText("Change"));
     const dialog = await screen.findByRole("dialog", {
-      name: "Cancel concurrency subscription?",
+      name: "Change concurrency",
     });
-    expect(within(dialog).queryByRole("radiogroup")).not.toBeInTheDocument();
+    const quantityInput = within(dialog).getByLabelText(
+      "New total slot quantity",
+    );
+    await fill(quantityInput, "1");
+    expect(buttonByText("Continue to Stripe", dialog)).toBeDisabled();
+    click(
+      within(dialog).getByRole("radio", {
+        name: /Cancel entire subscription/u,
+      }),
+    );
     expect(buttonByText("Cancel subscription", dialog)).toBeEnabled();
   });
 
