@@ -298,7 +298,7 @@ function PinPill() {
             type="button"
             onClick={handlePin}
             disabled={pinSaving}
-            className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-state-hover hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
             aria-label={t(($) => {
               return $.sidebar.pin;
             })}
@@ -335,7 +335,7 @@ function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
                 aria-label={t(($) => {
                   return $.detail.viewProfile;
                 })}
-                className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
+                className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-state-hover cursor-pointer"
               >
                 <AgentAvatarImg
                   name={agentId}
@@ -393,7 +393,7 @@ function SuggestedPromptButton({
   return (
     <button
       type="button"
-      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-state-hover transition-colors"
       onClick={() => {
         onSelectPrompt(item.prompt);
       }}
@@ -442,7 +442,7 @@ function IdeasUseCasesButton() {
   return (
     <button
       type="button"
-      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-state-hover transition-colors"
       onClick={handleClick}
     >
       <IconArrowUpRight

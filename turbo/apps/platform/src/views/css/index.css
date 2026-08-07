@@ -31,7 +31,6 @@
   --color-sidebar-border: hsl(var(--gray-200));
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-primary: hsl(var(--white));
-  --color-sidebar-accent: hsl(var(--gray-100));
 
   /* Credit balance breakdown segment colors (usage bar chart) */
   --color-credit-free: #3eb7b8;
@@ -463,7 +462,10 @@ body {
   border: 0.7px solid hsl(var(--gray-400));
 }
 .zero-app .zero-chip:hover {
-  background-color: hsl(var(--gray-100));
+  background-image: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
   border-color: hsl(var(--gray-400));
 }
 
@@ -508,14 +510,12 @@ body {
 /* Zero left nav */
 .zero-nav {
   --color-sidebar: hsl(var(--gray-0));
-  --color-sidebar-accent: hsl(var(--muted));
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-border: hsl(var(--gray-200));
   --color-divider: hsl(var(--divider));
 }
 :where([data-theme="dark"]) .zero-nav {
   --color-sidebar: hsl(240 5% 8%);
-  --color-sidebar-accent: hsl(var(--gray-100));
   --color-sidebar-primary: #ffffff;
 }
 
@@ -526,7 +526,10 @@ body {
   color: hsl(var(--foreground));
 }
 .zero-app .zero-btn-morandi:hover {
-  background-color: hsl(var(--gray-100));
+  background-image: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
   border-color: hsl(var(--gray-400));
 }
 
@@ -538,7 +541,10 @@ body {
   box-shadow: var(--zero-card-shadow);
 }
 .zero-app .zero-card-morandi:hover {
-  background-color: hsl(var(--gray-50));
+  background-image: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
   border-color: hsl(var(--gray-200));
 }
 
@@ -555,7 +561,10 @@ body {
   box-shadow: var(--zero-card-shadow);
 }
 .zero-app .zero-card.cursor-pointer:hover {
-  background-color: hsl(var(--gray-0));
+  background-image: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
 }
 
 /* Same as .zero-card but less rounded (more rectangular), e.g. account dropdown / profile card */
@@ -622,7 +631,10 @@ body {
   color: hsl(var(--foreground));
 }
 .zero-app .zero-chat-btn:hover {
-  background-color: hsl(var(--gray-100));
+  background-image: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
   border-color: hsl(var(--gray-400));
 }
 

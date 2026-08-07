@@ -766,7 +766,7 @@ function PricingPage({
               <button
                 type="button"
                 onClick={onBack}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
                 aria-label={i18n.t(($) => {
                   return $.billing.common.back;
                 })}
@@ -1345,7 +1345,7 @@ function ConcurrencyQuantityControl({
           disabled={
             quantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN || disabled
           }
-          className="flex h-8 w-8 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-8 w-8 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           onClick={() => {
             onQuantityChange(quantity - 1);
           }}
@@ -1363,7 +1363,7 @@ function ConcurrencyQuantityControl({
           disabled={
             quantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX || disabled
           }
-          className="flex h-8 w-8 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-8 w-8 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           onClick={() => {
             onQuantityChange(quantity + 1);
           }}
@@ -1584,7 +1584,7 @@ function ConcurrencyChangeOptions({
           className={`flex flex-col rounded-xl border px-4 py-3 text-left transition-colors ${
             changeMode === "quantity"
               ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-              : "border-border/70 hover:bg-muted/40"
+              : "border-border/70 hover:bg-state-hover"
           }`}
           onClick={() => {
             onModeChange("quantity");
@@ -1609,7 +1609,7 @@ function ConcurrencyChangeOptions({
           className={`flex flex-col rounded-xl border px-4 py-3 text-left transition-colors ${
             changeMode === "cancel"
               ? "border-destructive bg-destructive/5 ring-1 ring-destructive/20"
-              : "border-border/70 hover:bg-muted/40"
+              : "border-border/70 hover:bg-state-hover"
           }`}
           onClick={() => {
             onModeChange("cancel");
@@ -2233,7 +2233,7 @@ export function OrgBillingTab() {
               <div className="h-0 zero-border-t" />
               <button
                 type="button"
-                className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors bg-muted/20 hover:bg-muted/35"
+                className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors bg-muted/20 hover:bg-state-hover"
                 onClick={() => {
                   return setPricingOpen(true);
                 }}

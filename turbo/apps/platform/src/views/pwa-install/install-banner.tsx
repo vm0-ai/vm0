@@ -63,7 +63,7 @@ export function InstallBanner() {
         onClick={() => {
           dismiss();
         }}
-        className="h-7 w-7 shrink-0 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        className="h-7 w-7 shrink-0 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
         aria-label={t(($) => {
           return $.lifecycle.pwaInstall.dismiss;
         })}

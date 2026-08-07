@@ -224,7 +224,7 @@ function CalendarMonth({
               isSelected
                 ? "bg-foreground text-background font-semibold"
                 : active
-                  ? "hover:bg-muted font-medium text-foreground"
+                  ? "hover:bg-state-hover font-medium text-foreground"
                   : "text-muted-foreground/30"
             }`}
           >
@@ -286,7 +286,7 @@ function CustomRangePicker({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left hover:bg-accent transition-colors ${
+          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left hover:bg-state-hover transition-colors ${
             !isPreset(value) ? "font-semibold" : ""
           }`}
         >
@@ -308,7 +308,7 @@ function CustomRangePicker({
             aria-label={i18n.t(($) => {
               return $.insights.calendar.previousMonth;
             })}
-            className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-muted transition-colors"
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-state-hover transition-colors"
           >
             <IconChevronLeft size={14} stroke={1.5} />
           </button>
@@ -319,7 +319,7 @@ function CustomRangePicker({
             aria-label={i18n.t(($) => {
               return $.insights.calendar.nextMonth;
             })}
-            className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-muted transition-colors"
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-state-hover transition-colors"
           >
             <IconChevronRight size={14} stroke={1.5} />
           </button>
@@ -367,7 +367,7 @@ function DateRangeFilter({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-2 rounded-lg border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          className="flex items-center gap-2 rounded-lg border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-state-hover transition-colors"
         >
           {dateRangeLabel(value)}
           <IconChevronDown
@@ -1408,7 +1408,7 @@ function DayAutomationsCard({
                 onClick={() => {
                   toggleExpanded(dayDate);
                 }}
-                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
+                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-state-hover"
               >
                 {showAll
                   ? i18n.t(($) => {
@@ -1457,7 +1457,7 @@ function DayChatRow({
       <Link
         pathname="/chats/:threadId"
         options={{ pathParams: { threadId: row.threadId } }}
-        className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-foreground/5 transition-colors"
+        className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-state-hover transition-colors"
       >
         <Tooltip>
           <TooltipTrigger asChild>
@@ -1571,7 +1571,7 @@ function DayChatsCard({
                 onClick={() => {
                   toggleExpanded(dayDate);
                 }}
-                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
+                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-state-hover"
               >
                 {showAll
                   ? i18n.t(($) => {

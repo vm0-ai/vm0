@@ -724,7 +724,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
           }))
     : "";
   return (
-    <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
+    <Card className="zero-card cursor-pointer flex flex-col hover:bg-state-hover transition-colors h-full">
       <CardContent className="flex flex-1 flex-col gap-3 px-5 py-4">
         <div className="flex items-center gap-3">
           <span className="relative h-10 w-10 shrink-0">

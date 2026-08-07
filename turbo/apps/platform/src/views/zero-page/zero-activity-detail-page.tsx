@@ -222,7 +222,7 @@ function ActivityBreadcrumbLink() {
   return (
     <Link
       pathname="/activities"
-      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
+      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors no-underline text-inherit"
     >
       <IconChartLine size={14} stroke={1.5} className="shrink-0" />
       {t(($) => {
@@ -264,7 +264,7 @@ function ActivityNotFound() {
         </p>
         <Link
           pathname="/activities"
-          className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
+          className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
         >
           {t(($) => {
             return $.activity.detail.notFound.back;

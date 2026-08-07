@@ -420,7 +420,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
               open
                 ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openArtifacts;
@@ -477,7 +477,7 @@ export function AutomationMenuButton({
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
               open
                 ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
             )}
             aria-label={
               ariaLabel ??
@@ -520,7 +520,7 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
               open
                 ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openBrowser;
@@ -631,7 +631,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
                       "start shared thread selection",
                     );
                   }}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-state-hover hover:text-foreground"
                   aria-label={t(($) => {
                     return $.chat.sharing.start;
                   })}
@@ -761,7 +761,7 @@ function ChatThreadEmojiMenuButton({
                 aria-label={t(($) => {
                   return $.chat.thread.changeIcon;
                 })}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
               >
                 {emoji ? (
                   <span
@@ -882,7 +882,7 @@ function ChatThreadEmojiPicker({
         {hasEmoji && (
           <button
             type="button"
-            className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
             onClick={onRemove}
           >
             {t(($) => {
@@ -1006,7 +1006,7 @@ function ChatThreadEmojiGrid({
             type="button"
             aria-label={item.name}
             title={shortcutLabel}
-            className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-accent"
+            className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover"
             onClick={() => {
               onSelect(item.emoji);
             }}
@@ -1788,7 +1788,7 @@ function HeaderWorkflowAutomationCard({
               workflowId: automation.workflowId,
             },
           }}
-          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
         >
           {t(($) => {
             return $.chat.actions.view;
@@ -2472,7 +2472,7 @@ function HeaderAutomationSidebar({
           aria-label={t(($) => {
             return $.chat.automations.close;
           })}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
         >
           <IconX size={16} />
         </button>
@@ -3388,7 +3388,7 @@ function CompletedWorkFoldRow({
               })
         }
         onClick={onToggle}
-        className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
+        className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover"
       >
         <IconHourglass
           aria-hidden
@@ -3599,7 +3599,7 @@ function RunGroupFoldRow({
         }
         onClick={onToggle}
         className={cn(
-          "inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50",
+          "inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover",
           embedded && "mt-1.5",
         )}
       >
@@ -3873,7 +3873,7 @@ function ScrollToBottomButton({ thread }: { thread: ChatPanelSignals }) {
       onClick={() => {
         scrollToBottom();
       }}
-      className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+      className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-state-hover hover:text-foreground"
     >
       <IconArrowDown size={18} />
     </button>
@@ -3971,7 +3971,7 @@ function RecommendedFollowupList({
             key={followup.prompt}
             type="button"
             title={followup.prompt}
-            className="group flex min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/40"
+            className="group flex min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-state-hover"
             onClick={() => {
               handleSelect(followup, followupIndex);
             }}
@@ -4890,7 +4890,7 @@ function ComputerUseAuthorizationCard({
         href={signals.href}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover sm:w-auto"
       >
         {t(($) => {
           return $.chat.actions.authorize;
@@ -4929,7 +4929,7 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
         href={signals.href}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover sm:w-auto"
       >
         {t(($) => {
           return $.chat.billing.comparePlans;
@@ -5045,7 +5045,7 @@ function PermissionActionButton({
       type="button"
       disabled={saving}
       onClick={onClick}
-      className="inline-flex h-9 w-full min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:flex-none"
+      className="inline-flex h-9 w-full min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover sm:w-auto sm:flex-none"
     >
       {saving && <IconLoader2 size={15} className="animate-spin" />}
       {saving
@@ -5844,7 +5844,7 @@ function PaidCreditCheckoutActions({
                 handleCreditClick({ credits }, event);
               }}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
             >
               {formatCreditsUsd(credits)}
             </button>
@@ -5853,7 +5853,7 @@ function PaidCreditCheckoutActions({
         <details>
           <summary
             role="button"
-            className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
+            className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-state-hover marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
           >
             {t(($) => {
               return $.chat.billing.custom;
@@ -5881,7 +5881,7 @@ function PaidCreditCheckoutActions({
               type="button"
               onClick={handleCustomCreditClick}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
             >
               {redirecting
                 ? t(($) => {
@@ -5967,7 +5967,7 @@ function InsufficientCreditsCard() {
           type="button"
           onClick={handleUpgradeClick}
           disabled={redirecting}
-          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
         >
           {redirecting
             ? t(($) => {
@@ -6326,7 +6326,7 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
     <Link
       pathname="/agents/:agentId"
       options={{ pathParams: { agentId } }}
-      className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-state-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       aria-label={t(($) => {
         return $.chat.agentPage.viewAgentProfile;
       })}
@@ -6471,7 +6471,7 @@ function SelectablePagedGroupRow({
       data-chat-share-selectable-group
       className={cn(
         "relative -my-1 rounded-lg py-1 transition-colors",
-        phase === "selecting" && "cursor-pointer hover:bg-gray-50",
+        phase === "selecting" && "cursor-pointer hover:bg-state-hover",
       )}
       onClick={(event) => {
         if (!clickTargetsExistingInteraction(event.target)) {
@@ -6864,7 +6864,7 @@ function UserMessageActions({
       <button
         type="button"
         onClick={onCopy}
-        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
         aria-label={t(($) => {
           return $.chat.actions.copyMessage;
         })}
@@ -7102,7 +7102,7 @@ function SourceMessageAnnotation({
       target="_blank"
       rel="noreferrer"
       aria-label={ariaLabel}
-      className={`${className} transition-colors hover:bg-gray-50 hover:text-foreground`}
+      className={`${className} transition-colors hover:bg-state-hover hover:text-foreground`}
     >
       {content}
     </a>
@@ -7136,7 +7136,7 @@ function AgentRunSourceMessageAnnotation({
         },
         { title: part.titleSnapshot },
       )}
-      className={`${className} transition-colors hover:bg-gray-50 hover:text-foreground`}
+      className={`${className} transition-colors hover:bg-state-hover hover:text-foreground`}
       title={part.titleSnapshot}
     >
       <AvatarFromUrl
@@ -8263,7 +8263,7 @@ function UsageChip({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors duration-150"
+          className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-state-hover hover:text-foreground transition-colors duration-150"
           aria-label={`${ariaLabel} ${total}`}
         >
           <IconCoins size={17} stroke={1.5} />
@@ -8350,7 +8350,7 @@ function PagedGroupPrimaryActions({
                 options={{
                   pathParams: { activityRunId: firstRunId },
                 }}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
                 aria-label={t(($) => {
                   return $.chat.run.viewLogs;
                 })}
@@ -8373,7 +8373,7 @@ function PagedGroupPrimaryActions({
               <button
                 type="button"
                 onClick={onCopy}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
                 aria-label={t(($) => {
                   return $.chat.actions.copyMessage;
                 })}

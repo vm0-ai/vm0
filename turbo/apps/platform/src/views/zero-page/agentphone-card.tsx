@@ -409,7 +409,7 @@ function AgentPhoneCardActions() {
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label={t(($) => {
                 return $.connectors.providerSettings.agentphone.options;
               })}
@@ -427,7 +427,7 @@ function AgentPhoneCardActions() {
                 return $.connectors.actions.disconnect;
               })}
               disabled={disconnecting}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-state-hover hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
               onClick={() => {
                 return detach(disconnect(pageSignal), Reason.DomCallback);
               }}

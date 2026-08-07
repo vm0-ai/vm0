@@ -805,7 +805,7 @@ function WorkflowSelectionStep({
     <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
       <button
         type="button"
-        className="mb-3 flex w-full min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-gray-50"
+        className="mb-3 flex w-full min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-state-hover"
         onClick={onCreateWorkflow}
       >
         <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground">
@@ -836,7 +836,7 @@ function WorkflowSelectionStep({
               <button
                 key={workflow.id}
                 type="button"
-                className="flex min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-gray-50"
+                className="flex min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-state-hover"
                 onClick={() => {
                   onSelectWorkflow(workflow);
                 }}
@@ -936,7 +936,7 @@ function AgentSelectionStep({
               return (
                 <div
                   key={agent.id}
-                  className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-accent"
+                  className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-state-hover"
                 >
                   <AgentDialogAgentButton
                     agent={agent}
@@ -967,7 +967,7 @@ function AgentSelectionStep({
               return (
                 <div
                   key={agent.id}
-                  className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-accent"
+                  className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-state-hover"
                 >
                   <AgentDialogAgentButton
                     agent={agent}

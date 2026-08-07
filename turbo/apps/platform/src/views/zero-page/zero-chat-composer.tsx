@@ -498,12 +498,12 @@ function ComposerStripRow({
     <div
       role="listitem"
       aria-label={itemAriaLabel}
-      className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
+      className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-state-hover"
     >
       {isGoal && onOpenDetail ? (
         <button
           type="button"
-          className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-state-selected-hover hover:text-sidebar-foreground focus-visible:bg-state-selected-hover focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onOpenDetail}
           aria-label={t(($) => {
             return $.chat.queue.openGoalDetails;
@@ -523,7 +523,7 @@ function ComposerStripRow({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-[hsl(var(--gray-200))] focus-visible:bg-[hsl(var(--gray-200))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-state-selected-hover focus-visible:bg-state-selected-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={aboutAriaLabel}
               >
                 {isGoal ? (
@@ -556,7 +556,7 @@ function ComposerStripRow({
       )}
       <button
         type="button"
-        className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-state-selected-hover hover:text-sidebar-foreground focus-visible:bg-state-selected-hover focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => {
           onRemove?.();
         }}
@@ -1128,7 +1128,7 @@ const TEMPLATE_TILE_MEDIA =
 const TEMPLATE_TILE_SCRIM =
   "pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-14 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100";
 const TEMPLATE_TILE_USE =
-  "absolute bottom-2 right-2 z-20 h-[30px] rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground opacity-100 transition-opacity duration-150 hover:bg-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover/tile:opacity-100";
+  "absolute bottom-2 right-2 z-20 h-[30px] rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground opacity-100 transition-opacity duration-150 hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover/tile:opacity-100";
 // Caption metrics track the illustration card: same text size, and enough
 // breathing room under the artwork that the title never crowds it.
 const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-2 pb-2 pt-2";
@@ -1459,7 +1459,7 @@ function WorkflowTemplateCard({
             "ml-auto h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
               ? "border-primary/40 bg-primary/10 text-primary"
-              : "border-border bg-background text-foreground hover:bg-muted",
+              : "border-border bg-background text-foreground hover:bg-state-hover",
           )}
         >
           {t(($) => {
@@ -1526,7 +1526,7 @@ function WorkflowTemplatePillRow({
               "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
               isActive
                 ? "bg-muted text-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                : "bg-background text-muted-foreground hover:bg-state-hover hover:text-foreground",
             )}
             onClick={() => {
               onSelect(pill);
@@ -3809,7 +3809,7 @@ function TemplatePreviewPage({
                   title: item.title,
                 },
               )}
-              className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => {
                 setCardThemeId(item.slug, selectedTheme.id);
                 onSelect(
@@ -4495,7 +4495,7 @@ function IllustrationTemplateCard({
             "h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
               ? "border-primary/40 bg-primary/10 text-primary"
-              : "border-border bg-background text-foreground hover:bg-muted",
+              : "border-border bg-background text-foreground hover:bg-state-hover",
           )}
         >
           {t(($) => {
@@ -4696,7 +4696,7 @@ function TemplatePickerCategoryNav({
                     "group flex h-9 w-full shrink-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                     selected
                       ? "bg-gray-50 font-medium text-foreground"
-                      : "text-gray-800 hover:bg-gray-50 hover:text-foreground",
+                      : "text-gray-800 hover:bg-state-hover hover:text-foreground",
                   )}
                 >
                   <Icon
@@ -5749,7 +5749,7 @@ function TemplatePickerButton({
             <button
               type="button"
               className={cn(
-                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-state-hover hover:text-foreground sm:h-9 sm:w-9",
                 COMPOSER_CONTROL_FOCUS_CLASS,
                 picker.value && "bg-accent text-foreground",
               )}
@@ -5851,7 +5851,7 @@ function CreateWorkflowPromptButton({
           <button
             type="button"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-state-hover hover:text-foreground sm:h-9 sm:w-9",
               COMPOSER_CONTROL_FOCUS_CLASS,
             )}
             aria-label={t(($) => {
@@ -6138,7 +6138,7 @@ function ComputerUseConnectorMenuSection({
         onClick={() => {
           computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
         }}
-        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover"
       >
         <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
           <IconWorld size={16} stroke={1.5} />
@@ -6209,7 +6209,7 @@ function ComputerUseConnectorMenuSection({
                 onClick={() => {
                   computerUse.onChange(checked ? null : host.id);
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover"
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                   <IconDeviceDesktop size={16} stroke={1.5} />
@@ -6279,7 +6279,7 @@ function ComputerUseConnectorMenuSection({
       <PopoverClose asChild>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-state-hover"
           onClick={onOpenDownloadDialog}
         >
           <IconPlug
@@ -6490,7 +6490,7 @@ function ConnectorsPopoverButton({
               <button
                 type="button"
                 className={cn(
-                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
+                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-state-hover sm:h-9 sm:min-w-9 sm:px-1.5",
                   COMPOSER_CONTROL_FOCUS_CLASS,
                 )}
                 aria-label={t(($) => {
@@ -6557,7 +6557,7 @@ function ConnectorsPopoverButton({
                     return (
                       <label
                         key={connector.id}
-                        className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                        className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
                       >
                         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                           <CustomConnectorIcon
@@ -6603,7 +6603,7 @@ function ConnectorsPopoverButton({
                   return (
                     <label
                       key={connector.slug}
-                      className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                      className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                         <ConnectorIcon icon={connector.icon} size={16} />
@@ -6630,7 +6630,7 @@ function ConnectorsPopoverButton({
                               },
                               { connectorName: connector.label },
                             )}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
                           >
                             <IconAdjustmentsHorizontal size={15} stroke={1.5} />
                           </button>
@@ -6675,7 +6675,7 @@ function ConnectorsPopoverButton({
           )}
           <button
             type="button"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
             onClick={() => {
               return onOpenAddDialog();
             }}
@@ -6929,7 +6929,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
               COMPOSER_CONTROL_FOCUS_CLASS,
               recording || starting || transcribing
                 ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
             )}
             onClick={handleClick}
             disabled={disabled}
@@ -6973,7 +6973,7 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
           <button
             type="button"
             className={cn(
-              "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+              "rounded-lg p-2 transition-colors duration-200 hover:bg-state-hover hover:text-foreground sm:p-[9px]",
               COMPOSER_CONTROL_FOCUS_CLASS,
             )}
             aria-label={t(($) => {
@@ -7456,7 +7456,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         triggerClassName={cn(
           "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
           "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-          "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+          "hover:bg-state-hover hover:text-foreground data-[state=open]:bg-state-hover data-[state=open]:text-foreground",
           COMPOSER_CONTROL_FOCUS_CLASS,
         )}
         compactTrigger

@@ -581,7 +581,7 @@ function PricingPageHeader({
             <button
               type="button"
               onClick={onBack}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
               aria-label={t(($) => {
                 return $.billing.common.back;
               })}

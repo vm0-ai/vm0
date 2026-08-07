@@ -69,7 +69,7 @@ function FeedbackToolbar({
           type="button"
           onClick={onCopy}
           aria-keyshortcuts="c"
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
         >
           <IconCopy size={14} stroke={2} />
           {t(($) => {
@@ -82,7 +82,7 @@ function FeedbackToolbar({
           type="button"
           onClick={onProvideFeedback}
           aria-keyshortcuts="f"
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
         >
           <IconMessageCircle size={14} stroke={2} />
           {t(($) => {

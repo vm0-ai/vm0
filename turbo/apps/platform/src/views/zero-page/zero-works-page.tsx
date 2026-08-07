@@ -169,7 +169,7 @@ function SlackCardActions({
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label={t(($) => {
                 return $.works.actions.moreOptions;
               })}
@@ -188,7 +188,7 @@ function SlackCardActions({
                   return $.works.actions.disconnect;
                 })}
                 disabled={disconnecting}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-state-hover hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 onClick={onDisconnect}
               >
                 {disconnecting
@@ -206,7 +206,7 @@ function SlackCardActions({
                 aria-label={t(($) => {
                   return $.works.actions.uninstall;
                 })}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-state-hover hover:text-accent-foreground transition-colors"
                 onClick={onUninstall}
               >
                 {t(($) => {
@@ -463,7 +463,7 @@ function TeamsCardActions({
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label={t(($) => {
                 return $.works.teams.moreOptions;
               })}
@@ -482,7 +482,7 @@ function TeamsCardActions({
                   return $.works.teams.disconnect;
                 })}
                 disabled={disconnecting}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-state-hover hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 onClick={onDisconnect}
               >
                 {disconnecting
@@ -500,7 +500,7 @@ function TeamsCardActions({
                 aria-label={t(($) => {
                   return $.works.teams.uninstall;
                 })}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-state-hover hover:text-accent-foreground transition-colors"
                 onClick={onUninstall}
               >
                 {t(($) => {
@@ -820,7 +820,7 @@ function TelegramCard() {
   return (
     <Link
       pathname={ROUTES.settingsTelegram}
-      className="zero-card flex flex-col text-inherit no-underline transition-colors hover:bg-muted/30"
+      className="zero-card flex flex-col text-inherit no-underline transition-colors hover:bg-state-hover"
       aria-label={t(($) => {
         return $.works.telegram.openSettings;
       })}
@@ -859,7 +859,7 @@ function StrapiCard() {
   return (
     <Link
       pathname={ROUTES.settingsStrapi}
-      className="zero-card flex flex-col transition-colors hover:bg-accent/40"
+      className="zero-card flex flex-col transition-colors hover:bg-state-hover"
     >
       <div className="flex items-center gap-4 p-4">
         <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#4945ff]/10 text-[#4945ff]">

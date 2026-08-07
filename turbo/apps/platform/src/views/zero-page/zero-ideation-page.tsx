@@ -124,7 +124,7 @@ export function ZeroIdeationPage() {
         <button
           type="button"
           onClick={handleBack}
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors cursor-pointer"
         >
           <IconMessageCircle size={14} stroke={1.5} className="shrink-0" />
           {t(($) => {
@@ -164,7 +164,7 @@ export function ZeroIdeationPage() {
                       "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
                       selectedTab === "all"
                         ? "bg-muted text-foreground"
-                        : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                        : "bg-background text-muted-foreground hover:bg-state-hover hover:text-foreground",
                     )}
                     onClick={() => {
                       return setActiveTab("all");
@@ -183,7 +183,7 @@ export function ZeroIdeationPage() {
                           "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
                           selectedTab === category.id
                             ? "bg-muted text-foreground"
-                            : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                            : "bg-background text-muted-foreground hover:bg-state-hover hover:text-foreground",
                         )}
                         onClick={() => {
                           return setActiveTab(category.id);
@@ -250,7 +250,7 @@ export function ZeroIdeationPage() {
                           return (
                             <Card
                               key={useCase.title}
-                              className="zero-card cursor-pointer hover:bg-muted/30 transition-colors"
+                              className="zero-card cursor-pointer hover:bg-state-hover transition-colors"
                               onClick={() => {
                                 return handleSelectPrompt(useCase.prompt);
                               }}

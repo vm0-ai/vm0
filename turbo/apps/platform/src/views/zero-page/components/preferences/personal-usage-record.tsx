@@ -108,7 +108,7 @@ const ROW_CLASS =
 // stays flush with the title text and the breakdown bar below. The keyboard
 // focus ring is inset so the list card's overflow-hidden cannot clip it.
 const TITLE_LINK_CLASS =
-  "inline-block max-w-full -mr-1.5 truncate rounded-md pr-1.5 py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-foreground/5 hover:decoration-foreground focus-visible:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+  "inline-block max-w-full -mr-1.5 truncate rounded-md pr-1.5 py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-state-hover hover:decoration-foreground focus-visible:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }
@@ -592,7 +592,7 @@ function UsageRecordList({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-9 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
+            className="h-9 rounded-lg text-muted-foreground hover:bg-state-hover hover:text-foreground"
             onClick={() => {
               loadMore(scope);
             }}

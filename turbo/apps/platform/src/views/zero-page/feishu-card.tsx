@@ -1366,7 +1366,7 @@ export function FeishuCard() {
     <Link
       pathname={ROUTES.settingsFeishu}
       data-testid="feishu-setup-button"
-      className="zero-card block transition-colors hover:bg-muted/30"
+      className="zero-card block transition-colors hover:bg-state-hover"
     >
       <div className="flex items-center gap-4 p-4">
         <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
@@ -1504,7 +1504,7 @@ function FeishuBotMenu({
         <button
           type="button"
           disabled={disconnecting}
-          className="shrink-0 rounded p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="shrink-0 rounded p-2 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           aria-label={t(
             ($) => {
               return $.connectors.providerSettings.feishu.moreOptions;
@@ -1519,7 +1519,7 @@ function FeishuBotMenu({
         {isAdmin ? (
           <button
             type="button"
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground"
             onClick={() => {
               open({
                 appId: bot.appId,
@@ -1542,7 +1542,7 @@ function FeishuBotMenu({
           <button
             type="button"
             disabled={disconnecting}
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={() => {
               detach(disconnect(bot.id, signal), Reason.DomCallback);
             }}
@@ -1560,7 +1560,7 @@ function FeishuBotMenu({
           <button
             type="button"
             disabled={!bot.id}
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-state-hover hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={() => {
               setUninstallInstallationId(bot.id);
             }}

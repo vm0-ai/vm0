@@ -1047,7 +1047,7 @@ function BreadcrumbLink({
     <Link
       pathname={pathname}
       options={options}
-      className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-muted hover:text-foreground"
+      className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-state-hover hover:text-foreground"
     >
       {icon}
       <span className="truncate">{children}</span>
@@ -2772,7 +2772,7 @@ function WorkflowFileManagementItems({
       <div className="my-1 h-px bg-border/60" />
       <label
         className={cn(
-          "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
+          "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground",
           saving ? "pointer-events-none opacity-60" : "",
         )}
       >
@@ -2814,7 +2814,7 @@ function WorkflowFileManagementItems({
             { path: selectedFilePath },
           )}
           disabled={saving}
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-accent disabled:opacity-60"
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-state-hover disabled:opacity-60"
           onClick={onDeleteSelectedFile}
         >
           <IconTrash size={15} stroke={1.5} />
@@ -4913,8 +4913,8 @@ function AutomationCreateCategoryButton({
       className={cn(
         "flex h-8 w-full shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200",
         active
-          ? "bg-gray-200 font-medium text-gray-900"
-          : "text-sidebar-foreground hover:bg-gray-50",
+          ? "bg-state-selected font-medium text-foreground"
+          : "text-sidebar-foreground hover:bg-state-hover",
       )}
     >
       <Icon size={16} stroke={1.5} className="shrink-0" />
@@ -4937,7 +4937,7 @@ function AutomationCreateOptionCard({
     <button
       type="button"
       onClick={onSelect}
-      className="flex min-h-[8rem] flex-col items-start gap-3.5 rounded-2xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-5 text-left transition-colors hover:border-[hsl(var(--gray-500))] hover:bg-gray-50"
+      className="flex min-h-[8rem] flex-col items-start gap-3.5 rounded-2xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-5 text-left transition-colors hover:border-[hsl(var(--gray-500))] hover:bg-state-hover"
     >
       <span
         className={cn(
@@ -7311,7 +7311,7 @@ function WorkflowDayOfWeekPicker({
                 "h-8 min-w-10 rounded-md border px-2 text-xs font-medium transition-colors disabled:opacity-60",
                 selected
                   ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border/60 bg-background text-muted-foreground hover:bg-muted",
+                  : "border-border/60 bg-background text-muted-foreground hover:bg-state-hover",
               )}
               onClick={() => {
                 const current = dayOfWeek.split(",").filter(Boolean);
@@ -7516,7 +7516,7 @@ function GmailMatchConditionRow({
         size="icon"
         aria-label={copy.removeAria}
         disabled={disabled || conditions.length === 1}
-        className="col-start-3 row-start-1 h-9 w-9 shrink-0 text-muted-foreground hover:bg-gray-50 hover:text-foreground sm:col-auto sm:row-auto [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+        className="col-start-3 row-start-1 h-9 w-9 shrink-0 text-muted-foreground hover:bg-state-hover hover:text-foreground sm:col-auto sm:row-auto [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
         onClick={() => {
           onChange(removeGmailMatchCondition(conditions, index));
         }}
@@ -9634,7 +9634,7 @@ function AutomationRow({
     <>
       <div
         className={cn(
-          "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-gray-50 sm:grid-cols-[minmax(0,1.2fr)_minmax(9rem,0.9fr)_minmax(13.5rem,1.1fr)_auto_7.75rem] sm:items-center sm:gap-4",
+          "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-state-hover sm:grid-cols-[minmax(0,1.2fr)_minmax(9rem,0.9fr)_minmax(13.5rem,1.1fr)_auto_7.75rem] sm:items-center sm:gap-4",
           !automation.enabled && "opacity-75",
         )}
       >
@@ -9865,7 +9865,7 @@ function AutomationControls({
                 size="icon"
                 disabled={busy}
                 aria-label={copy.runNow}
-                className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground"
+                className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground"
                 onClick={() => {
                   detach(
                     (async () => {
@@ -9899,7 +9899,7 @@ function AutomationControls({
                   size="icon"
                   disabled={busy}
                   aria-label={copy.editAutomation}
-                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground"
+                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground"
                   onClick={() => {
                     if (
                       automation.kind === "schedule" &&
@@ -9978,7 +9978,7 @@ function AutomationMoreActionsMenu({
               aria-label={i18n.t(($) => {
                 return $.workflows.automations.common.moreActions;
               })}
-              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground data-[state=open]:bg-gray-200 data-[state=open]:text-foreground"
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground data-[state=open]:bg-state-selected-hover data-[state=open]:text-foreground"
             >
               <IconDotsVertical size={14} stroke={1.5} />
             </Button>

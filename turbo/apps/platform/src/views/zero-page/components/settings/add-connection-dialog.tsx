@@ -521,7 +521,7 @@ function OAuthDeviceAuthCodePanel({
           <CopyButton
             type="button"
             text={state.userCode}
-            className="-m-1 p-1.5 hover:bg-accent"
+            className="-m-1 p-1.5 hover:bg-state-hover"
           />
         </div>
       </div>
@@ -959,7 +959,7 @@ function ExternalCodePendingContent({
         <CopyButton
           type="button"
           text={current.authorizationUrl}
-          className="p-2 hover:bg-accent"
+          className="p-2 hover:bg-state-hover"
         />
       </div>
       <label className="sr-only" htmlFor="connector-external-code-input">

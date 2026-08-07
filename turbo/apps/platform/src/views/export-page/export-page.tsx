@@ -37,7 +37,7 @@ type ExportViewState =
   | "rate-limited";
 
 const PRIMARY_ACTION_BUTTON_CLASS =
-  "h-9 w-full gap-2 bg-foreground text-background hover:bg-foreground/90 active:bg-foreground/80";
+  "h-9 w-full gap-2 bg-foreground text-background hover:bg-foreground-hover active:bg-foreground-pressed";
 
 function formatDuration(dateStr: string, locale: string, soon: string): string {
   const diffMs = new Date(dateStr).getTime() - now();

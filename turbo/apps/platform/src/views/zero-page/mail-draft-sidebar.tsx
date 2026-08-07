@@ -54,7 +54,7 @@ function SidebarCloseButton({ close }: { readonly close: () => void }) {
       aria-label={t(($) => {
         return $.chat.mail.closeDetails;
       })}
-      className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
     >
       <IconX size={16} />
     </button>

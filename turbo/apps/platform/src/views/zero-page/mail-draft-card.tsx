@@ -241,7 +241,7 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
         data-mail-draft-card
         data-mail-draft-status={draft.status}
         className={cn(
-          "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70",
+          "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70",
           MAIL_DRAFT_CARD_HEIGHT_CLASS,
         )}
       >
@@ -268,7 +268,7 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
       data-mail-draft-status={draft.status}
       onClick={openDraft}
       className={cn(
-        "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         MAIL_DRAFT_CARD_HEIGHT_CLASS,
         selected ? "border-ring/60 bg-muted/20" : "border-border/70",
       )}

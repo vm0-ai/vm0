@@ -332,7 +332,7 @@ function ConcurrencyQuantityControl({
               return $.queue.purchase.decreaseQuantity;
             })}
             disabled={quantity <= CONCURRENCY_QUANTITY_MIN || loading}
-            className="flex h-9 w-9 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => {
               onQuantityChange(quantity - 1);
             }}
@@ -348,7 +348,7 @@ function ConcurrencyQuantityControl({
               return $.queue.purchase.increaseQuantity;
             })}
             disabled={quantity >= CONCURRENCY_QUANTITY_MAX || loading}
-            className="flex h-9 w-9 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => {
               onQuantityChange(quantity + 1);
             }}

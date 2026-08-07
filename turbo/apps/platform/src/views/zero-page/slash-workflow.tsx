@@ -111,7 +111,7 @@ export function SlashWorkflowMenu({
                 type="button"
                 className={cn(
                   "flex w-full flex-col items-start gap-0.5 rounded px-2 py-1.5 text-left transition-colors",
-                  selected ? "bg-accent" : "hover:bg-accent/60",
+                  selected ? "bg-accent" : "hover:bg-state-hover",
                 )}
                 onMouseDown={(event) => {
                   event.preventDefault();
@@ -152,7 +152,7 @@ export function SlashWorkflowMenu({
               // Keep the composer focused until Link handles the click.
               event.preventDefault();
             }}
-            className="flex h-8 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
+            className="flex h-8 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-state-hover"
           >
             <span className="flex min-w-0 items-center gap-2">
               <IconFileText

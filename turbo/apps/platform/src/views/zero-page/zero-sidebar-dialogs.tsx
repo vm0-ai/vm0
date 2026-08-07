@@ -95,7 +95,7 @@ export function AgentDialogSearch({
             onClick={() => {
               return setQuery("");
             }}
-            className="absolute right-1.5 top-1/2 flex h-7 w-7 shrink-0 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="absolute right-1.5 top-1/2 flex h-7 w-7 shrink-0 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
             aria-label={t(($) => {
               return $.sidebar.clearSearch;
             })}
@@ -190,7 +190,7 @@ function AgentCommandSearch({
             onClick={() => {
               return setQuery("");
             }}
-            className="absolute right-1.5 top-1/2 flex h-7 w-7 shrink-0 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="absolute right-1.5 top-1/2 flex h-7 w-7 shrink-0 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
             aria-label={t(($) => {
               return $.sidebar.clearSearch;
             })}

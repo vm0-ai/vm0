@@ -144,7 +144,7 @@ export function SharedThreadPage({
           </a>
           <a
             href="/"
-            className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
           >
             {t(($) => {
               return $.sharedThread.tryOkou;

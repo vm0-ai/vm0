@@ -138,7 +138,7 @@ function MaintainerFilterPills(props: {
               "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors",
               active
                 ? "bg-muted text-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                : "bg-background text-muted-foreground hover:bg-state-hover hover:text-foreground",
             )}
           >
             <span>{option.label}</span>
@@ -213,7 +213,7 @@ function LabFeatureGroup(props: {
           return (
             <label
               key={key}
-              className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+              className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-state-hover transition-colors"
             >
               <div className="flex min-w-0 flex-col gap-1 pr-4">
                 <span className="text-sm text-foreground">{key}</span>

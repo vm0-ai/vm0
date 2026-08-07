@@ -683,7 +683,7 @@ function OAuthCredentialRow({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
+                    className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-hover hover:text-foreground"
                     aria-label={t(($) => {
                       return $.settings.shared.moreOptions;
                     })}

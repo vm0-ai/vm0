@@ -207,7 +207,7 @@ function ContainedLiveBrowserViewport({
           aria-label={t(($) => {
             return $.browserSession.fitWindow;
           })}
-          className="pointer-events-auto rounded-full border-border/70 bg-background/90 px-3 text-xs text-foreground backdrop-blur-sm hover:bg-gray-50"
+          className="pointer-events-auto rounded-full border-border/70 bg-background/90 px-3 text-xs text-foreground backdrop-blur-sm hover:bg-state-hover"
         >
           {fittingWindow ? (
             <IconLoader2 className="animate-spin" size={14} />
@@ -251,7 +251,7 @@ function PausedBrowserSession({
           disabled={starting}
           data-browser-session-start
           onClick={onStart}
-          className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
+          className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
         >
           {starting ? (
             <IconLoader2 className="animate-spin" size={14} />

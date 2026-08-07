@@ -613,7 +613,7 @@ function CodexFastModeSplitPanel({
           type="button"
           aria-pressed={!checked}
           className={cn(
-            "flex min-h-14 flex-col justify-center rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-gray-50",
+            "flex min-h-14 flex-col justify-center rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-state-hover",
             checked
               ? "border-border/70 bg-background text-muted-foreground"
               : "border-border bg-gray-50 text-foreground",
@@ -637,7 +637,7 @@ function CodexFastModeSplitPanel({
           type="button"
           aria-pressed={checked}
           className={cn(
-            "flex min-h-14 flex-col justify-center rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-gray-50",
+            "flex min-h-14 flex-col justify-center rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-state-hover",
             checked
               ? "border-border bg-gray-50 text-foreground"
               : "border-border/70 bg-background text-muted-foreground",

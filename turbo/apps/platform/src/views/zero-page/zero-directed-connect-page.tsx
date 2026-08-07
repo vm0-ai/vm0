@@ -282,7 +282,7 @@ function ManualGrantForm({
       <button
         type="submit"
         disabled={!allFilled || submitting}
-        className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
+        className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
       >
         {submitting && <IconLoader2 size={14} className="animate-spin" />}
         {submitting
@@ -387,7 +387,7 @@ function ConnectActions({
       type="button"
       disabled={isConnecting || disabled}
       onClick={onConnect}
-      className="inline-flex h-9 w-[100px] items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
+      className="inline-flex h-9 w-[100px] items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
     >
       {isConnecting && <IconLoader2 size={14} className="animate-spin" />}
       {isConnecting

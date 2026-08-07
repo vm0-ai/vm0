@@ -565,7 +565,7 @@ function ArtifactSidebarHeader({
             aria-label={t(($) => {
               return $.artifacts.actions.backToAll;
             })}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
           >
             <IconArrowLeft size={16} />
           </button>
@@ -703,7 +703,7 @@ function ArtifactOpenExternalAction({ url }: { url: string }) {
           return $.artifacts.actions.openNewTab;
         })}
         data-testid="artifact-sidebar-open-external"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
       >
         <IconExternalLink size={16} />
       </a>
@@ -733,7 +733,7 @@ function ArtifactFullscreenAction({
         onClick={onToggleFullscreen}
         aria-label={label}
         data-testid="artifact-sidebar-fullscreen-toggle"
-        className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
       >
         {fullscreen ? (
           <IconArrowsDiagonalMinimize2 size={16} />
@@ -760,7 +760,7 @@ function ArtifactMoreActions({ onClose }: { onClose: () => void }) {
             aria-label={t(($) => {
               return $.artifacts.actions.more;
             })}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
           >
             <IconDots size={16} />
           </button>
@@ -792,7 +792,7 @@ function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
           return $.artifacts.actions.closeArtifact;
         })}
         data-testid="artifact-sidebar-close"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-state-hover hover:text-foreground"
       >
         <IconX size={16} />
       </button>
@@ -1211,7 +1211,7 @@ function ArtifactImageNavigationControls({
             return $.artifacts.actions.previousImage;
           })}
           data-testid="artifact-sidebar-previous-image"
-          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
         >
           <IconChevronLeft size={22} stroke={1.8} />
         </button>
@@ -1227,7 +1227,7 @@ function ArtifactImageNavigationControls({
             return $.artifacts.actions.nextImage;
           })}
           data-testid="artifact-sidebar-next-image"
-          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
         >
           <IconChevronRight size={22} stroke={1.8} />
         </button>
@@ -1251,7 +1251,7 @@ function ArtifactImageZoomControls({
         type="button"
         onClick={controls.zoomOut}
         disabled={!controls.canZoomOut}
-        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         aria-label={t(($) => {
           return $.artifacts.actions.zoomOut;
         })}
@@ -1272,7 +1272,7 @@ function ArtifactImageZoomControls({
         type="button"
         onClick={controls.zoomIn}
         disabled={!controls.canZoomIn}
-        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         aria-label={t(($) => {
           return $.artifacts.actions.zoomIn;
         })}
@@ -1286,7 +1286,7 @@ function ArtifactImageZoomControls({
       <button
         type="button"
         onClick={controls.resetZoom}
-        className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-muted/70 hover:text-foreground"
+        className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-state-hover hover:text-foreground"
         aria-label={t(($) => {
           return $.artifacts.actions.resetZoom;
         })}

@@ -332,7 +332,7 @@ function PolicyPill({
                   : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
                 : disabled
                   ? "text-muted-foreground/50"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-state-hover"
             } ${disabled ? "cursor-default" : "cursor-pointer"}`}
           >
             {option === "allow" && <IconCheck size={12} stroke={2.5} />}
@@ -614,7 +614,7 @@ function PermissionAllowDurationDropdown({
           className={`inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] font-medium zero-border transition-colors ${
             saving
               ? "cursor-default text-muted-foreground/50"
-              : "cursor-pointer text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              : "cursor-pointer text-muted-foreground hover:bg-state-hover hover:text-foreground"
           }`}
         >
           <IconClock size={12} className="shrink-0" />
@@ -1071,7 +1071,7 @@ function PermissionRow({
     <div>
       {showSeparator && <div className="mx-3 border-t border-border/40" />}
       <div
-        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors ${indent ? "pl-8" : ""}`}
+        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-md hover:bg-state-hover transition-colors ${indent ? "pl-8" : ""}`}
       >
         <div className="min-w-0 flex-1">
           <code className="block whitespace-normal break-words text-xs font-medium text-foreground [overflow-wrap:anywhere]">
@@ -1521,7 +1521,7 @@ function LoadedPermissionsDrawerContent({
                 onClick={() => {
                   handleSearchChange("");
                 }}
-                className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground"
                 aria-label={t(($) => {
                   return $.connectors.permissions.clearSearch;
                 })}

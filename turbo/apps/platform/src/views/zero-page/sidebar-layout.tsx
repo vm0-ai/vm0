@@ -82,7 +82,7 @@ function InviteButtonLeaf() {
       onClick={() => {
         detach(openSettings("people", pageSignal), Reason.DomCallback);
       }}
-      className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
+      className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors shrink-0"
     >
       <IconUserPlus size={14} stroke={1.5} />
       {t(($) => {
@@ -110,7 +110,7 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
         "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
         open
           ? "bg-primary/10 text-primary"
-          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+          : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
       )}
       aria-label={t(($) => {
         return $.appShell.sidebar.mobile.openArtifacts;
@@ -174,7 +174,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
           "start shared thread selection",
         );
       }}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
       aria-label={t(($) => {
         return $.chat.sharing.start;
       })}
@@ -267,7 +267,7 @@ function MobileTopBar() {
         onClick={() => {
           setExpanded(true);
         }}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
         aria-label={t(($) => {
           return $.appShell.sidebar.mobile.openMenu;
         })}

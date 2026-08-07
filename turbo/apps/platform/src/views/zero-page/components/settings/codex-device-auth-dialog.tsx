@@ -208,7 +208,7 @@ function CodexDeviceAuthBody({
               <CopyButton
                 type="button"
                 text={flow.verificationCode}
-                className="-m-1 p-1.5 hover:bg-accent"
+                className="-m-1 p-1.5 hover:bg-state-hover"
               />
             </div>
           </div>
