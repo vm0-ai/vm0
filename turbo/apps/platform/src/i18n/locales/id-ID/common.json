@@ -1581,7 +1581,6 @@
         "website": "Situs web",
         "workflow": "Alur kerja"
       },
-      "messageTemplate": "Template pesan {{title}}",
       "previewTemplate": "Pratinjau template {{title}}",
       "previewVideo": "Pratinjau template video {{title}}",
       "previewWebsite": "Pratinjau template situs web {{title}}",

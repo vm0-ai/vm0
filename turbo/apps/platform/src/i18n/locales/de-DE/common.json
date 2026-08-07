@@ -1582,7 +1582,6 @@
         "website": "Webseite",
         "workflow": "Workflow"
       },
-      "messageTemplate": "Nachrichtenvorlage {{title}}",
       "previewTemplate": "Vorschauvorlage {{title}}",
       "previewVideo": "Vorschau der Videovorlage {{title}}",
       "previewWebsite": "Vorschau der Website-Vorlage {{title}}",

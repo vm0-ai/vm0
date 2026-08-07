@@ -1564,45 +1564,22 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
 
     await waitFor(() => {
-      const presentationTemplateLabel = screen.getByLabelText(
-        `Message template ${presentationTemplate.title}`,
-      );
-      const videoTemplateLabel = screen.getByLabelText(
-        `Message template ${videoTemplate.title}`,
-      );
-      const illustrationTemplateLabel = screen.getByLabelText(
-        `Message template ${illustrationTemplate.title}`,
-      );
-      const websiteTemplateLabel = screen.getByLabelText(
-        `Message template ${websiteTemplate.title}`,
-      );
-      expect(presentationTemplateLabel).toHaveTextContent(
-        presentationTemplate.title,
-      );
-      expect(presentationTemplateLabel).toHaveAttribute(
-        "title",
+      const presentationChip = screen.getByTitle(
         `Presentation · ${presentationTemplate.title}`,
       );
-      expect(videoTemplateLabel).toHaveTextContent(videoTemplate.title);
-      expect(videoTemplateLabel).toHaveAttribute(
-        "title",
-        `Video · ${videoTemplate.title}`,
-      );
-      expect(illustrationTemplateLabel).toHaveTextContent(
-        illustrationTemplate.title,
-      );
-      expect(illustrationTemplateLabel).toHaveAttribute(
-        "title",
+      const videoChip = screen.getByTitle(`Video · ${videoTemplate.title}`);
+      const illustrationChip = screen.getByTitle(
         `Illustration · ${illustrationTemplate.title}`,
       );
-      expect(websiteTemplateLabel).toHaveTextContent(websiteTemplate.title);
-      expect(websiteTemplateLabel).toHaveAttribute(
-        "title",
+      const websiteChip = screen.getByTitle(
         `Website · ${websiteTemplate.title}`,
       );
-      expect(
-        screen.getByLabelText(`Message template ${videoTemplate.title}`),
-      ).toHaveAttribute("aria-haspopup", "dialog");
+      expect(presentationChip).toHaveTextContent(presentationTemplate.title);
+      expect(videoChip).toHaveTextContent(videoTemplate.title);
+      expect(illustrationChip).toHaveTextContent(illustrationTemplate.title);
+      expect(websiteChip).toHaveTextContent(websiteTemplate.title);
+      // Sent templates are a record of the run, so they stay static text.
+      expect(videoChip).not.toHaveAttribute("aria-haspopup");
     });
   });
 

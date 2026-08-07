@@ -1581,7 +1581,6 @@
         "website": "ウェブサイト",
         "workflow": "ワークフロー"
       },
-      "messageTemplate": "メッセージ テンプレート {{title}}",
       "previewTemplate": "プレビュー テンプレート {{title}}",
       "previewVideo": "プレビュービデオテンプレート {{title}}",
       "previewWebsite": "Web サイト テンプレートのプレビュー {{title}}",

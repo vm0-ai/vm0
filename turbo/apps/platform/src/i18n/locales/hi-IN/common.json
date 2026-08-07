@@ -1582,7 +1582,6 @@
         "website": "वेबसाइट",
         "workflow": "वर्कफ़्लो"
       },
-      "messageTemplate": "संदेश टेम्पलेट {{title}}",
       "previewTemplate": "पूर्वावलोकन टेम्पलेट {{title}}",
       "previewVideo": "पूर्वावलोकन वीडियो टेम्पलेट {{title}}",
       "previewWebsite": "वेबसाइट टेम्पलेट {{title}} का पूर्वावलोकन करें",

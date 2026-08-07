@@ -1582,7 +1582,6 @@
         "website": "Website",
         "workflow": "Workflow"
       },
-      "messageTemplate": "Message template {{title}}",
       "previewTemplate": "Preview template {{title}}",
       "previewVideo": "Preview video template {{title}}",
       "previewWebsite": "Preview website template {{title}}",
