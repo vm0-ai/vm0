@@ -12,6 +12,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   IconBrandGithub,
+  IconBrandStripe,
   IconCalendarTime,
   IconClock,
   IconDatabasePlus,
@@ -501,6 +502,11 @@ export function humanReadableAutomationRuleLabel(
       return $.workflows.automations.strapi.rule;
     });
   }
+  if (automation.eventType === "stripe-invoice-paid") {
+    return i18n.t(($) => {
+      return $.workflows.automations.stripe.rule;
+    });
+  }
   return gmailAutomationTitle(automation);
 }
 
@@ -585,6 +591,11 @@ export function automationTypeLabel(
       return $.workflows.automations.types.strapi;
     });
   }
+  if (automation.eventType === "stripe-invoice-paid") {
+    return i18n.t(($) => {
+      return $.workflows.automations.types.stripe;
+    });
+  }
   if (automation.eventType === "chat-run-finished") {
     return i18n.t(($) => {
       return $.workflows.automations.types.chat;
@@ -649,6 +660,9 @@ export function AutomationListIcon({
     if (automation.eventType === "webhook-received") {
       return IconLink;
     }
+    if (automation.eventType === "stripe-invoice-paid") {
+      return IconBrandStripe;
+    }
     if (
       automation.eventType === "github-label-applied" ||
       automation.eventType === "github-deployment-status-created" ||
@@ -684,7 +698,9 @@ export function AutomationListIcon({
       ? "bg-blue-50 text-blue-600"
       : automation.eventType === "webhook-received"
         ? "bg-amber-50 text-amber-700"
-        : "bg-emerald-50 text-emerald-700";
+        : automation.eventType === "stripe-invoice-paid"
+          ? "bg-violet-50 text-violet-700"
+          : "bg-emerald-50 text-emerald-700";
 
   const compact = size === "sm";
   return (

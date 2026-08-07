@@ -1140,7 +1140,17 @@ export function createChatFilesBddApi(context: TestContext) {
     async requestSendEvent(
       actor: ApiTestUser | null,
       body: BddSendEventBody,
-      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 409 | 422)[],
+      statuses: readonly (
+        | 201
+        | 400
+        | 401
+        | 402
+        | 403
+        | 404
+        | 409
+        | 422
+        | 429
+      )[],
       signal?: AbortSignal,
     ) {
       const client = signal
