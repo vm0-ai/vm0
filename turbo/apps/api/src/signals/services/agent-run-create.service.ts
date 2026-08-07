@@ -6474,9 +6474,6 @@ async function resolveQueueFirstAdmissionForLaunch(args: {
   if (association.threadId !== args.createArgs.chatThreadId) {
     throw new Error("Queue-first association must match the run chat thread");
   }
-  if (association.kind === "goal_event") {
-    await lockGoalQueueFirstRunSource(args.tx, association);
-  }
   return await resolveQueueFirstRunAdmission(args.tx, {
     admissionTime:
       association.kind === "user_message"
@@ -6487,6 +6484,16 @@ async function resolveQueueFirstAdmissionForLaunch(args: {
     timing: args.timing,
     ...(args.threadAlreadyLocked ? { threadAlreadyLocked: true } : {}),
   });
+}
+
+async function lockQueueFirstRunSourceForLaunch(args: {
+  readonly tx: DbTransaction;
+  readonly createArgs: CreateAgentRunArgs;
+}): Promise<void> {
+  const association = args.createArgs.queueFirstAssociation;
+  if (association?.kind === "goal_event") {
+    await lockGoalQueueFirstRunSource(args.tx, association);
+  }
 }
 
 async function claimQueueFirstAssociationForLaunch(args: {
@@ -6527,6 +6534,10 @@ async function commitFailedLaunch(args: {
   const message = runFailureMessage(args.error);
   const committed = await args.db.transaction(
     async (tx): Promise<FailedLaunchCommitResult> => {
+      await lockQueueFirstRunSourceForLaunch({
+        tx,
+        createArgs: args.createArgs,
+      });
       const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
         tx,
         createArgs: args.createArgs,
@@ -7006,6 +7017,10 @@ async function commitPreparedLaunch(
       },
     );
     const admissionLockHeldStartedAt = now();
+    await lockQueueFirstRunSourceForLaunch({
+      tx,
+      createArgs: args.createArgs,
+    });
     return {
       result: await commitPreparedLaunchUnderLock(tx, args, payload),
       admissionLockHeldStartedAt,
