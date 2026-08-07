@@ -107,7 +107,7 @@ interface PreparedQueuedPiEdgeTurn {
 type PromoteQueuedCandidateResult =
   | {
       readonly status: "promoted";
-      readonly pendingActivation: PendingRunActivation | null;
+      readonly pendingActivation: PendingRunActivation;
       readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
     }
   | { readonly status: "full" }
@@ -117,7 +117,7 @@ type PromoteQueuedCandidateResult =
 type PromoteQueuedCandidateSideEffectResult =
   | {
       readonly status: "drained";
-      readonly pendingActivation: PendingRunActivation | null;
+      readonly pendingActivation: PendingRunActivation;
     }
   | { readonly status: "full" }
   | { readonly status: "skipped" };
@@ -336,16 +336,17 @@ async function promoteQueuedCandidate(
       return { status: "lost" };
     }
 
-    const runValues = args.payload
-      ? {
-          status: "pending",
-          lastHeartbeatAt: nowDate(),
-          runnerGroup: args.payload.runnerGroup,
-        }
-      : {
-          status: "pending",
-          lastHeartbeatAt: nowDate(),
-        };
+    if (args.payload === null) {
+      throw new Error(
+        `Queued run "${args.row.runId}" is missing its runner job payload`,
+      );
+    }
+    const payload = args.payload;
+    const runValues = {
+      status: "pending",
+      lastHeartbeatAt: nowDate(),
+      runnerGroup: payload.runnerGroup,
+    };
     const [updated] = await tx
       .update(agentRuns)
       .set(runValues)
@@ -366,19 +367,11 @@ async function promoteQueuedCandidate(
       userId: args.row.userId,
     });
 
-    if (!args.payload) {
-      return {
-        status: "promoted",
-        pendingActivation: null,
-        queueMarkerNotification,
-      };
-    }
-
     const runnerJob = await insertPromotedRunnerJob(tx, {
       orgId: args.orgId,
       runId: args.row.runId,
       queuedAt: args.row.createdAt,
-      payload: args.payload,
+      payload,
     });
     return {
       status: "promoted",
@@ -394,16 +387,16 @@ async function promoteQueuedCandidate(
                 runId: args.row.runId,
                 userId: args.row.userId,
                 orgId: args.orgId,
-                runnerGroup: args.payload.runnerGroup,
+                runnerGroup: payload.runnerGroup,
                 apiStartTime: runnerJob.apiStartedAt,
               },
         runnerNotification: {
           runId: args.row.runId,
-          runnerGroup: args.payload.runnerGroup,
+          runnerGroup: payload.runnerGroup,
           profile: runnerJob.profile,
-          reuseKey: args.payload.reuseKey,
-          cliAgentSessionId: args.payload.cliAgentSessionId,
-          historyGenerationRunId: args.payload.historyGenerationRunId,
+          reuseKey: payload.reuseKey,
+          cliAgentSessionId: payload.cliAgentSessionId,
+          historyGenerationRunId: payload.historyGenerationRunId,
           createdAt: runnerJob.createdAt,
         },
       },
@@ -499,8 +492,8 @@ async function promoteQueuedCandidateWithSideEffects(
  * Scope: API-created queue entries carry a prepared runner job payload
  * in `agent_run_queue.encrypted_params`. Draining promotes one queued run
  * to pending and inserts the matching `runner_job_queue` row so the runner
- * can claim it. Legacy or fixture entries without that payload still get
- * the SQL-only queued → pending transition for compatibility.
+ * can claim it. A queued run without that payload violates the owning writer's
+ * invariant and fails before any state transition.
  *
  * Acquires `pg_advisory_xact_lock(hashtext(orgId))` — same hash key as
  * web's `drainOrgQueue` so the two backends serialize correctly on the
@@ -552,17 +545,21 @@ export const drainOrgQueue$ = command(
       if (result.status === "skipped") {
         continue;
       }
-      if (result.pendingActivation !== null) {
-        await tapError(
-          set(activatePendingRun$, result.pendingActivation),
-          (error) => {
-            L.error("Failed to activate promoted queued run", {
-              runId: row.runId,
-              orgId: args.orgId,
-              error,
-            });
-          },
-        );
+      await tapError(
+        set(activatePendingRun$, result.pendingActivation),
+        (error) => {
+          L.error("Failed to activate promoted queued run", {
+            runId: row.runId,
+            orgId: args.orgId,
+            error,
+          });
+        },
+      );
+      if (signal.aborted) {
+        L.debug("Request remained aborted after queued run activation", {
+          runId: row.runId,
+          orgId: args.orgId,
+        });
       }
       return 1;
     }
