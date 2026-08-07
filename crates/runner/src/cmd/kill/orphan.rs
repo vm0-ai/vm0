@@ -1031,10 +1031,23 @@ mod tests {
             Some(format!(
                 "group leader and member unexpectedly share PID {leader_pid}"
             ))
+        } else if leader_stat.pgid != leader_pid {
+            Some(format!(
+                "group leader PID {leader_pid} does not match its PGID {}",
+                leader_stat.pgid
+            ))
         } else if leader_stat.pgid != member_stat.pgid {
             Some(format!(
                 "group member PGID {} does not match leader PGID {}",
                 member_stat.pgid, leader_stat.pgid
+            ))
+        } else if !process::process_stat_is_live(&leader_stat) {
+            Some(format!(
+                "group leader {leader_pid} was not live before termination"
+            ))
+        } else if !process::process_stat_is_live(&member_stat) {
+            Some(format!(
+                "group member {member_pid} was not live before termination"
             ))
         } else {
             None
