@@ -70,127 +70,127 @@ const VIDEO_PRICING_DEFAULTS = [
   {
     provider: SEEDANCE_2_5_MODEL,
     category: "output_video_tokens.480p_720p.no_video",
-    unitPrice: 12_840,
+    unitPrice: 13_375,
     unitSize: 1_000_000,
   },
   {
     provider: SEEDANCE_2_5_MODEL,
     category: "output_video_tokens.480p_720p.with_video",
-    unitPrice: 7680,
+    unitPrice: 8000,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.480p_720p.no_video",
-    unitPrice: 8400,
+    unitPrice: 8750,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.480p_720p.with_video",
-    unitPrice: 5160,
+    unitPrice: 5375,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.1080p.no_video",
-    unitPrice: 9240,
+    unitPrice: 9625,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.1080p.with_video",
-    unitPrice: 5640,
+    unitPrice: 5875,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-fast-260128",
     category: "output_video_tokens.480p_720p.no_video",
-    unitPrice: 6720,
+    unitPrice: 7000,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-fast-260128",
     category: "output_video_tokens.480p_720p.with_video",
-    unitPrice: 3960,
+    unitPrice: 4125,
     unitSize: 1_000_000,
   },
   {
     provider: "seedance-1-5-pro-251215",
     category: "output_video_tokens.audio",
-    unitPrice: 2880,
+    unitPrice: 3000,
     unitSize: 1_000_000,
   },
   {
     provider: "seedance-1-5-pro-251215",
     category: "output_video_tokens.silent",
-    unitPrice: 1440,
+    unitPrice: 1500,
     unitSize: 1_000_000,
   },
   {
     provider: FAL_VEO_FAST_MODEL,
     category: "output_video_seconds.audio",
-    unitPrice: 180,
+    unitPrice: 188,
     unitSize: 1,
   },
   {
     provider: FAL_VEO_FAST_MODEL,
     category: "output_video_seconds.silent",
-    unitPrice: 120,
+    unitPrice: 125,
     unitSize: 1,
   },
   {
     provider: FAL_VEO_FAST_MODEL,
     category: "output_video_seconds.audio.4k",
-    unitPrice: 420,
+    unitPrice: 438,
     unitSize: 1,
   },
   {
     provider: FAL_VEO_FAST_MODEL,
     category: "output_video_seconds.silent.4k",
-    unitPrice: 360,
+    unitPrice: 375,
     unitSize: 1,
   },
   {
     provider: KLING_V3_4K_MODEL,
     category: "output_video_seconds.audio.4k",
-    unitPrice: 504,
+    unitPrice: 525,
     unitSize: 1,
   },
   {
     provider: KLING_V3_4K_MODEL,
     category: "output_video_seconds.silent.4k",
-    unitPrice: 504,
+    unitPrice: 525,
     unitSize: 1,
   },
   {
     provider: MINIMAX_H3_MODEL,
     category: "output_video_seconds.768p",
-    unitPrice: 96,
+    unitPrice: 100,
     unitSize: 1,
   },
   {
     provider: MINIMAX_H3_MODEL,
     category: "output_video_seconds.2k",
-    unitPrice: 156,
+    unitPrice: 163,
     unitSize: 1,
   },
   {
     provider: MINIMAX_H3_MODEL,
     category: "input_video_seconds.768p",
-    unitPrice: 96,
+    unitPrice: 100,
     unitSize: 1,
   },
   {
     provider: MINIMAX_H3_MODEL,
     category: "input_video_seconds.2k",
-    unitPrice: 156,
+    unitPrice: 163,
     unitSize: 1,
   },
   {
     provider: MINIMAX_H3_MODEL,
     category: "input_image.additional",
-    unitPrice: 48,
+    unitPrice: 50,
     unitSize: 1,
   },
 ] as const;
@@ -819,7 +819,7 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 830,
+      creditsCharged: 865,
       model: VIDEO_IO_MODEL,
       aspectRatio: "16:9",
       duration: "8s",
@@ -881,10 +881,10 @@ describe("POST /api/zero/video-io/generate", () => {
     // The callback-token charge (123,456 tokens at the no-video 720p rate) is
     // asserted through the result body above and the exact org balance drop,
     // observed on the product billing surface.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 830);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 865);
   });
 
-  it("generates Seedance 2.5 with expanded references and 20% markup pricing", async () => {
+  it("generates Seedance 2.5 with expanded references and 20% gross-margin pricing", async () => {
     const fixture = await seedVideoFixture({ withPricing: true });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const referenceImageUrls = Array.from({ length: 30 }, (_, index) => {
@@ -984,7 +984,7 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(statusResponse.status).toBe(200);
     const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
-      creditsCharged: 768,
+      creditsCharged: 800,
       model: SEEDANCE_2_5_MODEL,
       duration: "30s",
       durationSeconds: 30,
@@ -992,7 +992,7 @@ describe("POST /api/zero/video-io/generate", () => {
       sourceUrl: BYTEPLUS_VIDEO_URL,
       requestId: "seedance-2-5-video-task",
     });
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 768);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 800);
   });
 
   it("allows Seedance 2.5 audio-only references", async () => {
@@ -1303,16 +1303,16 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(statusResponse.status).toBe(200);
     const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
-      creditsCharged: 1128,
+      creditsCharged: 1175,
       model: "dreamina-seedance-2-0-260128",
       sourceUrl: BYTEPLUS_VIDEO_URL,
       requestId: "dreamina-video-task",
     });
 
-    // creditsCharged 1128 = 200,000 tokens at the 1080p with-video rate
-    // (5640/1M); the no-video rate would charge 1848, so the exact balance
+    // creditsCharged 1175 = 200,000 tokens at the 1080p with-video rate
+    // (5875/1M); the no-video rate would charge 1925, so the exact balance
     // drop pins the with-video pricing category.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1128);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1175);
   });
 
   it("generates MiniMax H3 with full references and charges every billed usage component", async () => {
@@ -1462,7 +1462,7 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 1500,
+      creditsCharged: 1567,
       model: MINIMAX_H3_MODEL,
       aspectRatio: "16:9",
       duration: "5s",
@@ -1473,9 +1473,9 @@ describe("POST /api/zero/video-io/generate", () => {
       requestId: "minimax-h3-task",
     });
 
-    // 5 output seconds at 156 credits, 4 reference-video seconds at 156
-    // credits, and 2 reference images after the five-image free tier at 48.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1500);
+    // 5 output seconds at 163 credits, 4 reference-video seconds at 163
+    // credits, and 2 reference images after the five-image free tier at 50.
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1567);
   });
 
   it("submits MiniMax H3 first and last frames with adaptive ratio", async () => {
@@ -1705,15 +1705,15 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 1440,
+      creditsCharged: 1504,
       model: FAL_VEO_FAST_MODEL,
       sourceUrl: FAL_VIDEO_URL,
       requestId: "video-request",
     });
 
-    // creditsCharged 1440 = 8 seconds at the audio rate (180/s); the silent
-    // rate would charge 960, so the exact balance drop pins the category.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1440);
+    // creditsCharged 1504 = 8 seconds at the audio rate (188/s); the silent
+    // rate would charge 1000, so the exact balance drop pins the category.
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1504);
   });
 
   it("generates video files with the recommended Kling 4K model", async () => {
@@ -1802,16 +1802,16 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(statusResponse.status).toBe(200);
     const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
-      creditsCharged: 2520,
+      creditsCharged: 2625,
       model: KLING_V3_4K_MODEL,
       resolution: "4k",
       sourceUrl: KLING_VIDEO_URL,
       requestId: "kling-video-request",
     });
 
-    // creditsCharged 2520 = 5 seconds at the 4k audio rate (504/s); the exact
+    // creditsCharged 2625 = 5 seconds at the 4k audio rate (525/s); the exact
     // balance drop pins the single settled charge.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 2520);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 2625);
   });
 
   it("records a failed job when BytePlus video generation fails", async () => {
