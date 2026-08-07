@@ -184,7 +184,10 @@ import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
 import { PermissionsDialog } from "./components/settings/permissions-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import type { TemplateCardHtmlPreviewState } from "../../signals/zero-page/zero-chat-composer.ts";
+import type {
+  TemplateCardHtmlPreviewState,
+  VideoTemplateOptionsAnchor,
+} from "../../signals/zero-page/zero-chat-composer.ts";
 import type {
   ComposerPendingEvent,
   ComposerPrimaryAction,
@@ -206,6 +209,7 @@ import { shouldUseUserMessage } from "../../signals/zero-page/user-message-docum
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 import { AvatarTemplatePickerContent } from "./avatar-template-picker.tsx";
+import { VideoTemplateOptionsPopover } from "./video-template-options-popover.tsx";
 import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
@@ -5586,6 +5590,23 @@ function composerTemplateAttachmentLifecycleKey(
     : "none";
 }
 
+/** Serialized by the inline chip node view as "left,top,width,height". */
+function parseTemplateAnchor(
+  serialized: string | undefined,
+): VideoTemplateOptionsAnchor | undefined {
+  const parts = serialized?.split(",").map(Number);
+  if (parts?.length !== 4 || parts.some(Number.isNaN)) {
+    return undefined;
+  }
+  const [left, top, width, height] = parts;
+  return left === undefined ||
+    top === undefined ||
+    width === undefined ||
+    height === undefined
+    ? undefined
+    : { left, top, width, height };
+}
+
 function ComposerTemplateAttachmentSync({
   signals,
 }: {
@@ -5605,6 +5626,14 @@ function ComposerTemplateAttachmentSync({
     signals.template.setTemplatePickerReferenceValue$,
   );
   const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
+  const openVideoOptions = useSet(signals.template.openVideoTemplateOptions$);
+  const videoOptionsPosition = useGet(
+    signals.template.videoTemplateOptionsPosition$,
+  );
+  const updateTemplateAt = useSet(signals.template.updateTemplateAt$);
+  const setVideoOptionsValue = useSet(
+    signals.template.setVideoTemplateOptionsValue$,
+  );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const attachment = selectedComposerTemplateAttachment(picker?.value);
   const openPicker = (category: string) => {
@@ -5627,25 +5656,56 @@ function ComposerTemplateAttachmentSync({
   };
 
   return (
-    <button
-      key={composerTemplateAttachmentLifecycleKey(attachment)}
-      ref={setLifecycleRef}
-      type="button"
-      hidden
-      data-template-type={attachment?.type}
-      data-template-title={attachment?.title}
-      data-template-category={attachment?.category}
-      data-template-preview-url={attachment?.previewImageUrl}
-      onClick={(event) => {
-        const action = event.currentTarget.dataset.templateAction;
-        if (action === "open") {
-          openPicker(event.currentTarget.dataset.templateCategory ?? "slides");
-        } else if (action === "remove") {
-          picker?.onChange(undefined);
+    <>
+      <VideoTemplateOptionsPopover
+        signals={signals}
+        onChange={(next) => {
+          const nextAttachment = selectedComposerTemplateAttachment(next);
+          if (videoOptionsPosition === null || !nextAttachment) {
+            return;
+          }
+          // Addressed by position: the editor selection does not survive
+          // repeated in-place updates, and the popover can outlive it.
+          updateTemplateAt(videoOptionsPosition, next, nextAttachment);
+          // The popover holds a snapshot; without this a second edit would be
+          // computed from the pre-edit value and undo the first one.
+          setVideoOptionsValue(next);
           onDraftChange?.();
-        }
-      }}
-    />
+        }}
+      />
+      <button
+        key={composerTemplateAttachmentLifecycleKey(attachment)}
+        ref={setLifecycleRef}
+        type="button"
+        hidden
+        data-template-type={attachment?.type}
+        data-template-title={attachment?.title}
+        data-template-category={attachment?.category}
+        data-template-preview-url={attachment?.previewImageUrl}
+        onClick={(event) => {
+          const action = event.currentTarget.dataset.templateAction;
+          if (action === "open") {
+            openPicker(
+              event.currentTarget.dataset.templateCategory ?? "slides",
+            );
+          } else if (action === "remove") {
+            picker?.onChange(undefined);
+            onDraftChange?.();
+          } else if (action === "options") {
+            const anchor = parseTemplateAnchor(
+              event.currentTarget.dataset.templateAnchor,
+            );
+            const position = Number(
+              event.currentTarget.dataset.templatePosition,
+            );
+            const selected = readSelectedTemplate();
+            if (anchor && selected && Number.isInteger(position)) {
+              openVideoOptions(anchor, selected, position);
+            }
+          }
+        }}
+      />
+    </>
   );
 }
 

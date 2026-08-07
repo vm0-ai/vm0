@@ -1631,7 +1631,14 @@
       "removeTemplate": "Remover template {{title}}",
       "removeVideo": "Remover template de vídeo {{title}}",
       "removeWebsite": "Remover template de site {{title}}",
-      "removeWorkflow": "Remover template de fluxo de trabalho {{title}}"
+      "removeWorkflow": "Remover template de fluxo de trabalho {{title}}",
+      "videoOptions": "Opções de vídeo",
+      "videoOptionsAudio": "Gerar áudio",
+      "videoOptionsDuration": "Duração",
+      "videoOptionsLabel": "Opções de vídeo {{spec}}",
+      "videoOptionsModel": "Modelo",
+      "videoOptionsRatio": "Proporção",
+      "videoOptionsResolution": "Resolução"
     },
     "thread": {
       "ariaLabel": "Conversa",

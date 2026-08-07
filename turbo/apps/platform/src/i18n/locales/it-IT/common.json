@@ -1631,7 +1631,14 @@
       "removeTemplate": "Rimuovi modello {{title}}",
       "removeVideo": "Rimuovi modello video {{title}}",
       "removeWebsite": "Rimuovi modello di sito web {{title}}",
-      "removeWorkflow": "Rimuovi modello di flusso di lavoro {{title}}"
+      "removeWorkflow": "Rimuovi modello di flusso di lavoro {{title}}",
+      "videoOptions": "Opzioni video",
+      "videoOptionsAudio": "Genera audio",
+      "videoOptionsDuration": "Durata",
+      "videoOptionsLabel": "Opzioni video {{spec}}",
+      "videoOptionsModel": "Modello",
+      "videoOptionsRatio": "Proporzioni",
+      "videoOptionsResolution": "Risoluzione"
     },
     "thread": {
       "ariaLabel": "Discussione della chat",

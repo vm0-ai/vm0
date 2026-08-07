@@ -1591,7 +1591,14 @@
       "removeTemplate": "Vorlage {{title}} entfernen",
       "removeVideo": "Videovorlage {{title}} entfernen",
       "removeWebsite": "Website-Vorlage {{title}} entfernen",
-      "removeWorkflow": "Workflow-Vorlage {{title}} entfernen"
+      "removeWorkflow": "Workflow-Vorlage {{title}} entfernen",
+      "videoOptions": "Videooptionen",
+      "videoOptionsAudio": "Audio erzeugen",
+      "videoOptionsDuration": "Dauer",
+      "videoOptionsLabel": "Videooptionen {{spec}}",
+      "videoOptionsModel": "Modell",
+      "videoOptionsRatio": "Seitenverhältnis",
+      "videoOptionsResolution": "Auflösung"
     },
     "thread": {
       "ariaLabel": "Chat-Thread",
