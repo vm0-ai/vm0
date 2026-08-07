@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.703.2](https://github.com/vm0-ai/vm0/compare/app-v0.703.1...app-v0.703.2) (2026-08-07)
+
+
+### Refactoring
+
+* **chat:** remove unread ids rollout compatibility ([#25694](https://github.com/vm0-ai/vm0/issues/25694)) ([6ba5a0c](https://github.com/vm0-ai/vm0/commit/6ba5a0cfd055ba88dcc87a0ee9b475d92d309641))
+* remove the templatePickerGlobalSearch feature switch ([#25686](https://github.com/vm0-ai/vm0/issues/25686)) ([b427e71](https://github.com/vm0-ai/vm0/commit/b427e716c76ad5cfa9372ef09f52d622e6443b57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.291.0
+    * @vm0/core bumped to 8.528.1
+
 ## [0.703.1](https://github.com/vm0-ai/vm0/compare/app-v0.703.0...app-v0.703.1) (2026-08-07)
 
 
