@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.706.1](https://github.com/vm0-ai/vm0/compare/app-v0.706.0...app-v0.706.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **platform:** wait for chat thread metadata before setup ([#25712](https://github.com/vm0-ai/vm0/issues/25712)) ([968decc](https://github.com/vm0-ai/vm0/commit/968decc5d046485395f52c6ed69724bea5eb0730))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.0
+    * @vm0/core bumped to 8.530.0
+
 ## [0.706.0](https://github.com/vm0-ai/vm0/compare/app-v0.705.0...app-v0.706.0) (2026-08-07)
 
 

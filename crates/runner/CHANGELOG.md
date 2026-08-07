@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.160.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.6...runner-rs-v0.160.7) (2026-08-07)
+
+
+### Refactoring
+
+* **runner:** remove preference compatibility bridge ([#25734](https://github.com/vm0-ai/vm0/issues/25734)) ([5e2edaf](https://github.com/vm0-ai/vm0/commit/5e2edafe9ca7958f4c37566566762f34f5fffd01))
+
 ## [0.160.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.5...runner-rs-v0.160.6) (2026-08-07)
 
 

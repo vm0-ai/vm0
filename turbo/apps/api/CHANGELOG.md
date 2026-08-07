@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.402.0](https://github.com/vm0-ai/vm0/compare/api-v1.401.1...api-v1.402.0) (2026-08-07)
+
+
+### Features
+
+* **chat:** serve chat search from a projected search index behind a switch ([#25736](https://github.com/vm0-ai/vm0/issues/25736)) ([4bf1a07](https://github.com/vm0-ai/vm0/commit/4bf1a0773458c915c4443ed027dd202878765088))
+
+
+### Refactoring
+
+* **api:** separate pi execution mode from runner profile ([#25725](https://github.com/vm0-ai/vm0/issues/25725)) ([8ecebf9](https://github.com/vm0-ai/vm0/commit/8ecebf947852673f3ff36e3c0d3b08c2c35e696a))
+* **runner:** remove preference compatibility bridge ([#25734](https://github.com/vm0-ai/vm0/issues/25734)) ([5e2edaf](https://github.com/vm0-ai/vm0/commit/5e2edafe9ca7958f4c37566566762f34f5fffd01))
+
+
+### Performance Improvements
+
+* **api:** isolate the slack sdk type surface behind the gateway typecheck project ([#25733](https://github.com/vm0-ai/vm0/issues/25733)) ([ee6bb14](https://github.com/vm0-ai/vm0/commit/ee6bb14a86ad8deda722ce1fab406daccb788c24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.0
+    * @vm0/core bumped to 8.530.0
+    * @vm0/db bumped to 1.179.0
+    * @vm0/pi-agent-runtime bumped to 1.3.3
+
 ## [1.401.1](https://github.com/vm0-ai/vm0/compare/api-v1.401.0...api-v1.401.1) (2026-08-07)
 
 
