@@ -33,6 +33,7 @@ import {
   zeroChatThreadEventsPage,
   zeroChatThreadDraftIds,
   zeroChatThreadUnreadAgentIds,
+  zeroChatThreadUnreadThreadIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
 import {
@@ -282,6 +283,18 @@ const listChatThreadUnreadAgentsInner$ = computed(async (get) => {
   return { status: 200 as const, body: { agentIds: [...agentIds] } };
 });
 
+const listChatThreadUnreadIdsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const threadIds = await get(
+    zeroChatThreadUnreadThreadIds({
+      userId: auth.userId,
+      orgId: auth.orgId,
+    }),
+  );
+
+  return { status: 200 as const, body: { threadIds: [...threadIds] } };
+});
+
 const listChatThreadArtifactsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadArtifactsContract.list));
@@ -360,6 +373,13 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       listChatThreadActiveIdsInner$,
+    ),
+  },
+  {
+    route: chatThreadsContract.unreadIds,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listChatThreadUnreadIdsInner$,
     ),
   },
   {

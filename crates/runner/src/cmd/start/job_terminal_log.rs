@@ -166,7 +166,10 @@ fn log_job_execution_failed(
 
     match failure.kind {
         ExecutionFailureKind::RunnerJobTimeout { .. } => {
-            emit_job_execution_failed!(tracing::Level::ERROR, "runner job timed out");
+            emit_job_execution_failed!(
+                tracing::Level::ERROR,
+                "runner job reached execution time limit"
+            );
         }
         ExecutionFailureKind::Generic if diagnostic.is_some_and(is_info_level_job_failure) => {
             emit_job_execution_failed!(tracing::Level::INFO, "job execution failed");
@@ -965,7 +968,7 @@ mod tests {
         assert_eq!(event.level, Level::ERROR);
         assert_eq!(
             event.fields.get("message").map(String::as_str),
-            Some("runner job timed out")
+            Some("runner job reached execution time limit")
         );
         assert_field_eq(&event, "exit_code", "124");
         assert_field_eq(&event, "reused", "false");
@@ -1017,7 +1020,7 @@ mod tests {
         );
         assert_eq!(
             timeout_event.fields.get("message").map(String::as_str),
-            Some("runner job timed out")
+            Some("runner job reached execution time limit")
         );
         assert_field_eq(&timeout_event, "timeout_ms", "7200000");
         assert_field_eq(&timeout_event, "elapsed_ms", "7200100");

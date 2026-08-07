@@ -35,6 +35,8 @@ const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 const CANCELLATION_RECOVERY_COPY =
   "Finalizing the cancelled run before queued work continues.";
+const NEXT_RUN_MODEL_COPY =
+  "Your selected model will take effect on your next run.";
 
 afterEach(async () => {
   await i18n.changeLanguage("en-US");
@@ -149,6 +151,62 @@ function mockActiveRunThread(
     ...(options?.onQueuedEventAppend
       ? { onQueuedEventAppend: options.onQueuedEventAppend }
       : {}),
+  });
+}
+
+function mockActiveRunModelChange(): void {
+  context.mocks.data.orgModelPolicies([
+    buildModelPolicy({
+      model: "claude-sonnet-4-6",
+      modelLabel: "Claude Sonnet 4.6",
+      isDefault: false,
+    }),
+    buildModelPolicy({
+      model: "claude-opus-4-8",
+      modelLabel: "Claude Opus 4.8",
+    }),
+  ]);
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    selectedModel: "claude-opus-4-8",
+    activeRunIds: ["run-active"],
+    chatEvents: [
+      {
+        id: `${THREAD_ID}-active-user`,
+        role: "user",
+        content: "Start the active run",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Start the active run" },
+            { type: "model", selectedModel: "claude-sonnet-4-6" },
+          ],
+        },
+        runId: "run-active",
+        createdAt: "2026-08-06T10:00:00Z",
+      },
+      {
+        id: `${THREAD_ID}-active-assistant`,
+        role: "assistant",
+        content: null,
+        runId: "run-active",
+        createdAt: "2026-08-06T10:00:01Z",
+      },
+      {
+        id: `${THREAD_ID}-queued-user`,
+        role: "user",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Follow up after the active run" },
+            { type: "morning_brief", briefDate: "2026-08-06" },
+          ],
+        },
+        runId: undefined,
+        createdAt: "2026-08-06T10:00:02Z",
+      },
+    ],
   });
 }
 
@@ -297,6 +355,37 @@ describe("chat run queue", () => {
       "Keep this automation queued",
     );
     expectTextBefore("Working on the first request.", "Steer this follow-up");
+  });
+
+  it("shows a selected model change above queued work", async () => {
+    mockActiveRunModelChange();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
+      path: CHAT_PATH,
+    });
+
+    const notice = await screen.findByText(NEXT_RUN_MODEL_COPY);
+    expect(notice).toHaveAttribute("role", "status");
+    expect(notice).toHaveAttribute("aria-live", "polite");
+    expectTextBefore(NEXT_RUN_MODEL_COPY, "1 message waiting");
+    expectTextBefore(NEXT_RUN_MODEL_COPY, "Follow up after the active run");
+  });
+
+  it("keeps the model change notice hidden when its switch is off", async () => {
+    mockActiveRunModelChange();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: false },
+      path: CHAT_PATH,
+    });
+
+    await expect(
+      screen.findByText("Follow up after the active run"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText(NEXT_RUN_MODEL_COPY)).not.toBeInTheDocument();
   });
 
   it("keeps an optimistic steer prompt at the bottom until persistence", async () => {

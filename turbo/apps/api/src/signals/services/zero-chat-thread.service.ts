@@ -905,6 +905,37 @@ export function zeroChatThreadUnreadAgentIds(args: {
   });
 }
 
+/** The user's unread thread ids in the current organization. */
+export function zeroChatThreadUnreadThreadIds(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Computed<Promise<readonly string[]>> {
+  return computed(async (get) => {
+    const db = get(db$);
+    const lastRunFinish = latestRunFinishEventSubquery(db, chatThreads.id);
+    const rows = await db
+      .select({ threadId: chatThreads.id })
+      .from(chatThreads)
+      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+      .crossJoinLateral(lastRunFinish)
+      .where(
+        and(
+          eq(chatThreads.userId, args.userId),
+          eq(zeroAgents.orgId, args.orgId),
+          or(
+            isNull(chatThreads.lastReadAt),
+            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
+          ),
+          noActiveRunsForCurrentThreadCondition(db),
+          noActiveGoalsForCurrentThreadCondition(db),
+        ),
+      );
+    return rows.map((row) => {
+      return row.threadId;
+    });
+  });
+}
+
 /**
  * Chat threads owned by the user in the current org that currently have at
  * least one non-terminal run. Used by local-first thread lists to hydrate the

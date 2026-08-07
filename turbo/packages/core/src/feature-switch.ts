@@ -311,6 +311,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatNextRunModelNotice]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a composer notice when the selected model differs from the running chat model.",
+    enabled: true,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -334,6 +340,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable multiple inline artifact templates in structured chat prompts.",
     enabled: true,
+  },
+  [FeatureSwitchKey.TemplatePickerGlobalSearch]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Search presentation, website, illustration, and video templates from the shared template picker search field.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
