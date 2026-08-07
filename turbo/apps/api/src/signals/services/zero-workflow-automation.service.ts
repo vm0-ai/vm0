@@ -17,6 +17,7 @@ import {
   notionChildPageCreatedEventConfigSchema,
   notionDatabaseItemCreatedEventConfigSchema,
   notionPageContentUpdatedEventConfigSchema,
+  stripeInvoicePaidEventConfigSchema,
   strapiEntryPublishedEventConfigSchema,
   webhookReceivedEventConfigSchema,
   type ChatRunFinishedEventConfig,
@@ -34,6 +35,8 @@ import {
   type NotionPageContentUpdatedEventConfig,
   type NotionPageContentUpdatedEventCreateConfig,
   type NotionWorkflowEventConfig,
+  type StripeInvoicePaidEventConfig,
+  type StripeInvoicePaidEventCreateConfig,
   type StrapiEntryPublishedEventConfig,
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
@@ -101,6 +104,11 @@ import {
 } from "./notion-workflow-event.service";
 import { notionWorkflowAutomationCreationEnabledForOwner } from "./notion-workflow-automation-feature-switch.service";
 import { googleFormsWorkflowAutomationCreationEnabledForOwner } from "./google-forms-workflow-automation-feature-switch.service";
+import {
+  resolveStripeInvoicePaidAutomationBinding,
+  validateStripeInvoicePaidAutomationBinding,
+} from "./stripe-invoice-paid-workflow-automation.service";
+import { stripeInvoicePaidWorkflowAutomationEnabledForOwner } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -173,6 +181,10 @@ type StrapiWorkflowEventType = Extract<
   ZeroWorkflowEventType,
   "strapi-entry-published"
 >;
+type StripeInvoicePaidWorkflowEventType = Extract<
+  ZeroWorkflowEventType,
+  "stripe-invoice-paid"
+>;
 
 /**
  * Outcome of an automation mutation, mapped to an HTTP response by the route layer.
@@ -213,6 +225,16 @@ function googleFormsWorkflowAutomationsDisabledResult(): {
   return {
     kind: "bad-request",
     message: "Google Forms workflow automations are not enabled",
+  };
+}
+
+function stripeInvoicePaidWorkflowAutomationsDisabledResult(): {
+  readonly kind: "bad-request";
+  readonly message: string;
+} {
+  return {
+    kind: "bad-request",
+    message: "Stripe invoice-paid workflow automations are not enabled",
   };
 }
 
@@ -442,6 +464,7 @@ function supportedWorkflowEventType(
     eventType === "notion-database-item-created" ||
     eventType === "notion-page-content-updated" ||
     eventType === "strapi-entry-published" ||
+    eventType === "stripe-invoice-paid" ||
     eventType === "webhook-received"
   );
 }
@@ -520,6 +543,12 @@ function supportedStrapiEventType(
   eventType: string | null,
 ): eventType is StrapiWorkflowEventType {
   return eventType === "strapi-entry-published";
+}
+
+function supportedStripeInvoicePaidEventType(
+  eventType: string | null,
+): eventType is StripeInvoicePaidWorkflowEventType {
+  return eventType === "stripe-invoice-paid";
 }
 
 function rowSummaryBase(row: AutomationRow, chatThreadId: string | null) {
@@ -670,6 +699,20 @@ function githubEventRowToSummary(
   }
 }
 
+function stripeInvoicePaidRowToSummary(
+  row: AutomationRow,
+  chatThreadId: string | null,
+): ZeroWorkflowAutomationSummary {
+  return {
+    ...rowSummaryBase(row, chatThreadId),
+    kind: "event",
+    eventType: "stripe-invoice-paid",
+    eventConfig: stripeInvoicePaidEventConfigSchema.parse(row.eventConfig),
+    schedule: null,
+    scheduleSummary: null,
+  };
+}
+
 function eventRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
@@ -788,6 +831,9 @@ function eventRowToSummary(
       schedule: null,
       scheduleSummary: null,
     };
+  }
+  if (row.eventType === "stripe-invoice-paid") {
+    return stripeInvoicePaidRowToSummary(row, chatThreadId);
   }
   return null;
 }
@@ -1370,6 +1416,16 @@ interface CreateStrapiEventAutomationInput {
   readonly autonomyBudget?: number;
 }
 
+interface CreateStripeInvoicePaidEventAutomationInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: StripeInvoicePaidWorkflowEventType;
+  readonly eventConfig: StripeInvoicePaidEventCreateConfig;
+  readonly enabled: boolean;
+  readonly autonomyBudget?: number;
+}
+
 interface CreateWebhookEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -1390,6 +1446,7 @@ type CreateAutomationInput =
   | CreateGoogleMeetEventAutomationInput
   | CreateNotionEventAutomationInput
   | CreateStrapiEventAutomationInput
+  | CreateStripeInvoicePaidEventAutomationInput
   | CreateWebhookEventAutomationInput;
 type CreateEventAutomationInput = Exclude<
   CreateAutomationInput,
@@ -1453,6 +1510,12 @@ function automationCreateInputIsStrapi(
   return supportedStrapiEventType(args.eventType);
 }
 
+function automationCreateInputIsStripeInvoicePaid(
+  args: CreateEventAutomationInput,
+): args is CreateStripeInvoicePaidEventAutomationInput {
+  return supportedStripeInvoicePaidEventType(args.eventType);
+}
+
 async function insertWorkflowEventAutomation(
   db: Db,
   args: {
@@ -1465,6 +1528,9 @@ async function insertWorkflowEventAutomation(
           readonly eventConfig: GoogleFormsResponseSubmittedEventConfig;
         })
       | CreateGoogleMeetEventAutomationInput
+      | (CreateStripeInvoicePaidEventAutomationInput & {
+          readonly eventConfig: StripeInvoicePaidEventConfig;
+        })
       | (CreateNotionEventAutomationInput & {
           readonly eventConfig: NotionWorkflowEventConfig;
         });
@@ -2285,6 +2351,62 @@ async function createStrapiEventAutomationForWorkflow(args: {
   return { kind: "ok", summary };
 }
 
+async function createStripeInvoicePaidEventAutomationForWorkflow(args: {
+  readonly context: CreateEventAutomationWorkflowContext;
+  readonly input: CreateStripeInvoicePaidEventAutomationInput;
+  readonly signal: AbortSignal;
+}): Promise<AutomationResult> {
+  const readiness = await resolveStripeInvoicePaidAutomationBinding({
+    db: args.context.db,
+    orgId: args.input.orgId,
+    userId: args.input.member.userId,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+  if (readiness.kind === "bad_request") {
+    return { kind: "bad-request", message: readiness.message };
+  }
+  const eventConfig = stripeInvoicePaidEventConfigSchema.parse({
+    ...args.input.eventConfig,
+    ...readiness.binding,
+  });
+  const summary = await insertWorkflowEventAutomation(args.context.db, {
+    input: { ...args.input, eventConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
+const createStripeInvoicePaidEventAutomation$ = command(
+  async (
+    { get },
+    args: {
+      readonly context: CreateEventAutomationWorkflowContext;
+      readonly input: CreateStripeInvoicePaidEventAutomationInput;
+    },
+    signal: AbortSignal,
+  ): Promise<AutomationResult> => {
+    const featureEnabled = await get(
+      stripeInvoicePaidWorkflowAutomationEnabledForOwner(
+        args.input.orgId,
+        args.input.member.userId,
+      ),
+    );
+    signal.throwIfAborted();
+    if (!featureEnabled) {
+      return stripeInvoicePaidWorkflowAutomationsDisabledResult();
+    }
+    return await createStripeInvoicePaidEventAutomationForWorkflow({
+      ...args,
+      signal,
+    });
+  },
+);
+
 async function createChatRunFinishedEventAutomationForWorkflow(args: {
   readonly context: {
     readonly db: Db;
@@ -2321,7 +2443,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(args: {
 
 const createEventAutomationForWorkflow$ = command(
   async (
-    { get },
+    { get, set },
     args: {
       readonly db: Db;
       readonly input: CreateEventAutomationInput;
@@ -2430,6 +2552,16 @@ const createEventAutomationForWorkflow$ = command(
         input,
         signal,
       });
+    }
+
+    if (automationCreateInputIsStripeInvoicePaid(input)) {
+      const result = await set(
+        createStripeInvoicePaidEventAutomation$,
+        { context: args, input },
+        signal,
+      );
+      signal.throwIfAborted();
+      return result;
     }
 
     if (automationCreateInputIsGmail(input)) {
@@ -2710,6 +2842,12 @@ const updateEventAutomationForWorkflow$ = command(
       return {
         kind: "bad-request",
         message: "Webhook event automations cannot be updated",
+      };
+    }
+    if (args.automation.eventType === "stripe-invoice-paid") {
+      return {
+        kind: "bad-request",
+        message: "Stripe invoice-paid event automations cannot be updated",
       };
     }
     if (supportedGoogleCalendarEventType(args.automation.eventType)) {
@@ -3307,6 +3445,59 @@ async function persistEnabledWorkflowAutomation(
   });
 }
 
+async function validateEventAutomationEnableReadiness(args: {
+  readonly automation: AutomationRow;
+  readonly db: Db;
+  readonly signal: AbortSignal;
+}): Promise<AutomationResult | null> {
+  if (args.automation.eventType === "stripe-invoice-paid") {
+    const readiness = await validateStripeInvoicePaidAutomationBinding({
+      db: args.db,
+      orgId: args.automation.orgId,
+      userId: args.automation.ownerUserId,
+      eventConfig: stripeInvoicePaidEventConfigSchema.parse(
+        args.automation.eventConfig,
+      ),
+      signal: args.signal,
+    });
+    args.signal.throwIfAborted();
+    return readiness.kind === "bad_request"
+      ? { kind: "bad-request", message: readiness.message }
+      : null;
+  }
+  return args.automation.eventType === "strapi-entry-published" &&
+    !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
+      orgId: args.automation.orgId,
+    })
+    ? {
+        kind: "bad-request",
+        message: "Strapi workflow automations are not enabled",
+      }
+    : null;
+}
+
+const validateStripeFeature$ = command(
+  async (
+    { get },
+    automation: AutomationRow,
+    signal: AbortSignal,
+  ): Promise<AutomationResult | null> => {
+    if (automation.eventType !== "stripe-invoice-paid") {
+      return null;
+    }
+    const featureEnabled = await get(
+      stripeInvoicePaidWorkflowAutomationEnabledForOwner(
+        automation.orgId,
+        automation.ownerUserId,
+      ),
+    );
+    signal.throwIfAborted();
+    return featureEnabled
+      ? null
+      : stripeInvoicePaidWorkflowAutomationsDisabledResult();
+  },
+);
+
 export const enableWorkflowAutomation$ = command(
   async (
     { set },
@@ -3320,20 +3511,21 @@ export const enableWorkflowAutomation$ = command(
       return owned;
     }
     const { automation } = owned;
-    if (
-      automation.eventType === "strapi-entry-published" &&
-      !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
-        orgId: automation.orgId,
-      })
-    ) {
-      return {
-        kind: "bad-request",
-        message: "Strapi workflow automations are not enabled",
-      };
+    const stripeFailure = await set(validateStripeFeature$, automation, signal);
+    signal.throwIfAborted();
+    if (stripeFailure) {
+      return stripeFailure;
     }
-
-    // The owning agent is derived from the workflow row (hard 1:N); it always
-    // exists. Re-confirm the owner can still run it before re-enabling.
+    const eventEnableFailure = await validateEventAutomationEnableReadiness({
+      automation,
+      db: writeDb,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (eventEnableFailure) {
+      return eventEnableFailure;
+    }
+    // Re-confirm the workflow's owning agent can still be used before re-enabling.
     const agentId = await loadAutomationWorkflowAgentId(writeDb, {
       orgId: args.orgId,
       workflowId: automation.workflowId,
