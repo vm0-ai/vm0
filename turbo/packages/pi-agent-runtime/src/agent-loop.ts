@@ -28,6 +28,8 @@ export type PiOpenAICompatibleProvider =
   | "vercel-ai-gateway"
   | "codex";
 
+type PiOpenAICompletionsProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
+
 export interface PiAgentModelConfig {
   readonly provider: PiOpenAICompatibleProvider;
   readonly baseUrl: string;
@@ -35,7 +37,7 @@ export interface PiAgentModelConfig {
   readonly model: string;
 }
 
-function providerModels(provider: PiOpenAICompatibleProvider) {
+function providerModels(provider: PiOpenAICompletionsProvider) {
   switch (provider) {
     case "deepseek": {
       return deepseekProvider().getModels();
@@ -52,15 +54,15 @@ function providerModels(provider: PiOpenAICompatibleProvider) {
     case "vercel-ai-gateway": {
       return vercelAIGatewayProvider().getModels();
     }
-    case "codex": {
-      return openaiCodexProvider().getModels();
-    }
   }
 }
 
-function sourceModel(config: PiAgentModelConfig): Model<Api> | undefined {
-  return providerModels(config.provider).find((candidate) => {
-    return candidate.id === config.model;
+function sourceModel(
+  provider: PiOpenAICompletionsProvider,
+  model: string,
+): Model<Api> | undefined {
+  return providerModels(provider).find((candidate) => {
+    return candidate.id === model;
   });
 }
 
@@ -148,14 +150,29 @@ const piAgentStream: StreamFn = (model, context, options) => {
 export function resolvePiAgentModel(
   config: PiAgentModelConfig,
 ): Model<"openai-completions" | "openai-codex-responses"> | null {
-  const source = sourceModel(config);
+  if (config.provider === "codex") {
+    const source = openaiCodexProvider()
+      .getModels()
+      .find((candidate) => {
+        return candidate.id === config.model;
+      });
+    return source
+      ? {
+          ...source,
+          provider: config.provider,
+          baseUrl: config.baseUrl,
+        }
+      : null;
+  }
+
+  const source = sourceModel(config.provider, config.model);
   if (!source) {
     return null;
   }
   const base = {
     id: source.id,
     name: source.name,
-    api: source.api,
+    api: "openai-completions" as const,
     provider: config.provider,
     baseUrl: config.baseUrl,
     reasoning: source.reasoning,
@@ -165,9 +182,10 @@ export function resolvePiAgentModel(
     contextWindow: source.contextWindow,
     maxTokens: source.maxTokens,
     headers: source.headers,
-    compat: source.compat,
   };
-  return base as Model<"openai-completions" | "openai-codex-responses">;
+  return source.api === "openai-completions"
+    ? { ...base, compat: source.compat }
+    : base;
 }
 
 export function isPiAgentModelSupported(config: PiAgentModelConfig): boolean {

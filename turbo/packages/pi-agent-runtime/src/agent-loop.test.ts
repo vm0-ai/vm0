@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { http } from "msw";
+import { setupServer } from "msw/node";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   NodeExecutionEnv,
@@ -9,8 +11,19 @@ import {
 const CODEX_ACCOUNT_ID_CLAIM_PATH = "https://api.openai.com/auth";
 const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const CODEX_PLACEHOLDER_ACCOUNT_ID = "ws_VM0_PLACEHOLDER_DO_NOT_TRUST";
-type FetchInput = Parameters<typeof fetch>[0];
-type FetchInit = Parameters<typeof fetch>[1];
+const server = setupServer();
+
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "error" });
+});
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+afterAll(() => {
+  server.close();
+});
 
 function base64UrlEncode(input: string): string {
   return Buffer.from(input, "utf8").toString("base64url");
@@ -108,15 +121,7 @@ function sseResponse(body: string): Response {
   });
 }
 
-function requestHeaders(init: RequestInit | undefined): Headers {
-  return new Headers(init?.headers);
-}
-
 describe("Pi Codex subscription provider", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it("resolves Codex subscription models from the Pi catalog", () => {
     const model = resolvePiAgentModel({
       provider: "codex",
@@ -131,14 +136,29 @@ describe("Pi Codex subscription provider", () => {
     expect(model?.compat).toBeDefined();
   });
 
+  it("preserves OpenAI-compatible routing for existing providers", () => {
+    const model = resolvePiAgentModel({
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "unused-for-resolution",
+      model: "gpt-5.5",
+    });
+    expect(model).not.toBeNull();
+    expect(model?.api).toBe("openai-completions");
+    expect(model?.provider).toBe("openai");
+  });
+
   it("streams a Codex subscription turn with the real ChatGPT JWT", async () => {
     const accessToken = codexJwt("ws_acct_pi_edge_real");
-    const fetchMock = vi.fn(
-      async (_input: FetchInput, _init?: FetchInit): Promise<Response> => {
+    let requestUrl: string | undefined;
+    let requestHeaders: Headers | undefined;
+    server.use(
+      http.post(`${CODEX_BASE_URL}/codex/responses`, ({ request }) => {
+        requestUrl = request.url;
+        requestHeaders = new Headers(request.headers);
         return sseResponse(codexTextSse("edge answer"));
-      },
+      }),
     );
-    vi.stubGlobal("fetch", fetchMock);
     const env = new NodeExecutionEnv({ cwd: "/home/user/workspace" });
     try {
       const messages = await runPiAgentPrompt({
@@ -154,15 +174,11 @@ describe("Pi Codex subscription provider", () => {
         signal: new AbortController().signal,
         onEvent() {},
       });
-      const firstCall = fetchMock.mock.calls[0];
-      expect(firstCall).toBeDefined();
-      const requestUrl = firstCall?.[0];
-      const init = firstCall?.[1];
       expect(requestUrl).toBe(`${CODEX_BASE_URL}/codex/responses`);
-      expect(requestHeaders(init).get("authorization")).toBe(
+      expect(requestHeaders?.get("authorization")).toBe(
         `Bearer ${accessToken}`,
       );
-      expect(requestHeaders(init).get("chatgpt-account-id")).toBe(
+      expect(requestHeaders?.get("chatgpt-account-id")).toBe(
         "ws_acct_pi_edge_real",
       );
       const text = messages
@@ -186,12 +202,13 @@ describe("Pi Codex subscription provider", () => {
   });
 
   it("synthesizes a JWT-shaped key for the sandbox placeholder", async () => {
-    const fetchMock = vi.fn(
-      async (_input: FetchInput, _init?: FetchInit): Promise<Response> => {
+    let requestHeaders: Headers | undefined;
+    server.use(
+      http.post(`${CODEX_BASE_URL}/codex/responses`, ({ request }) => {
+        requestHeaders = new Headers(request.headers);
         return sseResponse(codexTextSse("sandbox answer"));
-      },
+      }),
     );
-    vi.stubGlobal("fetch", fetchMock);
     const env = new NodeExecutionEnv({ cwd: "/home/user/workspace" });
     try {
       await runPiAgentPrompt({
@@ -207,8 +224,7 @@ describe("Pi Codex subscription provider", () => {
         signal: new AbortController().signal,
         onEvent() {},
       });
-      const init = fetchMock.mock.calls[0]?.[1];
-      const authorization = requestHeaders(init).get("authorization");
+      const authorization = requestHeaders?.get("authorization");
       expect(authorization).toBeDefined();
       const token = authorization?.slice("Bearer ".length) ?? "";
       const payloadPart = token.split(".")[1] ?? "";

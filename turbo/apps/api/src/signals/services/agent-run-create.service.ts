@@ -226,6 +226,7 @@ import {
 } from "./pi-edge-config";
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
 import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
+import { resolveLiveCodexModelProviderAccessToken } from "./agent-webhook-firewall-auth.service";
 import {
   recordSameThreadRunnerJobPersisted,
   runnerJobQueueTimestamps,
@@ -2000,8 +2001,8 @@ async function multiAuthModelProviderEnvironment(
 
 /**
  * Pi edge turns run inside the API with the real credential, but firewall
- * providers above only expose lazy placeholders. Decrypt the Codex access
- * token (a JWT the Pi runtime must be able to parse) when the run is Pi
+ * providers above only expose lazy placeholders. Resolve and refresh the Codex
+ * access token (a JWT the Pi runtime must be able to parse) when the run is Pi
  * eligible; it is carried only on the API-side edge config, never into the
  * Sandbox environment.
  */
@@ -2015,37 +2016,15 @@ async function resolveMultiAuthPiEdgeApiKey(
     readonly resolvePiEdgeCredentials: boolean;
   },
 ): Promise<string | undefined> {
-  if (
-    !args.resolvePiEdgeCredentials ||
-    !isPiEdgeCompatibleProviderType(args.type)
-  ) {
+  if (!args.resolvePiEdgeCredentials || args.type !== "codex-oauth-token") {
     return undefined;
   }
-  // The only multi-auth provider Pi can drive today is codex-oauth-token,
-  // whose derived access token (CHATGPT_ACCESS_TOKEN) is the JWT the Pi
-  // runtime parses. See the auth_json secret contract in model-providers.ts.
-  const [accessTokenRow] = await db
-    .select({ encryptedValue: secretsTable.encryptedValue })
-    .from(secretsTable)
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, "model-provider"),
-        eq(secretsTable.name, "CHATGPT_ACCESS_TOKEN"),
-      ),
-    )
-    .limit(1);
-  if (!accessTokenRow?.encryptedValue) {
-    return undefined;
-  }
-  const accessToken = await decryptStoredSecretValue(
-    accessTokenRow.encryptedValue,
-    args.featureSwitchContext,
-  );
-  return hasUsableModelProviderSecretValue(accessToken)
-    ? accessToken
-    : undefined;
+  return await resolveLiveCodexModelProviderAccessToken({
+    db,
+    orgId: args.orgId,
+    sourceUserId: args.userId,
+    featureSwitchContext: args.featureSwitchContext,
+  });
 }
 
 async function vm0ModelProviderEnvironment(

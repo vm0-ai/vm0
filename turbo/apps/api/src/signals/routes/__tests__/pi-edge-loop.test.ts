@@ -43,6 +43,7 @@ const COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
 const CODEX_MODEL = "gpt-5.5";
 const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 const CODEX_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+const CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const AGENT_DISPLAY_NAME = "Pi edge integration agent";
 
 function recordOf(value: unknown): Record<string, unknown> | null {
@@ -142,11 +143,11 @@ function base64UrlEncode(input: string): string {
     .replace(/=+$/, "");
 }
 
-function codexJwt(accountId: string): string {
+function codexJwt(accountId: string, expiresInSeconds = 3600): string {
   const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const payload = base64UrlEncode(
     JSON.stringify({
-      exp: Math.floor(now() / 1000) + 3600,
+      exp: Math.floor(now() / 1000) + expiresInSeconds,
       "https://api.openai.com/auth": {
         chatgpt_account_id: accountId,
         chatgpt_plan_type: "pro",
@@ -390,7 +391,9 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
   };
 }
 
-async function codexPiEdgeFixture(): Promise<PiEdgeFixture> {
+async function codexPiEdgeFixture(args?: {
+  readonly accessToken?: string;
+}): Promise<PiEdgeFixture> {
   const orgId = `org_pi_codex_${randomUUID()}`;
   const actor = bdd.user({ orgId });
   const switchOwner = bdd.user({ orgId });
@@ -425,7 +428,9 @@ async function codexPiEdgeFixture(): Promise<PiEdgeFixture> {
       type: "codex-oauth-token",
       authMethod: "auth_json",
       secrets: {
-        CODEX_AUTH_JSON: codexAuthJson(codexJwt("ws_acct_pi_edge_access")),
+        CODEX_AUTH_JSON: codexAuthJson(
+          args?.accessToken ?? codexJwt("ws_acct_pi_edge_access"),
+        ),
       },
     },
     [200, 201],
@@ -863,9 +868,15 @@ describe("PiLoop edge turn", () => {
     );
   });
 
-  it("runs a Pi edge turn with an org Codex subscription provider", async () => {
-    const fixture = await codexPiEdgeFixture();
+  it("refreshes an expired Codex subscription before the Pi edge turn", async () => {
+    const fixture = await codexPiEdgeFixture({
+      accessToken: codexJwt("ws_acct_pi_edge_expired", -60),
+    });
     await enablePiLoop(fixture);
+    const refreshedAccessToken = codexJwt("ws_acct_pi_edge_refreshed");
+    const refreshBodies: unknown[] = [];
+    let codexAuthorization: string | null = null;
+    let codexAccountId: string | null = null;
     const modelStarted = createDeferredPromise<void>(context.signal);
     const releaseModel = createDeferredPromise<void>(context.signal);
     onTestFinished(() => {
@@ -874,8 +885,17 @@ describe("PiLoop edge turn", () => {
       }
     });
     server.use(
+      http.post(CODEX_OAUTH_TOKEN_URL, async ({ request }) => {
+        refreshBodies.push(await request.json());
+        return HttpResponse.json({
+          access_token: refreshedAccessToken,
+          refresh_token: "rt_pi_edge_rotated_high_entropy",
+          expires_in: 3600,
+        });
+      }),
       http.post(CODEX_RESPONSES_URL, async ({ request }) => {
-        expect(request.headers.get("authorization")).toMatch(/^Bearer .+$/);
+        codexAuthorization = request.headers.get("authorization");
+        codexAccountId = request.headers.get("chatgpt-account-id");
         modelStarted.resolve();
         await releaseModel.promise;
         return codexTextSseStream("codex edge answer");
@@ -912,6 +932,16 @@ describe("PiLoop edge turn", () => {
     releaseModel.resolve();
     await flushWaitUntilForTest();
 
+    expect(refreshBodies).toStrictEqual([
+      {
+        client_id: expect.any(String),
+        grant_type: "refresh_token",
+        refresh_token: "rt_pi_edge_synthetic_high_entropy",
+      },
+    ]);
+    expect(codexAuthorization).toBe(`Bearer ${refreshedAccessToken}`);
+    expect(codexAccountId).toBe("ws_acct_pi_edge_refreshed");
+
     const transcript = await readTranscript(run.runId);
     expect(transcript).toMatchObject({
       version: 1,
@@ -945,6 +975,69 @@ describe("PiLoop edge turn", () => {
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
       "completed",
     );
+  });
+
+  it("uses the Sandbox lane when an expired Codex subscription cannot refresh", async () => {
+    const fixture = await codexPiEdgeFixture({
+      accessToken: codexJwt("ws_acct_pi_edge_expired", -60),
+    });
+    await enablePiLoop(fixture);
+    const refreshBodies: unknown[] = [];
+    let codexRequests = 0;
+    server.use(
+      http.post(CODEX_OAUTH_TOKEN_URL, async ({ request }) => {
+        refreshBodies.push(await request.json());
+        return HttpResponse.json(
+          {
+            error: {
+              code: "refresh_token_expired",
+              message: "expired refresh token",
+            },
+          },
+          { status: 401 },
+        );
+      }),
+      http.post(CODEX_RESPONSES_URL, () => {
+        codexRequests += 1;
+        return codexTextSseStream("unexpected edge answer");
+      }),
+    );
+
+    const run = await sendChatRun(
+      fixture,
+      "fall back after Codex reconnect is required",
+      undefined,
+      CODEX_MODEL,
+    );
+    const defaultPoll = await api.pollRunner(fixture.runnerGroup);
+
+    expect(defaultPoll.body.job?.runId).toBe(run.runId);
+    expect(codexRequests).toBe(0);
+    expect(refreshBodies).toStrictEqual([
+      {
+        client_id: expect.any(String),
+        grant_type: "refresh_token",
+        refresh_token: "rt_pi_edge_synthetic_high_entropy",
+      },
+    ]);
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+      "pending",
+    );
+    const providers = await misc.listPersonalModelProviders(
+      fixture.actor,
+      [200],
+    );
+    if (providers.status !== 200) {
+      throw new Error("Expected personal model providers to load");
+    }
+    expect(
+      providers.body.modelProviders.find((provider) => {
+        return provider.type === "codex-oauth-token";
+      }),
+    ).toMatchObject({
+      needsReconnect: true,
+      lastRefreshErrorCode: "refresh_token_expired",
+    });
   });
 
   it("requeues an expired standby onto the cold-start lane without settling the run", async () => {
