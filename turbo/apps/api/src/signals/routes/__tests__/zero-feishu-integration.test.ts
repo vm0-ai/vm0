@@ -261,7 +261,10 @@ function encryptPayload(payload: unknown): string {
   });
 }
 
-function signedHeaders(body: string, timestamp: number): HeadersInit {
+function signedHeaders(
+  body: string,
+  timestamp: number,
+): Record<string, string> {
   const nonce = randomUUID();
   const signature = createHash("sha256")
     .update(`${String(timestamp)}${nonce}${ENCRYPT_KEY}${body}`)

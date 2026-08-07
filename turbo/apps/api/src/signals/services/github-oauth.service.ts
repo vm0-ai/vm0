@@ -122,7 +122,10 @@ function createAppJwt(appId: string, privateKeyPemOrBase64: string): string {
   return `${signingInput}.${signature}`;
 }
 
-function githubHeaders(appId: string, privateKey: string): HeadersInit {
+function githubHeaders(
+  appId: string,
+  privateKey: string,
+): Record<string, string> {
   return {
     Authorization: `Bearer ${createAppJwt(appId, privateKey)}`,
     Accept: "application/vnd.github+json",
