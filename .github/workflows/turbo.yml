@@ -2234,8 +2234,8 @@ jobs:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          RUNNER_SERVICE_REF: ${{ github.event_name == 'push' && 'playwright-staging' || needs.prepare.outputs.job-ref }}
-          RUNNER_GROUP: ${{ github.event_name == 'push' && 'vm0/playwright-staging' || format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
+          RUNNER_SERVICE_REF: ${{ needs.prepare.outputs.job-ref }}
+          RUNNER_GROUP: ${{ format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
