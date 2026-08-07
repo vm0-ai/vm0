@@ -34,7 +34,7 @@ use crate::ids::RunId;
 use crate::pi_standby::{PiStandbyNotifications, PiStandbySignal};
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::RunCancellationRegistry;
-use crate::types::ConnectorRuntimeTarget;
+use crate::types::{ConnectorRuntimeTarget, PiExecutionMode};
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -738,7 +738,8 @@ async fn handle_ably_message_with_network_policy_refresh(
                         notif.reuse_key.map(str::to_owned),
                         notif.runner_preference_context,
                     )
-                    .with_history_generation_run_id(notif.history_generation_run_id),
+                    .with_history_generation_run_id(notif.history_generation_run_id)
+                    .with_pi_execution_mode(notif.pi_execution_mode),
                 ))
             } else {
                 info!(
@@ -779,6 +780,7 @@ struct JobNotification<'a> {
     profile: Option<&'a str>,
     reuse_key: Option<&'a str>,
     history_generation_run_id: Option<RunId>,
+    pi_execution_mode: Option<PiExecutionMode>,
     runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
@@ -1030,6 +1032,21 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("historyGenerationRunId")
         .and_then(|v| v.as_str())
         .and_then(|value| value.parse().ok());
+    let pi_execution_mode = match msg.data.get("piExecutionMode") {
+        Some(value) => match serde_json::from_value(value.clone()) {
+            Ok(mode) => Some(mode),
+            Err(error) => {
+                warn!(
+                    run_id = %run_id,
+                    value = %value,
+                    error = %error,
+                    "ably: invalid Pi execution mode"
+                );
+                return None;
+            }
+        },
+        None => None,
+    };
     let runner_preference_context =
         match parse_runner_preference_decision(msg.data.get("runnerPreferenceDecision").cloned()) {
             Ok(context) => context,
@@ -1047,6 +1064,7 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         profile,
         reuse_key,
         history_generation_run_id,
+        pi_execution_mode,
         runner_preference_context,
     })
 }
@@ -1988,6 +2006,7 @@ mod tests {
                 "profile": "vm0/default",
                 "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
+                "piExecutionMode": "standby",
                 "runnerPreferenceDecision": {
                     "kind": "preference",
                     "runnerIdentity": {
@@ -2009,6 +2028,10 @@ mod tests {
         );
         assert_eq!(candidate.profile_name(), "vm0/default");
         let candidate = candidate.into_job_candidate();
+        assert_eq!(
+            candidate.pi_execution_mode(),
+            Some(PiExecutionMode::Standby)
+        );
         assert_eq!(candidate.reuse_key(), Some("thread:chat-thread"));
         assert_eq!(
             candidate.history_generation_run_id(),
@@ -2027,6 +2050,34 @@ mod tests {
                 targeted_self: Some(true),
             })
         );
+        assert_no_direct_candidate(&direct_candidates).await;
+        assert!(!wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn job_notification_with_unknown_pi_execution_mode_is_ignored() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/default",
+                "piExecutionMode": "future-mode"
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
     }

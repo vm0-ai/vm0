@@ -22,10 +22,6 @@ pub(super) type SharedFactory = Arc<Box<dyn SandboxFactory>>;
 
 /// Build one sandbox factory per configured profile.
 ///
-/// Profiles that alias another profile's factory (see
-/// [`crate::profile::canonical_factory_profile`]) are skipped here; job
-/// dispatch resolves them to the canonical factory instead.
-///
 /// On failure, already-created factories are stopped, but shared runtime
 /// resources remain owned by the caller so dependent services can stop before
 /// the runtime removes their network isolation.
@@ -38,9 +34,6 @@ pub(super) async fn start_factories(
 ) -> RunnerResult<BTreeMap<String, (SharedFactory, bool)>> {
     let mut factories: BTreeMap<String, (Box<dyn SandboxFactory>, bool)> = BTreeMap::new();
     for (profile_name, profile_config) in profiles {
-        if crate::profile::canonical_factory_profile(profile_name) != profile_name.as_str() {
-            continue;
-        }
         let factory_config = config::RunnerConfig::build_factory_config(
             firecracker,
             base_dir,
@@ -258,7 +251,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn start_factories_skips_alias_profiles() {
+    async fn start_factories_creates_each_configured_profile() {
         let temp = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(temp.path().join("home"));
         let base_dir = temp.path().join("base");
@@ -271,20 +264,20 @@ mod tests {
             crate::profile::DEFAULT_PROFILE.into(),
             profile("rootfs-1", "snapshot-1"),
         );
-        profiles.insert(
-            crate::profile::PI_STANDBY_PROFILE.into(),
-            profile("rootfs-1", "snapshot-1"),
-        );
+        profiles.insert("vm0/large".into(), profile("rootfs-2", "snapshot-2"));
         let mut runtime = RecordingRuntime::new(usize::MAX);
 
         let factories = start_factories(&profiles, &firecracker, &base_dir, &home, &mut runtime)
             .await
             .unwrap();
 
-        assert_eq!(runtime.create_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(runtime.create_calls.load(Ordering::SeqCst), 2);
         assert_eq!(
             factories.keys().cloned().collect::<Vec<_>>(),
-            vec![crate::profile::DEFAULT_PROFILE.to_string()]
+            vec![
+                crate::profile::DEFAULT_PROFILE.to_string(),
+                "vm0/large".to_string()
+            ]
         );
     }
 
