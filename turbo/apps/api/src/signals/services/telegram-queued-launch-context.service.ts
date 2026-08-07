@@ -161,7 +161,6 @@ async function loadTelegramLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "telegram"),
-        eq(chatEvents.triggerSource, "telegram"),
       ),
     )
     .limit(1);

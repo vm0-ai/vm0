@@ -16,6 +16,7 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import {
   and,
   asc,
@@ -27,7 +28,6 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { z } from "zod";
 
 import {
   pgBooleanDecoder,
@@ -56,7 +56,6 @@ import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service";
-import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 import {
   childAutonomyBudget,
   type ChildAutonomyBudget,
@@ -68,20 +67,74 @@ import {
 } from "./autonomy-budget-schema.service";
 import type { Tx } from "../../lib/db-types";
 import { withRunModelAnnotation } from "./zero-chat-user-message.service";
+import { manualTriggerSource } from "./workflow-automation-trigger-source";
 
 type DbTransaction = Tx;
 
-const queuedUserMessageTriggerSourceSchema = z.enum([
-  "web",
-  "agent",
-  "slack",
-  "feishu",
-  "teams",
-  "telegram",
-  "agentphone",
-  "github",
-  "workflow-schedule",
-]);
+export type QueuedUserMessageContextType = NonNullable<
+  (typeof chatEvents.$inferSelect)["contextType"]
+>;
+
+export type QueuedUserMessageTriggerSource =
+  | "web"
+  | "agent"
+  | "slack"
+  | "feishu"
+  | "teams"
+  | "telegram"
+  | "agentphone"
+  | "github"
+  | "workflow-schedule";
+
+function unreachableQueuedContextType(contextType: never): never {
+  throw new Error(`Unsupported queued context type: ${String(contextType)}`);
+}
+
+function requiredQueuedUserMessageContextType(
+  contextType: QueuedUserMessageContextType | null,
+): QueuedUserMessageContextType {
+  if (contextType === null) {
+    throw new Error("Queued user message is missing its context type");
+  }
+  return contextType;
+}
+
+export function queuedUserMessageTriggerSource(
+  contextType: QueuedUserMessageContextType,
+): QueuedUserMessageTriggerSource {
+  switch (contextType) {
+    case "web":
+    case "slack":
+    case "feishu":
+    case "teams":
+    case "telegram":
+    case "agentphone":
+    case "github": {
+      return contextType;
+    }
+    case "agent_run": {
+      return "agent";
+    }
+    case "morning_brief": {
+      return "workflow-schedule";
+    }
+    case "automation":
+    case "goal": {
+      throw new Error(
+        `${contextType} context cannot be routed as a queued user message`,
+      );
+    }
+    default: {
+      return unreachableQueuedContextType(contextType);
+    }
+  }
+}
+
+export function isWebChatContextType(
+  contextType: QueuedUserMessageContextType,
+): contextType is Extract<QueuedUserMessageContextType, "web" | "agent_run"> {
+  return contextType === "web" || contextType === "agent_run";
+}
 
 const queuedChatEvent = alias(chatEvents, "queued_chat_event");
 const queuedChatEventRevoker = alias(chatEvents, "queued_chat_event_revoker");
@@ -104,16 +157,7 @@ export interface QueuedUserMessage {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
-  readonly triggerSource:
-    | "web"
-    | "agent"
-    | "slack"
-    | "feishu"
-    | "teams"
-    | "telegram"
-    | "agentphone"
-    | "github"
-    | "workflow-schedule";
+  readonly contextType: QueuedUserMessageContextType;
   readonly autonomyBudget:
     | ChildAutonomyBudget
     | { readonly kind: "unavailable"; readonly message: string };
@@ -278,7 +322,6 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
-      triggerSource: chatEvents.triggerSource,
       contextType: chatEvents.contextType,
       sourceAutonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
         schemaAvailable,
@@ -309,15 +352,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!event.userMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
-  const triggerSource = queuedUserMessageTriggerSourceSchema.safeParse(
-    event.triggerSource,
-  );
-  // Legacy rows have no typed payload until the cutover migration backfills
-  // them. They remain pending (and keep automation behind them) without making
-  // a code-before-migration deploy fail.
-  if (!triggerSource.success) {
-    return null;
-  }
+  const contextType = requiredQueuedUserMessageContextType(event.contextType);
   const autonomyBudget: QueuedUserMessage["autonomyBudget"] =
     !schemaAvailable || event.contextType !== "agent_run"
       ? { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET }
@@ -330,7 +365,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
   return {
     ...event,
     userMessage: event.userMessage,
-    triggerSource: triggerSource.data,
+    contextType,
     autonomyBudget,
   };
 }
@@ -378,7 +413,6 @@ async function resolveUserQueueFirstClaimSnapshot(
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
       generationTemplate: chatEvents.generationTemplate,
-      triggerSource: chatEvents.triggerSource,
     })
     .from(chatEvents)
     .where(
@@ -400,6 +434,7 @@ async function resolveUserQueueFirstClaimSnapshot(
   if (!head.userMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
+  const contextType = requiredQueuedUserMessageContextType(head.contextType);
   return {
     target: replacementTargetFromQueueHead(head),
     replacement: {
@@ -412,7 +447,7 @@ async function resolveUserQueueFirstClaimSnapshot(
       runId: args.runId,
       attachFiles: head.attachFiles ? [...head.attachFiles] : null,
       generationTemplate: head.generationTemplate,
-      ...(head.triggerSource ? { triggerSource: head.triggerSource } : {}),
+      triggerSource: queuedUserMessageTriggerSource(contextType),
     },
   };
 }
@@ -425,7 +460,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
     .select({
       ...queueFirstReplacementTargetFields,
       automationId: chatAutomationContext.automationId,
-      triggerSource: chatEvents.triggerSource,
+      automationKind: zeroWorkflowAutomations.kind,
       userMessage: chatEvents.userMessage,
     })
     .from(chatEvents)
@@ -435,6 +470,10 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
         eq(chatEvents.contextType, "automation"),
         eq(chatAutomationContext.id, chatEvents.contextId),
       ),
+    )
+    .leftJoin(
+      zeroWorkflowAutomations,
+      eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
     )
     .where(
       and(
@@ -453,7 +492,8 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
     !head ||
     head.eventType !== "input.automation" ||
     head.id !== args.eventId ||
-    head.automationId !== args.automationId
+    head.automationId !== args.automationId ||
+    head.automationKind === null
   ) {
     return null;
   }
@@ -470,7 +510,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
           ? head.userMessage
           : withRunModelAnnotation(head.userMessage, args.selectedModel),
       runId: args.runId,
-      ...(head.triggerSource ? { triggerSource: head.triggerSource } : {}),
+      triggerSource: manualTriggerSource({ kind: head.automationKind }),
     },
   };
 }
@@ -677,9 +717,8 @@ export async function claimQueueFirstRunAssociation(
       }
       if (
         args.kind === "user_message" &&
-        "triggerSource" in snapshot.replacement &&
-        snapshot.replacement.triggerSource !== undefined &&
-        isWebChatTriggerSource(snapshot.replacement.triggerSource) &&
+        snapshot.target.contextType !== null &&
+        isWebChatContextType(snapshot.target.contextType) &&
         args.attachFileMetadata
       ) {
         await attachCanonicalWebInputAssetsToEvent(db, {
