@@ -1,5 +1,5 @@
 import type {
-  ConnectorRuntimeCustomAbsentReason,
+  ConnectorRuntimeCustomUnavailableReason,
   ConnectorRuntimeSyncResult,
   ConnectorRuntimeTarget,
   ConnectorRuntimeTargetRegistration,
@@ -58,7 +58,7 @@ function connectorRuntimeTargetIdentity(
 
 function customAbsentResult(
   target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>,
-  reason: ConnectorRuntimeCustomAbsentReason,
+  reason: ConnectorRuntimeCustomUnavailableReason,
 ): ConnectorRuntimeResolution {
   return {
     result: {

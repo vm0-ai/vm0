@@ -876,19 +876,22 @@ impl NetworkPolicyRefreshCore {
             let Some(snapshot) = self.active_snapshot_for_target(run_id, target).await else {
                 continue;
             };
-            if candidate_base_url_vars.is_some()
-                && !self
-                    .custom_base_url_vars_match(run_id, target, candidate_base_url_vars.as_ref())
+            if let Some(candidate) = &candidate_base_url_vars {
+                let Some(matches_pinned_values) = self
+                    .custom_base_url_vars_match(run_id, target, candidate)
                     .await
-                    .unwrap_or(true)
-            {
-                warn!(
-                    run_id = %run_id,
-                    target = %target.target.log_identity(),
-                    "connector runtime sync tried to replace run-pinned base URL variables"
-                );
-                retry_targets.push(target.clone());
-                continue;
+                else {
+                    continue;
+                };
+                if !matches_pinned_values {
+                    warn!(
+                        run_id = %run_id,
+                        target = %target.target.log_identity(),
+                        "connector runtime sync tried to replace run-pinned base URL variables"
+                    );
+                    retry_targets.push(target.clone());
+                    continue;
+                }
             }
             let publication = match (&target.target, &result.state) {
                 (
@@ -1208,15 +1211,17 @@ impl NetworkPolicyRefreshCore {
         &self,
         run_id: RunId,
         target: &ConnectorRefreshTarget,
-        candidate: Option<&HashMap<String, String>>,
+        candidate: &HashMap<String, String>,
     ) -> Option<bool> {
         let active_runs = self.inner.active_runs.lock().await;
         let active = active_runs.get(&run_id)?;
         let connector = active.connectors.get(&target.target)?;
-        Some(match (&connector.pinned_base_url_vars, candidate) {
-            (Some(pinned), Some(candidate)) => pinned == candidate,
-            _ => true,
-        })
+        Some(
+            connector
+                .pinned_base_url_vars
+                .as_ref()
+                .is_none_or(|pinned| pinned == candidate),
+        )
     }
 
     async fn complete_successful_refresh(
@@ -2943,6 +2948,93 @@ mod tests {
         );
         assert_eq!(active.connectors[&target].consecutive_failures, 1);
         assert!(active.refresh_tasks.contains_key(&target));
+        drop(active_runs);
+        core.unregister_run(run_id).await;
+    }
+
+    #[tokio::test]
+    async fn tagged_custom_target_accepts_old_api_result_without_routing_metadata() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let target = custom_target(custom_connector_id);
+        let pinned_base_url_vars = HashMap::from([("subdomain".to_string(), "acme".to_string())]);
+        let registration = ConnectorRuntimeTargetRegistration::Custom {
+            custom_connector_id: custom_connector_id.to_string(),
+            base_url_vars: Some(pinned_base_url_vars.clone()),
+        };
+        let firewall = custom_runtime_firewall(custom_connector_id);
+        server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
+                .json_body(json!({
+                    "targets": [{
+                        "kind": "custom",
+                        "customConnectorId": custom_connector_id,
+                        "baseUrlVars": pinned_base_url_vars,
+                    }],
+                }));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [{
+                        "target": target.clone(),
+                        "state": "available",
+                        "firewall": firewall,
+                        "networkPolicy": {
+                            "allow": ["custom.write"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        },
+                    }],
+                }));
+        });
+        let initial_firewall = custom_runtime_firewall(custom_connector_id);
+        let firewall_name = format!("custom_connector_{}", custom_connector_id.replace('-', ""));
+        let initial_policies = HashMap::from([(
+            firewall_name.clone(),
+            NetworkPolicy {
+                allow: vec!["custom.read".to_string()],
+                deny: vec![],
+                ask: vec![],
+                unknown_policy: "deny".to_string(),
+            },
+        )]);
+        let firewalls = vec![initial_firewall];
+        let (_dir, registry, registry_path) =
+            registered_runtime_registry(run_id, &firewalls, &initial_policies).await;
+
+        core.register_run(NetworkPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_slugs: HashSet::new(),
+            targets: Some(std::slice::from_ref(&registration)),
+            refreshes: None,
+        })
+        .await;
+        let request = recv_refresh_request(&mut requests).await;
+        assert!(
+            core.sync_connector_runtime_batch_now(run_id, &request.targets)
+                .await
+        );
+
+        let registry_json: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(registry_path).await.unwrap()).unwrap();
+        assert_eq!(
+            registry_json["vms"]["10.200.0.2"]["networkPolicies"][firewall_name]["allow"],
+            json!(["custom.write"])
+        );
+        let active_runs = core.inner.active_runs.lock().await;
+        let active = &active_runs[&run_id];
+        assert_eq!(
+            active.connectors[&target].pinned_base_url_vars,
+            Some(pinned_base_url_vars)
+        );
+        assert_eq!(active.connectors[&target].consecutive_failures, 0);
+        assert!(!active.refresh_tasks.contains_key(&target));
         drop(active_runs);
         core.unregister_run(run_id).await;
     }

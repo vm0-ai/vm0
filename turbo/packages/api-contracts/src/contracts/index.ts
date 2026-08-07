@@ -665,7 +665,7 @@ export {
   type RunSkillSnapshotEntry,
   type NetworkPolicyRefresh,
   type ConnectorRuntimeTarget,
-  type ConnectorRuntimeCustomAbsentReason,
+  type ConnectorRuntimeCustomUnavailableReason,
   type ConnectorRuntimeSyncResult,
   type SecretConnectorMetadata,
   type CanonicalStorageManifest,
