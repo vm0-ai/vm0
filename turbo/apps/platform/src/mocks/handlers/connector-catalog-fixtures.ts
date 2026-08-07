@@ -538,7 +538,6 @@ export const testConnectorCatalogDefinitions = (
           label: "Sign in with AWS",
           description:
             "Sign in with AWS and paste the authorization code. This temporary AWS connector expires after up to 12 hours.",
-          featureSwitch: FeatureSwitchKey.AwsConnector,
         }),
       ],
       permissionSummary: NO_PERMISSIONS,
