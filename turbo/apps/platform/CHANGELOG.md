@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.703.0](https://github.com/vm0-ai/vm0/compare/app-v0.702.0...app-v0.703.0) (2026-08-07)
+
+
+### Features
+
+* **billing:** unify concurrency slot changes ([#25669](https://github.com/vm0-ai/vm0/issues/25669)) ([861ea6c](https://github.com/vm0-ai/vm0/commit/861ea6c027baf8449e1baeaf564cbb90e8e9a120))
+
 ## [0.702.0](https://github.com/vm0-ai/vm0/compare/app-v0.701.0...app-v0.702.0) (2026-08-07)
 
 
