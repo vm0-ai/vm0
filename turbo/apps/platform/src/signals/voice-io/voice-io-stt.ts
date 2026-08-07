@@ -15,6 +15,7 @@ import {
   createDeferredPromise,
   jsonParseOr,
   resetSignal,
+  settle,
   tapError,
   withCleanup,
 } from "../utils.ts";
@@ -565,19 +566,18 @@ async function readSttApiResponse(
 async function openMedia(signal: AbortSignal) {
   const audioConfig = await resolveAudioConfig();
   signal.throwIfAborted();
-  // confirmed by ethan@vm0.ai
-  // eslint-disable-next-line no-restricted-syntax -- getUserMedia rejects on permission denied
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: audioConfig.constraints,
-    });
-    signal.throwIfAborted();
-    return stream;
-  } catch (error) {
-    L.error("Microphone access denied", error);
+  // getUserMedia rejects on permission denied and does not accept a signal, so
+  // settle() supplies the cancellation check the raw rejection cannot.
+  const opened = await settle(
+    navigator.mediaDevices.getUserMedia({ audio: audioConfig.constraints }),
+    signal,
+  );
+  if (!opened.ok) {
+    L.error("Microphone access denied", opened.error);
     toast.error(microphoneAccessDeniedMessage());
     return;
   }
+  return opened.value;
 }
 
 async function captureRecorderData(

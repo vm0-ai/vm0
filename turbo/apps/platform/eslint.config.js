@@ -280,6 +280,19 @@ export default [
       ],
     },
   },
+  // Every catch in production source must re-throw cancellation before it does
+  // anything else, so an aborted page never reports a failure or persists a
+  // fallback. The ignore list matches the try-statement ban above: test and
+  // mock code carries no abort contract, and utils.ts implements the
+  // centralized helpers (onRejection, settle, tapError) whose whole purpose is
+  // to observe a rejection — including an abort — before re-throwing it.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/**/__tests__/**", "src/mocks/**", "src/signals/utils.ts"],
+    rules: {
+      "ccstate/no-catch-abort": "error",
+    },
+  },
   {
     ignores: [
       "dist/**",
@@ -288,7 +301,6 @@ export default [
       "vitest.config.ts",
       "src/mocks/**",
       "src/__tests__/**",
-      "eslint.config.ablation.mjs",
       // Asset files — not JS/TS, would cause parse errors when matched by
       // broad file globs in .oxlintrc.json overrides (e.g. src/views/**/*.*)
       "**/*.svg",
