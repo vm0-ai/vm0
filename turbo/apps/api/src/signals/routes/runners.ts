@@ -121,7 +121,6 @@ import {
 } from "../services/session-history-blobs";
 import {
   runnerPreferenceDecisionTelemetryDimensions,
-  runnerPreferenceDeliveryFields,
   runnerReuseKeyTelemetryKind,
   runnerReusePreferenceLookupErrorDecision,
   runnerReusePreferencePollPriority,
@@ -756,9 +755,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     currentDate,
   });
   signal.throwIfAborted();
-  const runnerPreferenceFields = runnerPreferenceDeliveryFields(
-    runnerPreferenceDecision,
-  );
   recordPollTimingMetrics({
     runId: pendingJob.runId,
     runnerGroup: group,
@@ -789,7 +785,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
         ...(piExecutionMode ? { piExecutionMode } : {}),
-        ...runnerPreferenceFields,
+        runnerPreferenceDecision,
       },
     },
   };

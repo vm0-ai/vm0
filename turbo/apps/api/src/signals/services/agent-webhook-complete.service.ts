@@ -324,6 +324,10 @@ async function tryReleasePiStandbyForColdStart(
       runId: input.body.runId,
       profile: requeued.profile,
       piExecutionMode: "cold-start",
+      runnerPreferenceDecision: {
+        kind: "noPreference",
+        reason: "noReuseKey",
+      },
     });
     signal.throwIfAborted();
   }
@@ -419,6 +423,10 @@ const activatePiColdStartForHandoff$ = command(
         runId: input.runId,
         profile: activation.profile,
         piExecutionMode: "cold-start",
+        runnerPreferenceDecision: {
+          kind: "noPreference",
+          reason: "noReuseKey",
+        },
       });
       signal.throwIfAborted();
     }

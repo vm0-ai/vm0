@@ -11,56 +11,12 @@ use std::sync::Arc;
 
 use crate::paths::RunnerPaths;
 use crate::provider::{
-    RunnerPreference, RunnerPreferenceAdmission, RunnerPreferenceClaimState,
-    RunnerPreferenceReason, RunnerPreferenceResolution, RunnerPreferenceTier,
+    RunnerPreference, RunnerPreferenceClaimState, RunnerPreferenceResolution, RunnerPreferenceTier,
 };
 use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::WorkspaceImageCache;
 
 const NON_SELECTED_RUNNER_ID: u128 = 1;
-
-fn preferred_candidate(
-    run_id: RunId,
-    reuse_key: Option<&str>,
-    reason: RunnerPreferenceReason,
-) -> crate::provider::JobCandidate {
-    preferred_candidate_until(
-        run_id,
-        reuse_key,
-        reason,
-        std::time::Instant::now() + Duration::from_secs(30),
-    )
-}
-
-fn preferred_candidate_until(
-    run_id: RunId,
-    reuse_key: Option<&str>,
-    reason: RunnerPreferenceReason,
-    deadline: std::time::Instant,
-) -> crate::provider::JobCandidate {
-    let resolution = match reason {
-        RunnerPreferenceReason::ExactHistoryGeneration => {
-            RunnerPreferenceResolution::ExactHistoryGeneration
-        }
-        RunnerPreferenceReason::MatchingReuseKey => {
-            RunnerPreferenceResolution::MatchingReusableSandbox
-        }
-        RunnerPreferenceReason::FinalizingPredecessor => {
-            RunnerPreferenceResolution::FinalizingPredecessor
-        }
-    };
-    crate::provider::JobCandidate::new(run_id, "vm0/default".into())
-        .with_reuse_key(reuse_key.map(str::to_owned))
-        .with_runner_preference_context(
-            Some(RunnerPreference::for_test(
-                uuid::Uuid::from_u128(NON_SELECTED_RUNNER_ID),
-                1,
-                reason,
-                deadline,
-            )),
-            Some(resolution),
-        )
-}
 
 fn ranked_candidate(
     run_id: RunId,
@@ -89,7 +45,7 @@ fn ranked_candidate_until(
 ) -> crate::provider::JobCandidate {
     crate::provider::JobCandidate::new(run_id, "vm0/default".into())
         .with_reuse_key(reuse_key.map(str::to_owned))
-        .with_atomic_runner_preference(RunnerPreference::ranked_for_test(
+        .with_runner_preference_for_test(RunnerPreference::ranked_for_test(
             runner_id.parse().unwrap(),
             heartbeat_generation,
             tier,
@@ -98,10 +54,12 @@ fn ranked_candidate_until(
 }
 
 fn matching_preference_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCandidate {
-    preferred_candidate(
+    ranked_candidate(
         run_id,
         Some(session_id),
-        RunnerPreferenceReason::MatchingReuseKey,
+        RunnerPreferenceTier::ReusableSandbox,
+        TEST_RUNNER_ID,
+        TEST_HEARTBEAT_GENERATION,
     )
 }
 
@@ -110,10 +68,12 @@ fn exact_generation_preference_candidate(
     session_id: &str,
     target_generation_run_id: RunId,
 ) -> crate::provider::JobCandidate {
-    preferred_candidate(
+    ranked_candidate(
         run_id,
         Some(session_id),
-        RunnerPreferenceReason::ExactHistoryGeneration,
+        RunnerPreferenceTier::ExactSandbox,
+        TEST_RUNNER_ID,
+        TEST_HEARTBEAT_GENERATION,
     )
     .with_history_generation_run_id(Some(target_generation_run_id))
 }
@@ -146,15 +106,12 @@ fn finalizing_candidate_until(
     crate::provider::JobCandidate::new(run_id, "vm0/default".into())
         .with_reuse_key(Some(reuse_key.to_owned()))
         .with_history_generation_run_id(Some(history_generation_run_id))
-        .with_runner_preference_context(
-            Some(RunnerPreference::for_test(
-                runner_id.parse().unwrap(),
-                heartbeat_generation,
-                RunnerPreferenceReason::FinalizingPredecessor,
-                deadline,
-            )),
-            Some(RunnerPreferenceResolution::FinalizingPredecessor),
-        )
+        .with_runner_preference_for_test(RunnerPreference::ranked_for_test(
+            runner_id.parse().unwrap(),
+            heartbeat_generation,
+            RunnerPreferenceTier::FinalizingPredecessor,
+            deadline,
+        ))
 }
 
 fn context_with_reuse_key(run_id: RunId, reuse_key: &str) -> crate::types::ExecutionContext {
@@ -596,12 +553,8 @@ async fn reusable_claim_without_generation_target_reuses_sandbox() {
         .find(|candidate| candidate.run_id() == run_id)
         .expect("missing-target reusable candidate should reach claim");
     assert_eq!(
-        candidate
-            .runner_preference()
-            .map(RunnerPreference::admission),
-        Some(RunnerPreferenceAdmission::Legacy(
-            RunnerPreferenceReason::MatchingReuseKey
-        ))
+        candidate.runner_preference().map(RunnerPreference::tier),
+        Some(RunnerPreferenceTier::ReusableSandbox)
     );
 
     shutdown(&env, run_handle).await;
@@ -866,7 +819,7 @@ async fn selected_ranked_finalizing_candidate_falls_back_at_deadline() {
         .expect("expired candidate should reach claim");
     let telemetry = claimed
         .runner_preference_claim_telemetry(TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
-        .expect("atomic observation should survive expiry");
+        .expect("decision observation should survive expiry");
     assert_eq!(
         telemetry.resolution,
         RunnerPreferenceResolution::FinalizingPredecessor
@@ -1640,10 +1593,12 @@ async fn preference_without_reuse_key_uses_ordinary_admission() {
         .set_claim_result(run_id, Some(minimal_context(run_id)));
     env.handle
         .discover_tx
-        .send(preferred_candidate(
+        .send(ranked_candidate(
             run_id,
             None,
-            RunnerPreferenceReason::MatchingReuseKey,
+            RunnerPreferenceTier::ReusableSandbox,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
         ))
         .unwrap();
 
@@ -1675,15 +1630,12 @@ async fn selected_finalizing_candidate_without_reuse_key_uses_ordinary_admission
         .send(
             crate::provider::JobCandidate::new(run_id, "vm0/default".into())
                 .with_history_generation_run_id(Some(RunId::new_v4()))
-                .with_runner_preference_context(
-                    Some(RunnerPreference::for_test(
-                        TEST_RUNNER_ID.parse().unwrap(),
-                        TEST_HEARTBEAT_GENERATION,
-                        RunnerPreferenceReason::FinalizingPredecessor,
-                        std::time::Instant::now() + Duration::from_secs(30),
-                    )),
-                    Some(RunnerPreferenceResolution::FinalizingPredecessor),
-                ),
+                .with_runner_preference_for_test(RunnerPreference::ranked_for_test(
+                    TEST_RUNNER_ID.parse().unwrap(),
+                    TEST_HEARTBEAT_GENERATION,
+                    RunnerPreferenceTier::FinalizingPredecessor,
+                    std::time::Instant::now() + Duration::from_secs(30),
+                )),
         )
         .unwrap();
 
@@ -1928,10 +1880,12 @@ async fn expired_generation_protection_preserves_local_session_claim() {
     env.handle
         .discover_tx
         .send(
-            preferred_candidate_until(
+            ranked_candidate_until(
                 run_id,
                 Some("sess-held-local"),
-                RunnerPreferenceReason::ExactHistoryGeneration,
+                RunnerPreferenceTier::ExactSandbox,
+                TEST_RUNNER_ID,
+                TEST_HEARTBEAT_GENERATION,
                 std::time::Instant::now() - Duration::from_secs(1),
             )
             .with_history_generation_run_id(Some(RunId::new_v4())),

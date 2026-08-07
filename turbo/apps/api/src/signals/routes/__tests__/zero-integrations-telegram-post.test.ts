@@ -1371,12 +1371,13 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       runId,
       cliAgentSessionId: null,
       reuseKey,
-      runnerPreference: {
+      runnerPreferenceDecision: {
+        kind: "preference",
         runnerIdentity: {
           runnerId,
           heartbeatGeneration: 1,
         },
-        reason: "matchingReuseKey",
+        tier: "reusableSandbox",
         expiresAt: expect.any(String),
       },
     });

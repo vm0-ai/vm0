@@ -32,7 +32,7 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    RunnerPreferenceClaimState, RunnerPreferenceResolution, parse_runner_preference_context,
+    RunnerPreferenceClaimState, RunnerPreferenceResolution, parse_runner_preference_decision,
 };
 use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
@@ -593,38 +593,25 @@ impl JobProvider for ApiProvider {
                     let run_id = job.run_id;
                     let reuse_key = job.reuse_key().map(str::to_owned);
                     let history_generation_run_id = job.history_generation_run_id;
-                    let parsed_preference = parse_runner_preference_context(
+                    let runner_preference_context = match parse_runner_preference_decision(
                         job.runner_preference_decision,
-                        job.runner_preference,
-                        job.runner_preference_resolution,
-                    );
-                    if let Some(error) = parsed_preference.decision_error {
-                        warn!(
-                            run_id = %run_id,
-                            error = %error,
-                            "poll: invalid runner preference decision, falling back to legacy preference"
-                        );
-                    }
-                    if let Some(error) = parsed_preference.legacy_preference_error {
-                        warn!(
-                            run_id = %run_id,
-                            error = %error,
-                            "poll: invalid runner preference, using ordinary admission"
-                        );
-                    }
-                    if let Some(error) = parsed_preference.legacy_resolution_error {
-                        warn!(
-                            run_id = %run_id,
-                            error = %error,
-                            "poll: invalid runner preference resolution, omitting telemetry context"
-                        );
-                    }
+                    ) {
+                        Ok(context) => context,
+                        Err(error) => {
+                            warn!(
+                                run_id = %run_id,
+                                error = %error,
+                                "poll: invalid runner preference decision, using ordinary admission"
+                            );
+                            None
+                        }
+                    };
                     let profile = job.experimental_profile;
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
                         .with_reuse_key(reuse_key)
                         .with_history_generation_run_id(history_generation_run_id)
-                        .with_parsed_runner_preference_context(parsed_preference.context)
+                        .with_parsed_runner_preference_context(runner_preference_context)
                         .with_discovery_source(JobDiscoverySource::Poll)
                         .with_poll_reason(poll_reason_value(reason))
                         .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed);
@@ -1710,10 +1697,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::http::HttpClientConfig;
-    use crate::provider::{
-        RunnerPreference, RunnerPreferenceAdmission, RunnerPreferenceReason,
-        RunnerPreferenceRemovalReason, RunnerPreferenceTier,
-    };
+    use crate::provider::{RunnerPreference, RunnerPreferenceRemovalReason, RunnerPreferenceTier};
 
     const RUNNER_CLAIM_RESPONSE_FIXTURE: &str = include_str!(
         "../../../../turbo/packages/api-contracts/src/contracts/__tests__/fixtures/runner-claim-response.json"
@@ -2306,7 +2290,6 @@ mod tests {
                 .get("runnerPreferenceTargetedSelf")
                 .is_none()
         );
-        assert!(body.get("runnerPreference").is_none());
         assert!(!body.to_string().contains("rawSizeBytes"));
         assert!(!body.to_string().contains("sessionId"));
         assert!(!body.to_string().contains("historyHash"));
@@ -2317,17 +2300,14 @@ mod tests {
 
     #[test]
     fn claim_request_body_serializes_preference_observation_at_claim_time() {
-        let active_preference = RunnerPreference::for_test(
+        let active_preference = RunnerPreference::ranked_for_test(
             TEST_RUNNER_ID.parse().unwrap(),
             TEST_HEARTBEAT_GENERATION,
-            RunnerPreferenceReason::MatchingReuseKey,
+            RunnerPreferenceTier::WorkspaceCache,
             Instant::now() + Duration::from_secs(60),
         );
         let active = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
-            .with_runner_preference_context(
-                Some(active_preference),
-                Some(RunnerPreferenceResolution::MatchingWorkspaceCache),
-            );
+            .with_runner_preference_for_test(active_preference);
         let active_body = serde_json::to_value(claim_request_body_for_test(&active)).unwrap();
         assert_eq!(
             active_body["telemetry"]["runnerPreferenceResolution"],
@@ -2342,34 +2322,28 @@ mod tests {
             true
         );
 
-        let expired_preference = RunnerPreference::for_test(
+        let expired_preference = RunnerPreference::ranked_for_test(
             TEST_RUNNER_ID.parse().unwrap(),
             TEST_HEARTBEAT_GENERATION,
-            RunnerPreferenceReason::ExactHistoryGeneration,
+            RunnerPreferenceTier::ExactSandbox,
             Instant::now() - Duration::from_secs(1),
         );
         let expired = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
-            .with_runner_preference_context(
-                Some(expired_preference),
-                Some(RunnerPreferenceResolution::ExactHistoryGeneration),
-            );
+            .with_runner_preference_for_test(expired_preference);
         let expired_body = serde_json::to_value(claim_request_body_for_test(&expired)).unwrap();
         assert_eq!(
             expired_body["telemetry"]["runnerPreferenceClaimState"],
             "expired"
         );
 
-        let cleared_preference = RunnerPreference::for_test(
+        let cleared_preference = RunnerPreference::ranked_for_test(
             Uuid::from_u128(8),
             TEST_HEARTBEAT_GENERATION,
-            RunnerPreferenceReason::FinalizingPredecessor,
+            RunnerPreferenceTier::FinalizingPredecessor,
             Instant::now() + Duration::from_secs(60),
         );
         let cleared = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
-            .with_runner_preference_context(
-                Some(cleared_preference),
-                Some(RunnerPreferenceResolution::FinalizingPredecessor),
-            )
+            .with_runner_preference_for_test(cleared_preference)
             .without_runner_preference(RunnerPreferenceRemovalReason::Cleared);
         let cleared_body = serde_json::to_value(claim_request_body_for_test(&cleared)).unwrap();
         assert_eq!(
@@ -2382,7 +2356,7 @@ mod tests {
         );
 
         let absent = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
-            .with_runner_preference_context(None, Some(RunnerPreferenceResolution::NoViableHolder));
+            .with_no_runner_preference_for_test(RunnerPreferenceResolution::NoViableHolder);
         let absent_body = serde_json::to_value(claim_request_body_for_test(&absent)).unwrap();
         assert_eq!(
             absent_body["telemetry"]["runnerPreferenceClaimState"],
@@ -2616,13 +2590,13 @@ mod tests {
                         "experimentalProfile": "vm0/large",
                         "cliAgentSessionId": "sess-poll",
                         "historyGenerationRunId": history_generation_run_id,
-                        "runnerPreferenceResolution": "exact_history_generation",
-                        "runnerPreference": {
+                        "runnerPreferenceDecision": {
+                            "kind": "preference",
                             "runnerIdentity": {
                                 "runnerId": "00000000-0000-0000-0000-000000000005",
                                 "heartbeatGeneration": 7
                             },
-                            "reason": "exactHistoryGeneration",
+                            "tier": "exactSandbox",
                             "expiresAt": "2999-01-01T00:00:00.000Z"
                         }
                     }
@@ -2650,10 +2624,7 @@ mod tests {
         let preference = discovered
             .runner_preference()
             .expect("canonical preference should be parsed");
-        assert_eq!(
-            preference.admission(),
-            RunnerPreferenceAdmission::Legacy(RunnerPreferenceReason::ExactHistoryGeneration)
-        );
+        assert_eq!(preference.tier(), RunnerPreferenceTier::ExactSandbox);
         assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
         assert_eq!(
             discovered
@@ -2674,7 +2645,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discover_prefers_atomic_poll_decision_over_conflicting_bridge() {
+    async fn discover_parses_positive_poll_preference_decision() {
         let server = MockServer::start_async().await;
         let run_id = RunId::new_v4();
         let selected_runner_id = "00000000-0000-0000-0000-000000000005";
@@ -2685,7 +2656,7 @@ mod tests {
                     "job": {
                         "runId": run_id,
                         "experimentalProfile": "vm0/default",
-                        "reuseKey": "thread:atomic-poll",
+                        "reuseKey": "thread:decision-poll",
                         "runnerPreferenceDecision": {
                             "kind": "preference",
                             "runnerIdentity": {
@@ -2694,16 +2665,7 @@ mod tests {
                             },
                             "tier": "workspaceCache",
                             "expiresAt": "2999-01-01T00:00:00.000Z"
-                        },
-                        "runnerPreference": {
-                            "runnerIdentity": {
-                                "runnerId": "00000000-0000-0000-0000-000000000099",
-                                "heartbeatGeneration": 9
-                            },
-                            "reason": "exactHistoryGeneration",
-                            "expiresAt": "2999-01-01T00:00:00.000Z"
-                        },
-                        "runnerPreferenceResolution": "exact_history_generation"
+                        }
                     }
                 }));
             })
@@ -2721,12 +2683,8 @@ mod tests {
             .expect("job candidate");
 
         assert_eq!(
-            candidate
-                .runner_preference()
-                .map(RunnerPreference::admission),
-            Some(RunnerPreferenceAdmission::Ranked(
-                RunnerPreferenceTier::WorkspaceCache
-            ))
+            candidate.runner_preference().map(RunnerPreference::tier),
+            Some(RunnerPreferenceTier::WorkspaceCache)
         );
         assert_eq!(
             candidate.runner_preference_claim_telemetry(selected_runner_id, 7),
@@ -2740,7 +2698,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discover_atomic_negative_ignores_positive_poll_bridge() {
+    async fn discover_parses_negative_poll_preference_decision() {
         let server = MockServer::start_async().await;
         let run_id = RunId::new_v4();
         let mock = server
@@ -2753,16 +2711,7 @@ mod tests {
                         "runnerPreferenceDecision": {
                             "kind": "noPreference",
                             "reason": "noViableHolder"
-                        },
-                        "runnerPreference": {
-                            "runnerIdentity": {
-                                "runnerId": TEST_RUNNER_ID,
-                                "heartbeatGeneration": TEST_HEARTBEAT_GENERATION
-                            },
-                            "reason": "matchingReuseKey",
-                            "expiresAt": "2999-01-01T00:00:00.000Z"
-                        },
-                        "runnerPreferenceResolution": "matching_reusable_sandbox"
+                        }
                     }
                 }));
             })
@@ -2792,7 +2741,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discover_falls_back_to_poll_bridge_after_malformed_atomic_decision() {
+    async fn discover_preserves_poll_job_after_malformed_preference_decision() {
         let server = MockServer::start_async().await;
         let run_id = RunId::new_v4();
         let mock = server
@@ -2810,15 +2759,6 @@ mod tests {
                                 "heartbeatGeneration": 0
                             },
                             "tier": "workspaceCache",
-                            "expiresAt": "2999-01-01T00:00:00.000Z"
-                        },
-                        "runnerPreferenceResolution": "matching_workspace_cache",
-                        "runnerPreference": {
-                            "runnerIdentity": {
-                                "runnerId": TEST_RUNNER_ID,
-                                "heartbeatGeneration": TEST_HEARTBEAT_GENERATION
-                            },
-                            "reason": "matchingReuseKey",
                             "expiresAt": "2999-01-01T00:00:00.000Z"
                         }
                     }
@@ -2839,54 +2779,7 @@ mod tests {
 
         assert_eq!(candidate.run_id(), run_id);
         assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
-        assert_eq!(
-            candidate
-                .runner_preference()
-                .map(RunnerPreference::admission),
-            Some(RunnerPreferenceAdmission::Legacy(
-                RunnerPreferenceReason::MatchingReuseKey
-            ))
-        );
-        assert_eq!(
-            candidate.runner_preference_claim_telemetry(TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION,),
-            Some(super::super::RunnerPreferenceClaimTelemetry {
-                resolution: RunnerPreferenceResolution::MatchingWorkspaceCache,
-                state: RunnerPreferenceClaimState::Active,
-                targeted_self: Some(true),
-            })
-        );
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn discover_preserves_poll_job_with_future_resolution() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::new_v4();
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(routes::runners::poll::POLL.path);
-                then.status(200).json_body(serde_json::json!({
-                    "job": {
-                        "runId": run_id,
-                        "experimentalProfile": "vm0/default",
-                        "runnerPreferenceResolution": "future_resolution"
-                    }
-                }));
-            })
-            .await;
-        let provider = api_provider_for_test_with_supported_profiles(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::new(PollWakeups::new(false)),
-            vec!["vm0/default".to_string()],
-        );
-
-        let candidate = tokio::time::timeout(Duration::from_secs(1), provider.discover())
-            .await
-            .expect("discover should preserve the job")
-            .expect("job candidate");
-
-        assert_eq!(candidate.run_id(), run_id);
+        assert!(candidate.runner_preference().is_none());
         assert!(
             candidate
                 .runner_preference_claim_telemetry(TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION,)
