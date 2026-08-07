@@ -64,6 +64,7 @@
    * =================================== */
   --color-white: hsl(var(--white));
   --color-black: hsl(var(--black));
+  --color-overlay: hsl(var(--overlay));
 
   /* ===================================
    * Semantic Colors
@@ -176,6 +177,11 @@
     /* Theme-aware Colors */
     --white: 0 0% 100%; /* #FFFFFF */
     --black: 240 3% 10%; /* #19191B */
+
+    /* Dialog scrim. Deliberately NOT theme-aware: --black inverts to #FFFFFF
+       in dark, which would lighten the backdrop instead of dimming it. The
+       dark theme reuses this value and only raises the alpha. */
+    --overlay: 240 3% 10%; /* #19191B */
 
     /* ===================================
      * Semantic Colors (Light Theme)
