@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.402.2](https://github.com/vm0-ai/vm0/compare/api-v1.402.1...api-v1.402.2) (2026-08-07)
+
+
+### Refactoring
+
+* **chat:** prepare content-based events ([#25748](https://github.com/vm0-ai/vm0/issues/25748)) ([aa5fd7b](https://github.com/vm0-ai/vm0/commit/aa5fd7b5da87a3fe21f45e54bae1d1fea9d56ab2))
+* **pi:** remove memory path compatibility fallback ([#25744](https://github.com/vm0-ai/vm0/issues/25744)) ([c89952b](https://github.com/vm0-ai/vm0/commit/c89952b65528b4223109585f81249e21aaa52f2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.2
+    * @vm0/core bumped to 8.530.2
+    * @vm0/db bumped to 1.179.2
+    * @vm0/pi-agent-runtime bumped to 1.3.5
+
 ## [1.402.1](https://github.com/vm0-ai/vm0/compare/api-v1.402.0...api-v1.402.1) (2026-08-07)
 
 
