@@ -7,12 +7,15 @@ import {
   type ZeroAvatarVideoVoicesQuery,
 } from "@vm0/api-contracts/contracts/zero-avatar-video";
 
+import type { SupportedLocale } from "../../i18n/resources.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { locale$ } from "../locale.ts";
 import { onRejection } from "../utils.ts";
 
 const AVATAR_TEMPLATE_PAGE_SIZE = 24;
 const AVATAR_TEMPLATE_FILTER_OPTIONS_PAGE_SIZE = 100;
+const AVATAR_TEMPLATE_RECOMMENDATION_PAGE_SIZE = 100;
 
 interface AvatarTemplateCatalogPage {
   readonly avatars: readonly ZeroAvatarVideoAvatar[];
@@ -77,6 +80,69 @@ function emptyAvatarTemplateVoiceFilters(): AvatarTemplateVoiceFilters {
   };
 }
 
+const PREFERRED_VOICE_LANGUAGE_BY_LOCALE = {
+  "de-DE": "german",
+  "en-US": "english",
+  "es-ES": "spanish",
+  "fr-FR": "french",
+  "hi-IN": "hindi",
+  "id-ID": "indonesian",
+  "it-IT": "italian",
+  "ja-JP": "japanese",
+  "ko-KR": "korean",
+  "pt-BR": "portuguese",
+} as const satisfies Record<SupportedLocale, string>;
+
+const PREFERRED_VOICE_USE_CASE_BY_AVATAR_STYLE = {
+  professional: "informative_educational",
+  social: "social_media",
+} as const satisfies Record<
+  NonNullable<ZeroAvatarVideoAvatarsQuery["style"]>,
+  string
+>;
+
+const PREFERRED_VOICE_USE_CASE_BY_AVATAR_SCENE = {
+  lifestyle: "conversational",
+  outdoors: "social_media",
+  business: "advertisement",
+  studio: "entertainment_tv",
+  health_fitness: "informative_educational",
+  education: "informative_educational",
+  news: "entertainment_tv",
+} as const satisfies Record<
+  NonNullable<ZeroAvatarVideoAvatarsQuery["scene"]>,
+  string
+>;
+
+const PREFERRED_VOICE_ACCENTS_BY_AVATAR_ETHNICITY = {
+  european: [
+    "british",
+    "irish",
+    "scottish",
+    "parisian",
+    "peninsular",
+    "moscow",
+    "russian",
+    "swedish",
+  ],
+  african: ["african", "nigerian", "south african", "african american"],
+  south_asian: ["indian", "bihari", "marathi"],
+  east_asian: [
+    "chinese",
+    "mandarin",
+    "cantonese",
+    "japanese",
+    "korean",
+    "taiwanese",
+  ],
+  middle_eastern: ["middle eastern", "arabic", "gulf", "istanbul"],
+  south_american: ["latin american", "colombian", "peruvian", "brazilian"],
+  north_american: ["american", "new york", "southern", "canadian"],
+} as const satisfies Record<
+  NonNullable<ZeroAvatarVideoAvatarsQuery["ethnicity"]>,
+  readonly string[]
+>;
+
 function voiceGenderForAvatar(
   avatarGender: string | undefined,
   fallback: AvatarTemplateVoiceFilters["gender"],
@@ -110,15 +176,74 @@ function voiceAgeForAvatar(
   }
 }
 
+function voiceUseCaseForAvatar(
+  avatarStyle: string | undefined,
+  filters: AvatarTemplateFilters,
+): AvatarTemplateVoiceFilters["useCase"] {
+  if (filters.scene) {
+    return PREFERRED_VOICE_USE_CASE_BY_AVATAR_SCENE[filters.scene];
+  }
+  const style = avatarStyle ?? filters.style;
+  if (style === "professional" || style === "social") {
+    return PREFERRED_VOICE_USE_CASE_BY_AVATAR_STYLE[style];
+  }
+  return undefined;
+}
+
+function recommendedVoiceFromCandidates(
+  voices: readonly ZeroAvatarVideoVoice[],
+  ethnicity: AvatarTemplateFilters["ethnicity"],
+): ZeroAvatarVideoVoice | null {
+  if (!ethnicity) {
+    return voices[0] ?? null;
+  }
+  const preferredAccents = new Set<string>(
+    PREFERRED_VOICE_ACCENTS_BY_AVATAR_ETHNICITY[ethnicity],
+  );
+  return (
+    voices.find((voice) => {
+      return (
+        voice.accent !== undefined &&
+        preferredAccents.has(voice.accent.toLocaleLowerCase())
+      );
+    }) ??
+    voices[0] ??
+    null
+  );
+}
+
 function voiceFiltersForAvatar(
   avatar: ZeroAvatarVideoAvatar,
   filters: AvatarTemplateFilters,
+  locale: SupportedLocale,
 ): AvatarTemplateVoiceFilters {
   return {
-    language: undefined,
+    language: PREFERRED_VOICE_LANGUAGE_BY_LOCALE[locale],
     gender: voiceGenderForAvatar(avatar.gender, filters.gender),
     age: voiceAgeForAvatar(avatar.age ?? filters.age),
-    useCase: undefined,
+    useCase: voiceUseCaseForAvatar(avatar.style, filters),
+  };
+}
+
+function recommendedVoiceQuery(
+  avatar: ZeroAvatarVideoAvatar,
+  avatarFilters: AvatarTemplateFilters,
+  voiceFilters: AvatarTemplateVoiceFilters,
+  locale: SupportedLocale,
+): ZeroAvatarVideoVoicesQuery {
+  const gender =
+    voiceFilters.gender ??
+    voiceGenderForAvatar(avatar.gender, avatarFilters.gender);
+  const age =
+    voiceFilters.age ?? voiceAgeForAvatar(avatar.age ?? avatarFilters.age);
+  return {
+    page: 1,
+    pageSize: AVATAR_TEMPLATE_RECOMMENDATION_PAGE_SIZE,
+    language:
+      voiceFilters.language ?? PREFERRED_VOICE_LANGUAGE_BY_LOCALE[locale],
+    ...(gender ? { gender } : {}),
+    ...(age ? { age } : {}),
+    ...(voiceFilters.useCase ? { useCase: voiceFilters.useCase } : {}),
   };
 }
 
@@ -336,34 +461,20 @@ function createAvatarTemplateVoiceCatalogSignals() {
       const client = get(zeroClient$)(zeroAvatarVideoContract, {
         apiBase: "api",
       });
-      const languages = new Set<string>();
-      const useCases = new Set<string>();
-      let page = 1;
-      let hasMore: boolean;
-      do {
-        const result = await accept(
-          client.voices({
-            query: {
-              page,
-              pageSize: AVATAR_TEMPLATE_FILTER_OPTIONS_PAGE_SIZE,
-            },
-            fetchOptions: { signal },
-          }),
-          [200],
-          signal,
-        );
-        for (const language of result.body.filterOptions?.languages ?? []) {
-          languages.add(language);
-        }
-        for (const useCase of result.body.filterOptions?.useCases ?? []) {
-          useCases.add(useCase);
-        }
-        hasMore = result.body.hasMore;
-        page += 1;
-      } while (hasMore);
+      const result = await accept(
+        client.voices({
+          query: {
+            page: 1,
+            pageSize: AVATAR_TEMPLATE_FILTER_OPTIONS_PAGE_SIZE,
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+        signal,
+      );
       return {
-        languages: Array.from(languages).sort(),
-        useCases: Array.from(useCases).sort(),
+        languages: result.body.filterOptions?.languages ?? [],
+        useCases: result.body.filterOptions?.useCases ?? [],
       };
     },
   );
@@ -397,12 +508,44 @@ export function createAvatarTemplatePickerSignals() {
   const selectedAvatarTemplateForVoice$ = computed((get) => {
     return get(internalSelectedAvatar$);
   });
+  const avatarTemplateRecommendedVoice$ = computed(
+    async (get, { signal }): Promise<ZeroAvatarVideoVoice | null> => {
+      const avatar = get(internalSelectedAvatar$);
+      if (!avatar) {
+        return null;
+      }
+      const avatarFilters = get(avatarCatalog.avatarTemplateFilters$);
+      const voiceFilters = get(voiceCatalog.avatarTemplateVoiceFilters$);
+      const locale = get(locale$);
+      const client = get(zeroClient$)(zeroAvatarVideoContract, {
+        apiBase: "api",
+      });
+      const result = await accept(
+        client.voices({
+          query: recommendedVoiceQuery(
+            avatar,
+            avatarFilters,
+            voiceFilters,
+            locale,
+          ),
+          fetchOptions: { signal },
+        }),
+        [200],
+        signal,
+      );
+      return recommendedVoiceFromCandidates(
+        result.body.voices,
+        avatarFilters.ethnicity,
+      );
+    },
+  );
   const selectAvatarTemplateForVoice$ = command(
     ({ get, set }, avatar: ZeroAvatarVideoAvatar) => {
       const avatarFilters = get(avatarCatalog.avatarTemplateFilters$);
+      const locale = get(locale$);
       set(
         voiceCatalog.setAvatarTemplateVoiceFilters$,
-        voiceFiltersForAvatar(avatar, avatarFilters),
+        voiceFiltersForAvatar(avatar, avatarFilters, locale),
       );
       set(internalSelectedAvatar$, avatar);
     },
@@ -416,6 +559,7 @@ export function createAvatarTemplatePickerSignals() {
     ...avatarCatalog,
     ...voiceCatalog,
     selectedAvatarTemplateForVoice$,
+    avatarTemplateRecommendedVoice$,
     selectAvatarTemplateForVoice$,
     clearAvatarTemplateVoiceSelection$,
   };
