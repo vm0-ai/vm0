@@ -20,7 +20,10 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
+import {
+  appendGoalMarkerFixture,
+  readGoalQueueStateFixture,
+} from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
@@ -1735,7 +1738,7 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("continues an active goal with the full objective in the run prompt and the brief in the user message snapshot", async () => {
+  it("sources the goal system prompt from thread goals and ignores later UI markers", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     await enableGoalWorkflows(actor);
@@ -1754,6 +1757,18 @@ ${noisySeparator}
 
 Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-42](https://acme.example.com/treasury) before marking done.`;
     await createGoalForRun(actor, first.runId, goalObjective);
+    const goalRunPreparationStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const releaseGoalRunPreparation = deferredGate();
+    useSecretKmsProbe((command) => {
+      if (!goalRunPreparationStarted.settled()) {
+        goalRunPreparationStarted.resolve(undefined);
+      }
+      return releaseGoalRunPreparation.wait().then(() => {
+        return generateDataKeyOutput(command);
+      });
+    });
 
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "completed before goal continuation"),
@@ -1763,6 +1778,12 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await completeChatRunOk(first.runId, sandboxHeaders, {
       lastEventSequence: 0,
     });
+    await goalRunPreparationStarted.promise;
+    await appendGoalMarkerFixture({
+      threadId: first.threadId,
+      objectiveBrief: "Display-only marker must not invalidate this run",
+    });
+    releaseGoalRunPreparation.release();
 
     const messages = await waitForThreadMessages(
       actor,
@@ -1808,13 +1829,18 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       ],
     });
     const goalContext = await waitForRunContext(actor, goalContinuation.runId);
-    expect(goalContext.body.prompt).toContain("# Active thread goal");
-    expect(goalContext.body.prompt).toContain(goalObjective);
-    expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
-      "# Active thread goal",
-    );
-    expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
-      "# How to operate",
+    expect(goalContext.body.prompt).toBe("Continue the active thread goal.");
+    expect(goalContext.body.prompt).not.toContain(goalBrief);
+    expect(goalContext.body.prompt).not.toContain(goalObjective);
+    const appendSystemPrompt = goalContext.body.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain("# Active thread goal");
+    expect(appendSystemPrompt).toContain(goalObjective);
+    expect(appendSystemPrompt).toContain("# User-visible objective brief");
+    expect(appendSystemPrompt).toContain(goalBrief);
+    expect(appendSystemPrompt).toContain("Autonomy budget: 9");
+    expect(appendSystemPrompt).toContain("# How to operate");
+    expect(appendSystemPrompt).not.toContain(
+      "Display-only marker must not invalidate this run",
     );
     expect(goalContext.body.sessionId).toBe(
       cliAgentSessionIdForChatRun(first.runId),
@@ -1831,7 +1857,87 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("revokes a goal invalidated during run preparation without creating a run", async () => {
+  it("rebuilds a preparing goal run from the latest thread goal row", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the goal objective is updated",
+    });
+    const initialObjective = "Continue the original goal target";
+    const updatedObjective = "Continue the updated goal target";
+    await createGoalForRun(actor, first.runId, initialObjective);
+
+    const goalRunPreparationStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const releaseGoalRunPreparation = deferredGate();
+    useSecretKmsProbe((command) => {
+      if (!goalRunPreparationStarted.settled()) {
+        goalRunPreparationStarted.resolve(undefined);
+      }
+      return releaseGoalRunPreparation.wait().then(() => {
+        return generateDataKeyOutput(command);
+      });
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before the goal objective changed"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await goalRunPreparationStarted.promise;
+
+    const edited = await accept(
+      goalsClient().edit({
+        headers: zeroGoalHeaders(actor, first.runId),
+        body: { objective: updatedObjective },
+      }),
+      [200],
+    );
+    expect(edited.body).toMatchObject({
+      objective: updatedObjective,
+      objectiveBrief: updatedObjective,
+      status: "active",
+    });
+    releaseGoalRunPreparation.release();
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, updatedObjective);
+        });
+      },
+    );
+    const continuation = userMessages(messages.events).find((message) => {
+      return isGoalContinuationUserMessage(message, updatedObjective);
+    });
+    if (!continuation?.runId) {
+      throw new Error("Expected the updated goal continuation run");
+    }
+    await expect(goalRunIds(first.threadId)).resolves.toStrictEqual([
+      continuation.runId,
+    ]);
+
+    const goalContext = await waitForRunContext(actor, continuation.runId);
+    expect(goalContext.body.prompt).toBe("Continue the active thread goal.");
+    expect(goalContext.body.prompt).not.toContain(initialObjective);
+    expect(goalContext.body.prompt).not.toContain(updatedObjective);
+    expect(goalContext.body.appendSystemPrompt).toContain(updatedObjective);
+    expect(goalContext.body.appendSystemPrompt).not.toContain(initialObjective);
+
+    await api.requestCancelRun(actor, continuation.runId, [200]);
+    await waitForRunStatus(actor, continuation.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("revokes a goal deleted during run preparation without creating a run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1847,7 +1953,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     useSecretKmsProbe((command) => {
       // The terminal callback drain and the goal enqueue drain may both prepare
       // this queued run. Hold every preparation so neither can win the final
-      // claim before the goal is paused.
+      // claim before the goal is deleted.
       if (!runPreparationStarted.settled()) {
         runPreparationStarted.resolve(undefined);
       }
@@ -1865,13 +1971,13 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     });
     await runPreparationStarted.promise;
 
-    const paused = await accept(
-      goalsClient().pause({
+    const cleared = await accept(
+      goalsClient().clear({
         headers: zeroGoalHeaders(actor, first.runId),
       }),
       [200],
     );
-    expect(paused.body.status).toBe("paused");
+    expect(cleared.body).toStrictEqual({ cleared: true });
     const [goalEventId] = await goalQueueEventIds(first.threadId);
     expect(goalEventId).toBeDefined();
     if (!goalEventId) {

@@ -260,6 +260,7 @@ import type {
 } from "./chat-session-continuity.service";
 import {
   claimQueueFirstRunAssociation,
+  lockGoalQueueFirstRunSource,
   recordQueueFirstClaimedRun,
   recordQueueFirstFailedRun,
   resolveQueueFirstRunAdmission,
@@ -6472,6 +6473,9 @@ async function resolveQueueFirstAdmissionForLaunch(args: {
   }
   if (association.threadId !== args.createArgs.chatThreadId) {
     throw new Error("Queue-first association must match the run chat thread");
+  }
+  if (association.kind === "goal_event") {
+    await lockGoalQueueFirstRunSource(args.tx, association);
   }
   return await resolveQueueFirstRunAdmission(args.tx, {
     admissionTime:

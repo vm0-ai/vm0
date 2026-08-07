@@ -11,6 +11,10 @@ import {
   type GoalQueueAdmission,
 } from "../signals/services/chat-goal-queue.service";
 import { drainChatThreadQueueForThread$ } from "../signals/services/chat-thread-queue-drain.service";
+import {
+  activeGoalEvent,
+  appendGoalEventMarker,
+} from "../signals/services/zero-chat-goal-marker.service";
 
 interface GoalQueueAdmissionFixtureArgs {
   readonly threadId: string;
@@ -92,6 +96,19 @@ export async function pauseGoalQueueTargetFixture(
   if (!goal) {
     throw new Error("Expected the goal queue target fixture");
   }
+}
+
+/** Append a display-only goal marker without changing the goal source row. */
+export async function appendGoalMarkerFixture(args: {
+  readonly threadId: string;
+  readonly objectiveBrief: string;
+}): Promise<void> {
+  await db().transaction(async (tx) => {
+    await appendGoalEventMarker(tx, {
+      chatThreadId: args.threadId,
+      event: activeGoalEvent(args.objectiveBrief),
+    });
+  });
 }
 
 /**
