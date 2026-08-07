@@ -71,6 +71,56 @@ function thinkingEvent(args: { id: string; seqId: number }) {
   };
 }
 
+function automationEvent(args: { id: string; seqId: number; brief: string }) {
+  return {
+    id: args.id,
+    threadId: THREAD_ID,
+    eventType: "input.automation" as const,
+    content: null,
+    userMessage: {
+      version: 1 as const,
+      parts: [
+        {
+          type: "automation" as const,
+          workflowName: "daily-digest",
+          automationBrief: args.brief,
+        },
+      ],
+    },
+    runId: RUN_ID,
+    seqId: args.seqId,
+    createdAt: "2026-07-29T08:00:00.000Z",
+  };
+}
+
+function goalEvent(args: { id: string; seqId: number; brief: string }) {
+  return {
+    id: args.id,
+    threadId: THREAD_ID,
+    eventType: "input.goal" as const,
+    content: null,
+    userMessage: {
+      version: 1 as const,
+      parts: [{ type: "goal" as const, goalBrief: args.brief }],
+    },
+    seqId: args.seqId,
+    createdAt: "2026-07-29T08:01:00.000Z",
+  };
+}
+
+function errorEvent(args: { id: string; seqId: number; error: string }) {
+  return {
+    id: args.id,
+    threadId: THREAD_ID,
+    eventType: "output.error" as const,
+    content: null,
+    error: args.error,
+    runId: RUN_ID,
+    seqId: args.seqId,
+    createdAt: "2026-07-29T08:02:00.000Z",
+  };
+}
+
 describe("zero chat messages command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
@@ -234,6 +284,85 @@ describe("zero chat messages command", () => {
     expect(output.indexOf("oldest question")).toBeLessThan(
       output.indexOf("newest answer"),
     );
+  });
+
+  it("prints automation triggers, goal turns, and run errors", async () => {
+    server.use(
+      http.get(EVENTS_URL, () => {
+        return HttpResponse.json({
+          events: [
+            automationEvent({
+              id: "00000000-0000-4000-8000-000000000021",
+              seqId: 1,
+              brief: "Gmail label applied",
+            }),
+            goalEvent({
+              id: "00000000-0000-4000-8000-000000000022",
+              seqId: 2,
+              brief: "Merge PR #1",
+            }),
+            errorEvent({
+              id: "00000000-0000-4000-8000-000000000023",
+              seqId: 3,
+              error: "Session history file not found",
+            }),
+          ],
+        });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync(["node", "cli", "messages"]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).not.toContain("No chat messages found");
+    expect(output).toContain("[Automation: Gmail label applied]");
+    expect(output).toContain("[Goal: Merge PR #1]");
+    expect(output).toContain("Session history file not found");
+  });
+
+  it("renders attachments and mentions instead of reporting empty text", async () => {
+    server.use(
+      http.get(EVENTS_URL, () => {
+        return HttpResponse.json({
+          events: [
+            {
+              id: "00000000-0000-4000-8000-000000000024",
+              threadId: THREAD_ID,
+              eventType: "input.prompt",
+              content: null,
+              userMessage: {
+                version: 1,
+                parts: [
+                  { type: "text", text: "ask " },
+                  {
+                    type: "agent",
+                    agentId: "00000000-0000-4000-8000-000000000030",
+                    nameSnapshot: "Iris",
+                  },
+                  { type: "text", text: " about this" },
+                  {
+                    type: "file",
+                    fileId: "file-1",
+                    filenameSnapshot: "report.pdf",
+                    contentType: "application/pdf",
+                  },
+                ],
+              },
+              runId: RUN_ID,
+              seqId: 1,
+              createdAt: "2026-07-29T10:00:00.000Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync(["node", "cli", "messages"]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("ask [Agent: Iris] about this");
+    expect(output).toContain("[File: report.pdf]");
+    expect(output).not.toContain("(no message text)");
   });
 
   it("guides to send when the thread has no messages", async () => {

@@ -3,6 +3,7 @@ import { Command } from "commander";
 import type {
   ChatEvent,
   UserMessageDocument,
+  UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { listZeroChatEvents } from "../../../lib/api/domains/zero-chat";
@@ -32,23 +33,112 @@ interface ChatMessage {
   readonly text: string;
 }
 
-function userMessageText(document: UserMessageDocument): string {
-  return document.parts
-    .map((part) => {
-      return part.type === "text" ? part.text : "";
-    })
-    .join("")
-    .trim();
+/**
+ * Parts that read as one sentence with their neighbours, so they concatenate
+ * without a separator the way the chat UI renders them inline.
+ */
+function inlinePartText(part: UserMessagePart): string | null {
+  if (part.type === "text") {
+    return part.text;
+  }
+  if (part.type === "chat_thread") {
+    return `[Chat thread: ${part.titleSnapshot}]`;
+  }
+  if (part.type === "agent") {
+    return `[Agent: ${part.nameSnapshot}]`;
+  }
+  return null;
 }
 
+/**
+ * Parts that stand on their own line. `source` and `model` are provenance and
+ * routing metadata rather than message content, so they render as nothing.
+ */
+function blockPartText(part: UserMessagePart): string | null {
+  if (part.type === "file") {
+    return `[File: ${part.filenameSnapshot}]`;
+  }
+  if (part.type === "template") {
+    return `[Template: ${part.titleSnapshot}]`;
+  }
+  if (part.type === "automation") {
+    return `[Automation: ${part.automationBrief ?? part.workflowName}]`;
+  }
+  if (part.type === "goal") {
+    return `[Goal: ${part.goalBrief}]`;
+  }
+  if (part.type === "morning_brief") {
+    return `[Morning brief: ${part.briefDate}]`;
+  }
+  if (part.type === "feedback") {
+    const note = part.note
+      .map((notePart) => {
+        return inlinePartText(notePart) ?? blockPartText(notePart) ?? "";
+      })
+      .join("")
+      .trim();
+    return `[Feedback on "${part.quote}"] ${note}`.trim();
+  }
+  return null;
+}
+
+/**
+ * A message carries more than text: attachments, templates, automation and goal
+ * triggers, and quoted feedback all appear in the chat UI. Rendering only text
+ * parts would report a non-empty message as empty.
+ */
+function userMessageText(document: UserMessageDocument): string {
+  const blocks: string[] = [];
+  let inline = "";
+  const flushInline = () => {
+    if (inline.length > 0) {
+      blocks.push(inline);
+      inline = "";
+    }
+  };
+  for (const part of document.parts) {
+    const inlineText = inlinePartText(part);
+    if (inlineText !== null) {
+      inline += inlineText;
+      continue;
+    }
+    const blockText = blockPartText(part);
+    if (blockText !== null) {
+      flushInline();
+      blocks.push(blockText);
+    }
+  }
+  flushInline();
+  return blocks.join("\n").trim();
+}
+
+/**
+ * Every user-role and assistant-role event that carries message text, matching
+ * the roles the chat UI renders. Thinking, followups, run lifecycle, control,
+ * browser, and usage events are not messages.
+ */
 function toChatMessage(event: ChatEvent): ChatMessage | null {
-  if (event.eventType === "input.prompt") {
+  if (
+    event.eventType === "input.prompt" ||
+    event.eventType === "input.budget" ||
+    event.eventType === "input.rejected" ||
+    event.eventType === "input.goal"
+  ) {
     return {
       eventId: event.id,
       role: "user",
       createdAt: event.createdAt,
       runId: event.runId ?? null,
       text: userMessageText(event.userMessage),
+    };
+  }
+  if (event.eventType === "input.automation") {
+    return {
+      eventId: event.id,
+      role: "user",
+      createdAt: event.createdAt,
+      runId: event.runId ?? null,
+      text: event.userMessage ? userMessageText(event.userMessage) : "",
     };
   }
   if (event.eventType === "output.message") {
@@ -58,6 +148,15 @@ function toChatMessage(event: ChatEvent): ChatMessage | null {
       createdAt: event.createdAt,
       runId: event.runId ?? null,
       text: event.content.trim(),
+    };
+  }
+  if (event.eventType === "output.error") {
+    return {
+      eventId: event.id,
+      role: "assistant",
+      createdAt: event.createdAt,
+      runId: event.runId ?? null,
+      text: event.error.trim(),
     };
   }
   return null;
