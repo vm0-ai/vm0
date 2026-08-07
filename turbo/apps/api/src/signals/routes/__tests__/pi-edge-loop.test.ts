@@ -460,7 +460,7 @@ async function codexPiEdgeFixture(args?: {
   chatCallbacks.acceptChatObjectStorage();
   chatCallbacks.disableVapid();
   api.acceptStorageDownloads();
-  acceptPiStorageObjects();
+  const storageObjects = acceptPiStorageObjects();
   api.acceptTelemetryIngest();
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   const runnerGroup = api.configureRunnerGroup();
@@ -526,6 +526,7 @@ async function codexPiEdgeFixture(args?: {
     agentDisplayName: AGENT_DISPLAY_NAME,
     agentInstructions,
     workflowSkillName,
+    storageObjects,
   };
 }
 
