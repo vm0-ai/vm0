@@ -646,8 +646,10 @@ describe("Teams chat callbacks", () => {
       activityId: "activity-queue-params-second",
       text: queuedPrompt,
     });
-    const queuedParams =
-      await findPendingChatEventByPromptFixture(queuedPrompt);
+    const queuedParams = await findPendingChatEventByPromptFixture({
+      userId: teams.actor.userId,
+      prompt: queuedPrompt,
+    });
     expect(queuedParams).toMatchObject({
       eventId: expect.any(String),
     });
@@ -731,7 +733,10 @@ describe("Teams chat callbacks", () => {
       text: queuedPrompt,
     });
     await expect(
-      findPendingChatEventByPromptFixture(queuedPrompt),
+      findPendingChatEventByPromptFixture({
+        userId: teams.actor.userId,
+        prompt: queuedPrompt,
+      }),
     ).resolves.toMatchObject({ eventId: expect.any(String) });
 
     await seedOrgMetadata({
@@ -795,8 +800,10 @@ describe("Teams chat callbacks", () => {
       text: queuedPrompt,
       omitRecipient: true,
     });
-    const queuedParams =
-      await findPendingChatEventByPromptFixture(queuedPrompt);
+    const queuedParams = await findPendingChatEventByPromptFixture({
+      userId: teams.actor.userId,
+      prompt: queuedPrompt,
+    });
     if (!queuedParams) {
       throw new Error("Expected queued Teams bot fallback event");
     }
