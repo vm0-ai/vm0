@@ -367,7 +367,7 @@ export function runnerPreferenceDecisionTelemetryDimensions(
 }
 
 interface RunnerReuseHolder {
-  readonly runnerIdentity: RunnerPreference["runnerIdentity"];
+  readonly runnerIdentity: PositiveRunnerPreferenceDecision["runnerIdentity"];
   readonly hasExactHistoryGeneration: boolean;
   readonly isFinalizingPredecessor: boolean;
   readonly hasReusableSandbox: boolean;
