@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
 import {
+  CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
   PI_MEMORY_ROOT,
   PI_SKILLS_ROOT,
@@ -334,6 +335,18 @@ async function enablePiLoop(fixture: PiEdgeFixture): Promise<void> {
   );
 }
 
+async function disablePiLoop(fixture: PiEdgeFixture): Promise<void> {
+  await updateFeatureSwitchesForUser(
+    context,
+    {
+      userId: fixture.switchOwner.userId,
+      orgId: fixture.orgId,
+      orgRole: fixture.switchOwner.orgRole,
+    },
+    { [FeatureSwitchKey.PiLoop]: false },
+  );
+}
+
 async function sendChatRun(
   fixture: PiEdgeFixture,
   prompt: string,
@@ -377,7 +390,7 @@ async function outputMessages(actor: ApiTestUser, threadId: string) {
 }
 
 describe("PiLoop edge turn", () => {
-  it("uses the org gate, starts an existing thread without legacy backfill, and completes in the API", async () => {
+  it("uses the org gate, migrates memory paths in both directions, and completes in the API", async () => {
     const fixture = await piEdgeFixture();
     const legacyPrompt = "legacy context must not enter the Pi transcript";
     const legacy = await sendChatRun(fixture, legacyPrompt);
@@ -727,6 +740,33 @@ describe("PiLoop edge turn", () => {
     expect((await api.readRun(fixture.actor, followUp.runId)).status).toBe(
       "completed",
     );
+
+    await disablePiLoop(fixture);
+    const fallback = await sendChatRun(
+      fixture,
+      "continue after disabling PiLoop",
+      edge.threadId,
+    );
+    expect((await api.readRun(fixture.actor, fallback.runId)).status).toBe(
+      "pending",
+    );
+    const fallbackPoll = await api.pollRunner(fixture.runnerGroup);
+    expect(fallbackPoll.body.job?.runId).toBe(fallback.runId);
+    const fallbackContext = await api.claimRunnerJob(fallback.runId);
+    expect(fallbackContext.storageManifest?.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+        missingRootPolicy: "preserveParentVersion",
+      }),
+    );
+    expect(fallbackContext.storageManifest?.storageMounts).not.toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        mountPath: PI_MEMORY_ROOT,
+      }),
+    );
+    await api.requestCancelRun(fixture.actor, fallback.runId, [200]);
   });
 
   it("injects the MEMORY.md prefix and keeps the complete file readable on the edge", async () => {
