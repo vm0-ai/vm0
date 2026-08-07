@@ -1148,7 +1148,7 @@ jobs:
     outputs:
       deployment-url: ${{ steps.pages-deploy.outputs.url }}
     concurrency:
-      group: deploy-app-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      group: deploy-app-${{ github.sha }}
       cancel-in-progress: false
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -1175,7 +1175,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Resolve Cloudflare Pages preview branch
         id: pages-branch
