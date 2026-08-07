@@ -298,6 +298,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn closed_receiver_returns_failed_delivery_to_pending() {
+        let notifications = PiStandbyNotifications::new();
+        let run_id = RunId::new_v4();
+        let mut subscription = notifications.subscribe(run_id);
+        subscription.receiver.close();
+
+        notifications.notify(run_id, PiStandbySignal::Release);
+        drop(subscription);
+
+        assert_eq!(
+            notifications.subscribe(run_id).wait().await,
+            Some(PiStandbySignal::Release)
+        );
+    }
+
+    #[tokio::test]
     async fn superseded_subscription_finishes_without_signal() {
         let notifications = PiStandbyNotifications::new();
         let run_id = RunId::new_v4();
