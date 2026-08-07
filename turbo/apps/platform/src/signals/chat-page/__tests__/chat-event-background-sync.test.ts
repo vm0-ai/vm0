@@ -151,29 +151,6 @@ describe("chat event background sync", () => {
     );
   });
 
-  it("continues active prefetch against an API without unread ids", async () => {
-    const requestedThreadIds: string[] = [];
-    context.mocks.api(chatThreadsContract.unreadIds, ({ respond }) => {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [THREAD_ID] });
-    });
-    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
-      requestedThreadIds.push(params.threadId);
-      return respond(200, { events: [] });
-    });
-
-    await setupAuthenticatedBackgroundSync();
-
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      expect(requestedThreadIds).toStrictEqual([THREAD_ID]);
-    });
-  });
-
   it("fills only messages after the cached thread end", async () => {
     mockSignedInUser();
     const appDb = await context.store.get(chatIdb$);

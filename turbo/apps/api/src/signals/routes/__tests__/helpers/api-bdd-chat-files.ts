@@ -530,7 +530,7 @@ export function createChatFilesBddApi(context: TestContext) {
 
     async requestListUnreadChatThreadIds(
       actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 404)[],
+      statuses: readonly (200 | 401)[],
     ) {
       return await accept(
         threadsClient().unreadIds({
