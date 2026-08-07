@@ -144,6 +144,10 @@ describe("Pi execution mode contract", () => {
     agentComposeVersionId: null,
     vars: null,
     experimentalProfile: "vm0/large",
+    runnerPreferenceDecision: {
+      kind: "noPreference" as const,
+      reason: "noReuseKey" as const,
+    },
   };
 
   it.each(["standby", "cold-start"])(

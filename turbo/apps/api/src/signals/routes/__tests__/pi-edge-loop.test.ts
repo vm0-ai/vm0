@@ -2114,18 +2114,6 @@ describe("PiLoop edge turn", () => {
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
       "pending",
     );
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "job",
-      expect.objectContaining({
-        runId: run.runId,
-        profile: DEFAULT_PROFILE,
-        runnerPreferenceDecision: {
-          kind: "noPreference",
-          reason: "noReuseKey",
-        },
-      }),
-    );
-
     const coldPoll = await api.requestPollRunner(
       true,
       {
@@ -2147,11 +2135,14 @@ describe("PiLoop edge turn", () => {
         .slice(publishedBeforeRelease)
         .some(([topic, payload]) => {
           const job = recordOf(payload);
+          const decision = recordOf(job?.runnerPreferenceDecision);
           return (
             topic === "job" &&
             job?.runId === run.runId &&
             job.profile === fixture.runnerProfile &&
-            job.piExecutionMode === "cold-start"
+            job.piExecutionMode === "cold-start" &&
+            decision?.kind === "noPreference" &&
+            decision.reason === "noReuseKey"
           );
         }),
     ).toBeTruthy();
