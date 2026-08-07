@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.403.0](https://github.com/vm0-ai/vm0/compare/api-v1.402.2...api-v1.403.0) (2026-08-07)
+
+
+### Features
+
+* **api:** force app.vm0.ai clients to upgrade to v0.706.3 ([#25754](https://github.com/vm0-ai/vm0/issues/25754)) ([4ff667e](https://github.com/vm0-ai/vm0/commit/4ff667e2846f539307b96e024f205ff993b7b9e2))
+
+
+### Refactoring
+
+* pass abort signals explicitly ([#25740](https://github.com/vm0-ai/vm0/issues/25740)) ([8618bd0](https://github.com/vm0-ai/vm0/commit/8618bd0c05833cea17fc5191e5c6d2afe522a11f))
+* reduce fallback slop in stripe snapshots ([#25760](https://github.com/vm0-ai/vm0/issues/25760)) ([de11d59](https://github.com/vm0-ai/vm0/commit/de11d59de6f34ba801ac27ffb33e472f76990ee7))
+* remove expired deployment compatibility probes ([#25761](https://github.com/vm0-ai/vm0/issues/25761)) ([e70e674](https://github.com/vm0-ai/vm0/commit/e70e67453550353be267d820e9a396f94704d633))
+
+
+### Performance Improvements
+
+* **api:** isolate the clerk sdk type surface behind the gateway typecheck project ([#25747](https://github.com/vm0-ai/vm0/issues/25747)) ([0040a48](https://github.com/vm0-ai/vm0/commit/0040a489dc64b0a908300c8e5bbbcb69643a62b9))
+* **api:** isolate the stripe sdk type surface behind the gateway typecheck project ([#25755](https://github.com/vm0-ai/vm0/issues/25755)) ([cb4984e](https://github.com/vm0-ai/vm0/commit/cb4984e8ce75ddb0852576143372626684975d6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.3
+    * @vm0/connectors bumped to 1.204.3
+    * @vm0/core bumped to 8.530.3
+    * @vm0/db bumped to 1.179.3
+    * @vm0/pi-agent-runtime bumped to 1.3.6
+
 ## [1.402.2](https://github.com/vm0-ai/vm0/compare/api-v1.402.1...api-v1.402.2) (2026-08-07)
 
 
