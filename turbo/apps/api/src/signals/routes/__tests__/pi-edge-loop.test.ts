@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
 
 import {
   DEFAULT_PROFILE,
+  PI_MEMORY_ROOT,
   PI_SKILLS_ROOT,
   PI_STANDBY_PROFILE,
   PI_STANDBY_TTL_RELEASE_EXIT_CODE,
@@ -23,6 +25,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { commitMemoryVersion } from "./helpers/zero-memory";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { webhooksAgentPiTranscriptRoutes } from "../webhooks-agent-pi-transcript";
 
@@ -164,8 +167,57 @@ function streamBody(buffer: Buffer): AsyncIterable<Uint8Array> {
   };
 }
 
-function acceptPiStorageObjects(): void {
+const TAR_BLOCK_SIZE = 512;
+
+function octal(value: number, length: number): string {
+  return value.toString(8).padStart(length - 1, "0") + "\0";
+}
+
+function createTarEntry(filename: string, content: Buffer): Buffer {
+  const header = Buffer.alloc(TAR_BLOCK_SIZE);
+  header.write(filename, 0, 100, "utf8");
+  header.write("0000644\0", 100);
+  header.write("0000000\0", 108);
+  header.write("0000000\0", 116);
+  header.write(octal(content.length, 12), 124);
+  header.write(octal(0, 12), 136);
+  header.write("        ", 148);
+  header.write("0", 156);
+
+  let checksum = 0;
+  for (const byte of header) {
+    checksum += byte;
+  }
+  header.write(checksum.toString(8).padStart(6, "0") + "\0 ", 148);
+
+  const padding = content.length % TAR_BLOCK_SIZE;
+  const data =
+    padding === 0
+      ? content
+      : Buffer.concat([content, Buffer.alloc(TAR_BLOCK_SIZE - padding)]);
+  return Buffer.concat([header, data]);
+}
+
+function createTarGz(
+  files: readonly { readonly path: string; readonly content: string }[],
+): Buffer {
+  return gzipSync(
+    Buffer.concat([
+      ...files.map((file) => {
+        return createTarEntry(file.path, Buffer.from(file.content, "utf8"));
+      }),
+      Buffer.alloc(TAR_BLOCK_SIZE * 2),
+    ]),
+  );
+}
+
+interface PiStorageObjects {
+  put(key: string, body: Buffer): void;
+}
+
+function acceptPiStorageObjects(): PiStorageObjects {
   const objects = new Map<string, Buffer>();
+  const seededObjects = new Map<string, Buffer>();
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     const input = commandInput(command);
     const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
@@ -177,7 +229,7 @@ function acceptPiStorageObjects(): void {
         return Promise.resolve({});
       }
       case "GetObjectCommand": {
-        const body = objects.get(objectKey);
+        const body = objects.get(objectKey) ?? seededObjects.get(key);
         return Promise.resolve(
           body
             ? { Body: streamBody(body), ContentLength: body.byteLength }
@@ -185,7 +237,7 @@ function acceptPiStorageObjects(): void {
         );
       }
       case "HeadObjectCommand": {
-        const body = objects.get(objectKey);
+        const body = objects.get(objectKey) ?? seededObjects.get(key);
         return body
           ? Promise.resolve({ ContentLength: body.byteLength })
           : Promise.reject(
@@ -200,6 +252,11 @@ function acceptPiStorageObjects(): void {
       }
     }
   });
+  return {
+    put(key: string, body: Buffer): void {
+      seededObjects.set(key, body);
+    },
+  };
 }
 
 interface PiEdgeFixture {
@@ -211,6 +268,7 @@ interface PiEdgeFixture {
   readonly agentDisplayName: string;
   readonly agentInstructions: string;
   readonly workflowSkillName: string;
+  readonly storageObjects: PiStorageObjects;
 }
 
 async function piEdgeFixture(): Promise<PiEdgeFixture> {
@@ -220,7 +278,7 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
   chatCallbacks.acceptChatObjectStorage();
   chatCallbacks.disableVapid();
   api.acceptStorageDownloads();
-  acceptPiStorageObjects();
+  const storageObjects = acceptPiStorageObjects();
   api.acceptTelemetryIngest();
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   const runnerGroup = api.configureRunnerGroup();
@@ -260,6 +318,7 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
     agentDisplayName: AGENT_DISPLAY_NAME,
     agentInstructions,
     workflowSkillName,
+    storageObjects,
   };
 }
 
@@ -423,8 +482,17 @@ describe("PiLoop edge turn", () => {
       `As ${fixture.agentDisplayName}, you are an excellent communicator`,
     );
     expect(piSystemPrompt).toContain(fixture.agentInstructions);
+    expect(piSystemPrompt).toContain(PI_MEMORY_ROOT);
+    expect(piSystemPrompt).toContain(`${PI_MEMORY_ROOT}/MEMORY.md`);
     expect(piSystemPrompt).not.toContain("/home/user/.codex/skills/");
     expect(piSystemPrompt).not.toContain("/home/user/.claude/skills/");
+    expect(standbyContext.storageManifest?.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        mountPath: PI_MEMORY_ROOT,
+        missingRootPolicy: "preserveParentVersion",
+      }),
+    );
     for (const entry of skillSnapshot.entries) {
       expect(entry.logicalDir.startsWith(`${PI_SKILLS_ROOT}/`)).toBeTruthy();
       expect(entry.skillFile).toBe(`${entry.logicalDir}/SKILL.md`);
@@ -657,6 +725,68 @@ describe("PiLoop edge turn", () => {
       ],
     });
     expect((await api.readRun(fixture.actor, followUp.runId)).status).toBe(
+      "completed",
+    );
+  });
+
+  it("injects the MEMORY.md prefix and keeps the complete file readable on the edge", async () => {
+    const fixture = await piEdgeFixture();
+    await enablePiLoop(fixture);
+    const visibleMemory = "- Preferred editor: Helix";
+    const hiddenMemory = "- Private tail fact: blue herons migrate at dusk";
+    const memoryContent = [
+      "# Durable memory",
+      visibleMemory,
+      ...Array.from({ length: 120 }, (_, index) => {
+        return `- Context ${String(index).padStart(3, "0")}: ${"x".repeat(80)}`;
+      }),
+      hiddenMemory,
+    ].join("\n");
+    expect(Buffer.byteLength(memoryContent, "utf8")).toBeGreaterThan(8 * 1024);
+    const memoryFiles = [{ path: "MEMORY.md", content: memoryContent }];
+    const memory = await commitMemoryVersion(
+      context,
+      fixture.actor,
+      memoryFiles,
+    );
+    fixture.storageObjects.put(
+      `${memory.s3Key}/archive.tar.gz`,
+      createTarGz(memoryFiles),
+    );
+
+    const completionRequests: unknown[] = [];
+    let modelCall = 0;
+    server.use(
+      http.post(COMPLETIONS_URL, async ({ request }) => {
+        completionRequests.push(await request.json());
+        const currentCall = modelCall;
+        modelCall += 1;
+        return currentCall === 0
+          ? assistantToolStream({
+              id: "read_memory_1",
+              name: "read",
+              arguments: { path: `${PI_MEMORY_ROOT}/MEMORY.md` },
+              thinking: "read the complete durable memory",
+            })
+          : assistantTextStream("memory read", "memory considered");
+      }),
+    );
+
+    const run = await sendChatRun(fixture, "use my durable memory");
+    await flushWaitUntilForTest();
+
+    expect(completionRequests).toHaveLength(2);
+    const systemPrompt = systemPromptFromRequest(completionRequests[0]);
+    if (systemPrompt === undefined) {
+      throw new Error("Expected the Pi request to contain a system prompt");
+    }
+    expect(systemPrompt).toContain(`\`${PI_MEMORY_ROOT}\``);
+    expect(systemPrompt).toContain(`\`${PI_MEMORY_ROOT}/MEMORY.md\``);
+    expect(systemPrompt).toContain("### MEMORY.md prefix");
+    expect(systemPrompt).toContain(visibleMemory);
+    expect(systemPrompt).not.toContain(hiddenMemory);
+    expect(JSON.stringify(completionRequests[1])).toContain(hiddenMemory);
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
       "completed",
     );
   });
