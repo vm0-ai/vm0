@@ -48,6 +48,11 @@ unless deploy_app.fetch("outputs").fetch("deployment-url") == expected_output
   raise "deploy-app deployment-url output changed"
 end
 
+expected_preview_output = "${{ steps.app-preview.outputs.url }}"
+unless deploy_app.fetch("outputs").fetch("preview-url") == expected_preview_output
+  raise "deploy-app preview-url must expose the app preview gateway"
+end
+
 deploy_step = find_step.call("Deploy Cloudflare Pages preview")
 if deploy_step.key?("if")
   raise "Pages branch deployment must remain unconditional within deploy-app"
@@ -66,8 +71,43 @@ smoke_step = find_step.call("Smoke test app preview gateway")
 unless smoke_step.fetch("if").include?("steps.app-preview.outputs.url != ''")
   raise "gateway smoke test must run for every stable app preview"
 end
+unless smoke_step.fetch("env").fetch("APP_PREVIEW_URL") == expected_preview_output
+  raise "gateway smoke test and deploy-app preview-url must use the same URL"
+end
 unless smoke_step.fetch("run").include?("x-vm0-preview-gateway")
   raise "gateway smoke test must verify the gateway response header"
+end
+
+browser_e2e = jobs.fetch("cli-e2e-02-browser")
+playwright_e2e = jobs.fetch("cli-e2e-02-playwright")
+[browser_e2e, playwright_e2e].each do |job|
+  unless Array(job["needs"]).include?("deploy-app")
+    raise "deployed E2E must depend on deploy-app"
+  end
+  unless job.fetch("if").include?("needs.deploy-app.result == 'success'")
+    raise "deployed E2E must wait for deploy-app success"
+  end
+end
+
+browser_run = browser_e2e.fetch("steps").find do |step|
+  step["name"] == "Run browser E2E tests"
+end
+raise "missing browser E2E run step" unless browser_run
+browser_env = browser_run.fetch("env")
+expected_downstream_preview = "${{ needs.deploy-app.outputs.preview-url }}"
+unless browser_env.fetch("VM0_AUTH_URL") == expected_downstream_preview
+  raise "browser E2E must use the verified app preview gateway"
+end
+unless browser_env.fetch("VM0_AUTH_REDIRECT_URL") == "#{expected_downstream_preview}/_/skeleton"
+  raise "browser E2E redirect must stay on the verified app preview gateway"
+end
+
+playwright_run = playwright_e2e.fetch("steps").find do |step|
+  step["name"] == "Run Playwright E2E tests"
+end
+raise "missing Playwright E2E run step" unless playwright_run
+unless playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_downstream_preview
+  raise "Playwright E2E must use the verified app preview gateway"
 end
 
 turbo_source = File.read(ARGV.fetch(0))
