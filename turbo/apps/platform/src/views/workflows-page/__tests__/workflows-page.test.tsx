@@ -16,6 +16,7 @@ import {
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -40,6 +41,7 @@ import {
   createDefaultMockGithubIntegration,
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -70,9 +72,9 @@ function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/workflows/${SALES_WORKFLOW_ID}/${tab}`;
 }
 
-function connectorIcon(connectorRef: string) {
+function connectorIcon(connectorSlug: string) {
   return {
-    url: `https://icons.example.test/${connectorRef}.svg`,
+    url: `https://icons.example.test/${connectorSlug}.svg`,
     invertInDarkMode: false,
   };
 }
@@ -176,6 +178,10 @@ type WorkflowGoogleCalendarEventCancelledAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-cancelled" }
 >;
+type WorkflowGoogleFormsResponseSubmittedAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  { kind: "event"; eventType: "google-forms-response-submitted" }
+>;
 type WorkflowGoogleMeetTranscriptGeneratedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-meet-transcript-generated" }
@@ -191,6 +197,10 @@ type WorkflowNotionDatabaseItemCreatedAutomationSummary = Extract<
 type WorkflowNotionPageContentUpdatedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "notion-page-content-updated" }
+>;
+type WorkflowStripeInvoicePaidAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  { kind: "event"; eventType: "stripe-invoice-paid" }
 >;
 
 function workflowAutomations(): ZeroWorkflowAutomationSummary[] {
@@ -363,6 +373,34 @@ function googleMeetTranscriptGeneratedWorkflowAutomation(): WorkflowGoogleMeetTr
   };
 }
 
+function googleFormsResponseSubmittedWorkflowAutomation(
+  warning?: string,
+): WorkflowGoogleFormsResponseSubmittedAutomationSummary {
+  return {
+    id: "workflow-automation-google-forms-response-submitted",
+    kind: "event",
+    eventType: "google-forms-response-submitted",
+    eventConfig: {
+      provider: "google-forms",
+      event: "response_submitted",
+      connectorId: "00000000-0000-4000-a000-000000000412",
+      form: {
+        id: "1FAIpQLScGoogleFormsAutomationTest",
+        title: "Customer feedback",
+        url: "https://docs.google.com/forms/d/1FAIpQLScGoogleFormsAutomationTest/edit",
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_google_forms_response_submitted",
+    nextRunAt: null,
+    lastRunAt: null,
+    ...(warning ? { warning } : {}),
+  };
+}
+
 function notionChildPageWorkflowAutomation(): WorkflowNotionChildPageCreatedAutomationSummary {
   return {
     id: "workflow-automation-notion-child-page",
@@ -462,6 +500,37 @@ function webhookWorkflowAutomation(): WorkflowWebhookAutomationSummary {
       "https://api.vm0.test/api/webhooks/workflow-automations/whk_test",
     secretLastFour: "abcd",
     lastReceivedAt: null,
+  };
+}
+
+function stripeInvoicePaidWorkflowAutomation(
+  overrides: Partial<WorkflowStripeInvoicePaidAutomationSummary> = {},
+): WorkflowStripeInvoicePaidAutomationSummary {
+  return {
+    id: "workflow-automation-stripe-invoice-paid",
+    kind: "event",
+    eventType: "stripe-invoice-paid",
+    eventConfig: {
+      provider: "stripe",
+      event: "invoice_paid",
+      connectorId: "00000000-0000-4000-a000-000000000411",
+      stripeAccountId: "acct_mock_stripe_invoice_paid",
+      mode: "live",
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_stripe_invoice_paid",
+    nextRunAt: null,
+    lastRunAt: null,
+    health: {
+      lastMatchingEventReceivedAt: null,
+      lastDeliveryStatus: null,
+      lastDeliveryStatusAt: null,
+      warning: null,
+    },
+    ...overrides,
   };
 }
 
@@ -842,7 +911,7 @@ function mockConnectedAutomationConnectors(): void {
   context.mocks.data.connectors([
     {
       id: "10000000-0000-4000-a000-000000000001",
-      type: "slack",
+      slug: "slack",
       authMethod: "oauth",
       externalId: "slack-workspace",
       externalUsername: "workspace",
@@ -856,7 +925,7 @@ function mockConnectedAutomationConnectors(): void {
     },
     {
       id: "10000000-0000-4000-a000-000000000002",
-      type: "gmail",
+      slug: "gmail",
       authMethod: "oauth",
       externalId: "gmail-user",
       externalUsername: "user@example.com",
@@ -869,6 +938,68 @@ function mockConnectedAutomationConnectors(): void {
       updatedAt: "2026-01-01T00:00:00Z",
     },
   ]);
+}
+
+function mockConfiguredEventAutomation(
+  body: Extract<
+    ZeroWorkflowAutomationCreateRequest,
+    { readonly kind: "event" }
+  >,
+): ZeroWorkflowAutomationSummary {
+  if (body.eventType === "stripe-invoice-paid") {
+    return {
+      ...gmailWorkflowAutomation(),
+      eventType: "stripe-invoice-paid",
+      eventConfig: {
+        ...body.eventConfig,
+        connectorId: "00000000-0000-4000-a000-000000000411",
+        stripeAccountId: "acct_mock_stripe_invoice_paid",
+        mode: "live",
+      },
+      health: {
+        lastMatchingEventReceivedAt: null,
+        lastDeliveryStatus: null,
+        lastDeliveryStatusAt: null,
+        warning: null,
+      },
+    };
+  }
+  return {
+    ...gmailWorkflowAutomation(),
+    eventType: body.eventType,
+    eventConfig: body.eventConfig,
+  } as ZeroWorkflowAutomationSummary;
+}
+
+function mockGoogleCalendarEventAutomation(
+  body: Extract<
+    ZeroWorkflowAutomationCreateRequest,
+    { readonly kind: "event" }
+  >,
+): ZeroWorkflowAutomationSummary {
+  switch (body.eventType) {
+    case "google-calendar-event-created": {
+      return {
+        ...googleCalendarWorkflowAutomation(),
+        eventConfig: body.eventConfig,
+      };
+    }
+    case "google-calendar-event-updated": {
+      return {
+        ...googleCalendarUpdatedWorkflowAutomation(),
+        eventConfig: body.eventConfig,
+      };
+    }
+    case "google-calendar-event-cancelled": {
+      return {
+        ...googleCalendarCancelledWorkflowAutomation(),
+        eventConfig: body.eventConfig,
+      };
+    }
+    default: {
+      throw new Error("Expected a Google Calendar event automation");
+    }
+  }
 }
 
 function mockCreateWorkflowAutomation(
@@ -908,23 +1039,8 @@ function mockCreateWorkflowAutomation(
           eventConfig: body.eventConfig,
         });
       }
-      if (body.eventType === "google-calendar-event-created") {
-        return respond(201, {
-          ...googleCalendarWorkflowAutomation(),
-          eventConfig: body.eventConfig,
-        });
-      }
-      if (body.eventType === "google-calendar-event-updated") {
-        return respond(201, {
-          ...googleCalendarUpdatedWorkflowAutomation(),
-          eventConfig: body.eventConfig,
-        });
-      }
-      if (body.eventType === "google-calendar-event-cancelled") {
-        return respond(201, {
-          ...googleCalendarCancelledWorkflowAutomation(),
-          eventConfig: body.eventConfig,
-        });
+      if (body.eventConfig.provider === "google-calendar") {
+        return respond(201, mockGoogleCalendarEventAutomation(body));
       }
       if (body.eventType === "google-meet-transcript-generated") {
         return respond(201, {
@@ -995,13 +1111,12 @@ function mockCreateWorkflowAutomation(
       }
       if (
         body.eventConfig.provider === "github" ||
-        body.eventConfig.provider === "strapi"
+        body.eventConfig.provider === "google-forms" ||
+        body.eventConfig.provider === "stripe" ||
+        body.eventConfig.provider === "strapi" ||
+        body.eventConfig.provider === "chat"
       ) {
-        return respond(201, {
-          ...gmailWorkflowAutomation(),
-          eventType: body.eventType,
-          eventConfig: body.eventConfig,
-        } as ZeroWorkflowAutomationSummary);
+        return respond(201, mockConfiguredEventAutomation(body));
       }
       return respond(201, {
         ...gmailWorkflowAutomation(),
@@ -1286,6 +1401,31 @@ describe("workflows routes", () => {
     expect(screen.getByText("Sales Research")).toBeInTheDocument();
   });
 
+  it("labels existing Stripe automations on the workspace workflows index", async () => {
+    mockWorkflowApis([
+      {
+        ...salesResearch(),
+        automations: [stripeInvoicePaidWorkflowAutomation()],
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/workflows",
+      featureSwitches: {
+        [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: false,
+      },
+    });
+
+    const stripePill = await waitFor(() => {
+      return buttonByText(/^Stripe$/u);
+    });
+    click(stripePill);
+    await expect(
+      screen.findByText("When a matching Stripe invoice is paid"),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("renders the workspace workflow detail", async () => {
     mockWorkflowApis([salesResearch()]);
     mockConnectedAutomationConnectors();
@@ -1447,6 +1587,123 @@ describe("workflows routes", () => {
   });
 });
 
+describe("workflow localization", () => {
+  afterEach(async () => {
+    await i18n.changeLanguage("en-US");
+    document.documentElement.lang = "en-US";
+  });
+
+  const localeCases = [
+    {
+      locale: "en-US",
+      listTitle: "Workflows",
+      detailTitle: "Workflow",
+      openWorkflow: "Open Sales Research",
+      automationsTab: "Automations",
+      scheduleTitle: "Every weekday at 6:00 AM",
+      eventTitle: "Gmail new message",
+      eventSummary:
+        'from contains "@acme.com"; subject does not contain "newsletter"',
+      last: "Last",
+      next: "Next",
+    },
+    {
+      locale: "pt-BR",
+      listTitle: "Fluxos de trabalho",
+      detailTitle: "Fluxo de trabalho",
+      openWorkflow: "Abrir Sales Research",
+      automationsTab: "Automações",
+      scheduleTitle: "A cada dia útil às 6:00",
+      eventTitle: "Nova mensagem do Gmail",
+      eventSummary: 'de contém "@acme.com"; assunto não contém "newsletter"',
+      last: "Última",
+      next: "Próxima",
+    },
+    {
+      locale: "fr-FR",
+      listTitle: "Workflows",
+      detailTitle: "Workflow",
+      openWorkflow: "Ouvrir Sales Research",
+      automationsTab: "Automatisations",
+      scheduleTitle: "Chaque jour de semaine à 6:00",
+      eventTitle: "Nouveau message Gmail",
+      eventSummary:
+        'de contient "@acme.com"; objet ne contient pas "newsletter"',
+      last: "Dernière",
+      next: "Prochaine",
+    },
+    {
+      locale: "hi-IN",
+      listTitle: "वर्कफ़्लो",
+      detailTitle: "वर्कफ़्लो",
+      openWorkflow: "Sales Research खोलें",
+      automationsTab: "ऑटोमेशन",
+      scheduleTitle: `हर कार्यदिवस ${new Intl.DateTimeFormat("hi-IN", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "UTC",
+      }).format(new Date(Date.UTC(2024, 0, 1, 6)))} बजे`,
+      eventTitle: "Gmail नया संदेश",
+      eventSummary:
+        'प्रेषक में "@acme.com" शामिल है; विषय में "newsletter" शामिल नहीं है',
+      last: "अंतिम",
+      next: "अगला",
+    },
+  ] as const;
+
+  it.each(localeCases)(
+    "localizes representative list, detail, schedule, and event UI in $locale",
+    async (localeCase) => {
+      const workflow = {
+        ...salesResearch(),
+        automations: [weekdayWorkflowAutomation(), gmailWorkflowAutomation()],
+      };
+      context.mocks.data.userPreferences({
+        locale: localeCase.locale,
+        timezone: "America/Sao_Paulo",
+      });
+      mockBillingTier("team");
+      mockWorkflowApis([workflow]);
+      mockConnectedAutomationConnectors();
+
+      detachedSetupPage({
+        context,
+        path: "/workflows",
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: localeCase.listTitle }),
+        ).toBeInTheDocument();
+        expect(document.title.split(" | ")[0]).toBe(localeCase.listTitle);
+      });
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+
+      click(screen.getByLabelText(localeCase.openWorkflow));
+      await waitFor(() => {
+        expect(pathname()).toBe(workflowDetailPath("automations"));
+        expect(screen.getByText(localeCase.scheduleTitle)).toBeInTheDocument();
+        expect(document.title.split(" | ")[0]).toBe(localeCase.detailTitle);
+      });
+
+      expect(tabByName(localeCase.automationsTab)).toBeInTheDocument();
+      expect(screen.getByText(localeCase.eventTitle)).toBeInTheDocument();
+      expect(screen.getByText(localeCase.eventSummary)).toBeInTheDocument();
+      expect(screen.getAllByText(localeCase.last)).not.toHaveLength(0);
+      expect(screen.getAllByText(localeCase.next)).not.toHaveLength(0);
+
+      const expectedLastRun = new Date(
+        "2026-06-18T01:00:00.000Z",
+      ).toLocaleString(localeCase.locale, {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "America/Sao_Paulo",
+      });
+      expect(screen.getByText(expectedLastRun)).toBeInTheDocument();
+    },
+  );
+});
+
 describe("workflow detail page", () => {
   it("renders the instruction, files, and automations", async () => {
     context.mocks.data.userPreferences({ timezone: "UTC" });
@@ -1546,35 +1803,35 @@ describe("workflow detail page", () => {
         return respond(200, {
           connectors: [
             {
-              connectorRef: "google-drive",
+              connectorSlug: "google-drive",
               label: "Google Drive",
               icon: connectorIcon("google-drive"),
               reason: "The workflow reads account documents.",
               status: "connected",
             },
             {
-              connectorRef: "github",
+              connectorSlug: "github",
               label: "GitHub",
               icon: connectorIcon("github"),
               reason: "A GitHub automation requires this connector.",
               status: "unavailable",
             },
             {
-              connectorRef: "slack",
+              connectorSlug: "slack",
               label: "Slack",
               icon: connectorIcon("slack"),
               reason: "The workflow posts a summary to Slack.",
               status: "not-enabled-for-agent",
             },
             {
-              connectorRef: "notion",
+              connectorSlug: "notion",
               label: "Notion",
               icon: connectorIcon("notion"),
               reason: "The workflow updates a Notion page.",
               status: "scope-mismatch",
             },
             {
-              connectorRef: "gmail",
+              connectorSlug: "gmail",
               label: "Gmail",
               reason: "The workflow reads outreach replies.",
               status: "reconnect-required",
@@ -1585,7 +1842,7 @@ describe("workflow detail page", () => {
               },
             },
             {
-              connectorRef: "linear",
+              connectorSlug: "linear",
               label: "Linear",
               icon: connectorIcon("linear"),
               reason: "The workflow creates follow-up issues.",
@@ -1741,7 +1998,7 @@ describe("workflow detail page", () => {
         return respond(200, {
           connectors: [
             {
-              connectorRef: "gmail",
+              connectorSlug: "gmail",
               label: "Gmail",
               icon: connectorIcon("gmail"),
               reason: "The workflow reads outreach replies.",
@@ -2323,30 +2580,6 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("hides Gmail thread matching while its rollout switch is disabled", async () => {
-    mockWorkflowApis([salesResearch()]);
-
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
-
-    await waitFor(() => {
-      expect(buttonByText("Add automation")).toBeInTheDocument();
-    });
-    click(buttonByText("Add automation"));
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-    pickAutomation("Email", /^Gmail new message/);
-
-    const createAutomationForm = await screen.findByRole("form", {
-      name: "Add Gmail automation",
-    });
-    click(within(createAutomationForm).getByLabelText("Condition 1 field"));
-
-    expect(
-      screen.queryByRole("option", { name: "Thread ID" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("creates a Gmail label applied automation with a label name", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
@@ -2440,6 +2673,70 @@ describe("workflow detail page", () => {
         },
       });
     });
+  });
+
+  it("offers a GitHub App install link when GitHub is not installed", async () => {
+    mockWorkflowApis([salesResearch()]);
+    setMockGithubIntegration(null);
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub workflow completed/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub workflow automation",
+    });
+    await waitFor(() => {
+      expect(linkByText("Install GitHub App", form)).toHaveAttribute(
+        "href",
+        "https://github.com/apps/vm0-test/installations/new?state=abc",
+      );
+    });
+  });
+
+  it("asks for an org admin when the API omits the install URL", async () => {
+    mockWorkflowApis([salesResearch()]);
+    setMockGithubIntegration(null);
+    context.mocks.api(
+      integrationsGithubContract.getInstallation,
+      ({ respond }) => {
+        return respond(404, {
+          error: {
+            message: "GitHub installation not found",
+            code: "NOT_FOUND",
+          },
+          installUrl: null,
+        });
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub workflow completed/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub workflow automation",
+    });
+    await waitFor(() => {
+      expect(
+        within(form).getByText("Ask an organization admin to install it."),
+      ).toBeInTheDocument();
+    });
+    expect(queryAllByRoleFast("link", form)).toHaveLength(0);
   });
 
   it("hides new GitHub webhook creation entries when the feature is disabled", async () => {
@@ -2598,6 +2895,103 @@ describe("workflow detail page", () => {
     });
   });
 
+  it("hides Google Forms automation creation when the feature is disabled", async () => {
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: false,
+    });
+
+    click(await screen.findByText("Add automation"));
+    const picker = await screen.findByRole("dialog");
+    expect(
+      queryAllByRoleFast("button", picker).some((candidate) => {
+        return textFor(candidate) === "Google Forms";
+      }),
+    ).toBeFalsy();
+    expect(
+      within(picker).queryByText("Google Forms response submitted"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("creates a Google Forms automation and shows the API warning", async () => {
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const warning = "This Google Form is not accepting responses yet.";
+    mockWorkflowApis([salesResearch()]);
+    context.mocks.api(
+      zeroWorkflowAutomationsContract.create,
+      ({ body, respond }) => {
+        createBodies.push(body);
+        return respond(
+          201,
+          googleFormsResponseSubmittedWorkflowAutomation(warning),
+        );
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+    });
+
+    click(await screen.findByText("Add automation"));
+    await screen.findByRole("dialog");
+    pickAutomation("Google Forms", /^Google Forms response submitted/);
+
+    const createAutomationForm = await screen.findByRole("form", {
+      name: "Add Google Forms response automation",
+    });
+    await fill(
+      within(createAutomationForm).getByLabelText("Form link"),
+      "https://docs.google.com/forms/d/1FAIpQLScGoogleFormsAutomationTest/edit",
+    );
+    fireEvent.submit(createAutomationForm);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "google-forms-response-submitted",
+        eventConfig: {
+          provider: "google-forms",
+          event: "response_submitted",
+          formUrl:
+            "https://docs.google.com/forms/d/1FAIpQLScGoogleFormsAutomationTest/edit",
+        },
+      });
+    });
+    await expect(screen.findByText(warning)).resolves.toBeInTheDocument();
+  });
+
+  it("shows the Google Forms edit-page guidance returned by the API", async () => {
+    const guidance =
+      "Please open the form's edit page and copy the link from the address bar.";
+    mockWorkflowApis([salesResearch()]);
+    context.mocks.api(zeroWorkflowAutomationsContract.create, ({ respond }) => {
+      return respond(400, {
+        error: { code: "BAD_REQUEST", message: guidance },
+      });
+    });
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+    });
+
+    click(await screen.findByText("Add automation"));
+    await screen.findByRole("dialog");
+    pickAutomation("Google Forms", /^Google Forms response submitted/);
+
+    const createAutomationForm = await screen.findByRole("form", {
+      name: "Add Google Forms response automation",
+    });
+    await fill(
+      within(createAutomationForm).getByLabelText("Form link"),
+      "https://docs.google.com/forms/d/e/responder-id/viewform",
+    );
+    fireEvent.submit(createAutomationForm);
+
+    await expect(screen.findByText(guidance)).resolves.toBeInTheDocument();
+    expect(createAutomationForm).toBeInTheDocument();
+  });
+
   it("creates a Google Meet transcript-generated automation", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
@@ -2677,6 +3071,216 @@ describe("workflow detail page", () => {
         },
       });
     });
+  });
+
+  it("keeps existing Stripe automations visible and manageable when creation is disabled", async () => {
+    const workflow = {
+      ...salesResearch(),
+      automations: [
+        stripeInvoicePaidWorkflowAutomation(),
+        stripeInvoicePaidWorkflowAutomation({
+          id: "workflow-automation-stripe-invoice-paid-failed",
+          eventConfig: {
+            provider: "stripe",
+            event: "invoice_paid",
+            billingReasons: ["manual", "subscription_cycle"],
+            connectorId: "00000000-0000-4000-a000-000000000412",
+            stripeAccountId: "acct_failed_delivery",
+            mode: "live",
+          },
+          health: {
+            lastMatchingEventReceivedAt: "2026-08-07T08:00:00.000Z",
+            lastDeliveryStatus: "failed",
+            lastDeliveryStatusAt: "2026-08-07T08:01:00.000Z",
+            warning: "delivery_failed",
+          },
+        }),
+      ],
+    };
+    mockWorkflowApis([workflow]);
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: false,
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Stripe invoice paid")).toHaveLength(2);
+    });
+    expect(
+      screen.getByText(
+        "Stripe account acct_mock_stripe_invoice_paid · Live mode · Any billing reason",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Stripe account acct_failed_delivery · Live mode · Manual, Subscription cycle",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("No matching events yet")).toBeInTheDocument();
+    expect(screen.getByText("No deliveries yet")).toBeInTheDocument();
+    expect(screen.getByText(/Failed ·/u)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The latest terminal delivery failed. Check workflow activity before trying again.",
+    );
+    expect(
+      screen.getAllByText(
+        "The Stripe account and billing reasons are fixed. To change them, delete this automation and recreate it.",
+      ),
+    ).toHaveLength(2);
+    expect(screen.queryByText("Webhook URL hidden")).not.toBeInTheDocument();
+    expect(screen.queryByText("Edit automation")).not.toBeInTheDocument();
+
+    click(await screen.findByText("Add automation"));
+    const picker = await screen.findByRole("dialog");
+    click(buttonByText("Integrations", picker));
+    expect(
+      within(picker).queryByText("Stripe invoice paid"),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    const stripeSwitches = screen.getAllByRole("switch", {
+      name: "Disable Stripe invoice paid",
+    });
+    const stripeSwitch = stripeSwitches[0];
+    if (!stripeSwitch) {
+      throw new Error("Stripe automation switch not found");
+    }
+    click(stripeSwitch);
+    await waitFor(() => {
+      expect(stripeSwitch).not.toBeChecked();
+    });
+    click(buttonByText("More actions"));
+    expect(menuItemByText("Delete automation")).toBeInTheDocument();
+    expect(screen.queryByText("Edit automation")).not.toBeInTheDocument();
+  });
+
+  it("creates a Stripe automation with selected billing reasons and refreshes the detail", async () => {
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const workflow = salesResearch();
+    mockWorkflowApis([workflow]);
+    context.mocks.api(
+      zeroWorkflowAutomationsContract.create,
+      ({ body, respond }) => {
+        createBodies.push(body);
+        if (body.kind !== "event" || body.eventType !== "stripe-invoice-paid") {
+          return respond(400, {
+            error: { code: "BAD_REQUEST", message: "Expected Stripe" },
+          });
+        }
+        const automation = stripeInvoicePaidWorkflowAutomation({
+          eventConfig: {
+            ...body.eventConfig,
+            connectorId: "00000000-0000-4000-a000-000000000411",
+            stripeAccountId: "acct_created_live",
+            mode: "live",
+          },
+        });
+        workflow.automations.push(automation);
+        return respond(201, automation);
+      },
+    );
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
+    });
+
+    click(await screen.findByText("Add automation"));
+    await screen.findByRole("dialog");
+    pickAutomation("Integrations", /^Stripe invoice paid/u);
+    const form = await screen.findByRole("form", {
+      name: "Add Stripe invoice paid automation",
+    });
+    expect(within(form).getAllByRole("checkbox")).toHaveLength(9);
+    expect(within(form).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(within(form).queryByRole("textbox")).not.toBeInTheDocument();
+    click(within(form).getByRole("checkbox", { name: "Manual" }));
+    click(within(form).getByRole("checkbox", { name: "Subscription cycle" }));
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "stripe-invoice-paid",
+        eventConfig: {
+          provider: "stripe",
+          event: "invoice_paid",
+          billingReasons: ["manual", "subscription_cycle"],
+        },
+      });
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("form", {
+          name: "Add Stripe invoice paid automation",
+        }),
+      ).not.toBeInTheDocument();
+    });
+    await expect(
+      screen.findByText(
+        "Stripe account acct_created_live · Live mode · Manual, Subscription cycle",
+      ),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("omits billingReasons when creating a Stripe automation with no selection", async () => {
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowAutomation((body) => {
+      createBodies.push(body);
+    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
+    });
+
+    click(await screen.findByText("Add automation"));
+    await screen.findByRole("dialog");
+    pickAutomation("Integrations", /^Stripe invoice paid/u);
+    const form = await screen.findByRole("form", {
+      name: "Add Stripe invoice paid automation",
+    });
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "stripe-invoice-paid",
+        eventConfig: {
+          provider: "stripe",
+          event: "invoice_paid",
+        },
+      });
+    });
+  });
+
+  it("keeps the Stripe dialog open with the accessible server readiness error", async () => {
+    const serverMessage =
+      "Stripe invoice-paid automations require Live mode; reconnect Stripe in Live mode";
+    mockWorkflowApis([salesResearch()]);
+    context.mocks.api(zeroWorkflowAutomationsContract.create, ({ respond }) => {
+      return respond(409, {
+        error: { code: "CONFLICT", message: serverMessage },
+      });
+    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
+    });
+
+    click(await screen.findByText("Add automation"));
+    await screen.findByRole("dialog");
+    pickAutomation("Integrations", /^Stripe invoice paid/u);
+    const form = await screen.findByRole("form", {
+      name: "Add Stripe invoice paid automation",
+    });
+    fireEvent.submit(form);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(serverMessage);
+    expect(form).toBeInTheDocument();
+    expect(linkByText("Manage Stripe connection", alert)).toHaveAttribute(
+      "href",
+      "/connectors",
+    );
   });
 
   it("hides Strapi automation creation when the feature is disabled", async () => {
@@ -2801,7 +3405,6 @@ describe("workflow detail page", () => {
   it("shows Pro admins a locked Team webhook card and upgrade action", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -2834,7 +3437,6 @@ describe("workflow detail page", () => {
   it("allows webhook creation when the plan capability overrides the tier", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -2864,7 +3466,6 @@ describe("workflow detail page", () => {
   it("asks non-admins to contact an admin for webhook access", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -2890,7 +3491,6 @@ describe("workflow detail page", () => {
   it("opens the Team upgrade dialog when webhook enable returns TEAM_REQUIRED", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -3197,9 +3797,7 @@ describe("workflow detail page", () => {
       updateBodies.push({ automationId, body });
     });
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(

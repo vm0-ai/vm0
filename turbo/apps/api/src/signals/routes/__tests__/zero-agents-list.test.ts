@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroAgentsRoutes } from "../zero-agents";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -22,7 +24,9 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroAgentsMainContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsMainContract,
+  );
 }
 
 describe("GET /api/zero/agents", () => {

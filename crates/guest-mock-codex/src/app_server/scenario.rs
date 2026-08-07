@@ -28,6 +28,7 @@ pub(super) enum Scenario {
     NoActiveTurn,
     ExitOnTurnSteer,
     RuntimeTurnComplete,
+    RuntimeTurnFailed,
     RuntimeTurnCompleteAfterSteer,
     RuntimeTurnCompleteBeforeSteerResponse,
     RuntimeTurnStartedBeforeSteer,
@@ -40,6 +41,7 @@ pub(super) enum Scenario {
     UnexpectedThreadOutputItemStarted,
     UnexpectedTurnOutputItemStarted,
     UnexpectedThreadTurnCompleted,
+    SecondaryThreadNotifications,
 }
 
 impl Scenario {
@@ -78,6 +80,7 @@ impl Scenario {
                 "no-active-turn" => Ok(Self::NoActiveTurn),
                 "exit-on-turn-steer" => Ok(Self::ExitOnTurnSteer),
                 "runtime-turn-complete" => Ok(Self::RuntimeTurnComplete),
+                "runtime-turn-failed" => Ok(Self::RuntimeTurnFailed),
                 "runtime-turn-complete-after-steer" => Ok(Self::RuntimeTurnCompleteAfterSteer),
                 "runtime-turn-complete-before-steer-response" => {
                     Ok(Self::RuntimeTurnCompleteBeforeSteerResponse)
@@ -96,6 +99,7 @@ impl Scenario {
                 }
                 "unexpected-turn-output-item-started" => Ok(Self::UnexpectedTurnOutputItemStarted),
                 "unexpected-thread-turn-completed" => Ok(Self::UnexpectedThreadTurnCompleted),
+                "secondary-thread-notifications" => Ok(Self::SecondaryThreadNotifications),
                 _ => Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!("unsupported MOCK_CODEX_APP_SERVER_SCENARIO={value:?}"),

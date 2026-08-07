@@ -17,6 +17,22 @@ use vsock_proto::{
 
 struct TestNormalOperationFence;
 
+#[derive(Default)]
+struct RecordingFinalExecParkObserver {
+    records: Vec<(SandboxFinalExecParkStage, bool)>,
+}
+
+impl SandboxFinalExecParkObserver for RecordingFinalExecParkObserver {
+    fn record_stage(
+        &mut self,
+        stage: SandboxFinalExecParkStage,
+        _duration: Duration,
+        success: bool,
+    ) {
+        self.records.push((stage, success));
+    }
+}
+
 async fn park_with_ready_for_park<Q, QF, P, PF>(
     log_id: &str,
     coordinator: &ParkCoordinator,
@@ -100,7 +116,6 @@ fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
         },
         cow_device: None,
         device_rate_limits: None,
-        guest_dns_network_baseline: None,
         runtime: SandboxRuntimeHandles::default(),
         process_group_pid: None,
         state: Arc::new(AtomicU8::new(state as u8)),
@@ -967,6 +982,87 @@ async fn final_preparation_transport_failure_marks_dirty_without_quiesce_or_paus
         coordinator.state(),
         CoordinatorState::Dirty { .. }
     ));
+}
+
+#[tokio::test]
+async fn final_exec_park_observer_reports_completed_stages_in_order() {
+    let coordinator = ParkCoordinator::new();
+    let mut observer = RecordingFinalExecParkObserver::default();
+
+    super::park_with_ready_for_park_and_preparation_with_observer(
+        "test-sandbox",
+        &coordinator,
+        Some(&mut observer),
+        || async { Ok((TestNormalOperationFence, "prepared")) },
+        || async { Ok(()) },
+        || async { Ok(SandboxParkOutcome::Reusable) },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        observer.records,
+        vec![
+            (SandboxFinalExecParkStage::ReusePreparation, true),
+            (SandboxFinalExecParkStage::PhysicalPark, true),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn final_exec_park_observer_reports_preparation_failure_only() {
+    let coordinator = ParkCoordinator::new();
+    let mut observer = RecordingFinalExecParkObserver::default();
+
+    let result = super::park_with_ready_for_park_and_preparation_with_observer(
+        "test-sandbox",
+        &coordinator,
+        Some(&mut observer),
+        || async {
+            Err::<(TestNormalOperationFence, ()), _>(ParkNormalOperationFenceError::FinalOperation(
+                io::Error::new(io::ErrorKind::ConnectionReset, "final exec disconnected"),
+            ))
+        },
+        || async { Ok(()) },
+        || async { Ok(SandboxParkOutcome::Reusable) },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        observer.records,
+        vec![(SandboxFinalExecParkStage::ReusePreparation, false)]
+    );
+}
+
+#[tokio::test]
+async fn final_exec_park_observer_reports_physical_park_failure() {
+    let coordinator = ParkCoordinator::new();
+    let mut observer = RecordingFinalExecParkObserver::default();
+
+    let result = super::park_with_ready_for_park_and_preparation_with_observer(
+        "test-sandbox",
+        &coordinator,
+        Some(&mut observer),
+        || async { Ok((TestNormalOperationFence, ())) },
+        || async { Ok(()) },
+        || async {
+            Err::<SandboxParkOutcome, _>(idle_transition_error(
+                SandboxIdleTransition::Park,
+                "physical park failed",
+            ))
+        },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        observer.records,
+        vec![
+            (SandboxFinalExecParkStage::ReusePreparation, true),
+            (SandboxFinalExecParkStage::PhysicalPark, false),
+        ]
+    );
 }
 
 #[tokio::test]
@@ -3679,6 +3775,7 @@ where
     let guard = tracing::subscriber::set_default(subscriber);
     tracing::callsite::rebuild_interest_cache();
     tokio::pin!(future);
+    tokio::time::pause();
 
     loop {
         if has_captured_event(&captured.entries(), "waiting for balloon") {
@@ -3692,12 +3789,60 @@ where
         }
     }
 
-    tokio::time::pause();
     tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
     tokio::time::resume();
     let output = future.await;
     drop(guard);
     (output, captured.entries())
+}
+
+async fn advance_balloon_wait_to_progress_grace<F>(
+    mut future: std::pin::Pin<&mut F>,
+    captured: &CapturedEvents,
+) where
+    F: Future<Output = SandboxParkOutcome>,
+{
+    for expected_sample_count in 1..=2 {
+        if expected_sample_count == 2 {
+            tokio::time::advance(BALLOON_SETTLE_FAST_POLL_INTERVALS[0]).await;
+            tokio::time::resume();
+        }
+        loop {
+            let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+            if sample_count == expected_sample_count {
+                break;
+            }
+            tokio::select! {
+                outcome = future.as_mut() => {
+                    panic!(
+                        "balloon wait completed after {sample_count} samples, expected {expected_sample_count}; outcome={outcome:?}"
+                    );
+                }
+                () = tokio::task::yield_now() => {}
+            }
+        }
+        if expected_sample_count == 2 {
+            tokio::time::pause();
+        }
+    }
+
+    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::resume();
+    loop {
+        if has_captured_event(
+            &captured.entries(),
+            "balloon inflation still progressing, extending settle deadline",
+        ) {
+            tokio::time::pause();
+            return;
+        }
+        tokio::select! {
+            outcome = future.as_mut() => {
+                panic!("balloon wait completed without progress grace; outcome={outcome:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
 }
 
 fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
@@ -3722,6 +3867,18 @@ fn captured_event_field<'a>(event: &'a CapturedEvent, field: &str) -> &'a str {
 fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
     let actual = captured_event_field(event, field);
     assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+}
+
+fn captured_message_count(events: &[CapturedEvent], message: &str) -> usize {
+    events
+        .iter()
+        .filter(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|actual| actual == message)
+        })
+        .count()
 }
 
 #[test]
@@ -3919,6 +4076,277 @@ fn balloon_statistics(target_mib: u32, actual_mib: u32) -> BalloonStatistics {
         minor_faults: None,
         disk_caches: None,
     }
+}
+
+#[tokio::test]
+async fn wait_for_balloon_rechecks_after_initial_25_ms_delay() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 0)),
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, target_mib)),
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon(&client, target_mib, "fast-start");
+    tokio::pin!(wait);
+
+    loop {
+        if captured_message_count(&captured.entries(), "waiting for balloon") == 1 {
+            break;
+        }
+        tokio::select! {
+            outcome = &mut wait => {
+                panic!("balloon wait completed before the first deficient sample: {outcome:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+
+    let mut requests = api.drain_requests();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
+            .count(),
+        1
+    );
+
+    tokio::time::advance(Duration::from_millis(24)).await;
+    assert!(
+        api.drain_requests().is_empty(),
+        "the second statistics GET must not begin before 25 ms"
+    );
+
+    tokio::time::advance(Duration::from_millis(1)).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
+    requests.extend(api.drain_requests());
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
+            .count(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let request_entered = Arc::new(Notify::new());
+    let response_release = Arc::new(Notify::new());
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::iter::repeat_with(|| MockBalloonStatsReply::GatedOk {
+            entered: Arc::clone(&request_entered),
+            release: Arc::clone(&response_release),
+            stats: MockBalloonStats::new(target_mib, 0),
+        })
+        .take(16)
+        .chain(std::iter::once(MockBalloonStatsReply::Status(500)))
+        .collect(),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let wait = wait_for_balloon(&client, target_mib, "bounded-schedule");
+    tokio::pin!(wait);
+
+    for (index, delay_ms) in [
+        0_u64, 25, 50, 100, 100, 100, 200, 200, 500, 500, 500, 500, 500, 500, 500, 500,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if delay_ms > 0 {
+            tokio::time::advance(Duration::from_millis(delay_ms - 1)).await;
+            assert!(
+                futures_util::poll!(wait.as_mut()).is_pending(),
+                "balloon wait completed before scheduled sample {}",
+                index + 1
+            );
+            assert_eq!(
+                captured_message_count(&captured.entries(), "waiting for balloon"),
+                index,
+                "statistics GET began before the scheduled delay of {delay_ms} ms"
+            );
+            tokio::time::advance(Duration::from_millis(1)).await;
+            tokio::time::resume();
+        }
+        loop {
+            tokio::select! {
+                () = request_entered.notified() => break,
+                outcome = &mut wait => {
+                    panic!(
+                        "balloon wait completed before statistics request {}; outcome={outcome:?}",
+                        index + 1
+                    );
+                }
+                () = tokio::task::yield_now() => {}
+            }
+        }
+        tokio::time::pause();
+        response_release.notify_one();
+        let expected_sample_count = index + 1;
+        loop {
+            let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+            if sample_count == expected_sample_count {
+                break;
+            }
+            tokio::select! {
+                outcome = &mut wait => {
+                    panic!(
+                        "balloon wait completed after {sample_count} samples, expected {expected_sample_count}; outcome={outcome:?}"
+                    );
+                }
+                () = tokio::task::yield_now() => {}
+            }
+        }
+    }
+
+    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+
+    assert_eq!(
+        outcome,
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+    );
+    let requests = api.drain_requests();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
+            .count(),
+        16
+    );
+}
+
+#[tokio::test]
+async fn wait_for_balloon_extends_deadline_for_recent_safe_progress() {
+    let target_mib = 4096 - balloon::MIN_GUEST_MIB;
+    let initial_stats =
+        MockBalloonStats::new(target_mib, 256).with_memory(mib(3840), mib(3940), mib(3940));
+    let progressing_stats =
+        MockBalloonStats::new(target_mib, 2314).with_memory(mib(2136), mib(2265), mib(3940));
+    let api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(initial_stats),
+            MockBalloonStatsReply::Ok(progressing_stats),
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, target_mib)),
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon(&client, target_mib, "progress-grace");
+    tokio::pin!(wait);
+
+    advance_balloon_wait_to_progress_grace(wait.as_mut(), &captured).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+    let events = captured.entries();
+
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
+    let event = captured_event(
+        &events,
+        "balloon inflation still progressing, extending settle deadline",
+    );
+    assert_eq!(event.level, Level::INFO);
+    assert_event_field(event, "actual", "Some(2314)");
+    assert_event_field(event, "target", "3584");
+    assert_event_field(event, "deficit_mib", "Some(1270)");
+    assert_event_field(event, "previous_actual_mib", "Some(256)");
+    assert_event_field(event, "reported_free_mib", "Some(2136)");
+    assert_event_field(event, "reported_available_mib", "Some(2265)");
+    assert_event_field(event, "grace_ms", "5000");
+    assert!(!has_captured_event(
+        &events,
+        "balloon inflate incomplete after 5s, pausing anyway"
+    ));
+}
+
+#[tokio::test]
+async fn wait_for_balloon_progress_grace_remains_bounded() {
+    let target_mib = 4096 - balloon::MIN_GUEST_MIB;
+    let initial_stats =
+        MockBalloonStats::new(target_mib, 256).with_memory(mib(3840), mib(3940), mib(3940));
+    let progressing_stats =
+        MockBalloonStats::new(target_mib, 2314).with_memory(mib(2136), mib(2265), mib(3940));
+    let api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(initial_stats),
+            MockBalloonStatsReply::Ok(progressing_stats.clone()),
+            MockBalloonStatsReply::Ok(progressing_stats),
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon(&client, target_mib, "bounded-progress-grace");
+    tokio::pin!(wait);
+
+    advance_balloon_wait_to_progress_grace(wait.as_mut(), &captured).await;
+    loop {
+        let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+        if sample_count == 3 {
+            break;
+        }
+        tokio::select! {
+            outcome = &mut wait => {
+                panic!("balloon wait completed before the grace sample; outcome={outcome:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+    tokio::time::advance(BALLOON_SETTLE_PROGRESS_GRACE).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+    let events = captured.entries();
+
+    assert_eq!(
+        outcome,
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+    );
+    assert_eq!(
+        captured_message_count(
+            &events,
+            "balloon inflation still progressing, extending settle deadline"
+        ),
+        1
+    );
+    let event = captured_event(
+        &events,
+        "balloon inflate incomplete after 10s, pausing anyway",
+    );
+    assert_eq!(event.level, Level::WARN);
+    assert_event_field(event, "actual", "Some(2314)");
+    assert_event_field(event, "deficit_mib", "Some(1270)");
+    assert_event_field(event, "reason", "severe_deficit");
+    assert_event_field(event, "admission_action", "reject_and_destroy");
 }
 
 #[tokio::test]
@@ -4216,7 +4644,6 @@ async fn park_pauses_when_balloon_stats_are_unavailable() {
     assert_event_field(event, "deficit_mib", "None");
     assert_event_field(event, "sample_count", "0");
     assert_event_field(event, "reason", "stats_unavailable");
-
     let reqs = api.drain_requests();
     let ps = patches(&reqs);
     assert_eq!(ps.len(), 2, "expected balloon inflate + vm pause");
@@ -4459,15 +4886,15 @@ async fn park_small_vm_skips_balloon_but_pauses_vcpus() {
     let mut controller = Some(original_controller);
     let mut is_parked = false;
 
-    park_inner(
+    let result = park_inner(
         &mut is_parked,
         512,
         &mut controller,
         api.socket_path(),
         "test-park-small",
     )
-    .await
-    .unwrap();
+    .await;
+    result.unwrap();
 
     assert!(is_parked, "is_parked should be set");
     let still_there = controller.as_ref().expect("controller must be preserved");
@@ -4810,7 +5237,6 @@ async fn park_balloon_failure_leaves_flag_false() {
     let ps = patches(&reqs);
     assert_eq!(ps.len(), 1, "only balloon inflate should be attempted");
     assert_eq!(ps[0].path, "/balloon");
-
     // A follow-up unpark must be a clean no-op because is_parked is false.
     let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
     unpark_inner(

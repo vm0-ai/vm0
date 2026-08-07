@@ -187,14 +187,21 @@ async function fetchSpotifyUserInfo(
 
   const data = z
     .object({
+      account_id: z.string().optional(),
       id: z.string().optional(),
       display_name: z.string().nullable().optional(),
       email: z.string().nullable().optional(),
     })
     .parse(await response.json());
 
+  // Spotify defines `account_id` as the immutable account-linking key; tolerate legacy responses that only expose `id`. Ref: https://developer.spotify.com/documentation/web-api/reference/get-current-users-profile
+  const id = data.account_id ?? data.id;
+  if (!id) {
+    throw new Error("No user id in Spotify user info response");
+  }
+
   return {
-    id: data.id ?? "",
+    id,
     username: data.display_name ?? null,
     email: data.email ?? null,
   };

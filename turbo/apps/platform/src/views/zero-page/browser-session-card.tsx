@@ -1,137 +1,192 @@
-import {
-  IconBrowser,
-  IconChevronRight,
-  IconLoader2,
-} from "@tabler/icons-react";
-import type { ZeroBrowserStatus } from "@vm0/api-contracts/contracts/zero-browser";
+import { IconBrowser } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
 import {
-  activeSidebarBrowserSessionId$,
+  activeSidebarBrowserThreadId$,
   openThreadBrowserSession$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
 interface BrowserSessionCardProps {
   readonly signals: BrowserSessionSignals;
 }
 
-function statusLabel(status: ZeroBrowserStatus): string {
-  switch (status) {
-    case "active": {
-      return "Live";
-    }
-    case "suspended": {
-      return "Suspended";
-    }
-    case "creating":
-    case "resuming": {
-      return "Starting";
-    }
-    case "stopping": {
-      return "Stopping";
-    }
-    case "error": {
-      return "Error";
-    }
-  }
+const BROWSER_SESSION_CARD_CLASS =
+  "inline-flex w-[min(100%,400px)] flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground shadow-sm transition-all duration-200";
+const BROWSER_SESSION_CARD_HOVER_CLASS =
+  "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+
+function BrowserSessionStatus({ live }: { readonly live: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium",
+        live
+          ? "text-emerald-700 dark:text-emerald-300"
+          : "text-muted-foreground",
+      )}
+    >
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          live ? "bg-emerald-500" : "bg-muted-foreground/50",
+        )}
+      />
+      {live
+        ? t(($) => {
+            return $.browserSession.status.live;
+          })
+        : t(($) => {
+            return $.browserSession.status.stopped;
+          })}
+    </span>
+  );
+}
+
+function BrowserSessionPreviewPlaceholder() {
+  return (
+    <span className="absolute inset-0 flex items-center justify-center bg-muted/30 text-muted-foreground/60">
+      <IconBrowser size={30} stroke={1.5} />
+    </span>
+  );
+}
+
+function BrowserSessionPreview({ screenshotUrl }: { screenshotUrl?: string }) {
+  return (
+    <span className="relative block aspect-[16/10] w-full overflow-hidden bg-muted/30">
+      {screenshotUrl ? (
+        <ArtifactThumbnailImage
+          src={screenshotUrl}
+          testId="browser-session-thumbnail"
+          className="absolute inset-0 h-full w-full object-cover object-top"
+          fallback={<BrowserSessionPreviewPlaceholder />}
+        />
+      ) : (
+        <BrowserSessionPreviewPlaceholder />
+      )}
+    </span>
+  );
 }
 
 function BrowserSessionCardSkeleton() {
   return (
-    <div className="flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3">
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-        <IconLoader2 className="animate-spin text-muted-foreground" size={16} />
-      </span>
-      <div className="min-w-0 flex-1 space-y-2">
-        <div className="h-4 w-2/3 rounded bg-muted/70" />
-        <div className="h-3 w-1/3 rounded bg-muted/60" />
-      </div>
-    </div>
-  );
-}
-
-function BrowserSessionUnavailable() {
-  return (
     <div
-      data-browser-session-card
-      data-browser-session-status="unavailable"
-      className="flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70"
+      className={cn(
+        BROWSER_SESSION_CARD_CLASS,
+        "animate-pulse border-border/70",
+      )}
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
-        <IconBrowser size={22} className="text-muted-foreground" />
+      <span className="flex min-h-10 items-center gap-2 border-b border-border/60 px-3 py-2">
+        <span className="h-4 w-24 rounded bg-muted/70" />
+        <span className="ml-auto h-3 w-10 rounded bg-muted/60" />
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium leading-5 text-foreground">
-          Browser unavailable
-        </span>
-        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-          This browser does not belong to this chat or has been removed.
-        </span>
-      </span>
+      <span className="block aspect-[16/10] w-full bg-muted/40" />
     </div>
   );
 }
 
-// A fixed-height entry point. The live view is heavy and resizes as pages load,
-// so it lives in the right sidebar instead of inside the message stream.
+function BrowserSessionUnavailable({
+  signals,
+}: {
+  readonly signals?: BrowserSessionSignals;
+}) {
+  const { t } = useTranslation();
+  const openSidebar = useSet(openThreadBrowserSession$);
+  const unavailable = signals === undefined;
+  return (
+    <button
+      type="button"
+      data-browser-session-card
+      data-browser-session-status={unavailable ? "unavailable" : "suspended"}
+      disabled={unavailable}
+      aria-label={
+        unavailable
+          ? t(($) => {
+              return $.browserSession.unavailable.title;
+            })
+          : t(($) => {
+              return $.browserSession.openAction;
+            })
+      }
+      onClick={() => {
+        if (signals) {
+          openSidebar(signals.threadId);
+        }
+      }}
+      className={cn(
+        BROWSER_SESSION_CARD_CLASS,
+        unavailable
+          ? "cursor-default border-border/60 opacity-70"
+          : BROWSER_SESSION_CARD_HOVER_CLASS,
+      )}
+    >
+      <span className="flex min-h-10 w-full items-center gap-2 border-b border-border/60 bg-background/95 px-3 py-2">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {t(($) => {
+            return $.browserSession.cardTitle;
+          })}
+        </span>
+        <BrowserSessionStatus live={false} />
+      </span>
+      <BrowserSessionPreview />
+    </button>
+  );
+}
+
 export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
+  const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.session$);
-  const selectedBrowserId = useGet(activeSidebarBrowserSessionId$);
+  const selectedBrowserThreadId = useGet(activeSidebarBrowserThreadId$);
   const openSidebar = useSet(openThreadBrowserSession$);
 
   if (sessionLoadable.state === "loading") {
     return <BrowserSessionCardSkeleton />;
   }
-  if (sessionLoadable.state === "hasError" || sessionLoadable.data === null) {
+  if (sessionLoadable.state === "hasError") {
     return <BrowserSessionUnavailable />;
+  }
+  if (sessionLoadable.data === null) {
+    return <BrowserSessionUnavailable signals={signals} />;
   }
 
   const session = sessionLoadable.data;
-  const selected = selectedBrowserId === signals.browserId;
+  const selected = selectedBrowserThreadId === signals.threadId;
+  const live = session.status === "active";
   return (
     <button
       type="button"
-      aria-label={`Open ${session.name} browser`}
       data-browser-session-card
       data-browser-session-status={session.status}
+      aria-label={t(
+        ($) => {
+          return $.browserSession.open;
+        },
+        { name: session.name },
+      )}
       onClick={() => {
-        openSidebar(signals.browserId);
+        openSidebar(signals.threadId);
       }}
       className={cn(
-        "flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        selected ? "border-ring/60 bg-muted/20" : "border-border/70",
+        BROWSER_SESSION_CARD_CLASS,
+        BROWSER_SESSION_CARD_HOVER_CLASS,
+        selected && "border-ring/60 bg-muted/20",
       )}
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
-        <IconBrowser size={22} className="text-foreground" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium leading-5 text-foreground">
-          {session.name}
+      <span className="flex min-h-10 w-full items-center gap-2 border-b border-border/60 bg-background/95 px-3 py-2">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {t(($) => {
+            return $.browserSession.cardTitle;
+          })}
         </span>
-        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-          {session.creditsCharged} credits charged
-        </span>
+        <BrowserSessionStatus live={live} />
       </span>
-      <span className="flex shrink-0 items-center gap-1.5 self-center">
-        <span
-          className={cn(
-            "rounded-full px-2 py-1 text-[11px] font-medium",
-            session.status === "active" &&
-              "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-            session.status === "suspended" &&
-              "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-            session.status !== "active" &&
-              session.status !== "suspended" &&
-              "bg-muted text-muted-foreground",
-          )}
-        >
-          {statusLabel(session.status)}
-        </span>
-        <IconChevronRight size={16} className="text-muted-foreground" />
-      </span>
+      <BrowserSessionPreview
+        screenshotUrl={session.screenshotUrl ?? undefined}
+      />
     </button>
   );
 }

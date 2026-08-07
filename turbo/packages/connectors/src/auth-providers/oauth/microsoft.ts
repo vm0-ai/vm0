@@ -11,7 +11,7 @@ const MICROSOFT_AUTHORIZATION_URL =
 
 const MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me";
 
-type MicrosoftOAuthConnectorType =
+type MicrosoftOAuthConnectorSlug =
   | "microsoft-365"
   | "outlook-calendar"
   | "outlook-mail";
@@ -42,7 +42,7 @@ interface MicrosoftRefreshResult {
  */
 export function buildMicrosoftAuthorizationUrl(
   authCodeGrant: ConnectorAuthCodeGrantConfig,
-  connectorType: MicrosoftOAuthConnectorType,
+  connectorSlug: MicrosoftOAuthConnectorSlug,
   clientId: string,
   redirectUri: string,
   state: string,
@@ -65,7 +65,7 @@ export function buildMicrosoftAuthorizationUrl(
  */
 export async function exchangeMicrosoftOAuthCode(
   authCodeGrant: ConnectorAuthCodeGrantConfig,
-  connectorType: MicrosoftOAuthConnectorType,
+  connectorSlug: MicrosoftOAuthConnectorSlug,
   clientId: string,
   clientSecret: string,
   code: string,
@@ -86,7 +86,7 @@ export async function exchangeMicrosoftOAuthCode(
   });
 
   if (!response.ok) {
-    await throwOAuthError(connectorType, "exchange", response);
+    await throwOAuthError(connectorSlug, "exchange", response);
   }
 
   const data = z
@@ -105,7 +105,7 @@ export async function exchangeMicrosoftOAuthCode(
   }
 
   if (!data.access_token) {
-    throw new Error(`No access token in ${connectorType} response`);
+    throw new Error(`No access token in ${connectorSlug} response`);
   }
 
   const userInfo = await fetchMicrosoftUserInfo(data.access_token);
@@ -126,7 +126,7 @@ export async function exchangeMicrosoftOAuthCode(
  * Access token expires_in: 3600-5400s (~75 min). Ref: https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow
  */
 export async function refreshMicrosoftToken(
-  connectorType: MicrosoftOAuthConnectorType,
+  connectorSlug: MicrosoftOAuthConnectorSlug,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -147,7 +147,7 @@ export async function refreshMicrosoftToken(
   });
 
   if (!response.ok) {
-    await throwOAuthError(connectorType, "refresh", response);
+    await throwOAuthError(connectorSlug, "refresh", response);
   }
 
   const data = z
@@ -165,7 +165,7 @@ export async function refreshMicrosoftToken(
   }
 
   if (!data.access_token) {
-    throw new Error(`No access token in ${connectorType} refresh response`);
+    throw new Error(`No access token in ${connectorSlug} refresh response`);
   }
 
   return {

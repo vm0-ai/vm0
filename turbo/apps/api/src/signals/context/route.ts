@@ -6,6 +6,7 @@ import { createStore, type Command, type Computed } from "ccstate";
 import type { Handler } from "hono";
 import type { ContentfulStatusCode, StatusCode } from "hono/utils/http-status";
 
+import { now } from "../../lib/time";
 import { initHono$ } from "./hono";
 import { requestValidation$ } from "./request";
 import { setRootSignal$ } from "./root";
@@ -94,9 +95,10 @@ export function honoSignalHandler(
   signal: AbortSignal,
 ): Handler {
   return async (context) => {
+    const apiStartTime = now();
     const store = createStore();
     store.set(setRootSignal$, signal);
-    store.set(initHono$, context, contract);
+    store.set(initHono$, context, contract, apiStartTime);
 
     // Mirror the contract client order: path/query validation
     // precedes auth and downstream services, so a malformed request returns

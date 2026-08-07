@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
@@ -20,13 +21,38 @@ use super::SnapshotError;
 /// change for independently deployed readers and writers.
 pub const SNAPSHOT_COMPLETE_MARKER_CONTENT: &[u8] = b"snapshot-complete-v1\n";
 
-pub(super) fn snapshot_artifact_paths(output: &SnapshotOutputPaths) -> [PathBuf; 4] {
-    [
-        output.snapshot(),
-        output.memory(),
-        output.cow(),
-        output.cow_bitmap(),
-    ]
+/// Result of validating a Firecracker snapshot output directory.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SnapshotOutputValidation {
+    /// The exact completion marker and every required artifact are valid.
+    Complete,
+    /// A required artifact or the completion marker is absent.
+    MissingFile(PathBuf),
+    /// A required snapshot artifact exists but is not a regular file.
+    NotRegularFile(PathBuf),
+    /// The completion marker exists but does not contain the exact expected bytes.
+    InvalidCompleteMarker(PathBuf),
+}
+
+impl fmt::Display for SnapshotOutputValidation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Complete => f.write_str("snapshot output is complete"),
+            Self::MissingFile(path) => {
+                write!(f, "required snapshot file not found: {}", path.display())
+            }
+            Self::NotRegularFile(path) => {
+                write!(
+                    f,
+                    "snapshot artifact is not a regular file: {}",
+                    path.display()
+                )
+            }
+            Self::InvalidCompleteMarker(path) => {
+                write!(f, "snapshot complete marker is invalid: {}", path.display())
+            }
+        }
+    }
 }
 
 fn io_error_with_path(action: &str, path: &Path, error: io::Error) -> io::Error {
@@ -66,18 +92,41 @@ pub(super) fn run_snapshot_blocking_fs<T>(f: impl FnOnce() -> T) -> T {
     }
 }
 
-pub(super) async fn snapshot_artifacts_are_regular_files(
+/// Validates the complete Firecracker snapshot artifact contract.
+///
+/// Missing, malformed, and non-regular entries are ordinary incomplete
+/// outcomes. Filesystem failures that prevent validation are returned as I/O
+/// errors with the affected path in their context.
+pub async fn validate_snapshot_output(
     output: &SnapshotOutputPaths,
-) -> Result<bool, sandbox::SnapshotError> {
-    for artifact in snapshot_artifact_paths(output) {
-        match tokio::fs::symlink_metadata(&artifact).await {
-            Ok(metadata) if metadata.file_type().is_file() => {}
-            Ok(_) => return Ok(false),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
-            Err(e) => return Err(io_error_with_path("stat snapshot artifact", &artifact, e).into()),
+) -> io::Result<SnapshotOutputValidation> {
+    let marker = output.complete_marker();
+    match tokio::fs::read(&marker).await {
+        Ok(content) if content == SNAPSHOT_COMPLETE_MARKER_CONTENT => {}
+        Ok(_) => return Ok(SnapshotOutputValidation::InvalidCompleteMarker(marker)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            return Ok(SnapshotOutputValidation::MissingFile(marker));
+        }
+        Err(e) => {
+            return Err(io_error_with_path(
+                "read snapshot complete marker",
+                &marker,
+                e,
+            ));
         }
     }
-    Ok(true)
+
+    for artifact in output.required_artifacts() {
+        match tokio::fs::symlink_metadata(&artifact).await {
+            Ok(metadata) if metadata.file_type().is_file() => {}
+            Ok(_) => return Ok(SnapshotOutputValidation::NotRegularFile(artifact)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                return Ok(SnapshotOutputValidation::MissingFile(artifact));
+            }
+            Err(e) => return Err(io_error_with_path("stat snapshot artifact", &artifact, e)),
+        }
+    }
+    Ok(SnapshotOutputValidation::Complete)
 }
 
 pub(super) fn remove_file_if_exists_sync(path: &Path) -> std::io::Result<()> {
@@ -156,7 +205,7 @@ fn prepare_snapshot_output_sync(output: &SnapshotOutputPaths) -> Result<PathBuf,
     let work = output.work_dir();
     remove_file_if_exists_sync(&output.complete_marker())?;
     remove_dir_all_if_exists_sync(&work)?;
-    for stale in snapshot_artifact_paths(output) {
+    for stale in output.required_artifacts() {
         remove_file_if_exists_sync(&stale)?;
     }
     std::fs::create_dir_all(&work)?;
@@ -182,7 +231,7 @@ fn publish_snapshot_complete_marker_with_marker_sync(
     let mut marker_created = false;
 
     let result = (|| -> std::io::Result<()> {
-        for artifact in snapshot_artifact_paths(output) {
+        for artifact in output.required_artifacts() {
             require_snapshot_artifact_regular_file_sync(&artifact)?;
         }
 
@@ -210,16 +259,6 @@ fn publish_snapshot_complete_marker_with_marker_sync(
     }
 
     Ok(())
-}
-
-pub(super) async fn snapshot_complete_marker_present(
-    output: &SnapshotOutputPaths,
-) -> Result<bool, sandbox::SnapshotError> {
-    match tokio::fs::read(output.complete_marker()).await {
-        Ok(content) => Ok(content == SNAPSHOT_COMPLETE_MARKER_CONTENT),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(e.into()),
-    }
 }
 
 #[cfg(test)]
@@ -256,12 +295,7 @@ mod tests {
         tokio::fs::create_dir_all(output.dir())
             .await
             .expect("create output dir");
-        for artifact in [
-            output.snapshot(),
-            output.memory(),
-            output.cow(),
-            output.cow_bitmap(),
-        ] {
+        for artifact in output.required_artifacts() {
             tokio::fs::write(&artifact, b"snapshot artifact")
                 .await
                 .unwrap_or_else(|e| panic!("write {}: {e}", artifact.display()));
@@ -269,11 +303,11 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_artifact_paths_lists_required_output_artifacts() {
+    fn required_artifacts_lists_snapshot_data_files() {
         let output = SnapshotOutputPaths::new(PathBuf::from("/data/images/test-snapshot"));
 
         assert_eq!(
-            snapshot_artifact_paths(&output),
+            output.required_artifacts(),
             [
                 output.snapshot(),
                 output.memory(),
@@ -404,7 +438,7 @@ mod tests {
             !tokio::fs::try_exists(&marker).await.unwrap(),
             "failed publication must remove its complete marker"
         );
-        for artifact in snapshot_artifact_paths(&output) {
+        for artifact in output.required_artifacts() {
             let content = tokio::fs::read(&artifact)
                 .await
                 .unwrap_or_else(|e| panic!("read {}: {e}", artifact.display()));
@@ -551,48 +585,97 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn snapshot_complete_marker_present_checks_exact_marker_content() {
+    async fn validate_snapshot_output_checks_exact_marker_content() {
         let dir = tempfile::tempdir().expect("tempdir");
         let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
-        tokio::fs::create_dir_all(output.dir())
-            .await
-            .expect("create output dir");
+        write_required_snapshot_artifacts(&output).await;
 
-        assert!(
-            !snapshot_complete_marker_present(&output)
+        assert_eq!(
+            validate_snapshot_output(&output)
                 .await
-                .expect("check missing marker")
+                .expect("validate missing marker"),
+            SnapshotOutputValidation::MissingFile(output.complete_marker())
         );
 
         tokio::fs::write(output.complete_marker(), b"wrong marker")
             .await
             .expect("write malformed marker");
-        assert!(
-            !snapshot_complete_marker_present(&output)
+        assert_eq!(
+            validate_snapshot_output(&output)
                 .await
-                .expect("check malformed marker")
+                .expect("validate malformed marker"),
+            SnapshotOutputValidation::InvalidCompleteMarker(output.complete_marker())
         );
 
         tokio::fs::write(output.complete_marker(), SNAPSHOT_COMPLETE_MARKER_CONTENT)
             .await
             .expect("write valid marker");
-        assert!(
-            snapshot_complete_marker_present(&output)
+        assert_eq!(
+            validate_snapshot_output(&output)
                 .await
-                .expect("check valid marker")
+                .expect("validate complete snapshot"),
+            SnapshotOutputValidation::Complete
         );
     }
 
     #[tokio::test]
-    async fn snapshot_complete_marker_present_propagates_read_errors() {
+    async fn validate_snapshot_output_reports_missing_artifact() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        write_required_snapshot_artifacts(&output).await;
+        tokio::fs::write(output.complete_marker(), SNAPSHOT_COMPLETE_MARKER_CONTENT)
+            .await
+            .expect("write valid marker");
+        tokio::fs::remove_file(output.cow_bitmap())
+            .await
+            .expect("remove bitmap");
+
+        assert_eq!(
+            validate_snapshot_output(&output)
+                .await
+                .expect("validate missing artifact"),
+            SnapshotOutputValidation::MissingFile(output.cow_bitmap())
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_snapshot_output_reports_non_regular_artifact() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        write_required_snapshot_artifacts(&output).await;
+        tokio::fs::write(output.complete_marker(), SNAPSHOT_COMPLETE_MARKER_CONTENT)
+            .await
+            .expect("write valid marker");
+        tokio::fs::remove_file(output.snapshot())
+            .await
+            .expect("remove snapshot");
+        tokio::fs::create_dir(output.snapshot())
+            .await
+            .expect("replace snapshot with directory");
+
+        assert_eq!(
+            validate_snapshot_output(&output)
+                .await
+                .expect("validate directory artifact"),
+            SnapshotOutputValidation::NotRegularFile(output.snapshot())
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_snapshot_output_propagates_marker_read_errors() {
         let dir = tempfile::tempdir().expect("tempdir");
         let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
         tokio::fs::create_dir_all(output.complete_marker())
             .await
             .expect("create marker directory");
 
-        let _err = snapshot_complete_marker_present(&output)
+        let err = validate_snapshot_output(&output)
             .await
             .expect_err("marker directory should fail to read as marker content");
+        assert!(
+            err.to_string()
+                .contains(&output.complete_marker().display().to_string()),
+            "error should include marker path: {err}"
+        );
     }
 }

@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -23,6 +24,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 
 export function WorkflowWebhookUpgradeDialog() {
+  const { t } = useTranslation();
   const open = useGet(workflowWebhookUpgradeDialogOpen$);
   const setOpen = useSet(setWorkflowWebhookUpgradeDialogOpen$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
@@ -47,27 +49,41 @@ export function WorkflowWebhookUpgradeDialog() {
           <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
             <IconLock size={19} stroke={1.6} />
           </div>
-          <DialogTitle>Upgrade for webhook automations</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.workflows.automations.webhook.upgrade.title;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            Webhook automations require a Team or Custom workspace.
+            {t(($) => {
+              return $.workflows.automations.webhook.upgrade.description;
+            })}
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-xl border border-border/60 bg-muted/30 px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-              Team
+              {t(($) => {
+                return $.workflows.automations.webhook.paidBadge;
+              })}
             </span>
             <span className="text-sm font-medium text-foreground">
-              Secure inbound workflow automation
+              {t(($) => {
+                return $.workflows.automations.webhook.upgrade.benefitTitle;
+              })}
             </span>
           </div>
           <p className="mt-1.5 text-sm leading-5 text-muted-foreground">
-            Create signed endpoints that start workflows from external systems.
+            {t(($) => {
+              return $.workflows.automations.webhook.upgrade.benefitDescription;
+            })}
           </p>
         </div>
         {!isAdmin ? (
           <p className="text-sm text-muted-foreground">
-            Ask a workspace admin to upgrade.
+            {t(($) => {
+              return $.workflows.automations.webhook.upgrade.adminHint;
+            })}
           </p>
         ) : null}
         <DialogFooter>
@@ -78,11 +94,19 @@ export function WorkflowWebhookUpgradeDialog() {
               setOpen(false);
             }}
           >
-            {isAdmin ? "Cancel" : "Close"}
+            {isAdmin
+              ? t(($) => {
+                  return $.workflows.common.cancel;
+                })
+              : t(($) => {
+                  return $.workflows.common.close;
+                })}
           </Button>
           {isAdmin ? (
             <Button type="button" onClick={upgrade}>
-              Upgrade to Team
+              {t(($) => {
+                return $.workflows.automations.webhook.upgrade.upgradeAction;
+              })}
             </Button>
           ) : null}
         </DialogFooter>

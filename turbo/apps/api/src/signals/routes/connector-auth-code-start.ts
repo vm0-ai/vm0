@@ -7,7 +7,7 @@ import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector
 import { buildConnectorAuthCodeAuthorizationUrlWithMethod } from "@vm0/connectors/auth-providers";
 import type { AuthUrlResult } from "@vm0/connectors/auth-providers/provider-flow-types";
 
-import { generateConnectorOAuthState } from "./connector-oauth-route-state";
+import { generateConnectorOAuthState } from "../../lib/connector-oauth-state";
 
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
@@ -50,7 +50,7 @@ export function prepareConnectorAuthCodeStartWithMethod(args: {
 }
 
 export async function buildConnectorAuthCodeAuthUrlWithMethod(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly authClient: ConnectorAuthClient;
@@ -59,7 +59,7 @@ export async function buildConnectorAuthCodeAuthUrlWithMethod(args: {
 }): Promise<AuthUrlResult> {
   return normalizeAuthUrlResult(
     await buildConnectorAuthCodeAuthorizationUrlWithMethod({
-      connectorRef: args.connectorRef,
+      connectorSlug: args.connectorSlug,
       authMethodId: args.authMethodId,
       method: args.method,
       authClient: args.authClient,

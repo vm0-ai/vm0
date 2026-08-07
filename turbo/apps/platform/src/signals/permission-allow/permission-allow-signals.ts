@@ -4,10 +4,8 @@ import {
   type UserPermissionGrantApplyMode,
   type UserPermissionGrantExpiresIn,
   type UserPermissionGrantAction,
-  type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
@@ -15,12 +13,17 @@ import {
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
-import { agentById, currentAgentId$, reloadAgentById$ } from "../agent.ts";
+import { agentById, currentAgentId$ } from "../agent.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { retryTransientLoad } from "../utils.ts";
 import { resolveActiveUserPermissionGrantPolicy } from "../user-permission-grants.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
+import { i18n } from "../../i18n/index.ts";
+import type {
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../connector-domain.ts";
 
 // ---------------------------------------------------------------------------
 // Route params
@@ -32,8 +35,10 @@ export const permissionAllowAgentId$ = computed((get) => {
   return typeof agentId === "string" ? agentId : null;
 });
 
-export const permissionAllowRef$ = computed((get) => {
-  return get(searchParams$).get("ref") ?? null;
+export const permissionAllowConnectorSlug$ = computed((get) => {
+  const searchParams = get(searchParams$);
+  // Historical permission links may use ref from before CLI 9.270.1.
+  return searchParams.get("connectorSlug") ?? searchParams.get("ref") ?? null;
 });
 
 export const permissionAllowPermission$ = computed((get) => {
@@ -57,10 +62,7 @@ export const permissionAllowExpiresIn$ = computed((get) => {
 // Agent data
 // ---------------------------------------------------------------------------
 
-const internalAgentReload$ = state(0);
-
 export const permissionAllowAgent$ = computed((get) => {
-  get(internalAgentReload$);
   const agentId = get(permissionAllowAgentId$);
   if (!agentId) {
     return null;
@@ -78,13 +80,15 @@ export interface Permission {
 }
 
 export function findPermissionInMetadata(
-  metadata: PublicConnectorCatalogPermissionDetail,
+  metadata: PlatformConnectorPermissionMetadata,
   name: string,
 ): Permission | null {
   if (name === UNKNOWN_PERMISSION_GRANT) {
     return {
       name: UNKNOWN_PERMISSION_GRANT,
-      description: "Unknown endpoints",
+      description: i18n.t(($) => {
+        return $.authorization.permission.unknownEndpoints;
+      }),
     };
   }
   return (
@@ -120,8 +124,8 @@ export const subscribePermissionUpdate$ = command(
 );
 
 export function resolveUserPermissionGrantPolicy(
-  grants: readonly UserPermissionGrantResponse[],
-  metadata: PublicConnectorCatalogPermissionDetail,
+  grants: readonly PlatformUserPermissionGrant[],
+  metadata: PlatformConnectorPermissionMetadata,
   permission: string,
 ): FirewallPolicyValue | undefined {
   return resolveActiveUserPermissionGrantPolicy(grants, metadata, permission);
@@ -133,12 +137,17 @@ interface UserPermissionGrantsByAgentParams {
 
 export function userPermissionGrantsByAgent(
   params: UserPermissionGrantsByAgentParams,
-): Computed<Promise<readonly UserPermissionGrantResponse[]>> {
+): Computed<Promise<readonly PlatformUserPermissionGrant[]>> {
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
     const result = await retryTransientLoad(() => {
-      return accept(client.list({ query: params }), [200]);
+      return accept(
+        client.list({
+          query: params,
+        }),
+        [200],
+      );
     });
     return result.body;
   });
@@ -146,12 +155,17 @@ export function userPermissionGrantsByAgent(
 
 export function userPermissionGrantsByAgentIfExists(
   params: UserPermissionGrantsByAgentParams,
-): Computed<Promise<readonly UserPermissionGrantResponse[] | null>> {
+): Computed<Promise<readonly PlatformUserPermissionGrant[] | null>> {
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
     const result = await retryTransientLoad(() => {
-      return accept(client.list({ query: params }), [200, 404]);
+      return accept(
+        client.list({
+          query: params,
+        }),
+        [200, 404],
+      );
     });
     return result.status === 404 ? null : result.body;
   });
@@ -177,11 +191,11 @@ export const currentAgentUserPermissionGrants$ = computed(async (get) => {
 /** Firewall metadata selected by the permission-allow route. */
 export const permissionAllowFirewallPermissionMetadata$ = computed(
   async (get) => {
-    const connectorRef = get(permissionAllowRef$);
-    if (!connectorRef) {
+    const connectorSlug = get(permissionAllowConnectorSlug$);
+    if (!connectorSlug) {
       return null;
     }
-    return await get(firewallPermissionMetadataByConnector({ connectorRef }));
+    return await get(firewallPermissionMetadataByConnector({ connectorSlug }));
   },
 );
 
@@ -190,12 +204,12 @@ export const applyUserPermissionGrants$ = command(
     { get, set },
     params: {
       agentId?: string;
-      connectorRef: string;
+      connectorSlug: string;
       mode: UserPermissionGrantApplyMode;
       grants: readonly ApplyUserPermissionGrant[];
     },
     signal: AbortSignal,
-  ): Promise<readonly UserPermissionGrantResponse[]> => {
+  ): Promise<readonly PlatformUserPermissionGrant[]> => {
     if (!params.agentId) {
       throw new Error("Permission grant scope is required");
     }
@@ -204,7 +218,7 @@ export const applyUserPermissionGrants$ = command(
       client.apply({
         body: {
           agentId: params.agentId,
-          connectorRef: params.connectorRef,
+          connectorSlug: params.connectorSlug,
           mode: params.mode,
           grants: [...params.grants],
         },
@@ -216,10 +230,6 @@ export const applyUserPermissionGrants$ = command(
     set(internalUserPermissionGrantsReload$, (prev) => {
       return prev + 1;
     });
-    set(internalAgentReload$, (prev) => {
-      return prev + 1;
-    });
-    set(reloadAgentById$);
     return result.body;
   },
 );
@@ -229,18 +239,18 @@ export const applyUserPermissionGrant$ = command(
     { set },
     params: {
       agentId?: string;
-      connectorRef: string;
+      connectorSlug: string;
       permission: string;
       action: UserPermissionGrantAction;
       expiresIn?: UserPermissionGrantExpiresIn;
     },
     signal: AbortSignal,
-  ): Promise<UserPermissionGrantResponse> => {
+  ): Promise<PlatformUserPermissionGrant> => {
     const grants = await set(
       applyUserPermissionGrants$,
       {
         agentId: params.agentId,
-        connectorRef: params.connectorRef,
+        connectorSlug: params.connectorSlug,
         mode: "patch",
         grants: [
           params.action === "allow"

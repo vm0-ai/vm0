@@ -64,7 +64,7 @@ export const COMPUTER_USE_SAVED_SELECTION_THREAD_ID =
   "b0000000-0000-4000-a000-000000000718";
 export const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
-type ChatMessageSeed = Omit<
+type ChatEventSeed = Omit<
   Extract<ChatEvent, { eventType: "input.prompt" }>,
   "seqId"
 >;
@@ -285,16 +285,16 @@ export function expectTextBefore(
   ).toBeTruthy();
 }
 
-export function makeMessage(
+export function makeEvent(
   id: string,
   text: string,
   threadId = "00000000-0000-4000-8000-000000000001",
-): ChatMessageSeed {
+): ChatEventSeed {
   return {
     id,
     threadId,
     eventType: "input.prompt",
-    content: text,
+    content: null,
     userMessage: {
       version: 1,
       parts: [{ type: "text", text }],
@@ -383,12 +383,13 @@ export function mockKeyboardNavigationThreads({
     }
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(
     chatThreadEventsContract.list,
     ({ params, query, respond }) => {
-      if (query.sinceSeqId || query.sinceId) {
+      if (query.sinceSeqId) {
         return respond(200, { events: [] });
       }
       const thread = byId.get(params.threadId);
@@ -405,7 +406,6 @@ export function mockKeyboardNavigationThreads({
               ]
             : [],
         ),
-        hasHistoryBefore: false,
       });
     },
   );
@@ -582,24 +582,19 @@ export function mockServerQueuedThreadStories(): void {
     }
     return respond(200, {
       lastReadAt: "2026-06-09T10:00:00Z",
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(
     chatThreadEventsContract.list,
     ({ params, query, respond }) => {
-      if (
-        query.sinceSeqId ||
-        query.beforeSeqId ||
-        query.sinceId ||
-        query.beforeId
-      ) {
+      if (query.sinceSeqId || query.beforeSeqId) {
         return respond(200, { events: [] });
       }
       return respond(200, {
         events: normalizeMockChatEvents(
           byId.get(params.threadId)?.messages ?? [],
         ),
-        hasHistoryBefore: false,
       });
     },
   );
@@ -957,7 +952,7 @@ export function mockFailedAssistantThread({
   mockChatLifecycle(context, {
     threadId,
     threadTitle: "Failed guidance",
-    chatMessages: [
+    chatEvents: [
       {
         id: `${threadId}-user`,
         role: "user",

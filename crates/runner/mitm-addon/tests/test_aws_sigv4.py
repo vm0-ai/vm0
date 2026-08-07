@@ -5,7 +5,14 @@ from unittest.mock import patch
 
 import pytest
 
-from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
+import runtime_url_parsing
+from aws_sigv4 import (
+    AwsSigV4Credentials,
+    AwsSigV4SigningError,
+    hash_request_body,
+    request_requires_body_for_signing,
+    sign_request,
+)
 from tests.aws_sigv4_helpers import (
     DEFAULT_SIGV4_TIMESTAMP,
     STS_HOST,
@@ -46,11 +53,17 @@ def _aws_s3_example_credentials() -> AwsSigV4Credentials:
 
 def _header_auth_headers(
     amz_date: str = DEFAULT_SIGV4_TIMESTAMP,
+    *,
+    authorization: str | None = None,
 ) -> list[tuple[str, str]]:
     return [
         (
             "Authorization",
-            aws_sigv4_authorization(date=amz_date[:8]),
+            (
+                aws_sigv4_authorization(date=amz_date[:8])
+                if authorization is None
+                else authorization
+            ),
         ),
         ("X-Amz-Date", amz_date),
         ("Host", STS_HOST),
@@ -106,6 +119,149 @@ def _presigned_url(
     return aws_sigv4_presigned_url(host, date=timestamp[:8], timestamp=timestamp)
 
 
+_REJECTED_SIGNING_CONTEXTS = (
+    pytest.param(
+        _presigned_url(STS_HOST),
+        _header_auth_headers(),
+        "Ambiguous AWS auth location",
+        id="mixed-header-query-auth",
+    ),
+    pytest.param(
+        f"https://{STS_HOST}/",
+        _header_auth_headers(authorization=aws_sigv4_authorization(algorithm="AWS4-HMAC-SHA1")),
+        "Unsupported AWS signing algorithm",
+        id="unsupported-algorithm",
+    ),
+    pytest.param(
+        f"https://{STS_HOST}/",
+        _header_auth_headers(authorization=aws_sigv4_authorization(service="s3express")),
+        "S3 Express signing is not supported by this runner",
+        id="s3express",
+    ),
+)
+
+
+@pytest.mark.parametrize(("url", "headers", "error"), _REJECTED_SIGNING_CONTEXTS)
+def test_request_requires_body_for_signing_rejects_invalid_signing_context(
+    url: str,
+    headers: list[tuple[str, str]],
+    error: str,
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match=error):
+        request_requires_body_for_signing(url=url, headers=headers)
+
+
+@pytest.mark.parametrize(("url", "headers", "error"), _REJECTED_SIGNING_CONTEXTS)
+def test_sign_request_rejects_invalid_signing_context(
+    url: str,
+    headers: list[tuple[str, str]],
+    error: str,
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match=error):
+        sign_request(
+            method="GET",
+            url=url,
+            headers=headers,
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("url", "headers", "requires_body"),
+    [
+        pytest.param(
+            f"https://{STS_HOST}/",
+            _header_auth_headers(),
+            True,
+            id="header-body-hash",
+        ),
+        pytest.param(
+            f"https://{STS_HOST}/",
+            _header_auth_headers_with_content_hash(_AWS_S3_EMPTY_PAYLOAD_HASH),
+            False,
+            id="header-explicit-digest",
+        ),
+        pytest.param(
+            f"https://{STS_HOST}/",
+            _header_auth_headers_with_content_hash("UNSIGNED-PAYLOAD"),
+            False,
+            id="header-unsigned",
+        ),
+        pytest.param(
+            _presigned_url(STS_HOST),
+            [("Host", STS_HOST)],
+            True,
+            id="presigned-non-s3",
+        ),
+        pytest.param(
+            aws_sigv4_presigned_url(
+                _AWS_S3_EXAMPLE_HOST,
+                service="s3",
+                date="20130524",
+                timestamp=_AWS_S3_EXAMPLE_TIMESTAMP,
+            ),
+            [("Host", _AWS_S3_EXAMPLE_HOST)],
+            False,
+            id="presigned-s3",
+        ),
+    ],
+)
+def test_request_requires_body_for_signing_matches_payload_semantics(
+    url: str,
+    headers: list[tuple[str, str]],
+    requires_body: bool,
+) -> None:
+    assert request_requires_body_for_signing(url=url, headers=headers) is requires_body
+
+
+@pytest.mark.parametrize(
+    ("headers", "error"),
+    [
+        pytest.param(
+            _header_auth_headers_with_content_hash(
+                "STREAMING-AWS4-HMAC-SHA256-PAYLOAD",
+            ),
+            "AWS streaming payload signing is not supported",
+            id="streaming-payload",
+        ),
+        pytest.param(
+            [
+                (
+                    "Authorization",
+                    aws_sigv4_authorization(
+                        algorithm="AWS4-ECDSA-P256-SHA256",
+                        region="*",
+                    ),
+                ),
+                ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
+                ("Host", STS_HOST),
+            ],
+            "SigV4A is not supported",
+            id="sigv4a",
+        ),
+        pytest.param(
+            [
+                ("Authorization", "malformed"),
+                ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
+                ("Host", STS_HOST),
+            ],
+            "Malformed AWS authorization header",
+            id="malformed",
+        ),
+    ],
+)
+def test_request_requires_body_for_signing_preserves_signer_errors(
+    headers: list[tuple[str, str]],
+    error: str,
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match=error):
+        request_requires_body_for_signing(
+            url=f"https://{STS_HOST}/",
+            headers=headers,
+        )
+
+
 @pytest.mark.parametrize(
     ("url", "headers"),
     [
@@ -125,8 +281,12 @@ def test_sign_request_splits_input_url_once(
     url: str,
     headers: list[tuple[str, str]],
 ) -> None:
-    real_urlsplit = urllib.parse.urlsplit
-    with patch.object(urllib.parse, "urlsplit", wraps=real_urlsplit) as urlsplit:
+    real_urlsplit = runtime_url_parsing._uncached_urlsplit
+    with patch.object(
+        runtime_url_parsing,
+        "_uncached_urlsplit",
+        wraps=real_urlsplit,
+    ) as urlsplit:
         sign_request(
             method="GET",
             url=url,
@@ -161,6 +321,46 @@ def test_presigned_query_preserves_ordinary_pairs() -> None:
         "&X-Amz-SignedHeaders=host"
         "&X-Amz-Signature=9245f52c735ed2e7286981a0013837d6c69b227b74cee0a9611b3f0257fc1c68"
     )
+
+
+@pytest.mark.parametrize(
+    ("url", "headers"),
+    [
+        pytest.param(
+            f"https://{STS_HOST}/",
+            _header_auth_headers(),
+            id="header",
+        ),
+        pytest.param(
+            _presigned_url(STS_HOST),
+            [("Host", STS_HOST)],
+            id="presigned",
+        ),
+    ],
+)
+def test_precomputed_body_hash_matches_direct_body_signing(
+    url: str,
+    headers: list[tuple[str, str]],
+) -> None:
+    body = b"expected body"
+    expected = sign_request(
+        method="POST",
+        url=url,
+        headers=headers,
+        body=body,
+        credentials=_credentials(),
+    )
+
+    actual = sign_request(
+        method="POST",
+        url=url,
+        headers=headers,
+        body=b"body ignored by the precomputed path",
+        credentials=_credentials(),
+        precomputed_body_hash=hash_request_body(body),
+    )
+
+    assert actual == expected
 
 
 @pytest.mark.parametrize("amz_date", _INVALID_SEMANTIC_SIGV4_TIMESTAMPS)
@@ -590,6 +790,7 @@ def test_header_auth_content_hash_controls_aws_reference_signature(
         headers=_aws_s3_header_auth_headers(header_value),
         body=body,
         credentials=_aws_s3_example_credentials(),
+        precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
     )
 
     authorization = {name.lower(): value for name, value in headers}["authorization"]
@@ -613,6 +814,7 @@ def test_header_auth_unsigned_payload_controls_reference_signature(
         headers=_aws_s3_header_auth_headers(header_value),
         body=body,
         credentials=_aws_s3_example_credentials(),
+        precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
     )
 
     authorization = {name.lower(): value for name, value in headers}["authorization"]
@@ -645,6 +847,7 @@ def test_presigned_s3_unsigned_payload_matches_aws_reference_signature() -> None
         headers=[("Host", _AWS_S3_EXAMPLE_HOST)],
         body=None,
         credentials=_aws_s3_example_credentials(),
+        precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
     )
 
     query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(signed_url).query))

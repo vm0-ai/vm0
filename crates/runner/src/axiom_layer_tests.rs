@@ -201,7 +201,7 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     assert_eq!(failure["level"], json!("error"));
     assert_eq!(failure["code"], json!(42));
     assert!(
-        !events.iter().any(|event| event["level"] == json!("info")),
+        !has_event_with_message(&events, "info is below threshold, should not be ingested"),
         "INFO event should not be ingested: {events:#?}",
     );
 }

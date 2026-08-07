@@ -215,6 +215,36 @@ describe("upgradeChatIdb local cache resets", () => {
       expectThreadEventStoresCreated(createdStores, createObjectStore);
     },
   );
+});
+
+describe("upgradeChatIdb user-message part cutover", () => {
+  it.each([23, 24, 25, 26])(
+    "rebuilds every chat event cache for contract cutovers from v%i",
+    (oldVersion) => {
+      const { db, createdStores, createObjectStore, deleteObjectStore } =
+        fakeDb([
+          CHAT_MESSAGES_STORE,
+          CHAT_THREAD_SNAPSHOT_STORE,
+          CHAT_THREAD_EVENTS_STORE,
+          CHAT_THREAD_EVENT_SYNC_STORE,
+        ]);
+
+      upgradeChatIdb(db, oldVersion);
+
+      expect(deleteObjectStore).toHaveBeenCalledTimes(4);
+      expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
+      expect(deleteObjectStore).toHaveBeenCalledWith(
+        CHAT_THREAD_SNAPSHOT_STORE,
+      );
+      expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE);
+      expect(deleteObjectStore).toHaveBeenCalledWith(
+        CHAT_THREAD_EVENT_SYNC_STORE,
+      );
+      expect(createObjectStore).toHaveBeenCalledTimes(4);
+      expectChatMessagesStoreCreated(createdStores, createObjectStore);
+      expectThreadEventStoresCreated(createdStores, createObjectStore);
+    },
+  );
 
   it("does not rebuild local caches at the current schema version", () => {
     const { db, createObjectStore, deleteObjectStore } = fakeDb([

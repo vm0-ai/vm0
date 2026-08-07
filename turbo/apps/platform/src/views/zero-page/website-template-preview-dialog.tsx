@@ -5,29 +5,30 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import { useGet, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import {
   findWebsiteTemplateItem,
   r2ImageTransformUrl,
   type WebsiteTemplateItem,
 } from "@vm0/core";
-import {
-  closeWebsiteTemplatePreview$,
-  markWebsiteTemplatePreviewLoaded$,
-  websiteTemplatePreviewId$,
-  websiteTemplatePreviewLoaded$,
-} from "../../signals/zero-page/zero-chat-composer.ts";
+import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 
 function WebsiteTemplatePreviewDialog({
   item,
   open,
   onOpenChange,
+  signals,
 }: {
   item: WebsiteTemplateItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  signals: ComposerSignals;
 }) {
-  const previewLoaded = useGet(websiteTemplatePreviewLoaded$);
-  const markPreviewLoaded = useSet(markWebsiteTemplatePreviewLoaded$);
+  const { t } = useTranslation();
+  const previewLoaded = useGet(signals.template.websiteTemplatePreviewLoaded$);
+  const markPreviewLoaded = useSet(
+    signals.template.markWebsiteTemplatePreviewLoaded$,
+  );
   const placeholderUrl = r2ImageTransformUrl(item.previewImageUrl, {
     width: 480,
     height: 270,
@@ -37,7 +38,10 @@ function WebsiteTemplatePreviewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[1120px] flex-col gap-0 overflow-hidden p-0 data-[state=open]:!animate-none [&>button[aria-label=Close]]:top-[7px] sm:h-[min(760px,calc(100dvh-4rem))]"
+        closeLabel={t(($) => {
+          return $.artifacts.actions.close;
+        })}
+        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[1120px] flex-col gap-0 overflow-hidden p-0 data-[state=open]:!animate-none [&>button]:top-[7px] sm:h-[min(760px,calc(100dvh-4rem))]"
         overlayClassName="data-[state=open]:!animate-none"
       >
         <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-14 text-left sm:pr-16">
@@ -49,7 +53,9 @@ function WebsiteTemplatePreviewDialog({
                 onOpenChange(false);
               }}
             >
-              Website
+              {t(($) => {
+                return $.artifacts.templates.website;
+              })}
             </button>
             <span className="shrink-0 text-muted-foreground">/</span>
             <span className="block min-w-0 truncate leading-none">
@@ -63,13 +69,27 @@ function WebsiteTemplatePreviewDialog({
               src={placeholderUrl}
               alt=""
               aria-hidden="true"
-              title={`${item.title} website preview placeholder`}
+              title={t(
+                ($) => {
+                  return $.artifacts.templates.placeholder;
+                },
+                {
+                  title: item.title,
+                },
+              )}
               className={`pointer-events-none absolute inset-0 z-10 h-full w-full bg-background object-contain object-top ${
                 previewLoaded ? "hidden" : "block"
               }`}
             />
             <iframe
-              title={`${item.title} website full preview`}
+              title={t(
+                ($) => {
+                  return $.artifacts.templates.fullPreview;
+                },
+                {
+                  title: item.title,
+                },
+              )}
               src={item.previewUrl}
               sandbox="allow-same-origin allow-scripts"
               className="h-full w-full border-0 bg-background"
@@ -82,9 +102,13 @@ function WebsiteTemplatePreviewDialog({
   );
 }
 
-export function WebsiteTemplatePreviewDialogSlot() {
-  const previewId = useGet(websiteTemplatePreviewId$);
-  const closePreview = useSet(closeWebsiteTemplatePreview$);
+export function WebsiteTemplatePreviewDialogSlot({
+  signals,
+}: {
+  signals: ComposerSignals;
+}) {
+  const previewId = useGet(signals.template.websiteTemplatePreviewId$);
+  const closePreview = useSet(signals.template.closeWebsiteTemplatePreview$);
   const item =
     previewId === null ? null : (findWebsiteTemplateItem(previewId) ?? null);
 
@@ -96,6 +120,7 @@ export function WebsiteTemplatePreviewDialogSlot() {
     <WebsiteTemplatePreviewDialog
       item={item}
       open
+      signals={signals}
       onOpenChange={(open) => {
         if (!open) {
           closePreview();

@@ -4,8 +4,8 @@
 
 In the API app (`turbo/apps/api`), route behavior should be covered by
 **API route integration tests**. These tests exercise the real Hono app through
-`setupApp()` and the route's ts-rest contract, not by importing route handlers or
-service functions directly.
+`setupApp()`, an explicit route slice, and the route's ts-rest contract, not by
+importing route handlers or service functions directly.
 
 Use this guide for endpoints implemented in `apps/api` or promoted to
 API-authoritative behavior.
@@ -24,7 +24,9 @@ turbo/apps/api/src/signals/routes/__tests__/
 ```typescript
 import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { zeroAgentsRoutes } from "../zero-agents";
 
 const context = testContext();
 
@@ -33,7 +35,9 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroAgentsMainContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsMainContract,
+  );
 }
 
 describe("GET /api/zero/agents", () => {
@@ -73,8 +77,8 @@ describe("GET /api/zero/agents", () => {
 
 Key points:
 
-1. Import the contract from `@vm0/api-contracts`, then call it through
-   `setupApp({ context })(contract)`.
+1. Import the contract from `@vm0/api-contracts` and the matching route array,
+   then call it through `setupApp({ context, routes })(contract)`.
 2. Use `accept()` to narrow the response type and produce useful failure output.
 3. Put `testContext()` at module scope.
 4. Use API calls for setup and verification.
@@ -91,9 +95,10 @@ Route tests should cover user-visible HTTP behavior:
 - persisted side effects through follow-up API calls
 - external service calls at the boundary, using the centralized mocks
 
-`setupApp()` creates the Hono app with the real route registry and validates
-ts-rest responses. A route test should fail if the handler returns a body that no
-longer matches the contract.
+`setupApp()` creates the Hono app with only the declared route slice and validates
+ts-rest responses. This keeps tests independent from the production bootstrap
+registry while preserving the real route behavior. A route test should fail if
+the handler returns a body that no longer matches the contract.
 
 ## Mocks
 

@@ -1,15 +1,39 @@
 """Client and response parsing for the runner firewall auth endpoint."""
 
 import asyncio
+import base64
+import errno
+import io
+import ipaddress
 import json
+import math
+import socket
+import ssl
 import urllib.error
+import urllib.parse
+import urllib.request
+from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Protocol
+from email.message import Message
+from typing import NamedTuple, Protocol
+
+import h11
+import mitmproxy_rs
 
 import platform_api
 from aws_sigv4 import AwsSigV4Credentials
 
 MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES = 256 * 1024
+FIREWALL_AUTH_FETCH_DEADLINE_SECONDS = 10.0
+_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES = 64 * 1024
+_DEFAULT_HTTP_PORT = 80
+_DEFAULT_HTTPS_PORT = 443
+_IPV6_VERSION = 6
+_HTTP_STATUS_LINE_MIN_PARTS = 2
+_HTTP_STATUS_INFORMATIONAL_MIN = 100
+_HTTP_STATUS_SUCCESS_MIN = 200
+_HTTP_STATUS_REDIRECTION_MIN = 300
+_HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
     {
         "FORBIDDEN",
@@ -18,7 +42,8 @@ _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
     }
 )
 _FIREWALL_AUTH_FAILURE_REASONS = frozenset({"upstream_provider", "reconnect_required"})
-_opener = platform_api.build_api_opener()
+_dns_resolver: "_AddressResolver | None" = None
+_https_context: ssl.SSLContext | None = None
 
 
 class ConnectorNotConfiguredError(Exception):
@@ -31,6 +56,10 @@ class InsufficientCreditsError(Exception):
 
 class FirewallAuthResponseTooLargeError(Exception):
     """Raised when /firewall/auth returns a response body above the local cap."""
+
+
+class FirewallAuthDeadlineExceededError(Exception):
+    """Raised when one /firewall/auth request exceeds its total lifetime."""
 
 
 class FirewallAuthApiError(Exception):
@@ -52,9 +81,41 @@ class FirewallAuthApiError(Exception):
         self.failure_reason = failure_reason
 
 
-class _ResponseBodyReader(Protocol):
-    def read(self, n: int = -1) -> bytes:
+class _AddressResolver(Protocol):
+    async def lookup_ip(self, host: str) -> list[str]:
         raise NotImplementedError
+
+
+class _ResolvedAddress(NamedTuple):
+    family: socket.AddressFamily
+    host: str
+    port: int
+
+
+class _ConnectedStream(NamedTuple):
+    reader: asyncio.StreamReader
+    writer: asyncio.StreamWriter
+    socket: socket.socket
+
+
+@dataclass(frozen=True)
+class _ConnectionPlan:
+    origin_scheme: str
+    origin_host: str
+    origin_authority: str
+    connect_host: str
+    connect_port: int
+    request_target: str
+    use_proxy_tunnel: bool = False
+    proxy_authorization: str | None = field(default=None, repr=False)
+
+
+@dataclass(frozen=True)
+class _HttpResponse:
+    status: int
+    reason: str
+    headers: Message
+    body: bytes
 
 
 @dataclass(frozen=True)
@@ -71,6 +132,7 @@ class FirewallAuthRequest:
     secret_connector_metadata_map: dict | None = None
     vars_map: dict | None = None
     firewall_billable: bool = False
+    matched_firewall: dict | None = None
 
     def to_body(self, *, force_refresh: bool = False) -> dict:
         """Build the webhook JSON body while preserving omission semantics."""
@@ -92,6 +154,8 @@ class FirewallAuthRequest:
             body["vars"] = self.vars_map
         if self.firewall_billable:
             body["firewallBillable"] = True
+        if self.matched_firewall is not None:
+            body["matchedFirewall"] = self.matched_firewall
         if force_refresh:
             body["forceRefresh"] = True
         return body
@@ -113,16 +177,380 @@ class FirewallAuthSuccess:
     """Validated /firewall/auth success response consumed by the auth cache."""
 
     payload: FirewallAuthPayload
-    expires_at: object = None
+    expires_at: int | float | None = None
     refreshed_connectors: list[str] = field(default_factory=list)
     refreshed_secrets: list[str] = field(default_factory=list)
 
 
-def _read_firewall_auth_response_body(resp: _ResponseBodyReader) -> bytes:
-    body = resp.read(MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES + 1)
-    if len(body) > MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES:
-        raise FirewallAuthResponseTooLargeError("Firewall auth response body too large")
-    return body
+def reset_transport_state_for_tests() -> None:
+    """Reset lazily created network state between event-loop tests."""
+    global _dns_resolver
+    global _https_context
+
+    _dns_resolver = None
+    _https_context = None
+
+
+def _get_dns_resolver() -> _AddressResolver:
+    global _dns_resolver
+
+    resolver = _dns_resolver
+    if resolver is None:
+        resolver = mitmproxy_rs.dns.DnsResolver()
+        _dns_resolver = resolver
+    return resolver
+
+
+def _get_https_context() -> ssl.SSLContext:
+    global _https_context
+
+    context = _https_context
+    if context is None:
+        context = ssl.create_default_context()
+        context.set_alpn_protocols(["http/1.1"])
+        _https_context = context
+    return context
+
+
+def _normalized_host(host: str) -> str:
+    try:
+        return ipaddress.ip_address(host).compressed
+    except ValueError:
+        return host.encode("idna").decode("ascii")
+
+
+def _format_authority(host: str, port: int, *, include_port: bool) -> str:
+    rendered_host = f"[{host}]" if ":" in host else host
+    return f"{rendered_host}:{port}" if include_port else rendered_host
+
+
+def _parsed_port(parsed: urllib.parse.SplitResult, default_port: int, *, subject: str) -> int:
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError(f"Invalid {subject} port") from exc
+    return default_port if port is None else port
+
+
+def _proxy_authorization(parsed: urllib.parse.SplitResult) -> str | None:
+    if parsed.username is None:
+        return None
+    username = urllib.parse.unquote(parsed.username)
+    password = urllib.parse.unquote(parsed.password or "")
+    encoded = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+    return f"Basic {encoded}"
+
+
+def _proxy_plan(
+    *,
+    scheme: str,
+    origin_authority: str,
+) -> tuple[str, int, str | None] | None:
+    if urllib.request.proxy_bypass(origin_authority):
+        return None
+
+    configured_proxy = urllib.request.getproxies().get(scheme)
+    if not configured_proxy:
+        return None
+    proxy_url = configured_proxy if "://" in configured_proxy else f"http://{configured_proxy}"
+    parsed = urllib.parse.urlsplit(proxy_url)
+    if parsed.scheme.lower() != "http":
+        raise ValueError("Firewall auth supports only HTTP environment proxies")
+    if parsed.hostname is None:
+        raise ValueError("Invalid firewall auth HTTP proxy URL")
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        raise ValueError("Invalid firewall auth HTTP proxy URL")
+    return (
+        _normalized_host(parsed.hostname),
+        _parsed_port(parsed, _DEFAULT_HTTP_PORT, subject="firewall auth HTTP proxy"),
+        _proxy_authorization(parsed),
+    )
+
+
+def _build_connection_plan(req: urllib.request.Request) -> _ConnectionPlan:
+    parsed = urllib.parse.urlsplit(req.full_url)
+    scheme = parsed.scheme.lower()
+    if scheme not in {"http", "https"} or parsed.hostname is None:
+        raise ValueError("Platform API URL must be an absolute http(s) URL")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("Platform API URL must not contain user information")
+
+    default_port = _DEFAULT_HTTPS_PORT if scheme == "https" else _DEFAULT_HTTP_PORT
+    origin_host = _normalized_host(parsed.hostname)
+    origin_port = _parsed_port(parsed, default_port, subject="platform API")
+    origin_authority = _format_authority(
+        origin_host,
+        origin_port,
+        include_port=parsed.port is not None,
+    )
+    path = parsed.path or "/"
+    origin_target = f"{path}?{parsed.query}" if parsed.query else path
+    proxy = _proxy_plan(scheme=scheme, origin_authority=origin_authority)
+    if proxy is None:
+        return _ConnectionPlan(
+            origin_scheme=scheme,
+            origin_host=origin_host,
+            origin_authority=origin_authority,
+            connect_host=origin_host,
+            connect_port=origin_port,
+            request_target=origin_target,
+        )
+
+    proxy_host, proxy_port, proxy_authorization = proxy
+    request_target = (
+        urllib.parse.urlunsplit((scheme, origin_authority, path, parsed.query, ""))
+        if scheme == "http"
+        else origin_target
+    )
+    return _ConnectionPlan(
+        origin_scheme=scheme,
+        origin_host=origin_host,
+        origin_authority=origin_authority,
+        connect_host=proxy_host,
+        connect_port=proxy_port,
+        request_target=request_target,
+        use_proxy_tunnel=scheme == "https",
+        proxy_authorization=proxy_authorization,
+    )
+
+
+async def _resolve_addresses(host: str, port: int) -> tuple[_ResolvedAddress, ...]:
+    try:
+        literal_address = ipaddress.ip_address(host)
+    except ValueError:
+        resolved_hosts = await _get_dns_resolver().lookup_ip(host)
+    else:
+        resolved_hosts = [literal_address.compressed]
+
+    addresses: list[_ResolvedAddress] = []
+    seen: set[str] = set()
+    for resolved_host in resolved_hosts:
+        address = ipaddress.ip_address(resolved_host)
+        normalized = address.compressed
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        family = socket.AF_INET6 if address.version == _IPV6_VERSION else socket.AF_INET
+        addresses.append(_ResolvedAddress(family, normalized, port))
+    if not addresses:
+        raise socket.gaierror(socket.EAI_NONAME, "Firewall auth host did not resolve")
+    return tuple(addresses)
+
+
+def _abort_socket(sock: socket.socket) -> None:
+    with suppress(OSError):
+        sock.shutdown(socket.SHUT_RDWR)
+    with suppress(OSError):
+        sock.close()
+
+
+async def _open_connected_stream(
+    addresses: tuple[_ResolvedAddress, ...],
+) -> _ConnectedStream:
+    loop = asyncio.get_running_loop()
+    last_error: OSError | None = None
+    for address in addresses:
+        sock = socket.socket(address.family, socket.SOCK_STREAM)
+        sock.setblocking(False)
+        try:
+            socket_address: tuple[str, int] | tuple[str, int, int, int]
+            if address.family == socket.AF_INET6:
+                socket_address = (address.host, address.port, 0, 0)
+            else:
+                socket_address = (address.host, address.port)
+            await loop.sock_connect(sock, socket_address)
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError as exc:
+                if exc.errno != errno.ENOPROTOOPT:
+                    raise
+            reader, writer = await asyncio.open_connection(
+                sock=sock,
+                limit=_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES,
+            )
+        except OSError as exc:
+            last_error = exc
+            _abort_socket(sock)
+            continue
+        except BaseException:
+            _abort_socket(sock)
+            raise
+        return _ConnectedStream(reader, writer, sock)
+
+    if last_error is None:
+        raise OSError("Firewall auth connection failed")
+    raise last_error
+
+
+def _abort_stream(stream: _ConnectedStream) -> None:
+    try:
+        stream.writer.transport.abort()
+    finally:
+        _abort_socket(stream.socket)
+
+
+async def _read_proxy_connect_status(reader: asyncio.StreamReader) -> int:
+    total_header_bytes = 0
+    while True:
+        header_block = await reader.readuntil(b"\r\n\r\n")
+        total_header_bytes += len(header_block)
+        if total_header_bytes > _MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES:
+            raise ValueError("Firewall auth HTTP proxy response headers too large")
+        status_line = header_block.split(b"\r\n", 1)[0]
+        parts = status_line.split(b" ", 2)
+        if len(parts) < _HTTP_STATUS_LINE_MIN_PARTS or not parts[0].startswith(b"HTTP/"):
+            raise ValueError("Invalid firewall auth HTTP proxy response")
+        try:
+            status = int(parts[1])
+        except ValueError as exc:
+            raise ValueError("Invalid firewall auth HTTP proxy response") from exc
+        if not _HTTP_STATUS_INFORMATIONAL_MIN <= status < _HTTP_STATUS_SUCCESS_MIN:
+            return status
+
+
+async def _establish_proxy_tunnel(
+    writer: asyncio.StreamWriter,
+    reader: asyncio.StreamReader,
+    plan: _ConnectionPlan,
+) -> None:
+    lines = [
+        f"CONNECT {plan.origin_authority} HTTP/1.1",
+        f"Host: {plan.origin_authority}",
+    ]
+    if plan.proxy_authorization is not None:
+        lines.append(f"Proxy-Authorization: {plan.proxy_authorization}")
+    writer.write(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
+    await writer.drain()
+    status = await _read_proxy_connect_status(reader)
+    if not _HTTP_STATUS_SUCCESS_MIN <= status < _HTTP_STATUS_REDIRECTION_MIN:
+        raise OSError(f"Firewall auth HTTP proxy CONNECT failed with status {status}")
+
+
+async def _open_stream(plan: _ConnectionPlan) -> _ConnectedStream:
+    addresses = await _resolve_addresses(plan.connect_host, plan.connect_port)
+    stream = await _open_connected_stream(addresses)
+    try:
+        if plan.use_proxy_tunnel:
+            await _establish_proxy_tunnel(stream.writer, stream.reader, plan)
+        if plan.origin_scheme == "https":
+            await stream.writer.start_tls(
+                _get_https_context(),
+                server_hostname=plan.origin_host,
+            )
+    except BaseException:
+        _abort_stream(stream)
+        raise
+    return stream
+
+
+def _request_headers(
+    req: urllib.request.Request,
+    plan: _ConnectionPlan,
+    body: bytes,
+) -> list[tuple[bytes, bytes]]:
+    excluded_headers = {"connection", "content-length", "host", "proxy-authorization"}
+    headers = [
+        (name.encode("ascii"), value.encode("latin-1"))
+        for name, value in req.header_items()
+        if name.lower() not in excluded_headers
+    ]
+    headers.extend(
+        (
+            (b"Host", plan.origin_authority.encode("ascii")),
+            (b"Content-Length", str(len(body)).encode("ascii")),
+            (b"Connection", b"close"),
+        )
+    )
+    if plan.proxy_authorization is not None and not plan.use_proxy_tunnel:
+        headers.append((b"Proxy-Authorization", plan.proxy_authorization.encode("latin-1")))
+    return headers
+
+
+def _response_headers(event: h11.Response | h11.InformationalResponse) -> Message:
+    headers = Message()
+    for name, value in event.headers:
+        headers.add_header(name.decode("ascii"), value.decode("latin-1"))
+    return headers
+
+
+async def _read_http_response(
+    reader: asyncio.StreamReader,
+    connection: h11.Connection,
+) -> _HttpResponse:
+    response_event: h11.Response | h11.InformationalResponse | None = None
+    body = bytearray()
+    while True:
+        event = connection.next_event()
+        if event is h11.NEED_DATA:
+            connection.receive_data(await reader.read(64 * 1024))
+            continue
+        if event is h11.PAUSED:
+            raise h11.RemoteProtocolError("Unexpected HTTP protocol switch")
+        if isinstance(event, h11.InformationalResponse):
+            if event.status_code == _HTTP_STATUS_SWITCHING_PROTOCOLS:
+                return _HttpResponse(
+                    event.status_code,
+                    event.reason.decode("latin-1"),
+                    _response_headers(event),
+                    b"",
+                )
+            continue
+        if isinstance(event, h11.Response):
+            response_event = event
+            continue
+        if isinstance(event, h11.Data):
+            if response_event is None:
+                raise h11.RemoteProtocolError("Received HTTP response body before headers")
+            if len(body) + len(event.data) > MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES:
+                raise FirewallAuthResponseTooLargeError("Firewall auth response body too large")
+            body.extend(event.data)
+            continue
+        if isinstance(event, h11.EndOfMessage):
+            if response_event is None:
+                raise h11.RemoteProtocolError("Received HTTP response without headers")
+            return _HttpResponse(
+                response_event.status_code,
+                response_event.reason.decode("latin-1"),
+                _response_headers(response_event),
+                bytes(body),
+            )
+        if isinstance(event, h11.ConnectionClosed):
+            raise h11.RemoteProtocolError("HTTP connection closed before response completed")
+        raise h11.RemoteProtocolError("Unexpected HTTP response event")
+
+
+async def _perform_http_request(
+    req: urllib.request.Request,
+    plan: _ConnectionPlan,
+    body: bytes,
+) -> _HttpResponse:
+    stream = await _open_stream(plan)
+    connection = h11.Connection(
+        h11.CLIENT,
+        max_incomplete_event_size=_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES,
+    )
+    try:
+        stream.writer.write(
+            connection.send(
+                h11.Request(
+                    method=req.get_method(),
+                    target=plan.request_target,
+                    headers=_request_headers(req, plan, body),
+                )
+            )
+        )
+        stream.writer.write(connection.send(h11.Data(data=body)))
+        stream.writer.write(connection.send(h11.EndOfMessage()))
+        await stream.writer.drain()
+        response = await _read_http_response(stream.reader, connection)
+        stream.writer.close()
+        with suppress(OSError):
+            await stream.writer.wait_closed()
+        stream.socket.close()
+        return response
+    except BaseException:
+        _abort_stream(stream)
+        raise
 
 
 def _firewall_auth_api_error_from_envelope(
@@ -196,15 +624,30 @@ def _parse_optional_string(decoded: dict[object, object], field_name: str) -> st
     return value
 
 
-def _parse_optional_string_list(decoded: dict[object, object], field_name: str) -> list[str]:
-    value = decoded.get(field_name)
-    if value is None:
-        return []
+def _parse_required_string_list(decoded: dict[object, object], field_name: str) -> list[str]:
+    if field_name not in decoded:
+        raise _malformed_firewall_auth_success(f"{field_name} is required")
+    value = decoded[field_name]
     if not isinstance(value, list):
         raise _malformed_firewall_auth_success(f"{field_name} must be an array")
     if not all(isinstance(item, str) for item in value):
         raise _malformed_firewall_auth_success(f"{field_name} values must be strings")
     return list(value)
+
+
+def _parse_expires_at(decoded: dict[object, object]) -> int | float | None:
+    if "expiresAt" not in decoded:
+        raise _malformed_firewall_auth_success("expiresAt is required")
+    value = decoded["expiresAt"]
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or (isinstance(value, float) and not math.isfinite(value))
+    ):
+        raise _malformed_firewall_auth_success("expiresAt must be a finite number or null")
+    return value
 
 
 def _parse_optional_aws_sigv4_credentials(
@@ -242,19 +685,30 @@ def _parse_firewall_auth_success(
         raise _malformed_firewall_auth_success("headers is required")
 
     headers = _parse_string_map(decoded_map["headers"], "headers")
-    resolved_secrets = _parse_optional_string_list(decoded_map, "resolvedSecrets")
-    refreshed_connectors = _parse_optional_string_list(decoded_map, "refreshedConnectors")
-    refreshed_secrets = _parse_optional_string_list(decoded_map, "refreshedSecrets")
+    expires_at = _parse_expires_at(decoded_map)
+    resolved_secrets = _parse_required_string_list(decoded_map, "resolvedSecrets")
+    refreshed_connectors = _parse_required_string_list(decoded_map, "refreshedConnectors")
+    refreshed_secrets = _parse_required_string_list(decoded_map, "refreshedSecrets")
     base = _parse_optional_string(decoded_map, "base")
     query = _parse_optional_string_map(decoded_map, "query")
     aws_sigv4 = _parse_optional_aws_sigv4_credentials(decoded_map)
 
-    if set(headers) != set(request.auth_headers):
+    # The API owns required-versus-optional credential semantics. Both builtin
+    # and custom auth may omit entries backed by unavailable optional fields,
+    # but the API must never introduce an entry the matched firewall did not
+    # define.
+    configured_header_names = set(request.auth_headers)
+    resolved_header_names = set(headers)
+    configured_query_names = set(request.auth_query or {})
+    resolved_query_names = set(query or {})
+    if not resolved_header_names.issubset(configured_header_names):
         raise _malformed_firewall_auth_success(
-            "headers must match the configured auth header names"
+            "headers must not contain unconfigured auth header names"
         )
-    if set(query or {}) != set(request.auth_query or {}):
-        raise _malformed_firewall_auth_success("query must match the configured auth query names")
+    if not resolved_query_names.issubset(configured_query_names):
+        raise _malformed_firewall_auth_success(
+            "query must not contain unconfigured auth query names"
+        )
     if (base is not None) != (request.auth_base is not None):
         raise _malformed_firewall_auth_success("base presence must match the configured auth base")
     if (aws_sigv4 is not None) != (request.auth_aws_sigv4 is not None):
@@ -280,57 +734,42 @@ def _parse_firewall_auth_success(
     )
     return FirewallAuthSuccess(
         payload=payload,
-        expires_at=decoded_map.get("expiresAt"),
+        expires_at=expires_at,
         refreshed_connectors=refreshed_connectors,
         refreshed_secrets=refreshed_secrets,
     )
 
 
-def _fetch_firewall_headers_sync(
-    request: FirewallAuthRequest,
-    api_url: str,
-    *,
-    force_refresh: bool = False,
-) -> FirewallAuthSuccess:
-    """Synchronous helper — runs in a thread to avoid blocking the event loop.
-
-    api_url is resolved by the async caller (fetch_firewall_headers) while
-    still on the event loop, so this function never touches ctx.options.
-    """
-    url = f"{api_url}/api/webhooks/agent/firewall/auth"
-    data = json.dumps(request.to_body(force_refresh=force_refresh)).encode()
-    req = platform_api.make_api_request(url, data, request.sandbox_token)
+def _raise_firewall_auth_http_error(response: _HttpResponse, url: str) -> None:
+    error = urllib.error.HTTPError(
+        url,
+        response.status,
+        response.reason,
+        response.headers,
+        io.BytesIO(response.body),
+    )
     try:
-        # nosemgrep: dynamic-urllib-use-detected
-        with _opener.open(req, timeout=10) as resp:
-            decoded: object = json.loads(_read_firewall_auth_response_body(resp))
-            return _parse_firewall_auth_success(decoded, request)
-    except urllib.error.HTTPError as e:
-        # HTTPError wraps an open socket; `with e` closes on every exit
-        # path to avoid FD exhaustion under sustained cache-miss load (#10475).
-        with e:
-            try:
-                error_body = json.loads(_read_firewall_auth_response_body(e))
-            except (UnicodeDecodeError, json.JSONDecodeError, OSError):
-                raise e from None
-            if not isinstance(error_body, dict):
-                raise e from None
-            error_info = error_body.get("error")
-            if not isinstance(error_info, dict):
-                raise e from None
-            error_message = error_info.get("message")
-            if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
-                raise ConnectorNotConfiguredError(
-                    error_message if isinstance(error_message, str) else "Connector not configured",
-                ) from None
-            if error_info.get("code") == "INSUFFICIENT_CREDITS":
-                raise InsufficientCreditsError(
-                    error_message if isinstance(error_message, str) else "Insufficient credits",
-                ) from None
-            api_error = _firewall_auth_api_error_from_envelope(e.code, error_info)
-            if api_error is None:
-                raise e from None
-            raise api_error from None
+        error_body: object = json.loads(response.body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise error from None
+    if not isinstance(error_body, dict):
+        raise error from None
+    error_info = error_body.get("error")
+    if not isinstance(error_info, dict):
+        raise error from None
+    error_message = error_info.get("message")
+    if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
+        raise ConnectorNotConfiguredError(
+            error_message if isinstance(error_message, str) else "Connector not configured",
+        ) from None
+    if error_info.get("code") == "INSUFFICIENT_CREDITS":
+        raise InsufficientCreditsError(
+            error_message if isinstance(error_message, str) else "Insufficient credits",
+        ) from None
+    api_error = _firewall_auth_api_error_from_envelope(response.status, error_info)
+    if api_error is None:
+        raise error from None
+    raise api_error from None
 
 
 async def fetch_firewall_headers(
@@ -358,12 +797,28 @@ async def fetch_firewall_headers(
     When force_refresh is True, the endpoint refreshes access tokens regardless
     of DB tokenExpiresAt — used after the upstream returns 401 (#9860).
 
-    Uses asyncio.to_thread to avoid blocking mitmproxy's event loop.
+    One monotonic deadline covers cancellable DNS, connect, TLS, request write,
+    response headers, and the bounded response body.
     """
     api_url = platform_api.get_api_url()
-    return await asyncio.to_thread(
-        _fetch_firewall_headers_sync,
-        request,
-        api_url,
-        force_refresh=force_refresh,
-    )
+    url = f"{api_url}/api/webhooks/agent/firewall/auth"
+    body = json.dumps(request.to_body(force_refresh=force_refresh)).encode()
+    req = platform_api.make_api_request(url, body, request.sandbox_token)
+    plan = _build_connection_plan(req)
+    timeout = asyncio.timeout(FIREWALL_AUTH_FETCH_DEADLINE_SECONDS)
+    try:
+        async with timeout:
+            response = await _perform_http_request(req, plan, body)
+    except TimeoutError:
+        if timeout.expired():
+            raise FirewallAuthDeadlineExceededError(
+                "Firewall auth fetch deadline exceeded"
+            ) from None
+        raise
+    except h11.ProtocolError:
+        raise ValueError("Firewall auth HTTP protocol error") from None
+
+    if not _HTTP_STATUS_SUCCESS_MIN <= response.status < _HTTP_STATUS_REDIRECTION_MIN:
+        _raise_firewall_auth_http_error(response, url)
+    decoded: object = json.loads(response.body)
+    return _parse_firewall_auth_success(decoded, request)

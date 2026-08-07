@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 
 import { accept } from "../../../lib/accept.ts";
+import { i18n } from "../../../i18n/index.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
@@ -169,7 +170,9 @@ function createClaudeCodeRunFlow$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       if (!started) {
         set(ctx.internalFlowState$, {
           status: "error",
-          message: "Claude Code connection failed. Start again to retry.",
+          message: i18n.t(($) => {
+            return $.settings.models.deviceAuth.claude.error;
+          }),
         });
         return false;
       }
@@ -245,7 +248,9 @@ function createClaudeCodeOpenApprovalPage$(
       approvalOpened: opened || latest.approvalOpened,
       errorMessage: opened
         ? null
-        : "The approval page could not be opened. Use the link manually and paste the code here.",
+        : i18n.t(($) => {
+            return $.settings.models.deviceAuth.claude.approvalOpenError;
+          }),
     });
     return opened;
   });
@@ -277,15 +282,18 @@ function createClaudeCodeSubmit$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       if (current.expiresAtMs <= now()) {
         set(ctx.internalFlowState$, {
           status: "expired",
-          message:
-            "Claude Code connection session expired. Start again to retry.",
+          message: i18n.t(($) => {
+            return $.settings.models.deviceAuth.claude.expired;
+          }),
         });
         return false;
       }
       if (!current.authorizationCode.trim()) {
         set(ctx.internalFlowState$, {
           ...current,
-          errorMessage: "Paste the Claude Code authorization code to continue.",
+          errorMessage: i18n.t(($) => {
+            return $.settings.models.deviceAuth.claude.codeRequired;
+          }),
         });
         return false;
       }
@@ -312,7 +320,11 @@ function createClaudeCodeSubmit$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       }
 
       set(ctx.reloadProviders$);
-      toast.success("Claude Code connected");
+      toast.success(
+        i18n.t(($) => {
+          return $.settings.models.deviceAuth.claude.connectedToast;
+        }),
+      );
       set(ctx.internalDialogState$, createInitialDialogState());
       set(ctx.internalFlowState$, createIdleFlowState());
       return true;

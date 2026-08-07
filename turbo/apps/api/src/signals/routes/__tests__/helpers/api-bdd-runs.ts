@@ -8,10 +8,9 @@ import {
   cliAuthTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth";
 import {
-  composesMainContract,
+  agentComposeApiContentSchema,
   type ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
-import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import {
@@ -32,6 +31,8 @@ import {
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
+  runnersActiveInputsContract,
+  runnersConnectorRuntimeSyncContract,
   runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
@@ -41,10 +42,10 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import {
   zeroRunsCancelContract,
+  zeroRunCreateBodySchema,
   zeroRunContextContract,
   zeroRunRunnerContract,
   zeroRunsByIdContract,
-  zeroRunsMainContract,
   zeroRunsQueueContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -54,15 +55,17 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
+import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
+import {
+  createDirectRunFixture,
+  listAgentRunsFixture,
+  type DirectRunFixtureRequest,
+} from "../../../../test-fixtures/agent-runs";
 import {
   generateSandboxToken,
   signSandboxJwtForTests,
 } from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
-import { agentComposesReadRoutes } from "../../agent-composes-read";
-import { agentComposesRoutes } from "../../agent-composes";
-import { agentRunsCreateRoutes } from "../../agent-runs-create";
-import { agentRunsReadRoutes } from "../../agent-runs-read";
 import { cliAuthRoutes } from "../../cli-auth";
 import { cronAggregateInsightsRoutes } from "../../cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "../../cron-aggregate-usage";
@@ -78,20 +81,36 @@ import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroRunDetailRoutes } from "../../zero-run-detail";
 import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
 import { zeroRunsRoutes } from "../../zero-runs";
+import {
+  zeroRunFixtureContract,
+  zeroRunFixtureRoutes,
+} from "../../test-zero-run-fixture";
 import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
-type ZeroRunRequest = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
-type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
-type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
+type ZeroRunRequest = z.infer<typeof zeroRunCreateBodySchema>;
+type DirectRunRequest = DirectRunFixtureRequest;
+interface RunsListQuery {
+  readonly status?: string;
+  readonly agent?: string;
+  readonly since?: string;
+  readonly until?: string;
+  readonly limit?: number;
+}
 type RunnerJobClaimRequest = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
 >;
-type ComposeContent = z.infer<
-  (typeof composesMainContract.create)["body"]
->["content"];
+type RunnerNetworkPolicyRefreshRequest = z.input<
+  (typeof runnersNetworkPolicyRefreshContract.refresh)["body"]
+>;
+type RunnerNetworkPolicyRefreshStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
+type RunnerConnectorRuntimeSyncRequest = z.input<
+  (typeof runnersConnectorRuntimeSyncContract.sync)["body"]
+>;
+type RunnerConnectorRuntimeSyncStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
+type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 type OrgModelPolicyRequest = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
 >;
@@ -141,21 +160,18 @@ const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 
 const runRoutes = [
   ...cliAuthRoutes,
-  ...agentComposesRoutes,
-  ...agentComposesReadRoutes,
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronTelegramCleanupRoutes,
   ...runnersRoutes,
-  ...agentRunsCreateRoutes,
-  ...agentRunsReadRoutes,
   ...webhooksStripeRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroRunDetailRoutes,
+  ...zeroRunFixtureRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
   ...zeroAgentsRoutes,
@@ -233,7 +249,8 @@ function runnerHeartbeatBody(
     readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
     readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
     readonly runningCount?: RunnerHeartbeatBody["runningCount"];
-    readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
+    readonly heldSandboxStates?: RunnerHeartbeatBody["heldSandboxStates"];
+    readonly heldWorkspaceStates?: RunnerHeartbeatBody["heldWorkspaceStates"];
     readonly mode?: RunnerHeartbeatBody["mode"];
   } = {},
 ): RunnerHeartbeatBody {
@@ -250,16 +267,21 @@ function runnerHeartbeatBody(
     allocatedMemoryMb: args.allocatedMemoryMb ?? 0,
     runningCount: args.runningCount ?? 0,
     admittableProfiles: args.admittableProfiles ?? ["vm0/default"],
-    heldSessionStates: args.heldSessionStates ?? [],
+    heldSandboxStates: args.heldSandboxStates ?? [],
+    heldWorkspaceStates: args.heldWorkspaceStates ?? [],
     mode: args.mode ?? "running",
   };
 }
 
 export function createRunsApi(context: TestContext) {
+  const defaultRunnerIdentity = {
+    runnerId: randomUUID(),
+    heartbeatGeneration: 1,
+  };
   const applyUserPermissionGrantRequestBody = (
     body: {
       readonly agentId: string;
-      readonly connectorRef: string;
+      readonly connectorSlug: string;
     } & ApplyUserPermissionGrant,
   ): ApplyUserPermissionGrantsRequest => {
     const grant: ApplyUserPermissionGrant =
@@ -275,13 +297,53 @@ export function createRunsApi(context: TestContext) {
           };
     return {
       agentId: body.agentId,
-      connectorRef: body.connectorRef,
+      connectorSlug: body.connectorSlug,
       mode: "patch",
       grants: [grant],
     };
   };
 
+  async function createDirectRunThroughService(
+    actor: ApiTestUser | null,
+    body: DirectRunRequest,
+  ) {
+    if (!actor?.orgId) {
+      return {
+        status: 401 as const,
+        body: {
+          error: {
+            message: "Not authenticated",
+            code: "UNAUTHORIZED" as const,
+          },
+        },
+      };
+    }
+    return await createDirectRunFixture({
+      userId: actor.userId,
+      orgId: actor.orgId,
+      body,
+      signal: context.signal,
+    });
+  }
+
   return {
+    async requestRemovedZeroRunCreation(actor: ApiTestUser): Promise<number> {
+      const { authorization } = authenticate(context, actor);
+      const app = createAppWithRoutes({
+        signal: context.signal,
+        routes: runRoutes,
+      });
+      const response = await app.request("/api/zero/runs", {
+        method: "POST",
+        headers: {
+          ...(authorization === undefined ? {} : { authorization }),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ agentId: randomUUID(), prompt: "removed" }),
+      });
+      return response.status;
+    },
+
     configureRunnerGroup(): string {
       const group = `vm0/bdd-${randomUUID().slice(0, 8)}`;
       mockOptionalEnv("RUNNER_DEFAULT_GROUP", group);
@@ -421,7 +483,7 @@ export function createRunsApi(context: TestContext) {
 
     async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
       const response = await accept(
-        runApp(context)(zeroRunsMainContract).create({
+        runApp(context)(zeroRunFixtureContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -435,45 +497,142 @@ export function createRunsApi(context: TestContext) {
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(true),
           params: { id: runId },
-          body,
+          body: { runnerIdentity: defaultRunnerIdentity, ...body },
         }),
         [200],
       );
       return response.body;
     },
 
-    async refreshRunnerNetworkPolicy(runId: string, connectorRef: string) {
+    async listRunnerActiveInputs(sandboxToken: string, runId: string) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).list({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId },
+        }),
+        [200],
+      );
+      return response.body.eventIds;
+    },
+
+    async claimRunnerActiveInputs(
+      sandboxToken: string,
+      runId: string,
+      eventIds: string[],
+    ) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).claim({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId },
+          body: { eventIds },
+        }),
+        [200],
+      );
+      return response.body.prompt;
+    },
+
+    async claimRunnerActiveInputsConflict(
+      sandboxToken: string,
+      runId: string,
+      eventIds: string[],
+    ) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).claim({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId },
+          body: { eventIds },
+        }),
+        [409],
+      );
+      return response.body;
+    },
+
+    async refreshRunnerNetworkPolicy(runId: string, connectorSlug: string) {
       const response = await accept(
         runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
           headers: runnerHeaders(true),
           params: { runId },
-          body: { connectorRefs: [connectorRef] },
+          body: {
+            connectorSlugs: [connectorSlug],
+          },
         }),
         [200],
       );
       const [refresh] = response.body.refreshes;
       if (!refresh) {
         throw new Error(
-          `Expected refreshed network policy for ${connectorRef}`,
+          `Expected refreshed network policy for ${connectorSlug}`,
         );
       }
       return refresh;
     },
 
-    async requestRefreshRunnerNetworkPolicyAs(
+    async requestRefreshRunnerNetworkPolicy<
+      TStatus extends RunnerNetworkPolicyRefreshStatus,
+    >(
+      runId: string,
+      body: RunnerNetworkPolicyRefreshRequest,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
+          headers: runnerHeaders(true),
+          params: { runId },
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestRefreshRunnerNetworkPolicyAs<
+      TStatus extends RunnerNetworkPolicyRefreshStatus,
+    >(
       authorization: string | undefined,
       runId: string,
-      connectorRef: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      body: RunnerNetworkPolicyRefreshRequest,
+      statuses: readonly TStatus[],
     ) {
       return await accept(
         runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
           headers: authorization === undefined ? {} : { authorization },
           params: { runId },
-          body: { connectorRefs: [connectorRef] },
+          body,
         }),
         statuses,
       );
+    },
+
+    async requestSyncConnectorRuntimeAs<
+      TStatus extends RunnerConnectorRuntimeSyncStatus,
+    >(
+      authorization: string | undefined,
+      runId: string,
+      body: RunnerConnectorRuntimeSyncRequest,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        runApp(context)(runnersConnectorRuntimeSyncContract).sync({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { runId },
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async syncConnectorRuntime(
+      runId: string,
+      body: RunnerConnectorRuntimeSyncRequest,
+    ) {
+      const response = await accept(
+        runApp(context)(runnersConnectorRuntimeSyncContract).sync({
+          headers: runnerHeaders(true),
+          params: { runId },
+          body,
+        }),
+        [200],
+      );
+      return response.body.results;
     },
 
     async createCliToken(actor: ApiTestUser): Promise<{
@@ -600,10 +759,14 @@ export function createRunsApi(context: TestContext) {
       readonly name: string;
       readonly versionId: string;
     }> {
+      if (!actor.orgId) {
+        throw new Error("Compose fixtures require an org-scoped actor");
+      }
       const response = await accept(
-        runApp(context)(composesMainContract).create({
-          headers: authenticate(context, actor),
-          body: { content },
+        createAgentComposeFixture({
+          actor: { userId: actor.userId, orgId: actor.orgId },
+          content,
+          signal: context.signal,
         }),
         [200, 201],
       );
@@ -616,10 +779,7 @@ export function createRunsApi(context: TestContext) {
 
     async createDirectRun(actor: ApiTestUser, body: DirectRunRequest) {
       const response = await accept(
-        runApp(context)(runsMainContract).create({
-          headers: authenticate(context, actor),
-          body,
-        }),
+        createDirectRunThroughService(actor, body),
         [201],
       );
       return response.body;
@@ -630,31 +790,33 @@ export function createRunsApi(context: TestContext) {
       body: DirectRunRequest,
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
-      return await accept(
-        runApp(context)(runsMainContract).create({
-          headers: authenticate(context, actor),
-          body,
-        }),
-        statuses,
-      );
+      return await accept(createDirectRunThroughService(actor, body), statuses);
     },
 
     async listAgentRuns(actor: ApiTestUser, query: RunsListQuery) {
-      const response = await accept(
-        runApp(context)(runsMainContract).list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        [200],
-      );
-      return response.body;
+      if (!actor.orgId) {
+        throw new Error("Agent run list service requires an organization");
+      }
+      const result = await listAgentRunsFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
+        status: query.status,
+        agent: query.agent,
+        since: query.since,
+        until: query.until,
+        limit: query.limit,
+      });
+      if (result.kind === "bad-request") {
+        throw new Error(result.message);
+      }
+      return result.body;
     },
 
     async applyUserPermissionGrant(
       actor: ApiTestUser,
       body: {
         readonly agentId: string;
-        readonly connectorRef: string;
+        readonly connectorSlug: string;
       } & ApplyUserPermissionGrant,
     ): Promise<UserPermissionGrantResponse> {
       const response = await accept(
@@ -675,7 +837,7 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser,
       body: {
         readonly agentId: string;
-        readonly connectorRef: string;
+        readonly connectorSlug: string;
       } & ApplyUserPermissionGrant,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
@@ -692,7 +854,7 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser,
       body: {
         readonly agentId: string;
-        readonly connectorRef: string;
+        readonly connectorSlug: string;
         readonly grants: readonly ApplyUserPermissionGrant[];
       },
     ): Promise<readonly UserPermissionGrantResponse[]> {
@@ -701,7 +863,7 @@ export function createRunsApi(context: TestContext) {
           headers: authenticate(context, actor),
           body: {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorSlug: body.connectorSlug,
             mode: "replace",
             grants: [...body.grants],
           },
@@ -726,23 +888,23 @@ export function createRunsApi(context: TestContext) {
     },
 
     /**
-     * Replaces the caller's enabled connector types for an agent through
+     * Replaces the caller's enabled connector slugs for an agent through
      * PUT /api/zero/agents/:id/user-connectors and returns the visible set.
      */
     async enableAgentConnectors(
       actor: ApiTestUser,
       agentId: string,
-      connectorTypes: readonly string[],
+      connectorSlugs: readonly string[],
     ): Promise<readonly string[]> {
       const response = await accept(
         runApp(context)(zeroUserConnectorsContract).update({
           headers: authenticate(context, actor),
           params: { id: agentId },
-          body: { enabledTypes: [...connectorTypes] },
+          body: { enabledConnectorSlugs: [...connectorSlugs] },
         }),
         [200],
       );
-      return response.body.enabledTypes;
+      return response.body.enabledConnectorSlugs;
     },
 
     async listOrgModelProviders(
@@ -845,7 +1007,7 @@ export function createRunsApi(context: TestContext) {
       extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
-        runApp(context)(zeroRunsMainContract).create({
+        runApp(context)(zeroRunFixtureContract).create({
           headers: {
             ...authenticate(context, actor),
             ...extraHeaders,
@@ -862,27 +1024,9 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsMainContract).create({
+        runApp(context)(zeroRunFixtureContract).create({
           headers: authenticate(context, actor),
           body: body as ZeroRunRequest,
-        }),
-        statuses,
-      );
-    },
-
-    /**
-     * Creates a zero run with a raw bearer credential (run-scoped zero token
-     * or sandbox token taken from a runner claim) instead of a Clerk session.
-     */
-    async requestCreateRunAs(
-      authorization: string,
-      body: ZeroRunRequest,
-      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
-    ) {
-      return await accept(
-        runApp(context)(zeroRunsMainContract).create({
-          headers: { authorization },
-          body,
         }),
         statuses,
       );
@@ -976,6 +1120,20 @@ export function createRunsApi(context: TestContext) {
       );
     },
 
+    async requestCancelRunAs(
+      authorization: string,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        runApp(context)(zeroRunsCancelContract).cancel({
+          headers: { authorization },
+          params: { id: runId },
+        }),
+        statuses,
+      );
+    },
+
     async requestCancelRunWithSignal(
       actor: ApiTestUser,
       runId: string,
@@ -1017,7 +1175,8 @@ export function createRunsApi(context: TestContext) {
         readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
         readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
         readonly runningCount?: RunnerHeartbeatBody["runningCount"];
-        readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
+        readonly heldSandboxStates?: RunnerHeartbeatBody["heldSandboxStates"];
+        readonly heldWorkspaceStates?: RunnerHeartbeatBody["heldWorkspaceStates"];
         readonly mode?: RunnerHeartbeatBody["mode"];
       } = {},
     ) {
@@ -1095,7 +1254,7 @@ export function createRunsApi(context: TestContext) {
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
           params: { id: runId },
-          body,
+          body: { runnerIdentity: defaultRunnerIdentity, ...body },
         }),
         statuses,
       );

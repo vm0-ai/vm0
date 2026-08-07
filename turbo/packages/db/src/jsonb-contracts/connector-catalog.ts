@@ -1,4 +1,15 @@
-import type { ConnectorCatalogFilteredAuthMethod } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+import type {
+  ConnectorAuthMethodId,
+  ConnectorSlug,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorCatalogCompatibilityReason } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 
-export type ConnectorCatalogFilteredAuthMethods =
-  ConnectorCatalogFilteredAuthMethod[];
+export interface ConnectorCatalogCompatibilityFilteredAuthMethod {
+  readonly connectorSlug: ConnectorSlug;
+  readonly authMethodId: ConnectorAuthMethodId;
+  readonly reasons: readonly ConnectorCatalogCompatibilityReason[];
+}
+
+export interface ConnectorCatalogCompatibilityEvaluationPayload {
+  readonly filteredAuthMethods: readonly ConnectorCatalogCompatibilityFilteredAuthMethod[];
+}

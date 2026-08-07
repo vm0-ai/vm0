@@ -1,14 +1,12 @@
-//! Experimental Codex app-server execution backend.
-//!
-//! This module owns only the experimental app-server runtime path. Ordinary
-//! Codex execution continues to use `codex exec --json` unless the explicit
-//! guest env flag selects this backend.
+//! Codex app-server execution backend.
 
 use std::future::Future;
 use std::path::PathBuf;
 
 use serde_json::{Map, Value, json};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 
 use crate::env::Framework;
 use crate::error::AgentError;
@@ -21,15 +19,19 @@ use super::codex_app_server::{
 };
 use super::codex_app_server_events::{
     CodexOutputItemKind, CodexOutputItemStart, IGNORED_NOTIFICATION_METHODS,
-    codex_output_item_start, notification_to_codex_event,
+    codex_output_item_start, notification_thread_id, notification_to_codex_event,
 };
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
-    CliEventIngestor, CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus,
-    LOG_TAG, ParsedEventAction, command,
+    AgentExecutionDeadline, CliEventIngestor, CliExecutionControls, CliExecutionResult,
+    CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction,
+    codex_runtime_config,
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
+use guest_contracts::diagnostics::{
+    AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationDiagnostic, CliTerminationReason,
+};
 
 const TURN_NOTIFICATION_LABEL: &str = "turn notification";
 const API_TO_CODEX_OUTPUT_ITEM_STARTED: &str = "api_to_codex_output_item_started";
@@ -37,12 +39,16 @@ const API_TO_CODEX_AGENT_MESSAGE_ITEM_STARTED: &str = "api_to_codex_agent_messag
 
 struct NotificationIngestResult {
     emitted_thread_started: bool,
+    active_input_ready: bool,
+    terminal_exit_code: Option<i32>,
 }
 
+#[derive(Default)]
 struct PreparedNotificationIngest {
     event: Option<Value>,
     output_item_start: Option<CodexOutputItemStart>,
     emitted_thread_started: bool,
+    active_input_ready: bool,
     terminal_exit_code: Option<i32>,
 }
 
@@ -51,8 +57,8 @@ struct ThreadIdentity {
     canonical_id: String,
 }
 
-struct EventIngestSink<'a> {
-    ingestor: &'a mut CliEventIngestor,
+struct EventIngestSink<'a, 'startup> {
+    ingestor: &'a mut CliEventIngestor<'startup>,
     output_timing: &'a mut CodexOutputTiming,
     log_file: &'a mut tokio::fs::File,
     masker: &'a SecretMasker,
@@ -95,35 +101,76 @@ enum CodexRunEvent {
     ActiveInput(Option<ActiveInputFrame>),
 }
 
+enum AppServerRunOutcome {
+    Completed(Box<Result<CliExecutionResult, AgentError>>),
+    ExecutionTimedOut { timeout_secs: u64 },
+    UserCancelled,
+}
+
+async fn run_with_execution_deadline(
+    run: impl Future<Output = Result<CliExecutionResult, AgentError>>,
+    deadline: Option<AgentExecutionDeadline>,
+    user_cancellation: &CancellationToken,
+) -> AppServerRunOutcome {
+    tokio::pin!(run);
+
+    match deadline {
+        Some(deadline) => {
+            let deadline_sleep =
+                tokio::time::sleep_until(tokio::time::Instant::from_std(deadline.at));
+            tokio::pin!(deadline_sleep);
+            tokio::select! {
+                biased;
+                result = &mut run => AppServerRunOutcome::Completed(Box::new(result)),
+                () = user_cancellation.cancelled() => AppServerRunOutcome::UserCancelled,
+                () = &mut deadline_sleep => AppServerRunOutcome::ExecutionTimedOut {
+                    timeout_secs: deadline.timeout_secs,
+                },
+            }
+        }
+        None => {
+            tokio::select! {
+                biased;
+                result = &mut run => AppServerRunOutcome::Completed(Box::new(result)),
+                () = user_cancellation.cancelled() => AppServerRunOutcome::UserCancelled,
+            }
+        }
+    }
+}
+
 pub(super) async fn execute_codex_app_server_for_runtime(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
-    active_input: ActiveInputWriter,
+    controls: CliExecutionControls<'_>,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
     log_info!(LOG_TAG, "Starting codex app-server execution...");
 
     let should_send_events = http.has_api();
-    let event_delivery = EventDeliveryRuntime::start(
-        http.clone(),
-        runtime.event_error_flag.to_string(),
-        &runtime.run_id,
-    )?;
+    let event_delivery = EventDeliveryRuntime::start(http.clone(), &runtime.run_id)?;
 
     let run_result = run_codex_app_server(
         masker,
         &mut heartbeat_monitor,
         should_send_events,
         event_delivery.sender(),
-        active_input,
+        controls,
         runtime,
     )
     .await;
 
     match run_result {
+        Ok(mut result) if result.control_error.is_some() => {
+            let delivery_report = event_delivery.abort().await;
+            result.last_event_sequence = delivery_report.last_acknowledged_sequence;
+            result.event_delivery = delivery_report.diagnostic;
+            Ok(result)
+        }
         Ok(mut result) => {
-            result.last_event_sequence = event_delivery.finish().await?;
+            let delivery_report = event_delivery.finish().await?;
+            result.last_event_sequence = delivery_report.last_acknowledged_sequence;
+            result.event_delivery = delivery_report.diagnostic;
             Ok(result)
         }
         Err(error) => {
@@ -138,19 +185,25 @@ async fn run_codex_app_server(
     heartbeat_monitor: &mut HeartbeatMonitor,
     should_send_events: bool,
     event_tx: &EventDeliverySender,
-    mut active_input: ActiveInputWriter,
+    controls: CliExecutionControls<'_>,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
+    let CliExecutionControls {
+        mut active_input,
+        pi_standby: _,
+        user_cancellation,
+        codex_startup,
+    } = controls;
     let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
-    let mut ingestor = CliEventIngestor::new(runtime);
+    let mut ingestor = CliEventIngestor::new(runtime, codex_startup);
     let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
     let mut client = CodexAppServerClient::spawn(codex_app_server_config(runtime))
         .map_err(|error| app_server_error(masker, error))?;
     let mut heartbeat_done = false;
 
-    let run_result = async {
+    let run = async {
         race_with_heartbeat(
             client.initialize(),
             heartbeat_monitor,
@@ -168,6 +221,7 @@ async fn run_codex_app_server(
         let thread_identity = thread_identity_from_response(&thread_response)?;
         validate_resumed_thread_id(&thread_identity.canonical_id, resume_thread_id.as_deref())?;
         let mut thread_started_emitted = false;
+        let mut secondary_thread_notification_logged = false;
 
         while let Some(notification) = client.pop_notification() {
             let mut sink = EventIngestSink {
@@ -185,6 +239,7 @@ async fn run_codex_app_server(
                 &thread_identity.canonical_id,
                 "",
                 None,
+                &mut secondary_thread_notification_logged,
             )
             .await?;
             thread_started_emitted = thread_started_emitted || ingest_result.emitted_thread_started;
@@ -246,19 +301,18 @@ async fn run_codex_app_server(
                         thread_id: &thread_identity.canonical_id,
                         turn_id: &turn_id,
                     };
-                    let notification_ready_for_active_input =
-                        is_active_input_ready_notification(&notification, &turn_id);
-                    let terminal_exit_code = ingest_run_notification(
+                    let ingest_result = ingest_run_notification(
                         notification,
                         &mut sink,
                         &active_input,
                         &mut thread_started_emitted,
                         &notification_scope,
+                        &mut secondary_thread_notification_logged,
                     )
                     .await?;
                     turn_started_observed =
-                        turn_started_observed || notification_ready_for_active_input;
-                    if let Some(exit_code) = terminal_exit_code {
+                        turn_started_observed || ingest_result.active_input_ready;
+                    if let Some(exit_code) = ingest_result.terminal_exit_code {
                         active_input.close_terminal();
                         break exit_code;
                     }
@@ -296,6 +350,7 @@ async fn run_codex_app_server(
                         &active_input,
                         &mut thread_started_emitted,
                         &notification_scope,
+                        &mut secondary_thread_notification_logged,
                     )
                     .await?
                     {
@@ -316,40 +371,100 @@ async fn run_codex_app_server(
             cli_observed_exit: None,
             stderr_lines: Vec::new(),
             last_event_sequence: None,
+            event_delivery: None,
             claude_result: None,
             post_result_cleanup_result: None,
             failure_diagnostic: ingestor.failure_diagnostic(),
             control_error: None,
             cli_termination: None,
+            completion_disposition: super::CliCompletionDisposition::Terminal,
         })
-    }
-    .await;
+    };
+    let run_outcome =
+        run_with_execution_deadline(run, runtime.agent_execution_deadline, &user_cancellation)
+            .await;
     active_input.close_terminal();
 
-    let shutdown_result = if run_result.is_ok() {
-        client.shutdown().await
-    } else {
-        client.terminate().await
+    let shutdown_result = match &run_outcome {
+        AppServerRunOutcome::Completed(result) if result.is_ok() => client.shutdown().await,
+        AppServerRunOutcome::Completed(_)
+        | AppServerRunOutcome::ExecutionTimedOut { .. }
+        | AppServerRunOutcome::UserCancelled => client.terminate().await,
     };
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
+    // Complete the final event-log write after the child is stopped and
+    // before callers observe the finished app-server execution.
+    let _ = log_file.flush().await;
 
-    match (run_result, shutdown_result) {
-        (Ok(mut result), Ok(())) => {
-            result.stderr_lines = stderr_lines;
-            Ok(result)
+    match run_outcome {
+        AppServerRunOutcome::Completed(run_result) => match (*run_result, shutdown_result) {
+            (Ok(mut result), Ok(())) => {
+                result.stderr_lines = stderr_lines;
+                Ok(result)
+            }
+            (Ok(_result), Err(error)) => Err(AgentError::Execution(format!(
+                "codex app-server shutdown failed: {}",
+                masker.mask_string(&error.to_string())
+            ))),
+            (Err(error), Ok(())) => Err(error),
+            (Err(error), Err(shutdown_error)) => {
+                let shutdown_error = masker.mask_string(&shutdown_error.to_string());
+                log_warn!(
+                    LOG_TAG,
+                    "codex app-server shutdown failed after run error: {shutdown_error}"
+                );
+                Err(error)
+            }
+        },
+        AppServerRunOutcome::ExecutionTimedOut { timeout_secs } => {
+            if let Err(shutdown_error) = shutdown_result {
+                let shutdown_error = masker.mask_string(&shutdown_error.to_string());
+                log_warn!(
+                    LOG_TAG,
+                    "codex app-server termination failed after execution timeout: {shutdown_error}"
+                );
+            }
+            Ok(CliExecutionResult {
+                exit_code: AGENT_EXECUTION_TIMEOUT_EXIT_CODE,
+                cli_observed_exit: None,
+                stderr_lines,
+                last_event_sequence: None,
+                event_delivery: None,
+                claude_result: None,
+                post_result_cleanup_result: None,
+                failure_diagnostic: ingestor.failure_diagnostic(),
+                control_error: Some(AgentError::Execution(format!(
+                    "Agent execution timed out after {timeout_secs} seconds"
+                ))),
+                cli_termination: Some(CliTerminationDiagnostic::new(
+                    CliTerminationReason::ExecutionTimeout,
+                )),
+                completion_disposition: super::CliCompletionDisposition::Terminal,
+            })
         }
-        (Ok(_result), Err(error)) => Err(AgentError::Execution(format!(
-            "codex app-server shutdown failed: {}",
-            masker.mask_string(&error.to_string())
-        ))),
-        (Err(error), Ok(())) => Err(error),
-        (Err(error), Err(shutdown_error)) => {
-            let shutdown_error = masker.mask_string(&shutdown_error.to_string());
-            log_warn!(
-                LOG_TAG,
-                "codex app-server shutdown failed after run error: {shutdown_error}"
-            );
-            Err(error)
+        AppServerRunOutcome::UserCancelled => {
+            if let Err(shutdown_error) = shutdown_result {
+                let shutdown_error = masker.mask_string(&shutdown_error.to_string());
+                log_warn!(
+                    LOG_TAG,
+                    "codex app-server termination failed after user cancellation: {shutdown_error}"
+                );
+            }
+            Ok(CliExecutionResult {
+                exit_code: 1,
+                cli_observed_exit: None,
+                stderr_lines,
+                last_event_sequence: None,
+                event_delivery: None,
+                claude_result: None,
+                post_result_cleanup_result: None,
+                failure_diagnostic: ingestor.failure_diagnostic(),
+                control_error: Some(AgentError::Execution("Run cancelled by user".to_string())),
+                cli_termination: Some(CliTerminationDiagnostic::new(
+                    CliTerminationReason::UserCancellation,
+                )),
+                completion_disposition: super::CliCompletionDisposition::Terminal,
+            })
         }
     }
 }
@@ -373,9 +488,9 @@ fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConf
         .with_config_overrides(config_overrides)
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
-    if runtime.use_mock_codex
-        && let Ok(scenario) = std::env::var("MOCK_CODEX_APP_SERVER_SCENARIO")
-    {
+    if runtime.use_mock_codex {
+        let scenario = std::env::var("MOCK_CODEX_APP_SERVER_SCENARIO")
+            .unwrap_or_else(|_| "runtime-turn-complete".to_string());
         config = config.with_env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
     }
     if runtime.codex_oauth_mode {
@@ -494,7 +609,7 @@ fn turn_start_params(thread_id: &str, runtime: &CliRuntimeConfig<'_>) -> Value {
         );
     }
     if let Some(effort) =
-        command::default_codex_reasoning_effort_for_model(runtime.openai_model.as_ref())
+        codex_runtime_config::default_reasoning_effort_for_model(runtime.openai_model.as_ref())
     {
         params.insert("effort".to_string(), Value::String(effort.to_string()));
     }
@@ -541,16 +656,6 @@ fn can_read_active_input(active_input_open: bool, active_input_ready: bool) -> b
     active_input_open && active_input_ready
 }
 
-fn is_active_input_ready_notification(notification: &ServerNotification, turn_id: &str) -> bool {
-    notification.method == "turn/started"
-        && notification
-            .params
-            .as_ref()
-            .and_then(|params| params.pointer("/turn/id"))
-            .and_then(Value::as_str)
-            == Some(turn_id)
-}
-
 async fn steer_active_input(
     client: &mut CodexAppServerClient,
     active_input: &ActiveInputWriter,
@@ -565,8 +670,8 @@ async fn steer_active_input(
     let params = turn_steer_params(thread_id, turn_id, &frame);
     log_info!(
         LOG_TAG,
-        "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=attempt",
-        frame.message_id
+        "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=attempt",
+        frame.uuid
     );
     active_input.mark_writing(&frame.uuid);
     let result = race_with_heartbeat(
@@ -581,8 +686,8 @@ async fn steer_active_input(
             active_input.mark_written_without_replay(&frame.uuid);
             log_info!(
                 LOG_TAG,
-                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=active_turn_advanced",
-                frame.message_id
+                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=active_turn_advanced",
+                frame.uuid
             );
             Ok(())
         }
@@ -590,12 +695,12 @@ async fn steer_active_input(
             active_input.close_terminal();
             log_warn!(
                 LOG_TAG,
-                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=failed error={error}",
-                frame.message_id
+                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=failed error={error}",
+                frame.uuid
             );
             Err(AgentError::Execution(format!(
-                "codex app-server active input steer failed for message {}: {error}",
-                frame.message_id
+                "codex app-server active input steer failed for input {}: {error}",
+                frame.uuid
             )))
         }
     }
@@ -605,7 +710,7 @@ fn turn_steer_params(thread_id: &str, turn_id: &str, frame: &ActiveInputFrame) -
     json!({
         "threadId": thread_id,
         "expectedTurnId": turn_id,
-        "clientUserMessageId": frame.message_id.as_str(),
+        "clientUserMessageId": frame.uuid.as_str(),
         "input": [{
             "type": "text",
             "text": frame.text.as_str(),
@@ -634,10 +739,11 @@ async fn race_with_heartbeat<T>(
 
 async fn drain_queued_notifications(
     client: &mut CodexAppServerClient,
-    sink: &mut EventIngestSink<'_>,
+    sink: &mut EventIngestSink<'_, '_>,
     active_input: &ActiveInputWriter,
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
+    secondary_thread_notification_logged: &mut bool,
 ) -> Result<Option<i32>, AgentError> {
     let mut prepared_notifications = Vec::new();
     let mut prepared_thread_started_emitted = *thread_started_emitted;
@@ -647,6 +753,7 @@ async fn drain_queued_notifications(
             prepared_thread_started_emitted,
             scope.thread_id,
             scope.turn_id,
+            secondary_thread_notification_logged,
         )?;
         prepared_thread_started_emitted =
             prepared_thread_started_emitted || prepared.emitted_thread_started;
@@ -672,16 +779,18 @@ async fn drain_queued_notifications(
 
 async fn ingest_run_notification(
     notification: ServerNotification,
-    sink: &mut EventIngestSink<'_>,
+    sink: &mut EventIngestSink<'_, '_>,
     active_input: &ActiveInputWriter,
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
-) -> Result<Option<i32>, AgentError> {
+    secondary_thread_notification_logged: &mut bool,
+) -> Result<NotificationIngestResult, AgentError> {
     let prepared = prepare_notification_ingest(
         notification,
         *thread_started_emitted,
         scope.thread_id,
         scope.turn_id,
+        secondary_thread_notification_logged,
     )?;
     record_output_item_start(prepared.output_item_start.as_ref(), sink);
     // Close before any ingest await so the control path cannot accept input
@@ -689,12 +798,16 @@ async fn ingest_run_notification(
     if prepared.terminal_exit_code.is_some() {
         active_input.close_terminal();
     }
-    let terminal_exit_code = prepared.terminal_exit_code;
+    let result = NotificationIngestResult {
+        emitted_thread_started: prepared.emitted_thread_started,
+        active_input_ready: prepared.active_input_ready,
+        terminal_exit_code: prepared.terminal_exit_code,
+    };
     if let Some(event) = prepared.event {
         ingest_event(event, sink).await?;
     }
     *thread_started_emitted = *thread_started_emitted || prepared.emitted_thread_started;
-    Ok(terminal_exit_code)
+    Ok(result)
 }
 
 fn app_server_error(masker: &SecretMasker, error: impl std::fmt::Display) -> AgentError {
@@ -727,17 +840,19 @@ fn heartbeat_error(result: Result<HeartbeatStatus, oneshot::error::RecvError>) -
 
 async fn ingest_notification(
     notification: ServerNotification,
-    sink: &mut EventIngestSink<'_>,
+    sink: &mut EventIngestSink<'_, '_>,
     thread_started_emitted: bool,
     expected_thread_id: &str,
     active_turn_id: &str,
     terminal_active_input: Option<&ActiveInputWriter>,
+    secondary_thread_notification_logged: &mut bool,
 ) -> Result<NotificationIngestResult, AgentError> {
     let prepared = prepare_notification_ingest(
         notification,
         thread_started_emitted,
         expected_thread_id,
         active_turn_id,
+        secondary_thread_notification_logged,
     )?;
     record_output_item_start(prepared.output_item_start.as_ref(), sink);
     if prepared.terminal_exit_code.is_some()
@@ -745,12 +860,15 @@ async fn ingest_notification(
     {
         active_input.close_terminal();
     }
+    let result = NotificationIngestResult {
+        emitted_thread_started: prepared.emitted_thread_started,
+        active_input_ready: prepared.active_input_ready,
+        terminal_exit_code: prepared.terminal_exit_code,
+    };
     if let Some(event) = prepared.event {
         ingest_event(event, sink).await?;
     }
-    Ok(NotificationIngestResult {
-        emitted_thread_started: prepared.emitted_thread_started,
-    })
+    Ok(result)
 }
 
 fn prepare_notification_ingest(
@@ -758,7 +876,22 @@ fn prepare_notification_ingest(
     thread_started_emitted: bool,
     expected_thread_id: &str,
     active_turn_id: &str,
+    secondary_thread_notification_logged: &mut bool,
 ) -> Result<PreparedNotificationIngest, AgentError> {
+    if let Some(secondary_thread_id) =
+        secondary_notification_thread_id(&notification, expected_thread_id)
+    {
+        if !*secondary_thread_notification_logged {
+            log_info!(
+                LOG_TAG,
+                "Ignoring codex app-server notification for secondary thread: method={} thread_id={secondary_thread_id}",
+                notification.method
+            );
+            *secondary_thread_notification_logged = true;
+        }
+        return Ok(PreparedNotificationIngest::default());
+    }
+
     let output_item_start = codex_output_item_start(&notification)
         .map_err(|error| AgentError::Execution(error.to_string()))?;
     if let Some(start) = &output_item_start {
@@ -773,29 +906,37 @@ fn prepare_notification_ingest(
         .map_err(|error| AgentError::Execution(error.to_string()))?
     else {
         return Ok(PreparedNotificationIngest {
-            event: None,
             output_item_start,
-            emitted_thread_started: false,
-            terminal_exit_code: None,
+            ..PreparedNotificationIngest::default()
         });
     };
     validate_event_scope(&event, expected_thread_id, active_turn_id)?;
     if is_duplicate_thread_started(&event, thread_started_emitted, expected_thread_id) {
         return Ok(PreparedNotificationIngest {
-            event: None,
             output_item_start,
-            emitted_thread_started: false,
-            terminal_exit_code: None,
+            ..PreparedNotificationIngest::default()
         });
     }
     let emitted_thread_started = is_thread_started_event(&event, expected_thread_id);
+    let active_input_ready = is_turn_started_event(&event);
     let terminal_exit_code = terminal_exit_code(&event, expected_thread_id, active_turn_id);
     Ok(PreparedNotificationIngest {
         event: Some(event),
         output_item_start,
         emitted_thread_started,
+        active_input_ready,
         terminal_exit_code,
     })
+}
+
+fn secondary_notification_thread_id(
+    notification: &ServerNotification,
+    expected_canonical_thread_id: &str,
+) -> Option<String> {
+    let canonical_thread_id = guest_contracts::codex_thread_id::canonical_codex_thread_id(
+        notification_thread_id(notification)?,
+    )?;
+    (canonical_thread_id != expected_canonical_thread_id).then_some(canonical_thread_id)
 }
 
 fn validate_event_scope(
@@ -839,7 +980,10 @@ fn validate_scope(
     Ok(())
 }
 
-fn record_output_item_start(start: Option<&CodexOutputItemStart>, sink: &mut EventIngestSink<'_>) {
+fn record_output_item_start(
+    start: Option<&CodexOutputItemStart>,
+    sink: &mut EventIngestSink<'_, '_>,
+) {
     if let Some(start) = start {
         sink.output_timing.record(start, sink.ingestor);
     }
@@ -856,7 +1000,7 @@ fn event_turn_id(event: &Value) -> Option<&str> {
         .or_else(|| event.pointer("/turn/id").and_then(Value::as_str))
 }
 
-async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_>) -> Result<(), AgentError> {
+async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_, '_>) -> Result<(), AgentError> {
     let raw_line = serde_json::to_vec(&event)?;
     match sink
         .ingestor
@@ -865,7 +1009,7 @@ async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_>) -> Result<()
             raw_line,
             &event,
             sink.masker,
-            super::framework::CliFrameworkBehavior::new(Framework::Codex),
+            Framework::Codex,
         )
         .await?
     {
@@ -912,6 +1056,10 @@ fn is_thread_started_event(event: &Value, expected_canonical_thread_id: &str) ->
             .is_some_and(|thread_id| {
                 thread_id_matches_canonical(thread_id, expected_canonical_thread_id)
             })
+}
+
+fn is_turn_started_event(event: &Value) -> bool {
+    event.get("type").and_then(Value::as_str) == Some("turn.started")
 }
 
 fn terminal_exit_code(
@@ -1043,51 +1191,6 @@ mod tests {
         assert!(!can_read_active_input(false, true));
         assert!(!can_read_active_input(true, false));
         assert!(can_read_active_input(true, true));
-    }
-
-    #[test]
-    fn turn_started_notification_enables_active_input_for_matching_turn() {
-        let matching_notification = ServerNotification {
-            method: "turn/started".to_string(),
-            params: Some(json!({
-                "threadId": "thread-1",
-                "turn": {
-                    "id": "turn-1",
-                    "status": "inProgress"
-                }
-            })),
-        };
-        let wrong_turn_notification = ServerNotification {
-            method: "turn/started".to_string(),
-            params: Some(json!({
-                "threadId": "thread-1",
-                "turn": {
-                    "id": "turn-2",
-                    "status": "inProgress"
-                }
-            })),
-        };
-        let thread_started_notification = ServerNotification {
-            method: "thread/started".to_string(),
-            params: Some(json!({
-                "thread": {
-                    "id": "thread-1"
-                }
-            })),
-        };
-
-        assert!(is_active_input_ready_notification(
-            &matching_notification,
-            "turn-1"
-        ));
-        assert!(!is_active_input_ready_notification(
-            &wrong_turn_notification,
-            "turn-1"
-        ));
-        assert!(!is_active_input_ready_notification(
-            &thread_started_notification,
-            "turn-1"
-        ));
     }
 
     #[test]

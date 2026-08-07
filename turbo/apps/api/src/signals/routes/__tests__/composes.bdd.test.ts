@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 
 import { testContext } from "../../../__tests__/test-context";
 import { expectApiError } from "./helpers/api-bdd";
@@ -15,14 +14,12 @@ import {
   AMBIGUOUS_VERSION_IDS,
   AMBIGUOUS_VERSION_PREFIX,
   createComposesBddApi,
-  sandboxComposeToken,
 } from "./helpers/api-bdd-composes";
 
 /*
- * COMPOSE-01 round-5 expansion. The compose lifecycle chain (create, read,
- * list, metadata, delete through public APIs) lives in
- * auth-org-agents.bdd.test.ts and stays there; this file adds version
- * resolution, token scoping, and zero-route errors.
+ * The legacy agent-compose routes are retired. These tests cover the compose
+ * services still used by product write paths and the remaining Zero list
+ * surface without constructing state through an E2E-only route.
  *
  * - Version ids are sha256 hashes of canonical compose content, so the
  *   ambiguous-prefix 400 is API-constructible from the precomputed
@@ -78,27 +75,6 @@ function composeWith(name: string, agent: ComposeAgentOptions = {}) {
       },
     },
   };
-}
-
-const storedComposeSchema = z.object({
-  content: z.object({
-    agents: z.record(z.string(), z.record(z.string(), z.unknown())),
-  }),
-});
-
-/**
- * Reads an agent definition from a raw (non-contract-filtered) compose body,
- * so unknown stored keys are visible to the stripped-fields assertion.
- */
-function storedComposeAgent(
-  body: unknown,
-  name: string,
-): Record<string, unknown> {
-  const agent = storedComposeSchema.parse(body).content.agents[name];
-  if (!agent) {
-    throw new Error(`Expected stored agent ${name}`);
-  }
-  return agent;
 }
 
 describe("COMPOSE-01 version resolution", () => {
@@ -179,18 +155,6 @@ describe("COMPOSE-01 version resolution", () => {
     );
     expectApiError(notOwner.body);
     expect(notOwner.body.error.message).toBe("Agent compose not found");
-
-    const shortVersion = await composes.rawRequest(admin, {
-      method: "GET",
-      path: `/api/agent/composes/versions?composeId=${v1.composeId}&version=abc`,
-    });
-    expect(shortVersion.status).toBe(400);
-    expect(shortVersion.body).toMatchObject({
-      error: {
-        code: "BAD_REQUEST",
-        message: expect.stringContaining("8-64 hex characters"),
-      },
-    });
   });
 
   it("rejects ambiguous version prefixes built from colliding compose contents", async () => {
@@ -221,7 +185,7 @@ describe("COMPOSE-01 version resolution", () => {
 });
 
 describe("COMPOSE-01 create and metadata validation", () => {
-  it("rejects invalid compose payloads through contract and service validation", async () => {
+  it("rejects invalid compose payloads through service validation", async () => {
     const admin = api.user();
 
     const multipleAgents = await api.requestCreateCompose(
@@ -249,44 +213,9 @@ describe("COMPOSE-01 create and metadata validation", () => {
     expect(invalidName.body.error.message).toContain(
       "Invalid agent name format",
     );
-
-    const arrayAgents = await composes.rawRequest(admin, {
-      method: "POST",
-      path: "/api/agent/composes",
-      jsonBody: {
-        content: { version: "1.0", agents: [{ framework: "claude-code" }] },
-      },
-    });
-    expect(arrayAgents.status).toBe(400);
-    expect(arrayAgents.body).toMatchObject({
-      error: {
-        code: "BAD_REQUEST",
-        message: expect.stringContaining("expected record"),
-      },
-    });
-
-    const badFramework = await composes.rawRequest(admin, {
-      method: "POST",
-      path: "/api/agent/composes",
-      jsonBody: {
-        content: {
-          version: "1.0",
-          agents: {
-            [slug("bdd-bad-framework")]: { framework: "unsupported-framework" },
-          },
-        },
-      },
-    });
-    expect(badFramework.status).toBe(400);
-    expect(badFramework.body).toMatchObject({
-      error: {
-        code: "BAD_REQUEST",
-        message: expect.stringContaining("Invalid option"),
-      },
-    });
   });
 
-  it("normalizes mixed-case names, strips deprecated fields, and accepts codex frameworks", async () => {
+  it("normalizes mixed-case names and accepts codex frameworks", async () => {
     const admin = api.user();
 
     const mixedName = `Bdd-Mixed-${shortId()}`;
@@ -303,49 +232,9 @@ describe("COMPOSE-01 create and metadata validation", () => {
       composeWith(slug("bdd-codex"), { framework: "codex" }),
     );
     expect(codex.action).toBe("created");
-
-    // versionId determinism replaces the legacy stored-content DB assert:
-    // the decorated re-create normalizes to the clean content, so it reuses
-    // the clean create's version instead of creating a new one.
-    const strippedName = slug("bdd-strip");
-    const clean = await api.createCompose(admin, composeWith(strippedName));
-    const decorated = await composes.rawRequest(admin, {
-      method: "POST",
-      path: "/api/agent/composes",
-      jsonBody: {
-        content: {
-          version: "1.0",
-          agents: {
-            [strippedName]: {
-              framework: "claude-code",
-              skills: [
-                "https://github.com/example/agent/tree/main/.claude/skills/slack",
-              ],
-              image: "custom/image:v1",
-              working_dir: "/custom/path",
-              apps: ["github"],
-            },
-          },
-        },
-      },
-    });
-    expect(decorated.status).toBe(200);
-    expect(decorated.body).toMatchObject({
-      composeId: clean.composeId,
-      versionId: clean.versionId,
-      action: "existing",
-    });
-
-    const storedRaw = await composes.rawRequest(admin, {
-      method: "GET",
-      path: `/api/agent/composes/${clean.composeId}`,
-    });
-    expect(storedRaw.status).toBe(200);
-    const storedAgent = storedComposeAgent(storedRaw.body, strippedName);
-    expect(Object.keys(storedAgent)).toStrictEqual(["framework"]);
   });
 
-  it("returns visible read errors for missing names and invalid queries", async () => {
+  it("returns a visible service read error for a missing name", async () => {
     const admin = api.user();
     const missingName = slug("bdd-missing");
 
@@ -358,120 +247,18 @@ describe("COMPOSE-01 create and metadata validation", () => {
     expect(notFoundByName.body.error.message).toBe(
       `Agent compose not found: ${missingName}`,
     );
-
-    const missingQuery = await composes.rawRequest(admin, {
-      method: "GET",
-      path: "/api/agent/composes",
-    });
-    expect(missingQuery.status).toBe(400);
-    expect(missingQuery.body).toMatchObject({
-      error: {
-        code: "BAD_REQUEST",
-        message: expect.stringContaining("expected string"),
-      },
-    });
-  });
-});
-
-describe("COMPOSE-01 token access", () => {
-  it("scopes sandbox and zero tokens across compose routes", async () => {
-    const admin = api.user();
-    const adminOrgId = orgIdOf(admin);
-    const sandbox = {
-      bearer: sandboxComposeToken({
-        userId: admin.userId,
-        orgId: adminOrgId,
-      }),
-    };
-
-    const name = slug("bdd-sandbox");
-    const created = await composes.requestCreateCompose(
-      sandbox,
-      composeWith(name),
-      [201],
-    );
-    expect(created.body).toMatchObject({ name, action: "created" });
-    const composeId = created.body.composeId;
-
-    const byName = await composes.requestReadComposeByName(
-      sandbox,
-      name,
-      [200],
-    );
-    expect(byName.body.id).toBe(composeId);
-
-    const resolved = await composes.requestResolveComposeVersion(
-      sandbox,
-      { composeId, version: "latest" },
-      [200],
-    );
-    expect(resolved.body).toStrictEqual({
-      versionId: created.body.versionId,
-      tag: "latest",
-    });
-
-    const foreignSandbox = {
-      bearer: sandboxComposeToken({
-        userId: `user_${randomUUID()}`,
-        orgId: `org_${randomUUID()}`,
-      }),
-    };
-    const foreignRead = await composes.requestReadComposeById(
-      foreignSandbox,
-      composeId,
-      [200],
-    );
-    expect(foreignRead.body.id).toBe(composeId);
-
-    const freshSandbox = {
-      bearer: sandboxComposeToken({
-        userId: `user_${randomUUID()}`,
-        orgId: `org_${randomUUID()}`,
-      }),
-    };
-    const zeroList = await composes.requestListZeroComposes(
-      freshSandbox,
-      [200],
-    );
-    expect(zeroList.body).toStrictEqual({ composes: [] });
-  });
-
-  it("rejects unauthenticated requests across compose route families", async () => {
-    const unauthenticatedBody = {
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    };
-    const missingId = randomUUID();
-
-    const create = await api.requestCreateCompose(
-      null,
-      composeWith(slug("bdd-unauth")),
-      [401],
-    );
-    expect(create.body).toStrictEqual(unauthenticatedBody);
-
-    const byName = await composes.requestReadComposeByName(
-      null,
-      "missing",
-      [401],
-    );
-    expect(byName.body).toStrictEqual(unauthenticatedBody);
-
-    const byId = await api.requestReadComposeById(null, missingId, [401]);
-    expect(byId.body).toStrictEqual(unauthenticatedBody);
-
-    const versions = await composes.requestResolveComposeVersion(
-      null,
-      { composeId: missingId, version: "latest" },
-      [401],
-    );
-    expect(versions.body).toStrictEqual(unauthenticatedBody);
-
-    const zeroList = await composes.requestListZeroComposes(null, [401]);
-    expect(zeroList.body).toStrictEqual(unauthenticatedBody);
   });
 });
 
 describe("COMPOSE-01 zero route errors", () => {
+  it("rejects unauthenticated Zero list requests", async () => {
+    const unauthenticatedBody = {
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    };
+    const zeroList = await composes.requestListZeroComposes(null, [401]);
+    expect(zeroList.body).toStrictEqual(unauthenticatedBody);
+  });
+
   it("returns zero-list errors for org-less compose access", async () => {
     const noOrg = api.user({ orgId: null });
     const noOrgList = await composes.requestListZeroComposes(noOrg, [400]);

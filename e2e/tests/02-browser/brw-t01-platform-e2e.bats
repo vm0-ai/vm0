@@ -74,19 +74,22 @@ encode_uri_component() {
 
 wait_for_auth_completion() {
   local auth_path="$1"
+  local completion_expression
 
   if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" ]]; then
     local redirect_url_json
     redirect_url_json=$(node -e \
       'process.stdout.write(JSON.stringify(process.argv[1]))' \
       "$VM0_AUTH_REDIRECT_URL")
-    wait_for_browser_target --fn \
-      "window.location.href.startsWith(${redirect_url_json})"
-    return
+    completion_expression="window.location.href.startsWith(${redirect_url_json})"
+  else
+    completion_expression="!window.location.pathname.includes('/${auth_path}')"
   fi
 
-  wait_for_browser_target --fn \
-    "!window.location.pathname.includes('/${auth_path}')"
+  if ! wait_for_browser_target --fn "$completion_expression"; then
+    report_auth_page_failure
+    return 1
+  fi
 }
 
 open_auth_form() {
@@ -248,17 +251,13 @@ open_auth_form() {
   fi
 
   if [[ "$sign_in_state" == "password" ]]; then
-    wait_for_browser_target --fn \
-      "document.body.innerText.toLowerCase().includes('use another method')
-        || document.body.innerText.toLowerCase().includes('forgot password')"
-    if [[ "$(agent-browser eval \
-      "document.body.innerText.toLowerCase().includes('use another method')")" == "true" ]]; then
-      agent-browser find text "Use another method" click
-      wait_for_browser_target --text "Email code"
-      agent-browser find text "Email code" click
-    else
-      agent-browser find text "Forgot password" click
-    fi
+    # Clerk renders the forgot-password action before the alternate methods
+    # finish mounting. Wait for the control this test actually consumes so a
+    # partial password form cannot send the flow down a transient branch.
+    wait_for_browser_target --text "Use another method"
+    agent-browser find text "Use another method" click
+    wait_for_browser_target --text "Email code"
+    agent-browser find text "Email code" click
   fi
 
   enter_otp "$OTP" "sign-in"

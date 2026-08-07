@@ -95,6 +95,26 @@ fn bounded_duration_secs_value_or(
     }
 }
 
+fn optional_positive_duration_secs(
+    name: &str,
+    value: Option<&str>,
+) -> Result<Option<Duration>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let seconds = value
+        .parse::<u64>()
+        .map_err(|_| format!("{name} must be a positive integer number of seconds"))?;
+    if seconds == 0 {
+        return Err(format!("{name} must be greater than zero"));
+    }
+    let duration = Duration::from_secs(seconds);
+    if std::time::Instant::now().checked_add(duration).is_none() {
+        return Err(format!("{name} is too large"));
+    }
+    Ok(Some(duration))
+}
+
 // ---------------------------------------------------------------------------
 // Artifacts (multi-mount)
 //
@@ -129,9 +149,12 @@ pub struct ArtifactEnv {
 
 /// Raw runner bootstrap values used to build an owned guest-agent run config.
 ///
-/// Empty strings represent unset bootstrap environment values. Variable-length
-/// run payload fields live in [`guest_contracts::env::RunPayload`] and are
-/// loaded through `run_payload_file`.
+/// `String` fields captured by [`Self::from_process_env`] cannot distinguish an
+/// absent or non-Unicode environment value from a present empty value: each
+/// becomes an empty string. `Option` fields do not share that rule.
+/// Variable-length run payload fields live in
+/// [`guest_contracts::env::RunPayload`] and are loaded through
+/// `run_payload_file`.
 #[derive(Clone, Default)]
 pub struct GuestConfigRaw {
     pub run_id: String,
@@ -142,13 +165,23 @@ pub struct GuestConfigRaw {
     pub vercel_bypass: String,
     pub resume_session_id: String,
     pub api_start_time: String,
+    pub agent_execution_timeout_secs: String,
     pub use_mock_claude: String,
+    /// Optional `VM0_MOCK_CLAUDE_PATH` executable override.
+    ///
+    /// [`Self::from_process_env`] captures an absent or non-Unicode value as
+    /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
+    /// selects [`DEFAULT_MOCK_CLAUDE_PATH`] only when this field is `None`.
     pub mock_claude_path: Option<String>,
     pub cli_agent_type: String,
     pub user_env_file: String,
     pub run_payload_file: String,
     pub use_mock_codex: String,
-    pub use_codex_app_server_backend: String,
+    /// Optional `VM0_MOCK_CODEX_PATH` executable override.
+    ///
+    /// [`Self::from_process_env`] captures an absent or non-Unicode value as
+    /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
+    /// selects [`DEFAULT_MOCK_CODEX_PATH`] only when this field is `None`.
     pub mock_codex_path: Option<String>,
     pub home: Option<String>,
     pub runtime_home: Option<PathBuf>,
@@ -176,15 +209,15 @@ impl GuestConfigRaw {
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
             resume_session_id: env_or_empty(guest_contracts::env::RESUME_SESSION_ID_ENV),
             api_start_time: env_or_empty(guest_contracts::env::API_START_TIME_ENV),
+            agent_execution_timeout_secs: env_or_empty(
+                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            ),
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
             mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
             user_env_file: env_or_empty(USER_ENV_FILE_ENV_KEY),
             run_payload_file: env_or_empty(RUN_PAYLOAD_FILE_ENV_KEY),
             use_mock_codex: env_or_empty(guest_contracts::env::USE_MOCK_CODEX_ENV),
-            use_codex_app_server_backend: env_or_empty(
-                guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
-            ),
             mock_codex_path: std::env::var(guest_contracts::env::MOCK_CODEX_PATH_ENV).ok(),
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
@@ -225,6 +258,7 @@ pub struct GuestConfig {
     pub vercel_bypass: String,
     pub resume_session_id: String,
     pub api_start_time: String,
+    pub agent_execution_timeout: Option<Duration>,
     pub secret_values: String,
     pub disallowed_tools: String,
     pub tools: String,
@@ -235,12 +269,14 @@ pub struct GuestConfig {
     pub framework: Framework,
     pub user_env: HashMap<String, String>,
     pub use_mock_codex: bool,
-    pub use_codex_app_server_backend: bool,
     pub mock_codex_path: String,
     pub home_dir: String,
     pub artifacts: Vec<ArtifactEnv>,
     pub feature_flags: HashMap<String, bool>,
     pub codex_runtime_config: String,
+    pub pi_system_prompt: String,
+    pub pi_model_config: String,
+    pub run_skill_snapshot: String,
     pub stuck_tool_timeout_secs: u64,
     pub post_result_sigterm_grace: Duration,
     pub post_result_total_cap: Duration,
@@ -298,6 +334,10 @@ impl GuestConfig {
             vercel_bypass: raw.vercel_bypass,
             resume_session_id: raw.resume_session_id,
             api_start_time: raw.api_start_time,
+            agent_execution_timeout: optional_positive_duration_secs(
+                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                non_empty(&raw.agent_execution_timeout_secs),
+            )?,
             secret_values: payload.secret_values,
             disallowed_tools: payload.disallowed_tools,
             tools: payload.tools,
@@ -311,9 +351,6 @@ impl GuestConfig {
             cli_agent_type: raw.cli_agent_type,
             user_env,
             use_mock_codex: bool_true_or_one_value(Some(&raw.use_mock_codex)),
-            use_codex_app_server_backend: bool_true_or_one_value(Some(
-                &raw.use_codex_app_server_backend,
-            )),
             mock_codex_path: default_mock_path(
                 raw.mock_codex_path.as_deref(),
                 DEFAULT_MOCK_CODEX_PATH,
@@ -322,6 +359,9 @@ impl GuestConfig {
             artifacts,
             feature_flags,
             codex_runtime_config: payload.codex_runtime_config,
+            pi_system_prompt: payload.pi_system_prompt,
+            pi_model_config: payload.pi_model_config,
+            run_skill_snapshot: payload.run_skill_snapshot,
             stuck_tool_timeout_secs: u64_value_or(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
                 non_empty(&raw.stuck_tool_timeout_secs),
@@ -709,6 +749,38 @@ mod tests {
     }
 
     #[test]
+    fn agent_execution_timeout_is_optional_and_strict() {
+        assert_eq!(
+            optional_positive_duration_secs(
+                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                None,
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            optional_positive_duration_secs(
+                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                Some("7200"),
+            )
+            .unwrap(),
+            Some(Duration::from_secs(7200))
+        );
+
+        for invalid in ["0", "-1", "not-a-number", "18446744073709551615"] {
+            let error = optional_positive_duration_secs(
+                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                Some(invalid),
+            )
+            .unwrap_err();
+            assert!(
+                error.contains(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
     fn framework_from_cli_agent_type_accepts_known_values_and_defaults_unknown() {
         assert_eq!(framework_from_cli_agent_type(""), Framework::ClaudeCode);
         assert_eq!(
@@ -745,10 +817,10 @@ mod tests {
             vercel_bypass: "bypass".to_string(),
             resume_session_id: "session-1".to_string(),
             api_start_time: "123".to_string(),
+            agent_execution_timeout_secs: "11".to_string(),
             use_mock_claude: "true".to_string(),
             cli_agent_type: "codex".to_string(),
             use_mock_codex: "1".to_string(),
-            use_codex_app_server_backend: "true".to_string(),
             stuck_tool_timeout_secs: "7".to_string(),
             post_result_sigterm_grace_secs: "8".to_string(),
             post_result_total_cap_secs: "9".to_string(),
@@ -768,6 +840,10 @@ mod tests {
         assert_eq!(config.vercel_bypass, "bypass");
         assert_eq!(config.resume_session_id, "session-1");
         assert_eq!(config.api_start_time, "123");
+        assert_eq!(
+            config.agent_execution_timeout,
+            Some(Duration::from_secs(11))
+        );
         assert_eq!(config.secret_values, "encoded-secret");
         assert_eq!(config.disallowed_tools, "WebFetch");
         assert_eq!(config.tools, "Bash");
@@ -777,7 +853,6 @@ mod tests {
         assert_eq!(config.cli_agent_type, "codex");
         assert_eq!(config.framework, Framework::Codex);
         assert!(config.use_mock_codex);
-        assert!(config.use_codex_app_server_backend);
         assert_eq!(config.mock_codex_path, DEFAULT_MOCK_CODEX_PATH);
         assert_eq!(config.home_dir, "/home/vm0");
         assert_eq!(config.stuck_tool_timeout_secs, 7);
@@ -840,7 +915,10 @@ mod tests {
                 r#"[{"name":"artifact","mountPath":"/mnt/a","storageId":"storage","versionId":"v1"}]"#
                     .to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
+            pi_system_prompt: "fixed Pi prompt".to_string(),
+            pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
+            run_skill_snapshot: r#"{"digest":"sha256:test"}"#.to_string(),
         };
         let path = write_run_payload_fixture(&runtime_dir, &payload);
         let parent = path.parent().unwrap().to_path_buf();
@@ -861,7 +939,10 @@ mod tests {
         assert_eq!(config.settings, "{}");
         assert_eq!(config.artifacts.len(), 1);
         assert_eq!(config.feature_flags.get("flag"), Some(&true));
-        assert_eq!(config.codex_runtime_config, r#"{"providerId":"minimax"}"#);
+        assert_eq!(config.codex_runtime_config, r#"{"providerId":"deepseek"}"#);
+        assert_eq!(config.pi_system_prompt, "fixed Pi prompt");
+        assert_eq!(config.pi_model_config, r#"{"provider":"deepseek"}"#);
+        assert_eq!(config.run_skill_snapshot, r#"{"digest":"sha256:test"}"#);
         assert!(!path.exists());
         assert!(!parent.exists());
     }

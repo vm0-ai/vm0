@@ -87,6 +87,15 @@ export const unreadAgentIds$ = computed(
   },
 );
 
+export const allUnreadThreadIds$ = computed(
+  async (get): Promise<ReadonlySet<string>> => {
+    get(reloadChatUnreadStateCounter$);
+    const client = get(zeroClient$)(chatThreadsContract);
+    const result = await accept(client.unreadIds(), [200]);
+    return new Set(result.body.threadIds);
+  },
+);
+
 export const markAgentThreadsRead$ = command(
   async ({ get, set }, agentId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(chatThreadMarkAgentReadContract);

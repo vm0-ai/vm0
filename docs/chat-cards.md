@@ -2,7 +2,7 @@
 
 ## Overview
 
-A chat card turns a specially recognized link inside a `ChatMessage` into a
+A chat card turns a specially recognized link inside a `ChatEvent` into a
 rich, interactive React surface. The message remains the transport: an agent or
 another producer can emit a normal URL, Markdown link, or relative platform
 path, and the platform upgrades that link into a typed card when its path
@@ -11,7 +11,7 @@ matches a supported pattern.
 The core pipeline is:
 
 ```text
-ChatMessage content
+ChatEvent content
   -> recognize a trusted link and parse a typed descriptor
   -> derive a stable resource key
   -> register signals at the message write/command boundary
@@ -28,9 +28,9 @@ state creation inside React render.
 The body parser accepts platform links in common message forms:
 
 ```markdown
-https://app.vm0.ai/agents/agent-123/permissions?ref=slack&permission=messages.write
+https://app.vm0.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write
 
-[Review permission](https://app.vm0.ai/agents/agent-123/permissions?ref=slack&permission=messages.write)
+[Review permission](https://app.vm0.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write)
 
 /computer-use/authorize/request-token
 ```
@@ -42,16 +42,18 @@ link remains ordinary Markdown.
 
 Current link-backed card patterns include:
 
-- `/connectors/:connectorRef/connect` and
-  `/connectors/:connectorRef/authorize`
+- `/connectors/:connectorSlug/connect` and
+  `/connectors/:connectorSlug/authorize`
 - `/connectors/custom/proposal?p=...`
 - `/agents/:agentId/permissions?...`
 - `/computer-use/authorize/:requestToken`
 - `/?settings=billing&billingView=plans`
 - `/mail/drafts/:vm0DraftId`
-- `/browsers/:browserId`
-- platform artifact URLs such as `/f/...` and `/artifacts/...`, plus hosted
-  site URLs that support an inline preview
+- `/browsers/:threadId`
+- platform artifact URLs such as legacy `/f/...` and `/artifacts/.../.../...`
+  paths, plus hosted site URLs that support an inline preview. Flat V2 artifact
+  paths such as `/artifacts/97ngzkxdyn.mp4` require a complete URL with an
+  allowed VM0 origin.
 
 Recognized billing-plan links render as rich upgrade cards.
 
@@ -65,7 +67,7 @@ that card type exists.
 
 ### 1. Parse content into pure descriptors
 
-`parseMessageBodyBlocks` extracts renderable content from a `ChatMessage`
+`parseChatEventBodyBlocks` extracts renderable content from a `ChatEvent`
 and passes it to `parseBodyBlocks`. The parser separates normal Markdown from
 recognized cards.
 
@@ -220,7 +222,7 @@ A connector link such as:
 /connectors/slack/connect?agentId=agent-123
 ```
 
-produces a descriptor containing the connector reference, agent ID, and
+produces a descriptor containing the connector slug, agent ID, and
 original URL. Its signals combine several reactive reads and an action:
 
 ```ts
@@ -270,37 +272,70 @@ sidebar surface. Deleted cards retain their summary but are not interactive.
 
 ### Provider-backed live resource: managed browser
 
-A managed-browser link matches `/browsers/:browserId`, where `browserId` is the
-vm0 logical browser UUID. The card never accepts a Browser Use `liveUrl` or CDP
-URL from message content. Instead, its thread-scoped computed reads the browser
-through the authenticated Zero Browser API and includes the current chat thread
-ID in that request. A copied card therefore cannot resolve a browser owned by a
-different thread.
+A managed-browser link matches `/browsers/:threadId`. The chat thread ID is the
+canonical resource key: each thread owns at most one logical browser, and every
+provider instance for that browser carries the same thread attribution. The card
+never accepts a Browser Use `liveUrl` or CDP URL from message content. Instead,
+its thread-scoped computed reads the browser through
+`/api/zero/chat-threads/:threadId/browser`. A copied card therefore cannot
+resolve a browser owned by a different thread.
 
-The fixed-height card shows the browser name, charged credits, and status, and
-opens the shared right sidebar surface. The live view lives in that sidebar and
-in the full-page route rather than in the message stream, because a live page
-resizes as it loads and would otherwise shift the transcript.
+The message card follows the presentation and website preview treatment. It
+shows a `Cloud browser` header with a simplified `Live` or `Stopped` status,
+then a `16:10` static preview of the latest foreground tab at up to `400px`
+wide. The preview fills its frame and stays aligned to the top, with a
+placeholder until the first screenshot is available. The whole card opens the
+shared right sidebar surface; it does not show browser-specific metadata or
+charged credits. The live page remains in that sidebar and in the full-page
+route rather than in the message stream, because it resizes as it loads and
+would otherwise shift the transcript.
 
 A provider instance outlives the run that opened it. Every terminal run callback
 only extends the instance's idle lease, so the user can keep working in the same
 window and a later run in the same thread attaches to it with
-`zero browser use`. The reconciler reclaims and settles an instance once its
-lease expires, its budget is reached, its chat thread is deleted, or the
-provider ends it. While the sidebar or full-page viewer is open and its page is
-visible, it refreshes the lease on a timer; the CLI can do the same with
-`zero browser lease`. Each lease is a fixed window from now and cannot be
-stacked. The whole instance is billed to the run that last used it.
+`zero browser use`. The reconciler reclaims an instance once its lease expires,
+its hard timeout is reached, or the provider ends it. Deleting a chat thread
+also reclaims its browser. While the sidebar or full-page viewer is open
+and its page is visible, it refreshes the lease on a timer; the CLI can do the
+same with `zero browser lease`. Each lease is a fixed window from now and cannot
+be stacked. The once-per-minute reconciler captures the foreground tab of each
+healthy active browser as a `640px`-wide WebP, preserves its aspect ratio, and
+replaces the thread's previous immutable preview object. Viewer lease
+heartbeats do not capture screenshots, and screenshot failure does not affect
+the browser lease.
 
-Once an instance is reclaimed the card shows the suspended state and keeps the
-stable `/browsers/:browserId` link. The viewer's resume action, and
-`zero browser use` in a later run, start a new provider instance from the saved
-profile: cookies and storage come back, the previous pages and tabs do not.
-Logical browsers remain scoped to their chat threads, while every thread for the
-same user in the same organization uses one shared login profile. Multiple
-threads may run provider instances with that profile in parallel. The API
-serializes only the profile's first creation so concurrent first use still
-creates one provider profile.
+Starting or resuming appends a payload-free `browser.open` chat event; clicking
+the sidebar close button appends a payload-free `browser.close` event without
+stopping the provider instance. Automatic reclamation for an existing thread
+also appends `browser.close` without inspecting the current sidebar state. The
+frontend supplies each mutation's event UUID so it can optimistically
+project the same event without duplicating it when the server response or
+realtime delivery arrives. Folding these events in order yields the thread's
+browser sidebar state. Opening a thread waits for the authoritative initial
+event page before using that projection to auto-open the sidebar, so stale
+IndexedDB events cannot override a later server close. A `browser.open`
+projection opens the sidebar only when no other utility sidebar is already open;
+a later `browser.close` projection does not auto-open it. The browser icon in
+the thread header remains available in either state, and both a never-created
+browser and a non-live browser keep the Start action. When a screenshot exists,
+the suspended sidebar reuses it at full width and top-aligns it beneath a
+half-transparent blurred mask, so the small preview fills the available surface
+without being presented as a live browser.
+
+Once an instance is reclaimed, the viewer keeps the stable
+`/browsers/:threadId` link. Its Start action, and `zero browser use` in a later
+run, create a new provider instance from the thread's saved profile: cookies and
+storage come back, and saved HTTP(S) tab URLs are reopened on a best-effort
+basis. Provider state changes publish a user-scoped realtime event carrying the
+canonical thread ID so the card, sidebar, and full-page viewer refresh together.
+
+Each thread owns an isolated login profile. Multiple threads may run provider
+instances in parallel up to the organization's run concurrency entitlement.
+Before starting another provider instance, the API reclaims the active browser
+with the earliest idle lease until a slot is available. Provider stop requests
+are best-effort and do not delay the new start. The API serializes each thread's
+first profile creation so concurrent first use still creates one provider
+profile for that thread.
 
 The same universal link also has an authenticated full-page route. The browser
 provider's CDP URL is reserved for the Zero CLI to connect `agent-browser` and
@@ -329,7 +364,7 @@ registry.
 
 ## Relevant Implementation Files
 
-- `turbo/apps/platform/src/signals/chat-page/chat-message-body-blocks.ts`
+- `turbo/apps/platform/src/signals/chat-page/chat-event-body-blocks.ts`
 - `turbo/apps/platform/src/signals/chat-page/parse-body-blocks.ts`
 - `turbo/apps/platform/src/signals/chat-page/create-chat-thread.ts`
 - `turbo/apps/platform/src/signals/chat-page/artifact-card-signals.ts`

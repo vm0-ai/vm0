@@ -145,8 +145,17 @@ impl VsockHost {
     /// `max_bytes` must be positive and fit within the exec capture limit.
     /// `timeout_ms` must be positive.
     ///
-    /// Missing files return `Ok(None)`. Files larger than `max_bytes` return
-    /// an error instead of silently returning truncated bytes.
+    /// Returns `Ok(None)` when the guest-side check cannot establish that the
+    /// path resolves to a regular file. This includes missing paths, paths to
+    /// non-regular filesystem objects, broken symlinks, and paths whose
+    /// filesystem metadata cannot be inspected. Symlinks that resolve to
+    /// regular files are followed and read.
+    ///
+    /// A failed read is checked again and can return `Ok(None)` if
+    /// regular-file status can no longer be established. Invalid input, exec
+    /// or capture failures, and read failures for a path still established as
+    /// regular return an error. Files larger than `max_bytes` return an error
+    /// instead of silently returning truncated bytes.
     pub async fn read_file(
         &self,
         path: &str,
@@ -165,7 +174,8 @@ impl VsockHost {
     /// Read a small file and report when the helper exec frame is about to be
     /// written to the guest.
     ///
-    /// This has the same read semantics and input validation as `read_file`.
+    /// This has the same path classification, read, and input validation
+    /// semantics as [`read_file`](Self::read_file).
     pub async fn read_file_with_write_observer(
         &self,
         path: &str,

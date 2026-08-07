@@ -11,7 +11,7 @@ import {
 import { MAX_SLACK_FILE_SIZE_BYTES } from "../external/slack-file-fetcher";
 import { prepareCanonicalPublishedAsset$ } from "../services/canonical-asset.service";
 import { zeroSlackOrgInstallation } from "../services/zero-slack-data.service";
-import { badRequestMessage } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { isAllowedUploadType } from "../../lib/uploads-constants";
 import type { RouteEntry } from "../route-entry";
 
@@ -80,6 +80,9 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       },
       signal,
     );
+    if (!prepared) {
+      return notFound("Agent run not found");
+    }
     return {
       status: 200 as const,
       body: {
@@ -87,6 +90,9 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         assetId: prepared.assetId,
         operationId: prepared.operationId,
         ...(prepared.uploadUrl ? { uploadUrl: prepared.uploadUrl } : {}),
+        ...(prepared.uploadHeaders
+          ? { uploadHeaders: prepared.uploadHeaders }
+          : {}),
         url: prepared.url,
       },
     };

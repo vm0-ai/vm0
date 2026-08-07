@@ -4,13 +4,17 @@
 // APIs; the only mocked surfaces are the AgentPhone provider, Stripe, Clerk,
 // S3, and Axiom boundaries.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
+import {
+  findAgentphoneChatEventByPromptFixture,
+  readChatEventContextFixture,
+} from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import {
@@ -27,6 +31,7 @@ import {
   type AgentPhoneProviderSend,
   type AgentPhoneSendCapture,
 } from "./helpers/api-bdd-agentphone";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
@@ -102,28 +107,6 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
   };
 }
 
-async function pollDispatchedJob(runnerGroup: string): Promise<{
-  readonly runId: string;
-  readonly appendSystemPrompt: string;
-}> {
-  const runs = createRunsApi(context);
-  await runs.heartbeatRunner(runnerGroup);
-  let job:
-    | Awaited<ReturnType<typeof runs.pollRunner>>["body"]["job"]
-    | undefined;
-  await expect
-    .poll(async () => {
-      const poll = await runs.pollRunner(runnerGroup);
-      job = poll.body.job;
-      return job?.runId ?? null;
-    })
-    .not.toBeNull();
-  if (!job) {
-    throw new Error("Expected an AgentPhone run to be dispatched");
-  }
-  return { runId: job.runId, appendSystemPrompt: job.appendSystemPrompt ?? "" };
-}
-
 function agentPhoneCliAgentSessionIdForRun(runId: string): string {
   return `bdd-agentphone-cli-${runId}`;
 }
@@ -132,10 +115,29 @@ async function completeSandboxRun(
   sandboxToken: string,
   runId: string,
   exitCode: number,
-  error?: string,
+  options: {
+    readonly error?: string;
+    readonly resultText?: string;
+  } = {},
 ): Promise<void> {
   const webhooks = createWebhookCallbackApi(context);
   const sandboxHeaders = { authorization: `Bearer ${sandboxToken}` };
+  if (options.resultText !== undefined) {
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "result",
+            sequenceNumber: 0,
+            result: options.resultText,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+  }
   if (exitCode === 0) {
     // Successful completion requires a checkpoint, like a real sandbox.
     await webhooks.requestAgentCheckpoint(
@@ -152,7 +154,12 @@ async function completeSandboxRun(
     );
   }
   await webhooks.requestAgentComplete(
-    { runId, exitCode, ...(error === undefined ? {} : { error }) },
+    {
+      runId,
+      exitCode,
+      ...(options.error === undefined ? {} : { error: options.error }),
+      ...(options.resultText === undefined ? {} : { lastEventSequence: 0 }),
+    },
     sandboxHeaders,
     [200],
   );
@@ -165,6 +172,13 @@ function lastSend(sends: AgentPhoneSendCapture): AgentPhoneProviderSend {
     throw new Error("Expected a captured AgentPhone provider send");
   }
   return send;
+}
+
+function expectExactSystemPromptSuffix(
+  appendSystemPrompt: string,
+  expectedSuffix: string,
+): void {
+  expect(appendSystemPrompt.slice(-expectedSuffix.length)).toBe(expectedSuffix);
 }
 
 async function waitForTyping(
@@ -289,9 +303,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     );
   });
 
-  it("dispatches linked iMessage DMs, refreshes typing, replies with plain-text completions, and controls sessions", async () => {
+  it("dispatches linked iMessage DMs, refreshes typing, and replies with plain-text completions", async () => {
     const webhooks = createWebhookCallbackApi(context);
     const ap = createAgentPhoneBddApi(context);
+    const chat = createChatFilesBddApi(context);
     const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
     const conversationId = uniqueConversationId();
 
@@ -305,24 +320,64 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     await waitForTyping(sends, [conversationId]);
 
+    const admitted =
+      await findAgentphoneChatEventByPromptFixture("summarize my inbox");
+    expect(admitted).toMatchObject({ eventId: expect.any(String) });
+    if (!admitted) {
+      throw new Error("Expected admitted AgentPhone input event");
+    }
+    const launchContext = await readChatEventContextFixture(admitted.eventId);
+    expect(launchContext).toMatchObject({
+      contextType: "agentphone",
+      contextId: expect.any(String),
+      agentphoneChatThreadId: expect.any(String),
+      agentphoneMessageText: "summarize my inbox",
+      agentphoneThreadContext: "",
+      agentphoneMessageId: messageId1,
+      agentphoneRootMessageId: "dm",
+      agentphoneConversationId: conversationId,
+      agentphoneChannel: "imessage",
+      agentphoneIsGroup: false,
+      agentphonePhoneHandle: phone,
+      agentphoneFromNumber: phone,
+      agentphoneToNumber: AGENTPHONE_BDD_PHONE_NUMBER,
+      agentphoneUserLinkId: expect.any(String),
+      agentphoneAgentId: AGENTPHONE_BDD_AGENT_ID,
+    });
+    const launchThreadId = launchContext?.agentphoneChatThreadId;
+    if (!launchThreadId) {
+      throw new Error("Expected AgentPhone launch context to own a thread");
+    }
+    const admittedEvents = await chat.listThreadEvents(actor, launchThreadId);
+    const admittedInput = admittedEvents.events.find((event) => {
+      return (
+        event.id === admitted.eventId && event.eventType === "input.prompt"
+      );
+    });
+    expect(
+      admittedInput?.eventType === "input.prompt"
+        ? admittedInput.userMessage.parts.find((part) => {
+            return part.type === "source";
+          })
+        : undefined,
+    ).toStrictEqual({ type: "source", kind: "agentphone" });
+
     const run1 = await claimDispatchedRun(runnerGroup);
     expect(run1.prompt).toBe("summarize my inbox");
-    expect(run1.appendSystemPrompt).toContain(
-      "# Current Integration\nYou are currently running inside: AgentPhone",
+    expectExactSystemPromptSuffix(
+      run1.appendSystemPrompt,
+      [
+        "# Current Integration",
+        "You are currently running inside: AgentPhone",
+        `Shared AgentPhone number: ${AGENTPHONE_BDD_PHONE_NUMBER}`,
+        `User phone handle: ${phone}`,
+        `AgentPhone Agent ID: ${AGENTPHONE_BDD_AGENT_ID}`,
+        "Channel: imessage",
+        "Conversation type: dm",
+        `Conversation ID: ${conversationId}`,
+        `Message ID: ${messageId1}`,
+      ].join("\n"),
     );
-    expect(run1.appendSystemPrompt).toContain(
-      `Shared AgentPhone number: ${AGENTPHONE_BDD_PHONE_NUMBER}`,
-    );
-    expect(run1.appendSystemPrompt).toContain(`User phone handle: ${phone}`);
-    expect(run1.appendSystemPrompt).toContain(
-      `AgentPhone Agent ID: ${AGENTPHONE_BDD_AGENT_ID}`,
-    );
-    expect(run1.appendSystemPrompt).toContain("Channel: imessage");
-    expect(run1.appendSystemPrompt).toContain("Conversation type: dm");
-    expect(run1.appendSystemPrompt).toContain(
-      `Conversation ID: ${conversationId}`,
-    );
-    expect(run1.appendSystemPrompt).toContain(`Message ID: ${messageId1}`);
 
     // Agent event dispatch refreshes the iMessage indicator while the run's
     // AgentPhone callback is still pending.
@@ -357,16 +412,35 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     // Completion converts markdown output to iMessage plain text, without
     // an audit link or a non-default-agent footer.
     const beforeCompletion = sends.messages.length;
-    ap.mockCompletionRunOutput(MARKDOWN_RUN_OUTPUT);
-    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
+    await completeSandboxRun(run1.sandboxToken, run1.runId, 0, {
+      resultText: MARKDOWN_RUN_OUTPUT,
+    });
     await waitForSendCount(sends, beforeCompletion + 1);
-    ap.restoreCompletionRunOutput();
     const completionReply = lastSend(sends);
     expect(completionReply.toNumber).toBe(phone);
     expect(completionReply.conversationId).toBeUndefined();
     expect(completionReply.body).toBe(EXPECTED_PLAIN_RUN_OUTPUT);
     expect(completionReply.body).not.toContain("Audit:");
     expect(completionReply.body).not.toContain("Responded by");
+  });
+
+  it("reuses and resets linked iMessage sessions", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    const conversationId = uniqueConversationId();
+
+    const beforeFirstCompletion = sends.messages.length;
+    const messageId1 = await ap.postAgentPhoneInboundMessage({
+      channel: "imessage",
+      from: phone,
+      body: "start session",
+      conversationId,
+      isGroup: false,
+    });
+    const run1 = await claimDispatchedRun(runnerGroup);
+    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
+    await waitForSendCount(sends, beforeFirstCompletion + 1);
+    expect(lastSend(sends).body).toBe("Task completed successfully.");
     // Session persistence happens in background callback processing, so
     // wait for the session id to be saved before reading it.
     const session1 = await waitForRunSessionIdPresent(actor, run1.runId);
@@ -415,8 +489,13 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
     const session3 = await waitForRunSessionIdPresent(actor, run3.runId);
     expect(session3).not.toBe(session1);
+  });
 
-    // A failed run replies with the Web-style generic failure text.
+  it("replies to failed linked iMessage runs", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const { phone, runnerGroup, sends } = await entitledLinkedActor();
+    const conversationId = uniqueConversationId();
+
     await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: phone,
@@ -424,18 +503,230 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       conversationId,
       isGroup: false,
     });
-    const run4 = await claimDispatchedRun(runnerGroup);
-    const beforeRun4Completion = sends.messages.length;
-    await completeSandboxRun(
-      run4.sandboxToken,
-      run4.runId,
-      1,
-      "AgentPhone bdd route failure",
-    );
-    await waitForSendCount(sends, beforeRun4Completion + 1);
+    const run = await claimDispatchedRun(runnerGroup);
+    const beforeCompletion = sends.messages.length;
+    await completeSandboxRun(run.sandboxToken, run.runId, 1, {
+      error: "AgentPhone bdd route failure",
+    });
+    await waitForSendCount(sends, beforeCompletion + 1);
     expect(lastSend(sends).body).toBe(
       "Oops, something went wrong. Please try again later.",
     );
+  });
+
+  it("shares one canonical session across AgentPhone and web messages on the same thread", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const chat = createChatFilesBddApi(context);
+    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+
+    const smsMessageId = await ap.postAgentPhoneInboundMessage({
+      channel: "sms",
+      from: phone,
+      body: "start on my phone",
+    });
+    const admittedSms =
+      await findAgentphoneChatEventByPromptFixture("start on my phone");
+    if (!admittedSms) {
+      throw new Error("Expected admitted AgentPhone SMS input event");
+    }
+    const smsLaunchContext = await readChatEventContextFixture(
+      admittedSms.eventId,
+    );
+    expect(smsLaunchContext).toMatchObject({
+      contextType: "agentphone",
+      agentphoneMessageText: "start on my phone",
+      agentphoneThreadContext: "",
+      agentphoneMessageId: smsMessageId,
+      agentphoneRootMessageId: "dm",
+      agentphoneConversationId: null,
+      agentphoneChannel: "sms",
+      agentphoneIsGroup: false,
+      agentphonePhoneHandle: phone,
+      agentphoneFromNumber: phone,
+      agentphoneToNumber: AGENTPHONE_BDD_PHONE_NUMBER,
+      agentphoneUserLinkId: expect.any(String),
+      agentphoneAgentId: AGENTPHONE_BDD_AGENT_ID,
+    });
+    const phoneRun1 = await claimDispatchedRun(runnerGroup);
+    expectExactSystemPromptSuffix(
+      phoneRun1.appendSystemPrompt,
+      [
+        "# Current Integration",
+        "You are currently running inside: AgentPhone",
+        `Shared AgentPhone number: ${AGENTPHONE_BDD_PHONE_NUMBER}`,
+        `User phone handle: ${phone}`,
+        `AgentPhone Agent ID: ${AGENTPHONE_BDD_AGENT_ID}`,
+        "Channel: sms",
+        "Conversation type: dm",
+        `Message ID: ${smsMessageId}`,
+      ].join("\n"),
+    );
+    const beforePhoneCompletion = sends.messages.length;
+    await completeSandboxRun(phoneRun1.sandboxToken, phoneRun1.runId, 0);
+    await waitForSendCount(sends, beforePhoneCompletion + 1);
+    const smsReply = lastSend(sends);
+    expect(smsReply.toNumber).toBe(phone);
+    expect(smsReply.body).toBe("Task completed successfully.");
+    const sharedSession = await waitForRunSessionIdPresent(
+      actor,
+      phoneRun1.runId,
+    );
+
+    const lifecycle = await chat.requestThreadEvents(actor, {}, [200]);
+    if (lifecycle.status !== 200) {
+      throw new Error("Expected AgentPhone thread lifecycle events");
+    }
+    const created = lifecycle.body.events.filter((event) => {
+      return event.kind === "created";
+    });
+    expect(created).toHaveLength(1);
+    const thread = created[0];
+    if (!thread) {
+      throw new Error("Expected AgentPhone ingress to create a chat thread");
+    }
+    const phoneEvents = await chat.listThreadEvents(actor, thread.chatThreadId);
+    expect(
+      phoneEvents.events.some((event) => {
+        return (
+          event.eventType === "input.prompt" &&
+          event.userMessage.parts.some((part) => {
+            return part.type === "source" && part.kind === "agentphone";
+          })
+        );
+      }),
+    ).toBeTruthy();
+
+    const webSend = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: thread.agentId,
+        threadId: thread.chatThreadId,
+        prompt: "continue from the web",
+      },
+      [201],
+    );
+    if (webSend.status !== 201 || !webSend.body.runId) {
+      throw new Error("Expected the web message to create a run");
+    }
+    const webRun = await claimDispatchedRun(runnerGroup);
+    expect(webRun.runId).toBe(webSend.body.runId);
+    const sendsBeforeWebCompletion = sends.messages.length;
+    await completeSandboxRun(webRun.sandboxToken, webRun.runId, 0);
+    expect(sends.messages).toHaveLength(sendsBeforeWebCompletion);
+    await waitForRunSessionId(actor, webRun.runId, sharedSession);
+
+    await ap.postAgentPhoneInboundMessage({
+      channel: "sms",
+      from: phone,
+      body: "finish back on my phone",
+    });
+    const phoneRun2 = await claimDispatchedRun(runnerGroup);
+    await completeSandboxRun(phoneRun2.sandboxToken, phoneRun2.runId, 0);
+    await waitForRunSessionId(actor, phoneRun2.runId, sharedSession);
+
+    const finalLifecycle = await chat.requestThreadEvents(actor, {}, [200]);
+    if (finalLifecycle.status !== 200) {
+      throw new Error("Expected final AgentPhone thread lifecycle events");
+    }
+    expect(
+      finalLifecycle.body.events
+        .filter((event) => {
+          return event.kind === "created";
+        })
+        .map((event) => {
+          return event.chatThreadId;
+        }),
+    ).toStrictEqual([thread.chatThreadId]);
+  });
+
+  it("queues AgentPhone messages in FIFO order without loss or duplication", async () => {
+    const runs = createRunsApi(context);
+    const ap = createAgentPhoneBddApi(context);
+    const { actor, phone, runnerGroup } = await entitledLinkedActor();
+
+    await ap.postAgentPhoneInboundMessage({
+      channel: "sms",
+      from: phone,
+      body: "first queued prompt",
+    });
+    const run1 = await claimDispatchedRun(runnerGroup);
+
+    await ap.postAgentPhoneInboundMessage({
+      channel: "sms",
+      from: phone,
+      body: "second queued prompt",
+    });
+    const secondEvent = await findAgentphoneChatEventByPromptFixture(
+      "second queued prompt",
+    );
+    if (!secondEvent) {
+      throw new Error("Expected pending AgentPhone queue item");
+    }
+    await ap.postAgentPhoneInboundMessage({
+      channel: "sms",
+      from: phone,
+      body: "third queued prompt",
+    });
+    await runs.heartbeatRunner(runnerGroup);
+    const whileBusy = await runs.pollRunner(runnerGroup);
+    expect(whileBusy.body.job).toBeNull();
+
+    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
+    const sharedSession = await waitForRunSessionIdPresent(actor, run1.runId);
+    const run2 = await claimDispatchedRun(runnerGroup);
+    expect(run2.prompt).toBe("second queued prompt");
+    await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
+    await waitForRunSessionId(actor, run2.runId, sharedSession);
+
+    const run3 = await claimDispatchedRun(runnerGroup);
+    expect(run3.prompt).toBe("third queued prompt");
+    await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
+    await waitForRunSessionId(actor, run3.runId, sharedSession);
+
+    await runs.heartbeatRunner(runnerGroup);
+    const drained = await runs.pollRunner(runnerGroup);
+    expect(drained.body.job).toBeNull();
+  });
+
+  it("deduplicates repeated provider messages and completion callbacks", async () => {
+    const runs = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const ap = createAgentPhoneBddApi(context);
+    const { phone, runnerGroup, sends } = await entitledLinkedActor();
+    const messageId = `ap-msg-dedup-${randomUUID()}`;
+    const message = {
+      channel: "sms" as const,
+      from: phone,
+      body: "process exactly once",
+      messageId,
+    };
+
+    await ap.postAgentPhoneInboundMessage(message);
+    await ap.postAgentPhoneInboundMessage(message);
+    const run = await claimDispatchedRun(runnerGroup);
+    expect(run.prompt).toBe("process exactly once");
+    await runs.heartbeatRunner(runnerGroup);
+    const duplicateJob = await runs.pollRunner(runnerGroup);
+    expect(duplicateJob.body.job).toBeNull();
+
+    const sendsBeforeCompletion = sends.messages.length;
+    await completeSandboxRun(run.sandboxToken, run.runId, 0);
+    await waitForSendCount(sends, sendsBeforeCompletion + 1);
+    const sendsAfterCompletion = sends.messages.length;
+
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      { authorization: `Bearer ${run.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(sends.messages).toHaveLength(sendsAfterCompletion);
+
+    await ap.postAgentPhoneInboundMessage(message);
+    await runs.heartbeatRunner(runnerGroup);
+    const lateDuplicate = await runs.pollRunner(runnerGroup);
+    expect(lateDuplicate.body.job).toBeNull();
+    expect(sends.messages).toHaveLength(sendsAfterCompletion);
   });
 
   it("renders media prompts, provider recent history, and restarts sessions when the model route changes", async () => {
@@ -603,7 +894,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const integrations = createBddIntegrationApi(context);
     const ap = createAgentPhoneBddApi(context);
     const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
-    const conversationId = uniqueConversationId();
+    const conversationId = `${uniqueConversationId()}-${"g".repeat(230)}`;
+    expect(conversationId.length).toBeLessThanOrEqual(255);
+    expect(`group:${conversationId}`.length).toBeGreaterThan(255);
 
     // A mentioned group message strips the mention and carries provider
     // history into the group run context.
@@ -624,10 +917,52 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         },
       ],
     });
+    const admittedGroup = await findAgentphoneChatEventByPromptFixture(
+      "summarize this thread",
+    );
+    expect(admittedGroup).toMatchObject({ eventId: expect.any(String) });
+    if (!admittedGroup) {
+      throw new Error("Expected admitted AgentPhone group input event");
+    }
+    const groupLaunchContext = await readChatEventContextFixture(
+      admittedGroup.eventId,
+    );
+    expect(groupLaunchContext).toMatchObject({
+      contextType: "agentphone",
+      agentphoneMessageText: "summarize this thread",
+      agentphoneThreadContext: expect.stringContaining("Earlier group context"),
+      agentphoneMessageId: groupMessageId,
+      agentphoneConversationId: conversationId,
+      agentphoneChannel: "imessage",
+      agentphoneIsGroup: true,
+      agentphonePhoneHandle: phone,
+      agentphoneFromNumber: phone,
+      agentphoneToNumber: AGENTPHONE_BDD_PHONE_NUMBER,
+      agentphoneUserLinkId: expect.any(String),
+      agentphoneAgentId: AGENTPHONE_BDD_AGENT_ID,
+    });
     const run1 = await claimDispatchedRun(runnerGroup);
     expect(run1.prompt).toBe("summarize this thread");
-    expect(run1.appendSystemPrompt).toContain("Conversation type: group");
-    expect(run1.appendSystemPrompt).toContain("Earlier group context");
+    const groupThreadContext = groupLaunchContext?.agentphoneThreadContext;
+    if (!groupThreadContext) {
+      throw new Error("Expected AgentPhone group launch thread context");
+    }
+    expectExactSystemPromptSuffix(
+      run1.appendSystemPrompt,
+      [
+        "# Current Integration",
+        "You are currently running inside: AgentPhone",
+        `Shared AgentPhone number: ${AGENTPHONE_BDD_PHONE_NUMBER}`,
+        `User phone handle: ${phone}`,
+        `AgentPhone Agent ID: ${AGENTPHONE_BDD_AGENT_ID}`,
+        "Channel: imessage",
+        "Conversation type: group",
+        `Conversation ID: ${conversationId}`,
+        `Message ID: ${groupMessageId}`,
+        "",
+        groupThreadContext,
+      ].join("\n"),
+    );
 
     // The completion replies into the conversation, not to a number.
     const beforeGroupCompletion = sends.messages.length;
@@ -638,6 +973,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(groupReply.replyToMessageId).toBe(groupMessageId);
     expect(groupReply.toNumber).toBeUndefined();
     expect(groupReply.body).toBe("Task completed successfully.");
+    const groupSession = await waitForRunSessionIdPresent(actor, run1.runId);
 
     // A second mention without provider history renders the stored group
     // context with sender handles and the bot reply.
@@ -648,13 +984,12 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       conversationId,
       isGroup: true,
     });
-    const job2 = await pollDispatchedJob(runnerGroup);
-    expect(job2.appendSystemPrompt).toContain("# AgentPhone Message Context");
-    expect(job2.appendSystemPrompt).toContain(`SENDER: {id: ${phone}}`);
-    expect(job2.appendSystemPrompt).toContain("SENDER: {id: BOT}");
-    const beforeJob2Cancel = sends.messages.length;
-    await runs.requestCancelRun(actor, job2.runId, [200]);
-    await waitForSendCount(sends, beforeJob2Cancel + 1);
+    const run2 = await claimDispatchedRun(runnerGroup);
+    expect(run2.appendSystemPrompt).toContain("# AgentPhone Message Context");
+    expect(run2.appendSystemPrompt).toContain(`SENDER: {id: ${phone}}`);
+    expect(run2.appendSystemPrompt).toContain("SENDER: {id: BOT}");
+    await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
+    await waitForRunSessionId(actor, run2.runId, groupSession);
 
     // Ambient group chatter is stored but never dispatched as a run.
     await ap.postAgentPhoneInboundMessage({
@@ -730,6 +1065,46 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         (send.body?.includes("Only the linked sender") ?? false)
       );
     });
+
+    // Resetting the canonical route makes prior message history insufficient
+    // to resolve the group owner.
+    const beforeSessionReset = sends.messages.length;
+    await ap.postAgentPhoneInboundMessage({
+      channel: "imessage",
+      from: phone,
+      body: "/new_session @Zero",
+      conversationId,
+      isGroup: true,
+    });
+    await waitForSendMatching(sends, beforeSessionReset, (send) => {
+      return (
+        send.conversationId === conversationId &&
+        send.body === "New session started."
+      );
+    });
+
+    const beforeColdCutoverPrompt = sends.messages.length;
+    await ap.postAgentPhoneInboundMessage({
+      channel: "imessage",
+      from: stranger,
+      body: "@Zero resume the old group",
+      conversationId,
+      isGroup: true,
+    });
+    const coldCutoverPrompt = await waitForSendMatching(
+      sends,
+      beforeColdCutoverPrompt,
+      (send) => {
+        return (
+          send.conversationId === conversationId &&
+          (send.body?.includes("message Zero directly") ?? false)
+        );
+      },
+    );
+    expect(coldCutoverPrompt.body).not.toContain("/agentphone/connect?");
+    await runs.heartbeatRunner(runnerGroup);
+    const coldCutoverIdle = await runs.pollRunner(runnerGroup);
+    expect(coldCutoverIdle.body.job).toBeNull();
   });
 
   it("skips completion delivery for runs whose phone link was disconnected mid-flight", async () => {

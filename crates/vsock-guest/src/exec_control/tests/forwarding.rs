@@ -1,3 +1,4 @@
+use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -10,6 +11,27 @@ use super::super::{EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, MAX_PENDING_CONTROL_REQUESTS
 use super::support::{
     connected_sink, guest_writer_pair, owned_control_request, read_exec_control_result,
 };
+
+const CONTROL_PEER_READ_TIMEOUT: Duration = Duration::from_secs(3);
+
+fn read_control_request(
+    peer: &mut UnixStream,
+    scenario: &str,
+    expected_message_id: &str,
+) -> process_control_ipc::ControlRequest {
+    peer.set_read_timeout(Some(CONTROL_PEER_READ_TIMEOUT))
+        .unwrap();
+    let request = process_control_ipc::read_request(peer).unwrap_or_else(|error| {
+        panic!(
+            "{scenario}: expected control request {expected_message_id} before peer read timeout: {error}"
+        )
+    });
+    assert_eq!(
+        request.message_id, expected_message_id,
+        "{scenario}: unexpected control request message id"
+    );
+    request
+}
 
 #[test]
 fn pending_exec_control_timeout_before_sink_connection_releases_slot() {
@@ -75,12 +97,23 @@ fn pending_control_slot_holds_existing_slot_until_drop() {
 }
 #[test]
 fn pending_control_slot_releases_when_result_send_fails() {
-    let (sink, peer) = connected_sink();
+    let (sink, mut peer) = connected_sink();
     let pending_slot = sink.reserve_pending_slot().unwrap();
+    let (writer, host) = guest_writer_pair();
+    drop(host);
 
-    let client = std::thread::spawn(move || {
-        let mut peer = peer;
-        let request = process_control_ipc::read_request(&mut peer).unwrap();
+    std::thread::scope(|scope| {
+        let worker_sink = Arc::clone(&sink);
+        let worker = scope.spawn(move || {
+            forward_control_request(
+                worker_sink,
+                pending_slot,
+                owned_control_request(12, 8, 5000, "msg-send-fails"),
+                writer,
+            );
+        });
+
+        let request = read_control_request(&mut peer, "result-send failure", "msg-send-fails");
         process_control_ipc::write_response(
             &mut peer,
             &process_control_ipc::ControlResponse {
@@ -90,29 +123,32 @@ fn pending_control_slot_releases_when_result_send_fails() {
             },
         )
         .unwrap();
+
+        worker
+            .join()
+            .expect("result-send failure forwarding worker should complete");
     });
 
-    let (writer, host) = guest_writer_pair();
-    drop(host);
-    forward_control_request(
-        Arc::clone(&sink),
-        pending_slot,
-        owned_control_request(12, 8, 5000, "msg-send-fails"),
-        writer,
-    );
-
-    client.join().unwrap();
     assert_eq!(sink.pending.load(Ordering::Acquire), 0);
 }
 #[test]
 fn mismatched_control_response_message_id_marks_sink_failed() {
-    let (sink, peer) = connected_sink();
+    let (sink, mut peer) = connected_sink();
     let pending_slot = sink.reserve_pending_slot().unwrap();
+    let (writer, mut host) = guest_writer_pair();
 
-    let client = std::thread::spawn(move || {
-        let mut peer = peer;
-        let request = process_control_ipc::read_request(&mut peer).unwrap();
-        assert_eq!(request.message_id, "msg-original");
+    let (msg_type, seq, status, message_id, diagnostic) = std::thread::scope(|scope| {
+        let worker_sink = Arc::clone(&sink);
+        let worker = scope.spawn(move || {
+            forward_control_request(
+                worker_sink,
+                pending_slot,
+                owned_control_request(12, 8, 5000, "msg-original"),
+                writer,
+            );
+        });
+
+        read_control_request(&mut peer, "response message id mismatch", "msg-original");
         process_control_ipc::write_response(
             &mut peer,
             &process_control_ipc::ControlResponse {
@@ -122,18 +158,14 @@ fn mismatched_control_response_message_id_marks_sink_failed() {
             },
         )
         .unwrap();
+
+        let result = read_exec_control_result(&mut host);
+        worker
+            .join()
+            .expect("response message id mismatch forwarding worker should complete");
+        result
     });
 
-    let (writer, mut host) = guest_writer_pair();
-    forward_control_request(
-        Arc::clone(&sink),
-        pending_slot,
-        owned_control_request(12, 8, 5000, "msg-original"),
-        writer,
-    );
-
-    client.join().unwrap();
-    let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
     assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
     assert_eq!(seq, 12);
     assert_eq!(status, ExecControlStatus::SinkError);
@@ -150,40 +182,29 @@ fn mismatched_control_response_message_id_marks_sink_failed() {
 }
 #[test]
 fn timed_out_control_sink_is_marked_failed() {
-    let (sink, peer) = connected_sink();
+    let (sink, mut peer) = connected_sink();
     let pending_slot = sink.reserve_pending_slot().unwrap();
-    let (request_read_tx, request_read_rx) = std::sync::mpsc::channel();
-    let (release_peer_tx, release_peer_rx) = std::sync::mpsc::channel();
-    let client = std::thread::spawn(move || {
-        let mut peer = peer;
-        let request = process_control_ipc::read_request(&mut peer).unwrap();
-        assert_eq!(request.message_id, "msg-timeout");
-        assert_eq!(request.payload, b"payload");
-        request_read_tx.send(()).unwrap();
-        let _ = release_peer_rx.recv_timeout(Duration::from_secs(3));
-    });
-
     let (writer, mut host) = guest_writer_pair();
-    let worker = std::thread::spawn({
-        let sink = Arc::clone(&sink);
-        move || {
+    let (msg_type, seq, status, message_id, diagnostic) = std::thread::scope(|scope| {
+        let worker_sink = Arc::clone(&sink);
+        let worker = scope.spawn(move || {
             forward_control_request(
-                sink,
+                worker_sink,
                 pending_slot,
                 owned_control_request(12, 8, 250, "msg-timeout"),
                 writer,
             );
-        }
+        });
+
+        let request = read_control_request(&mut peer, "control response timeout", "msg-timeout");
+        assert_eq!(request.payload, b"payload");
+
+        let result = read_exec_control_result(&mut host);
+        worker
+            .join()
+            .expect("control response timeout forwarding worker should complete");
+        result
     });
-
-    request_read_rx
-        .recv_timeout(Duration::from_secs(3))
-        .expect("control request should be delivered before response timeout");
-
-    let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
-    worker.join().unwrap();
-    let _ = release_peer_tx.send(());
-    client.join().unwrap();
 
     assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
     assert_eq!(seq, 12);

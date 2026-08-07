@@ -8,12 +8,18 @@ import {
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { HttpResponse, http } from "msw";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import {
+  readWorkflowAutomationAutonomyFixture,
+  setRunAutonomyBudgetFixture,
+  setWorkflowAutomationAutonomyBudgetFixture,
+} from "./helpers/runtime-state";
 import {
   createBddApi,
   type ApiTestUser,
@@ -27,6 +33,8 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { zeroWorkflowsRoutes } from "../zero-workflows";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -42,7 +50,7 @@ type StaffFixture =
   | {
       readonly kind: "connector";
       readonly actor: ApiTestUser;
-      readonly connectorType: ConnectorRef;
+      readonly connectorSlug: ConnectorSlug;
     }
   | {
       readonly kind: "workflow";
@@ -58,9 +66,9 @@ type StaffFixture =
 async function cleanupStaffFixture(fixture: StaffFixture): Promise<void> {
   switch (fixture.kind) {
     case "connector": {
-      await connectorApi.deleteConnectorByType(
+      await connectorApi.deleteConnectorBySlug(
         fixture.actor,
-        fixture.connectorType,
+        fixture.connectorSlug,
       );
       return;
     }
@@ -92,22 +100,28 @@ function authHeaders(actor: ApiTestUser): { readonly authorization: string } {
 }
 
 function collectionClient() {
-  return setupApp({ context })(zeroWorkflowsCollectionContract);
+  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+    zeroWorkflowsCollectionContract,
+  );
 }
 
 function detailClient() {
-  return setupApp({ context })(zeroWorkflowsDetailContract);
+  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+    zeroWorkflowsDetailContract,
+  );
 }
 
 function mockConnectorReadinessModel(
   detected: readonly {
-    readonly connectorRef: string;
+    readonly connectorSlug: ConnectorSlug;
     readonly reason: string;
   }[],
-): void {
+): readonly unknown[] {
+  const requests: unknown[] = [];
   mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
   server.use(
-    http.post(OPENROUTER_URL, () => {
+    http.post(OPENROUTER_URL, async ({ request }) => {
+      requests.push(await request.json());
       return HttpResponse.json({
         choices: [
           {
@@ -120,14 +134,19 @@ function mockConnectorReadinessModel(
       });
     }),
   );
+  return requests;
 }
 
 function visibilityClient() {
-  return setupApp({ context })(zeroWorkflowVisibilityContract);
+  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+    zeroWorkflowVisibilityContract,
+  );
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 async function createAgent(
@@ -167,20 +186,30 @@ async function createWorkflow(
   return workflow;
 }
 
+async function enableWorkflowRuns(actor: ApiTestUser): Promise<void> {
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  api.configureRunnerGroup();
+}
+
 async function connectManualGrant(
   actor: ApiTestUser,
-  connectorType: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethod: Parameters<typeof connectorApi.connectManualGrant>[2],
   values: Parameters<typeof connectorApi.connectManualGrant>[3],
 ) {
   const connector = await connectorApi.connectManualGrant(
     actor,
-    connectorType,
+    connectorSlug,
     authMethod,
     values,
   );
   if (actor.orgId === STAFF_ORG_ID) {
-    await registerStaffFixture({ kind: "connector", actor, connectorType });
+    await registerStaffFixture({
+      kind: "connector",
+      actor,
+      connectorSlug,
+    });
   }
   return connector;
 }
@@ -297,17 +326,21 @@ describe("zero workflows", () => {
     });
     await api.enableAgentConnectors(viewer, agent.agentId, ["gitlab"]);
 
-    mockConnectorReadinessModel([
+    const modelRequests = mockConnectorReadinessModel([
       {
-        connectorRef: "gmail",
+        connectorSlug: "gmail",
         reason: "The workflow reads Gmail messages.",
       },
       {
-        connectorRef: "runtime",
+        connectorSlug: "gmail",
+        reason: "This duplicate Gmail selection should be ignored.",
+      },
+      {
+        connectorSlug: "runtime",
         reason: "The workflow reads Runtime jobs.",
       },
       {
-        connectorRef: "gitlab",
+        connectorSlug: "gitlab",
         reason: "The workflow reads GitLab projects.",
       },
     ]);
@@ -320,9 +353,51 @@ describe("zero workflows", () => {
       [200],
     );
 
+    expect(modelRequests).toHaveLength(1);
+    const [modelRequest] = modelRequests;
+    if (!isRecord(modelRequest) || !Array.isArray(modelRequest.messages)) {
+      throw new Error("Expected OpenRouter request messages");
+    }
+    const messages: readonly unknown[] = modelRequest.messages;
+    const systemMessage = messages.find((message) => {
+      return isRecord(message) && message.role === "system";
+    });
+    if (!isRecord(systemMessage) || typeof systemMessage.content !== "string") {
+      throw new Error("Expected OpenRouter system message");
+    }
+    expect(systemMessage.content).toContain(
+      "Select only connectorSlug values from the supplied catalog.",
+    );
+    expect(systemMessage.content).toContain(
+      '{"connectors":[{"connectorSlug":"...","reason":"..."}]}',
+    );
+
+    const userMessage = messages.find((message) => {
+      return isRecord(message) && message.role === "user";
+    });
+    if (!isRecord(userMessage) || typeof userMessage.content !== "string") {
+      throw new Error("Expected OpenRouter user message");
+    }
+    const userPayload: unknown = JSON.parse(userMessage.content);
+    if (
+      !isRecord(userPayload) ||
+      !Array.isArray(userPayload.connectorCatalog)
+    ) {
+      throw new Error("Expected OpenRouter connector catalog");
+    }
+    const connectorCatalog: readonly unknown[] = userPayload.connectorCatalog;
+    expect(connectorCatalog.length).toBeGreaterThan(0);
+    for (const connector of connectorCatalog) {
+      expect(connector).toStrictEqual({
+        connectorSlug: expect.any(String),
+        label: expect.any(String),
+        description: expect.any(String),
+      });
+    }
+
     expect(response.body.connectors).toStrictEqual([
       {
-        connectorRef: "gmail",
+        connectorSlug: "gmail",
         label: "Gmail",
         icon: {
           url: "https://static.vm0.io/test-fixtures/connectors/gmail.svg",
@@ -332,7 +407,7 @@ describe("zero workflows", () => {
         status: "not-connected",
       },
       {
-        connectorRef: "runtime",
+        connectorSlug: "runtime",
         label: "Runtime",
         icon: {
           url: "https://static.vm0.io/test-fixtures/connectors/runtime.svg",
@@ -342,7 +417,7 @@ describe("zero workflows", () => {
         status: "not-enabled-for-agent",
       },
       {
-        connectorRef: "gitlab",
+        connectorSlug: "gitlab",
         label: "GitLab",
         icon: {
           url: "https://static.vm0.io/test-fixtures/connectors/gitlab.svg",
@@ -352,6 +427,27 @@ describe("zero workflows", () => {
         status: "connected",
       },
     ]);
+  });
+
+  it("returns no readiness entries when the model detects no connectors", async () => {
+    const actor = user({ orgId: STAFF_ORG_ID });
+    const agent = await createAgent(actor, { visibility: "private" });
+    const workflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `readiness-empty-${randomUUID().slice(0, 8)}`,
+      instruction: "Summarize the provided text.",
+    });
+    mockConnectorReadinessModel([]);
+
+    const response = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ connectors: [] });
   });
 
   it("rejects readiness checks when the feature switch is disabled", async () => {
@@ -394,7 +490,7 @@ describe("zero workflows", () => {
     expect(response.body.error.code).toBe("PAYLOAD_TOO_LARGE");
   });
 
-  it("fails the whole readiness check when any model ref is unavailable", async () => {
+  it("fails the whole readiness check when any model slug is unavailable", async () => {
     const actor = user({ orgId: STAFF_ORG_ID });
     const agent = await createAgent(actor, { visibility: "private" });
     const workflow = await createWorkflow(actor, {
@@ -404,11 +500,11 @@ describe("zero workflows", () => {
     });
     mockConnectorReadinessModel([
       {
-        connectorRef: "gmail",
+        connectorSlug: "gmail",
         reason: "The workflow reads Gmail messages.",
       },
       {
-        connectorRef: "box",
+        connectorSlug: "box",
         reason: "The workflow reads Box files.",
       },
     ]);
@@ -520,6 +616,13 @@ describe("zero workflows", () => {
       displayName: "Run Attribution Workflow",
       instruction: "# run attribution workflow",
     });
+    const prepared = await accept(
+      detailClient().chatThread({
+        headers: authHeaders(actor),
+        params: { workflowId: created.body.id },
+      }),
+      [200],
+    );
 
     const run = await accept(
       detailClient().run({
@@ -535,6 +638,35 @@ describe("zero workflows", () => {
       throw new Error("Expected an idle workflow invocation to create a run");
     }
     expectZeroPreCreateSource(run.body.runId, "workflow_slash_command");
+    expect(run.body.chatThreadId).toBe(prepared.body.chatThreadId);
+    const timingEvents = sandboxOperationEventsForRun(run.body.runId);
+    const actionTypes = timingEvents.map((event) => {
+      return event.op_type;
+    });
+    expect(actionTypes).toStrictEqual(
+      expect.arrayContaining([
+        "api_dispatch_pre_create_zero_workflow_slash_prepare_normal_send",
+        "api_dispatch_pre_create_zero_workflow_slash_load_thread_mapping",
+        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
+        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
+      ]),
+    );
+    expect(actionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_workflow_slash_ensure_thread",
+    );
+    expect(actionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_entrypoint_gap",
+    );
+    const serializedTimingEvents = JSON.stringify(timingEvents);
+    for (const sensitiveValue of [
+      created.body.id,
+      agent.agentId,
+      actor.userId,
+      `/${created.body.name}`,
+      "workflow-openai-key",
+    ]) {
+      expect(serializedTimingEvents).not.toContain(sensitiveValue);
+    }
 
     const queued = await accept(
       detailClient().run({
@@ -554,6 +686,107 @@ describe("zero workflows", () => {
     expect(claim.environment?.OPENAI_MODEL).toBe("gpt-5.6-terra");
     expect(claim.environment?.ANTHROPIC_MODEL).toBeUndefined();
     await api.requestCancelRun(actor, run.body.runId, [200]);
+  });
+
+  it("resolves concurrent first workflow runs to one automation thread", async () => {
+    const actor = user({ orgRole: "org:admin" });
+    await enableWorkflowRuns(actor);
+    const agent = await createAgent(actor, {
+      displayName: "Concurrent Workflow Agent",
+      visibility: "private",
+    });
+    const created = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `concurrent-run-workflow-${randomUUID().slice(0, 8)}`,
+      displayName: "Concurrent Run Workflow",
+      instruction: "# concurrent run workflow",
+    });
+    const client = detailClient();
+    const headers = authHeaders(actor);
+
+    const runs = await Promise.all([
+      accept(
+        client.run({
+          headers,
+          params: { workflowId: created.body.id },
+        }),
+        [200],
+      ),
+      accept(
+        client.run({
+          headers,
+          params: { workflowId: created.body.id },
+        }),
+        [200],
+      ),
+    ]);
+
+    expect(
+      new Set(
+        runs.map((run) => {
+          return run.body.chatThreadId;
+        }),
+      ).size,
+    ).toBe(1);
+    const runIds = [
+      ...new Set(
+        runs.flatMap((run) => {
+          return run.body.runId ? [run.body.runId] : [];
+        }),
+      ),
+    ];
+    expect(runIds.length).toBeGreaterThan(0);
+    for (const runId of runIds) {
+      await api.requestCancelRun(actor, runId, [200]);
+    }
+  });
+
+  it("runs public workflows for members and hides workflows on private agents", async () => {
+    const owner = user({ orgRole: "org:admin" });
+    const member = user({ orgId: owner.orgId, orgRole: "org:member" });
+    await enableWorkflowRuns(owner);
+    const publicAgent = await createAgent(owner, {
+      displayName: "Public Workflow Agent",
+      visibility: "public",
+    });
+    const publicWorkflow = await createWorkflow(owner, {
+      agentId: publicAgent.agentId,
+      name: `public-run-workflow-${randomUUID().slice(0, 8)}`,
+      visibility: "public",
+      instruction: "# public run workflow",
+    });
+
+    const publicRun = await accept(
+      detailClient().run({
+        headers: authHeaders(member),
+        params: { workflowId: publicWorkflow.body.id },
+      }),
+      [200],
+    );
+    if (!publicRun.body.runId) {
+      throw new Error("Expected the public workflow to create a run");
+    }
+
+    const privateAgent = await createAgent(owner, {
+      displayName: "Hidden Private Workflow Agent",
+      visibility: "private",
+    });
+    const privateWorkflow = await createWorkflow(owner, {
+      agentId: privateAgent.agentId,
+      name: `private-run-workflow-${randomUUID().slice(0, 8)}`,
+      visibility: "public",
+      instruction: "# private run workflow",
+    });
+    const hidden = await accept(
+      detailClient().run({
+        headers: authHeaders(member),
+        params: { workflowId: privateWorkflow.body.id },
+      }),
+      [404],
+    );
+    expect(hidden.body.error.code).toBe("NOT_FOUND");
+
+    await api.requestCancelRun(member, publicRun.body.runId, [200]);
   });
 
   it("requires agent write-permission to create public workflows under an agent", async () => {
@@ -1085,6 +1318,11 @@ describe("zero workflows", () => {
       }),
       [201],
     );
+    await setWorkflowAutomationAutonomyBudgetFixture(
+      context,
+      automation.body.id,
+      4,
+    );
     const webhookAutomation = await accept(
       automationsClient().create({
         headers: authHeaders(actor),
@@ -1129,6 +1367,15 @@ describe("zero workflows", () => {
         enabled: automation.body.enabled,
       }),
     );
+    const copiedSchedule = copiedAutomations.body.find((copiedAutomation) => {
+      return copiedAutomation.kind === "schedule";
+    });
+    if (!copiedSchedule) {
+      throw new Error("Expected the copied schedule automation");
+    }
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, copiedSchedule.id),
+    ).resolves.toMatchObject({ autonomyBudget: 4 });
     expect(
       copiedAutomations.body.some((copiedAutomation) => {
         return (
@@ -1137,6 +1384,101 @@ describe("zero workflows", () => {
         );
       }),
     ).toBeTruthy();
+  });
+
+  it("caps copied automation budgets for Zero callers and rejects exhausted runs", async () => {
+    const actor = user({ orgRole: "org:admin" });
+    await enableWorkflowRuns(actor);
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Budgeted Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Budgeted Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `budgeted-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# budgeted copy source",
+    });
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "schedule",
+          schedule: { type: "loop", intervalSeconds: 900 },
+        },
+      }),
+      [201],
+    );
+    const sourceRun = await accept(
+      detailClient().run({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+      }),
+      [200],
+    );
+    if (!sourceRun.body.runId) {
+      throw new Error("Expected the source workflow run to start");
+    }
+    const sourceToken = api.zeroTokenForRunWithCapabilities(
+      actor,
+      sourceRun.body.runId,
+      ["agent:write"],
+    );
+
+    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 1);
+    const copied = await accept(
+      detailClient().copy({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    const copiedAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(actor),
+        params: { workflowId: copied.body.id },
+      }),
+      [200],
+    );
+    const [copiedAutomation] = copiedAutomations.body;
+    if (!copiedAutomation) {
+      throw new Error("Expected the copied workflow automation");
+    }
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, copiedAutomation.id),
+    ).resolves.toMatchObject({ autonomyBudget: 0 });
+
+    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 0);
+    const blockedTargetAgent = await createAgent(actor, {
+      displayName: "Exhausted Copy Target Agent",
+      visibility: "private",
+    });
+    const blocked = await accept(
+      detailClient().copy({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: blockedTargetAgent.agentId },
+      }),
+      [409],
+    );
+    expect(blocked.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+
+    const blockedTargetWorkflows = await accept(
+      collectionClient().list({
+        headers: authHeaders(actor),
+        query: { agentId: blockedTargetAgent.agentId },
+      }),
+      [200],
+    );
+    expect(names(blockedTargetWorkflows.body)).not.toContain(
+      workflow.body.name,
+    );
+    await api.requestCancelRun(actor, sourceRun.body.runId, [200]);
   });
 
   it("reads and updates workflow content, audit metadata, and deletion through API responses", async () => {

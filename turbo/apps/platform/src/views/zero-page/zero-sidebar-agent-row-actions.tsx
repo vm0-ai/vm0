@@ -10,6 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 interface AgentRowMenuAction {
   readonly label: string;
@@ -19,9 +20,28 @@ interface AgentRowMenuAction {
 }
 
 function AgentUnreadIndicator() {
+  const { t } = useTranslation("agents");
+
   return (
-    <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
+    <span
+      aria-label={t(($) => {
+        return $.status.unread;
+      })}
+      className="h-2 w-2 rounded-full bg-sky-600"
+    />
   );
+}
+
+function useAgentRowMenuCopy() {
+  const { t } = useTranslation("agents");
+  return {
+    more: t(($) => {
+      return $.sidebar.more;
+    }),
+    openMenu: t(($) => {
+      return $.sidebar.openMenu;
+    }),
+  };
 }
 
 function triggerClassName(
@@ -101,6 +121,12 @@ function markTriggerOpenStateOnPointerDown(trigger: HTMLElement) {
   }
 }
 
+function allMenuActionsDisabled(menuActions: readonly AgentRowMenuAction[]) {
+  return menuActions.every((menuAction) => {
+    return menuAction.disabled;
+  });
+}
+
 export function AgentRowSideActions({
   hasUnread,
   action,
@@ -114,6 +140,7 @@ export function AgentRowSideActions({
   readonly variant?: "dialog" | "sidebar" | undefined;
   readonly isPrimarySelected?: boolean | undefined;
 }) {
+  const menuCopy = useAgentRowMenuCopy();
   const menuActions = actions ?? (action ? [action] : []);
   const hasMenuActions = menuActions.length > 0;
   let rootElement: HTMLDivElement | null = null;
@@ -122,9 +149,7 @@ export function AgentRowSideActions({
     return null;
   }
 
-  const triggerDisabled = menuActions.every((menuAction) => {
-    return menuAction.disabled;
-  });
+  const triggerDisabled = allMenuActionsDisabled(menuActions);
 
   function updateMenuActionVisibility(open: boolean) {
     const root = rootElement;
@@ -189,7 +214,7 @@ export function AgentRowSideActions({
                   markTriggerOpenStateOnPointerDown(e.currentTarget);
                 }}
                 onClick={handleMenuTriggerClick}
-                aria-label="Open agent menu"
+                aria-label={menuCopy.openMenu}
                 disabled={triggerDisabled}
               >
                 <Tooltip>
@@ -201,7 +226,7 @@ export function AgentRowSideActions({
                   <TooltipContent
                     side={variant === "sidebar" ? "bottom" : "right"}
                   >
-                    <p className="text-xs">More</p>
+                    <p className="text-xs">{menuCopy.more}</p>
                   </TooltipContent>
                 </Tooltip>
               </button>

@@ -1,13 +1,16 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { buildGoogleAuthorizationUrl } from "../../oauth/google";
 import { throwOAuthError } from "../../oauth/error";
 
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
-const GMAIL_PROFILE_URL =
-  "https://www.googleapis.com/gmail/v1/users/me/profile";
+const GOOGLE_OPENID_USERINFO_URL =
+  "https://openidconnect.googleapis.com/v1/userinfo";
+
+const GOOGLE_IDENTITY_SCOPES = ["openid", "email", "profile"];
 
 interface GmailUserInfo {
   id: string;
@@ -33,8 +36,12 @@ export function buildGmailAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
+  const scopes = [
+    ...new Set([...authCodeGrant.scopes, ...GOOGLE_IDENTITY_SCOPES]),
+  ];
+
   return buildGoogleAuthorizationUrl(
-    authCodeGrant,
+    { ...authCodeGrant, scopes },
     "gmail",
     clientId,
     redirectUri,
@@ -102,11 +109,10 @@ export async function exchangeGmailCode(
 }
 
 /**
- * Fetch Gmail user info using the Gmail API profile endpoint.
- * Uses the https://mail.google.com/ scope which is already requested.
+ * Fetch Gmail user info using Google's OpenID Connect userinfo endpoint.
  */
 async function fetchGmailUserInfo(accessToken: string): Promise<GmailUserInfo> {
-  const response = await fetch(GMAIL_PROFILE_URL, {
+  const response = await fetch(GOOGLE_OPENID_USERINFO_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -118,16 +124,16 @@ async function fetchGmailUserInfo(accessToken: string): Promise<GmailUserInfo> {
 
   const data = z
     .object({
-      emailAddress: z.string().nullable().optional(),
-      messagesTotal: z.number().optional(),
-      threadsTotal: z.number().optional(),
-      historyId: z.string().optional(),
+      sub: z.string().optional(),
+      email: z.string().nullable().optional(),
+      name: z.string().nullable().optional(),
     })
     .parse(await response.json());
 
+  // Google defines OIDC `sub` as immutable while email can change, so persist the subject and request identity scopes for compatibility. Ref: https://developers.google.com/identity/openid-connect/openid-connect
   return {
-    id: data.emailAddress ?? "",
-    email: data.emailAddress ?? null,
-    name: data.emailAddress ?? null,
+    id: requireConnectorGrantUserId(data.sub, "Gmail"),
+    email: data.email ?? null,
+    name: data.name ?? data.email ?? null,
   };
 }

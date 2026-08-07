@@ -18,6 +18,10 @@ inputs:
     description: "Max duration to wait for the promotion to complete (e.g. 60s, 2m). Vercel CLI default is 3m."
     required: false
     default: "60s"
+  skip-setup:
+    description: "Skip Vercel CLI installation and project configuration when the caller already initialized them"
+    required: false
+    default: "false"
 
 outputs:
   url:
@@ -28,6 +32,7 @@ runs:
   using: "composite"
   steps:
     - name: Setup Vercel
+      if: ${{ inputs.skip-setup != 'true' }}
       uses: ./.github/actions/vercel-setup
       with:
         vercel-token: ${{ inputs.vercel-token }}

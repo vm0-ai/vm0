@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import {
   reloadTelegramBots$,
   resetTelegramSettingsUi$,
@@ -17,7 +18,12 @@ export const setupTelegramSettingsPage$ = command(
     set(resetTelegramSettingsUi$);
     set(reloadTelegramBots$);
     set(updatePage$, createElement(ZeroTelegramSettingsPage), "sidebar");
-    set(updateDocumentTitle$, "Telegram");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.connectors.providerSettings.telegram.documentTitle;
+      }),
+    );
 
     await Promise.all([
       set(hideAppSkeleton$, signal),

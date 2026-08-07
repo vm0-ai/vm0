@@ -12,17 +12,24 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+import {
+  zeroUserModelPreferenceContract,
+  type UserModelPreferenceResponse,
+} from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { beforeEach, describe, expect, it } from "vitest";
+import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies.ts";
 import {
   reloadUserModelPreference$,
@@ -38,6 +45,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -70,13 +78,17 @@ import {
   findComposerModel,
   expectComposerModel,
   chatClipboardHtml,
-  oversizedFile,
   composerElementFrom,
   findComposerEditor,
 } from "./chat-composer-test-helpers.ts";
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+});
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
 });
 
 async function navigateToChatThread(threadId: string): Promise<void> {
@@ -167,6 +179,120 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Opus 4.7");
   });
 
+  it("keeps a new-chat model choice separate from the default until the explicit action", async () => {
+    const user = userEvent.setup({ delay: null });
+    let preference: UserModelPreferenceResponse = {
+      selectedModel: "kimi-k2.7-code",
+      updatedAt: "2026-03-10T00:00:00Z",
+    };
+    const updatedModels: UserModelPreferenceResponse["selectedModel"][] = [];
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+      return respond(200, preference);
+    });
+    context.mocks.api(
+      zeroUserModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updatedModels.push(body.selectedModel);
+        preference = {
+          selectedModel: body.selectedModel,
+          updatedAt: "2026-03-10T00:01:00Z",
+        };
+        return respond(200, preference);
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await expectComposerModel("Kimi K2.7 Code");
+    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await expectComposerModel("Claude Sonnet 4.6");
+    expect(updatedModels).toStrictEqual([]);
+
+    await user.click(await findComposerModel("Claude Sonnet 4.6"));
+    const modelPicker = await screen.findByRole("listbox");
+    expect(within(modelPicker).getByText("Models")).toBeInTheDocument();
+    expect(
+      within(modelPicker).getByText(
+        "Default for new chats and new automations",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(modelPicker).getByRole("option", {
+        name: /Kimi K2\.7 Code.*Default/,
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      buttonContainingText("Set Claude Sonnet 4.6 as default", modelPicker),
+    );
+
+    await waitFor(() => {
+      expect(updatedModels).toStrictEqual(["claude-sonnet-4-6"]);
+      expect(
+        queryAllByRoleFast("button", modelPicker).some((button) => {
+          return button.textContent === "Set Claude Sonnet 4.6 as default";
+        }),
+      ).toBeFalsy();
+      expect(
+        within(modelPicker).getByRole("option", {
+          name: /Claude Sonnet 4\.6.*Default/,
+        }),
+      ).toBeInTheDocument();
+    });
+    await expect(
+      screen.findByText("Claude Sonnet 4.6 is now your default model"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("preserves selection-as-default behavior while the feature switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    let updatedModel: string | null = null;
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(
+      zeroUserModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updatedModel = body.selectedModel;
+        return respond(200, {
+          selectedModel: body.selectedModel,
+          updatedAt: "2026-03-10T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatDefaultModelAction]: false,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await waitFor(() => {
+      expect(updatedModel).toBe("claude-sonnet-4-6");
+    });
+    expect(
+      screen.queryByText("Default for new chats and new automations"),
+    ).not.toBeInTheDocument();
+  });
+
   it("sends Codex fast mode as a run option from the model picker", async () => {
     const user = userEvent.setup({ delay: null });
     const codexProvider = buildProvider({
@@ -243,6 +369,68 @@ describe("chat composer models", () => {
         codexServiceTier: "fast",
       });
     });
+  });
+
+  it("localizes model routes, price guidance, and Codex speed controls in Portuguese", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000913",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000914",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000915",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.CodexFastMode]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    click(await findComposerModel("GPT 5.6 Sol"));
+    const runSpeed = await screen.findByRole("group", {
+      name: "Velocidade de execução",
+    });
+    expect(buttonContainingText("Padrão", runSpeed)).toBeInTheDocument();
+    expect(buttonContainingText("Rápido", runSpeed)).toBeInTheDocument();
+    expect(within(runSpeed).getByText("Uso equilibrado")).toBeInTheDocument();
+    expect(
+      within(runSpeed).getByText("Prioriza a velocidade"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Usa mais créditos do Codex.")).toBeInTheDocument();
+
+    await user.hover(screen.getByText("$"));
+    await expect(
+      screen.findAllByText("Nível econômico para tarefas simples do dia a dia"),
+    ).resolves.not.toHaveLength(0);
+
+    await user.hover(screen.getByText("BYOK"));
+    await expect(
+      screen.findAllByText("Usa seu provedor configurado"),
+    ).resolves.not.toHaveLength(0);
   });
 
   it("remembers Codex fast mode for new chats in the current browser account", async () => {
@@ -1063,6 +1251,12 @@ describe("chat composer models", () => {
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
     await expectComposerModel("Claude Sonnet 4.6");
+    expect(
+      screen.getByRole("combobox", {
+        hidden: true,
+        name: "Claude Sonnet 4.6",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("does not fall back to defaults when thread projection has no model", async () => {
@@ -1112,7 +1306,13 @@ describe("chat composer models", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
 
     await screen.findByText("Use GLM");
     await user.click(await findComposerModel("GLM-5.1"));
@@ -1121,24 +1321,44 @@ describe("chat composer models", () => {
     );
     await expectComposerModel("Claude Sonnet 4.6");
     expect(preferenceRequestStarted).toBeFalsy();
+    expect(
+      screen.queryByText("Default for new chats and new automations"),
+    ).not.toBeInTheDocument();
   });
 
-  it("opens compare plans from limited-free-1 Pro composer model items", async () => {
+  it("shows limited-free-1 models and opens plans for Pro models", async () => {
     const user = userEvent.setup({ delay: null });
-    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
+    mockBillingCapabilities(
+      { supportByok: false, restrictedVm0Models: true },
+      "limited-free-1",
+    );
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000701",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000702",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000703",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000704",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -1147,12 +1367,22 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    await expectComposerModel("Kimi K2.7 Code");
-    await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
-    await user.click(
-      await screen.findByRole("option", { name: /GPT 5\.5.*Pro/u }),
-    );
+    await expectComposerModel("DeepSeek V4 Flash");
+    await user.click(await findComposerModel("DeepSeek V4 Flash"));
 
+    const deepseek = await screen.findByRole("option", {
+      name: /DeepSeek V4 Flash/u,
+    });
+    const luna = screen.getByRole("option", { name: /GPT 5\.6 Luna/u });
+    expect(deepseek).not.toHaveTextContent("Pro");
+    expect(luna).not.toHaveTextContent("Pro");
+    expect(
+      screen.getByRole("option", { name: /GPT 5\.6 Sol.*Pro/u }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("option", { name: /Claude Fable 5.*Pro/u }),
+    );
     await expect(
       screen.findByRole("heading", { name: "Compare plans" }),
     ).resolves.toBeInTheDocument();
@@ -1546,7 +1776,7 @@ describe("chat composer models", () => {
     });
 
     await expectComposerModel("Claude Opus 4.7");
-    expect(screen.queryByText("Model Configure")).not.toBeInTheDocument();
+    expect(screen.queryByText("Configure model")).not.toBeInTheDocument();
 
     holdProviderReload = true;
     const accountName = await screen.findByText("Alex Rivera");
@@ -1581,7 +1811,7 @@ describe("chat composer models", () => {
       screen.findByRole("combobox", { name: "GPT 5.5" }),
     ).resolves.toBeInTheDocument();
 
-    expect(screen.queryByText("Model Configure")).not.toBeInTheDocument();
+    expect(screen.queryByText("Configure model")).not.toBeInTheDocument();
     const input = screen.getByPlaceholderText(PLACEHOLDER);
     await fill(input, "Keep this draft");
     await user.keyboard("{Enter}");
@@ -1651,11 +1881,11 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.getByLabelText("Send")).toBeDisabled();
-    const warning = (await screen.findByText("Model Configure")).closest(
+    const warning = (await screen.findByText("Configure model")).closest(
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      "Model Configure: The selected model is not available. Configure it before sending.",
+      "Configure model: The selected model is not available. Configure it before sending.",
     );
 
     await user.click(warning);
@@ -1732,11 +1962,11 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.getByLabelText("Send")).toBeDisabled();
-    const warning = (await screen.findByText("Model Configure")).closest(
+    const warning = (await screen.findByText("Configure model")).closest(
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      "Model Configure: The selected model is not available. Configure it before sending.",
+      "Configure model: The selected model is not available. Configure it before sending.",
     );
 
     await user.click(warning);
@@ -1793,11 +2023,11 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.getByLabelText("Send")).toBeDisabled();
-    const warning = (await screen.findByText("Model Configure")).closest(
+    const warning = (await screen.findByText("Configure model")).closest(
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      "Model Configure: The selected model is not available. Configure it before sending.",
+      "Configure model: The selected model is not available. Configure it before sending.",
     );
 
     await user.click(warning);
@@ -1831,19 +2061,22 @@ describe("chat composer models", () => {
     });
   });
 
-  it("keeps unsupported visual files out of text-only model sends while accepting text files", async () => {
+  it("accepts visual attachments across composer paths for fallback-enabled text-only models", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("glm-5.1");
     mockAgent();
     context.mocks.upload.success({
-      id: "notes-upload",
-      filename: "notes.txt",
-      contentType: "text/plain",
-      size: 12,
-      url: "https://example.com/notes.txt",
+      id: "recognition-compatible-upload",
+      filename: "uploaded.png",
+      contentType: "image/png",
+      size: 3,
+      url: "https://example.com/uploaded.png",
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     await expectComposerModel("GLM-5.1");
     const fileInput =
@@ -1851,39 +2084,24 @@ describe("chat composer models", () => {
 
     await user.upload(
       fileInput,
-      new File(["image"], "screenshot.png", { type: "image/png" }),
+      new File(["png"], "uploaded.png", { type: "image/png" }),
     );
-
     await expect(
-      screen.findAllByText(/GLM-5\.1 cannot recognize images or videos/i),
-    ).resolves.not.toHaveLength(0);
-    expect(
-      screen.queryByLabelText("Open image preview for screenshot.png"),
-    ).not.toBeInTheDocument();
-
-    await user.upload(
-      fileInput,
-      new File(["plain text"], "notes.txt", { type: "text/plain" }),
-    );
-
-    await expect(
-      screen.findByLabelText("Remove notes.txt"),
+      screen.findByLabelText("Open image preview for uploaded.png"),
     ).resolves.toBeInTheDocument();
 
     const editor = await findComposerEditor();
-    await user.click(editor);
-
     fireEvent.paste(editor, {
       clipboardData: {
-        getData: (type: string) => {
-          return type === "text/plain" ? "Keep this pasted caption" : "";
+        getData: () => {
+          return "";
         },
         items: [
           {
             kind: "file",
             getAsFile: () => {
-              return new File(["pasted image"], "pasted.png", {
-                type: "image/png",
+              return new File(["jpeg"], "pasted.jpg", {
+                type: "image/jpeg",
               });
             },
           },
@@ -1891,35 +2109,23 @@ describe("chat composer models", () => {
       },
     });
 
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("Keep this pasted caption");
-      expect(
-        screen.queryByLabelText("Open image preview for pasted.png"),
-      ).not.toBeInTheDocument();
-    });
-
-    await fill(editor, "");
+    await expect(
+      screen.findByLabelText("Open image preview for pasted.jpg"),
+    ).resolves.toBeInTheDocument();
 
     fireEvent.paste(editor, {
       clipboardData: {
         getData: (type: string) => {
           if (type === "text/html") {
             return chatClipboardHtml({
-              text: "Use the copied launch brief",
+              text: "Compare the restored image",
               attachments: [
                 {
-                  id: "copied-brief",
-                  url: "https://cdn.vm7.io/artifacts/test/copied/copied-brief.md",
-                  filename: "copied-brief.md",
-                  contentType: "text/markdown",
-                  size: 42,
-                },
-                {
-                  id: "copied-image",
-                  url: "https://cdn.vm7.io/artifacts/test/copied/copied-image.png",
-                  filename: "copied-image.png",
+                  id: "restored-recognition-image",
+                  url: "https://example.com/restored.png",
+                  filename: "restored.png",
                   contentType: "image/png",
-                  size: 420,
+                  size: 42,
                 },
               ],
             });
@@ -1930,90 +2136,104 @@ describe("chat composer models", () => {
       },
     });
 
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("Use the copied launch brief");
-      expect(
-        screen.getByLabelText("Remove copied-brief.md"),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByLabelText("Open image preview for copied-image.png"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
-          .length,
-      ).toBeGreaterThan(0);
-    });
-
-    fireEvent.paste(editor, {
-      clipboardData: {
-        getData: (type: string) => {
-          return type === "text/plain" ? "Do not insert oversized paste" : "";
-        },
-        items: [
-          {
-            kind: "file",
-            getAsFile: () => {
-              return oversizedFile("oversized-paste.txt", "text/plain");
-            },
-          },
-        ],
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("oversized-paste.txt exceeds the 1 GB limit"),
-      ).toBeInTheDocument();
-      expect(editor).toHaveTextContent("Use the copied launch brief");
-    });
+    await expect(
+      screen.findByLabelText("Open image preview for restored.png"),
+    ).resolves.toBeInTheDocument();
 
     const composer = composerElementFrom(editor);
-    fireEvent.dragOver(composer);
-    fireEvent.dragLeave(composer, { relatedTarget: document.body });
     fireEvent.drop(composer, {
       dataTransfer: {
-        files: [
-          new File(["dropped image"], "dropped.png", { type: "image/png" }),
-          oversizedFile("oversized-drop.txt", "text/plain"),
-        ],
+        files: [new File(["webp"], "dropped.webp", { type: "image/webp" })],
       },
     });
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("oversized-drop.txt exceeds the 1 GB limit"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
-          .length,
-      ).toBeGreaterThan(0);
-    });
+    await expect(
+      screen.findByLabelText("Open image preview for dropped.webp"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+    ).not.toBeInTheDocument();
   });
 
-  it("hides an accepted visual attachment after switching to a text-only model", async () => {
+  it("accepts media outside the direct recognition contract for fallback-enabled text-only models", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("glm-5.1");
+    mockAgent();
+    context.mocks.upload.success({
+      id: "recognition-boundary-visual",
+      filename: "uploaded-visual",
+      contentType: "application/octet-stream",
+      size: 5,
+      url: "https://example.com/uploaded-visual",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await expectComposerModel("GLM-5.1");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const oversizedImage = new File(["png"], "oversized.png", {
+      type: "image/png",
+    });
+    Object.defineProperty(oversizedImage, "size", {
+      configurable: true,
+      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+    });
+
+    await user.upload(fileInput, [
+      new File(["gif"], "animated.gif", { type: "image/gif" }),
+      new File([], "empty.png", { type: "image/png" }),
+      oversizedImage,
+      new File(["video"], "clip.mp4", { type: "video/mp4" }),
+    ]);
+
+    await expect(
+      screen.findByLabelText("Open image preview for animated.gif"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Open image preview for empty.png"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Open image preview for oversized.png"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Remove clip.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a non-native image after switching to a fallback-enabled text-only model", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
     context.mocks.upload.success({
-      id: "visual-model-switch",
-      filename: "storyboard.png",
-      contentType: "image/png",
+      id: "recognition-model-switch",
+      filename: "storyboard.gif",
+      contentType: "image/gif",
       size: 128,
-      url: "https://example.com/storyboard.png",
+      url: "https://example.com/storyboard.gif",
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     await expectComposerModel("Claude Sonnet 4.6");
     const fileInput =
       document.querySelector<HTMLInputElement>('input[type="file"]')!;
     await user.upload(
       fileInput,
-      new File(["image"], "storyboard.png", { type: "image/png" }),
+      new File(["image"], "storyboard.gif", { type: "image/gif" }),
     );
 
     await expect(
-      screen.findByLabelText("Open image preview for storyboard.png"),
+      screen.findByLabelText("Open image preview for storyboard.gif"),
     ).resolves.toBeInTheDocument();
 
     await user.click(
@@ -2023,11 +2243,10 @@ describe("chat composer models", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
-          .length,
-      ).toBeGreaterThan(0);
+        screen.getByLabelText("Open image preview for storyboard.gif"),
+      ).toBeInTheDocument();
       expect(
-        screen.queryByLabelText("Open image preview for storyboard.png"),
+        screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
       ).not.toBeInTheDocument();
     });
   });
@@ -2038,7 +2257,10 @@ describe("chat composer models", () => {
     mockManyConnectedConnectors();
     mockAgentConnectorAuthorizations(["github"]);
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
@@ -2062,7 +2284,10 @@ describe("chat composer models", () => {
     mockManyConnectedConnectors();
     mockAgentConnectorAuthorizations(["slack"]);
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
@@ -2078,7 +2303,9 @@ describe("chat composer models", () => {
 
   it("keeps connector access resolved across same-agent chat navigation", async () => {
     const unexpectedReload = context.mocks.deferred<void>();
+    const unexpectedCustomReload = context.mocks.deferred<void>();
     let authorizationRequestCount = 0;
+    let customAuthorizationRequestCount = 0;
 
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
@@ -2099,7 +2326,17 @@ describe("chat composer models", () => {
         if (authorizationRequestCount > 1) {
           await withSignal(unexpectedReload.promise);
         }
-        return respond(200, { enabledTypes: ["github"] });
+        return respond(200, { enabledConnectorSlugs: ["github"] });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      async ({ respond, withSignal }) => {
+        customAuthorizationRequestCount += 1;
+        if (customAuthorizationRequestCount > 1) {
+          await withSignal(unexpectedCustomReload.promise);
+        }
+        return respond(200, { enabledIds: [] });
       },
     );
 
@@ -2111,6 +2348,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(initialConnectorButton.querySelector("img")).not.toBeNull();
       expect(authorizationRequestCount).toBe(1);
+      expect(customAuthorizationRequestCount).toBe(1);
     });
 
     await navigateToChatThread(OTHER_AGENT_THREAD_ID);
@@ -2129,10 +2367,13 @@ describe("chat composer models", () => {
     const connectorStatusStayedResolved =
       screen.queryByLabelText("Remove GitHub") !== null;
     const requestCountAfterNavigation = authorizationRequestCount;
+    const customRequestCountAfterNavigation = customAuthorizationRequestCount;
     unexpectedReload.resolve();
+    unexpectedCustomReload.resolve();
 
     expect(connectorStatusStayedResolved).toBeTruthy();
     expect(requestCountAfterNavigation).toBe(1);
+    expect(customRequestCountAfterNavigation).toBe(1);
     expect(nextConnectorButton.querySelector("img")).not.toBeNull();
   });
 
@@ -2158,9 +2399,9 @@ describe("chat composer models", () => {
         authorizationAgentIds.push(params.id);
         if (params.id === OTHER_AGENT_ID) {
           await withSignal(otherAgentAuthorization.promise);
-          return respond(200, { enabledTypes: ["slack"] });
+          return respond(200, { enabledConnectorSlugs: ["slack"] });
         }
-        return respond(200, { enabledTypes: ["github"] });
+        return respond(200, { enabledConnectorSlugs: ["github"] });
       },
     );
 
@@ -2203,12 +2444,14 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     const initialAuthorization = context.mocks.deferred<void>();
     let authorizationRequestCount = 0;
-    let enabledTypes: string[] = ["slack"];
+    let enabledConnectorSlugs: string[] = ["slack"];
     let updatedAuthorizationAgentId: string | undefined;
 
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
-    mockConnectors([{ type: "slack", externalUsername: "launch-team" }]);
+    mockConnectors([
+      { connectorSlug: "slack", externalUsername: "launch-team" },
+    ]);
     mockChatLifecycle(context, { threadId: THREAD_ID });
     mockComposerThreadSnapshot([
       { id: THREAD_ID, agentId: AGENT_ID, title: "First Scout thread" },
@@ -2225,15 +2468,18 @@ describe("chat composer models", () => {
         if (authorizationRequestCount === 1) {
           await withSignal(initialAuthorization.promise);
         }
-        return respond(200, { enabledTypes });
+        return respond(200, { enabledConnectorSlugs });
       },
     );
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ params, body, respond }) => {
         updatedAuthorizationAgentId = params.id;
-        enabledTypes = applyUserConnectorUpdate(enabledTypes, body);
-        return respond(200, { enabledTypes });
+        enabledConnectorSlugs = applyUserConnectorUpdate(
+          enabledConnectorSlugs,
+          body,
+        );
+        return respond(200, { enabledConnectorSlugs });
       },
     );
 
@@ -2289,7 +2535,9 @@ describe("chat composer models", () => {
 
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent({ includeOtherAgent: true });
-    mockConnectors([{ type: "slack", externalUsername: "launch-team" }]);
+    mockConnectors([
+      { connectorSlug: "slack", externalUsername: "launch-team" },
+    ]);
     mockChatLifecycle(context, { threadId: THREAD_ID });
     mockComposerThreadSnapshot([
       { id: THREAD_ID, agentId: AGENT_ID, title: "Scout thread" },
@@ -2308,7 +2556,7 @@ describe("chat composer models", () => {
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       authorizationAgentIds.push(params.id);
       return respond(200, {
-        enabledTypes: enabledByAgent.get(params.id) ?? [],
+        enabledConnectorSlugs: enabledByAgent.get(params.id) ?? [],
       });
     });
     context.mocks.api(
@@ -2324,12 +2572,12 @@ describe("chat composer models", () => {
       zeroUserConnectorsContract.update,
       ({ params, body, respond }) => {
         updatedAuthorizationAgentId = params.id;
-        const enabledTypes = applyUserConnectorUpdate(
+        const enabledConnectorSlugs = applyUserConnectorUpdate(
           enabledByAgent.get(params.id) ?? [],
           body,
         );
-        enabledByAgent.set(params.id, enabledTypes);
-        return respond(200, { enabledTypes });
+        enabledByAgent.set(params.id, enabledConnectorSlugs);
+        return respond(200, { enabledConnectorSlugs });
       },
     );
     context.mocks.api(

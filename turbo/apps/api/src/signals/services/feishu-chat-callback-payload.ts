@@ -17,5 +17,5 @@ export type FeishuDeliveryTarget = z.infer<typeof feishuDeliveryTargetSchema>;
 
 export const feishuChatCallbackPayloadSchema =
   feishuDeliveryTargetSchema.extend({
-    chatMessageId: z.string(),
+    chatEventId: z.string(),
   });

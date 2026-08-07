@@ -1,14 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { HttpResponse } from "msw";
-import {
-  addClientCapabilityToVersion,
-  CLIENT_CAPABILITY_PT_BR_LOCALE,
-  CLIENT_FORCE_UPGRADE_STATUS,
-} from "@vm0/api-contracts/contracts/client-headers";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import {
   clearMockedAuth,
+  mockClerkSessionTransitioning,
   mockedClerk,
   mockUser,
 } from "../../__tests__/mock-auth.ts";
@@ -20,23 +17,21 @@ import {
   listenForceUpgradeDialog$,
 } from "../force-upgrade.ts";
 import { setRootSignal$ } from "../root-signal.ts";
+import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
+const resetAuthRecoverySignal$ = resetSignal();
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const EXPECTED_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.540.0",
-  CLIENT_CAPABILITY_PT_BR_LOCALE,
-);
+const EXPECTED_CLIENT_VERSION = "0.540.0";
 
 interface ObservedClientHeaders {
   readonly requestId: string | null;
   readonly sessionId: string | null;
   readonly type: string | null;
   readonly version: string | null;
-  readonly zeroMailVersion: string | null;
 }
 
 function observedClientHeaders(request: Request): ObservedClientHeaders {
@@ -45,7 +40,6 @@ function observedClientHeaders(request: Request): ObservedClientHeaders {
     sessionId: request.headers.get("x-client-session-id"),
     type: request.headers.get("x-client-type"),
     version: request.headers.get("x-client-version"),
-    zeroMailVersion: request.headers.get("x-zero-mail-client-version"),
   };
 }
 
@@ -80,7 +74,7 @@ describe("api client headers", () => {
       zeroUserConnectorsContract.get,
       ({ request, respond }) => {
         observedHeaders.push(observedClientHeaders(request));
-        return respond(200, { enabledTypes: [] });
+        return respond(200, { enabledConnectorSlugs: [] });
       },
     );
 
@@ -108,8 +102,6 @@ describe("api client headers", () => {
     expect(second.type).toBe("App");
     expect(first.version).toBe(EXPECTED_CLIENT_VERSION);
     expect(second.version).toBe(EXPECTED_CLIENT_VERSION);
-    expect(first.zeroMailVersion).toBe("3");
-    expect(second.zeroMailVersion).toBe("3");
     expect(first.sessionId).toMatch(UUID_REGEX);
     expect(second.sessionId).toBe(first.sessionId);
     expect(first.requestId).toMatch(UUID_REGEX);
@@ -145,8 +137,6 @@ describe("api client headers", () => {
     expect(second.type).toBe("App");
     expect(first.version).toBe(EXPECTED_CLIENT_VERSION);
     expect(second.version).toBe(EXPECTED_CLIENT_VERSION);
-    expect(first.zeroMailVersion).toBe("3");
-    expect(second.zeroMailVersion).toBe("3");
     expect(first.sessionId).toMatch(UUID_REGEX);
     expect(second.sessionId).toBe(first.sessionId);
     expect(first.requestId).toMatch(UUID_REGEX);
@@ -204,6 +194,109 @@ describe("api client headers", () => {
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
+  it("waits for Clerk to settle its session before refreshing the token", async () => {
+    mockSignedInUser();
+    context.store.set(setRootSignal$, context.signal);
+    mockClerkSessionTransitioning(true);
+
+    const listenerRegistered = context.mocks.deferred<void>();
+    const addListener = mockedClerk.addListener;
+    vi.spyOn(mockedClerk, "addListener").mockImplementation(
+      (listener, options) => {
+        const unsubscribe = addListener(listener, options);
+        if (options?.skipInitialEmit) {
+          listenerRegistered.resolve();
+        }
+        return unsubscribe;
+      },
+    );
+
+    const authorizationHeaders: (string | null)[] = [];
+    context.mocks.http.get(
+      "*/api/zero/auth-session-transition-test",
+      ({ request }) => {
+        authorizationHeaders.push(request.headers.get("authorization"));
+        if (authorizationHeaders.length === 1) {
+          return HttpResponse.json(
+            {
+              error: {
+                code: "UNAUTHORIZED",
+                message: "Unauthorized",
+              },
+            },
+            { status: 401 },
+          );
+        }
+        return HttpResponse.json({ recovered: true });
+      },
+    );
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
+    });
+
+    const responsePromise = getFetchForTest()(
+      "/api/zero/auth-session-transition-test",
+    );
+    await listenerRegistered.promise;
+    mockClerkSessionTransitioning(false);
+
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ recovered: true });
+    expect(authorizationHeaders).toStrictEqual([null, "Bearer fresh-token"]);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
+  it("stops waiting for Clerk when the request is aborted", async () => {
+    mockSignedInUser();
+    context.store.set(setRootSignal$, context.signal);
+    mockClerkSessionTransitioning(true);
+
+    const listenerRegistered = context.mocks.deferred<void>();
+    const addListener = mockedClerk.addListener;
+    vi.spyOn(mockedClerk, "addListener").mockImplementation(
+      (listener, options) => {
+        const unsubscribe = addListener(listener, options);
+        if (options?.skipInitialEmit) {
+          listenerRegistered.resolve();
+        }
+        return unsubscribe;
+      },
+    );
+
+    let requests = 0;
+    context.mocks.http.get("*/api/zero/aborted-auth-recovery-test", () => {
+      requests += 1;
+      return HttpResponse.json(
+        {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        },
+        { status: 401 },
+      );
+    });
+
+    const requestSignal = context.store.set(
+      resetAuthRecoverySignal$,
+      context.signal,
+    );
+    const responsePromise = getFetchForTest()(
+      "/api/zero/aborted-auth-recovery-test",
+      { signal: requestSignal },
+    );
+    await listenerRegistered.promise;
+
+    context.store.set(resetAuthRecoverySignal$, context.signal);
+
+    await expect(responsePromise).rejects.toMatchObject({ name: "AbortError" });
+    mockClerkSessionTransitioning(false);
+    expect(requests).toBe(1);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
   it("redirects fetch$ when the fresh-token replay remains unauthorized", async () => {
     mockSignedInUser();
     context.store.set(setRootSignal$, context.signal);
@@ -244,7 +337,7 @@ describe("api client headers", () => {
         observedBypassHeaders.push(
           request.headers.get("x-vercel-protection-bypass"),
         );
-        return respond(200, { enabledTypes: [] });
+        return respond(200, { enabledConnectorSlugs: [] });
       },
     );
     context.mocks.http.get("*/api/zero/preview-bypass-test", ({ request }) => {

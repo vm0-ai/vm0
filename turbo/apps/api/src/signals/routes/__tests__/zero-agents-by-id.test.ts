@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
@@ -14,6 +15,7 @@ import {
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
+import { zeroAgentsRoutes } from "../zero-agents";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -25,7 +27,9 @@ function currentSecond(): number {
 }
 
 function agentsClient() {
-  return setupApp({ context })(zeroAgentsByIdContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsByIdContract,
+  );
 }
 
 function bearerHeaders(token: string): { readonly authorization: string } {

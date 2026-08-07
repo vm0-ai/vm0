@@ -1,10 +1,8 @@
 import chalk from "chalk";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import {
-  getZeroBillingStatus,
-  getZeroAgentUserConnectors,
-  listZeroConnectorCatalogStatus,
-} from "../../../../lib/api";
+import type { ZeroConnectorCatalogStatus } from "../../../../lib/api/domains/zero-connectors";
+import { getZeroBillingStatus } from "../../../../lib/api/domains/zero-billing";
+import { getZeroAgentUserConnectors } from "../../../../lib/api/domains/zero-agents";
+import { listZeroConnectorCatalogStatus } from "../../../../lib/api/domains/zero-connectors";
 import { getPlatformOrigin } from "../../doctor/platform-url";
 import {
   currentPlanAllowsVideo,
@@ -21,6 +19,7 @@ type ConnectorGenerationType =
   | "video";
 
 type BuiltInGenerationType =
+  | "avatar-video"
   | "dashboard-design"
   | "docs-design"
   | "image"
@@ -139,6 +138,12 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       reason: "availability depends on the current workspace plan",
     },
     {
+      label: "Built-in MiniMax",
+      model: "MiniMax-H3",
+      command: "zero generate video --provider built-in --model minimax-h3 -h",
+      reason: "availability depends on the current workspace plan",
+    },
+    {
       label: "Built-in fal.ai",
       model: "fal-ai/veo3.1/fast",
       command: "zero generate video --provider built-in --model veo3.1-fast -h",
@@ -164,6 +169,11 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
 const BUILT_IN_GENERATION_COMMANDS: Partial<
   Record<GenerationType, BuiltInGenerationCommand>
 > = {
+  "avatar-video": {
+    label: "Built-in JoggAI talking-avatar video generation",
+    command: "zero generate avatar-video --provider built-in -h",
+    models: "joggai-talking-avatar",
+  },
   image: {
     label: "Built-in image generation",
     command: "zero generate image --provider built-in -h",
@@ -174,7 +184,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in video generation",
     command: "zero generate video --provider built-in -h",
     models:
-      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
+      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
   },
   presentation: {
     label: "Built-in presentation generation",
@@ -235,6 +245,7 @@ const GENERATION_CONTEXT: Partial<Record<GenerationType, GenerationContext>> = {
 
 const GENERATION_TYPE_LABELS: Record<GenerationType, string> = {
   audio: "Audio",
+  "avatar-video": "Talking-avatar video",
   code: "Code",
   "dashboard-design": "Dashboard design",
   document: "Document",
@@ -263,7 +274,7 @@ interface ListerOptions {
 }
 
 interface GenerationCandidate {
-  type: string;
+  connectorSlug: string;
   label: string;
   status: CandidateStatus;
   reason: string;
@@ -277,6 +288,8 @@ function getConnectorGenerationType(
   generationType: GenerationType,
 ): ConnectorGenerationType | null {
   switch (generationType) {
+    case "avatar-video":
+      return "video";
     case "voice":
     case "music":
       return "audio";
@@ -319,19 +332,19 @@ function getGenerationContext(
 
 function getGenerationConnectors(
   generationType: ConnectorGenerationType,
-  connectors: readonly PublicConnectorCatalogStatusItem[],
-): PublicConnectorCatalogStatusItem[] {
+  connectors: readonly ZeroConnectorCatalogStatus[],
+): ZeroConnectorCatalogStatus[] {
   return connectors
     .filter((connector) => {
       return connector.generation.includes(generationType);
     })
     .sort((a, b) => {
-      return a.connectorRef.localeCompare(b.connectorRef);
+      return a.slug.localeCompare(b.slug);
     });
 }
 
 function formatAccount(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: ZeroConnectorCatalogStatus,
 ): string | undefined {
   if (connector.connection?.externalUsername) {
     return `@${connector.connection.externalUsername}`;
@@ -344,7 +357,7 @@ function formatAccount(
 
 function getAction(
   status: CandidateStatus,
-  type: string,
+  connectorSlug: string,
   label: string,
   agentId: string | undefined,
   platformOrigin: string,
@@ -359,7 +372,7 @@ function getAction(
   if (status === "not-authorized" && agentId) {
     return {
       actionLabel: `Authorize ${label}`,
-      actionUrl: `${platformOrigin}/connectors/${type}/authorize?agentId=${agentId}`,
+      actionUrl: `${platformOrigin}/connectors/${connectorSlug}/authorize?agentId=${agentId}`,
     };
   }
 
@@ -367,13 +380,13 @@ function getAction(
     if (agentId) {
       return {
         actionLabel: `Connect and authorize ${label}`,
-        actionUrl: `${platformOrigin}/connectors/${type}/connect?agentId=${agentId}`,
+        actionUrl: `${platformOrigin}/connectors/${connectorSlug}/connect?agentId=${agentId}`,
       };
     }
 
     return {
       actionLabel: `Connect ${label}`,
-      actionUrl: `${platformOrigin}/connectors/${type}/connect`,
+      actionUrl: `${platformOrigin}/connectors/${connectorSlug}/connect`,
     };
   }
 
@@ -381,13 +394,14 @@ function getAction(
 }
 
 function toCandidate(params: {
-  connector: PublicConnectorCatalogStatusItem;
-  authorizedTypes: Set<string> | null;
+  connector: ZeroConnectorCatalogStatus;
+  authorizedConnectorSlugs: Set<string> | null;
   agentId: string | undefined;
   platformOrigin: string;
 }): GenerationCandidate {
-  const { connector, authorizedTypes, agentId, platformOrigin } = params;
-  const type = connector.connectorRef;
+  const { connector, authorizedConnectorSlugs, agentId, platformOrigin } =
+    params;
+  const connectorSlug = connector.slug;
 
   let status: CandidateStatus;
   let reason: string;
@@ -400,7 +414,10 @@ function toCandidate(params: {
     reason = agentId
       ? "not connected or authorized for current agent"
       : "not connected";
-  } else if (authorizedTypes && !authorizedTypes.has(type)) {
+  } else if (
+    authorizedConnectorSlugs &&
+    !authorizedConnectorSlugs.has(connectorSlug)
+  ) {
     status = "not-authorized";
     reason = "connected, not authorized for current agent";
   } else {
@@ -411,13 +428,19 @@ function toCandidate(params: {
   }
 
   return {
-    type,
+    connectorSlug,
     label: connector.label,
     status,
     reason,
     account: connector.connected ? formatAccount(connector) : undefined,
     authMethod: connector.connection?.authMethod,
-    ...getAction(status, type, connector.label, agentId, platformOrigin),
+    ...getAction(
+      status,
+      connectorSlug,
+      connector.label,
+      agentId,
+      platformOrigin,
+    ),
   };
 }
 
@@ -426,10 +449,10 @@ function pad(value: string, width: number): string {
 }
 
 function renderRows(candidates: GenerationCandidate[]): void {
-  const typeWidth = Math.max(
+  const connectorSlugWidth = Math.max(
     4,
     ...candidates.map((candidate) => {
-      return candidate.type.length;
+      return candidate.connectorSlug.length;
     }),
   );
   const labelWidth = Math.max(
@@ -445,7 +468,7 @@ function renderRows(candidates: GenerationCandidate[]): void {
         ? (candidate.account ?? candidate.authMethod ?? "")
         : candidate.reason;
     console.log(
-      `  ${pad(candidate.type, typeWidth)}  ${pad(candidate.label, labelWidth)}  ${suffix}`,
+      `  ${pad(candidate.connectorSlug, connectorSlugWidth)}  ${pad(candidate.label, labelWidth)}  ${suffix}`,
     );
   }
 }
@@ -475,7 +498,7 @@ function renderBuiltInProvider(params: {
     console.log("Built-in command:");
     console.log(`  vm0  ${command.label}`);
     console.log(`  Models: ${command.models}`);
-    if (generationType === "video") {
+    if (generationType === "video" || generationType === "avatar-video") {
       if (videoGenerationAllowed === false) {
         console.log(
           "  Availability: Requires a Pro, Team, or Custom workspace plan.",
@@ -592,21 +615,25 @@ export async function runLister(
 ): Promise<void> {
   const connectorGenerationType = getConnectorGenerationType(generationType);
   const agentId = process.env.ZERO_AGENT_ID;
-  const [catalog, enabledTypes, platformOrigin, billing] = await Promise.all([
-    listZeroConnectorCatalogStatus(),
-    agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
-    getPlatformOrigin(),
-    generationType === "video" && currentTokenCanReadBilling()
-      ? getZeroBillingStatus()
-      : Promise.resolve(null),
-  ]);
-  const authorizedTypes = enabledTypes ? new Set(enabledTypes) : null;
+  const [catalog, enabledConnectorSlugs, platformOrigin, billing] =
+    await Promise.all([
+      listZeroConnectorCatalogStatus(),
+      agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
+      getPlatformOrigin(),
+      (generationType === "video" || generationType === "avatar-video") &&
+      currentTokenCanReadBilling()
+        ? getZeroBillingStatus()
+        : Promise.resolve(null),
+    ]);
+  const authorizedConnectorSlugs = enabledConnectorSlugs
+    ? new Set(enabledConnectorSlugs)
+    : null;
   const candidates = connectorGenerationType
     ? getGenerationConnectors(connectorGenerationType, catalog.connectors).map(
         (connector) => {
           return toCandidate({
             connector,
-            authorizedTypes,
+            authorizedConnectorSlugs,
             agentId,
             platformOrigin,
           });

@@ -4,7 +4,8 @@ import { createStore } from "ccstate";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -21,6 +22,7 @@ import {
   readUsageStorageCounts$,
 } from "./helpers/zero-usage-insight";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroUsageRunsRoutes } from "../zero-usage-runs";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -35,6 +37,10 @@ const MODEL_TOKEN_CATEGORIES = {
   output: "tokens.output",
   cacheRead: "tokens.cache_read",
   cacheCreation: "tokens.cache_creation",
+  inputLongContext: "tokens.input.long_context",
+  outputLongContext: "tokens.output.long_context",
+  cacheReadLongContext: "tokens.cache_read.long_context",
+  cacheCreationLongContext: "tokens.cache_creation.long_context",
 } as const;
 
 interface ModelTokenCounts {
@@ -42,6 +48,10 @@ interface ModelTokenCounts {
   readonly output?: number;
   readonly cacheRead?: number;
   readonly cacheCreation?: number;
+  readonly inputLongContext?: number;
+  readonly outputLongContext?: number;
+  readonly cacheReadLongContext?: number;
+  readonly cacheCreationLongContext?: number;
 }
 
 function authHeaders() {
@@ -49,7 +59,9 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroUsageRunsContract);
+  return setupApp({ context, routes: zeroUsageRunsRoutes })(
+    zeroUsageRunsContract,
+  );
 }
 
 function userIdsFromClerkRequest(args: unknown): string[] {
@@ -329,8 +341,10 @@ describe("GET /api/zero/usage/runs", () => {
       createdAt: createdAt(1),
     });
     await recordModelUsage(actor, included.runId, model, {
-      input: 123,
-      output: 45,
+      inputLongContext: 123,
+      outputLongContext: 45,
+      cacheReadLongContext: 11,
+      cacheCreationLongContext: 7,
     });
     await recordModelUsage(actor, excluded.runId, model, {
       input: 999,
@@ -360,7 +374,8 @@ describe("GET /api/zero/usage/runs", () => {
       model,
       inputTokens: 123,
       outputTokens: 45,
-      creditsCharged: 168,
+      cacheTokens: 18,
+      creditsCharged: 186,
     });
   });
 
@@ -523,7 +538,9 @@ describe("GET /api/zero/usage/runs", () => {
     await seedModelPricing(model);
     for (const member of members) {
       const run = await createBillableRun(member);
-      await recordModelUsage(member, run.runId, model, { output: 10 });
+      await recordModelUsage(member, run.runId, model, {
+        outputLongContext: 10,
+      });
     }
     await billing.processOrgUsageEvents(actor);
     mockClerkUserLookup();
@@ -533,16 +550,22 @@ describe("GET /api/zero/usage/runs", () => {
       tz: "UTC",
     });
 
-    expect(
-      response.body.members.map((member) => {
-        return member.userId;
-      }),
-    ).toStrictEqual(
+    expect(response.body.members).toStrictEqual(
       members
         .map((member) => {
           return member.userId;
         })
-        .sort(),
+        .sort()
+        .map((userId) => {
+          return expect.objectContaining({
+            userId,
+            inputTokens: 0,
+            outputTokens: 10,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+            creditsCharged: 10,
+          });
+        }),
     );
   });
 
@@ -770,6 +793,9 @@ describe("GET /api/zero/usage/runs", () => {
       throw new Error("Expected an org-scoped actor");
     }
     const firstRunAt = new Date(nowDate());
+    // Keep these rows outside the wall-clock compaction window used by
+    // parallel cron tests until this test explicitly materializes them.
+    firstRunAt.setUTCDate(firstRunAt.getUTCDate() + 1);
     firstRunAt.setUTCHours(8, 0, 0, 0);
     mockNow(firstRunAt);
     await postUsageAllowanceInvoicePaid(context.signal, {

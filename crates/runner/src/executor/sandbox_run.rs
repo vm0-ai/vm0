@@ -5,6 +5,8 @@ use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
+use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
     SandboxFactory, SandboxGuestDnsReadinessReason, SandboxId, SandboxNbdCowCreateOutcome,
@@ -15,7 +17,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::agent_run::{
-    AgentExecutionResult, PreparedGuestRuntime, RunControls, RunStart, run_in_sandbox,
+    AgentExecutionResult, PreparedGuestRuntime, ProcessCancelTimeouts, RunControls, RunStart,
+    run_in_sandbox_with_process_cancel_timeouts,
 };
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
@@ -25,13 +28,13 @@ use super::diagnostics::{
     collect_agent_abnormal_exit_diagnostics, copy_guest_logs, explicit_enospc_evidence,
     read_guest_cli_agent_session_id,
 };
-use super::session_id::{
-    canonical_codex_thread_id, invalid_session_id_diagnostic_preview, is_valid_session_id,
-};
+use super::session_id::invalid_session_id_diagnostic_preview;
 use super::telemetry::record_workspace_cache_result;
+use super::workspace_session_history_materializer::WorkspaceSessionHistoryMaterializer;
 use super::{
-    ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
-    RunnerResult, SandboxPreparedNotifier, SandboxReuseResult, SessionHistoryMaterializer,
+    ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch,
+    PROCESS_CANCEL_TIMEOUTS, RunnerError, RunnerResult, SandboxPreparedNotifier,
+    SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseResult, SessionHistoryMaterializer,
     SessionHistoryRestorePlan,
 };
 use crate::dns::{DnsReadinessLogObservation, inspect_readiness_log_segment};
@@ -530,6 +533,10 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
             .as_ref()
             .is_some_and(WorkspaceImageLease::is_cache_hit);
         if failure.invalidate_consumed_workspace_cache && cache_hit {
+            controls.session_history_restore_plan = cancel_local_sidecar_restore_plan(
+                std::mem::take(&mut controls.session_history_restore_plan),
+            )
+            .await;
             invalidate_workspace_cache_hit(
                 workspace_image.as_ref(),
                 context.run_id,
@@ -599,6 +606,15 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         }
 
         if cache_hit {
+            controls.session_history_restore_plan =
+                replace_local_sidecar_restore_plan_for_workspace_retry(
+                    std::mem::take(&mut controls.session_history_restore_plan),
+                    context,
+                    config,
+                    controls.cancel.clone(),
+                    telemetry,
+                )
+                .await;
             cancel_prepared_storage(&mut controls, telemetry).await;
             invalidate_workspace_cache_hit(
                 workspace_image.as_ref(),
@@ -634,14 +650,6 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                     return Err(error);
                 }
             }
-            controls.session_history_restore_plan =
-                discard_local_sidecar_restore_plan_for_workspace_retry(
-                    std::mem::take(&mut controls.session_history_restore_plan),
-                    context,
-                    config,
-                    controls.cancel.clone(),
-                    telemetry,
-                );
         }
         used_retry = true;
     };
@@ -756,13 +764,14 @@ pub(super) async fn prepare_workspace_image(
 ) -> Option<WorkspaceImageLease> {
     let cache = config.workspace_cache.as_ref()?;
     let prepare_started = Instant::now();
+    let reuse_key = context.reuse_key();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: context.run_id,
                 sandbox_id,
                 profile_name,
-                cli_agent_session_id: context.cli_agent_session_id(),
+                reuse_key,
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
             },
@@ -831,7 +840,18 @@ async fn resolve_fresh_session_history_restore_plan(
                 true,
                 None,
             );
-            SessionHistoryRestorePlan::LocalSidecar { sidecar, fallback }
+            let materializer = WorkspaceSessionHistoryMaterializer::start(
+                sidecar,
+                context.resume_session.as_ref(),
+                effective_cli_framework(&context.cli_agent_type),
+                &config.session_history_cpu,
+                cancel,
+            )
+            .await;
+            SessionHistoryRestorePlan::LocalSidecar {
+                materializer,
+                fallback,
+            }
         }
         Err(reason) => {
             telemetry.record(
@@ -845,25 +865,46 @@ async fn resolve_fresh_session_history_restore_plan(
     }
 }
 
-fn discard_local_sidecar_restore_plan_for_workspace_retry(
+async fn cancel_local_sidecar_restore_plan(
+    plan: SessionHistoryRestorePlan,
+) -> SessionHistoryRestorePlan {
+    match plan {
+        SessionHistoryRestorePlan::LocalSidecar {
+            materializer,
+            fallback,
+        } => {
+            materializer.cancel().await;
+            SessionHistoryRestorePlan::DeferredHashBacked { fallback }
+        }
+        other => other,
+    }
+}
+
+async fn replace_local_sidecar_restore_plan_for_workspace_retry(
     plan: SessionHistoryRestorePlan,
     context: &ExecutionContext,
     config: &ExecutorConfig,
     cancel: CancellationToken,
     telemetry: &mut JobTelemetry,
 ) -> SessionHistoryRestorePlan {
-    match plan {
-        SessionHistoryRestorePlan::LocalSidecar { fallback, .. } => {
-            telemetry.record(
-                "session_history_workspace_cache_miss",
-                Duration::ZERO,
-                true,
-                Some("sandbox_retry_without_workspace_image"),
-            );
-            start_fresh_session_history_materializer(context, config, cancel, telemetry, fallback)
+    let fallback = match plan {
+        SessionHistoryRestorePlan::LocalSidecar {
+            materializer,
+            fallback,
+        } => {
+            materializer.cancel().await;
+            fallback
         }
-        other => other,
-    }
+        SessionHistoryRestorePlan::DeferredHashBacked { fallback } => fallback,
+        other => return other,
+    };
+    telemetry.record(
+        "session_history_workspace_cache_miss",
+        Duration::ZERO,
+        true,
+        Some("sandbox_retry_without_workspace_image"),
+    );
+    start_fresh_session_history_materializer(context, config, cancel, telemetry, fallback)
 }
 
 fn start_fresh_session_history_materializer(
@@ -898,7 +939,7 @@ fn workspace_image_prepare_error(result: WorkspaceCacheCheckoutResult) -> Option
     match result {
         WorkspaceCacheCheckoutResult::Hit
         | WorkspaceCacheCheckoutResult::Miss
-        | WorkspaceCacheCheckoutResult::NoSession => None,
+        | WorkspaceCacheCheckoutResult::NoReuseKey => None,
         WorkspaceCacheCheckoutResult::InvalidWorkingDir => {
             Some(WORKSPACE_IMAGE_PREPARE_INVALID_WORKING_DIR)
         }
@@ -976,6 +1017,12 @@ async fn create_started_sandbox(
             ));
         }
     };
+
+    if let Err(error) = sandbox.bind_run_control(&context.run_id.to_string()) {
+        telemetry.record("vm_create", t.elapsed(), false, Some(&error.to_string()));
+        let _ = destroy_sandbox_panic_safe(factory, sandbox).await;
+        return Err(SandboxPrepareError::fatal(error.into()));
+    }
 
     let source_ip = sandbox.source_ip().to_string();
     let proxy_register_started = Instant::now();
@@ -1243,6 +1290,7 @@ pub(super) async fn execute_reused_sandbox(
             );
             return ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(e.to_string())),
+                sandbox_reuse_disposition: SandboxReuseDisposition::default(),
                 sandbox: Some(sandbox),
                 source_ip,
                 network_log_session: None,
@@ -1288,6 +1336,27 @@ pub(super) async fn execute_prepared_sandbox_run(
     telemetry: &mut JobTelemetry,
     controls: RunControls,
 ) -> ExecuteOutcome {
+    execute_prepared_sandbox_run_with_process_cancel_timeouts(
+        run,
+        context,
+        config,
+        start,
+        telemetry,
+        controls,
+        PROCESS_CANCEL_TIMEOUTS,
+    )
+    .await
+}
+
+pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
+    run: PreparedSandboxRun,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    start: RunStart<'_>,
+    telemetry: &mut JobTelemetry,
+    controls: RunControls,
+    process_cancel_timeouts: ProcessCancelTimeouts,
+) -> ExecuteOutcome {
     let PreparedSandboxRun {
         sandbox,
         source_ip,
@@ -1299,13 +1368,14 @@ pub(super) async fn execute_prepared_sandbox_run(
 
     let mut controls = controls;
     controls.prepared_guest_runtime = prepared_guest_runtime;
-    let result = run_in_sandbox(
+    let result = run_in_sandbox_with_process_cancel_timeouts(
         sandbox.as_ref(),
         context,
         config,
         start,
         telemetry,
         controls,
+        process_cancel_timeouts,
     )
     .await;
 
@@ -1358,6 +1428,8 @@ pub(super) async fn execute_prepared_sandbox_run(
                 "post-job proxy cleanup failed: {e}"
             )));
         }
+        agent_result.sandbox_reuse_disposition =
+            SandboxReuseDisposition::Ineligible(SandboxReuseRejection::PostJobCleanupFailure);
     }
 
     // Read the CLI-generated session ID after a first-run execution.
@@ -1379,6 +1451,7 @@ pub(super) async fn execute_prepared_sandbox_run(
 
     ExecuteOutcome {
         failure: agent_result.failure,
+        sandbox_reuse_disposition: agent_result.sandbox_reuse_disposition,
         sandbox: Some(sandbox),
         source_ip,
         network_log_session: Some(network_log_session),
@@ -1403,7 +1476,7 @@ fn normalize_guest_cli_agent_session_id(
             None
         }),
         EffectiveCliFramework::ClaudeCode => {
-            if is_valid_session_id(&session_id) {
+            if is_valid_cli_agent_session_id(&session_id) {
                 Some(session_id)
             } else {
                 warn!(
@@ -1436,6 +1509,7 @@ pub(super) async fn register_proxy(
         proxy_log_path: &proxy_log_path,
         firewalls: context.firewalls.as_deref(),
         network_policies: context.network_policies.as_ref(),
+        connector_runtime_targets: context.connector_runtime_targets.as_deref(),
         encrypted_secrets: context.encrypted_secrets.as_deref(),
         secret_connector_map: context.secret_connector_map.as_ref(),
         secret_connector_metadata_map: context.secret_connector_metadata_map.as_ref(),
@@ -1454,13 +1528,14 @@ pub(super) async fn register_proxy(
         .register_source_ip(source_ip, network_log_path)
         .await;
     if let Some(refresh) = config.network_policy_refresh.as_ref() {
-        let connector_refs = active_connector_refs(context);
+        let connector_slugs = active_connector_slugs(context);
         refresh
             .register_run(NetworkPolicyRefreshRegistration {
                 run_id: context.run_id,
                 source_ip,
                 registry: config.registry.clone(),
-                connector_refs,
+                connector_slugs,
+                targets: context.connector_runtime_targets.as_deref(),
                 refreshes: context.network_policy_refreshes.as_ref(),
             })
             .await;
@@ -1468,7 +1543,7 @@ pub(super) async fn register_proxy(
     Ok(network_log_session)
 }
 
-fn active_connector_refs(context: &ExecutionContext) -> HashSet<String> {
+fn active_connector_slugs(context: &ExecutionContext) -> HashSet<String> {
     let Some(network_policies) = context.network_policies.as_ref() else {
         return HashSet::new();
     };
@@ -1596,8 +1671,9 @@ mod tests {
     }
 
     #[test]
-    fn active_connector_refs_only_include_builtin_connectors_with_network_policy() {
-        let mut context = crate::test_fixtures::execution_context_for_test(RunId::nil());
+    fn active_connector_slugs_only_include_builtin_connectors_with_network_policy() {
+        let mut context =
+            crate::test_fixtures::execution_context::execution_context_for_test(RunId::nil());
         context.firewalls = Some(vec![
             FirewallEntry::Builtin {
                 name: "github".to_string(),
@@ -1623,6 +1699,7 @@ mod tests {
                         }]),
                     }],
                 },
+                custom_connector_id: None,
             },
             FirewallEntry::Builtin {
                 name: "model-provider:openai".to_string(),
@@ -1636,8 +1713,8 @@ mod tests {
             ("not-active".to_string(), network_policy()),
         ]));
 
-        let refs = active_connector_refs(&context);
+        let slugs = active_connector_slugs(&context);
 
-        assert_eq!(refs, HashSet::from(["github".to_string()]));
+        assert_eq!(slugs, HashSet::from(["github".to_string()]));
     }
 }

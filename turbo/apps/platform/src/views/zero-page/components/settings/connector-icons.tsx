@@ -1,6 +1,7 @@
 import { IconPlug } from "@tabler/icons-react";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { cn } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 function ConnectorIconFallback({
   size,
@@ -9,11 +10,14 @@ function ConnectorIconFallback({
   size: number;
   hidden?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <span
       hidden={hidden}
       role="img"
-      aria-label="Connector icon unavailable"
+      aria-label={t(($) => {
+        return $.connectors.catalog.iconUnavailable;
+      })}
       className="inline-flex h-full w-full items-center justify-center text-muted-foreground"
     >
       <IconPlug size={size * 0.65} stroke={1.5} aria-hidden="true" />

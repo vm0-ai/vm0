@@ -37,11 +37,25 @@ from mitmproxy.test import taddons, tutils
 
 import auth
 import auth_base_forwarder
+import aws_sigv4_body_admission
 import codex_model_catalog_cache
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_streaming
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.aws_sigv4_helpers import (
+    DEFAULT_SIGV4_TIMESTAMP,
+    RESOLVED_AWS_ACCESS_KEY_ID,
+    STS_HOST,
+    aws_sigv4_authorization,
+    resolved_aws_sigv4_credentials,
+)
+from tests.codex_model_catalog_cache_helpers import catalog_flow
+from tests.connector_diagnostic_helpers import (
+    record_connector_diagnostic_requestheaders_context,
+    write_connector_diagnostic_capture_registry,
+)
+from tests.firewall_aws_sigv4_helpers import aws_api_entry
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
@@ -68,6 +82,31 @@ def _write_auth_base_firewall_registry(tmp_path: Path) -> Path:
             },
             network_policy={
                 "allow": ["send"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+
+
+def _write_aws_sigv4_firewall_registry(tmp_path: Path) -> Path:
+    api_entry: dict[str, object] = dict(aws_api_entry())
+    api_entry["permissions"] = [
+        {
+            "name": "identity",
+            "rules": ["POST /"],
+        }
+    ]
+    return _write_registry(
+        tmp_path,
+        client_ip=_CLIENT_IP,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="aws",
+            api_entry=api_entry,
+            network_policy={
+                "allow": ["identity"],
                 "deny": [],
                 "ask": [],
                 "unknownPolicy": "deny",
@@ -215,6 +254,141 @@ def _start_http1_request(
     return http_layer, request_headers_hook
 
 
+def _start_head_firewall_request(
+    addon_context: taddons.context,
+    *,
+    protocol: Literal["http1", "http2"],
+) -> tuple[connection.Client, H2Connection | None, HttpLayer, HttpRequestHeadersHook]:
+    alpn = b"h2" if protocol == "http2" else b"http/1.1"
+    client, http_layer = _start_http_layer(
+        addon_context,
+        alpn=alpn,
+        host="api.github.com",
+    )
+    http2: H2Connection | None = None
+    if protocol == "http2":
+        http2 = H2Connection(H2Configuration(client_side=True, header_encoding=None))
+        http2.initiate_connection()
+        http2.send_headers(
+            1,
+            [
+                (b":method", b"HEAD"),
+                (b":scheme", b"https"),
+                (b":authority", b"api.github.com"),
+                (b":path", b"/orgs"),
+            ],
+            end_stream=True,
+        )
+        request_bytes = http2.data_to_send()
+    else:
+        request_bytes = b"HEAD /orgs HTTP/1.1\r\nHost: api.github.com\r\n\r\n"
+
+    request_commands = list(http_layer.handle_event(events.DataReceived(client, request_bytes)))
+    request_headers_hook = next(
+        command for command in request_commands if isinstance(command, HttpRequestHeadersHook)
+    )
+    return client, http2, http_layer, request_headers_hook
+
+
+@pytest.mark.parametrize("protocol", ["http1", "http2"])
+async def test_head_firewall_block_emits_no_response_data(
+    tmp_path: Path,
+    protocol: Literal["http1", "http2"],
+) -> None:
+    registry_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
+                    }
+                ],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        addon_context.options.update(
+            vm0_api_url="https://api.vm0.ai",
+            vm0_proxy_registry_path=str(registry_path),
+        )
+        client, http2, http_layer, request_headers_hook = _start_head_firewall_request(
+            addon_context,
+            protocol=protocol,
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_headers_hook)
+        all_commands = list(
+            http_layer.handle_event(events.HookCompleted(request_headers_hook, None))
+        )
+
+        request_hook = next(
+            command for command in all_commands if isinstance(command, HttpRequestHook)
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_hook)
+        after_request = list(http_layer.handle_event(events.HookCompleted(request_hook, None)))
+        all_commands.extend(after_request)
+
+        response_headers_hook = next(
+            command for command in after_request if isinstance(command, HttpResponseHeadersHook)
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, response_headers_hook)
+        after_response_headers = list(
+            http_layer.handle_event(events.HookCompleted(response_headers_hook, None))
+        )
+        all_commands.extend(after_response_headers)
+
+        response_hook = next(
+            command for command in after_response_headers if isinstance(command, HttpResponseHook)
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, response_hook)
+        all_commands.extend(http_layer.handle_event(events.HookCompleted(response_hook, None)))
+
+    flow = request_headers_hook.flow
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert not any(isinstance(command, commands.OpenConnection) for command in all_commands)
+
+    client_bytes = b"".join(
+        command.data
+        for command in all_commands
+        if isinstance(command, commands.SendData) and command.connection is client
+    )
+    if protocol == "http1":
+        response_head, separator, response_body = client_bytes.partition(b"\r\n\r\n")
+        assert separator == b"\r\n\r\n"
+        assert response_head.startswith(b"HTTP/1.1 403 ")
+        assert b"content-length:" not in response_head.lower()
+        assert response_body == b""
+    else:
+        assert http2 is not None
+        response_events = http2.receive_data(client_bytes)
+        response_headers = next(
+            event for event in response_events if isinstance(event, h2_events.ResponseReceived)
+        )
+        assert dict(response_headers.headers)[b":status"] == b"403"
+        assert b"content-length" not in dict(response_headers.headers)
+        assert not any(isinstance(event, h2_events.DataReceived) for event in response_events)
+        assert any(isinstance(event, h2_events.StreamEnded) for event in response_events)
+
+
 async def test_http2_duplicate_host_is_rejected_before_auth_or_http1_downgrade(
     tmp_path: Path,
     fake_firewall_headers,
@@ -326,7 +500,9 @@ async def test_http2_fresh_catalog_hit_completes_without_provider_connection(
     )
     mitm_addon.responseheaders(seed_flow)
     assert response_stream(seed_flow)(catalog_body) == catalog_body
-    codex_model_catalog_cache.finalize_response(seed_flow)
+    finalization = codex_model_catalog_cache.finalize_response(seed_flow)
+    assert finalization is not None
+    await finalization
     codex_model_catalog_cache.release_flow_state(seed_flow)
     response_streaming.release_response_stream_state(seed_flow)
 
@@ -463,8 +639,97 @@ async def _catalog_http_stream(
     return stream, flow
 
 
+async def test_head_connector_diagnostic_emits_no_response_data(
+    tmp_path: Path,
+    real_flow,
+) -> None:
+    registry_path = write_connector_diagnostic_capture_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip=_CLIENT_IP,
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="HEAD",
+    )
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        addon_context.options.update(
+            vm0_api_url="https://api.vm0.ai",
+            vm0_builtin_firewall_catalog_cache_path=str(
+                tmp_path / "builtin-firewall-catalog-cache.json"
+            ),
+            vm0_proxy_registry_path=str(registry_path),
+        )
+        record_connector_diagnostic_requestheaders_context(flow)
+        _, http_layer = _start_http_layer(
+            addon_context,
+            alpn=b"h2",
+            host="fal.run",
+        )
+        stream = HttpStream(http_layer.context.fork(), 1)
+        list(stream.handle_event(events.Start()))
+        stream.flow = flow
+        flow.live = True
+        stream.client_state = stream.state_done
+        stream.server_state = stream.state_wait_for_response_headers
+
+        upstream_response = tutils.tresp(
+            status_code=401,
+            headers=header_map(
+                {
+                    "Content-Length": "8",
+                    "Content-Type": "text/plain",
+                }
+            ),
+            content=b"",
+        )
+        response_header_commands = list(
+            stream.handle_event(ResponseHeaders(1, upstream_response, end_stream=True))
+        )
+        response_headers_hook = next(
+            command
+            for command in response_header_commands
+            if isinstance(command, HttpResponseHeadersHook)
+        )
+        await addon_context.master.addons.invoke_addon(
+            mitm_addon,
+            response_headers_hook,
+        )
+        after_headers = list(stream.handle_event(events.HookCompleted(response_headers_hook, None)))
+
+        end_commands = list(stream.handle_event(ResponseEndOfMessage(1)))
+        response_hook = next(
+            command for command in end_commands if isinstance(command, HttpResponseHook)
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, response_hook)
+        after_response = list(stream.handle_event(events.HookCompleted(response_hook, None)))
+
+    assert flow.response is not None
+    assert flow.response.status_code == 401
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    client_events = [
+        command.event
+        for command in [*after_headers, *end_commands, *after_response]
+        if isinstance(command, SendHttp)
+    ]
+    assert any(
+        isinstance(event, ResponseHeaders)
+        and event.response.status_code == 401
+        and event.end_stream
+        for event in client_events
+    )
+    assert not any(isinstance(event, ResponseData) for event in client_events)
+    assert any(isinstance(event, ResponseEndOfMessage) for event in client_events)
+
+
 async def test_http2_brotli_catalog_is_streamed_unchanged_while_cached(
     tmp_path: Path,
+    real_flow,
 ) -> None:
     catalog_path = "/backend-api/codex/models?client_version=0.145.0"
     catalog_body = b'{"models":[{"slug":"gpt-test"}]}'
@@ -534,6 +799,17 @@ async def test_http2_brotli_catalog_is_streamed_unchanged_while_cached(
         assert flow.response.status_code == 200
         assert flow.response.headers["Content-Encoding"] == "br"
         assert flow.response.headers["Content-Length"] == str(len(compressed_body))
+
+        cache_hit = catalog_flow(
+            real_flow,
+            version="0.145.0",
+            auth_value="resolved-access",
+            account="resolved-account",
+        )
+        await codex_model_catalog_cache.prepare_request(cache_hit, request_end_stream=True)
+        assert cache_hit.response is not None
+        assert cache_hit.response.content == catalog_body
+        codex_model_catalog_cache.release_flow_state(cache_hit)
 
         after_response = list(stream.handle_event(events.HookCompleted(response_hook, None)))
 
@@ -709,6 +985,100 @@ async def test_http2_unbounded_brotli_catalog_is_passed_through_but_not_retained
         == oversized_body
     )
     assert any(isinstance(event, ResponseEndOfMessage) for event in client_events)
+
+
+async def test_http2_open_sigv4_request_without_length_is_rejected_before_body(
+    tmp_path: Path,
+) -> None:
+    registry_path = _write_aws_sigv4_firewall_registry(tmp_path)
+    get_headers = AsyncMock()
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        addon_context.options.update(
+            vm0_api_url="https://api.vm0.ai",
+            vm0_proxy_registry_path=str(registry_path),
+        )
+        http_layer, request_headers_hook = _start_http2_request(
+            addon_context,
+            method="POST",
+            end_stream=False,
+            host=STS_HOST,
+            regular_headers=(
+                (b"x-amz-date", DEFAULT_SIGV4_TIMESTAMP.encode()),
+                (b"authorization", aws_sigv4_authorization().encode()),
+            ),
+        )
+
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_headers_hook)
+        flow = request_headers_hook.flow
+        commands = list(http_layer.handle_event(events.HookCompleted(request_headers_hook, None)))
+        error_hook = next(command for command in commands if isinstance(command, HttpErrorHook))
+        await addon_context.master.addons.invoke_addon(mitm_addon, error_hook)
+
+    assert flow.error is not None
+    assert flow.error.msg == Error.KILLED_MESSAGE
+    assert flow.request.raw_content is None
+    assert (
+        flow.metadata[metadata_keys.FIREWALL_ERROR]
+        == auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR
+    )
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+    assert not any(isinstance(command, HttpRequestHook) for command in commands)
+    get_headers.assert_not_awaited()
+
+
+async def test_http2_headers_only_sigv4_request_uses_zero_byte_admission(
+    tmp_path: Path,
+) -> None:
+    registry_path = _write_aws_sigv4_firewall_registry(tmp_path)
+    token_meta = {
+        "headers": {},
+        "aws_sigv4": resolved_aws_sigv4_credentials(),
+        "resolved_secrets": [],
+        "refreshed_connectors": [],
+        "refreshed_secrets": [],
+        "cache_hit": False,
+    }
+    get_headers = AsyncMock(return_value=token_meta)
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        addon_context.options.update(
+            vm0_api_url="https://api.vm0.ai",
+            vm0_proxy_registry_path=str(registry_path),
+        )
+        http_layer, request_headers_hook = _start_http2_request(
+            addon_context,
+            method="POST",
+            end_stream=True,
+            host=STS_HOST,
+            regular_headers=(
+                (b"x-amz-date", DEFAULT_SIGV4_TIMESTAMP.encode()),
+                (b"authorization", aws_sigv4_authorization().encode()),
+            ),
+        )
+
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_headers_hook)
+        assert aws_sigv4_body_admission.state_for_tests() == (1, 0)
+        commands = list(http_layer.handle_event(events.HookCompleted(request_headers_hook, None)))
+        request_hook = next(command for command in commands if isinstance(command, HttpRequestHook))
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_hook)
+        flow = request_hook.flow
+
+        assert f"Credential={RESOLVED_AWS_ACCESS_KEY_ID}/" in flow.request.headers["authorization"]
+        assert aws_sigv4_body_admission.state_for_tests() == (1, 0)
+        flow.response = http.Response.make(200, b"ok")
+        mitm_addon.response(flow)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 
 @pytest.mark.parametrize("method", ["GET", "HEAD"])

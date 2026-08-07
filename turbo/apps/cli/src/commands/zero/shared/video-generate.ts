@@ -1,12 +1,13 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
+import { ApiRequestError } from "../../../lib/api/core/client-factory";
+import { generateWebVideo } from "../../../lib/api/domains/web";
+import { getZeroBillingStatus } from "../../../lib/api/domains/zero-billing";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
-  ApiRequestError,
-  generateWebVideo,
-  getZeroBillingStatus,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
-import { findVideoTemplate, listVideoTemplates } from "./resource-registry";
+  findVideoTemplate,
+  listVideoTemplates,
+} from "@vm0/core/resource-registry";
 import { formatRegistryListing } from "./resource-listing";
 import { createVideoTemplateAuthoringPacket } from "./video-template-authoring";
 import {
@@ -311,6 +312,9 @@ async function validateFrameImageAspectRatio(
 }
 
 async function validateVideoOptions(options: VideoOptions): Promise<void> {
+  if (["minimax-h3", "h3"].includes(options.model.toLowerCase())) {
+    return;
+  }
   await Promise.all([
     validateFrameImageAspectRatio(
       "--first-frame-image-url",
@@ -391,7 +395,7 @@ export function createVideoGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, or kling-v3-4k",
+      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k",
       "dreamina-seedance-2.0-fast",
     )
     .option(
@@ -404,27 +408,30 @@ export function createVideoGenerateCommand(
       "Duration: 2s-15s depending on model",
       "8s",
     )
-    .option("--resolution <resolution>", "Resolution: 480p, 720p, or 1080p")
-    .option("--no-audio", "Generate a silent video")
+    .option(
+      "--resolution <resolution>",
+      "Resolution: 480p, 720p, 768p, 1080p, 2k, or 4k depending on model",
+    )
+    .option("--no-audio", "Generate a silent video (unsupported by MiniMax H3)")
     .option("--negative-prompt <text>", "Negative prompt")
     .option("--seed <integer>", "Deterministic seed", parseSeed)
     .option("--no-auto-fix", "Disable prompt auto-fix")
     .option("--safety-tolerance <level>", "Safety tolerance", "4")
     .option(
       "--image-url <url>",
-      "Reference image URL; repeat for multiple Dreamina Seedance 2.0 references",
+      "Reference image URL; repeat for multiple Seedance 2.0 or MiniMax H3 references",
       collectUrl,
       [],
     )
     .option(
       "--video-url <url>",
-      "Reference video URL; repeat up to 3 times for Dreamina Seedance 2.0",
+      "Reference video URL; repeat up to 3 times for Seedance 2.0 or MiniMax H3",
       collectUrl,
       [],
     )
     .option(
       "--audio-url <url>",
-      "Reference audio URL for Dreamina Seedance 2.0",
+      "Reference audio URL; repeat up to 3 times for MiniMax H3",
       collectUrl,
       [],
     )
@@ -443,7 +450,7 @@ Output:
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
   - Charges org credits after successful video generation
-  - Uses BytePlus ModelArk and fal.ai video models with configured usage pricing
+  - Uses MiniMax, BytePlus ModelArk, and fal.ai video models with configured usage pricing
 
 Models:
   - Dreamina Seedance 2.0: dreamina-seedance-2.0,
@@ -453,6 +460,8 @@ Models:
   - Seedance 1.5 Pro: seedance-1.5-pro. Supports 4s-12s,
     480p/720p/1080p, seed, optional audio, image references, and
     first/last frames.
+  - MiniMax H3: minimax-h3. Supports 4s-15s, 768p/2k, image/video/audio
+    references, and first/last frames. H3 always generates native audio.
   - fal.ai: veo3.1-fast and kling-v3-4k. veo3.1-fast supports
     4s/6s/8s, 720p/1080p/4k, negative prompts, seed, auto-fix,
     safety tolerance, and optional audio. kling-v3-4k supports 3s-15s,

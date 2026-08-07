@@ -1,5 +1,72 @@
 # Changelog
 
+## [0.19.67](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.66...vsock-guest-v0.19.67) (2026-08-07)
+
+## [0.19.66](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.65...vsock-guest-v0.19.66) (2026-08-07)
+
+## [0.19.65](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.64...vsock-guest-v0.19.65) (2026-08-07)
+
+## [0.19.64](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.63...vsock-guest-v0.19.64) (2026-08-06)
+
+## [0.19.63](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.62...vsock-guest-v0.19.63) (2026-08-06)
+
+
+### Documentation
+
+* **vsock-guest:** correct env script cleanup contract ([#25462](https://github.com/vm0-ai/vm0/issues/25462)) ([f5cb8d2](https://github.com/vm0-ai/vm0/commit/f5cb8d2337738345e4cb0f0f188d634a14a7ed40))
+
+## [0.19.62](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.61...vsock-guest-v0.19.62) (2026-08-05)
+
+
+### Refactoring
+
+* remove unused e2b infrastructure ([#25162](https://github.com/vm0-ai/vm0/issues/25162)) ([54ec015](https://github.com/vm0-ai/vm0/commit/54ec015ee993c21c2b4635bbd969edee8d967f74))
+
+## [0.19.61](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.60...vsock-guest-v0.19.61) (2026-08-04)
+
+## [0.19.60](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.59...vsock-guest-v0.19.60) (2026-08-04)
+
+## [0.19.59](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.58...vsock-guest-v0.19.59) (2026-08-03)
+
+
+### Performance Improvements
+
+* **vsock:** encode exec results into one frame buffer ([#24754](https://github.com/vm0-ai/vm0/issues/24754)) ([eb7bd3a](https://github.com/vm0-ai/vm0/commit/eb7bd3a5947dc39748f96cd430f4283e2be1962e))
+
+## [0.19.58](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.57...vsock-guest-v0.19.58) (2026-08-03)
+
+## [0.19.57](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.56...vsock-guest-v0.19.57) (2026-08-02)
+
+
+### Documentation
+
+* **rust:** document quiesce state contract ([#24580](https://github.com/vm0-ai/vm0/issues/24580)) ([6729bc8](https://github.com/vm0-ai/vm0/commit/6729bc83029542cfa12dc6043b219893de09fd67))
+
+## [0.19.56](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.55...vsock-guest-v0.19.56) (2026-08-02)
+
+## [0.19.55](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.54...vsock-guest-v0.19.55) (2026-08-01)
+
+## [0.19.54](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.53...vsock-guest-v0.19.54) (2026-07-31)
+
+
+### Performance Improvements
+
+* **vsock-guest:** avoid production drain wait in orphan test ([#24209](https://github.com/vm0-ai/vm0/issues/24209)) ([2b37043](https://github.com/vm0-ai/vm0/commit/2b37043d8a0db3034b3f2b93084d590cf2e2e828))
+
+## [0.19.53](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.52...vsock-guest-v0.19.53) (2026-07-30)
+
+## [0.19.52](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.51...vsock-guest-v0.19.52) (2026-07-30)
+
+## [0.19.51](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.50...vsock-guest-v0.19.51) (2026-07-29)
+
+## [0.19.50](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.49...vsock-guest-v0.19.50) (2026-07-29)
+
+
+### Bug Fixes
+
+* **vsock-guest:** make pidfd waits independent of nofile limit ([#23675](https://github.com/vm0-ai/vm0/issues/23675)) ([05b7d8e](https://github.com/vm0-ai/vm0/commit/05b7d8e657b2fa48813e3339b8f34a6291b157f4))
+* **vsock:** retain guest transport until host disconnect ([#23679](https://github.com/vm0-ai/vm0/issues/23679)) ([b3a059c](https://github.com/vm0-ai/vm0/commit/b3a059c9a65b25adddcd6b9a1ca7c88be5e50b45))
+
 ## [0.19.49](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.48...vsock-guest-v0.19.49) (2026-07-29)
 
 

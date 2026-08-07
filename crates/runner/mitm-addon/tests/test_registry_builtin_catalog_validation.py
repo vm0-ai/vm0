@@ -1,13 +1,18 @@
 """Tests for built-in registry catalog payload and trust validation."""
 
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+import builtin_connector_diagnostics
 import builtin_firewall_cache
 import registry
-from tests.registry_builtin_helpers import cache_firewall, write_catalog_cache
+import state_file
+from tests.registry_builtin_helpers import (
+    cache_firewall,
+    write_catalog_cache,
+    write_registry_with_cache,
+)
 from tests.registry_helpers import (
     assert_invalid_builtin_vm,
     builtin_vm,
@@ -64,26 +69,29 @@ def _assert_cache_firewall_is_invalid(
 
 
 class TestRegistryBuiltinCatalogValidation:
-    def test_runner_catalog_cache_accepts_exact_size_limit(self, tmp_path):
+    def test_runner_catalog_cache_fstat_failure_reports_unavailable(self, tmp_path):
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_catalog_cache(
-            cache_path,
-            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            version="catalog-a",
-            firewalls={"fallback": cache_firewall("fallback", "https://cache.example.com")},
-        )
-        exact_size = cache_path.stat().st_size
+        cache_path.write_text("{}")
+        error = OSError("fstat failed")
 
-        with patch.object(
-            builtin_firewall_cache,
-            "MAX_BUILTIN_FIREWALL_CATALOG_BYTES",
-            exact_size,
-        ):
+        with patch.object(state_file.os, "fstat", side_effect=error):
             snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
 
-        assert snapshot.catalog is not None
-        assert snapshot.catalog.firewalls["fallback"]["name"] == "fallback"
-        assert snapshot.unavailable_reason is None
+        assert snapshot.dependency_file_key is None
+        assert snapshot.catalog is None
+        assert snapshot.cache_path == str(cache_path.absolute())
+        assert snapshot.unavailable_reason == "cache_unavailable"
+
+    def test_runner_catalog_cache_directory_reports_not_regular(self, tmp_path):
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        cache_path.mkdir()
+
+        snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+
+        assert snapshot.dependency_file_key is None
+        assert snapshot.catalog is None
+        assert snapshot.cache_path == str(cache_path.absolute())
+        assert snapshot.unavailable_reason == "cache_not_regular"
 
     def test_runner_catalog_cache_rejects_initial_oversize_before_parsing(self, tmp_path, mitm_ctx):
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
@@ -116,32 +124,14 @@ class TestRegistryBuiltinCatalogValidation:
         assert snapshot.unavailable_reason == "cache_invalid"
         assert spy.call_count == 0
 
-    def test_runner_catalog_cache_rejects_underreported_size_before_parsing(self, mitm_ctx):
-        cache_path = Path("/proc/self/status")
-        assert cache_path.stat().st_size == 0
-
-        with (
-            mitm_ctx(),
-            patch.object(
-                builtin_firewall_cache,
-                "MAX_BUILTIN_FIREWALL_CATALOG_BYTES",
-                1,
-            ),
-            patch.object(
-                builtin_firewall_cache.json,
-                "loads",
-                wraps=builtin_firewall_cache.json.loads,
-            ) as spy,
-        ):
-            snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
-
-        assert snapshot.dependency_file_key is not None
-        assert snapshot.dependency_file_key.st_size == 0
-        assert snapshot.catalog is None
-        assert snapshot.unavailable_reason == "cache_invalid"
-        assert spy.call_count == 0
-
-    def test_runner_catalog_cache_accepts_valid_template_base(self, tmp_path, mitm_ctx):
+    @pytest.mark.parametrize(
+        "template_whitespace",
+        [" ", "\ufeff"],
+        ids=["space", "byte-order-mark"],
+    )
+    def test_runner_catalog_cache_accepts_valid_template_base(
+        self, tmp_path, mitm_ctx, template_whitespace
+    ):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
         write_multi_vm_registry(
@@ -163,7 +153,13 @@ class TestRegistryBuiltinCatalogValidation:
                     "name": "templated",
                     "apis": [
                         {
-                            "base": "https://${{ vars.TENANT }}.example.com",
+                            "base": (
+                                "https://${{"
+                                + template_whitespace
+                                + "vars.TENANT"
+                                + template_whitespace
+                                + "}}.example.com"
+                            ),
                             "auth": {"headers": {}},
                             "permissions": [{"name": "read", "rules": ["GET /items"]}],
                         }
@@ -255,6 +251,13 @@ class TestRegistryBuiltinCatalogValidation:
         firewall["apis"][0]["base"] = "https://${{ secrets.TENANT }}.example.com"
         _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
 
+    def test_python_only_template_whitespace_runner_catalog_cache_fails_closed(
+        self, tmp_path, mitm_ctx
+    ):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["base"] = "https://${{\u0085vars.TENANT\u0085}}.example.com"
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
     def test_malformed_template_parameter_base_runner_catalog_cache_fails_closed(
         self, tmp_path, mitm_ctx
     ):
@@ -328,6 +331,45 @@ class TestRegistryBuiltinCatalogValidation:
         firewall["apis"][0]["permissions"][0]["rules"] = []
 
         _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    @pytest.mark.parametrize("permission_name", ["all", "__unknown__"])
+    def test_reserved_permission_runner_catalog_cache_fails_closed(
+        self, tmp_path, mitm_ctx, permission_name
+    ):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["permissions"][0]["name"] = permission_name
+        registry_path, cache_path = write_registry_with_cache(
+            tmp_path,
+            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+            firewalls={"fallback": firewall},
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            cache_snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+            assert cache_snapshot.dependency_file_key is not None
+            assert cache_snapshot.catalog is None
+            assert cache_snapshot.unavailable_reason == "cache_invalid"
+
+            diagnostic_snapshot = builtin_connector_diagnostics.load_diagnostic_snapshot(
+                cache_snapshot
+            )
+            assert diagnostic_snapshot.catalog_identity is None
+            assert diagnostic_snapshot.catalog is None
+            assert diagnostic_snapshot.unavailable_reason == "cache_invalid"
+
+            diagnostic_candidate = builtin_connector_diagnostics.find_candidate(
+                diagnostic_snapshot,
+                "https://cache.example.com/items",
+                "GET",
+                active_firewall_names=set(),
+            )
+            assert diagnostic_candidate is None
+
+            invalid_vm = assert_invalid_builtin_vm(registry_path)
+            assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
 
     def test_malformed_rule_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
         firewall = cache_firewall("fallback", "https://cache.example.com")

@@ -10,8 +10,9 @@ import {
 /**
  * Compact model usage observations for public model statistics.
  *
- * Billing is recorded separately in `usage_event`. This table keeps only the
- * immutable delivery identity and counters consumed by model rankings.
+ * Billing is recorded separately in `usage_event`. This table keeps the
+ * immutable delivery identity and counters together with projection lifecycle
+ * state consumed by model rankings.
  */
 export const modelUsageObservation = pgTable(
   "model_usage_observation",
@@ -27,6 +28,7 @@ export const modelUsageObservation = pgTable(
       mode: "number",
     }).notNull(),
     observedAt: timestamp("observed_at").defaultNow().notNull(),
+    aggregatedAt: timestamp("aggregated_at"),
   },
   (table) => {
     return [

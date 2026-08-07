@@ -111,6 +111,40 @@ describe("connector/providers/meta-ads", () => {
       expect(result.userInfo.email).toBe("test@example.com");
     });
 
+    it("throws when Meta Ads user info omits the user id", async () => {
+      const shortLivedHandler = http.post(TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "short-lived-token",
+          token_type: "bearer",
+          expires_in: 3600,
+        });
+      });
+      const longLivedHandler = http.get(TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "long-lived-token",
+          token_type: "bearer",
+          expires_in: 5184000,
+        });
+      });
+      const userHandler = http.get(USER_URL, () => {
+        return HttpResponse.json({
+          name: "Test User",
+          email: "test@example.com",
+        });
+      });
+      server.use(shortLivedHandler, longLivedHandler, userHandler);
+
+      await expect(
+        exchangeMetaAdsCode(
+          authCodeGrant(),
+          "client-id",
+          "client-secret",
+          "test-code",
+          "https://example.com/callback",
+        ),
+      ).rejects.toThrow("No user id in Meta Ads user info response");
+    });
+
     it("throws when token endpoint returns an error", async () => {
       const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json(

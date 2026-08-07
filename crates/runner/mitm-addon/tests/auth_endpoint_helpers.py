@@ -3,10 +3,10 @@
 import contextlib
 import json
 import threading
-from collections import deque
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from tests.threaded_http_test_server import ThreadedHttpTestServer
 
 
 @dataclass(frozen=True)
@@ -23,12 +23,22 @@ class AuthEndpointRequest:
         return body
 
 
-@dataclass(frozen=True)
-class AuthEndpointResponse:
-    status: int
-    body: bytes
-    headers: tuple[tuple[str, str], ...] = ()
-    release_event: threading.Event | None = None
+def firewall_auth_success_response(
+    headers: Mapping[str, str],
+    *,
+    expires_at: int | float | None = None,
+    resolved_secrets: Sequence[str] = (),
+    refreshed_connectors: Sequence[str] = (),
+    refreshed_secrets: Sequence[str] = (),
+) -> dict[str, object]:
+    """Build the canonical required shape for a successful firewall auth response."""
+    return {
+        "headers": dict(headers),
+        "expiresAt": expires_at,
+        "resolvedSecrets": list(resolved_secrets),
+        "refreshedConnectors": list(refreshed_connectors),
+        "refreshedSecrets": list(refreshed_secrets),
+    }
 
 
 class FakeAuthEndpoint:
@@ -46,28 +56,24 @@ class FakeAuthEndpoint:
     """
 
     def __init__(self) -> None:
-        self._condition = threading.Condition()
-        self._requests: list[AuthEndpointRequest] = []
-        self._responses: deque[AuthEndpointResponse] = deque()
-        self._release_events: list[threading.Event] = []
-        self._server: ThreadingHTTPServer | None = None
-        self._thread: threading.Thread | None = None
+        self._http = ThreadedHttpTestServer(
+            request_factory=AuthEndpointRequest,
+            default_status=500,
+            default_body=b"unexpected auth request",
+            thread_name="auth-endpoint-test-server",
+        )
 
     @property
     def api_url(self) -> str:
-        assert self._server is not None
-        host, port = self._server.server_address[:2]
-        return f"http://{host}:{port}"
+        return self._http.api_url
 
     @property
     def requests(self) -> tuple[AuthEndpointRequest, ...]:
-        with self._condition:
-            return tuple(self._requests)
+        return self._http.requests
 
     @property
     def request_count(self) -> int:
-        with self._condition:
-            return len(self._requests)
+        return self._http.request_count
 
     def queue_json_response(
         self,
@@ -103,17 +109,12 @@ class FakeAuthEndpoint:
         When no queued response remains, the helper returns its synthetic
         unexpected-request HTTP 500 response.
         """
-        with self._condition:
-            if release_event is not None:
-                self._release_events.append(release_event)
-            self._responses.append(
-                AuthEndpointResponse(
-                    status=status,
-                    body=body,
-                    headers=tuple(headers),
-                    release_event=release_event,
-                )
-            )
+        self._http.queue_response(
+            status,
+            body=body,
+            headers=headers,
+            release_event=release_event,
+        )
 
     def wait_for_request_count(self, count: int, *, timeout: float = 2.0) -> bool:
         """Wait until at least ``count`` auth requests have been recorded.
@@ -121,77 +122,9 @@ class FakeAuthEndpoint:
         Use this instead of sleeps when concurrent tests coordinate with a
         blocked queued response or auth-cache request coalescing.
         """
-        with self._condition:
-            return self._condition.wait_for(lambda: len(self._requests) >= count, timeout)
+        return self._http.wait_for_request_count(count, timeout=timeout)
 
     @contextlib.contextmanager
     def run(self) -> Iterator["FakeAuthEndpoint"]:
-        endpoint = self
-
-        class _Handler(BaseHTTPRequestHandler):
-            def do_GET(self) -> None:
-                endpoint._handle_request(self)
-
-            def do_POST(self) -> None:
-                endpoint._handle_request(self)
-
-            def log_message(self, message_format: str, *args: object) -> None:
-                return None
-
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-        self._server.daemon_threads = True
-        server = self._server
-
-        def serve_forever() -> None:
-            server.serve_forever(poll_interval=0.01)
-
-        self._thread = threading.Thread(
-            target=serve_forever,
-            name="auth-endpoint-test-server",
-            daemon=True,
-        )
-        self._thread.start()
-        try:
+        with self._http.run():
             yield self
-        finally:
-            for release_event in self._release_events:
-                release_event.set()
-            self._server.shutdown()
-            self._thread.join(timeout=2.0)
-            self._server.server_close()
-            self._server = None
-            self._thread = None
-
-    def _record_request_and_reserve_response(
-        self, request: AuthEndpointRequest
-    ) -> AuthEndpointResponse:
-        with self._condition:
-            self._requests.append(request)
-            self._condition.notify_all()
-            if self._responses:
-                return self._responses.popleft()
-            return AuthEndpointResponse(status=500, body=b"unexpected auth request")
-
-    def _handle_request(self, handler: BaseHTTPRequestHandler) -> None:
-        content_length = int(handler.headers.get("content-length", "0"))
-        body = handler.rfile.read(content_length)
-        response = self._record_request_and_reserve_response(
-            AuthEndpointRequest(
-                method=handler.command,
-                path=handler.path,
-                headers={key.lower(): value for key, value in handler.headers.items()},
-                body=body,
-            )
-        )
-
-        if response.release_event is not None:
-            response.release_event.wait()
-
-        handler.send_response(response.status)
-        for name, value in response.headers:
-            handler.send_header(name, value)
-        if response.body:
-            handler.send_header("Content-Length", str(len(response.body)))
-        handler.end_headers()
-        if response.body:
-            handler.wfile.write(response.body)

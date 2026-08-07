@@ -1,5 +1,6 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { IconCircleCheck, IconDownload } from "@tabler/icons-react";
 import {
   Button,
@@ -35,17 +36,26 @@ import {
 } from "../../../../signals/zero-page/billing.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { currentLocale } from "../../../../i18n/index.ts";
+import { formatUsd } from "../../../../i18n/format.ts";
 
 const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
 
 const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
 
 function formatDate(unixTimestamp: number): string {
-  return new Date(unixTimestamp * 1000).toLocaleDateString("en-US");
+  return new Date(unixTimestamp * 1000).toLocaleDateString(currentLocale());
 }
 
 function formatAmount(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+  return formatUsd(cents / 100);
+}
+
+function formatInvoiceMonth(unixTimestamp: number): string {
+  return new Intl.DateTimeFormat(currentLocale(), {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(unixTimestamp * 1000));
 }
 
 interface InvoiceMonth {
@@ -62,7 +72,7 @@ function invoiceMonths(invoices: readonly { readonly date: number }[]) {
     ).padStart(2, "0")}`;
     months.set(value, {
       value,
-      label: new Intl.DateTimeFormat("en-US", {
+      label: new Intl.DateTimeFormat(currentLocale(), {
         month: "long",
         year: "numeric",
         timeZone: "UTC",
@@ -75,10 +85,13 @@ function invoiceMonths(invoices: readonly { readonly date: number }[]) {
 }
 
 function InvoiceRowsSkeleton() {
+  const { t } = useTranslation();
   return (
     <div
       role="status"
-      aria-label="Loading invoices"
+      aria-label={t(($) => {
+        return $.billing.invoices.loading;
+      })}
       data-testid="invoice-list-skeleton"
     >
       {[0, 1, 2].map((row) => {
@@ -118,16 +131,26 @@ function ReceiptMonthSelect({
   readonly months: readonly InvoiceMonth[];
   readonly onValueChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <label className="grid gap-1.5 text-sm" htmlFor={id}>
       <span className="font-medium text-foreground">{label}</span>
       <Select name={name} value={value} onValueChange={onValueChange}>
         <SelectTrigger
           id={id}
-          aria-label={`${label} month`}
+          aria-label={t(
+            ($) => {
+              return $.billing.invoices.monthAria;
+            },
+            { label },
+          )}
           className="h-9 w-full"
         >
-          <SelectValue placeholder="Select month" />
+          <SelectValue
+            placeholder={t(($) => {
+              return $.billing.invoices.selectMonth;
+            })}
+          />
         </SelectTrigger>
         <SelectContent>
           {months.map((month) => {
@@ -148,6 +171,7 @@ function DownloadReceiptsDialog({
 }: {
   readonly months: readonly InvoiceMonth[];
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const [downloadLoadable, downloadReceipts] = useLoadableSet(
     downloadMonthlyReceipts$,
@@ -196,22 +220,35 @@ function DownloadReceiptsDialog({
           disabled={downloading}
         >
           <IconDownload size={14} stroke={1.5} />
-          {downloading ? "Preparing receipts..." : "Download receipts"}
+          {downloading
+            ? t(($) => {
+                return $.billing.invoices.preparingReceipts;
+              })
+            : t(($) => {
+                return $.billing.invoices.downloadReceipts;
+              })}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <form onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>Download receipts</DialogTitle>
+            <DialogTitle>
+              {t(($) => {
+                return $.billing.invoices.downloadReceipts;
+              })}
+            </DialogTitle>
             <DialogDescription>
-              Choose up to 3 consecutive months. Receipt PDFs in that range will
-              be bundled into one ZIP file.
+              {t(($) => {
+                return $.billing.invoices.downloadDescription;
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-5">
             <ReceiptMonthSelect
               id="receipt-start-month"
-              label="From"
+              label={t(($) => {
+                return $.billing.invoices.from;
+              })}
               name="startMonth"
               value={range.startMonth}
               months={months}
@@ -219,7 +256,9 @@ function DownloadReceiptsDialog({
             />
             <ReceiptMonthSelect
               id="receipt-end-month"
-              label="To"
+              label={t(($) => {
+                return $.billing.invoices.to;
+              })}
               name="endMonth"
               value={range.endMonth}
               months={months}
@@ -228,18 +267,24 @@ function DownloadReceiptsDialog({
           </div>
           {rangeExceedsLimit && (
             <p role="alert" className="-mt-2 pb-5 text-sm text-destructive">
-              Select a range of no more than 3 consecutive months.
+              {t(($) => {
+                return $.billing.invoices.rangeError;
+              })}
             </p>
           )}
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
-                Cancel
+                {t(($) => {
+                  return $.billing.common.cancel;
+                })}
               </Button>
             </DialogClose>
             <DialogClose asChild>
               <Button type="submit" disabled={!canSubmit}>
-                Download ZIP
+                {t(($) => {
+                  return $.billing.invoices.downloadZip;
+                })}
               </Button>
             </DialogClose>
           </DialogFooter>
@@ -250,6 +295,7 @@ function DownloadReceiptsDialog({
 }
 
 export function OrgInvoicesTab() {
+  const { t } = useTranslation();
   const invoicesLoadable = useLastLoadable(invoicesAsync$);
   const loading = invoicesLoadable.state === "loading";
 
@@ -263,7 +309,11 @@ export function OrgInvoicesTab() {
   if (!loading && invoices.length === 0) {
     return (
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-muted-foreground">No invoices yet.</p>
+        <p className="text-sm text-muted-foreground">
+          {t(($) => {
+            return $.billing.invoices.empty;
+          })}
+        </p>
       </div>
     );
   }
@@ -285,9 +335,21 @@ export function OrgInvoicesTab() {
             "sticky top-0 z-10 px-4 py-3 text-sm font-medium text-foreground bg-card",
           )}
         >
-          <div className="text-left">Invoice</div>
-          <div className="text-left">Date</div>
-          <div className="text-left">Amount</div>
+          <div className="text-left">
+            {t(($) => {
+              return $.billing.invoices.invoice;
+            })}
+          </div>
+          <div className="text-left">
+            {t(($) => {
+              return $.billing.invoices.date;
+            })}
+          </div>
+          <div className="text-left">
+            {t(($) => {
+              return $.billing.invoices.amount;
+            })}
+          </div>
           <div />
         </div>
         <div className="h-0 zero-border-t mx-4" />
@@ -295,10 +357,7 @@ export function OrgInvoicesTab() {
         {loading && <InvoiceRowsSkeleton />}
 
         {invoices.map((inv, i) => {
-          const invoiceMonth = new Intl.DateTimeFormat("en-US", {
-            month: "long",
-            year: "numeric",
-          }).format(new Date(inv.date * 1000));
+          const invoiceMonth = formatInvoiceMonth(inv.date);
           return (
             <div key={inv.id}>
               {i > 0 && <div className="h-0 zero-border-t mx-4" />}
@@ -330,14 +389,24 @@ export function OrgInvoicesTab() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                            aria-label={`Download ${invoiceMonth} invoice`}
+                            aria-label={t(
+                              ($) => {
+                                return $.billing.invoices.downloadInvoice;
+                              },
+                              { month: invoiceMonth },
+                            )}
                           >
                             <IconDownload size={14} stroke={1.5} />
                           </a>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
                           <p className="text-xs">
-                            Download {invoiceMonth} invoice
+                            {t(
+                              ($) => {
+                                return $.billing.invoices.downloadInvoice;
+                              },
+                              { month: invoiceMonth },
+                            )}
                           </p>
                         </TooltipContent>
                       </Tooltip>

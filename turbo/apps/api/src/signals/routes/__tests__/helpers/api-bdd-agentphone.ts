@@ -15,11 +15,8 @@ import type { z } from "zod";
 import { createApp } from "../../../../app-factory";
 import { env } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { server } from "../../../../mocks/server";
 import { flushWaitUntilForTest } from "../../../context/wait-until";
 import type { ApiTestUser } from "./api-bdd";
@@ -29,6 +26,21 @@ import {
 } from "./api-bdd-integrations";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { zeroIntegrationsPhoneUploadCompleteRoutes } from "../../zero-integrations-phone-upload-complete";
+import { zeroIntegrationsPhoneUploadInitRoutes } from "../../zero-integrations-phone-upload-init";
+import { zeroIntegrationsPhoneDownloadFileRoutes } from "../../zero-integrations-phone-download-file";
+import { zeroLogsRoutes } from "../../zero-logs";
+import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroIntegrationsPhoneDownloadFileRoutes,
+  ...zeroIntegrationsPhoneUploadCompleteRoutes,
+  ...zeroIntegrationsPhoneUploadInitRoutes,
+  ...zeroLogsRoutes,
+  ...zeroModelPoliciesRoutes,
+  ...zeroModelProvidersRoutes,
+]);
 
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
 export const AGENTPHONE_BDD_PHONE_NUMBER = "+19039853128";
@@ -252,28 +264,6 @@ export function createAgentPhoneBddApi(context: TestContext) {
       return { messages, typing };
     },
 
-    /**
-     * Route the run-output Axiom query to a fixed assistant result so the
-     * AgentPhone completion callback resolves `text` as the run output.
-     * Restore with `restoreCompletionRunOutput` before completing runs that
-     * should fall back to "Task completed successfully.".
-     */
-    mockCompletionRunOutput(text: string): void {
-      context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
-        const apl = typeof args[0] === "string" ? args[0] : "";
-        return Promise.resolve(
-          apl.includes("agent-run-events")
-            ? [{ eventType: "result", eventData: { result: text } }]
-            : [],
-        );
-      });
-    },
-
-    restoreCompletionRunOutput(): void {
-      context.mocks.axiom.query.mockReset();
-      context.mocks.axiom.query.mockResolvedValue([]);
-    },
-
     async linkViaWebhookConnectPrompt(
       actor: ApiTestUser,
       phone: string,
@@ -308,7 +298,10 @@ export function createAgentPhoneBddApi(context: TestContext) {
       body: PhoneUploadInitBody,
       statuses: readonly Status[],
     ) {
-      const client = setupApp({ context })(integrationsPhoneUploadInitContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsPhoneUploadInitRoutes,
+      })(integrationsPhoneUploadInitContract);
       return await accept(
         client.init({
           headers: { authorization: `Bearer ${token}` },
@@ -325,9 +318,10 @@ export function createAgentPhoneBddApi(context: TestContext) {
       body: PhoneUploadCompleteBody,
       statuses: readonly Status[],
     ) {
-      const client = setupApp({ context })(
-        integrationsPhoneUploadCompleteContract,
-      );
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsPhoneUploadCompleteRoutes,
+      })(integrationsPhoneUploadCompleteContract);
       return await accept(
         client.complete({
           headers: { authorization: `Bearer ${token}` },
@@ -343,7 +337,9 @@ export function createAgentPhoneBddApi(context: TestContext) {
      * checkpoints.
      */
     async readRunSessionId(actor: ApiTestUser, runId: string): Promise<string> {
-      const client = setupApp({ context })(logsByIdContract);
+      const client = setupApp({ context, routes: zeroLogsRoutes })(
+        logsByIdContract,
+      );
       const response = await accept(
         client.getById({
           headers: authenticate(context, actor),
@@ -365,7 +361,10 @@ export function createAgentPhoneBddApi(context: TestContext) {
       readonly headers: Headers;
       readonly text: string;
     }> {
-      const response = await createApp({ signal: context.signal }).request(
+      const response = await createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      }).request(
         `/api/zero/integrations/phone/download-file?file_id=${encodeURIComponent(fileId)}`,
         {
           method: "GET",
@@ -446,7 +445,9 @@ export function createAgentPhoneBddApi(context: TestContext) {
     async switchDefaultModelRouteToOpenRouter(
       actor: ApiTestUser,
     ): Promise<void> {
-      const providers = setupApp({ context })(zeroModelProvidersMainContract);
+      const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
+        zeroModelProvidersMainContract,
+      );
       const upserted = await accept(
         providers.upsert({
           headers: authenticate(context, actor),
@@ -464,7 +465,9 @@ export function createAgentPhoneBddApi(context: TestContext) {
         },
       ];
       await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).update({
+        setupApp({ context, routes: zeroModelPoliciesRoutes })(
+          zeroModelPoliciesMainContract,
+        ).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),

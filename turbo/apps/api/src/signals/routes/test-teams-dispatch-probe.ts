@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-teams-dispatch-probe";
 import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-teams-bot";
 
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 import { safeJsonParse, settle } from "../utils";
@@ -14,7 +14,7 @@ import { dispatchTeamsMessageToAgent$ } from "../services/zero-teams-dispatch.se
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const DEFAULT_SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const DEFAULT_BOT_ID = "28:e2e-zero-bot";

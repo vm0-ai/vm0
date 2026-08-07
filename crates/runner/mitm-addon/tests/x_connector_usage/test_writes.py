@@ -20,10 +20,30 @@ from tests.x_flow_helpers import (
 )
 from usage.providers.connectors import x_billing
 
+_PLAIN_TEXT_TWEET_BODY = b'{"text":"hello world"}'
+_GZIP_WBITS = 16 + zlib.MAX_WBITS
+_ZLIB_DEFLATE_WBITS = zlib.MAX_WBITS
+_RAW_DEFLATE_WBITS = -zlib.MAX_WBITS
+_ZLIB_INPUT_BOUND = 1024
+
+
+def _gzip_members(*payloads: bytes) -> bytes:
+    return b"".join(gzip.compress(payload, mtime=0) for payload in payloads)
+
 
 def _raw_deflate_body(payload: bytes) -> bytes:
-    compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    compressor = zlib.compressobj(wbits=_RAW_DEFLATE_WBITS)
     return compressor.compress(payload) + compressor.flush()
+
+
+def _tweet_body_with_size(size: int) -> bytes:
+    framing = b'{"text":""}'
+    return b'{"text":"' + b"x" * (size - len(framing)) + b'"}'
+
+
+_GZIP_TWEET_BODY = _gzip_members(_PLAIN_TEXT_TWEET_BODY)
+_ZLIB_DEFLATE_TWEET_BODY = zlib.compress(_PLAIN_TEXT_TWEET_BODY)
+_RAW_DEFLATE_TWEET_BODY = _raw_deflate_body(_PLAIN_TEXT_TWEET_BODY)
 
 
 def test_logs_write_operation_charges_one(x_usage, tmp_path, real_flow):
@@ -138,18 +158,23 @@ def test_lowercase_post_tweet_create_plain_text_downgrades(x_usage, tmp_path, re
     [
         pytest.param(
             "gzip",
-            gzip.compress(json.dumps({"text": "hello world"}).encode()),
+            _GZIP_TWEET_BODY,
             id="gzip",
         ),
         pytest.param(
             "deflate",
-            zlib.compress(json.dumps({"text": "hello world"}).encode()),
+            _ZLIB_DEFLATE_TWEET_BODY,
             id="deflate-zlib",
         ),
         pytest.param(
             "deflate",
-            _raw_deflate_body(json.dumps({"text": "hello world"}).encode()),
+            _RAW_DEFLATE_TWEET_BODY,
             id="deflate-raw",
+        ),
+        pytest.param(
+            "gzip",
+            _gzip_members(_PLAIN_TEXT_TWEET_BODY[:10], _PLAIN_TEXT_TWEET_BODY[10:]),
+            id="gzip-multiple-members",
         ),
     ],
 )
@@ -171,6 +196,206 @@ def test_tweet_create_compressed_plain_text_downgrades_to_content_create(
     flow.request.method = "POST"
     p = x_usage.call_and_get_single_billing(flow)
     assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_many_gzip_members_use_bounded_input(x_usage, tmp_path, real_flow):
+    empty_member = _gzip_members(b"")
+    request_body = _GZIP_TWEET_BODY + empty_member * (
+        (REQUEST_BODY_BILLING_INSPECTION_LIMIT - len(_GZIP_TWEET_BODY)) // len(empty_member)
+    )
+    assert (
+        REQUEST_BODY_BILLING_INSPECTION_LIMIT - len(empty_member)
+        < len(request_body)
+        <= REQUEST_BODY_BILLING_INSPECTION_LIMIT
+    )
+
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=request_body,
+        request_encoding="gzip",
+    )
+    flow.request.method = "POST"
+
+    real_factory = zlib.decompressobj
+    stats = {"calls": 0, "max_input": 0, "max_unused_data": 0}
+
+    class NonConcatenableUnusedData(bytes):
+        def __add__(self, _other: object) -> bytes:
+            raise TypeError("zlib unused data must not be concatenated")
+
+    class TrackingDecompressionObj:
+        def __init__(self, wrapped):
+            self._wrapped = wrapped
+
+        def decompress(self, chunk, *args, **kwargs):
+            stats["calls"] += 1
+            stats["max_input"] = max(stats["max_input"], len(chunk))
+            return self._wrapped.decompress(chunk, *args, **kwargs)
+
+        @property
+        def eof(self):
+            return self._wrapped.eof
+
+        @property
+        def unused_data(self):
+            unused_data = NonConcatenableUnusedData(self._wrapped.unused_data)
+            stats["max_unused_data"] = max(stats["max_unused_data"], len(unused_data))
+            return unused_data
+
+        @property
+        def unconsumed_tail(self):
+            return self._wrapped.unconsumed_tail
+
+    def factory(*args, **kwargs):
+        return TrackingDecompressionObj(real_factory(*args, **kwargs))
+
+    with patch("billing_body.zlib.decompressobj", factory):
+        p = x_usage.call_and_get_single_billing(flow)
+
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+    assert stats["calls"] > 0
+    assert stats["max_input"] <= _ZLIB_INPUT_BOUND
+    assert stats["max_unused_data"] <= _ZLIB_INPUT_BOUND
+
+
+@pytest.mark.parametrize(
+    ("decoded_size", "trailing_data", "expected_category"),
+    [
+        pytest.param(
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT,
+            _gzip_members(b""),
+            "content.create",
+            id="exact-limit-with-empty-member",
+        ),
+        pytest.param(
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT,
+            b"trailing garbage",
+            "content.create_with_url",
+            id="exact-limit-with-trailing-garbage",
+        ),
+        pytest.param(
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT + 1,
+            b"",
+            "content.create_with_url",
+            id="over-limit",
+        ),
+    ],
+)
+def test_tweet_create_multi_member_gzip_enforces_total_decoded_cap(
+    x_usage, tmp_path, real_flow, decoded_size, trailing_data, expected_category
+):
+    request_payload = _tweet_body_with_size(decoded_size)
+    split = len(request_payload) // 2
+    request_body = _gzip_members(request_payload[:split], request_payload[split:]) + trailing_data
+    assert len(request_payload) == decoded_size
+    assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=request_body,
+        request_encoding="gzip",
+    )
+    flow.request.method = "POST"
+
+    p = x_usage.call_and_get_single_billing(flow)
+
+    assert p["category"] == expected_category
+    assert p["quantity"] == 1
+
+
+@pytest.mark.parametrize(
+    ("request_encoding", "request_body", "wbits"),
+    [
+        pytest.param(
+            "gzip",
+            _GZIP_TWEET_BODY[:-1],
+            _GZIP_WBITS,
+            id="gzip-truncated-first-member",
+        ),
+        pytest.param(
+            "gzip",
+            _GZIP_TWEET_BODY + _gzip_members(b"")[:-1],
+            _GZIP_WBITS,
+            id="gzip-truncated-later-member",
+        ),
+        pytest.param(
+            "gzip",
+            _GZIP_TWEET_BODY + b"trailing garbage",
+            _GZIP_WBITS,
+            id="gzip-trailing-garbage",
+        ),
+        pytest.param(
+            "deflate",
+            _ZLIB_DEFLATE_TWEET_BODY[:-1],
+            _ZLIB_DEFLATE_WBITS,
+            id="deflate-zlib-truncated",
+        ),
+        pytest.param(
+            "deflate",
+            _ZLIB_DEFLATE_TWEET_BODY + b"trailing garbage",
+            _ZLIB_DEFLATE_WBITS,
+            id="deflate-zlib-trailing-garbage",
+        ),
+        pytest.param(
+            "deflate",
+            _ZLIB_DEFLATE_TWEET_BODY + _ZLIB_DEFLATE_TWEET_BODY,
+            _ZLIB_DEFLATE_WBITS,
+            id="deflate-zlib-second-stream",
+        ),
+        pytest.param(
+            "deflate",
+            _RAW_DEFLATE_TWEET_BODY[:-1],
+            _RAW_DEFLATE_WBITS,
+            id="deflate-raw-truncated",
+        ),
+        pytest.param(
+            "deflate",
+            _RAW_DEFLATE_TWEET_BODY + b"trailing garbage",
+            _RAW_DEFLATE_WBITS,
+            id="deflate-raw-trailing-garbage",
+        ),
+        pytest.param(
+            "deflate",
+            _RAW_DEFLATE_TWEET_BODY + _RAW_DEFLATE_TWEET_BODY,
+            _RAW_DEFLATE_WBITS,
+            id="deflate-raw-second-stream",
+        ),
+    ],
+)
+def test_tweet_create_incomplete_or_trailing_compressed_body_stays_conservative(
+    x_usage, tmp_path, real_flow, request_encoding, request_body, wbits
+):
+    prefix_decoder = zlib.decompressobj(wbits)
+    assert prefix_decoder.decompress(request_body) == _PLAIN_TEXT_TWEET_BODY
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=request_body,
+        request_encoding=request_encoding,
+    )
+    flow.request.method = "POST"
+
+    p = x_usage.call_and_get_single_billing(flow)
+
+    assert p["category"] == "content.create_with_url"
     assert p["quantity"] == 1
 
 
@@ -423,6 +648,7 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
         "(vm0.ai)",
         "Visit go.dev",
         "Read example.museum",
+        "Visit example.web",
         "Label:example.com",
         "Param url=example.com",
         "Pipe|example.com",
@@ -475,13 +701,20 @@ def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_
     [
         "Email support@example.com",
         "Mention @twitter.com",
+        "Unicode mention @éexample.com",
         "Tag #twitter.com",
+        "Unicode tag #éexample.com",
         "Cash $twitter.com",
+        "Unicode cash $éexample.com",
         "Path /twitter.com",
+        "Unicode path /éexample.com",
         "Archive long.test.tar.bz2",
         "Word abcHTTPS://example.com",
         "Fullwidth mention \uff20twitter.com",
+        "Unicode fullwidth mention \uff20éexample.com",
         "Fullwidth tag \uff03twitter.com",
+        "Unicode fullwidth tag \uff03éexample.com",
+        "Unicode dot boundary .éexample.com",
         "Plus suffix example.com+tag",
         "Fullwidth terminal plus suffix example.\uff23\uff2f\uff2d+tag",
         "At suffix example.com@user",
@@ -492,6 +725,7 @@ def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_
         "TLD-only prefix com.notatld",
         "Fullwidth unknown \uff26\uff2f\uff2f.notatld",
         "Underscore foo_bar.example.com",
+        "Unicode underscore _éexample.com",
         "Leading hyphen -bad.com",
         "Trailing hyphen bad-.com",
         "Invalid prefix bad-.com.notatld",
@@ -548,6 +782,38 @@ def test_tweet_create_long_dotted_ascii_candidate_skips_idna_normalization(
         p = x_usage.call_and_get_single_billing(flow)
 
     normalize_idna_label.assert_not_called()
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_long_unicode_label_does_not_restart_candidate_search(
+    x_usage, tmp_path, real_flow
+):
+    """Failed Unicode candidates do not restart inside the same label."""
+    interior_candidate = "éexample.com"
+    assert x_billing._BARE_DOMAIN_CANDIDATE_RE.match(interior_candidate, 1) is None
+
+    text = "é" * 16_000 + "."
+    request_body = json.dumps(
+        {"text": text},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()
+    assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.content = request_body
+
+    p = x_usage.call_and_get_single_billing(flow)
+
     assert p["category"] == "content.create"
     assert p["quantity"] == 1
 

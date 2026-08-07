@@ -1,4 +1,4 @@
-//! Stale-turn active-input coverage for the experimental Codex app-server backend.
+//! Stale-turn active-input coverage for Codex app-server execution.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
@@ -38,9 +38,7 @@ async fn codex_app_server_backend_fails_visible_on_stale_active_turn()
     );
     let payload = common::active_input_payload("stale follow-up prompt")?;
     assert_eq!(
-        active_input
-            .controller()
-            .handle_control_payload("active-msg-stale", &payload),
+        active_input.controller().handle_control_payload(&payload),
         ActiveInputControlOutcome::Accepted
     );
 

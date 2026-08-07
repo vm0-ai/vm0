@@ -1,1 +1,0 @@
-ALTER TABLE "agent_runs" DROP COLUMN "resumed_from_checkpoint_id";

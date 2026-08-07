@@ -2,6 +2,8 @@ import { command, computed, state } from "ccstate";
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingUsagePackCatalogContract,
+  zeroBillingUsagePackCheckoutContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -11,9 +13,11 @@ import {
   zeroBillingDowngradeContract,
   zeroBillingRestoreContract,
   type BillingStatusResponse,
+  type MemberUsagePack,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
+import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { tapError } from "../utils.ts";
@@ -22,6 +26,7 @@ import {
   applyStoredAdAttribution,
   getStoredAdAttributionMetadata,
 } from "../bootstrap/ad-attribution.ts";
+import { currentLocale, i18n } from "../../i18n/index.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,11 +43,10 @@ type DowngradeTargetTier = "limited-free-1" | "pro-suspend" | "pro";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
+export type ConcurrencyChangeMode = "quantity" | "cancel";
 
 const RESTORE_PAYMENT_PENDING_KEY = "vm0:billing:restore-payment-pending";
 const DOWNGRADE_PAYMENT_PENDING_KEY = "vm0:billing:downgrade-payment-pending";
-const RESTORE_SUCCESS_TOAST =
-  "Plan restored. Your subscription will renew normally.";
 export const CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN = 1;
 export const CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX = 1000;
 
@@ -56,7 +60,7 @@ function formatEffectiveDate(effectiveDate: string | null): string | null {
     return null;
   }
 
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(currentLocale(), {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -100,13 +104,27 @@ function downgradeSuccessToastMessage(
   const effectiveDate = formatEffectiveDate(effectiveDateValue);
   if (targetTier === "limited-free-1" || targetTier === "pro-suspend") {
     return effectiveDate
-      ? `Cancellation scheduled. Your current plan stays active until ${effectiveDate}.`
-      : "Cancellation scheduled. Your current plan stays active until the billing period ends.";
+      ? i18n.t(
+          ($) => {
+            return $.billing.toasts.cancellationScheduledDate;
+          },
+          { date: effectiveDate },
+        )
+      : i18n.t(($) => {
+          return $.billing.toasts.cancellationScheduledPeriod;
+        });
   }
 
   return effectiveDate
-    ? `Downgrade scheduled. Your current plan stays active until ${effectiveDate}.`
-    : "Downgrade scheduled. Your current plan stays active until the billing period ends.";
+    ? i18n.t(
+        ($) => {
+          return $.billing.toasts.downgradeScheduledDate;
+        },
+        { date: effectiveDate },
+      )
+    : i18n.t(($) => {
+        return $.billing.toasts.downgradeScheduledPeriod;
+      });
 }
 
 function rememberPendingDowngradePayment(
@@ -177,7 +195,11 @@ function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
   }
 
   storage.removeItem(RESTORE_PAYMENT_PENDING_KEY);
-  toast.success(RESTORE_SUCCESS_TOAST);
+  toast.success(
+    i18n.t(($) => {
+      return $.billing.toasts.planRestored;
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -193,8 +215,12 @@ const internalFormAmountOverride$ = state<string | null>(null);
 const internalConcurrencySubscriptionQuantity$ = state<number | null>(null);
 const internalConcurrencyPurchaseDialogOpen$ = state(false);
 const internalConcurrencyConfirmDialog$ = state<{
-  readonly action: "cancel" | "restore";
+  readonly action: "change" | "restore";
   readonly subscriptionId: string;
+  readonly currentQuantity: number;
+  readonly canReduce: boolean;
+  readonly changeMode: ConcurrencyChangeMode;
+  readonly targetQuantity: number | null;
 } | null>(null);
 
 // ---------------------------------------------------------------------------
@@ -246,13 +272,46 @@ export const closeConcurrencyPurchaseDialog$ = command(({ set }) => {
   set(internalConcurrencyPurchaseDialogOpen$, false);
 });
 export const openConcurrencyConfirmDialog$ = command(
-  ({ set }, action: "cancel" | "restore", subscriptionId: string) => {
-    set(internalConcurrencyConfirmDialog$, { action, subscriptionId });
+  (
+    { set },
+    action: "change" | "restore",
+    subscriptionId: string,
+    currentQuantity: number,
+    canReduce: boolean,
+  ) => {
+    set(internalConcurrencyConfirmDialog$, {
+      action,
+      subscriptionId,
+      currentQuantity,
+      canReduce: action === "change" && canReduce,
+      changeMode: "quantity",
+      targetQuantity: action === "change" ? currentQuantity : null,
+    });
   },
 );
 export const closeConcurrencyConfirmDialog$ = command(({ set }) => {
   set(internalConcurrencyConfirmDialog$, null);
 });
+export const setConcurrencyChangeMode$ = command(
+  ({ set }, mode: ConcurrencyChangeMode) => {
+    set(internalConcurrencyConfirmDialog$, (dialog) => {
+      if (!dialog || dialog.action !== "change") {
+        return dialog;
+      }
+      return { ...dialog, changeMode: mode };
+    });
+  },
+);
+export const setConcurrencyTargetQuantity$ = command(
+  ({ set }, quantity: number | null) => {
+    set(internalConcurrencyConfirmDialog$, (dialog) => {
+      if (!dialog || dialog.action !== "change") {
+        return dialog;
+      }
+      return { ...dialog, targetQuantity: quantity };
+    });
+  },
+);
 /**
  * Async computed signal that fetches billing status on first access.
  * Use with useLastLoadable() in views for automatic loading.
@@ -267,6 +326,13 @@ export const billingStatusAsync$ = computed(async (get) => {
   return result.body;
 });
 
+export const usagePackCatalogAsync$ = computed(async (get) => {
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingUsagePackCatalogContract);
+  const result = await accept(client.get(), [200]);
+  return result.body.usagePacks;
+});
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -276,6 +342,70 @@ export const reloadBillingStatus$ = command(({ set }) => {
   set(billingReload$, (x) => {
     return x + 1;
   });
+});
+
+export const handleBillingRedirect$ = command(({ get, set }) => {
+  const searchParams = new URLSearchParams(get(searchParams$));
+  const billing = searchParams.get("billing");
+  const credits = searchParams.get("credits");
+  const concurrency = searchParams.get("concurrency");
+  if (!billing && !credits && !concurrency) {
+    return;
+  }
+
+  searchParams.delete("billing");
+  searchParams.delete("billing_session_id");
+  searchParams.delete("credits");
+  searchParams.delete("credit_checkout_session_id");
+  searchParams.delete("concurrency");
+  set(replaceSearchParams$, searchParams);
+
+  if (billing === "pro" || billing === "team") {
+    const label =
+      billing === "pro"
+        ? i18n.t(($) => {
+            return $.billing.plans.pro.name;
+          })
+        : i18n.t(($) => {
+            return $.billing.plans.team.name;
+          });
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.billing.toasts.checkoutCompleted;
+        },
+        { plan: label },
+      ),
+    );
+    set(reloadBillingStatus$);
+  }
+
+  if (credits === "purchased") {
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.creditsAdded;
+      }),
+    );
+    set(reloadBillingStatus$);
+  }
+
+  if (concurrency === "purchased") {
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.concurrencyAdded;
+      }),
+    );
+    set(reloadBillingStatus$);
+  }
+
+  if (concurrency === "reduced") {
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.concurrencyReduced;
+      }),
+    );
+    set(reloadBillingStatus$);
+  }
 });
 
 const reloadBillingStatusFromRealtime$ = command(({ set }) => {
@@ -298,6 +428,10 @@ export const setupBillingRealtime$ = command(
   },
 );
 
+function checkoutReturnUrl(): URL {
+  return new URL(window.location.pathname, window.location.origin);
+}
+
 export const startCheckout$ = command(
   async (
     { get },
@@ -306,8 +440,7 @@ export const startCheckout$ = command(
     options: { readonly trialDays?: 7 } | undefined,
     signal: AbortSignal,
   ) => {
-    const currentUrl = window.location.href;
-    const successUrl = new URL(currentUrl);
+    const successUrl = checkoutReturnUrl();
     successUrl.searchParams.set("billing", tier);
     successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
     applyStoredAdAttribution(successUrl);
@@ -317,7 +450,7 @@ export const startCheckout$ = command(
         "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
         "billing_session_id={CHECKOUT_SESSION_ID}",
       );
-    const cancelUrl = new URL(currentUrl);
+    const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("billing", "canceled");
     applyStoredAdAttribution(cancelUrl);
     const adAttribution = getStoredAdAttributionMetadata();
@@ -349,6 +482,56 @@ export const startCheckout$ = command(
   },
 );
 
+export const startUsagePackCheckout$ = command(
+  async (
+    { get },
+    args: {
+      readonly tier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
+    newTab: boolean,
+    signal: AbortSignal,
+  ) => {
+    const currentUrl = window.location.href;
+    const successUrl = new URL(currentUrl);
+    successUrl.searchParams.set("billing", args.tier);
+    successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
+    applyStoredAdAttribution(successUrl);
+    const stripeSuccessUrl = successUrl
+      .toString()
+      .replace(
+        "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
+        "billing_session_id={CHECKOUT_SESSION_ID}",
+      );
+    const cancelUrl = new URL(currentUrl);
+    cancelUrl.searchParams.set("billing", "canceled");
+    applyStoredAdAttribution(cancelUrl);
+    const adAttribution = getStoredAdAttributionMetadata();
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackCheckoutContract);
+    const result = await accept(
+      client.create({
+        body: {
+          tier: args.tier,
+          memberUsagePacks: [...args.memberUsagePacks],
+          successUrl: stripeSuccessUrl,
+          cancelUrl: cancelUrl.toString(),
+          ...(adAttribution === undefined ? {} : { adAttribution }),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
+    }
+  },
+);
+
 export const startCreditCheckout$ = command(
   async (
     { get },
@@ -356,8 +539,7 @@ export const startCreditCheckout$ = command(
     newTab: boolean,
     signal: AbortSignal,
   ) => {
-    const currentUrl = window.location.href;
-    const successUrl = new URL(currentUrl);
+    const successUrl = checkoutReturnUrl();
     successUrl.searchParams.set("credits", "purchased");
     successUrl.searchParams.set(
       "credit_checkout_session_id",
@@ -369,7 +551,7 @@ export const startCreditCheckout$ = command(
         "credit_checkout_session_id=%7BCHECKOUT_SESSION_ID%7D",
         "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
       );
-    const cancelUrl = new URL(currentUrl);
+    const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("credits", "canceled");
 
     const createClient = get(zeroClient$);
@@ -397,10 +579,9 @@ export const startCreditCheckout$ = command(
 
 export const startConcurrencyCheckout$ = command(
   async ({ get }, quantity: number, newTab: boolean, signal: AbortSignal) => {
-    const currentUrl = window.location.href;
-    const successUrl = new URL(currentUrl);
+    const successUrl = new URL("/", window.location.origin);
     successUrl.searchParams.set("concurrency", "purchased");
-    const cancelUrl = new URL(currentUrl);
+    const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("concurrency", "canceled");
 
     const createClient = get(zeroClient$);
@@ -425,6 +606,36 @@ export const startConcurrencyCheckout$ = command(
   },
 );
 
+export const startConcurrencyReduction$ = command(
+  async (
+    { get },
+    args: { readonly subscriptionId: string; readonly quantity: number },
+    signal: AbortSignal,
+  ) => {
+    const successUrl = new URL("/", window.location.origin);
+    successUrl.searchParams.set("concurrency", "reduced");
+    const cancelUrl = checkoutReturnUrl();
+    cancelUrl.searchParams.set("concurrency", "canceled");
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const result = await accept(
+      client.reduce({
+        params: { subscriptionId: args.subscriptionId },
+        body: {
+          quantity: args.quantity,
+          successUrl: successUrl.toString(),
+          cancelUrl: cancelUrl.toString(),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    window.location.href = result.body.url;
+  },
+);
+
 export const cancelConcurrencySubscription$ = command(
   async ({ get, set }, subscriptionId: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
@@ -445,8 +656,15 @@ export const cancelConcurrencySubscription$ = command(
     const effectiveDate = formatEffectiveDate(result.body.currentPeriodEnd);
     toast.success(
       effectiveDate
-        ? `Concurrency subscription canceled. Slots stay active until ${effectiveDate}.`
-        : "Concurrency subscription canceled.",
+        ? i18n.t(
+            ($) => {
+              return $.billing.toasts.concurrencyCanceledDate;
+            },
+            { date: effectiveDate },
+          )
+        : i18n.t(($) => {
+            return $.billing.toasts.concurrencyCanceled;
+          }),
     );
   },
 );
@@ -468,7 +686,11 @@ export const restoreConcurrencySubscription$ = command(
       return x + 1;
     });
     set(internalConcurrencyConfirmDialog$, null);
-    toast.success("Concurrency subscription restored.");
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.concurrencyRestored;
+      }),
+    );
   },
 );
 
@@ -566,7 +788,11 @@ export const restorePlan$ = command(
     set(billingReload$, (x) => {
       return x + 1;
     });
-    toast.success(RESTORE_SUCCESS_TOAST);
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.planRestored;
+      }),
+    );
   },
 );
 
@@ -684,7 +910,11 @@ export const saveAutoRecharge$ = command(
     set(internalPendingEnabled$, null);
     set(internalFormThresholdOverride$, null);
     set(internalFormAmountOverride$, null);
-    toast.success("Auto-recharge updated");
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.autoRechargeUpdated;
+      }),
+    );
   },
 );
 
@@ -751,7 +981,11 @@ export const setReceiptDownloadEndMonth$ = command(
 
 export const downloadMonthlyReceipts$ = command(
   async ({ get }, range: ReceiptDownloadRange, signal: AbortSignal) => {
-    const toastId = toast.loading("Preparing receipt download...");
+    const toastId = toast.loading(
+      i18n.t(($) => {
+        return $.billing.toasts.preparingReceiptDownload;
+      }),
+    );
     signal.addEventListener(
       "abort",
       () => {
@@ -784,12 +1018,22 @@ export const downloadMonthlyReceipts$ = command(
         return true;
       })(),
       () => {
-        toast.error("Failed to download receipts", { id: toastId });
+        toast.error(
+          i18n.t(($) => {
+            return $.billing.toasts.receiptDownloadFailed;
+          }),
+          { id: toastId },
+        );
       },
     );
     signal.throwIfAborted();
     if (downloaded) {
-      toast.success("Receipts downloaded", { id: toastId });
+      toast.success(
+        i18n.t(($) => {
+          return $.billing.toasts.receiptsDownloaded;
+        }),
+        { id: toastId },
+      );
     }
   },
 );

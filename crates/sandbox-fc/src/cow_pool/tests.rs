@@ -1435,13 +1435,37 @@ async fn destroy_slot_async_starts_teardown_before_returned_future_is_polled() {
     let workspace = slot.workspace().to_owned();
 
     let teardown = destroy_slot_async(slot);
-    assert_eq!(teardown_started.await.unwrap(), workspace);
-    assert!(workspace.exists());
+    let teardown_started = match tokio::time::timeout(Duration::from_secs(1), teardown_started)
+        .await
+    {
+        Ok(Ok(workspace)) => workspace,
+        result => {
+            // A regressed waiter may own the slot, so disconnect its gate before dropping it.
+            drop(release_teardown);
+            drop(teardown);
+            panic!(
+                "file-only slot teardown should start before returned future is polled: {result:?}"
+            );
+        }
+    };
+    let workspace_existed_after_start = workspace.exists();
 
     drop(teardown);
-    release_teardown.send(()).unwrap();
+    release_teardown
+        .send(())
+        .expect("file-only slot teardown should still be waiting on the gate");
 
-    assert_eq!(dropped.await.unwrap(), workspace);
+    let dropped = tokio::time::timeout(Duration::from_secs(1), dropped)
+        .await
+        .expect("file-only slot teardown should finish after the gate is released")
+        .expect("file-only slot teardown completion sender should remain available");
+
+    assert_eq!(teardown_started, workspace);
+    assert!(
+        workspace_existed_after_start,
+        "workspace should exist while file-only slot teardown waits on the gate"
+    );
+    assert_eq!(dropped, workspace);
     assert!(!workspace.exists());
 }
 
@@ -1574,12 +1598,36 @@ async fn destroy_prepared_slot_starts_teardown_before_waiter_is_polled() {
     let workspace = slot.workspace().to_owned();
 
     let teardown = destroy_prepared_slot_async(slot);
-    assert_eq!(teardown_started.await.unwrap(), workspace);
-    assert!(workspace.exists());
+    let teardown_started = match tokio::time::timeout(Duration::from_secs(1), teardown_started)
+        .await
+    {
+        Ok(Ok(workspace)) => workspace,
+        result => {
+            // A regressed waiter may own the slot, so disconnect its gate before dropping it.
+            drop(release_teardown);
+            drop(teardown);
+            panic!(
+                "prepared slot teardown should start before returned waiter is polled: {result:?}"
+            );
+        }
+    };
+    let workspace_existed_after_start = workspace.exists();
 
     drop(teardown);
-    release_teardown.send(()).unwrap();
+    release_teardown
+        .send(())
+        .expect("prepared slot teardown should still be waiting on the gate");
 
-    assert_eq!(dropped.await.unwrap(), workspace);
+    let dropped = tokio::time::timeout(Duration::from_secs(1), dropped)
+        .await
+        .expect("prepared slot teardown should finish after the gate is released")
+        .expect("prepared slot teardown completion sender should remain available");
+
+    assert_eq!(teardown_started, workspace);
+    assert!(
+        workspace_existed_after_start,
+        "workspace should exist while prepared slot teardown waits on the gate"
+    );
+    assert_eq!(dropped, workspace);
     assert!(!workspace.exists());
 }

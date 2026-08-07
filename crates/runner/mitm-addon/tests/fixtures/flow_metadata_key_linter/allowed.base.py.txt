@@ -48,7 +48,7 @@ flow.metadata.update(dict.fromkeys(dict({metadata_keys.VM_RUN_ID: "run-1"}), "ru
 flow.metadata.update(dict.fromkeys(dict({metadata_keys.FIREWALL_ACTION: "ALLOW"}).keys(), "ALLOW"))
 flow.metadata.update(dict.fromkeys(tuple(dict({metadata_keys.FIREWALL_BILLABLE: True})), False))
 flow.metadata.update(set([(metadata_keys.FIREWALL_PERMISSION, "read")]))
-flow.metadata.update(frozenset([(metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE, "github")]))
+flow.metadata.update(frozenset([(metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG, "github")]))
 flow.metadata.update(sorted([(metadata_keys.CONNECTOR_DIAGNOSTIC_REASON, "missing")]))
 flow.metadata.update(reversed([(metadata_keys.CONNECTOR_DIAGNOSTIC_BASE, "https://api.example.com")]))
 flow.metadata.update({metadata_keys.VM_RUN_ID: "run-1"}.copy())

@@ -1,23 +1,32 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
-  connectorRefSchema,
-  type ConnectorRef,
+  connectorSlugSchema,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
-import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { connectorCatalogStatusByRef$ } from "../external/connectors.ts";
+import {
+  customConnectorSlugSchema,
+  type CustomConnectorResponse,
+  type CustomConnectorSlug,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
+import { connectorCatalogStatusBySlug$ } from "../external/connectors.ts";
 import {
   allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
   connectorCurrentConnectionStatus,
   getConnectorStatusDirectConnectMethod,
-  setSelectedConnectorRef$,
+  setSelectedConnectorSlug$,
 } from "../zero-page/settings/connectors.ts";
+import {
+  customConnectorAuthorizedAgentsById$,
+  customConnectors$,
+  resetCustomConnectorConnectInput$,
+  setCustomConnectorAgentAuthorization$,
+} from "../zero-page/settings/custom-connectors.ts";
 import { resolvePlatformOriginForTarget } from "../api-base.ts";
-import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-ref.ts";
+import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-slug.ts";
 import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
-import { jsonParseBase64UrlOr } from "../utils.ts";
 import {
   chatActionCallbackFromUrl,
   runChatActionCallback$,
@@ -28,39 +37,52 @@ import {
   registeredCardSignals,
 } from "./card-signal-map.ts";
 
-export interface ConnectorActionDescriptor {
-  connectorRef: ConnectorRef;
-  agentId: string;
-  originalUrl: string;
-  callbackPrompt: ChatActionCallback["callbackPrompt"];
-  threadId: ChatActionCallback["threadId"];
+interface ConnectorActionDescriptorBase {
+  readonly agentId: string;
+  readonly originalUrl: string;
+  readonly callbackPrompt: ChatActionCallback["callbackPrompt"];
+  readonly threadId: ChatActionCallback["threadId"];
 }
 
-export interface ConnectorSignals extends ConnectorActionDescriptor {
-  catalogItem$: Computed<Promise<PublicConnectorCatalogStatusItem | null>>;
-  available$: Computed<Promise<boolean>>;
-  connected$: Computed<Promise<boolean>>;
-  authorized$: Computed<Promise<boolean>>;
-  complete$: Computed<Promise<boolean>>;
-  activate$: Command<Promise<void>, [AbortSignal]>;
+export interface CatalogConnectorActionDescriptor extends ConnectorActionDescriptorBase {
+  readonly kind: "catalog";
+  readonly connectorSlug: ConnectorSlug;
 }
+
+export interface CustomConnectorActionDescriptor extends ConnectorActionDescriptorBase {
+  readonly kind: "custom";
+  readonly connectorSlug: CustomConnectorSlug;
+}
+
+export type ConnectorActionDescriptor =
+  | CatalogConnectorActionDescriptor
+  | CustomConnectorActionDescriptor;
+
+interface ConnectorSignalState {
+  readonly available$: Computed<Promise<boolean>>;
+  readonly connected$: Computed<Promise<boolean>>;
+  readonly authorized$: Computed<Promise<boolean>>;
+  readonly complete$: Computed<Promise<boolean>>;
+  readonly activate$: Command<Promise<void>, [AbortSignal]>;
+}
+
+export type CatalogConnectorSignals = CatalogConnectorActionDescriptor &
+  ConnectorSignalState & {
+    readonly catalogItem$: Computed<
+      Promise<PlatformConnectorCatalogStatusItem | null>
+    >;
+  };
+
+export type CustomConnectorSignals = CustomConnectorActionDescriptor &
+  ConnectorSignalState & {
+    readonly connector$: Computed<Promise<CustomConnectorResponse | null>>;
+  };
+
+export type ConnectorSignals = CatalogConnectorSignals | CustomConnectorSignals;
 
 export interface ConnectorCardSignalsRegistry {
   register(descriptor: ConnectorActionDescriptor): ConnectorSignals;
   resolve(resourceKey: string): ConnectorSignals;
-}
-
-export interface CustomConnectorActionDescriptor {
-  displayName: string;
-  agentId: string | null;
-  originalUrl: string;
-}
-
-export type CustomConnectorSignals = CustomConnectorActionDescriptor;
-
-export interface CustomConnectorCardSignalsRegistry {
-  register(descriptor: CustomConnectorActionDescriptor): CustomConnectorSignals;
-  resolve(resourceKey: string): CustomConnectorSignals;
 }
 
 const activeChatConnectorActionState$ = state<ConnectorActionDescriptor | null>(
@@ -73,7 +95,7 @@ export const activeChatConnectorAction$ = computed((get) => {
 
 export const closeChatConnectorActionConnectDialog$ = command(({ set }) => {
   set(activeChatConnectorActionState$, null);
-  set(setSelectedConnectorRef$, null);
+  set(setSelectedConnectorSlug$, null);
 });
 
 export function parseConnectorAuthorizeUrl(
@@ -90,68 +112,70 @@ export function parseConnectorAuthorizeUrl(
   }
 
   const match = url.pathname.match(
-    /^\/connectors\/([^/]+)\/(?:authorize|connect)$/,
+    /^\/connectors\/([^/]+)\/(authorize|connect)$/u,
   );
-  const connectorRef = match?.[1]?.toLowerCase();
+  const connectorSlug = match?.[1]?.toLowerCase();
+  const action = match?.[2];
   const agentId = url.searchParams.get("agentId");
-  const parsedConnectorRef = connectorRefSchema.safeParse(connectorRef);
-  if (!parsedConnectorRef.success || !agentId) {
+  if (!agentId) {
     return null;
   }
 
+  const callback = chatActionCallbackFromUrl(url);
+  const parsedCatalogSlug = connectorSlugSchema.safeParse(connectorSlug);
+  if (parsedCatalogSlug.success) {
+    return {
+      kind: "catalog",
+      connectorSlug: parsedCatalogSlug.data,
+      agentId,
+      originalUrl: value,
+      ...callback,
+    };
+  }
+
+  const parsedCustomSlug = customConnectorSlugSchema.safeParse(connectorSlug);
+  if (!parsedCustomSlug.success || action !== "connect") {
+    return null;
+  }
   return {
-    connectorRef: parsedConnectorRef.data,
+    kind: "custom",
+    connectorSlug: parsedCustomSlug.data,
     agentId,
     originalUrl: value,
-    ...chatActionCallbackFromUrl(url),
+    ...callback,
   };
 }
 
-export function parseCustomConnectorProposalUrl(
-  value: string,
-): CustomConnectorActionDescriptor | null {
-  const appOrigin = window.location.origin;
-  if (!URL.canParse(value, appOrigin)) {
-    return null;
-  }
-  const url = new URL(value, appOrigin);
-  if (url.pathname !== "/connectors/custom/proposal") {
-    return null;
-  }
-  const payload = url.searchParams.get("p");
-  if (!payload) {
-    return null;
-  }
-  const decoded = jsonParseBase64UrlOr<unknown | null>(payload, null);
-  if (decoded === null) {
-    return null;
-  }
-  const parsed = customConnectorProposalSchema.safeParse(decoded);
-  if (!parsed.success) {
-    return null;
-  }
-  return {
-    displayName: parsed.data.displayName,
-    agentId: url.searchParams.get("agentId"),
-    originalUrl: value,
-  };
-}
+const runConnectorActionCallback$ = command(
+  async (
+    { set },
+    descriptor: ConnectorActionDescriptor,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!descriptor.callbackPrompt || !descriptor.threadId) {
+      return;
+    }
+    await set(
+      runChatActionCallback$,
+      {
+        threadId: descriptor.threadId,
+        agentId: descriptor.agentId,
+        callbackPrompt: descriptor.callbackPrompt,
+      },
+      signal,
+    );
+  },
+);
 
-function createCustomConnectorSignals(
-  descriptor: CustomConnectorActionDescriptor,
-): CustomConnectorSignals {
-  return descriptor;
-}
-
-type ConnectorActivationSignals = Pick<
-  ConnectorSignals,
+type CatalogConnectorActivationSignals = Pick<
+  CatalogConnectorSignals,
   "available$" | "catalogItem$" | "connected$"
 >;
 
-function createConnectorActivation(
-  descriptor: ConnectorActionDescriptor,
-  signals: ConnectorActivationSignals,
-): ConnectorSignals["activate$"] {
+function createCatalogConnectorActivation(
+  descriptor: CatalogConnectorActionDescriptor,
+  signals: CatalogConnectorActivationSignals,
+): CatalogConnectorSignals["activate$"] {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const available = await get(signals.available$);
     signal.throwIfAborted();
@@ -170,28 +194,18 @@ function createConnectorActivation(
     if (connected && !reconnectRequired) {
       await set(
         authorizeDirectedConnector$,
-        descriptor.connectorRef,
+        descriptor.connectorSlug,
         descriptor.agentId,
         signal,
       );
-      if (descriptor.callbackPrompt && descriptor.threadId) {
-        await set(
-          runChatActionCallback$,
-          {
-            threadId: descriptor.threadId,
-            agentId: descriptor.agentId,
-            callbackPrompt: descriptor.callbackPrompt,
-          },
-          signal,
-        );
-      }
+      await set(runConnectorActionCallback$, descriptor, signal);
       return;
     }
 
     const connectorCatalogItems = await get(allConnectorCatalogItems$);
     signal.throwIfAborted();
     const connector = connectorCatalogItems.find((item) => {
-      return item.connectorRef === descriptor.connectorRef;
+      return item.slug === descriptor.connectorSlug;
     });
     if (!connector) {
       return;
@@ -201,7 +215,7 @@ function createConnectorActivation(
       getConnectorStatusDirectConnectMethod(connector);
     if (!directConnectMethod) {
       set(activeChatConnectorActionState$, descriptor);
-      set(setSelectedConnectorRef$, descriptor.connectorRef);
+      set(setSelectedConnectorSlug$, descriptor.connectorSlug);
       return;
     }
 
@@ -214,7 +228,7 @@ function createConnectorActivation(
       directConnectMethod.kind === "browser-auth"
         ? await set(
             connectConnectorOAuthAuthCode$,
-            descriptor.connectorRef,
+            descriptor.connectorSlug,
             directConnectMethod.authMethod,
             connectOptions,
             signal,
@@ -222,36 +236,24 @@ function createConnectorActivation(
         : await set(
             connectConnectorNoAuth$,
             {
-              connectorRef: descriptor.connectorRef,
+              connectorSlug: descriptor.connectorSlug,
               authMethod: directConnectMethod.authMethod,
               options: connectOptions,
             },
             signal,
           );
-    if (
-      connectionCompleted &&
-      descriptor.callbackPrompt &&
-      descriptor.threadId
-    ) {
-      await set(
-        runChatActionCallback$,
-        {
-          threadId: descriptor.threadId,
-          agentId: descriptor.agentId,
-          callbackPrompt: descriptor.callbackPrompt,
-        },
-        signal,
-      );
+    if (connectionCompleted) {
+      await set(runConnectorActionCallback$, descriptor, signal);
     }
   });
 }
 
-function createConnectorSignals(
-  descriptor: ConnectorActionDescriptor,
-): ConnectorSignals {
+function createCatalogConnectorSignals(
+  descriptor: CatalogConnectorActionDescriptor,
+): CatalogConnectorSignals {
   const catalogItem$ = computed(async (get) => {
-    const statusByRef = await get(connectorCatalogStatusByRef$);
-    return statusByRef.get(descriptor.connectorRef) ?? null;
+    const statusBySlug = await get(connectorCatalogStatusBySlug$);
+    return statusBySlug.get(descriptor.connectorSlug) ?? null;
   });
 
   const available$ = computed(async (get): Promise<boolean> => {
@@ -260,15 +262,15 @@ function createConnectorSignals(
   });
 
   const connected$ = computed(async (get): Promise<boolean> => {
-    const statusByRef = await get(connectorCatalogStatusByRef$);
-    return statusByRef.get(descriptor.connectorRef)?.connected ?? false;
+    const statusBySlug = await get(connectorCatalogStatusBySlug$);
+    return statusBySlug.get(descriptor.connectorSlug)?.connected ?? false;
   });
 
   const authorized$ = computed(async (get): Promise<boolean> => {
     return await get(
       isAgentConnectorAuthorized({
         agentId: descriptor.agentId,
-        connectorRef: descriptor.connectorRef,
+        connectorSlug: descriptor.connectorSlug,
       }),
     );
   });
@@ -292,7 +294,7 @@ function createConnectorSignals(
     );
   });
 
-  const activate$ = createConnectorActivation(descriptor, {
+  const activate$ = createCatalogConnectorActivation(descriptor, {
     available$,
     catalogItem$,
     connected$,
@@ -309,6 +311,96 @@ function createConnectorSignals(
   };
 }
 
+function createCustomConnectorSignals(
+  descriptor: CustomConnectorActionDescriptor,
+): CustomConnectorSignals {
+  const connector$ = computed(async (get) => {
+    const connectors = await get(customConnectors$);
+    return (
+      connectors.find((connector) => {
+        return connector.slug === descriptor.connectorSlug;
+      }) ?? null
+    );
+  });
+
+  const available$ = computed(async (get): Promise<boolean> => {
+    return (await get(connector$)) !== null;
+  });
+
+  const connected$ = computed(async (get): Promise<boolean> => {
+    return (await get(connector$))?.connected ?? false;
+  });
+
+  const authorized$ = computed(async (get): Promise<boolean> => {
+    const connector = await get(connector$);
+    if (!connector) {
+      return false;
+    }
+    const authorizedAgentsByConnectorId = await get(
+      customConnectorAuthorizedAgentsById$,
+    );
+    return (authorizedAgentsByConnectorId.get(connector.id) ?? []).some(
+      (agent) => {
+        return agent.id === descriptor.agentId;
+      },
+    );
+  });
+
+  const complete$ = computed(async (get): Promise<boolean> => {
+    const available = await get(available$);
+    if (!available) {
+      return false;
+    }
+    const [connected, authorized] = await Promise.all([
+      get(connected$),
+      get(authorized$),
+    ]);
+    return connected && authorized;
+  });
+
+  const activate$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const connector = await get(connector$);
+    signal.throwIfAborted();
+    if (!connector) {
+      return;
+    }
+    if (connector.connected) {
+      await set(
+        setCustomConnectorAgentAuthorization$,
+        {
+          agentId: descriptor.agentId,
+          connectorId: connector.id,
+          authorized: true,
+        },
+        signal,
+      );
+      await set(runConnectorActionCallback$, descriptor, signal);
+      return;
+    }
+
+    set(resetCustomConnectorConnectInput$);
+    set(activeChatConnectorActionState$, descriptor);
+  });
+
+  return {
+    ...descriptor,
+    connector$,
+    available$,
+    connected$,
+    authorized$,
+    complete$,
+    activate$,
+  };
+}
+
+function createConnectorSignals(
+  descriptor: ConnectorActionDescriptor,
+): ConnectorSignals {
+  return descriptor.kind === "catalog"
+    ? createCatalogConnectorSignals(descriptor)
+    : createCustomConnectorSignals(descriptor);
+}
+
 export function createConnectorCardSignalsRegistry(): ConnectorCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, ConnectorSignals>();
   return {
@@ -318,24 +410,6 @@ export function createConnectorCardSignalsRegistry(): ConnectorCardSignalsRegist
         descriptor.originalUrl,
         () => {
           return createConnectorSignals(descriptor);
-        },
-      );
-    },
-    resolve(resourceKey) {
-      return registeredCardSignals(signalsByResourceKey, resourceKey);
-    },
-  };
-}
-
-export function createCustomConnectorCardSignalsRegistry(): CustomConnectorCardSignalsRegistry {
-  const signalsByResourceKey = new Map<string, CustomConnectorSignals>();
-  return {
-    register(descriptor) {
-      return getOrCreateCardSignals(
-        signalsByResourceKey,
-        descriptor.originalUrl,
-        () => {
-          return createCustomConnectorSignals(descriptor);
         },
       );
     },

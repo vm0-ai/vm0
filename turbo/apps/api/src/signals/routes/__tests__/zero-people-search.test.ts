@@ -21,7 +21,7 @@ import {
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroPeopleSearchRoutes } from "../zero-people-search";
@@ -33,6 +33,7 @@ import {
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
 const context = testContext();
 const PERPLEXITY_AGENT_URL = "https://api.perplexity.ai/v1/agent";
@@ -806,7 +807,9 @@ describe("zero people-search route", () => {
       [200],
     );
     const usage = await accept(
-      setupApp({ context })(zeroUsageRecordContract).get({
+      setupApp({ context, routes: zeroUsageRecordRoutes })(
+        zeroUsageRecordContract,
+      ).get({
         headers: authenticate(actor),
         query: {
           page: 1,

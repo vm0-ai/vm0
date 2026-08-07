@@ -1,17 +1,18 @@
 import { command } from "ccstate";
+import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 import type { Stripe } from "stripe";
 
 import { env } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
   CONCURRENCY_SUBSCRIPTION_PURPOSE,
-  activeConcurrencyPriceId,
+  isConcurrencyPriceId,
 } from "./org-concurrency-entitlements.service";
 
 interface CreateCheckoutSessionArgs {
@@ -46,20 +47,39 @@ interface CreateCreditCheckoutSessionArgs {
   readonly cancelUrl: string;
 }
 
-interface CreateConcurrencyCheckoutSessionArgs {
+interface StartConcurrencyPurchaseArgs {
   readonly orgId: string;
   readonly quantity: number;
   readonly priceId: string;
+  readonly existingSubscriptionId?: string;
+  readonly portalConfigurationId?: string;
   readonly successUrl: string;
   readonly cancelUrl: string;
 }
+
+interface StartConcurrencySubscriptionUpdateArgs {
+  readonly subscriptionId: string;
+  readonly portalConfigurationId: string;
+  readonly update:
+    | { readonly type: "increase"; readonly quantity: number }
+    | { readonly type: "reduce"; readonly quantity: number };
+  readonly successUrl: string;
+  readonly cancelUrl: string;
+}
+
+type StartConcurrencySubscriptionUpdateResult =
+  | { readonly ok: true; readonly url: string }
+  | {
+      readonly ok: false;
+      readonly reason: "not_reduction" | "pending_update";
+    };
 
 const CREDITS_PER_DOLLAR = 1000;
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
 
-function priceIdsForTier(
+function legacyPriceIdsForTier(
   tier: SubscriptionCheckoutTier,
 ): readonly string[] | undefined {
   switch (tier) {
@@ -72,22 +92,102 @@ function priceIdsForTier(
   }
 }
 
+function usagePackPlanPriceIdsForTier(
+  tier: SubscriptionCheckoutTier,
+): readonly string[] | undefined {
+  switch (tier) {
+    case "pro": {
+      return env("ZERO_PRICE_USAGE_PACK_PLAN_PRO");
+    }
+    case "team": {
+      return env("ZERO_PRICE_USAGE_PACK_PLAN_TEAM");
+    }
+  }
+}
+
+function knownPriceIdsForTier(
+  tier: SubscriptionCheckoutTier,
+): readonly string[] {
+  return [
+    ...(legacyPriceIdsForTier(tier) ?? []),
+    ...(usagePackPlanPriceIdsForTier(tier) ?? []),
+  ];
+}
+
 /** Returns the active (first) price ID for a given tier. */
 export function activePriceId(
   tier: SubscriptionCheckoutTier,
 ): string | undefined {
-  return priceIdsForTier(tier)?.[0];
+  return legacyPriceIdsForTier(tier)?.[0];
+}
+
+export function activeUsagePackPlanPriceId(
+  tier: SubscriptionCheckoutTier,
+): string | undefined {
+  return usagePackPlanPriceIdsForTier(tier)?.[0];
+}
+
+function usagePackPriceIds(usagePackUsd: UsagePackUsd): readonly string[] {
+  switch (usagePackUsd) {
+    case 20: {
+      return env("ZERO_PRICE_USAGE_PACK_20") ?? [];
+    }
+    case 50: {
+      return env("ZERO_PRICE_USAGE_PACK_50") ?? [];
+    }
+    case 100: {
+      return env("ZERO_PRICE_USAGE_PACK_100") ?? [];
+    }
+    case 200: {
+      return env("ZERO_PRICE_USAGE_PACK_200") ?? [];
+    }
+  }
+}
+
+export function activeUsagePackPriceId(
+  usagePackUsd: UsagePackUsd,
+): string | undefined {
+  return usagePackPriceIds(usagePackUsd)[0];
+}
+
+export function usagePackUsdForKnownPriceId(
+  priceId: string,
+): UsagePackUsd | null {
+  for (const usagePackUsd of [20, 50, 100, 200] as const) {
+    if (usagePackPriceIds(usagePackUsd).includes(priceId)) {
+      return usagePackUsd;
+    }
+  }
+  return null;
+}
+
+export function isUsagePackPlanPriceId(priceId: string): boolean {
+  return STRIPE_SUBSCRIPTION_PRICE_TIERS.some((tier) => {
+    return usagePackPlanPriceIdsForTier(tier)?.includes(priceId) ?? false;
+  });
 }
 
 export function tierForKnownPriceId(
   priceId: string,
 ): SubscriptionCheckoutTier | null {
   for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
-    if (priceIdsForTier(tier)?.includes(priceId)) {
+    if (knownPriceIdsForTier(tier).includes(priceId)) {
       return tier;
     }
   }
   return null;
+}
+
+interface PlanPriceItem {
+  readonly price: { readonly id: string };
+}
+
+export function knownPlanPriceItem<T extends PlanPriceItem>(
+  items: readonly T[],
+): T | undefined {
+  return items.find((item) => {
+    return tierForKnownPriceId(item.price.id) !== null;
+  });
 }
 
 export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
@@ -161,8 +261,6 @@ export function checkoutTierConflictMessage(args: {
 export function activeCustomCreditUnitPriceId(): string | undefined {
   return env("ZERO_PRICE_CUSTOM_CREDIT_UNIT");
 }
-
-export { activeConcurrencyPriceId };
 
 function checkoutSessionMetadata(args: {
   readonly orgId: string;
@@ -287,7 +385,7 @@ export const completeCheckoutSession$ = command(
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     signal.throwIfAborted();
 
-    const priceId = subscription.items.data[0]?.price?.id;
+    const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
     if (!priceId) {
       return { status: "pending" };
     }
@@ -400,12 +498,129 @@ export const createCreditCheckoutSession$ = command(
   },
 );
 
-export const createConcurrencyCheckoutSession$ = command(
+function expandedLatestInvoice(
+  subscription: Stripe.Subscription,
+): Stripe.Invoice | null {
+  return typeof subscription.latest_invoice === "string"
+    ? null
+    : subscription.latest_invoice;
+}
+
+function concurrencySubscriptionItem(
+  items: readonly Stripe.SubscriptionItem[],
+): {
+  readonly id: string;
+  readonly quantity: number;
+} | null {
+  const item = items.find((candidate) => {
+    return isConcurrencyPriceId(candidate.price.id);
+  });
+  if (!item || !item.quantity) {
+    return null;
+  }
+  return { id: item.id, quantity: item.quantity };
+}
+
+export const startConcurrencySubscriptionUpdate$ = command(
+  async (
+    _,
+    args: StartConcurrencySubscriptionUpdateArgs,
+    signal: AbortSignal,
+  ): Promise<StartConcurrencySubscriptionUpdateResult> => {
+    const stripe = getStripeClient();
+    const subscription = await stripe.subscriptions.retrieve(
+      args.subscriptionId,
+      { expand: ["latest_invoice"] },
+    );
+    signal.throwIfAborted();
+
+    const pendingInvoice = expandedLatestInvoice(subscription);
+    if (subscription.pending_update) {
+      if (args.update.type === "reduce") {
+        const pendingItem = concurrencySubscriptionItem(
+          subscription.pending_update.subscription_items ?? [],
+        );
+        if (pendingItem?.quantity !== args.update.quantity) {
+          return { ok: false, reason: "pending_update" };
+        }
+      }
+      if (!pendingInvoice?.hosted_invoice_url) {
+        throw new Error(
+          "Pending concurrency subscription update has no hosted invoice URL",
+        );
+      }
+      return { ok: true, url: pendingInvoice.hosted_invoice_url };
+    }
+
+    const item = concurrencySubscriptionItem(subscription.items.data);
+    if (!item) {
+      throw new Error(
+        "Concurrency subscription has no active concurrency item",
+      );
+    }
+    const targetQuantity =
+      args.update.type === "increase"
+        ? item.quantity + args.update.quantity
+        : args.update.quantity;
+    if (args.update.type === "reduce" && targetQuantity >= item.quantity) {
+      return { ok: false, reason: "not_reduction" };
+    }
+
+    const customerId =
+      typeof subscription.customer === "string"
+        ? subscription.customer
+        : subscription.customer.id;
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      configuration: args.portalConfigurationId,
+      return_url: args.cancelUrl,
+      flow_data: {
+        type: "subscription_update_confirm",
+        after_completion: {
+          type: "redirect",
+          redirect: { return_url: args.successUrl },
+        },
+        subscription_update_confirm: {
+          subscription: subscription.id,
+          items: [{ id: item.id, quantity: targetQuantity }],
+        },
+      },
+    });
+    signal.throwIfAborted();
+    return { ok: true, url: session.url };
+  },
+);
+
+export const startConcurrencyPurchase$ = command(
   async (
     { set },
-    args: CreateConcurrencyCheckoutSessionArgs,
+    args: StartConcurrencyPurchaseArgs,
     signal: AbortSignal,
   ): Promise<string> => {
+    const stripe = getStripeClient();
+    if (args.existingSubscriptionId) {
+      if (!args.portalConfigurationId) {
+        throw new Error(
+          "Concurrency billing portal configuration is not configured",
+        );
+      }
+      const result = await set(
+        startConcurrencySubscriptionUpdate$,
+        {
+          subscriptionId: args.existingSubscriptionId,
+          portalConfigurationId: args.portalConfigurationId,
+          update: { type: "increase", quantity: args.quantity },
+          successUrl: args.successUrl,
+          cancelUrl: args.cancelUrl,
+        },
+        signal,
+      );
+      if (!result.ok) {
+        throw new Error("Concurrency increase did not produce a Portal URL");
+      }
+      return result.url;
+    }
+
     const customerId = await set(
       getOrCreateStripeCustomer$,
       { orgId: args.orgId },
@@ -420,7 +635,6 @@ export const createConcurrencyCheckoutSession$ = command(
       quantity: String(args.quantity),
       ...stripePreviewMetadata(),
     };
-    const stripe = getStripeClient();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,

@@ -34,8 +34,7 @@ mod duration;
 mod exec_operation_result;
 mod factory;
 mod guest_dns_failure_diagnostics;
-mod guest_dns_netfilter_trace;
-mod guest_dns_network_evidence;
+mod guest_dns_probe;
 mod guest_dns_readiness;
 mod guest_operations;
 mod leaked_resources;
@@ -49,6 +48,7 @@ mod runtime;
 mod runtime_dirs;
 mod sandbox;
 mod snapshot;
+mod snapshot_mount_namespace;
 mod workspace_drive_image;
 
 pub use api::{ApiClient, ApiError, BalloonStatistics};
@@ -58,9 +58,9 @@ pub use config::{
 };
 pub use control::FirecrackerControl;
 pub use factory::{PREWARM_SCRIPT, config_hash};
+pub use guest_dns_probe::{DNS_PROBE_RESOLVER_IPV4, DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4};
 pub use network::{
-    DNS_DIAGNOSTIC_HOSTNAME, DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4, NetnsInfo, NetnsLease,
-    NetnsPool, NetnsPoolConfig, ParsedNetnsName, parse_netns_name,
+    NetnsInfo, NetnsLease, NetnsPool, NetnsPoolConfig, ParsedNetnsName, parse_netns_name,
 };
 pub use paths::{
     FactoryPaths, LockPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths,
@@ -68,5 +68,6 @@ pub use paths::{
 pub use runtime::{FirecrackerRuntime, FirecrackerRuntimeProvider};
 pub use sandbox::FirecrackerSandbox;
 pub use snapshot::{
-    FirecrackerSnapshotProvider, SNAPSHOT_COMPLETE_MARKER_CONTENT, SnapshotError, create_snapshot,
+    FirecrackerSnapshotProvider, SNAPSHOT_COMPLETE_MARKER_CONTENT, SnapshotError,
+    SnapshotOutputValidation, create_snapshot, validate_snapshot_output,
 };

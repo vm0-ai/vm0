@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto";
 
 import { CLIENT_VERSION_HEADER } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
+import type { UserMessageInputDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroAgentDraftRoutes } from "../zero-agent-drafts";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -42,7 +44,9 @@ function authHeaders() {
 }
 
 function draftsClient() {
-  return setupApp({ context })(zeroAgentDraftContract);
+  return setupApp({ context, routes: zeroAgentDraftRoutes })(
+    zeroAgentDraftContract,
+  );
 }
 
 describe("GET/PATCH /api/zero/agents/:id/draft", () => {
@@ -59,7 +63,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
     );
 
     expect(response.body).toStrictEqual({
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -76,7 +79,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       contentType: "text/plain",
       size: 123,
     };
-    const draftUserMessage: UserMessageDocument = {
+    const draftUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -99,7 +102,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         params: { id: fixture.agentId },
         headers: authHeaders(),
         body: {
-          draftContent: "draft text",
           draftUserMessage,
           draftAttachments: [attachment],
         },
@@ -115,7 +117,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       [200],
     );
     expect(saved.body).toStrictEqual({
-      draftContent: "draft text",
       draftUserMessage,
       draftAttachments: [attachment],
     });
@@ -125,7 +126,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         params: { id: fixture.agentId },
         headers: authHeaders(),
         body: {
-          draftContent: null,
           draftUserMessage: null,
           draftAttachments: null,
         },
@@ -141,7 +141,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       [200],
     );
     expect(cleared.body).toStrictEqual({
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -156,7 +155,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         params: { id: fixture.agentId },
         headers: authHeaders(),
         body: {
-          draftContent: "owner draft",
           draftUserMessage: {
             version: 1,
             parts: [{ type: "text", text: "owner draft" }],
@@ -178,7 +176,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       [200],
     );
     expect(peerDraft.body).toStrictEqual({
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });

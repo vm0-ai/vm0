@@ -258,7 +258,7 @@ function collectConnectors(
 ): Computed<
   Promise<
     readonly {
-      readonly type: unknown;
+      readonly slug: unknown;
       readonly authMethod: unknown;
       readonly connectionStatus: unknown;
       readonly externalUsername: unknown;
@@ -340,7 +340,7 @@ function collectActivityLogs(
 
 function safeConnectorSummaries(
   connectors: readonly {
-    readonly type: unknown;
+    readonly slug: unknown;
     readonly authMethod: unknown;
     readonly connectionStatus: unknown;
     readonly externalUsername: unknown;
@@ -348,7 +348,7 @@ function safeConnectorSummaries(
 ): Record<string, unknown>[] {
   return connectors.map((connector) => {
     return {
-      type: connector.type,
+      slug: connector.slug,
       authMethod: connector.authMethod,
       connectionStatus: connector.connectionStatus,
       externalUsername: connector.externalUsername,
@@ -604,7 +604,7 @@ function collectNetworkLog(
 | where runId in (${runIdList})
 | order by _time asc`;
 
-    return (
+    const networkLogs =
       (await tapError(
         (async (): Promise<Record<string, unknown>[]> => {
           return (await get(queryAxiom(apl))) as Record<string, unknown>[];
@@ -614,8 +614,9 @@ function collectNetworkLog(
             error: String(error),
           });
         },
-      )) ?? []
-    );
+      )) ?? [];
+
+    return networkLogs;
   });
 }
 

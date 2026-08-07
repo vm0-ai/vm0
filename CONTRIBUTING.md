@@ -69,6 +69,9 @@ cd turbo && pnpm install && pnpm -F web db:migrate && pnpm build && pnpm test
 - `db:migrate` sets up the local database schema
 - `pnpm build` builds shared packages (e.g. `@vm0/core`)
 
+See [Database Migrations](turbo/packages/db/MIGRATIONS.md) for migration rollout,
+validation, and online SQL patterns.
+
 ### Running the Dev Server
 
 1. Run the preparation script (installs deps, migrates DB):

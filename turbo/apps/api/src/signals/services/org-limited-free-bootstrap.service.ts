@@ -7,10 +7,9 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq, sql } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
-import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { writeDb$ } from "../external/db";
+import { nowDate } from "../../lib/time";
 import { serverSideZeroAgentCompose$ } from "./agent-compose.service";
 import {
   grantOnboardingCredits,
@@ -28,10 +27,11 @@ import {
   upsertOrgPlanEntitlement,
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("org-limited-free-bootstrap.service");
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 interface EnsureOrgLimitedFreeBootstrapArgs {
   readonly orgId: string;

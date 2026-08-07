@@ -4,7 +4,7 @@ export const MODEL_PROVIDER_TYPE_IDS = [
   "openrouter-api-key",
   "moonshot-api-key",
   "minimax-api-key",
-  "deepseek-api-key",
+  "deepseek",
   "zai-api-key",
   "vercel-ai-gateway",
   "openrouter-codex",

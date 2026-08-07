@@ -20,8 +20,10 @@ import re
 import urllib.parse
 from dataclasses import dataclass
 from enum import Enum
+from typing import NewType
 
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
+from runtime_url_parsing import split_runtime_url
 
 _AWS4_REQUEST = "aws4_request"
 _HMAC_ALGORITHM = "AWS4-HMAC-SHA256"
@@ -58,6 +60,8 @@ _RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _ASCII_CONTROL_MAX = 0x1F
 _ASCII_DELETE = 0x7F
 _DEFAULT_PORTS = {"http": 80, "https": 443}
+
+AwsSigV4BodyHash = NewType("AwsSigV4BodyHash", str)
 
 
 class AwsSigV4SigningError(Exception):
@@ -114,6 +118,7 @@ def sign_request(
     headers: list[tuple[str, str]],
     body: bytes | None,
     credentials: AwsSigV4Credentials,
+    precomputed_body_hash: AwsSigV4BodyHash | None = None,
 ) -> tuple[str, list[tuple[str, str]]]:
     """Return a URL/header pair re-signed with real AWS credentials.
 
@@ -135,20 +140,16 @@ def sign_request(
     S3-family services keep S3 canonical URI behavior. For presigned S3
     requests without an explicit ``x-amz-content-sha256`` header, the payload
     hash is ``UNSIGNED-PAYLOAD``.
+
+    When supplied, ``precomputed_body_hash`` must be the SHA-256 digest of
+    ``body``. It is ignored when the request declares a supported payload hash.
     """
     _validate_credentials(credentials)
     _validate_headers(headers)
     context, signing_url = _classify_request(url, headers)
-    if context.algorithm == _ASYMMETRIC_ALGORITHM:
-        raise AwsSigV4SigningError("SigV4A is not supported by this runner")
-    if context.algorithm != _HMAC_ALGORITHM:
-        raise AwsSigV4SigningError("Unsupported AWS signing algorithm")
+    _validate_signing_context(context)
     if context.source_access_key_id == credentials.access_key_id:
         raise AwsSigV4SigningError("AWS request must use a placeholder access key ID")
-    if context.scope.region == "*":
-        raise AwsSigV4SigningError("Wildcard AWS signing region requires SigV4A")
-    if context.scope.service == _UNSUPPORTED_S3_EXPRESS_SIGNING_NAME:
-        raise AwsSigV4SigningError("S3 Express signing is not supported by this runner")
 
     is_s3 = context.scope.service in _S3_SIGNING_NAMES
     if context.location is _AuthLocation.QUERY:
@@ -160,6 +161,7 @@ def sign_request(
             credentials=credentials,
             context=context,
             is_s3=is_s3,
+            precomputed_body_hash=precomputed_body_hash,
         )
     return _sign_header_request(
         method=method,
@@ -169,7 +171,40 @@ def sign_request(
         credentials=credentials,
         context=context,
         is_s3=is_s3,
+        precomputed_body_hash=precomputed_body_hash,
     )
+
+
+def hash_request_body(body: bytes | None) -> AwsSigV4BodyHash:
+    """Return the SHA-256 digest used by payload-dependent SigV4 signing."""
+    return AwsSigV4BodyHash(hashlib.sha256(body or b"").hexdigest())
+
+
+def request_requires_body_for_signing(
+    *,
+    url: str,
+    headers: list[tuple[str, str]],
+) -> bool:
+    """Return whether re-signing must hash the request body bytes."""
+    _validate_headers(headers)
+    context, _signing_url = _classify_request(url, headers)
+    _validate_signing_context(context)
+    if _content_hash_header_value(headers) is not None:
+        return False
+    return not (
+        context.location is _AuthLocation.QUERY and context.scope.service in _S3_SIGNING_NAMES
+    )
+
+
+def _validate_signing_context(context: _SigningContext) -> None:
+    if context.algorithm == _ASYMMETRIC_ALGORITHM:
+        raise AwsSigV4SigningError("SigV4A is not supported by this runner")
+    if context.algorithm != _HMAC_ALGORITHM:
+        raise AwsSigV4SigningError("Unsupported AWS signing algorithm")
+    if context.scope.region == "*":
+        raise AwsSigV4SigningError("Wildcard AWS signing region requires SigV4A")
+    if context.scope.service == _UNSUPPORTED_S3_EXPRESS_SIGNING_NAME:
+        raise AwsSigV4SigningError("S3 Express signing is not supported by this runner")
 
 
 def _classify_request(
@@ -199,7 +234,7 @@ def _parse_url_for_signing(url: str) -> _SigningUrl:
     if _has_malformed_percent_encoding(url):
         raise AwsSigV4SigningError("AWS request URL is malformed")
     try:
-        parts = urllib.parse.urlsplit(url)
+        parts = split_runtime_url(url)
     except ValueError as e:
         raise AwsSigV4SigningError("AWS request URL is malformed") from e
     return _SigningUrl(
@@ -337,8 +372,9 @@ def _sign_header_request(
     credentials: AwsSigV4Credentials,
     context: _SigningContext,
     is_s3: bool,
+    precomputed_body_hash: AwsSigV4BodyHash | None,
 ) -> tuple[str, list[tuple[str, str]]]:
-    payload_hash = _payload_hash(headers, body)
+    payload_hash = _payload_hash(headers, body, precomputed_body_hash)
     clean_headers = _without_headers(headers, {"authorization", "x-amz-security-token"})
     clean_headers = _upsert_header(clean_headers, "host", _host_header_value(url))
     clean_headers = _upsert_header(clean_headers, "x-amz-date", context.amz_date)
@@ -391,11 +427,12 @@ def _sign_query_request(
     credentials: AwsSigV4Credentials,
     context: _SigningContext,
     is_s3: bool,
+    precomputed_body_hash: AwsSigV4BodyHash | None,
 ) -> tuple[str, list[tuple[str, str]]]:
     clean_headers = _without_headers(headers, {"authorization", "x-amz-security-token"})
     clean_headers = _upsert_header(clean_headers, "host", _host_header_value(url))
     signed_headers = frozenset(set(context.signed_headers) | {"host"})
-    payload_hash = _query_payload_hash(headers, body, is_s3)
+    payload_hash = _query_payload_hash(headers, body, is_s3, precomputed_body_hash)
     unsigned_url = _replace_query_signing_params(
         url,
         credentials=credentials,
@@ -508,20 +545,33 @@ def _normalize_header_value(value: str) -> str:
     return " ".join(value.strip().split())
 
 
-def _payload_hash(headers: list[tuple[str, str]], body: bytes | None) -> str:
+def _payload_hash(
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+    precomputed_body_hash: AwsSigV4BodyHash | None,
+) -> str:
     header_value = _content_hash_header_value(headers)
     if header_value is not None:
         return header_value
-    return hashlib.sha256(body or b"").hexdigest()
+    if precomputed_body_hash is not None:
+        return precomputed_body_hash
+    return hash_request_body(body)
 
 
-def _query_payload_hash(headers: list[tuple[str, str]], body: bytes | None, is_s3: bool) -> str:
+def _query_payload_hash(
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+    is_s3: bool,
+    precomputed_body_hash: AwsSigV4BodyHash | None,
+) -> str:
     header_value = _content_hash_header_value(headers)
     if header_value is not None:
         return header_value
     if is_s3:
         return _UNSIGNED_PAYLOAD
-    return hashlib.sha256(body or b"").hexdigest()
+    if precomputed_body_hash is not None:
+        return precomputed_body_hash
+    return hash_request_body(body)
 
 
 def _content_hash_header_value(headers: list[tuple[str, str]]) -> str | None:

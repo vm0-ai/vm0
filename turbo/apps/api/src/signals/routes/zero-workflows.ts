@@ -28,6 +28,11 @@ import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishChatThreadWorkflowsChangedSafely } from "../external/realtime";
 import {
+  ApiDispatchTimingCollector,
+  measureApiDispatchTiming,
+} from "../services/api-dispatch-timing.service";
+import {
+  autonomyBudgetExhausted,
   conflict,
   connectorReadinessTimeout,
   notFound,
@@ -40,7 +45,10 @@ import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
 import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
-import { ensureWorkflowUserAutomationThread } from "../services/zero-workflow-user-automation-thread.service";
+import {
+  ensureWorkflowUserAutomationThread,
+  loadWorkflowUserAutomationThreadId,
+} from "../services/zero-workflow-user-automation-thread.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import { detectWorkflowConnectorReadiness$ } from "../services/zero-workflow-connector-readiness.service";
 import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
@@ -53,6 +61,15 @@ import {
   mintWorkflowWebhookToken,
 } from "../services/workflow-webhook-automation.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  insertRolloutCompatibleWorkflowAutomation,
+  rolloutCompatibleWorkflowAutomationColumns,
+} from "../services/autonomy-budget-schema.service";
+import {
+  childAutonomyBudget,
+  loadOwnedRunAutonomyBudget,
+} from "../services/autonomy-budget.service";
 import { settle } from "../utils";
 import {
   loadVisibleWorkflowById,
@@ -64,7 +81,8 @@ import {
   type WorkflowRow,
 } from "../services/zero-workflow-data.service";
 import type { RouteEntry } from "../route-entry";
-import { sendNormalMessage$ } from "./zero-chat-events";
+import { sendNormalEvent$ } from "../services/zero-chat-events.command";
+import type { Tx } from "../../lib/db-types";
 
 const log = logger("api:zero:workflow-connector-readiness");
 
@@ -690,7 +708,7 @@ const deleteWorkflowInner$ = command(
   },
 );
 
-type WorkflowCopyTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WorkflowCopyTransaction = Tx;
 
 interface CopyWorkflowRuntimeArgs {
   readonly orgId: string;
@@ -698,6 +716,8 @@ interface CopyWorkflowRuntimeArgs {
   readonly sourceWorkflow: WorkflowRow;
   readonly targetAgentId: string;
   readonly currentTime: Date;
+  readonly autonomyBudgetAvailable: boolean;
+  readonly autonomyBudgetLimit?: number;
 }
 
 interface CopyWorkflowScopedRowsArgs {
@@ -706,6 +726,8 @@ interface CopyWorkflowScopedRowsArgs {
   readonly sourceWorkflowId: string;
   readonly targetWorkflowId: string;
   readonly currentTime: Date;
+  readonly autonomyBudgetAvailable: boolean;
+  readonly autonomyBudgetLimit?: number;
 }
 
 interface CopyWorkflowAutomationRowsArgs extends CopyWorkflowScopedRowsArgs {
@@ -792,9 +814,9 @@ async function copyWorkflowAutomationRow(
     readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   },
 ): Promise<void> {
-  const [copiedAutomation] = await tx
-    .insert(zeroWorkflowAutomations)
-    .values({
+  const copiedAutomation = await insertRolloutCompatibleWorkflowAutomation(
+    tx,
+    {
       orgId: args.orgId,
       workflowId: args.targetWorkflowId,
       ownerUserId: args.userId,
@@ -811,10 +833,15 @@ async function copyWorkflowAutomationRow(
       lastRunAt: null,
       lastRunId: null,
       consecutiveFailures: 0,
+      autonomyBudget: Math.min(
+        args.automation.autonomyBudget,
+        args.autonomyBudgetLimit ?? args.automation.autonomyBudget,
+      ),
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
-    })
-    .returning({ id: zeroWorkflowAutomations.id });
+    },
+    args.autonomyBudgetAvailable,
+  );
   if (!copiedAutomation) {
     throw new Error("Failed to copy workflow automation");
   }
@@ -838,7 +865,9 @@ async function copyWorkflowUserAutomations(
   args: CopyWorkflowAutomationRowsArgs,
 ): Promise<void> {
   const rows = await tx
-    .select()
+    .select(
+      rolloutCompatibleWorkflowAutomationColumns(args.autonomyBudgetAvailable),
+    )
     .from(zeroWorkflowAutomations)
     .where(
       and(
@@ -879,6 +908,10 @@ async function copyWorkflowRuntimeConfiguration(
     sourceWorkflowId: args.sourceWorkflow.id,
     targetWorkflowId: workflow.id,
     currentTime: args.currentTime,
+    autonomyBudgetAvailable: args.autonomyBudgetAvailable,
+    ...(args.autonomyBudgetLimit === undefined
+      ? {}
+      : { autonomyBudgetLimit: args.autonomyBudgetLimit }),
   };
   await copyWorkflowUserAutomations(tx, {
     ...scopedRowsArgs,
@@ -900,6 +933,26 @@ const copyWorkflowInner$ = command(
     }
 
     const writeDb = set(writeDb$);
+    const autonomyBudgetAvailable =
+      await autonomyBudgetSchemaAvailable(writeDb);
+    signal.throwIfAborted();
+    let autonomyBudgetLimit: number | undefined;
+    if (auth.tokenType === "zero" && autonomyBudgetAvailable) {
+      const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(writeDb, {
+        runId: auth.runId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      });
+      signal.throwIfAborted();
+      if (sourceAutonomyBudget === null) {
+        return notFound("Source run not found");
+      }
+      const derived = childAutonomyBudget(sourceAutonomyBudget);
+      if (derived.kind === "exhausted") {
+        return autonomyBudgetExhausted();
+      }
+      autonomyBudgetLimit = derived.autonomyBudget;
+    }
     const source = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
       member,
@@ -950,6 +1003,8 @@ const copyWorkflowInner$ = command(
         sourceWorkflow: source.workflow,
         targetAgentId: targetAgent.id,
         currentTime,
+        autonomyBudgetAvailable,
+        ...(autonomyBudgetLimit === undefined ? {} : { autonomyBudgetLimit }),
       });
     });
     signal.throwIfAborted();
@@ -1083,34 +1138,67 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return forbidden("Only the private agent owner can run this agent");
   }
 
-  const now = nowDate();
-  const chatThreadId = await writeDb.transaction(async (tx) => {
-    return await ensureWorkflowUserAutomationThread(tx, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      workflowId: workflow.id,
-      agentId: agent.id,
-      workflowTitle: workflow.displayName ?? workflow.name,
-      currentTime: now,
-    });
-  });
+  const currentTime = nowDate();
+  const apiStartTime = currentTime.getTime();
+  const timing = new ApiDispatchTimingCollector();
+  const mappedChatThreadId = await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_pre_create_zero_workflow_slash_load_thread_mapping",
+    "nested",
+    async () => {
+      return await loadWorkflowUserAutomationThreadId(writeDb, {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        workflowId: workflow.id,
+      });
+    },
+  );
+  signal.throwIfAborted();
+  const chatThreadId =
+    mappedChatThreadId ??
+    (await measureApiDispatchTiming(
+      timing,
+      "api_dispatch_pre_create_zero_workflow_slash_ensure_thread",
+      "nested",
+      async () => {
+        return await writeDb.transaction(async (tx) => {
+          return await ensureWorkflowUserAutomationThread(tx, {
+            orgId: auth.orgId,
+            userId: auth.userId,
+            workflowId: workflow.id,
+            agentId: agent.id,
+            workflowTitle: workflow.displayName ?? workflow.name,
+            currentTime,
+          });
+        });
+      },
+    ));
   signal.throwIfAborted();
 
   // Invoking a workflow is exactly typing its slash command in chat.
   const prompt = workflowSlashPrompt(workflow);
+  const body = {
+    prompt,
+    userMessage: createUserMessageDocument({ text: prompt }),
+    hasTextContent: true,
+    agentId: agent.id,
+    threadId: chatThreadId,
+  };
+  timing.recordElapsed(
+    "api_dispatch_pre_create_zero_workflow_slash_prepare_normal_send",
+    "nested",
+    apiStartTime,
+  );
   const result = await set(
-    sendNormalMessage$,
+    sendNormalEvent$,
     {
       auth,
-      body: {
-        prompt,
-        userMessage: createUserMessageDocument({ text: prompt }),
-        agentId: agent.id,
-        threadId: chatThreadId,
-      },
+      body,
       userId: auth.userId,
       orgId: auth.orgId,
-      apiStartTime: now.getTime(),
+      apiStartTime,
+      preloadedAgent: agent,
+      timing,
       zeroPreCreateSource: "workflow_slash_command",
     },
     signal,

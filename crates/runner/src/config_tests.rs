@@ -127,12 +127,7 @@ async fn test_home_with_artifacts(dir: &std::path::Path, hashes: &[(&str, &str)]
         if !snapshot_hash.is_empty() {
             let snapshot = rootfs.snapshot(snapshot_hash);
             tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-            for path in [
-                snapshot.snapshot_bin(),
-                snapshot.memory_bin(),
-                snapshot.cow_img(),
-                snapshot.cow_bitmap(),
-            ] {
+            for path in snapshot.required_artifacts() {
                 tokio::fs::write(&path, b"").await.unwrap();
             }
             tokio::fs::write(
@@ -161,6 +156,34 @@ fn default_profile_config() -> ProfileConfig {
         rootfs_disk_mb: 8192,
         workspace_disk_mb: 16384,
     }
+}
+
+#[test]
+fn runtime_profiles_install_pi_standby_from_default_image() {
+    let mut profiles = make_profiles();
+    let default_profile = profiles[crate::profile::DEFAULT_PROFILE].clone();
+
+    install_internal_profile_aliases(&mut profiles);
+
+    assert_eq!(
+        profiles[crate::profile::PI_STANDBY_PROFILE],
+        default_profile
+    );
+}
+
+#[test]
+fn runtime_profiles_preserve_an_explicit_pi_standby_image() {
+    let mut profiles = make_profiles();
+    let explicit = ProfileConfig {
+        rootfs_hash: "explicit-rootfs".into(),
+        snapshot_hash: "explicit-snapshot".into(),
+        ..default_profile_config()
+    };
+    profiles.insert(crate::profile::PI_STANDBY_PROFILE.into(), explicit.clone());
+
+    install_internal_profile_aliases(&mut profiles);
+
+    assert_eq!(profiles[crate::profile::PI_STANDBY_PROFILE], explicit);
 }
 
 #[cfg(unix)]
@@ -683,12 +706,7 @@ async fn load_defers_malformed_complete_marker_check() {
     tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
     let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
     tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-    for path in [
-        snapshot.snapshot_bin(),
-        snapshot.memory_bin(),
-        snapshot.cow_img(),
-        snapshot.cow_bitmap(),
-    ] {
+    for path in snapshot.required_artifacts() {
         tokio::fs::write(&path, b"").await.unwrap();
     }
     tokio::fs::write(snapshot.complete_marker(), b"partial marker")
@@ -720,11 +738,7 @@ async fn validate_profile_image_artifacts_rejects_missing_cow_bitmap() {
     tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
     let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
     tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-    for path in [
-        snapshot.snapshot_bin(),
-        snapshot.memory_bin(),
-        snapshot.cow_img(),
-    ] {
+    for path in [snapshot.snapshot(), snapshot.memory(), snapshot.cow()] {
         tokio::fs::write(&path, b"").await.unwrap();
     }
     tokio::fs::write(
@@ -749,6 +763,64 @@ async fn validate_profile_image_artifacts_rejects_missing_cow_bitmap() {
         err.to_string().contains("cow.img.bitmap"),
         "expected missing cow bitmap error, got: {err}"
     );
+}
+
+#[tokio::test]
+async fn lock_and_validate_profile_image_artifacts_rejects_directory_snapshot_artifact() {
+    let dir = tempfile::tempdir().unwrap();
+    let home =
+        test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
+    let snapshot = RootfsPaths::new(&home, TEST_ROOTFS_HASH).snapshot(TEST_SNAPSHOT_HASH);
+    tokio::fs::remove_file(snapshot.snapshot()).await.unwrap();
+    tokio::fs::create_dir(snapshot.snapshot()).await.unwrap();
+
+    let err = match lock_and_validate_profile_image_artifacts(
+        "vm0/default",
+        &default_profile_config(),
+        &home,
+    )
+    .await
+    {
+        Ok(_) => panic!("expected directory snapshot artifact error"),
+        Err(err) => err,
+    };
+    let message = err.to_string();
+    assert!(
+        message.contains("profile vm0/default snapshot"),
+        "got: {err}"
+    );
+    assert!(message.contains("not a regular file"), "got: {err}");
+    assert!(message.contains("snapshot.bin"), "got: {err}");
+}
+
+#[tokio::test]
+async fn lock_and_validate_profile_image_artifacts_rejects_symlink_snapshot_artifact() {
+    let dir = tempfile::tempdir().unwrap();
+    let home =
+        test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
+    let snapshot = RootfsPaths::new(&home, TEST_ROOTFS_HASH).snapshot(TEST_SNAPSHOT_HASH);
+    let target = dir.path().join("snapshot-target.bin");
+    tokio::fs::write(&target, b"snapshot").await.unwrap();
+    tokio::fs::remove_file(snapshot.snapshot()).await.unwrap();
+    std::os::unix::fs::symlink(&target, snapshot.snapshot()).unwrap();
+
+    let err = match lock_and_validate_profile_image_artifacts(
+        "vm0/default",
+        &default_profile_config(),
+        &home,
+    )
+    .await
+    {
+        Ok(_) => panic!("expected symlink snapshot artifact error"),
+        Err(err) => err,
+    };
+    let message = err.to_string();
+    assert!(
+        message.contains("profile vm0/default snapshot"),
+        "got: {err}"
+    );
+    assert!(message.contains("not a regular file"), "got: {err}");
+    assert!(message.contains("snapshot.bin"), "got: {err}");
 }
 
 #[tokio::test]
@@ -902,12 +974,7 @@ async fn load_rejects_snapshot_without_complete_marker() {
     tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
     let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
     tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-    for path in [
-        snapshot.snapshot_bin(),
-        snapshot.memory_bin(),
-        snapshot.cow_img(),
-        snapshot.cow_bitmap(),
-    ] {
+    for path in snapshot.required_artifacts() {
         tokio::fs::write(&path, b"").await.unwrap();
     }
 
@@ -933,12 +1000,7 @@ async fn load_rejects_snapshot_with_malformed_complete_marker() {
     tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
     let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
     tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-    for path in [
-        snapshot.snapshot_bin(),
-        snapshot.memory_bin(),
-        snapshot.cow_img(),
-        snapshot.cow_bitmap(),
-    ] {
+    for path in snapshot.required_artifacts() {
         tokio::fs::write(&path, b"").await.unwrap();
     }
     tokio::fs::write(snapshot.complete_marker(), b"partial marker")

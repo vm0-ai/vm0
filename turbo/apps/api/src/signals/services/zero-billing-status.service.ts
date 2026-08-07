@@ -20,6 +20,7 @@ import {
 } from "drizzle-orm";
 
 import { pgIntegerDecoder } from "../../lib/db-structured-result";
+import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { db$, type ReadonlyDb } from "../external/db";
 import {
@@ -104,6 +105,11 @@ interface UsageAllowanceStatus {
   windows: UsageAllowanceWindowStatus[];
 }
 
+interface ActiveUsageAllowanceStatus {
+  status: UsageAllowanceStatus;
+  stripeSubscriptionId: string | null;
+}
+
 interface BillingOrgRow {
   tier: string;
   credits: number;
@@ -160,6 +166,7 @@ interface BillingStatusResponse {
     quantity: number;
     currentPeriodEnd: string | null;
     cancelAtPeriodEnd: boolean;
+    canReduce?: boolean;
   }[];
   usageAllowance: UsageAllowanceStatus | null;
   concurrencyLimit: number;
@@ -419,7 +426,7 @@ async function activeUsageAllowanceStatus(
   db: ReadonlyDb,
   orgId: string,
   currentTime: Date,
-): Promise<UsageAllowanceStatus | null> {
+): Promise<ActiveUsageAllowanceStatus | null> {
   const [entitlement] = await db
     .select({
       effectiveAt: orgUsageAllowanceEntitlements.effectiveAt,
@@ -427,6 +434,7 @@ async function activeUsageAllowanceStatus(
       shortWindowUnits: orgUsageAllowanceEntitlements.shortWindowUnits,
       weeklyWindowSeconds: orgUsageAllowanceEntitlements.weeklyWindowSeconds,
       weeklyWindowUnits: orgUsageAllowanceEntitlements.weeklyWindowUnits,
+      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
     })
     .from(orgUsageAllowanceEntitlements)
     .where(
@@ -489,13 +497,16 @@ async function activeUsageAllowanceStatus(
   }
 
   return {
-    windows: USAGE_ALLOWANCE_WINDOW_KINDS.map((kind) => {
-      return usageAllowanceWindowStatus({
-        entitlement,
-        kind,
-        activeWindow: windowByKind.get(kind),
-      });
-    }),
+    status: {
+      windows: USAGE_ALLOWANCE_WINDOW_KINDS.map((kind) => {
+        return usageAllowanceWindowStatus({
+          entitlement,
+          kind,
+          activeWindow: windowByKind.get(kind),
+        });
+      }),
+    },
+    stripeSubscriptionId: entitlement.stripeSubscriptionId,
   };
 }
 
@@ -542,10 +553,19 @@ function scheduledBillingChange(
   };
 }
 
+function hasManageablePlanSubscription(org: BillingOrgRow): boolean {
+  return (
+    org.stripeSubscriptionId !== null &&
+    org.subscriptionStatus !== "canceled" &&
+    org.subscriptionStatus !== "incomplete_expired"
+  );
+}
+
 function billingStatusResponse(args: {
   orgId: string;
   org: BillingOrgRow | undefined;
   canBuyConcurrency: boolean;
+  canReduceConcurrency: boolean;
   canBuyCredits: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
@@ -555,7 +575,7 @@ function billingStatusResponse(args: {
   unsettledExpired: number;
   activeRecords: readonly ActiveCreditRecord[];
   concurrencySubscriptions: readonly ActiveConcurrencySubscription[];
-  usageAllowance: UsageAllowanceStatus | null;
+  usageAllowance: ActiveUsageAllowanceStatus | null;
   baseConcurrencyLimit: number;
 }): BillingStatusResponse {
   const org = args.org ?? DEFAULT_BILLING_ORG;
@@ -586,7 +606,11 @@ function billingStatusResponse(args: {
     currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: org.cancelAtPeriodEnd,
     scheduledChange: scheduledBillingChange(org),
-    hasSubscription: org.stripeSubscriptionId !== null,
+    hasSubscription:
+      hasManageablePlanSubscription(org) ||
+      args.concurrencySubscriptions.length > 0 ||
+      (args.usageAllowance !== null &&
+        args.usageAllowance.stripeSubscriptionId !== null),
     autoRecharge: {
       enabled: org.autoRechargeEnabled,
       threshold: org.autoRechargeThreshold,
@@ -612,10 +636,15 @@ function billingStatusResponse(args: {
           currentPeriodEnd:
             subscription.currentPeriodEnd?.toISOString() ?? null,
           cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+          ...(args.canReduceConcurrency &&
+          subscription.quantity > 1 &&
+          !subscription.cancelAtPeriodEnd
+            ? { canReduce: true as const }
+            : {}),
         };
       },
     ),
-    usageAllowance: args.usageAllowance,
+    usageAllowance: args.usageAllowance?.status ?? null,
   };
 }
 
@@ -696,6 +725,8 @@ export function zeroBillingStatus(
       orgId,
       org: org[0],
       canBuyConcurrency: capabilities?.canBuyConcurrency ?? false,
+      canReduceConcurrency:
+        env("STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID") !== undefined,
       canBuyCredits: capabilities?.canBuyCredits ?? false,
       autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,
       supportByok: capabilities?.supportByok ?? false,

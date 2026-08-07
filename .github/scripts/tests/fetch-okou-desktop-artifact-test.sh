@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+script="${repo_root}/.github/scripts/fetch-okou-desktop-artifact.sh"
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+
+source_dir="${tmp_dir}/source"
+mkdir -p "$source_dir" "${tmp_dir}/bin"
+printf 'archive\n' > "$source_dir/app.tar.gz"
+printf '{"version":1}\n' > "$source_dir/manifest.json"
+printf '{"version":1}\n' > "$source_dir/ready.json"
+
+cat > "${tmp_dir}/bin/aws" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%q ' "$@" >> "$MOCK_AWS_LOG"
+printf '\n' >> "$MOCK_AWS_LOG"
+
+source_uri="$3"
+destination="$4"
+filename="${source_uri##*/}"
+
+if [[ -n "${MOCK_AWS_TRANSIENT_FAILURES:-}" ]]; then
+  failure_count="$(<"$MOCK_AWS_STATE_FILE")"
+  if (( failure_count < MOCK_AWS_TRANSIENT_FAILURES )); then
+    printf '%s\n' "$((failure_count + 1))" > "$MOCK_AWS_STATE_FILE"
+    echo "download failed: IncompleteRead" >&2
+    exit 1
+  fi
+fi
+
+if [[ "$filename" == "app.tar.gz" && "${MOCK_ARCHIVE_PRESENT:-true}" != "true" ]]; then
+  echo "fatal error: An error occurred (404) when calling HeadObject" >&2
+  exit 1
+fi
+
+cp "$MOCK_SOURCE_DIR/$filename" "$destination"
+EOF
+chmod +x "${tmp_dir}/bin/aws"
+
+export PATH="${tmp_dir}/bin:${PATH}"
+export MOCK_SOURCE_DIR="$source_dir"
+export OKOU_DESKTOP_ARTIFACT_FETCH_RETRY_DELAY_SECONDS=0
+r2_endpoint="https://account.r2.cloudflarestorage.com"
+artifact_uri="s3://vm0-static-prod/okou-desktop/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+destination="${tmp_dir}/destination"
+mkdir -p "$destination"
+MOCK_AWS_LOG="${tmp_dir}/fetch.log" \
+  bash "$script" "$r2_endpoint" "$artifact_uri" "$destination"
+cmp "$source_dir/app.tar.gz" "$destination/app.tar.gz"
+cmp "$source_dir/manifest.json" "$destination/manifest.json"
+cmp "$source_dir/ready.json" "$destination/ready.json"
+if (( "$(grep -c 's3 cp' "${tmp_dir}/fetch.log")" != 3 )); then
+  echo "Expected exactly three Desktop artifact object copies" >&2
+  exit 1
+fi
+if grep -q -- '--recursive' "${tmp_dir}/fetch.log"; then
+  echo "Desktop artifact fetch must use explicit immutable objects" >&2
+  exit 1
+fi
+
+missing_destination="${tmp_dir}/missing"
+mkdir -p "$missing_destination"
+if MOCK_ARCHIVE_PRESENT=false \
+  MOCK_AWS_LOG="${tmp_dir}/missing.log" \
+  bash "$script" "$r2_endpoint" "$artifact_uri" "$missing_destination" \
+    >/dev/null 2>&1; then
+  echo "Expected a missing Desktop archive to fail" >&2
+  exit 1
+fi
+if (( "$(grep -c 's3 cp' "${tmp_dir}/missing.log")" != 1 )); then
+  echo "Expected a missing Desktop archive to fail without retrying" >&2
+  exit 1
+fi
+
+retry_destination="${tmp_dir}/retry"
+mkdir -p "$retry_destination"
+printf '0\n' > "${tmp_dir}/retry-state"
+MOCK_AWS_TRANSIENT_FAILURES=2 \
+  MOCK_AWS_STATE_FILE="${tmp_dir}/retry-state" \
+  MOCK_AWS_LOG="${tmp_dir}/retry.log" \
+  bash "$script" "$r2_endpoint" "$artifact_uri" "$retry_destination" \
+    >/dev/null 2>&1
+test -f "$retry_destination/app.tar.gz"
+if (( "$(grep -c 's3 cp' "${tmp_dir}/retry.log")" != 5 )); then
+  echo "Expected two retries followed by all three object copies" >&2
+  exit 1
+fi
+
+if MOCK_AWS_LOG="${tmp_dir}/absent.log" \
+  bash "$script" "$r2_endpoint" "$artifact_uri" "${tmp_dir}/absent" \
+    >/dev/null 2>&1; then
+  echo "Expected a missing destination directory to fail" >&2
+  exit 1
+fi
+
+echo "fetch-okou-desktop-artifact tests passed"

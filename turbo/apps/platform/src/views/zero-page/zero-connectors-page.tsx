@@ -8,6 +8,7 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import {
   IconSearch,
   IconPlus,
@@ -15,8 +16,9 @@ import {
   IconChevronDown,
   IconCheck,
 } from "@tabler/icons-react";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogCategoryMetadata } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -32,20 +34,20 @@ import {
   allConnectorCatalogItems$,
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
-  connectFlowConnectorRef$,
+  connectFlowConnectorSlug$,
   connectorsSearch$,
   connectorsConnectionFilter$,
   disconnectConnector$,
   filteredConnectorCatalogItems$,
   setConnectorsConnectionFilter$,
   setConnectorsSearch$,
-  selectedConnectorRef$,
-  setSelectedConnectorRef$,
-  pollingOAuthAuthCodeConnectorRef$,
-  pollingOAuthDeviceAuthConnectorRef$,
-  justConnectedRefs$,
-  scopeReviewConnectorRef$,
-  setScopeReviewConnectorRef$,
+  selectedConnectorSlug$,
+  setSelectedConnectorSlug$,
+  pollingOAuthAuthCodeConnectorSlug$,
+  pollingOAuthDeviceAuthConnectorSlug$,
+  justConnectedSlugs$,
+  scopeReviewConnectorSlug$,
+  setScopeReviewConnectorSlug$,
   getAvailableStatusAuthCodeAuthMethod,
   getConnectorStatusAuthMethod,
   type ConnectorsConnectionFilter,
@@ -67,9 +69,9 @@ import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
 import {
   closeConnectorAccessManagement$,
-  connectorAuthorizedAgentsByRef$,
-  managedConnectorAccessRef$,
-  setManagedConnectorAccessRef$,
+  connectorAuthorizedAgentsBySlug$,
+  managedConnectorAccessSlug$,
+  setManagedConnectorAccessSlug$,
 } from "../../signals/zero-page/settings/connector-access-management.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { noConnectorImg } from "./platform-assets.ts";
@@ -83,9 +85,172 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@vm0/ui";
+import { i18n } from "../../i18n/index.ts";
 
 const CONNECTOR_CARD_AGENT_NAME_LIMIT = 2;
 const CONNECTOR_CARD_AGENT_NAME_MAX_CHARS = 12;
+
+function connectorCategoryTranslation(
+  id: string,
+): { readonly label: string; readonly menuLabel: string } | null {
+  switch (id) {
+    case "ai": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.ai.label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.ai.menu;
+        }),
+      };
+    }
+    case "ai-agent-apps": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.aiAgentApps.label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.aiAgentApps.menu;
+        }),
+      };
+    }
+    case "ai-general-models": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.aiGeneralModels.label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.aiGeneralModels.menu;
+        }),
+      };
+    }
+    case "ai-image-video": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.aiImageVideo.label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.aiImageVideo.menu;
+        }),
+      };
+    }
+    case "ai-memory-tracing-eval": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.aiMemoryTracingEval.label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.aiMemoryTracingEval.menu;
+        }),
+      };
+    }
+    case "ai-voice-audio": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.aiVoiceAudio.label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.aiVoiceAudio.menu;
+        }),
+      };
+    }
+    case "communication-collaboration": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.communicationCollaboration
+            .label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.communicationCollaboration
+            .menu;
+        }),
+      };
+    }
+    case "data-automation-infrastructure": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.dataAutomationInfrastructure
+            .label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.dataAutomationInfrastructure
+            .menu;
+        }),
+      };
+    }
+    case "docs-files-knowledge": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.docsFilesKnowledge.label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.docsFilesKnowledge.menu;
+        }),
+      };
+    }
+    case "engineering-team-execution": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.engineeringTeamExecution.label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.engineeringTeamExecution.menu;
+        }),
+      };
+    }
+    case "marketing-content-growth": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.marketingContentGrowth.label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.marketingContentGrowth.menu;
+        }),
+      };
+    }
+    case "meetings-scheduling": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.meetingsScheduling.label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.meetingsScheduling.menu;
+        }),
+      };
+    }
+    case "sales-crm-business-operations": {
+      return {
+        label: i18n.t(($) => {
+          return $.connectors.catalog.categories.salesCrmBusinessOperations
+            .label;
+        }),
+        menuLabel: i18n.t(($) => {
+          return $.connectors.catalog.categories.salesCrmBusinessOperations
+            .menu;
+        }),
+      };
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+function localizeConnectorCategoryMetadata(
+  metadata: PublicConnectorCatalogCategoryMetadata | undefined,
+): PublicConnectorCatalogCategoryMetadata | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+  return {
+    categories: metadata.categories.map((category) => {
+      return { ...category, ...connectorCategoryTranslation(category.id) };
+    }),
+    groups: metadata.groups.map((group) => {
+      return { ...group, ...connectorCategoryTranslation(group.id) };
+    }),
+  };
+}
 
 // Callback ref that attaches scroll tracking while enabled. Each call returns
 // a fresh ref callback; React only invokes it when the underlying element
@@ -114,8 +279,9 @@ function ConnectorCategoryMenu({
   groups,
 }: {
   activeCategoryId: string | null;
-  groups: readonly ConnectorCategoryGroup<PublicConnectorCatalogStatusItem>[];
+  groups: readonly ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>[];
 }) {
+  const { t } = useTranslation();
   if (groups.length <= 1) {
     return null;
   }
@@ -123,7 +289,9 @@ function ConnectorCategoryMenu({
   return (
     <aside className="pointer-events-none fixed right-6 top-[28vh] z-20 hidden w-44 min-[1332px]:block">
       <nav
-        aria-label="Connector categories"
+        aria-label={t(($) => {
+          return $.connectors.catalog.categoriesAria;
+        })}
         className="group pointer-events-auto ml-auto flex max-h-[68vh] w-6 flex-col gap-3 overflow-x-hidden overflow-y-auto rounded-xl border border-transparent bg-transparent px-1 py-2 transition-all duration-150 hover:w-44 hover:border-border/60 hover:bg-popover hover:shadow-lg focus-within:w-44 focus-within:border-border/60 focus-within:bg-popover focus-within:shadow-lg 2xl:ml-0 2xl:w-full 2xl:overflow-y-auto 2xl:rounded-none 2xl:border-transparent 2xl:px-0 2xl:py-0 2xl:pb-3 2xl:pl-5 2xl:hover:w-full 2xl:hover:border-transparent 2xl:hover:bg-transparent 2xl:hover:shadow-none 2xl:focus-within:w-full 2xl:focus-within:border-transparent 2xl:focus-within:bg-transparent 2xl:focus-within:shadow-none"
       >
         {groups.flatMap((group) => {
@@ -278,22 +446,6 @@ function ConnectorFilterOption({
   );
 }
 
-function connectorFilterTriggerLabel(
-  value: ConnectorsConnectionFilter,
-  activeAgent: TeamComposeItem | undefined,
-): string {
-  if (value.kind === "connected") {
-    return "Connected";
-  }
-  if (value.kind === "not-connected") {
-    return "Not connected";
-  }
-  if (value.kind === "agent" && activeAgent) {
-    return connectorAgentName(activeAgent);
-  }
-  return "All";
-}
-
 function ConnectorFilterDropdown({
   value,
   agents,
@@ -303,12 +455,27 @@ function ConnectorFilterDropdown({
   readonly agents: readonly TeamComposeItem[];
   readonly onChange: (value: ConnectorsConnectionFilter) => void;
 }) {
+  const { t } = useTranslation();
   const activeAgent =
     value.kind === "agent"
       ? agents.find((agent) => {
           return agent.id === value.agentId;
         })
       : undefined;
+  const triggerLabel =
+    value.kind === "connected"
+      ? t(($) => {
+          return $.connectors.catalog.filters.connected;
+        })
+      : value.kind === "not-connected"
+        ? t(($) => {
+            return $.connectors.catalog.filters.notConnected;
+          })
+        : value.kind === "agent" && activeAgent
+          ? connectorAgentName(activeAgent)
+          : t(($) => {
+              return $.connectors.catalog.filters.all;
+            });
 
   return (
     <DropdownMenu>
@@ -316,7 +483,9 @@ function ConnectorFilterDropdown({
         <Button
           variant="outline"
           size="sm"
-          aria-label="Filter connectors"
+          aria-label={t(($) => {
+            return $.connectors.catalog.filters.aria;
+          })}
           className="zero-btn-morandi hidden h-9 shrink-0 gap-1.5 rounded-lg border sm:inline-flex"
         >
           <IconFilter
@@ -332,9 +501,7 @@ function ConnectorFilterDropdown({
               className="h-4 w-4 rounded-full object-cover"
             />
           )}
-          <span className="max-w-[140px] truncate">
-            {connectorFilterTriggerLabel(value, activeAgent)}
-          </span>
+          <span className="max-w-[140px] truncate">{triggerLabel}</span>
           <IconChevronDown
             size={14}
             stroke={1.5}
@@ -352,17 +519,25 @@ function ConnectorFilterDropdown({
             onChange({ kind: "all" });
           }}
         >
-          All
+          {t(($) => {
+            return $.connectors.catalog.filters.all;
+          })}
         </ConnectorFilterOption>
         <DropdownMenuSeparator />
-        <ConnectorFilterSectionLabel>Status</ConnectorFilterSectionLabel>
+        <ConnectorFilterSectionLabel>
+          {t(($) => {
+            return $.connectors.catalog.filters.status;
+          })}
+        </ConnectorFilterSectionLabel>
         <ConnectorFilterOption
           active={value.kind === "connected"}
           onSelect={() => {
             onChange({ kind: "connected" });
           }}
         >
-          Connected
+          {t(($) => {
+            return $.connectors.catalog.filters.connected;
+          })}
         </ConnectorFilterOption>
         <ConnectorFilterOption
           active={value.kind === "not-connected"}
@@ -370,12 +545,18 @@ function ConnectorFilterDropdown({
             onChange({ kind: "not-connected" });
           }}
         >
-          Not connected
+          {t(($) => {
+            return $.connectors.catalog.filters.notConnected;
+          })}
         </ConnectorFilterOption>
         {agents.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <ConnectorFilterSectionLabel>Agents</ConnectorFilterSectionLabel>
+            <ConnectorFilterSectionLabel>
+              {t(($) => {
+                return $.connectors.catalog.filters.agents;
+              })}
+            </ConnectorFilterSectionLabel>
             {agents.map((agent) => {
               return (
                 <ConnectorFilterOption
@@ -423,6 +604,7 @@ function ConnectorsToolbarActions({
   readonly isAdmin: boolean;
   readonly onCreateCustom: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2">
       {activeTab === "builtin" && (
@@ -434,7 +616,9 @@ function ConnectorsToolbarActions({
           />
           <input
             type="text"
-            placeholder="Find connectors"
+            placeholder={t(($) => {
+              return $.connectors.catalog.search;
+            })}
             value={search}
             onChange={(e) => {
               return setSearch(e.target.value);
@@ -458,7 +642,9 @@ function ConnectorsToolbarActions({
           onClick={onCreateCustom}
         >
           <IconPlus size={14} stroke={2} />
-          New connector
+          {t(($) => {
+            return $.connectors.catalog.newConnector;
+          })}
         </Button>
       )}
     </div>
@@ -469,8 +655,8 @@ function ConnectorCategoryGroupSection({
   group,
   renderCard,
 }: {
-  group: ConnectorCategoryGroup<PublicConnectorCatalogStatusItem>;
-  renderCard: (connector: PublicConnectorCatalogStatusItem) => ReactNode;
+  group: ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>;
+  renderCard: (connector: PlatformConnectorCatalogStatusItem) => ReactNode;
 }) {
   if (group.kind === "group") {
     return (
@@ -525,7 +711,12 @@ function ConnectorCategoryGroupSection({
 }
 
 function connectorAgentName(agent: TeamComposeItem): string {
-  return agent.displayName ?? "Unnamed";
+  return (
+    agent.displayName ??
+    i18n.t(($) => {
+      return $.connectors.catalog.unnamedAgent;
+    })
+  );
 }
 
 function truncateAgentName(name: string): string {
@@ -536,20 +727,23 @@ function truncateAgentName(name: string): string {
 }
 
 function ConnectorAccessButton({
-  connectorRef,
+  connectorSlug,
   connectorLabel,
   onClick,
 }: {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly connectorLabel: string;
   readonly onClick: () => void;
 }) {
-  const agentsByRefLoadable = useLastLoadable(connectorAuthorizedAgentsByRef$);
+  const { t } = useTranslation();
+  const agentsBySlugLoadable = useLastLoadable(
+    connectorAuthorizedAgentsBySlug$,
+  );
   const agents =
-    agentsByRefLoadable.state === "hasData"
-      ? (agentsByRefLoadable.data.get(connectorRef) ?? [])
+    agentsBySlugLoadable.state === "hasData"
+      ? (agentsBySlugLoadable.data.get(connectorSlug) ?? [])
       : [];
-  const loading = agentsByRefLoadable.state === "loading";
+  const loading = agentsBySlugLoadable.state === "loading";
   const visibleNames = agents
     .slice(0, CONNECTOR_CARD_AGENT_NAME_LIMIT)
     .map((agent) => {
@@ -561,7 +755,12 @@ function ConnectorAccessButton({
     <button
       type="button"
       className="inline-flex h-7 min-w-0 shrink items-center gap-0 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-50))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      aria-label={`Manage ${connectorLabel} access`}
+      aria-label={t(
+        ($) => {
+          return $.connectors.catalog.access.manage;
+        },
+        { connector: connectorLabel },
+      )}
       onClick={onClick}
     >
       {loading ? (
@@ -571,11 +770,18 @@ function ConnectorAccessButton({
           className="underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
           data-testid="connector-card-access-empty"
         >
-          Add access
+          {t(($) => {
+            return $.connectors.catalog.access.add;
+          })}
         </span>
       ) : (
         <>
-          <span className="shrink-0">Used by&nbsp;</span>
+          <span className="shrink-0">
+            {t(($) => {
+              return $.connectors.catalog.access.usedBy;
+            }).trimEnd()}
+            {"\u00a0"}
+          </span>
           <span
             className="min-w-0 truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
             data-testid="connector-card-access-names"
@@ -602,9 +808,9 @@ function renderBuiltinList({
   connectionFilter,
 }: {
   loadingState: "loading" | "hasData" | "hasError";
-  grouped: ConnectorCategoryGroup<PublicConnectorCatalogStatusItem>[];
+  grouped: ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>[];
   filteredCount: number;
-  renderCard: (connector: PublicConnectorCatalogStatusItem) => ReactNode;
+  renderCard: (connector: PlatformConnectorCatalogStatusItem) => ReactNode;
   search: string;
   connectionFilter: ConnectorsConnectionFilter;
 }): ReactNode {
@@ -636,18 +842,34 @@ function renderBuiltinList({
     const trimmedSearch = search.trim();
     const base =
       connectionFilter.kind === "connected"
-        ? "No connected connectors"
+        ? i18n.t(($) => {
+            return $.connectors.catalog.empty.connected;
+          })
         : connectionFilter.kind === "not-connected"
-          ? "No connectors left to connect"
+          ? i18n.t(($) => {
+              return $.connectors.catalog.empty.notConnected;
+            })
           : connectionFilter.kind === "agent"
-            ? "No connectors for this agent"
+            ? i18n.t(($) => {
+                return $.connectors.catalog.empty.agent;
+              })
             : null;
     const message = base
       ? trimmedSearch
-        ? `${base} matching "${trimmedSearch}"`
+        ? i18n.t(
+            ($) => {
+              return $.connectors.catalog.empty.matching;
+            },
+            { message: base, search: trimmedSearch },
+          )
         : base
       : trimmedSearch
-        ? `No connectors matching "${trimmedSearch}"`
+        ? i18n.t(
+            ($) => {
+              return $.connectors.catalog.empty.search;
+            },
+            { search: trimmedSearch },
+          )
         : null;
     if (!message) {
       return null;
@@ -656,7 +878,9 @@ function renderBuiltinList({
       <div className="flex flex-col items-center gap-3 py-12">
         <img
           src={noConnectorImg}
-          alt="No connectors"
+          alt={i18n.t(($) => {
+            return $.connectors.catalog.noConnectorsAlt;
+          })}
           className="h-20 w-20 object-contain opacity-80"
         />
         <p className="text-center text-sm text-muted-foreground">{message}</p>
@@ -675,41 +899,42 @@ function renderBuiltinList({
   });
 }
 
-function connectorLabelForRef(
-  connectors: readonly PublicConnectorCatalogStatusItem[],
-  connectorRef: ConnectorRef | null,
+function connectorLabelForSlug(
+  connectors: readonly PlatformConnectorCatalogStatusItem[],
+  connectorSlug: ConnectorSlug | null,
 ): string | null {
-  if (!connectorRef) {
+  if (!connectorSlug) {
     return null;
   }
   return (
     connectors.find((connector) => {
-      return connector.connectorRef === connectorRef;
-    })?.label ?? connectorRef
+      return connector.slug === connectorSlug;
+    })?.label ?? connectorSlug
   );
 }
 
 export function ZeroConnectorsPage() {
+  const { t } = useTranslation();
   const allCatalogItemsLoadable = useLastLoadable(allConnectorCatalogItems$);
   const filteredCatalogItemsLoadable = useLastLoadable(
     filteredConnectorCatalogItems$,
   );
   const catalogStatusLoadable = useLastLoadable(connectorCatalogStatus$);
-  const pollingAuthCodeRef = useGet(pollingOAuthAuthCodeConnectorRef$);
-  const pollingDeviceAuthRef = useGet(pollingOAuthDeviceAuthConnectorRef$);
-  const connectFlowRef = useGet(connectFlowConnectorRef$);
+  const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
+  const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
+  const connectFlowSlug = useGet(connectFlowConnectorSlug$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
   const [disconnectLoadable, disconnect] = useLoadableSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
-  const selectedConnectorRef = useGet(selectedConnectorRef$);
-  const setSelected = useSet(setSelectedConnectorRef$);
-  const scopeReviewConnectorRef = useGet(scopeReviewConnectorRef$);
-  const setScopeReviewConnectorRef = useSet(setScopeReviewConnectorRef$);
-  const managedConnectorRef = useGet(managedConnectorAccessRef$);
-  const setManagedConnectorRef = useSet(setManagedConnectorAccessRef$);
+  const selectedConnectorSlug = useGet(selectedConnectorSlug$);
+  const setSelected = useSet(setSelectedConnectorSlug$);
+  const scopeReviewConnectorSlug = useGet(scopeReviewConnectorSlug$);
+  const setScopeReviewConnectorSlug = useSet(setScopeReviewConnectorSlug$);
+  const managedConnectorSlug = useGet(managedConnectorAccessSlug$);
+  const setManagedConnectorSlug = useSet(setManagedConnectorAccessSlug$);
   const closeManagedConnector = useSet(closeConnectorAccessManagement$);
-  const optimisticConnected = useGet(justConnectedRefs$);
+  const optimisticConnected = useGet(justConnectedSlugs$);
   const activeTab = useGet(connectorsPageTab$);
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
@@ -736,30 +961,31 @@ export function ZeroConnectorsPage() {
     filteredCatalogItemsLoadable.state === "hasData"
       ? filteredCatalogItemsLoadable.data
       : [];
-  const categoryMetadata =
+  const categoryMetadata = localizeConnectorCategoryMetadata(
     catalogStatusLoadable.state === "hasData"
       ? catalogStatusLoadable.data.categoryMetadata
-      : undefined;
+      : undefined,
+  );
   const allConnectors =
     allCatalogItemsLoadable.state === "hasData"
       ? allCatalogItemsLoadable.data
       : [];
-  const managedConnectorLabel = connectorLabelForRef(
+  const managedConnectorLabel = connectorLabelForSlug(
     allConnectors,
-    managedConnectorRef,
+    managedConnectorSlug,
   );
   const disconnecting = disconnectLoadable.state === "loading";
 
   const connectHandlers = (
-    connector: PublicConnectorCatalogStatusItem,
+    connector: PlatformConnectorCatalogStatusItem,
   ): ConnectorConnectHandlers => {
     return {
       openModal: () => {
-        setSelected(connector.connectorRef);
+        setSelected(connector.slug);
       },
       connectBrowserAuth: (authMethod) => {
         return connect(
-          connector.connectorRef,
+          connector.slug,
           authMethod,
           {
             authorizeVisibleAgents: true,
@@ -772,7 +998,7 @@ export function ZeroConnectorsPage() {
       connectNoAuth: (authMethod) => {
         return connectNoAuth(
           {
-            connectorRef: connector.connectorRef,
+            connectorSlug: connector.slug,
             authMethod,
             options: {
               authorizeVisibleAgents: true,
@@ -786,25 +1012,25 @@ export function ZeroConnectorsPage() {
   };
 
   const disconnectHandler = async (
-    connectorRef: ConnectorRef,
+    connectorSlug: ConnectorSlug,
     connectorLabel: string,
   ) => {
     if (disconnecting) {
       return;
     }
-    await disconnect(connectorRef, connectorLabel, signal);
+    await disconnect(connectorSlug, connectorLabel, signal);
   };
 
-  const renderCard = (c: PublicConnectorCatalogStatusItem) => {
-    const isConnected = c.connected || optimisticConnected.has(c.connectorRef);
+  const renderCard = (c: PlatformConnectorCatalogStatusItem) => {
+    const isConnected = c.connected || optimisticConnected.has(c.slug);
     const isPolling =
-      pollingAuthCodeRef === c.connectorRef ||
-      pollingDeviceAuthRef === c.connectorRef ||
-      connectFlowRef === c.connectorRef;
+      pollingAuthCodeSlug === c.slug ||
+      pollingDeviceAuthSlug === c.slug ||
+      connectFlowSlug === c.slug;
     if (!isConnected) {
       return (
         <ConnectorCard
-          key={c.connectorRef}
+          key={c.slug}
           variant="catalog"
           connector={c}
           busy={isPolling}
@@ -814,7 +1040,7 @@ export function ZeroConnectorsPage() {
     }
     return (
       <ConnectorCard
-        key={c.connectorRef}
+        key={c.slug}
         variant="connection"
         connector={c}
         connected={isConnected}
@@ -822,22 +1048,19 @@ export function ZeroConnectorsPage() {
         disconnecting={disconnecting}
         connect={connectHandlers(c)}
         onDisconnect={() => {
-          detach(
-            disconnectHandler(c.connectorRef, c.label),
-            Reason.DomCallback,
-          );
+          detach(disconnectHandler(c.slug, c.label), Reason.DomCallback);
         }}
         manageAccess={
           <ConnectorAccessButton
-            connectorRef={c.connectorRef}
+            connectorSlug={c.slug}
             connectorLabel={c.label}
             onClick={() => {
-              setManagedConnectorRef(c.connectorRef);
+              setManagedConnectorSlug(c.slug);
             }}
           />
         }
         onReviewScopes={() => {
-          return setScopeReviewConnectorRef(c.connectorRef);
+          return setScopeReviewConnectorSlug(c.slug);
         }}
       />
     );
@@ -846,6 +1069,9 @@ export function ZeroConnectorsPage() {
   const grouped = groupConnectorsByCategory(
     filteredConnectors,
     categoryMetadata,
+    t(($) => {
+      return $.connectors.catalog.otherCategory;
+    }),
   );
 
   const builtinList = renderBuiltinList({
@@ -865,10 +1091,14 @@ export function ZeroConnectorsPage() {
         <div className="mx-auto w-full max-w-[900px]">
           <div className="min-w-0 hidden md:block">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Connectors
+              {t(($) => {
+                return $.connectors.catalog.title;
+              })}
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Connect third-party services for your agents to use.
+              {t(($) => {
+                return $.connectors.catalog.description;
+              })}
             </p>
           </div>
         </div>
@@ -893,8 +1123,16 @@ export function ZeroConnectorsPage() {
                 }}
               >
                 <TabsList>
-                  <TabsTrigger value="builtin">Built-in</TabsTrigger>
-                  <TabsTrigger value="custom">Custom</TabsTrigger>
+                  <TabsTrigger value="builtin">
+                    {t(($) => {
+                      return $.connectors.catalog.tabs.builtin;
+                    })}
+                  </TabsTrigger>
+                  <TabsTrigger value="custom">
+                    {t(($) => {
+                      return $.connectors.catalog.tabs.custom;
+                    })}
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
               <ConnectorsToolbarActions
@@ -917,7 +1155,7 @@ export function ZeroConnectorsPage() {
         </div>
       </main>
 
-      {selectedConnectorRef && (
+      {selectedConnectorSlug && (
         <ConnectModal
           authorizeVisibleAgentsOnConnect
           onClose={() => {
@@ -926,27 +1164,34 @@ export function ZeroConnectorsPage() {
           onSuccess={() => {
             const label =
               allConnectors.find((c) => {
-                return c.connectorRef === selectedConnectorRef;
-              })?.label ?? selectedConnectorRef;
-            toast.success(`${label} connected`);
+                return c.slug === selectedConnectorSlug;
+              })?.label ?? selectedConnectorSlug;
+            toast.success(
+              t(
+                ($) => {
+                  return $.connectors.callback.connected;
+                },
+                { connector: label },
+              ),
+            );
           }}
         />
       )}
 
-      {scopeReviewConnectorRef && (
+      {scopeReviewConnectorSlug && (
         <ScopeReviewModal
-          connectorRef={scopeReviewConnectorRef}
+          connectorSlug={scopeReviewConnectorSlug}
           onClose={() => {
-            return setScopeReviewConnectorRef(null);
+            return setScopeReviewConnectorSlug(null);
           }}
-          onReconnect={(connectorRef) => {
-            setScopeReviewConnectorRef(null);
+          onReconnect={(connectorSlug) => {
+            setScopeReviewConnectorSlug(null);
             const connector = allConnectors.find((connector) => {
-              return connector.connectorRef === connectorRef;
+              return connector.slug === connectorSlug;
             });
             const connection = connector?.connection ?? null;
             if (!connector || !connection) {
-              setSelected(connectorRef);
+              setSelected(connectorSlug);
               return;
             }
             const authMethodId = getAvailableStatusAuthCodeAuthMethod(
@@ -957,12 +1202,12 @@ export function ZeroConnectorsPage() {
               ? getConnectorStatusAuthMethod(connector, authMethodId)
               : null;
             if (!authMethod) {
-              setSelected(connectorRef);
+              setSelected(connectorSlug);
               return;
             }
             detach(
               connect(
-                connectorRef,
+                connectorSlug,
                 authMethod,
                 {
                   authorizeVisibleAgents: true,
@@ -977,9 +1222,9 @@ export function ZeroConnectorsPage() {
         />
       )}
 
-      {managedConnectorRef && managedConnectorLabel && (
+      {managedConnectorSlug && managedConnectorLabel && (
         <ConnectorAccessManagementDialog
-          connectorRef={managedConnectorRef}
+          connectorSlug={managedConnectorSlug}
           connectorLabel={managedConnectorLabel}
           onClose={closeManagedConnector}
         />

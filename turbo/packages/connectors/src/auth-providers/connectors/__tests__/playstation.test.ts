@@ -27,7 +27,7 @@ const {
   refreshConnectorAuthProviderAccessToken,
   startConnectorExternalCodeAuthorization,
 } = providerOperationFixture({
-  connectorRef: "playstation",
+  connectorSlug: "playstation",
   authMethodId: "api",
   method: PLAYSTATION_PROVIDER_METHOD,
 });
@@ -92,7 +92,7 @@ async function expectInvalidPlaystationNpssoCodeRejected(
 
   await expect(
     completeConnectorExternalCodeAuthorization({
-      type: "playstation",
+      connectorSlug: "playstation",
       authMethod: "api",
       authClient: playstationAuthClient(),
       providerState: JSON.stringify({ version: 1 }),
@@ -112,7 +112,7 @@ async function expectInvalidPlaystationNpssoCodeRejected(
 describe("PlayStation external-code provider", () => {
   it("starts by opening the PlayStation NPSSO cookie page", async () => {
     const result = await startConnectorExternalCodeAuthorization({
-      type: "playstation",
+      connectorSlug: "playstation",
       authMethod: "api",
       authClient: playstationAuthClient(),
     });
@@ -161,7 +161,7 @@ describe("PlayStation external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "playstation",
+        connectorSlug: "playstation",
         authMethod: "api",
         authClient: playstationAuthClient(),
         providerState: JSON.stringify({ version: 1 }),
@@ -242,7 +242,7 @@ describe("PlayStation external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "playstation",
+        connectorSlug: "playstation",
         authMethod: "api",
         authClient: playstationAuthClient(),
         providerState: JSON.stringify({ version: 1 }),
@@ -267,7 +267,7 @@ describe("PlayStation external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "playstation",
+        connectorSlug: "playstation",
         authMethod: "api",
         authClient: playstationAuthClient(),
         providerState: JSON.stringify({ version: 1 }),
@@ -311,7 +311,7 @@ describe("PlayStation external-code provider", () => {
 
     await expect(
       refreshConnectorAuthProviderAccessToken({
-        type: "playstation",
+        connectorSlug: "playstation",
         authMethod: "api",
         authClient: playstationAuthClient(),
         inputs: {

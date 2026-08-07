@@ -364,6 +364,27 @@ class TestTrustedAuthorityRejection:
             ),
             pytest.param(
                 443,
+                "\u05d0a\u05d0.example",
+                "invalid_authority",
+                "https://api.github.com/repos",
+                id="rtl-ltr-rtl",
+            ),
+            pytest.param(
+                443,
+                "\u05d01\u0662.example",
+                "invalid_authority",
+                "https://api.github.com/repos",
+                id="rtl-european-arabic-number-mixing",
+            ),
+            pytest.param(
+                443,
+                "\u05d0-.example",
+                "invalid_authority",
+                "https://api.github.com/repos",
+                id="rtl-invalid-terminal-class",
+            ),
+            pytest.param(
+                443,
                 "\u0754\u3d20.example",
                 "invalid_authority",
                 "https://api.github.com/repos",
@@ -503,6 +524,8 @@ class TestTrustedAuthorityRejection:
     @pytest.mark.parametrize(
         "host_header",
         [
+            pytest.param("[127.0.0.1]", id="bracketed-ipv4"),
+            pytest.param("[127.0.0.1]:443", id="bracketed-ipv4-default-port"),
             pytest.param("0177.0.0.1", id="octal-ipv4"),
             pytest.param("127。0。0。1", id="ideographic-dot-ipv4"),
             pytest.param("127.0.0.1。", id="trailing-ideographic-dot-ipv4"),

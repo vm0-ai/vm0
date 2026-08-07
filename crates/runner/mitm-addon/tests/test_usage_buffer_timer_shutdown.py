@@ -538,18 +538,22 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
         reports=0,
         flush_request_id="shutdown-retained",
     )
-    retained_entries = [
-        entry
-        for entry in flush_log_entries(proxy_log_path)
-        if entry.get("reason") == "shutdown_retained_without_retry"
-    ]
-    assert len(retained_entries) == 1
-    assert retained_entries[0]["level"] == "error"
-    assert retained_entries[0]["type"] == "usage_underbilling"
-    assert retained_entries[0]["underbilling_class"] == "risk"
-    assert retained_entries[0]["component"] == "mitm_addon"
-    assert retained_entries[0]["retained_source_event_count"] == 1
-    assert retained_entries[0]["retained_webhook_batch_count"] == 1
+    entries = flush_log_entries(proxy_log_path)
+    assert [entry["phase"] for entry in entries] == ["started", "failed", "retained"]
+    failed_entry = entries[1]
+    assert failed_entry["type"] == "usage_event_buffer_flush"
+    assert failed_entry["retained_source_event_count"] == 1
+    assert failed_entry["retained_webhook_batch_count"] == 1
+    retained_entry = entries[2]
+    assert retained_entry["level"] == "error"
+    assert retained_entry["type"] == "usage_underbilling"
+    assert retained_entry["reason"] == "shutdown_retained_without_retry"
+    assert retained_entry["underbilling_class"] == "risk"
+    assert retained_entry["component"] == "mitm_addon"
+    assert retained_entry["source_event_count"] == 1
+    assert retained_entry["webhook_batch_count"] == 1
+    assert retained_entry["retained_source_event_count"] == 1
+    assert retained_entry["retained_webhook_batch_count"] == 1
 
     enqueue.side_effect = None
     enqueue.clear()
@@ -606,17 +610,23 @@ def test_shutdown_partial_enqueue_failure_retains_unfinished_without_reschedulin
         reports=0,
         flush_request_id="shutdown-partial-retained",
     )
-    retained_entries = [
-        entry
-        for entry in flush_log_entries(proxy_log_path)
-        if entry.get("reason") == "shutdown_retained_without_retry"
-    ]
-    assert len(retained_entries) == 1
-    assert retained_entries[0]["level"] == "error"
-    assert retained_entries[0]["type"] == "usage_underbilling"
-    assert retained_entries[0]["trigger"] == "shutdown"
-    assert retained_entries[0]["retained_source_event_count"] == 1
-    assert retained_entries[0]["retained_webhook_batch_count"] == 1
+    entries = flush_log_entries(proxy_log_path)
+    assert [entry["phase"] for entry in entries] == ["started", "failed", "retained"]
+    failed_entry = entries[1]
+    assert failed_entry["type"] == "usage_event_buffer_flush"
+    assert failed_entry["source_event_count"] == 2
+    assert failed_entry["webhook_batch_count"] == 2
+    assert failed_entry["retained_source_event_count"] == 1
+    assert failed_entry["retained_webhook_batch_count"] == 1
+    retained_entry = entries[2]
+    assert retained_entry["level"] == "error"
+    assert retained_entry["type"] == "usage_underbilling"
+    assert retained_entry["trigger"] == "shutdown"
+    assert retained_entry["reason"] == "shutdown_retained_without_retry"
+    assert retained_entry["source_event_count"] == 1
+    assert retained_entry["webhook_batch_count"] == 1
+    assert retained_entry["retained_source_event_count"] == 1
+    assert retained_entry["retained_webhook_batch_count"] == 1
 
     enqueue.side_effect = None
     enqueue.clear()

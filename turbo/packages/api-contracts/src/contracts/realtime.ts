@@ -1,17 +1,27 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { connectorRefSchema } from "./connector-identity";
+import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { runnerGroupSchema } from "./runners";
 
 const c = initContract();
 
 export const connectorChangedPayloadSchema = z.object({
-  connectorRef: connectorRefSchema,
+  connectorSlug: connectorSlugSchema,
 });
 
 export type ConnectorChangedPayload = z.infer<
   typeof connectorChangedPayloadSchema
+>;
+
+export const browserSessionChangedPayloadSchema = z
+  .object({
+    threadId: z.uuid(),
+  })
+  .strict();
+
+export type BrowserSessionChangedPayload = z.infer<
+  typeof browserSessionChangedPayloadSchema
 >;
 
 /**

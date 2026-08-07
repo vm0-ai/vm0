@@ -12,8 +12,9 @@ use crate::paths;
 use crate::session_metadata;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
-    AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, FailureClass,
-    FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
+    AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, EventDeliveryDiagnostic,
+    FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata,
+    SessionHistoryStatus,
 };
 use serde_json::Value;
 use std::io::ErrorKind;
@@ -72,6 +73,26 @@ pub fn cli_control_failure_for_config(
     with_cli_termination(diagnostic, cli_result.cli_termination)
 }
 
+/// Build the primary diagnostic for terminal event delivery after a CLI result.
+pub fn event_delivery_failure_for_config(
+    config: &env::GuestConfig,
+    runtime_paths: &paths::GuestPaths,
+    cli_result: &cli::CliExecutionResult,
+    event_delivery: EventDeliveryDiagnostic,
+) -> FailureDiagnostic {
+    let diagnostic = cli_result_failure_diagnostic_for_config(
+        config,
+        runtime_paths,
+        FailureClass::EventUploadFailed,
+        cli_result.exit_code,
+        cli_result.claude_result,
+    )
+    .with_event_delivery(event_delivery);
+    let diagnostic =
+        with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit.as_ref().cloned());
+    with_cli_termination(diagnostic, cli_result.cli_termination)
+}
+
 /// Select the final message and build the diagnostic for a nonzero CLI result.
 pub fn cli_nonzero_failure_for_config(
     config: &env::GuestConfig,
@@ -116,7 +137,18 @@ pub fn claude_zero_turn_failure_for_config(
     with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit.as_ref().cloned())
 }
 
-/// Return session-history availability for failure diagnostics.
+/// Return the conservative session-history target probe for failure diagnostics.
+///
+/// For Claude Code, an existing nonempty history marker supplies the target.
+/// Otherwise, the target is derived from a nonempty, valid session ID. If
+/// neither source resolves a target, this returns `Missing`; errors reading
+/// either source return `Unknown`.
+///
+/// A resolved target is `Empty` only when metadata identifies a zero-byte
+/// regular file. Any other successful metadata result is `Present`, including
+/// a non-regular target, while `NotFound` maps to `Missing` and other metadata
+/// errors map to `Unknown`. The probe does not open or validate history content.
+/// Codex returns `NotApplicable` because this probe does not apply to it.
 pub fn diagnostic_session_history_status_for_config(
     config: &env::GuestConfig,
     runtime_paths: &paths::GuestPaths,
@@ -129,7 +161,14 @@ pub fn diagnostic_session_history_status_for_config(
     }
 }
 
-/// Return whether a session-history status cannot support a recovery checkpoint.
+/// Return whether the zero-turn path has definitive evidence of no history.
+///
+/// Only `Missing` and `Empty` select the `ClaudeZeroTurnNoHistory` shortcut and
+/// skip recovery checkpointing. A false result, including `Present` or
+/// `Unknown`, does not prove that the target is readable or checkpointable; it
+/// lets the real checkpoint attempt determine the outcome. A later checkpoint
+/// failure is classified as `CheckpointFailed`, while success follows normal
+/// completion.
 pub fn session_history_unavailable(status: SessionHistoryStatus) -> bool {
     matches!(
         status,
@@ -339,6 +378,23 @@ fn is_insufficient_credits_error(normalized: &str) -> bool {
         || (normalized.contains("api error: 402")
             && normalized.contains("requires more credits")
             && normalized.contains("can only afford"))
+        || has_insufficient_credits_response_envelope(normalized)
+}
+
+fn has_insufficient_credits_response_envelope(normalized: &str) -> bool {
+    const STATUS_MARKER: &str = "402 payment required";
+
+    let Some(status_index) = normalized.find(STATUS_MARKER) else {
+        return false;
+    };
+
+    let Some((Some(value), _)) =
+        parse_next_json_object(normalized, status_index + STATUS_MARKER.len())
+    else {
+        return false;
+    };
+
+    value.get("error").and_then(Value::as_str) == Some("insufficient_credits")
 }
 
 fn is_claude_invalid_credentials_error(normalized: &str) -> bool {

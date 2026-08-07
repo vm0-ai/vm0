@@ -6,6 +6,13 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroCustomConnectorOAuth2Contract,
+  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorsContract,
+  type CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorCatalogContract,
@@ -28,9 +35,9 @@ const context = testContext();
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 const SECOND_AGENT_ID = "00000000-0000-0000-0000-000000000002";
 
-function connectorIcon(connectorRef: string) {
+function connectorIcon(connectorSlug: string) {
   return {
-    url: `https://icons.example.test/${connectorRef}.svg`,
+    url: `https://icons.example.test/${connectorSlug}.svg`,
     invertInDarkMode: false,
   };
 }
@@ -50,15 +57,15 @@ function mockPublicConnectorStatuses(
 }
 
 function publicManualTokenConnectorStatus(args: {
-  readonly connectorRef: PublicConnectorCatalogStatusItem["connectorRef"];
+  readonly slug: PublicConnectorCatalogStatusItem["slug"];
   readonly label: string;
   readonly placeholder: string;
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: args.connectorRef,
+    slug: args.slug,
     label: args.label,
     description: `${args.label} description`,
-    icon: connectorIcon(args.connectorRef),
+    icon: connectorIcon(args.slug),
     category: "data-automation-infrastructure",
     generation: [],
     tags: [],
@@ -98,15 +105,15 @@ function publicManualTokenConnectorStatus(args: {
 }
 
 function publicOAuthConnectorStatus(args: {
-  readonly connectorRef: PublicConnectorCatalogStatusItem["connectorRef"];
+  readonly slug: PublicConnectorCatalogStatusItem["slug"];
   readonly label: string;
   readonly singleAuthCodeAuthMethodId: string | null;
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: args.connectorRef,
+    slug: args.slug,
     label: args.label,
     description: `${args.label} description`,
-    icon: connectorIcon(args.connectorRef),
+    icon: connectorIcon(args.slug),
     category: "engineering-team-execution",
     generation: [],
     tags: [],
@@ -138,14 +145,14 @@ function publicOAuthConnectorStatus(args: {
 }
 
 function publicNoAuthConnectorStatus(args: {
-  readonly connectorRef: PublicConnectorCatalogStatusItem["connectorRef"];
+  readonly slug: PublicConnectorCatalogStatusItem["slug"];
   readonly label: string;
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: args.connectorRef,
+    slug: args.slug,
     label: args.label,
     description: `${args.label} description`,
-    icon: connectorIcon(args.connectorRef),
+    icon: connectorIcon(args.slug),
     category: "data-automation-infrastructure",
     generation: [],
     tags: [],
@@ -177,13 +184,13 @@ function publicNoAuthConnectorStatus(args: {
 }
 
 function connectedConnectorResponse(args: {
-  readonly type: ConnectorResponse["type"];
+  readonly slug: ConnectorResponse["slug"];
   readonly authMethod: string;
   readonly updatedAt: string;
 }): ConnectorResponse {
   return {
     id: "00000000-0000-4000-8000-000000000001",
-    type: args.type,
+    slug: args.slug,
     authMethod: args.authMethod,
     externalId: "mock-connected-account",
     externalUsername: "mock-connected-account",
@@ -197,9 +204,46 @@ function connectedConnectorResponse(args: {
   };
 }
 
+function customConnector(
+  overrides: Partial<CustomConnectorResponse> = {},
+): CustomConnectorResponse {
+  return {
+    id: "33333333-3333-4333-8333-333333333333",
+    slug: "_acme-api",
+    displayName: "Acme API",
+    prefixes: ["https://api.acme.test/v1/"],
+    headerName: "Authorization",
+    headerTemplate: "Bearer {{secret}}",
+    prefixTemplates: ["https://api.acme.test/v1/"],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    connected: false,
+    missingRequiredFields: ["secret"],
+    configuredFieldKeys: [],
+    hasSecret: false,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
 function steamOpenIdConnectorStatus(): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: "steam",
+    slug: "steam",
     label: "Public Steam",
     description: "Public Steam description",
     icon: connectorIcon("steam"),
@@ -253,7 +297,7 @@ function mockConnectorOauthStart(args?: {
     ({ body, params, respond }) => {
       args?.onStart?.(body.agentId, body.authorizeAgent);
       return respond(200, {
-        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+        authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
       });
     },
   );
@@ -279,7 +323,7 @@ function mockConnectorOpenIdStart(args?: {
     ({ params, respond }) => {
       args?.onStart?.();
       return respond(200, {
-        authorizationUrl: `https://openid.test/${params.type}/authorize`,
+        authorizationUrl: `https://openid.test/${params.connectorSlug}/authorize`,
       });
     },
   );
@@ -301,6 +345,146 @@ function getButtonByText(text: string): HTMLElement {
 }
 
 describe("directed connector connect page", () => {
+  it("connects and authorizes a manual custom connector", async () => {
+    let connected = false;
+    let enabledIds: string[] = [];
+    let submittedSecret: string | null = null;
+    const connector = customConnector();
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          {
+            ...connector,
+            connected,
+            hasSecret: connected,
+            missingRequiredFields: connected ? [] : ["secret"],
+            configuredFieldKeys: connected ? ["secret"] : [],
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroCustomConnectorSecretContract.set,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        submittedSecret = body.value;
+        connected = true;
+        return respond(204);
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        if (!("enabledIds" in body)) {
+          throw new Error("Expected custom connector ID authorization");
+        }
+        enabledIds = Array.from(new Set([...enabledIds, ...body.enabledIds]));
+        return respond(200, { enabledIds });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+    });
+
+    const heading = await screen.findByText("Zero needs Acme API to proceed");
+    expect(heading).toBeInTheDocument();
+    click(getButtonByText("Connect"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Acme API",
+    });
+    await fill(within(dialog).getByLabelText("Secret"), "acme-secret");
+    click(getButtonByText("Save"));
+
+    await waitFor(() => {
+      expect(submittedSecret).toBe("acme-secret");
+      expect(enabledIds).toStrictEqual([connector.id]);
+      expect(screen.getByText("Acme API connected")).toBeInTheDocument();
+    });
+  });
+
+  it("starts OAuth and authorizes an OAuth custom connector", async () => {
+    let connected = false;
+    let enabledIds: string[] = [];
+    const connector = customConnector({
+      slug: "_acme-oauth",
+      displayName: "Acme OAuth",
+      authMode: "oauth",
+      fields: [],
+      missingRequiredFields: ["oauth"],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "client-id",
+        authorizationUrl: "https://acme.test/oauth/authorize",
+        tokenUrl: "https://acme.test/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [{ ...connector, connected, hasSecret: connected }],
+      });
+    });
+    context.mocks.api(
+      zeroCustomConnectorOAuth2Contract.start,
+      ({ params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        connected = true;
+        return respond(200, {
+          authorizationUrl: "https://acme.test/oauth/authorize",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        if (!("enabledIds" in body)) {
+          throw new Error("Expected custom connector ID authorization");
+        }
+        enabledIds = Array.from(new Set([...enabledIds, ...body.enabledIds]));
+        return respond(200, { enabledIds });
+      },
+    );
+    const authWindow = context.mocks.browser.authWindow();
+    authWindow.closed = true;
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+    });
+
+    const heading = await screen.findByText("Zero needs Acme OAuth to proceed");
+    expect(heading).toBeInTheDocument();
+    click(getButtonByText("Connect"));
+    await screen.findByRole("dialog", { name: "Connect Acme OAuth" });
+    click(getButtonByText("Continue"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://acme.test/oauth/authorize",
+      );
+      expect(enabledIds).toStrictEqual([connector.id]);
+      expect(screen.getByText("Acme OAuth connected")).toBeInTheDocument();
+    });
+  });
+
   it("starts an OAuth flow from a directed link", async () => {
     let startedAgentId: string | undefined;
     let authorizeAgent: true | undefined;
@@ -311,7 +495,7 @@ describe("directed connector connect page", () => {
       },
     });
     mockPublicConnectorStatus({
-      connectorRef: "github",
+      slug: "github",
       label: "Public GitHub",
       description: "Public GitHub description",
       icon: connectorIcon("github"),
@@ -388,7 +572,7 @@ describe("directed connector connect page", () => {
   it("connects and authorizes a no-auth connector before continuing the callback", async () => {
     mockPublicConnectorStatus(
       publicNoAuthConnectorStatus({
-        connectorRef: "stripe",
+        slug: "stripe",
         label: "Public Stripe",
       }),
     );
@@ -400,7 +584,7 @@ describe("directed connector connect page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
           authMethod: "api",
           agentId: AGENT_ID,
@@ -408,7 +592,7 @@ describe("directed connector connect page", () => {
         });
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "stripe",
+          slug: "stripe",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -463,7 +647,7 @@ describe("directed connector connect page", () => {
       onStart: () => {
         context.mocks.data.connectors([
           connectedConnectorResponse({
-            type: "steam",
+            slug: "steam",
             authMethod: "openid",
             updatedAt: "2026-01-01T00:00:01Z",
           }),
@@ -472,7 +656,7 @@ describe("directed connector connect page", () => {
     });
     mockPublicConnectorStatus(steamOpenIdConnectorStatus());
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: ["steam"] });
+      return respond(200, { enabledConnectorSlugs: ["steam"] });
     });
     context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       continuationPrompt = body.prompt ?? null;
@@ -506,7 +690,7 @@ describe("directed connector connect page", () => {
   it("does not reuse an open provider connect dialog across routed agent ids", async () => {
     mockPublicConnectorStatus(
       publicOAuthConnectorStatus({
-        connectorRef: "github",
+        slug: "github",
         label: "Public GitHub",
         singleAuthCodeAuthMethodId: null,
       }),
@@ -527,7 +711,7 @@ describe("directed connector connect page", () => {
     await screen.findByRole("dialog", { name: "Public GitHub" });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
-      pathParams: { type: "github" },
+      pathParams: { connectorSlug: "github" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 
@@ -544,7 +728,7 @@ describe("directed connector connect page", () => {
   it("asks the server to connect and authorize a manual grant", async () => {
     mockPublicConnectorStatus(
       publicManualTokenConnectorStatus({
-        connectorRef: "axiom",
+        slug: "axiom",
         label: "Public Axiom",
         placeholder: "public-xaat",
       }),
@@ -556,12 +740,12 @@ describe("directed connector connect page", () => {
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("axiom");
+        expect(params.connectorSlug).toBe("axiom");
         expect(body.agentId).toBe(AGENT_ID);
         submittedValues = body.values;
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "axiom",
+          slug: "axiom",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -614,15 +798,15 @@ describe("directed connector connect page", () => {
     });
   });
 
-  it("does not reuse an open manual grant dialog across routed connector types", async () => {
+  it("does not reuse an open manual grant dialog across routed connector slugs", async () => {
     mockPublicConnectorStatuses([
       publicManualTokenConnectorStatus({
-        connectorRef: "axiom",
+        slug: "axiom",
         label: "Public Axiom",
         placeholder: "public-xaat",
       }),
       publicManualTokenConnectorStatus({
-        connectorRef: "stripe",
+        slug: "stripe",
         label: "Public Stripe",
         placeholder: "public-stripe-key",
       }),
@@ -645,7 +829,7 @@ describe("directed connector connect page", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
-      pathParams: { type: "stripe" },
+      pathParams: { connectorSlug: "stripe" },
       searchParams: new URLSearchParams({ agentId: AGENT_ID }),
     });
 
@@ -665,7 +849,7 @@ describe("directed connector connect page", () => {
   it("does not reuse an open manual grant dialog across routed agent ids", async () => {
     mockPublicConnectorStatus(
       publicManualTokenConnectorStatus({
-        connectorRef: "axiom",
+        slug: "axiom",
         label: "Public Axiom",
         placeholder: "public-xaat",
       }),
@@ -688,7 +872,7 @@ describe("directed connector connect page", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
-      pathParams: { type: "axiom" },
+      pathParams: { connectorSlug: "axiom" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 

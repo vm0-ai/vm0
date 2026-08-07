@@ -7,15 +7,17 @@ import {
   zeroIntegrationsTelegramContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import {
   deleteTelegramFixture$,
   type TelegramFixture,
 } from "./helpers/zero-telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
 
 const context = testContext();
 const store = createStore();
@@ -196,7 +198,9 @@ describe("DELETE /api/integrations/telegram", () => {
   }
 
   function client() {
-    return setupApp({ context })(zeroIntegrationsTelegramContract);
+    return setupApp({ context, routes: zeroIntegrationsTelegramRoutes })(
+      zeroIntegrationsTelegramContract,
+    );
   }
 
   async function linkCustomBot(args: {

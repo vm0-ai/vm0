@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
-
 import {
-  artifactsContract,
   chatEventsContract,
   chatSearchContract,
   chatThreadArtifactsContract,
@@ -17,8 +15,7 @@ import {
   chatThreadUnpinContract,
   chatThreadsContract,
   type AttachFile,
-  type ArtifactsListResponse,
-  type ChatEventResponse,
+  type ChatEvent,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
@@ -29,6 +26,7 @@ import {
   type GenerationTemplateRequest,
   type PersistedAttachment,
   type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   artifactCatalogContract,
@@ -36,14 +34,17 @@ import {
   type ArtifactDetail,
   type ArtifactSummary,
 } from "@vm0/api-contracts/contracts/artifact-catalog";
-import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
-import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
-import { CLIENT_VERSION_HEADER } from "@vm0/api-contracts/contracts/client-headers";
+import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  isSupportedRunModel,
+  type SupportedRunModel,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
   zeroHostContract,
   type HostedSiteCompleteResponse,
+  type HostedSiteDeploymentsResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
 } from "@vm0/api-contracts/contracts/zero-host";
@@ -54,11 +55,13 @@ import {
 } from "@vm0/api-contracts/contracts/zero-uploads";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
-import { agentComposesReadRoutes } from "../../agent-composes-read";
-import { agentComposesRoutes } from "../../agent-composes";
+import {
+  buildArtifactKey,
+  sanitizeArtifactFilename,
+} from "../../../../lib/file-url";
+import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
 import { zeroChatEventsRoutes } from "../../zero-chat-events";
 import { zeroArtifactCatalogRoutes } from "../../zero-artifact-catalog";
-import { zeroArtifactsRoutes } from "../../zero-artifacts";
 import { zeroChatThreadComputerUseHostRoutes } from "../../zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "../../zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "../../zero-chat-threads-delete";
@@ -76,14 +79,10 @@ import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
-export { hostedTextFile } from "./api-bdd-host-files";
 
 interface AuthHeaders {
   readonly authorization?: string;
-  readonly [CLIENT_VERSION_HEADER]?: string;
 }
-
-const BDD_CLIENT_VERSION = "0.636.1";
 
 interface BddCompose {
   readonly composeId: string;
@@ -99,9 +98,9 @@ type BddSendEventBody =
       readonly prompt: string;
       readonly threadId?: string;
       readonly clientThreadId?: string;
-      readonly model?: string;
+      readonly model?: SupportedRunModel;
       readonly runOptions?: ChatRunOptionsRequest;
-      readonly userMessage?: UserMessageDocument;
+      readonly userMessage?: UserMessageInputDocument;
       readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
       readonly attachFiles?: readonly AttachFile[];
@@ -129,7 +128,6 @@ function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor
     ? {
         authorization: "Bearer clerk-session",
-        [CLIENT_VERSION_HEADER]: BDD_CLIENT_VERSION,
       }
     : {};
 }
@@ -170,10 +168,7 @@ function mockObjectStorageObjectsExist(context: TestContext): void {
 }
 
 const chatFilesRoutes = [
-  ...agentComposesRoutes,
-  ...agentComposesReadRoutes,
   ...zeroArtifactCatalogRoutes,
-  ...zeroArtifactsRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatThreadCreateRoutes,
   ...zeroChatThreadDeleteRoutes,
@@ -214,8 +209,27 @@ export function persistedAttachment(
 export function createChatFilesBddApi(context: TestContext) {
   const mocks = createZeroRouteMocks(context);
 
-  function composeClient() {
-    return chatFilesApp(context)(composesMainContract);
+  function mockCompletedUploadObjects(
+    actor: ApiTestUser,
+    objects: readonly {
+      readonly id: string;
+      readonly filename: string;
+      readonly size: number;
+    }[],
+  ): void {
+    mocks.s3.listObjects(
+      objects.map((object) => {
+        return {
+          bucket: "test-user-artifacts",
+          key: buildArtifactKey(
+            actor.userId,
+            object.id,
+            sanitizeArtifactFilename(object.filename),
+          ),
+          size: object.size,
+        };
+      }),
+    );
   }
 
   function threadsClient() {
@@ -228,7 +242,7 @@ export function createChatFilesBddApi(context: TestContext) {
 
   async function defaultCreateThreadModel(
     actor: ApiTestUser | null,
-  ): Promise<string> {
+  ): Promise<SupportedRunModel> {
     if (!actor?.orgId) {
       return DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
     }
@@ -236,10 +250,12 @@ export function createChatFilesBddApi(context: TestContext) {
       modelPoliciesClient().list({ headers: authenticate(context, actor) }),
       [200],
     );
-    return (
+    const model =
       response.body.workspaceDefaultModel ??
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL
-    );
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+    return isSupportedRunModel(model)
+      ? model
+      : DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
   }
 
   function threadByIdClient() {
@@ -256,10 +272,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadArtifactsClient() {
     return chatFilesApp(context)(chatThreadArtifactsContract);
-  }
-
-  function artifactsClient() {
-    return chatFilesApp(context)(artifactsContract);
   }
 
   function artifactCatalogClient() {
@@ -323,7 +335,9 @@ export function createChatFilesBddApi(context: TestContext) {
   }
 
   return {
-    async getDefaultCreateThreadModel(actor: ApiTestUser): Promise<string> {
+    async getDefaultCreateThreadModel(
+      actor: ApiTestUser,
+    ): Promise<SupportedRunModel> {
       return await defaultCreateThreadModel(actor);
     },
 
@@ -333,13 +347,15 @@ export function createChatFilesBddApi(context: TestContext) {
       filename: string,
       size: number,
     ): void {
-      mocks.s3.listObjects([
-        {
-          bucket: "test-user-artifacts",
-          key: `artifacts/${actor.userId}/${uploadId}/${filename}`,
-          size,
-        },
-      ]);
+      mockCompletedUploadObjects(actor, [{ id: uploadId, filename, size }]);
+    },
+
+    mockCompletedUploadObjects,
+
+    // Allocating an artifact key lists the bucket first, so a prepare-only
+    // test still has to answer that call.
+    mockEmptyObjectStorage(): void {
+      mocks.s3.listObjects([]);
     },
 
     mockObjectStorageObjectsExist(): void {
@@ -350,19 +366,21 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentName = `bdd-chat-${randomUUID().slice(0, 8)}`,
     ): Promise<BddCompose> {
+      if (!actor.orgId) {
+        throw new Error("Compose fixtures require an org-scoped actor");
+      }
       const response = await accept(
-        composeClient().create({
-          headers: authenticate(context, actor),
-          body: {
-            content: {
-              version: "1.0",
-              agents: {
-                [agentName]: {
-                  framework: "claude-code",
-                },
+        createAgentComposeFixture({
+          actor: { userId: actor.userId, orgId: actor.orgId },
+          content: {
+            version: "1.0",
+            agents: {
+              [agentName]: {
+                framework: "claude-code",
               },
             },
           },
+          signal: context.signal,
         }),
         [200, 201],
       );
@@ -376,7 +394,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly title?: string;
         readonly clientThreadId?: string;
         readonly eventId?: string;
-        readonly model?: string;
+        readonly model?: SupportedRunModel;
       },
     ): Promise<{ readonly id: string; readonly title: string | null }> {
       const response = await accept(
@@ -404,7 +422,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly title?: string;
         readonly clientThreadId?: string;
         readonly eventId?: string;
-        readonly model?: string;
+        readonly model?: SupportedRunModel;
       },
       statuses: readonly (201 | 400 | 401 | 402 | 404)[],
     ) {
@@ -449,7 +467,6 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       query: {
         readonly sinceSeqId?: number;
-        readonly sinceEventId?: string;
       },
       statuses: readonly (200 | 410)[],
     ) {
@@ -497,6 +514,30 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body.threadIds;
+    },
+
+    async listUnreadChatThreadIds(
+      actor: ApiTestUser,
+    ): Promise<readonly string[]> {
+      const response = await accept(
+        threadsClient().unreadIds({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body.threadIds;
+    },
+
+    async requestListUnreadChatThreadIds(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401)[],
+    ) {
+      return await accept(
+        threadsClient().unreadIds({
+          headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
     },
 
     async requestListUnreadAgents(
@@ -608,15 +649,11 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       body: {
-        readonly draftContent?: string | null;
-        readonly draftUserMessage: UserMessageDocument | null;
+        readonly draftUserMessage: UserMessageInputDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
     ): Promise<void> {
       const requestBody = {
-        ...(body.draftContent === undefined
-          ? {}
-          : { draftContent: body.draftContent }),
         draftUserMessage: body.draftUserMessage,
         ...(body.draftAttachments === undefined
           ? {}
@@ -641,8 +678,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       body: {
-        readonly draftContent?: string | null;
-        readonly draftUserMessage: UserMessageDocument | null;
+        readonly draftUserMessage: UserMessageInputDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
       statuses: readonly (204 | 400 | 401 | 404)[],
@@ -652,9 +688,6 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           params: { id: threadId },
           body: {
-            ...(body.draftContent === undefined
-              ? {}
-              : { draftContent: body.draftContent }),
             draftUserMessage: body.draftUserMessage,
             ...(body.draftAttachments === undefined
               ? {}
@@ -783,7 +816,7 @@ export function createChatFilesBddApi(context: TestContext) {
     async updateThreadModelSelection(
       actor: ApiTestUser,
       threadId: string,
-      model: string | null,
+      model: SupportedRunModel | null,
       options?: {
         readonly codexServiceTier?: CodexServiceTier | null;
         readonly eventId?: string;
@@ -806,7 +839,7 @@ export function createChatFilesBddApi(context: TestContext) {
     async requestUpdateThreadModelSelection(
       actor: ApiTestUser | null,
       threadId: string,
-      model: string | null,
+      model: SupportedRunModel | null,
       statuses: readonly (204 | 400 | 401 | 402 | 404)[],
       options?: {
         readonly codexServiceTier?: CodexServiceTier | null;
@@ -888,14 +921,9 @@ export function createChatFilesBddApi(context: TestContext) {
       query: {
         readonly sinceSeqId?: number;
         readonly beforeSeqId?: number;
-        readonly sinceId?: string;
-        readonly beforeId?: string;
         readonly limit?: number;
       } = {},
-    ): Promise<{
-      readonly events: readonly ChatEventResponse[];
-      readonly hasHistoryBefore?: boolean;
-    }> {
+    ): Promise<{ readonly events: readonly ChatEvent[] }> {
       const response = await accept(
         threadEventsClient().list({
           headers: authenticate(context, actor),
@@ -904,7 +932,9 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         [200],
       );
-      return response.body;
+      return {
+        events: response.body.events,
+      };
     },
 
     async requestListThreadEvents(
@@ -913,8 +943,6 @@ export function createChatFilesBddApi(context: TestContext) {
       query: {
         readonly sinceSeqId?: number;
         readonly beforeSeqId?: number;
-        readonly sinceId?: string;
-        readonly beforeId?: string;
         readonly limit?: number;
       },
       statuses: readonly (200 | 400 | 401 | 404)[],
@@ -933,7 +961,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       eventId: string,
-    ): Promise<ChatEventResponse> {
+    ): Promise<ChatEvent> {
       const response = await accept(
         threadEventsClient().get({
           headers: authenticate(context, actor),
@@ -970,24 +998,6 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         statuses,
       );
-    },
-
-    async listArtifacts(
-      actor: ApiTestUser,
-      query: {
-        readonly limit?: number;
-        readonly cursor?: string;
-        readonly updatedAfter?: string;
-      } = {},
-    ): Promise<ArtifactsListResponse> {
-      const response = await accept(
-        artifactsClient().list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        [200],
-      );
-      return response.body;
     },
 
     async listArtifactCatalog(
@@ -1182,9 +1192,8 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.generationTemplate === undefined
                   ? {}
                   : { generationTemplate: body.generationTemplate }),
-                ...(body.hasTextContent === undefined
-                  ? {}
-                  : { hasTextContent: body.hasTextContent }),
+                hasTextContent:
+                  body.hasTextContent ?? body.prompt.trim().length > 0,
                 ...(body.attachFiles === undefined
                   ? {}
                   : { attachFiles: [...body.attachFiles] }),
@@ -1389,6 +1398,20 @@ export function createChatFilesBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestPrepareHostedSiteWithBearer(
+      authorization: string,
+      body: HostedSitePrepareRequest,
+      statuses: readonly (200 | 400 | 401 | 402 | 403 | 409 | 500)[],
+    ) {
+      return await accept(
+        hostClient().prepare({
+          headers: bearerAuth(authorization),
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async completeHostedSiteWithBearer(
       authorization: string,
       deploymentId: string,
@@ -1398,6 +1421,35 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: bearerAuth(authorization),
           params: { deploymentId },
           body: {},
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestCompleteHostedSiteWithBearer(
+      authorization: string,
+      deploymentId: string,
+      statuses: readonly (200 | 400 | 401 | 402 | 403 | 404 | 409 | 500)[],
+    ) {
+      return await accept(
+        hostClient().complete({
+          headers: bearerAuth(authorization),
+          params: { deploymentId },
+          body: {},
+        }),
+        statuses,
+      );
+    },
+
+    async readHostedSiteDeploymentsWithBearer(
+      authorization: string,
+      site: string,
+    ): Promise<HostedSiteDeploymentsResponse> {
+      const response = await accept(
+        hostClient().deployments({
+          headers: bearerAuth(authorization),
+          params: { site },
         }),
         [200],
       );

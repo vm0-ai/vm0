@@ -71,9 +71,10 @@ const TIMEZONE_LABELS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /** Returns a human-readable label for an IANA timezone string, prefixed with GMT offset. */
-export function getTimezoneLabel(iana: string): string {
+export function getTimezoneLabel(iana: string, localizedName?: string): string {
   const offset = getGmtOffset(iana);
-  const name = TIMEZONE_LABELS[iana] ?? iana.replace(/_/g, " ");
+  const name =
+    localizedName ?? TIMEZONE_LABELS[iana] ?? iana.replace(/_/g, " ");
   return `(${offset}) ${name}`;
 }
 

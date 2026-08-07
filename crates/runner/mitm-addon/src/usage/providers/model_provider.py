@@ -7,6 +7,11 @@ Flow-terminal reporters aggregate usage stored in
 response-id sources can also be buffered incrementally with their source
 idempotency keys preserved.
 
+Extractor metadata uses only the base categories in ``MODEL_USAGE_CATEGORIES``.
+Billing tier selection may remap those keys to reporter-owned
+``.long_context`` categories only while building billable usage events. Model
+usage observations retain the base categories.
+
 Model-provider usage reporting is separate from platform billing. Run contexts
 set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` to the canonical model
 id the proxy should report for model token usage. Billable rows go to
@@ -15,8 +20,10 @@ id the proxy should report for model token usage. Billable rows go to
 """
 
 import uuid
+from collections import OrderedDict
 from collections.abc import Iterator
-from typing import TypeGuard
+from dataclasses import dataclass
+from typing import Literal, TypeGuard
 
 from mitmproxy import http
 
@@ -37,7 +44,6 @@ from ..idempotency import (
     USAGE_OBSERVATION_NAMESPACE_MODEL,
     derive_usage_idempotency_key,
 )
-from ..model_pricing import ModelUsagePricing, from_flow_metadata
 from ..model_tokens import (
     MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
@@ -49,11 +55,43 @@ from ..reporting_context import UsageReportingContext, usage_reporting_context
 from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
+type _ModelUsageTier = Literal["base", "long_context"]
+_MODEL_USAGE_TIER_BASE: _ModelUsageTier = "base"
+_MODEL_USAGE_TIER_LONG_CONTEXT: _ModelUsageTier = "long_context"
+_MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT = "tokens.input.long_context"
+_MODEL_USAGE_CATEGORY_OUTPUT_LONG_CONTEXT = "tokens.output.long_context"
+_MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT = "tokens.cache_read.long_context"
+_MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT = "tokens.cache_creation.long_context"
+
+
+@dataclass(frozen=True, slots=True)
+class _ModelUsageTierDecision:
+    tier: _ModelUsageTier
+    committed: bool
+
+
+_MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS = {
+    "gpt-5.5": 272_001,
+    "gpt-5.6-sol": 272_001,
+    "gpt-5.6-terra": 272_001,
+    "gpt-5.6-luna": 272_001,
+    "MiniMax-M3": 512_001,
+}
+_MODEL_USAGE_LONG_CONTEXT_CATEGORY_BY_BASE = {
+    MODEL_USAGE_CATEGORY_INPUT: _MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT,
+    MODEL_USAGE_CATEGORY_OUTPUT: _MODEL_USAGE_CATEGORY_OUTPUT_LONG_CONTEXT,
+    MODEL_USAGE_CATEGORY_CACHE_READ: _MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT,
+    MODEL_USAGE_CATEGORY_CACHE_CREATION: _MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
+}
+_MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT = 100
 _MODEL_INPUT_PARTITION_CATEGORIES = frozenset(
     (
         MODEL_USAGE_CATEGORY_INPUT,
         MODEL_USAGE_CATEGORY_CACHE_READ,
         MODEL_USAGE_CATEGORY_CACHE_CREATION,
+        _MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT,
+        _MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT,
+        _MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
     )
 )
 
@@ -105,7 +143,6 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
         flow,
         run_id,
         USAGE_EVENT_NAMESPACE_MODEL,
-        billing_pricing=_model_usage_pricing(flow),
     )
     if not events:
         return False
@@ -162,7 +199,9 @@ def report_model_provider_usage_source(
     in a later frame. Callers can drop the source from flow metadata after this
     returns: observable flows carry the canonical ``MODEL_USAGE_PROVIDER``, so
     zero-usage source model hints do not need to be retained for later
-    same-response-id frames.
+    same-response-id frames. Tiered models retain only their bounded concrete
+    tier decision so later or duplicate output-only frames derive the same
+    billable category.
     """
     usage_events: list[UsageEvent] = []
     observations: list[ModelUsageObservation] = []
@@ -171,14 +210,24 @@ def report_model_provider_usage_source(
     can_report_usage = _is_billable_model_provider(flow, run_id)
     can_report_observation = bool(run_id and is_model_provider_usage_observable(flow))
     if can_report_usage:
-        usage_events = _build_usage_events(
-            run_id,
-            source_id,
+        billing_tier = _source_model_usage_tier(
+            flow,
+            message_id,
             provider,
             source_usage,
-            USAGE_EVENT_NAMESPACE_MODEL,
-            billing_pricing=_model_usage_pricing(flow),
         )
+        if billing_tier is None:
+            if has_positive_model_provider_usage(source_usage):
+                _log_model_usage_tier_unresolved(flow, run_id, provider)
+        else:
+            usage_events = _build_usage_events(
+                run_id,
+                source_id,
+                provider,
+                source_usage,
+                USAGE_EVENT_NAMESPACE_MODEL,
+                billing_tier,
+            )
     if can_report_observation:
         observations = _build_model_usage_observations(
             run_id,
@@ -212,6 +261,11 @@ def report_model_provider_usage_source(
             run_id,
             observations,
         )
+
+
+def release_model_provider_usage_tiers(flow: http.HTTPFlow) -> None:
+    """Release bounded WebSocket response tier decisions at terminal cleanup."""
+    flow.metadata.pop(metadata_keys.MODEL_PROVIDER_USAGE_TIERS, None)
 
 
 def _buffer_model_provider_usage_events(
@@ -351,12 +405,15 @@ def _build_model_provider_usage_events(
     flow: http.HTTPFlow,
     run_id: str,
     namespace: uuid.UUID,
-    *,
-    billing_pricing: ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for source_id, usage in _iter_model_provider_usage_sources(flow):
         provider = _reported_model(flow, usage)
+        billing_tier = _model_usage_tier(provider, usage)
+        if billing_tier is None:
+            if has_positive_model_provider_usage(usage):
+                _log_model_usage_tier_unresolved(flow, run_id, provider)
+            continue
         events.extend(
             _build_usage_events(
                 run_id,
@@ -364,7 +421,7 @@ def _build_model_provider_usage_events(
                 provider,
                 usage,
                 namespace,
-                billing_pricing=billing_pricing,
+                billing_tier,
             )
         )
     return events
@@ -454,35 +511,111 @@ def _build_usage_events(
     provider: str,
     usage: dict,
     namespace: uuid.UUID,
-    *,
-    billing_pricing: ModelUsagePricing | None,
+    billing_tier: _ModelUsageTier,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for category in MODEL_USAGE_CATEGORIES:
         quantity = usage.get(category)
         if not _is_positive_int(quantity):
             continue
+        billable_category = (
+            _MODEL_USAGE_LONG_CONTEXT_CATEGORY_BY_BASE[category]
+            if billing_tier == _MODEL_USAGE_TIER_LONG_CONTEXT
+            else category
+        )
         event: UsageEvent = {
             "idempotencyKey": derive_usage_idempotency_key(
                 namespace,
-                (run_id, source_id, category),
+                (run_id, source_id, billable_category),
             ),
             "kind": MODEL_USAGE_KIND,
             "provider": provider,
-            "category": category,
+            "category": billable_category,
             "quantity": quantity,
         }
-        if billing_pricing is not None:
-            event["billingUnitPrice"] = billing_pricing.unit_prices[category]
-            event["billingUnitSize"] = billing_pricing.unit_size
         events.append(event)
     return events
 
 
-def _model_usage_pricing(
+def _source_model_usage_tier(
     flow: http.HTTPFlow,
-) -> ModelUsagePricing | None:
-    return from_flow_metadata(flow.metadata)
+    message_id: str,
+    provider: str,
+    usage: dict,
+) -> _ModelUsageTier | None:
+    billing_tier = _model_usage_tier(provider, usage)
+    if provider not in _MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS:
+        return billing_tier
+
+    tiers = _model_provider_usage_tiers(flow)
+    remembered_decision = tiers.get(message_id)
+    if remembered_decision is not None:
+        tier = remembered_decision.tier
+        if not remembered_decision.committed and billing_tier is not None:
+            tier = billing_tier
+        tiers[message_id] = _ModelUsageTierDecision(
+            tier=tier,
+            committed=remembered_decision.committed or has_positive_model_provider_usage(usage),
+        )
+        tiers.move_to_end(message_id)
+        return tier
+    if billing_tier is None:
+        return None
+
+    tiers[message_id] = _ModelUsageTierDecision(
+        tier=billing_tier,
+        committed=has_positive_model_provider_usage(usage),
+    )
+    if len(tiers) > _MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT:
+        tiers.popitem(last=False)
+    return billing_tier
+
+
+def _model_provider_usage_tiers(
+    flow: http.HTTPFlow,
+) -> OrderedDict[str, _ModelUsageTierDecision]:
+    tiers = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE_TIERS)
+    if isinstance(tiers, OrderedDict):
+        return tiers
+    new_tiers: OrderedDict[str, _ModelUsageTierDecision] = OrderedDict()
+    flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_TIERS] = new_tiers
+    return new_tiers
+
+
+def _model_usage_tier(provider: str, usage: dict) -> _ModelUsageTier | None:
+    min_input_tokens = _MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS.get(provider)
+    if min_input_tokens is None:
+        return _MODEL_USAGE_TIER_BASE
+
+    input_tokens = usage.get(MODEL_USAGE_CATEGORY_INPUT)
+    if not _is_non_negative_int(input_tokens):
+        return None
+    total_input_tokens = input_tokens
+    for category in (
+        MODEL_USAGE_CATEGORY_CACHE_READ,
+        MODEL_USAGE_CATEGORY_CACHE_CREATION,
+    ):
+        quantity = usage.get(category)
+        if _is_non_negative_int(quantity):
+            total_input_tokens += quantity
+    if total_input_tokens >= min_input_tokens:
+        return _MODEL_USAGE_TIER_LONG_CONTEXT
+    return _MODEL_USAGE_TIER_BASE
+
+
+def _log_model_usage_tier_unresolved(
+    flow: http.HTTPFlow,
+    run_id: str,
+    provider: str,
+) -> None:
+    log_usage_underbilling(
+        flow_metadata.proxy_log_path(flow.metadata),
+        "Cannot classify tiered model usage without an input partition",
+        "model_long_context_tier_unresolved",
+        "risk",
+        run_id=run_id,
+        provider=provider,
+    )
 
 
 def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:
@@ -495,6 +628,10 @@ def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:
 
 def _is_positive_int(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _is_non_negative_int(value: object) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def _positive_int_or_zero(value: object) -> int:

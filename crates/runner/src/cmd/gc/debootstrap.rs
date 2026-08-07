@@ -140,7 +140,6 @@ fn is_debootstrap_temp_tarball_name(name: &str) -> bool {
     let Some(pid) = name
         .strip_suffix(".tar")
         .and_then(|stem| stem.rsplit_once(".tmp.").map(|(_, pid)| pid))
-        .or_else(|| name.rsplit_once(".tar.tmp.").map(|(_, pid)| pid))
     else {
         return false;
     };
@@ -240,14 +239,18 @@ mod tests {
         let debootstrap_dir = home.debootstrap_dir();
         std::fs::create_dir_all(&debootstrap_dir).unwrap();
         let unrelated = debootstrap_dir.join("README");
+        let retired_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.123");
         std::fs::write(&unrelated, b"metadata").unwrap();
-        std::fs::File::open(&unrelated)
-            .unwrap()
-            .set_times(
-                FileTimes::new()
-                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)),
-            )
-            .unwrap();
+        std::fs::write(&retired_tmp, b"retired partial").unwrap();
+        for path in [&unrelated, &retired_tmp] {
+            std::fs::File::open(path)
+                .unwrap()
+                .set_times(
+                    FileTimes::new()
+                        .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)),
+                )
+                .unwrap();
+        }
 
         let report = gc_debootstrap(&home, Some(0), false).await.unwrap();
 
@@ -255,6 +258,10 @@ mod tests {
         assert!(
             unrelated.exists(),
             "debootstrap GC should only remove cache tarballs"
+        );
+        assert!(
+            retired_tmp.exists(),
+            "retired debootstrap temp tarball names are outside GC ownership"
         );
     }
 
@@ -327,33 +334,22 @@ mod tests {
         std::fs::create_dir_all(&debootstrap_dir).unwrap();
         let stale_tmp = debootstrap_dir.join("noble-amd64.tmp.123.tar");
         let recent_tmp = debootstrap_dir.join("noble-amd64.tmp.456.tar");
-        let legacy_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.789");
         std::fs::write(&stale_tmp, b"stale partial").unwrap();
         std::fs::write(&recent_tmp, b"recent partial").unwrap();
-        std::fs::write(&legacy_tmp, b"legacy partial").unwrap();
         let stale_size = std::fs::metadata(&stale_tmp).unwrap().len();
-        let legacy_size = std::fs::metadata(&legacy_tmp).unwrap().len();
         let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         std::fs::File::open(&stale_tmp)
-            .unwrap()
-            .set_times(FileTimes::new().set_modified(old_time))
-            .unwrap();
-        std::fs::File::open(&legacy_tmp)
             .unwrap()
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
         let report = gc_debootstrap(&home, Some(0), false).await.unwrap();
 
-        assert_eq!(report.freed_bytes, stale_size + legacy_size);
-        assert_eq!(report.activity_count, 2);
+        assert_eq!(report.freed_bytes, stale_size);
+        assert_eq!(report.activity_count, 1);
         assert!(
             !stale_tmp.exists(),
             "stale debootstrap temp tarball should be GC'd"
-        );
-        assert!(
-            !legacy_tmp.exists(),
-            "legacy debootstrap temp tarball should still be GC'd"
         );
         assert!(
             recent_tmp.exists(),

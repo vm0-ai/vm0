@@ -1,14 +1,16 @@
 [package]
 name = "guest-session-prune"
-version = "0.3.0"
+version = "0.3.4"
 edition.workspace = true
 description = "Bounded native session-history pruning for vm0 guest checkpoints"
 
 [dependencies]
+guest-contracts.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 tempfile.workspace = true
 
 [lints]

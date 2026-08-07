@@ -1,7 +1,10 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
 } from "@vm0/api-contracts/contracts/test-runtime-state";
+import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import type { TestContext } from "../../../../__tests__/test-context";
@@ -49,36 +52,59 @@ async function postAction(
   return await readJson<TestRuntimeStateActionResponse>(response);
 }
 
+interface Vm0ManagedModelKeyFixture {
+  readonly selectedModel: string;
+  release(): Promise<void>;
+}
+
+function vm0ManagedModelKeyFixture(
+  context: TestContext,
+  fixtureId: string,
+  selectedModel: string,
+): Vm0ManagedModelKeyFixture {
+  let released = false;
+  const release = async (): Promise<void> => {
+    if (released) {
+      return;
+    }
+    await postAction(context, {
+      action: "delete-vm0-managed-model-key",
+      fixture_id: fixtureId,
+    });
+    released = true;
+  };
+  onTestFinished(release);
+  return { selectedModel, release };
+}
+
 export async function seedVm0ManagedDefaultModelKey(
   context: TestContext,
-): Promise<string> {
+): Promise<Vm0ManagedModelKeyFixture> {
+  const fixtureId = randomUUID();
   const response = await postAction(context, {
     action: "seed-vm0-managed-default-model-key",
+    fixture_id: fixtureId,
   });
   if (!response.selected_model) {
     throw new Error("seedVm0ManagedDefaultModelKey missing selected_model");
   }
-  return response.selected_model;
+  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
 export async function seedVm0ManagedModelKey(
   context: TestContext,
   selectedModel: string,
-): Promise<string> {
+): Promise<Vm0ManagedModelKeyFixture> {
+  const fixtureId = randomUUID();
   const response = await postAction(context, {
     action: "seed-vm0-managed-model-key",
+    fixture_id: fixtureId,
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
     throw new Error("seedVm0ManagedModelKey missing selected_model");
   }
-  return response.selected_model;
-}
-
-export async function deleteVm0ManagedDefaultModelKey(
-  context: TestContext,
-): Promise<void> {
-  await postAction(context, { action: "delete-vm0-managed-default-model-key" });
+  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
 export async function enableFakeKms(context: TestContext): Promise<void> {
@@ -94,6 +120,141 @@ export async function readFakeKmsDecryptCallCount(
 ): Promise<number> {
   const response = await postAction(context, { action: "read-fake-kms-state" });
   return response.decrypt_call_count ?? 0;
+}
+
+export async function readBrowserScreenshotSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-browser-screenshot-schema-state",
+  });
+  if (response.browser_screenshot_schema_available === undefined) {
+    throw new Error(
+      "readBrowserScreenshotSchemaAvailable missing schema availability",
+    );
+  }
+  return response.browser_screenshot_schema_available;
+}
+
+export async function readChatAgentRunContextSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-chat-agent-run-context-schema-state",
+  });
+  if (response.chat_agent_run_context_schema_available === undefined) {
+    throw new Error(
+      "readChatAgentRunContextSchemaAvailable missing schema availability",
+    );
+  }
+  return response.chat_agent_run_context_schema_available;
+}
+
+export async function readRunAutonomyBudgetFixture(
+  context: TestContext,
+  runId: string,
+): Promise<number | null> {
+  const response = await postAction(context, {
+    action: "read-run-autonomy-budget",
+    run_id: runId,
+  });
+  if (!("autonomy_budget" in response)) {
+    throw new Error("readRunAutonomyBudgetFixture missing autonomy_budget");
+  }
+  return response.autonomy_budget ?? null;
+}
+
+export async function setRunAutonomyBudgetFixture(
+  context: TestContext,
+  runId: string,
+  autonomyBudget: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-run-autonomy-budget",
+    run_id: runId,
+    autonomy_budget: autonomyBudget,
+  });
+}
+
+export async function readWorkflowAutomationAutonomyFixture(
+  context: TestContext,
+  automationId: string,
+): Promise<{
+  readonly autonomyBudget: number;
+  readonly enabled: boolean;
+  readonly lastRunId: string | null;
+} | null> {
+  const response = await postAction(context, {
+    action: "read-workflow-automation-autonomy-state",
+    automation_id: automationId,
+  });
+  if (!("workflow_automation_state" in response)) {
+    throw new Error(
+      "readWorkflowAutomationAutonomyFixture missing workflow_automation_state",
+    );
+  }
+  const state = response.workflow_automation_state;
+  return state
+    ? {
+        autonomyBudget: state.autonomy_budget,
+        enabled: state.enabled,
+        lastRunId: state.last_run_id,
+      }
+    : null;
+}
+
+export async function setWorkflowAutomationAutonomyBudgetFixture(
+  context: TestContext,
+  automationId: string,
+  autonomyBudget: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-workflow-automation-autonomy-budget",
+    automation_id: automationId,
+    autonomy_budget: autonomyBudget,
+  });
+}
+
+export async function readLatestWorkflowAutomationRunFixture(
+  context: TestContext,
+  automationId: string,
+): Promise<{
+  readonly runId: string;
+  readonly autonomyBudget: number;
+} | null> {
+  const response = await postAction(context, {
+    action: "read-latest-workflow-automation-run",
+    automation_id: automationId,
+  });
+  if (!("workflow_automation_run" in response)) {
+    throw new Error(
+      "readLatestWorkflowAutomationRunFixture missing workflow_automation_run",
+    );
+  }
+  const run = response.workflow_automation_run;
+  return run
+    ? { runId: run.run_id, autonomyBudget: run.autonomy_budget }
+    : null;
+}
+
+export async function readThreadGoalAutonomyBudgetFixture(
+  context: TestContext,
+  threadId: string,
+): Promise<number | null> {
+  const response = await postAction(context, {
+    action: "read-thread-goal-autonomy-budget",
+    thread_id: threadId,
+  });
+  if (!("autonomy_budget" in response)) {
+    throw new Error(
+      "readThreadGoalAutonomyBudgetFixture missing autonomy_budget",
+    );
+  }
+  return response.autonomy_budget ?? null;
+}
+
+export async function resetDatabasePool(context: TestContext): Promise<void> {
+  await postAction(context, { action: "reset-database-pool" });
 }
 
 export async function mutateRunnerJobSecretValueEnvironmentKeys(
@@ -114,6 +275,7 @@ export async function mutateRunnerJobConnectorPermissionBaseline(
   mode:
     | "remove"
     | "malformed"
+    | "capability-mismatch"
     | "catalog-mismatch"
     | "authority-mismatch"
     | "inconsistent"
@@ -164,6 +326,20 @@ export async function readRunnerJobStorageState(
     );
   }
   return response.runner_job_storage_state;
+}
+
+export async function readRunClaimOwner(
+  context: TestContext,
+  runId: string,
+): Promise<NonNullable<TestRuntimeStateActionResponse["runner_claim_owner"]>> {
+  const response = await postAction(context, {
+    action: "read-run-claim-owner",
+    run_id: runId,
+  });
+  if (!response.runner_claim_owner) {
+    throw new Error("readRunClaimOwner missing runner_claim_owner");
+  }
+  return response.runner_claim_owner;
 }
 
 export async function readStoragePersistenceState(
@@ -241,6 +417,79 @@ export async function readRunUploadedFileSources(
     run_id: runId,
   });
   return response.uploaded_file_sources ?? [];
+}
+
+export async function readChatEventAssetRefIds(
+  context: TestContext,
+  eventId: string,
+): Promise<readonly string[]> {
+  const response = await postAction(context, {
+    action: "read-chat-event-asset-refs",
+    event_id: eventId,
+  });
+  if (response.chat_event_asset_ref_ids === undefined) {
+    throw new Error("readChatEventAssetRefIds missing asset ref ids");
+  }
+  return response.chat_event_asset_ref_ids;
+}
+
+export async function insertChatEventAssetRefFixture(
+  context: TestContext,
+  args: {
+    readonly eventId: string;
+    readonly assetId: string;
+    readonly position: number;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "insert-chat-event-asset-ref",
+    event_id: args.eventId,
+    asset_id: args.assetId,
+    position: args.position,
+  });
+}
+
+export async function insertHostedSiteAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly runId: string;
+    readonly site: string;
+    readonly publicSlug: string;
+  },
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "insert-hosted-site-as-previous-api",
+    user_id: args.userId,
+    org_id: args.orgId,
+    run_id: args.runId,
+    site: args.site,
+    public_slug: args.publicSlug,
+  });
+  if (!response.hosted_site_id) {
+    throw new Error("insertHostedSiteAsPreviousApi missing hosted_site_id");
+  }
+  return response.hosted_site_id;
+}
+
+export async function insertHostedDeploymentAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly runId: string;
+    readonly hostedSiteId: string;
+  },
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "insert-hosted-deployment-as-previous-api",
+    user_id: args.userId,
+    org_id: args.orgId,
+    run_id: args.runId,
+    hosted_site_id: args.hostedSiteId,
+  });
+  return response.hosted_deployment_scope_blocked ?? false;
 }
 
 export async function clearRunApiStart(
@@ -329,31 +578,16 @@ export async function setComputerUseHostAsPreviousApi(
   });
 }
 
-export async function readBrowserProfileAsPreviousApi(
+export async function setBrowserTabSnapshotAsPreviousApi(
   context: TestContext,
   args: {
-    readonly browserId: string;
-    readonly userId: string;
-    readonly orgId: string;
+    readonly threadId: string;
+    readonly tabUrls: readonly string[];
   },
-): Promise<{
-  readonly browserProfileId: string;
-  readonly providerProfileId: string;
-}> {
-  const response = await postAction(context, {
-    action: "read-browser-profile-as-previous-api",
-    browser_id: args.browserId,
-    user_id: args.userId,
-    org_id: args.orgId,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-browser-tab-snapshot-as-previous-api",
+    thread_id: args.threadId,
+    tab_urls: [...args.tabUrls],
   });
-  if (!response.previous_api_browser_profile) {
-    throw new Error(
-      "readBrowserProfileAsPreviousApi missing previous_api_browser_profile",
-    );
-  }
-  return {
-    browserProfileId: response.previous_api_browser_profile.browser_profile_id,
-    providerProfileId:
-      response.previous_api_browser_profile.provider_profile_id,
-  };
 }

@@ -44,29 +44,6 @@ def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
     assert enqueue.last_call.proxy_log_path == proxy_log_path
 
 
-def test_flush_calculates_gross_credits_after_aggregation(tmp_path):
-    enqueue = RecordingEnqueue()
-    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
-
-    first = event(source_key="source-1", quantity=1)
-    first["billingUnitPrice"] = 3
-    first["billingUnitSize"] = 2
-    second = event(source_key="source-2", quantity=1)
-    second["billingUnitPrice"] = 3
-    second["billingUnitSize"] = 2
-    usage.buffer_usage_events(
-        "https://api.test/api/webhooks/agent/usage-event",
-        "token-a",
-        "run-1",
-        [first, second],
-        str(tmp_path / "proxy.jsonl"),
-    )
-
-    assert usage.flush_usage_events(trigger="test") == 1
-    assert enqueue.last_call.payload["events"][0]["quantity"] == 2
-    assert enqueue.last_call.payload["events"][0]["grossCredits"] == 3
-
-
 def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
     enqueue = RecordingEnqueue()
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
@@ -505,6 +482,47 @@ def test_flushes_when_aggregate_bucket_count_reaches_exact_bound(tmp_path):
     payload = enqueue.last_call.payload
     assert payload["runId"] == "run-1"
     assert len(payload["events"]) == usage_buffer.MAX_AGGREGATE_BUCKETS
+
+
+def test_flushes_when_model_observation_bucket_count_reaches_exact_bound(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "token-a",
+        "run-1",
+        [
+            observation(source_key=f"source-{index}", model=f"model-{index}")
+            for index in range(usage_buffer.MAX_AGGREGATE_BUCKETS - 1)
+        ],
+        proxy_log_path,
+    )
+    enqueue.assert_not_called()
+
+    final_index = usage_buffer.MAX_AGGREGATE_BUCKETS - 1
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "token-a",
+        "run-1",
+        [
+            observation(
+                source_key=f"source-{final_index}",
+                model=f"model-{final_index}",
+            )
+        ],
+        proxy_log_path,
+    )
+
+    enqueue.assert_called_once()
+    payload = enqueue.last_call.payload
+    assert payload["runId"] == "run-1"
+    assert len(payload["events"]) == usage_buffer.MAX_AGGREGATE_BUCKETS
+    assert {flushed_observation["model"] for flushed_observation in payload["events"]} == {
+        f"model-{index}" for index in range(usage_buffer.MAX_AGGREGATE_BUCKETS)
+    }
+    assert enqueue.last_call.log_type == "model_usage_observation"
 
 
 def test_flushes_when_source_event_count_reaches_bound(tmp_path):

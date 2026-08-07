@@ -1,5 +1,106 @@
 # Changelog
 
+## [0.6.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.9...guest-contracts-v0.6.0) (2026-08-07)
+
+
+### Features
+
+* complete pi agent handoff end to end ([#25489](https://github.com/vm0-ai/vm0/issues/25489)) ([feeb1cb](https://github.com/vm0-ai/vm0/commit/feeb1cbc8e838b844945cf5efc3ed7e9820c10a4))
+
+
+### Bug Fixes
+
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
+## [0.5.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.8...guest-contracts-v0.5.9) (2026-08-07)
+
+
+### Refactoring
+
+* **runner:** remove obsolete codex event fallbacks ([#25511](https://github.com/vm0-ai/vm0/issues/25511)) ([94e8703](https://github.com/vm0-ai/vm0/commit/94e87037eef09c503c7280070237483fafad69fa))
+
+## [0.5.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.7...guest-contracts-v0.5.8) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
+## [0.5.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.6...guest-contracts-v0.5.7) (2026-08-05)
+
+
+### Refactoring
+
+* **rust:** centralize epoch-millisecond validation ([#25159](https://github.com/vm0-ai/vm0/issues/25159)) ([4780d82](https://github.com/vm0-ai/vm0/commit/4780d82181ac10f4f7bfaafc6b16e448f89f2860))
+
+## [0.5.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.5...guest-contracts-v0.5.6) (2026-08-04)
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+
+## [0.5.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.4...guest-contracts-v0.5.5) (2026-08-04)
+
+
+### Bug Fixes
+
+* **rust:** distinguish direct sigkill from escalation ([#24976](https://github.com/vm0-ai/vm0/issues/24976)) ([6aa72d7](https://github.com/vm0-ai/vm0/commit/6aa72d7955c92e9c5dc475e6060a00b703e1da63))
+
+## [0.5.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.3...guest-contracts-v0.5.4) (2026-08-03)
+
+
+### Refactoring
+
+* **rust:** centralize base cli agent session id validation ([#24759](https://github.com/vm0-ai/vm0/issues/24759)) ([da34435](https://github.com/vm0-ai/vm0/commit/da34435c6747be672914e4651c29d0abd2b47936))
+
+## [0.5.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.2...guest-contracts-v0.5.3) (2026-08-03)
+
+
+### Documentation
+
+* **rust:** clarify session history diagnostic semantics ([#24671](https://github.com/vm0-ai/vm0/issues/24671)) ([ecf6630](https://github.com/vm0-ai/vm0/commit/ecf6630d6185b03b6de7bc606259a730dff462b4))
+
+## [0.5.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.1...guest-contracts-v0.5.2) (2026-08-02)
+
+
+### Bug Fixes
+
+* **runner:** distinguish sandbox reuse result causes ([#24562](https://github.com/vm0-ai/vm0/issues/24562)) ([3988072](https://github.com/vm0-ai/vm0/commit/3988072cba1e7e821f976598b1de7da3a6a22ee1))
+
+
+### Refactoring
+
+* **runner:** treat invalid resume sessions as pre-reuse failures ([#24568](https://github.com/vm0-ai/vm0/issues/24568)) ([a3e789f](https://github.com/vm0-ai/vm0/commit/a3e789f626155acb7f3fe280aa4fe60f4579f103))
+
+## [0.5.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.0...guest-contracts-v0.5.1) (2026-08-01)
+
+
+### Documentation
+
+* **rust:** document storage manifest wire invariants ([#24434](https://github.com/vm0-ai/vm0/issues/24434)) ([6f8b85c](https://github.com/vm0-ai/vm0/commit/6f8b85c4390cc3238b0b59133cc2fd33126322f6))
+
+## [0.5.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.7...guest-contracts-v0.5.0) (2026-07-30)
+
+
+### Features
+
+* **events:** report structured guest event delivery failures ([#23974](https://github.com/vm0-ai/vm0/issues/23974)) ([ebdf828](https://github.com/vm0-ai/vm0/commit/ebdf8280b7b961ebf8404790a15696a7338ecd6e))
+
+## [0.4.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.6...guest-contracts-v0.4.7) (2026-07-30)
+
+
+### Bug Fixes
+
+* **guest-agent:** checkpoint user cancellations before completion ([#23899](https://github.com/vm0-ai/vm0/issues/23899)) ([ba905f6](https://github.com/vm0-ai/vm0/commit/ba905f65bb5f99fac077c236b4ca57175708ead5))
+
+## [0.4.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.5...guest-contracts-v0.4.6) (2026-07-29)
+
+
+### Bug Fixes
+
+* **runner:** checkpoint sessions before job timeout ([#23734](https://github.com/vm0-ai/vm0/issues/23734)) ([15f44cc](https://github.com/vm0-ai/vm0/commit/15f44cc68e1387d5b18f604fea9c964a1557561d))
+
 ## [0.4.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.4...guest-contracts-v0.4.5) (2026-07-28)
 
 
@@ -146,7 +247,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 
 ## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.3...guest-contracts-v0.3.4) (2026-07-05)
 

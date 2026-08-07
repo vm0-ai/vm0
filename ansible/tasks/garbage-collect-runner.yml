@@ -1,0 +1,12 @@
+- name: Run serialized runner garbage collection
+  ansible.builtin.command:
+    argv:
+      - flock
+      - --exclusive
+      - "{{ data_dir }}/locks/deployment-gc.lock"
+      - "{{ bin_dir }}/runner"
+      - gc
+      - --keep-latest
+      - "6"
+      - --protect-version
+      - "{{ runner_name }}"

@@ -7,13 +7,15 @@ import {
   type TeamsConnectStatus,
 } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import {
+  FEISHU_OAUTH_SCOPES,
   zeroFeishuConnectContract,
   type FeishuConnectStatus,
 } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -21,9 +23,16 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 function queryRole(role: "button" | "link", name: string): HTMLElement | null {
   return (
@@ -44,6 +53,14 @@ function getRole(role: "button" | "link", name: string): HTMLElement {
   return element;
 }
 
+function getIntegrationCard(title: string): HTMLElement {
+  const card = screen.getByText(title).closest(".zero-card");
+  if (!(card instanceof HTMLElement)) {
+    throw new Error(`Expected integration card titled "${title}"`);
+  }
+  return card;
+}
+
 function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}): void {
   const defaults: SlackOrgStatus = {
     isConnected: false,
@@ -54,7 +71,6 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}): void {
     reinstallUrl: null,
     scopeMismatch: false,
     workspaceName: null,
-    agentOrgSlug: null,
     environment: {
       requiredSecrets: [],
       requiredVars: [],
@@ -190,6 +206,8 @@ describe("works page", () => {
   });
 
   it("shows integration cards with current connection status and realtime refreshes", async () => {
+    const githubConnectUrl =
+      "https://github.com/login/oauth/authorize?client_id=github-oauth-client-id";
     mockSlackAPI({
       isConnected: true,
       isInstalled: true,
@@ -198,12 +216,26 @@ describe("works page", () => {
       reinstallUrl: "https://slack.com/oauth/reinstall?state=xyz",
       workspaceName: "VM0 HQ",
     });
+    context.mocks.data.githubIntegration(
+      context.mocks.data.defaultGithubIntegration({
+        isConnected: false,
+        connectedGithubUserId: null,
+        connectedGithubUsername: null,
+        connectUrl: githubConnectUrl,
+      }),
+    );
     context.mocks.data.agentPhoneIntegration({
       linked: true,
       phoneHandle: "+15555551212",
       agentPhoneNumber: "+19039853128",
       configured: true,
     });
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    const browserOpen = context.mocks.browser.open(authWindow);
 
     setupWorksPage();
 
@@ -212,6 +244,7 @@ describe("works page", () => {
       expect(screen.queryByText("Microsoft Teams")).not.toBeInTheDocument();
       expect(screen.queryByText("Feishu")).not.toBeInTheDocument();
       expect(screen.queryByText("Strapi")).not.toBeInTheDocument();
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
       expect(screen.getByText("Telegram")).toBeInTheDocument();
       expect(screen.getByText("Phone")).toBeInTheDocument();
       expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
@@ -219,6 +252,42 @@ describe("works page", () => {
       expect(
         screen.getByTestId("agentphone-connected-indicator"),
       ).toHaveTextContent("+15555551212");
+      expect(screen.getByTestId("github-connect-button")).toBeInTheDocument();
+      expect(context.mocks.ably.hasSubscription("github:changed")).toBeTruthy();
+    });
+
+    click(screen.getByTestId("github-connect-button"));
+    await waitFor(() => {
+      const openedUrl = new URL(authWindow.location.href);
+      expect(openedUrl.origin + openedUrl.pathname).toBe(
+        "https://github.com/login/oauth/authorize",
+      );
+      expect(openedUrl.searchParams.get("client_id")).toBe(
+        "github-oauth-client-id",
+      );
+      expect(openedUrl.searchParams.has("_t")).toBeTruthy();
+    });
+    expect(browserOpen.calls).toStrictEqual([
+      {
+        url: "about:blank",
+        target: "_blank",
+        features: "width=600,height=700",
+      },
+    ]);
+
+    context.mocks.data.githubIntegration(
+      context.mocks.data.defaultGithubIntegration({
+        isConnected: true,
+        connectedGithubUserId: "98765",
+        connectedGithubUsername: "octocat",
+      }),
+    );
+    context.mocks.ably.trigger("github:changed");
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("github-connected-indicator"),
+      ).toHaveTextContent("Connected (@octocat)");
     });
   });
 
@@ -249,7 +318,57 @@ describe("works page", () => {
     await waitFor(() => {
       expect(screen.getByText("Microsoft Teams")).toBeInTheDocument();
       expect(screen.getByText("Connected (Core Team)")).toBeInTheDocument();
+      expect(screen.getByTestId("github-integration-card")).toBeInTheDocument();
     });
+
+    const slackCard = getIntegrationCard("Slack");
+    const teamsCard = getIntegrationCard("Microsoft Teams");
+    const githubCard = getIntegrationCard("GitHub");
+    expect(
+      slackCard.compareDocumentPosition(teamsCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      teamsCard.compareDocumentPosition(githubCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      within(githubCard).getByTestId("github-install-button"),
+    ).toHaveAttribute(
+      "href",
+      "https://github.com/apps/vm0-test/installations/new?state=abc",
+    );
+  });
+
+  it("asks workspace members to contact an admin before installing GitHub", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
+    context.mocks.api(
+      integrationsGithubContract.getInstallation,
+      ({ respond }) => {
+        return respond(404, {
+          error: {
+            message: "GitHub installation not found",
+            code: "NOT_FOUND",
+          },
+          installUrl: null,
+        });
+      },
+    );
+
+    setupWorksPage();
+
+    const githubCard = await screen.findByTestId("github-integration-card");
+    expect(
+      within(githubCard).getByText(
+        "Ask an organization admin to install the GitHub App",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(githubCard).queryByTestId("github-install-button"),
+    ).toBeNull();
+    expect(
+      within(githubCard).queryByTestId("github-connect-button"),
+    ).toBeNull();
   });
 
   it("shows Feishu only when its integration switch is enabled", async () => {
@@ -385,6 +504,60 @@ describe("works page", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  it("localizes Strapi settings in Portuguese while preserving integration data", async () => {
+    const integrationId = "00000000-0000-4000-8000-000000000092";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.api(zeroStrapiIntegrationsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          id: integrationId,
+          name: "Marketing CMS",
+          baseUrl: "https://cms.example.com",
+          webhookUrl: `https://www.vm0.test/api/zero/strapi/events/${integrationId}`,
+          secretLastFour: "abcd",
+          lastTestedAt: "2026-07-28T04:00:00.000Z",
+          lastReceivedAt: null,
+          createdAt: "2026-07-28T03:00:00.000Z",
+        },
+      ]);
+    });
+    context.mocks.api(
+      zeroStrapiIntegrationsContract.checkTest,
+      ({ respond }) => {
+        return respond(200, {
+          received: true,
+          lastTestedAt: "2026-07-28T04:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/settings/strapi",
+      featureSwitches: {
+        [FeatureSwitchKey.StrapiIntegration]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Marketing CMS"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Permita que o Zero reaja a entradas publicadas no Strapi e automatize o trabalho subsequente.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Webhook testado")).toBeInTheDocument();
+    expect(getRole("button", "Verificar teste")).toBeInTheDocument();
+    expect(screen.getByText(/^Último teste:/u)).toBeInTheDocument();
+    expect(screen.getByText("https://cms.example.com")).toBeInTheDocument();
+    click(getRole("button", "Verificar teste"));
+    await expect(
+      screen.findByText("Webhook de teste do Strapi recebido"),
+    ).resolves.toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("pt-BR");
+  });
+
   it("redirects direct Feishu settings navigation when the switch is disabled", async () => {
     detachedSetupPage({
       context,
@@ -422,6 +595,8 @@ describe("works page", () => {
           isConnected: false,
           appId: "cli_member",
           callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+          connectUrl:
+            "https://www.vm0.test/api/zero/feishu/oauth/connect?state=incomplete",
           callbackVerified: true,
           messageReceived: true,
           tenantKey: "tenant-member",
@@ -438,7 +613,7 @@ describe("works page", () => {
     await expect(screen.findByText("Feishu bots")).resolves.toBeInTheDocument();
     expect(queryRole("button", "Add bot")).toBeNull();
     expect(screen.getByText("Setup incomplete")).toBeInTheDocument();
-    expect(queryRole("link", "Connect")).toBeNull();
+    expect(queryRole("button", "Connect")).toBeNull();
 
     expect(queryRole("button", "More options for Member bot")).toBeNull();
   });
@@ -510,15 +685,54 @@ describe("works page", () => {
     expect(getRole("button", "Next")).toBeEnabled();
 
     click(getRole("button", "Next"));
-    expect(screen.getByText("Configure event delivery")).toBeInTheDocument();
-
-    click(getRole("button", "Next"));
     expect(
       screen.getByText("Configure the OAuth redirect URL"),
     ).toBeInTheDocument();
 
     click(getRole("button", "Next"));
+    expect(screen.getByText("Import user token scopes")).toBeInTheDocument();
+    expect(screen.getByText("Scopes")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu Permissions & Scopes page with the Batch import/export scopes menu highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu Batch import/export scopes dialog with the imported JSON and review button highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(queryRole("button", "Show next Feishu guide image")).toBeNull();
+    expect(screen.getByText("User token scope JSON")).toBeInTheDocument();
+    const scopeImportJson = screen.getByTestId("feishu-user-scope-import-json");
+    expect(JSON.parse(scopeImportJson.textContent ?? "")).toStrictEqual({
+      scopes: {
+        tenant: [],
+        user: [...FEISHU_OAUTH_SCOPES],
+      },
+    });
+    expect(screen.getByRole("note")).toBeInTheDocument();
+
+    click(getRole("button", "Next"));
+    expect(screen.getByText("Configure event delivery")).toBeInTheDocument();
+
+    click(getRole("button", "Next"));
     expect(screen.getByText("Publish the app")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu Version Management page with the Create a version button highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu version details page with the availability settings edit action highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu availability settings with All members selected",
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Default agent")).toBeDisabled();
 
     click(getRole("button", "Done"));
@@ -667,16 +881,32 @@ describe("works page", () => {
     click(getRole("button", "More options for Feishu bot"));
     click(getRole("button", "Manage"));
     expect(
+      screen.getByText("Configure the OAuth redirect URL"),
+    ).toBeInTheDocument();
+    const redirectGuideImage = screen.getByRole("img", {
+      name: "Feishu Security Settings page showing where to add an OAuth redirect URL",
+    });
+    const redirectUrlInput = screen.getByDisplayValue(
+      "https://app.vm0.test/connectors/feishu/callback",
+    );
+    expect(
+      redirectGuideImage.compareDocumentPosition(redirectUrlInput) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    click(getRole("button", "Next"));
+    expect(screen.getByText("Import user token scopes")).toBeInTheDocument();
+    click(getRole("button", "Next"));
+    expect(
       screen.getByRole("img", {
         name: "Feishu Event Configuration screen with the subscription mode edit control highlighted",
       }),
     ).toBeInTheDocument();
-    click(getRole("button", "Show next Feishu guide image"));
     expect(
       screen.getByRole("img", {
         name: "Feishu Event Configuration screen with the Request URL field highlighted",
       }),
     ).toBeInTheDocument();
+    expect(queryRole("button", "Show next Feishu guide image")).toBeNull();
 
     await waitFor(() => {
       expect(screen.getAllByText("Waiting for callback")).not.toHaveLength(0);
@@ -697,14 +927,7 @@ describe("works page", () => {
     });
 
     click(getRole("button", "Next"));
-    expect(
-      screen.getByText("Configure the OAuth redirect URL"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByDisplayValue(
-        "https://app.vm0.test/connectors/feishu/callback",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Publish the app")).toBeInTheDocument();
   });
 
   it("shows the guided Feishu custom app setup for organization admins", async () => {
@@ -719,11 +942,11 @@ describe("works page", () => {
     await expect(
       screen.findByText("Create an enterprise custom app"),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByRole("img", {
-        name: "Feishu app creation form with the app name, icon, and Create button highlighted",
-      }),
-    ).toBeInTheDocument();
+    const createGuideImage = screen.getByRole("img", {
+      name: "Feishu app creation form with the app name, icon, and Create button highlighted",
+    });
+    expect(createGuideImage).toHaveAttribute("width", "1234");
+    expect(createGuideImage).toHaveAttribute("height", "998");
     expect(queryRole("button", "Show creating a Feishu app guide")).toBeNull();
     expect(
       screen.getByText("Download the VM0 icon").closest("a"),
@@ -733,11 +956,11 @@ describe("works page", () => {
 
     await expect(screen.findByLabelText("App ID")).resolves.toBeInTheDocument();
     expect(screen.getByLabelText("App Secret")).toBeInTheDocument();
-    expect(
-      screen.getByRole("img", {
-        name: "Feishu app creation result showing where to find the App ID and App Secret",
-      }),
-    ).toBeInTheDocument();
+    const credentialsGuideImage = screen.getByRole("img", {
+      name: "Feishu app creation result showing where to find the App ID and App Secret",
+    });
+    expect(credentialsGuideImage).toHaveAttribute("width", "1190");
+    expect(credentialsGuideImage).toHaveAttribute("height", "1076");
     expect(
       screen.queryByLabelText("Verification Token"),
     ).not.toBeInTheDocument();

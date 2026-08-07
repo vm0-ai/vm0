@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   artifactCatalogContract,
@@ -10,6 +10,7 @@ import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadEventsContract,
+  chatThreadMarkReadContract,
   chatThreadsContract,
   type ChatThreadArtifactFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -21,13 +22,14 @@ import {
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
 import {
@@ -41,6 +43,28 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
 const THREAD_PATH = `/chats/${THREAD_ID}`;
 const ARTIFACT_ID = "a0000000-0000-4000-a000-000000000001";
+
+function browserSession(
+  overrides: Partial<ZeroBrowserSession> = {},
+): ZeroBrowserSession {
+  return {
+    threadId: THREAD_ID,
+    name: "Thread browser",
+    status: "active",
+    viewerUrl: `https://app.vm0.ai/browsers/${THREAD_ID}`,
+    liveUrl: "https://live.browser-use.com/?wss=thread-browser",
+    screenshotUrl: null,
+    proxyCountryCode: null,
+    timeoutMinutes: 240,
+    screen: { width: 1440, height: 900, resizable: true },
+    idleExpiresAt: "2026-03-10T00:10:00.000Z",
+    suspendedAt: null,
+    suspensionReason: null,
+    createdAt: "2026-03-10T00:00:00.000Z",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 function catalogArtifact(
   overrides: Partial<ArtifactSummary> = {},
@@ -102,7 +126,7 @@ function threadArtifactFile(
 function googleDriveConnector(): ConnectorResponse {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    type: "google-drive",
+    slug: "google-drive",
     authMethod: "oauth",
     externalId: "google-drive-external-id",
     externalUsername: "drive-user",
@@ -136,7 +160,9 @@ function setupArtifactCatalog(
 
 function setupChatThread({
   artifactFiles = [],
-  autoOpenEnabled = false,
+  inlineArtifactOpenEnabled = false,
+  waitForHistoryResponse,
+  historyMessages = [],
   messages = [
     {
       id: "msg-sidebar-user",
@@ -165,7 +191,9 @@ function setupChatThread({
   ],
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
-  autoOpenEnabled?: boolean;
+  inlineArtifactOpenEnabled?: boolean;
+  waitForHistoryResponse?: () => Promise<void>;
+  historyMessages?: MockChatEventInput[];
   messages?: MockChatEventInput[];
 } = {}) {
   let servedMessages = [...messages];
@@ -184,7 +212,10 @@ function setupChatThread({
   ]);
 
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-    return respond(200, { lastReadAt: null });
+    return respond(200, {
+      lastReadAt: null,
+      cancellationRecoveryPending: false,
+    });
   });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
@@ -207,29 +238,40 @@ function setupChatThread({
       latestSeqId: 1,
     });
   });
-  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (query.beforeSeqId !== undefined) {
-      return respond(200, { events: [] });
-    }
-    const events = normalizeMockChatEvents(
-      servedMessages.map((message) => {
-        return { ...message, threadId: message.threadId ?? THREAD_ID };
-      }),
-    );
-    const sinceSeqId = query.sinceSeqId;
-    if (sinceSeqId !== undefined) {
-      return respond(200, {
-        events: events.filter((event) => {
-          return event.seqId > sinceSeqId;
+  context.mocks.api(
+    chatThreadEventsContract.list,
+    async ({ query, respond }) => {
+      const beforeSeqId = query.beforeSeqId;
+      if (beforeSeqId !== undefined) {
+        await waitForHistoryResponse?.();
+        return respond(200, {
+          events: normalizeMockChatEvents(
+            historyMessages.map((message) => {
+              return { ...message, threadId: message.threadId ?? THREAD_ID };
+            }),
+          ).filter((event) => {
+            return event.seqId < beforeSeqId;
+          }),
+        });
+      }
+      const events = normalizeMockChatEvents(
+        servedMessages.map((message) => {
+          return { ...message, threadId: message.threadId ?? THREAD_ID };
         }),
-        hasHistoryBefore: false,
+      );
+      const sinceSeqId = query.sinceSeqId;
+      if (sinceSeqId !== undefined) {
+        return respond(200, {
+          events: events.filter((event) => {
+            return event.seqId > sinceSeqId;
+          }),
+        });
+      }
+      return respond(200, {
+        events,
       });
-    }
-    return respond(200, {
-      events,
-      hasHistoryBefore: false,
-    });
-  });
+    },
+  );
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, {
       runs: [{ runId: "run-sidebar", files: artifactFiles }],
@@ -240,7 +282,7 @@ function setupChatThread({
     context,
     path: THREAD_PATH,
     featureSwitches: {
-      [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
+      [FeatureSwitchKey.ArtifactSidebarInlineOpen]: inlineArtifactOpenEnabled,
     },
   });
 
@@ -291,6 +333,76 @@ function menuItemByText(text: string): HTMLElement {
 }
 
 describe("thread-owned utility sidebar", () => {
+  it("always opens the thread browser from the header", async () => {
+    context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
+      expect(params.threadId).toBe(THREAD_ID);
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Browser not found" },
+      });
+    });
+    setupChatThread();
+
+    const button = await screen.findByLabelText("Open browser");
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    click(button);
+
+    await expect(
+      screen.findByText("Browser not live"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Start browser"),
+    ).resolves.toBeInTheDocument();
+    expect(button).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("optimistically opens the browser and records sidebar close with caller event IDs", async () => {
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Browser not found" },
+      });
+    });
+    let startEventId: string | null = null;
+    context.mocks.api(zeroBrowserContract.open, ({ body, params, respond }) => {
+      expect(params.threadId).toBe(THREAD_ID);
+      startEventId = body.eventId;
+      return respond(200, {
+        browser: browserSession(),
+        lifecycleEventId: body.eventId,
+      });
+    });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, { browser: browserSession({ liveUrl: null }) });
+    });
+    const finishClose = context.mocks.deferred<void>();
+    let closeEventId: string | null = null;
+    context.mocks.api(
+      zeroBrowserContract.close,
+      async ({ body, params, respond }) => {
+        expect(params.threadId).toBe(THREAD_ID);
+        closeEventId = body.eventId;
+        await finishClose.promise;
+        return respond(200, {
+          lifecycleEventId: body.eventId,
+        });
+      },
+    );
+    setupChatThread();
+
+    click(await screen.findByLabelText("Open browser"));
+    click(await screen.findByText("Start browser"));
+    await screen.findByTitle("Live browser: Thread browser");
+    expect(startEventId).toBeTypeOf("string");
+
+    expect(screen.queryByLabelText("Stop browser")).not.toBeInTheDocument();
+    click(screen.getByLabelText("Close live browser"));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Live browser")).not.toBeInTheDocument();
+      expect(closeEventId).toBeTypeOf("string");
+    });
+    expect(closeEventId).not.toBe(startEventId);
+    finishClose.resolve();
+  });
+
   it("opens the thread-scoped catalog list", async () => {
     const requestedThreadIds: (string | undefined)[] = [];
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
@@ -344,6 +456,54 @@ describe("thread-owned utility sidebar", () => {
     });
   });
 
+  it("keeps a mermaid file URL alive when a markdown artifact replaces itself", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-sidebar/diagram-notes.md";
+    const summary = catalogArtifact({ title: "diagram-notes.md" });
+    setupArtifactCatalog(
+      [summary],
+      new Map([
+        [
+          summary.id,
+          catalogFileDetail({
+            contentType: "text/markdown",
+            filename: "diagram-notes.md",
+            fileId: "f0000000-0000-4000-a000-000000000002",
+            summary,
+            url: markdownUrl,
+          }),
+        ],
+      ]),
+    );
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("```mermaid\nflowchart TD\n  A --> B\n```", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+
+    setupChatThread({
+      inlineArtifactOpenEnabled: true,
+    });
+    await openCatalogArtifact("diagram-notes.md");
+
+    const diagram = await screen.findByAltText("Diagram");
+    const url = diagram.getAttribute("src") ?? "";
+    const expand = screen.getByLabelText("Expand diagram");
+    await waitFor(() => {
+      expect(expand).toBeEnabled();
+    });
+    click(expand);
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    const sidebarImage = await waitFor(() => {
+      return within(sidebar).getByTestId("artifact-sidebar-body-image");
+    });
+    expect(sidebarImage).toHaveAttribute("src", url);
+    expect(sidebarImage).toHaveAttribute("alt", "diagram.svg");
+    expect(objectUrls.revokedUrls).not.toContain(url);
+  });
+
   it("connects the agent and syncs a catalog artifact to Google Drive", async () => {
     const user = userEvent.setup({ delay: null });
     const markdownUrl =
@@ -382,29 +542,31 @@ describe("thread-owned utility sidebar", () => {
       });
     });
 
-    let enabledTypes: string[] = [];
+    let enabledConnectorSlugs: string[] = [];
     let agentAuthorized = false;
     let artifactSynced = false;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes });
+      return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
     });
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
-          enabledTypes: ["google-drive"],
+          enabledConnectorSlugs: ["google-drive"],
           operation: "add",
         });
-        enabledTypes = [...body.enabledTypes];
+        enabledConnectorSlugs = [...body.enabledConnectorSlugs];
         agentAuthorized = true;
-        return respond(200, { enabledTypes });
+        return respond(200, {
+          enabledConnectorSlugs,
+        });
       },
     );
     context.mocks.api(
       chatThreadArtifactsContract.syncGoogleDrive,
       ({ body, respond }) => {
-        expect(enabledTypes).toStrictEqual(["google-drive"]);
+        expect(enabledConnectorSlugs).toStrictEqual(["google-drive"]);
         expect(body).toStrictEqual({
           runId: "run-sidebar",
           fileId: "artifact-drive-agent-notes",
@@ -564,7 +726,7 @@ describe("thread-owned utility sidebar", () => {
     });
   });
 
-  it("auto-opens the latest sidebar card from a running run before a completed fallback", async () => {
+  it("does not auto-open run-group sidebar cards", async () => {
     const completedUrl = "https://completed-deck.sites.vm7.io";
     const runningUrl = "https://running-browser-notes.sites.vm7.io";
     context.mocks.browser.matchMedia((query) => {
@@ -572,7 +734,6 @@ describe("thread-owned utility sidebar", () => {
     });
 
     setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
           id: "msg-completed-user",
@@ -619,198 +780,354 @@ describe("thread-owned utility sidebar", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "src",
-        runningUrl,
-      );
+      expect(screen.getAllByTestId("attachment-preview-html")).toHaveLength(2);
+    });
+    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+  });
+
+  it("syncs browser fit after the sidebar entry transition", async () => {
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    const browser = browserSession();
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser });
+    });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, { browser: { ...browser, liveUrl: null } });
+    });
+    setupChatThread();
+
+    click(await screen.findByLabelText("Open browser"));
+    const frame = await screen.findByTitle("Live browser: Thread browser");
+    const viewport = frame.closest("[data-browser-session-viewport]");
+    if (!(viewport instanceof HTMLDivElement)) {
+      throw new Error("Expected a live browser viewport");
+    }
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ width: 720, height: 900 }),
+    );
+    expect(screen.getByLabelText("Fit browser to window")).not.toBeVisible();
+
+    const transitionEnd = new Event("transitionend", { bubbles: true });
+    Object.defineProperty(transitionEnd, "propertyName", { value: "width" });
+    fireEvent(screen.getByTestId("chat-thread-sidebar-pane"), transitionEnd);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Fit browser to window")).toBeVisible();
     });
   });
 
-  it("auto-opens a browser card from a running run", async () => {
-    const browserId = "c0000000-0000-4000-a000-000000000051";
+  it("auto-opens the thread browser while its latest lifecycle event is open", async () => {
     const liveUrl = "https://live.browser-use.com/?wss=auto-open-browser";
-    const browser: ZeroBrowserSession = {
-      id: browserId,
+    const requestStarted = context.mocks.deferred<void>();
+    const releaseResponse = context.mocks.deferred<void>();
+    let browser = browserSession({
       name: "Auto-open browser",
-      status: "active",
-      viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
       liveUrl,
-      proxyCountryCode: null,
-      timeoutMinutes: 240,
-      maxCredits: 500,
-      grossCredits: 0,
-      creditsCharged: 0,
-      idleExpiresAt: "2026-03-10T00:10:00.000Z",
-      suspendedAt: null,
-      suspensionReason: null,
-      createdAt: "2026-03-10T00:00:00.000Z",
-      updatedAt: "2026-03-10T00:00:00.000Z",
+    });
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    let browserRequests = 0;
+    context.mocks.api(zeroBrowserContract.get, async ({ respond }) => {
+      browserRequests += 1;
+      if (browserRequests === 1) {
+        requestStarted.resolve();
+        await releaseResponse.promise;
+      }
+      return respond(200, { browser });
+    });
+    let leaseRequests = 0;
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      leaseRequests += 1;
+      return respond(200, {
+        browser: {
+          ...browser,
+          // The production lease endpoint extends the instance without
+          // returning its provider live URL.
+          liveUrl: null,
+        },
+      });
+    });
+    const resizeAspectRatios: number[] = [];
+    context.mocks.api(
+      zeroBrowserContract.resizeByThread,
+      ({ body, respond }) => {
+        resizeAspectRatios.push(body.aspectRatio);
+        browser = {
+          ...browser,
+          screen: { width: 1440, height: 1800, resizable: true },
+          updatedAt: "2026-03-10T00:00:00.500Z",
+        };
+        return respond(200, { browser });
+      },
+    );
+    setupChatThread({
+      messages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000051",
+          eventType: "browser.open",
+          content: null,
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    await requestStarted.promise;
+    const sidebar = await screen.findByLabelText("Live browser");
+    expect(sidebar).toHaveAttribute("data-browser-session-sidebar");
+    expect(
+      screen.queryByTitle("Live browser: Auto-open browser"),
+    ).not.toBeInTheDocument();
+
+    releaseResponse.resolve();
+    const frame = await screen.findByTitle("Live browser: Auto-open browser");
+    expect(frame).toHaveAttribute("src", liveUrl);
+    expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
+    expect(resizeAspectRatios).toStrictEqual([]);
+
+    const viewport = frame.closest("[data-browser-session-viewport]");
+    if (!(viewport instanceof HTMLDivElement)) {
+      throw new Error("Expected a live browser viewport");
+    }
+    let viewportWidth = 720;
+    vi.spyOn(viewport, "getBoundingClientRect").mockImplementation(() => {
+      return DOMRect.fromRect({ width: viewportWidth, height: 900 });
+    });
+    const resizeHandle = screen.getByRole("separator", {
+      name: "Resize sidebar",
+    });
+    const sidebarLayout = resizeHandle.parentElement;
+    if (!(sidebarLayout instanceof HTMLDivElement)) {
+      throw new Error("Expected the sidebar layout");
+    }
+    vi.spyOn(sidebarLayout, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ width: 1600, height: 900 }),
+    );
+    fireEvent.pointerDown(resizeHandle, { clientX: 840 });
+    const resizeMask = document.querySelector(
+      "[data-chat-thread-sidebar-resize-mask]",
+    );
+    if (!(resizeMask instanceof HTMLDivElement)) {
+      throw new Error("Expected the sidebar resize mask");
+    }
+    fireEvent.pointerMove(resizeMask, { clientX: 780 });
+    fireEvent.pointerUp(resizeMask);
+    const fitWindow = await waitFor(() => {
+      const button = queryAllByRoleFast("button").find((candidate) => {
+        return candidate.getAttribute("aria-label") === "Fit browser to window";
+      });
+      expect(button).toBeDefined();
+      expect(button).toBeVisible();
+      return button;
+    });
+    if (!(fitWindow instanceof HTMLButtonElement)) {
+      throw new Error("Expected the fit browser button");
+    }
+    expect(fitWindow).toHaveTextContent("Fit");
+    expect(fitWindow.closest("[data-browser-session-viewport]")).toBe(viewport);
+    expect(fitWindow).toBeEnabled();
+    click(fitWindow);
+
+    await waitFor(() => {
+      expect(leaseRequests).toBeGreaterThan(0);
+      expect(resizeAspectRatios).toStrictEqual([0.8]);
+      expect(screen.getByLabelText("Fit browser to window")).not.toBeVisible();
+      expect(
+        screen.getByTitle("Live browser: Auto-open browser"),
+      ).toHaveAttribute("src", liveUrl);
+    });
+
+    viewportWidth = 900;
+    window.dispatchEvent(new Event("resize"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Fit browser to window")).toBeVisible();
+    });
+    viewportWidth = 720;
+    window.dispatchEvent(new Event("resize"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Fit browser to window")).not.toBeVisible();
+    });
+
+    await waitFor(() => {
+      expect(hasSubscription("browserSessionChanged")).toBeTruthy();
+    });
+    browser = {
+      ...browser,
+      screen: { width: 1440, height: 900, resizable: true },
+      updatedAt: "2026-03-10T00:00:01.000Z",
     };
+    triggerAblyEvent("browserSessionChanged", { threadId: THREAD_ID });
+    await waitFor(() => {
+      expect(viewport).toHaveAttribute("data-browser-aspect-ratio", "1.6");
+      expect(screen.getByLabelText("Fit browser to window")).toBeVisible();
+    });
+  });
+
+  it("auto-opens the browser sidebar before the event scroll animation frame", async () => {
+    const pendingFrames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      pendingFrames.push(callback);
+      return pendingFrames.length;
+    });
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
     context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
-      return respond(200, { browser });
+      return respond(200, { browser: browserSession() });
     });
-    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
-      return respond(200, { browser });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, {
+        browser: browserSession({ liveUrl: null }),
+      });
     });
+
     setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
-          id: "msg-running-browser",
-          role: "assistant",
-          content: `[Open browser](/browsers/${browserId})`,
-          runId: "run-browser",
+          id: "c0000000-0000-4000-a000-000000000058",
+          eventType: "browser.open",
+          content: null,
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
     });
 
-    const frame = await screen.findByTitle("Live browser: Auto-open browser");
-    expect(frame).toHaveAttribute("src", liveUrl);
-    expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
+    await expect(
+      screen.findByLabelText("Live browser"),
+    ).resolves.toHaveAttribute("data-browser-session-sidebar");
+    expect(pendingFrames.length).toBeGreaterThan(0);
+
+    for (const callback of pendingFrames.splice(0)) {
+      callback(0);
+    }
   });
 
-  it("falls back to the latest successful run and ignores failed and cancelled runs", async () => {
-    const completedUrl = "https://successful-deck.sites.vm7.io";
-    const failedUrl = "https://failed-deck.sites.vm7.io";
-    const cancelledUrl = "https://cancelled-deck.sites.vm7.io";
+  it("auto-opens from the first remote page while older history is still loading", async () => {
+    const historyRequestStarted = context.mocks.deferred<void>();
+    const releaseHistoryResponse = context.mocks.deferred<void>();
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser: browserSession() });
+    });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, {
+        browser: browserSession({ liveUrl: null }),
+      });
+    });
+
+    setupChatThread({
+      waitForHistoryResponse: async () => {
+        historyRequestStarted.resolve();
+        await releaseHistoryResponse.promise;
+      },
+      messages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000054",
+          eventType: "browser.open",
+          content: null,
+          seqId: 51,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    await historyRequestStarted.promise;
+    await expect(
+      screen.findByTitle("Live browser: Thread browser"),
+    ).resolves.toBeInTheDocument();
+    expect(releaseHistoryResponse.settled()).toBeFalsy();
+  });
+
+  it("auto-opens when older history contains the unmatched browser start", async () => {
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser: browserSession() });
+    });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, {
+        browser: browserSession({ liveUrl: null }),
+      });
+    });
+
+    setupChatThread({
+      historyMessages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000055",
+          eventType: "browser.open",
+          content: null,
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+      messages: Array.from({ length: 50 }, (_, index) => {
+        const seqId = index + 2;
+        return {
+          id: `msg-after-browser-start-${seqId.toString()}`,
+          eventType: "output.message" as const,
+          content: `Later message ${seqId.toString()}`,
+          runId: "run-after-browser-start",
+          seqId,
+          createdAt: new Date(Date.UTC(2026, 2, 10, 0, 0, seqId)).toISOString(),
+        };
+      }),
+    });
+
+    await expect(
+      screen.findByTitle("Live browser: Thread browser"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("does not auto-open when the latest browser lifecycle event is close", async () => {
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
 
     setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
-          id: "msg-success-card",
-          role: "assistant",
-          content: `[Successful deck](${completedUrl})`,
-          runId: "run-success",
+          id: "c0000000-0000-4000-a000-000000000052",
+          eventType: "browser.open",
+          content: null,
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
-          id: "msg-success-finish",
-          role: "assistant",
+          id: "c0000000-0000-4000-a000-000000000053",
+          eventType: "browser.close",
           content: null,
-          runId: "run-success",
-          runLifecycleEvent: "completed",
           seqId: 2,
           createdAt: "2026-03-10T00:00:01Z",
         },
         {
-          id: "msg-failed-card",
+          id: "msg-browser-stopped",
           role: "assistant",
-          content: `[Failed deck](${failedUrl})`,
-          runId: "run-failed",
+          content: "Browser was stopped.",
+          runId: "run-browser-stopped",
           seqId: 3,
           createdAt: "2026-03-10T00:00:02Z",
-        },
-        {
-          id: "msg-failed-finish",
-          role: "assistant",
-          content: null,
-          error: "Presentation generation failed",
-          runId: "run-failed",
-          runLifecycleEvent: "failed",
-          seqId: 4,
-          createdAt: "2026-03-10T00:00:03Z",
-        },
-        {
-          id: "msg-cancelled-card",
-          role: "assistant",
-          content: `[Cancelled deck](${cancelledUrl})`,
-          runId: "run-cancelled",
-          seqId: 5,
-          createdAt: "2026-03-10T00:00:04Z",
-        },
-        {
-          id: "msg-cancelled-finish",
-          role: "assistant",
-          content: null,
-          runId: "run-cancelled",
-          runLifecycleEvent: "cancelled",
-          seqId: 6,
-          createdAt: "2026-03-10T00:00:05Z",
         },
       ],
     });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "src",
-        completedUrl,
-      );
-    });
+    await screen.findByText("Browser was stopped.");
+    expect(
+      screen.queryByTestId("browser-session-sidebar"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Live browser")).not.toBeInTheDocument();
   });
 
-  it("does not auto-open a card from an older completed run when the latest completed run has no card", async () => {
-    const olderCompletedUrl = "https://older-completed-deck.sites.vm7.io";
-    context.mocks.browser.matchMedia((query) => {
-      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
-    });
-
-    setupChatThread({
-      autoOpenEnabled: true,
-      messages: [
-        {
-          id: "msg-older-completed-card",
-          role: "assistant",
-          content: `[Older completed deck](${olderCompletedUrl})`,
-          runId: "run-older-completed",
-          seqId: 1,
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        {
-          id: "msg-older-completed-finish",
-          role: "assistant",
-          content: null,
-          runId: "run-older-completed",
-          runLifecycleEvent: "completed",
-          seqId: 2,
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-        {
-          id: "msg-latest-completed-user",
-          role: "user",
-          content: "Summarize the completed work",
-          runId: "run-latest-completed",
-          seqId: 3,
-          createdAt: "2026-03-10T00:00:02Z",
-        },
-        {
-          id: "msg-latest-completed-response",
-          role: "assistant",
-          content: "Latest run completed without a sidebar card.",
-          runId: "run-latest-completed",
-          seqId: 4,
-          createdAt: "2026-03-10T00:00:03Z",
-        },
-        {
-          id: "msg-latest-completed-finish",
-          role: "assistant",
-          content: null,
-          runId: "run-latest-completed",
-          runLifecycleEvent: "completed",
-          seqId: 5,
-          createdAt: "2026-03-10T00:00:04Z",
-        },
-      ],
-    });
-
-    await screen.findByText("Latest run completed without a sidebar card.");
-    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
-  });
-
-  it("skips deleted, reconnect-required, and unavailable cards before falling back", async () => {
+  it("opens never-created browser cards in the shared inactive state", async () => {
     const completedUrl = "https://openable-fallback.sites.vm7.io";
     const deletedDraftId = "c0000000-0000-4000-a000-000000000061";
     const reconnectDraftId = "c0000000-0000-4000-a000-000000000062";
-    const unavailableBrowserId = "c0000000-0000-4000-a000-000000000063";
     const createdAt = "2026-03-10T00:00:00.000Z";
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
@@ -852,7 +1169,6 @@ describe("thread-owned utility sidebar", () => {
     });
 
     setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
           id: "msg-openable-fallback",
@@ -877,7 +1193,7 @@ describe("thread-owned utility sidebar", () => {
           content: [
             `[Deleted](/mail/drafts/${deletedDraftId})`,
             `[Reconnect](/mail/drafts/${reconnectDraftId})`,
-            `[Unavailable browser](/browsers/${unavailableBrowserId})`,
+            `[Browser](/browsers/${THREAD_ID})`,
           ].join("\n"),
           runId: "run-unopenable-cards",
           seqId: 3,
@@ -886,12 +1202,20 @@ describe("thread-owned utility sidebar", () => {
       ],
     });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "src",
-        completedUrl,
+    const browserCard = await waitFor(() => {
+      const card = document.querySelector<HTMLElement>(
+        "[data-browser-session-card]",
       );
+      expect(card).not.toBeNull();
+      return card as HTMLElement;
     });
+    expect(browserCard).toHaveAttribute(
+      "data-browser-session-status",
+      "suspended",
+    );
+    expect(browserCard).toHaveTextContent("Stopped");
+    expect(screen.queryByLabelText("Live browser")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     await expect(
       screen.findByLabelText("Deleted email: Deleted draft"),
     ).resolves.toHaveAttribute("aria-disabled", "true");
@@ -900,18 +1224,42 @@ describe("thread-owned utility sidebar", () => {
         "Reconnect Gmail to access email: Reconnect draft",
       ),
     ).resolves.toBeInTheDocument();
+    click(browserCard);
+    const browserSidebar = await screen.findByLabelText("Live browser");
+    expect(browserSidebar).toHaveAttribute("data-browser-session-sidebar");
     await expect(
-      screen.findByText("Browser unavailable"),
+      within(browserSidebar).findByText("Browser not live"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      within(browserSidebar).findByText("Start browser"),
     ).resolves.toBeInTheDocument();
   });
 
-  it("auto-opens a sidebar card received from background sync", async () => {
-    const syncedUrl = "https://synced-presentation.sites.vm7.io";
+  it("auto-opens a background-synced browser start before mark-read completes", async () => {
+    const markReadStarted = context.mocks.deferred<void>();
+    const finishMarkRead = context.mocks.deferred<void>();
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
+    context.mocks.api(
+      chatThreadMarkReadContract.markRead,
+      async ({ respond }) => {
+        markReadStarted.resolve();
+        await finishMarkRead.promise;
+        return respond(200, {
+          lastReadAt: "2026-03-10T00:00:05Z",
+          unreads: [],
+        });
+      },
+    );
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser: browserSession() });
+    });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, { browser: browserSession({ liveUrl: null }) });
+    });
     const fixture = setupChatThread({
-      autoOpenEnabled: true,
+      messages: [],
     });
 
     await waitFor(() => {
@@ -919,54 +1267,63 @@ describe("thread-owned utility sidebar", () => {
     });
     fixture.publishMessages([
       {
-        id: "msg-synced-user",
-        role: "user",
-        content: "Build a presentation",
-        runId: "run-synced",
-        seqId: 3,
+        id: "c0000000-0000-4000-a000-000000000054",
+        eventType: "browser.open",
+        content: null,
+        seqId: 1,
         createdAt: "2026-03-10T00:00:03Z",
       },
       {
-        id: "msg-synced-card",
+        id: "msg-synced-browser",
         role: "assistant",
-        content: `[Synced presentation](${syncedUrl})`,
+        content: "Browser is ready.",
         runId: "run-synced",
-        seqId: 4,
+        seqId: 2,
         createdAt: "2026-03-10T00:00:04Z",
+      },
+      {
+        id: "msg-synced-finish",
+        role: "assistant",
+        content: null,
+        runId: "run-synced",
+        runLifecycleEvent: "completed",
+        seqId: 3,
+        createdAt: "2026-03-10T00:00:05Z",
       },
     ]);
 
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "src",
-        syncedUrl,
-      );
-    });
+    await markReadStarted.promise;
+    await expect(
+      screen.findByTitle("Live browser: Thread browser"),
+    ).resolves.toBeInTheDocument();
   });
 
-  it("does not reopen the same auto-opened card after the user closes it", async () => {
-    const cardUrl = "https://closed-presentation.sites.vm7.io";
+  it("does not reopen the same browser start after the user closes it", async () => {
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser: browserSession() });
+    });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, { browser: browserSession({ liveUrl: null }) });
+    });
     const fixture = setupChatThread({
-      autoOpenEnabled: true,
       messages: [
         {
-          id: "msg-card-before-close",
-          role: "assistant",
-          content: `[Presentation](${cardUrl})`,
-          runId: "run-close",
+          id: "c0000000-0000-4000-a000-000000000055",
+          eventType: "browser.open",
+          content: null,
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
     });
 
-    await screen.findByTestId("artifact-sidebar");
-    click(screen.getByLabelText("Close artifact"));
+    await screen.findByLabelText("Live browser");
+    click(screen.getByLabelText("Close live browser"));
     await waitFor(() => {
-      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Live browser")).not.toBeInTheDocument();
     });
     await waitFor(() => {
       expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
@@ -974,23 +1331,20 @@ describe("thread-owned utility sidebar", () => {
 
     fixture.publishMessages([
       {
-        id: "msg-same-card-after-close",
+        id: "msg-browser-still-running",
         role: "assistant",
-        content: `[Presentation again](${cardUrl})`,
+        content: "Browser is still running.",
         runId: "run-close",
         seqId: 2,
         createdAt: "2026-03-10T00:00:01Z",
       },
     ]);
 
-    await waitFor(() => {
-      expect(screen.getAllByTestId("attachment-preview-html")).toHaveLength(2);
-    });
-    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    await screen.findByText("Browser is still running.");
+    expect(screen.queryByLabelText("Live browser")).not.toBeInTheDocument();
   });
 
   it("does not replace a sidebar the user already opened", async () => {
-    const syncedUrl = "https://user-choice-preserved.sites.vm7.io";
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
@@ -1001,7 +1355,6 @@ describe("thread-owned utility sidebar", () => {
       });
     });
     const fixture = setupChatThread({
-      autoOpenEnabled: true,
       messages: [],
     });
     await openArtifactsFromHeader();
@@ -1012,63 +1365,52 @@ describe("thread-owned utility sidebar", () => {
     });
     fixture.publishMessages([
       {
-        id: "msg-user-choice-card",
-        role: "assistant",
-        content: `[New presentation](${syncedUrl})`,
-        runId: "run-user-choice",
+        id: "c0000000-0000-4000-a000-000000000056",
+        eventType: "browser.open",
+        content: null,
         seqId: 1,
         createdAt: "2026-03-10T00:00:00Z",
       },
+      {
+        id: "msg-user-choice-preserved",
+        role: "assistant",
+        content: "Browser started in the background.",
+        runId: "run-user-choice",
+        seqId: 2,
+        createdAt: "2026-03-10T00:00:01Z",
+      },
     ]);
 
-    await screen.findByTestId("attachment-preview-html");
+    await screen.findByText("Browser started in the background.");
     expect(screen.getByTestId("thread-sidebar-artifacts")).toBeInTheDocument();
     expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
   });
 
-  it.each([
-    {
-      name: "the auto-open switch is off",
-      autoOpenEnabled: false,
-      splitViewAvailable: true,
-    },
-    {
-      name: "the viewport cannot show split view",
-      autoOpenEnabled: true,
-      splitViewAvailable: false,
-    },
-  ])("does not auto-open when $name", async (scenario) => {
-    const cardUrl = "https://guarded-deck.sites.vm7.io";
-    context.mocks.browser.matchMedia((query) => {
-      return (
-        scenario.splitViewAvailable &&
-        query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY
-      );
+  it("does not auto-open when the viewport cannot show split view", async () => {
+    context.mocks.browser.matchMedia(() => {
+      return false;
     });
     setupChatThread({
-      autoOpenEnabled: scenario.autoOpenEnabled,
       messages: [
         {
-          id: "msg-guarded-card",
-          role: "assistant",
-          content: `[Guarded deck](${cardUrl})`,
-          runId: "run-guarded",
+          id: "c0000000-0000-4000-a000-000000000057",
+          eventType: "browser.open",
+          content: null,
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
-          id: "msg-guarded-finish",
+          id: "msg-guarded-browser",
           role: "assistant",
-          content: null,
+          content: "Browser started.",
           runId: "run-guarded",
-          runLifecycleEvent: "completed",
           seqId: 2,
           createdAt: "2026-03-10T00:00:01Z",
         },
       ],
     });
 
-    await screen.findByTestId("attachment-preview-html");
-    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    await screen.findByText("Browser started.");
+    expect(screen.queryByLabelText("Live browser")).not.toBeInTheDocument();
   });
 });

@@ -1,15 +1,16 @@
 import {
-  connectorsTypeCallbackContract,
+  connectorsSlugCallbackContract,
   type ConnectorOauthCallbackResult,
-} from "@vm0/api-contracts/contracts/connectors-type-callback";
+} from "@vm0/api-contracts/contracts/connectors-slug-callback";
+import { zeroCustomConnectorOAuth2Contract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   publicConnectorCatalogIconSchema,
   type PublicConnectorCatalogIcon,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
 import {
-  connectorRefSchema,
-  type ConnectorRef,
+  connectorSlugSchema,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { command } from "ccstate";
 import { createElement } from "react";
@@ -23,26 +24,54 @@ import { updatePage$ } from "../react-router.ts";
 import { pathParams$, replacePathSilently$, searchParams$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { jsonParseOr } from "../utils.ts";
+import { i18n } from "../../i18n/index.ts";
 
 type ConnectorCallbackPageResult =
   | { readonly status: "loading" }
   | ConnectorOauthCallbackResult;
+type ConnectorCallbackSlug = ConnectorSlug | "custom";
 
 const {
   get$: connectorAppOauthCallbackMetadataRaw$,
   clear$: clearConnectorAppOauthCallbackMetadata$,
 } = localStorageSignals(CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY);
 
-function connectorRefFromPath(value: string | undefined): ConnectorRef | null {
-  const parsed = connectorRefSchema.safeParse(value?.toLowerCase());
+function connectorSlugFromPath(
+  value: string | undefined,
+): ConnectorCallbackSlug | null {
+  const normalized = value?.toLowerCase();
+  if (normalized === "custom") {
+    return normalized;
+  }
+  const parsed = connectorSlugSchema.safeParse(normalized);
   return parsed.success ? parsed.data : null;
 }
 
-function connectorLabel(connectorRef: ConnectorRef | null): string {
-  if (!connectorRef) {
-    return "Connector";
+function connectorLabel(connectorSlug: ConnectorCallbackSlug | null): string {
+  if (!connectorSlug) {
+    return i18n.t(($) => {
+      return $.connectors.callback.genericLabel;
+    });
   }
-  return connectorRef === "github" ? "GitHub" : connectorRef.toUpperCase();
+  if (connectorSlug === "custom") {
+    return i18n.t(($) => {
+      return $.connectors.callback.customConnectorLabel;
+    });
+  }
+  return connectorSlug === "github"
+    ? i18n.t(($) => {
+        return $.connectors.callback.githubLabel;
+      })
+    : connectorSlug.toUpperCase();
+}
+
+function connectorCallbackDocumentTitle(label: string): string {
+  return i18n.t(
+    ($) => {
+      return $.connectors.callback.documentTitle;
+    },
+    { connector: label },
+  );
 }
 
 function connectorIconFromSearchParams(
@@ -76,38 +105,34 @@ function addConnectorIconSearchParams(
   }
 }
 
-function connectorCallbackMetadataFromStorage(
+function connectorIconFromStorage(
   raw: string | null,
-  connectorRef: ConnectorRef | null,
-): {
-  readonly connectorRef: ConnectorRef;
-  readonly icon: PublicConnectorCatalogIcon;
-} | null {
-  if (!raw || !connectorRef) {
-    return null;
+  connectorSlug: ConnectorSlug | null,
+): PublicConnectorCatalogIcon | undefined {
+  if (!raw || !connectorSlug) {
+    return undefined;
   }
   const value = jsonParseOr<unknown>(raw, null);
   if (
     typeof value !== "object" ||
     value === null ||
-    !("connectorRef" in value) ||
+    !("connectorSlug" in value) ||
     !("icon" in value)
   ) {
-    return null;
+    return undefined;
   }
-  const parsedConnectorRef = connectorRefSchema.safeParse(value.connectorRef);
+  const parsedConnectorSlug = connectorSlugSchema.safeParse(
+    value.connectorSlug,
+  );
   const parsedIcon = publicConnectorCatalogIconSchema.safeParse(value.icon);
   if (
-    !parsedConnectorRef.success ||
-    parsedConnectorRef.data !== connectorRef ||
+    !parsedConnectorSlug.success ||
+    parsedConnectorSlug.data !== connectorSlug ||
     !parsedIcon.success
   ) {
-    return null;
+    return undefined;
   }
-  return {
-    connectorRef: parsedConnectorRef.data,
-    icon: parsedIcon.data,
-  };
+  return parsedIcon.data;
 }
 
 function resultFromPath(
@@ -124,7 +149,10 @@ function resultFromPath(
     return {
       status,
       message:
-        searchParams.get("message") || "An error occurred during connection.",
+        searchParams.get("message") ||
+        i18n.t(($) => {
+          return $.connectors.callback.errorFallback;
+        }),
     };
   }
   return null;
@@ -147,16 +175,37 @@ function callbackPageElement(
 const completeConnectorCallback$ = command(
   async (
     { get },
-    connectorRef: ConnectorRef,
+    connectorSlug: ConnectorSlug,
     query: Record<string, string>,
     signal: AbortSignal,
   ): Promise<ConnectorOauthCallbackResult> => {
-    const client = get(zeroClient$)(connectorsTypeCallbackContract, {
+    const client = get(zeroClient$)(connectorsSlugCallbackContract, {
       apiBase: "api",
     });
     const response = await accept(
       client.callback({
-        params: { type: connectorRef },
+        params: { connectorSlug },
+        query: { ...query, responseMode: "json" },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return response.body;
+  },
+);
+
+const completeCustomConnectorCallback$ = command(
+  async (
+    { get },
+    query: Record<string, string>,
+    signal: AbortSignal,
+  ): Promise<ConnectorOauthCallbackResult> => {
+    const client = get(zeroClient$)(zeroCustomConnectorOAuth2Contract, {
+      apiBase: "api",
+    });
+    const response = await accept(
+      client.callback({
         query: { ...query, responseMode: "json" },
         fetchOptions: { signal },
       }),
@@ -170,17 +219,21 @@ const completeConnectorCallback$ = command(
 export const setupConnectorCallbackPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParams$);
-    const connectorRef = connectorRefFromPath(
-      typeof params?.type === "string" ? params.type : undefined,
+    const callbackConnectorSlug = connectorSlugFromPath(
+      typeof params?.connectorSlug === "string"
+        ? params.connectorSlug
+        : undefined,
     );
-    const label = connectorLabel(connectorRef);
+    const connectorSlug =
+      callbackConnectorSlug === "custom" ? null : callbackConnectorSlug;
+    const label = connectorLabel(callbackConnectorSlug);
     const searchParams = get(searchParams$);
-    const storedMetadata = connectorCallbackMetadataFromStorage(
+    const storedConnectorIcon = connectorIconFromStorage(
       get(connectorAppOauthCallbackMetadataRaw$),
-      connectorRef,
+      connectorSlug,
     );
     const connectorIcon =
-      connectorIconFromSearchParams(searchParams) ?? storedMetadata?.icon;
+      connectorIconFromSearchParams(searchParams) ?? storedConnectorIcon;
     const pathResult = resultFromPath(
       typeof params?.status === "string" ? params.status : undefined,
       searchParams,
@@ -188,20 +241,22 @@ export const setupConnectorCallbackPage$ = command(
 
     if (pathResult) {
       set(updatePage$, callbackPageElement(connectorIcon, label, pathResult));
-      set(updateDocumentTitle$, `Connect ${label}`);
+      set(updateDocumentTitle$, connectorCallbackDocumentTitle(label));
       await set(hideAppSkeleton$, signal);
       return;
     }
 
-    if (!connectorRef) {
+    if (!callbackConnectorSlug) {
       set(
         updatePage$,
         callbackPageElement(connectorIcon, label, {
           status: "error",
-          message: "Invalid connector callback URL.",
+          message: i18n.t(($) => {
+            return $.connectors.callback.invalidUrl;
+          }),
         }),
       );
-      set(updateDocumentTitle$, `Connect ${label}`);
+      set(updateDocumentTitle$, connectorCallbackDocumentTitle(label));
       await set(hideAppSkeleton$, signal);
       return;
     }
@@ -210,15 +265,19 @@ export const setupConnectorCallbackPage$ = command(
       updatePage$,
       callbackPageElement(connectorIcon, label, { status: "loading" }),
     );
-    set(updateDocumentTitle$, `Connect ${label}`);
+    set(updateDocumentTitle$, connectorCallbackDocumentTitle(label));
     await set(hideAppSkeleton$, signal);
 
-    const result = await set(
-      completeConnectorCallback$,
-      connectorRef,
-      Object.fromEntries(searchParams),
-      signal,
-    );
+    const query = Object.fromEntries(searchParams);
+    const result =
+      callbackConnectorSlug === "custom"
+        ? await set(completeCustomConnectorCallback$, query, signal)
+        : await set(
+            completeConnectorCallback$,
+            callbackConnectorSlug,
+            query,
+            signal,
+          );
     set(updatePage$, callbackPageElement(connectorIcon, label, result));
 
     const resultSearchParams = new URLSearchParams();
@@ -232,10 +291,10 @@ export const setupConnectorCallbackPage$ = command(
     set(
       replacePathSilently$,
       ROUTES.connectorCallbackResult,
-      { type: connectorRef, status: result.status },
+      { connectorSlug: callbackConnectorSlug, status: result.status },
       resultSearchParams,
     );
-    if (storedMetadata) {
+    if (storedConnectorIcon) {
       set(clearConnectorAppOauthCallbackMetadata$);
     }
   },

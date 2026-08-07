@@ -2,7 +2,7 @@ import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   chatThreadEventsContract,
-  type ChatEventResponse,
+  type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -18,7 +18,7 @@ const PAGE_SIZE = 50;
 // fetched and flushed into the persistent message state.
 const GATED_BEFORE_SEQ_ID = 51;
 
-function eventForSeq(seqId: number): ChatEventResponse {
+function eventForSeq(seqId: number): ChatEvent {
   if (seqId === TOTAL_MESSAGES) {
     return {
       id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
@@ -46,11 +46,8 @@ function eventForSeq(seqId: number): ChatEventResponse {
   };
 }
 
-function eventsInRange(
-  fromSeqId: number,
-  toSeqId: number,
-): ChatEventResponse[] {
-  const events: ChatEventResponse[] = [];
+function eventsInRange(fromSeqId: number, toSeqId: number): ChatEvent[] {
+  const events: ChatEvent[] = [];
   for (let seqId = fromSeqId; seqId <= toSeqId; seqId++) {
     events.push(eventForSeq(seqId));
   }
@@ -73,7 +70,6 @@ function mockPagedHistory(): {
       if (query.beforeSeqId === undefined) {
         return respond(200, {
           events: eventsInRange(TOTAL_MESSAGES - PAGE_SIZE + 1, TOTAL_MESSAGES),
-          hasHistoryBefore: true,
         });
       }
       beforeSeqIds.push(query.beforeSeqId);
@@ -82,10 +78,7 @@ function mockPagedHistory(): {
       }
       const toSeqId = query.beforeSeqId - 1;
       const fromSeqId = Math.max(1, toSeqId - PAGE_SIZE + 1);
-      return respond(200, {
-        events: eventsInRange(fromSeqId, toSeqId),
-        hasHistoryBefore: fromSeqId > 1,
-      });
+      return respond(200, { events: eventsInRange(fromSeqId, toSeqId) });
     },
   );
   return { finalHistoryPage, beforeSeqIds };
@@ -118,7 +111,7 @@ describe("chat history backfill loading", () => {
       }
       expect(skeleton.parentElement).toBe(messageContainer);
       expect(
-        skeleton.querySelectorAll("[data-chat-message-skeleton]"),
+        skeleton.querySelectorAll("[data-chat-event-skeleton]"),
       ).toHaveLength(2);
       expect(
         skeleton.compareDocumentPosition(firstMessage) &

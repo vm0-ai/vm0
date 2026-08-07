@@ -12,6 +12,7 @@ import {
   Plugin,
   PluginKey,
   NodeSelection,
+  Selection,
   type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
@@ -24,15 +25,18 @@ import {
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
-  createFeedbackSignals,
+  createComposerFeedbackModel,
   formatFeedbackPrompt,
+  type ComposerFeedbackModel,
+  type ComposerFeedbackSignals,
   type FeedbackItem,
-  type FeedbackSignals,
 } from "./chat-feedback.ts";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   findActiveChatThreadSuggestionRange,
   serializeChatThreadMention,
@@ -40,6 +44,16 @@ import {
   type ChatThreadSuggestionRange,
   type ComposerChatThreadSuggestion,
 } from "./chat-thread-suggestion-domain.ts";
+import {
+  splitAgentMentionSegments,
+  type ComposerAgentSuggestion,
+} from "./composer-agent-suggestion-domain.ts";
+import {
+  agentMentionText,
+  createAgentMentionAvatarRuntime,
+  createAgentMentionNode,
+  type AgentMentionAvatarRuntime,
+} from "./composer-agent-mention-node.ts";
 import {
   createComposerChatThreadSuggestions,
   type ComposerChatThreadSuggestionResult,
@@ -52,6 +66,7 @@ import {
   type SlashWorkflowRange,
 } from "./workflow-composer-domain.ts";
 import {
+  AGENT_MENTION_NODE_NAME,
   CHAT_THREAD_MENTION_NODE_NAME,
   createEditorDocumentSnapshot,
   INLINE_TEMPLATE_NODE_NAME,
@@ -65,12 +80,17 @@ import {
 } from "./template-preview-runtime.ts";
 import { createComposerWorkflows } from "./composer-workflows.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
+import { i18n } from "../../i18n/index.ts";
+import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+import { resolveVideoGenerationOptions } from "@vm0/core/video-model-catalog";
+import { videoTemplateOptionsEnabled$ } from "../external/feature-switch.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
   Promise<void>,
   [AbortSignal, AbortSignal]
 >;
+type AgentMentionAvatarsSyncCommand = Command<Promise<void>, [AbortSignal]>;
 
 interface MountedWorkflowNamesSync {
   readonly command$: WorkflowNamesSyncCommand;
@@ -105,7 +125,7 @@ const unregisterMountedWorkflowNamesSync$ = command(
   },
 );
 
-const reloadMountedWorkflowNames$ = command(
+export const reloadMountedComposerWorkflows$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     set(reloadWorkflowData$);
     const pendingSyncs: Promise<void>[] = [];
@@ -136,21 +156,15 @@ const EDITOR_CONTENT_CLASS =
 
 function editorContentClass(singleLineOnMobile: boolean): string {
   return singleLineOnMobile
-    ? `${EDITOR_CONTENT_CLASS} min-h-[44px] md:min-h-[96px]`
+    ? `${EDITOR_CONTENT_CLASS} min-h-[68px] md:min-h-[96px]`
     : `${EDITOR_CONTENT_CLASS} min-h-[96px]`;
 }
 
 const WORKFLOW_HIGHLIGHT_CLASS = "text-primary";
-const COMPOSER_PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
-
-function isIOS(): boolean {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  );
+function composerPlaceholder(): string {
+  return i18n.t(($) => {
+    return $.chat.composer.placeholder;
+  });
 }
 
 interface WorkflowHighlightStorage {
@@ -169,14 +183,6 @@ export interface WorkflowComposerSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  readonly setAutoFocusContainerRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
-  readonly setCompactContainerRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
   readonly focus$: Command<void, []>;
   readonly hasInput$: Computed<boolean>;
   readonly hasTemplateAttachment$: Computed<boolean>;
@@ -192,12 +198,17 @@ export interface WorkflowComposerSignals {
   readonly setSelectedSuggestionIndex$: Command<void, [number]>;
   readonly closeSuggestionMenu$: Command<void, []>;
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
+  readonly insertAgent$: Command<void, [ComposerAgentSuggestion]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly insertPromptMarkdown$: Command<void, [string]>;
   readonly insertUserMessage$: Command<void, [UserMessageDocument]>;
   readonly insertTemplate$: Command<
     void,
     [GenerationTemplateRequest, ComposerTemplateAttachment]
+  >;
+  readonly updateTemplateAt$: Command<
+    void,
+    [number, GenerationTemplateRequest, ComposerTemplateAttachment]
   >;
   readonly readSelectedTemplate$: Command<
     GenerationTemplateRequest | undefined,
@@ -215,13 +226,14 @@ export interface WorkflowComposerSignals {
     (() => void) | undefined,
     [HTMLButtonElement | null]
   >;
-  readonly feedback: FeedbackSignals;
+  readonly feedback: ComposerFeedbackSignals;
 }
 
 export type ComposerTemplateAttachmentType =
   | "presentation"
   | "illustration"
   | "video"
+  | "avatar"
   | "workflow"
   | "website";
 
@@ -241,8 +253,11 @@ function createComposerAgentResources<T extends AgentIdValue>(
   return { agentId$, workflows$: createComposerWorkflows(agentId$) };
 }
 
-function createComposerFeedback(threadId: string | undefined, editor: Editor) {
-  return createFeedbackSignals(threadId ?? "", {
+function connectComposerFeedback(
+  feedback: ComposerFeedbackModel,
+  editor: Editor,
+): void {
+  feedback.connectEditor({
     insertItem(item) {
       insertFeedbackItem(editor, item);
     },
@@ -276,6 +291,34 @@ const COMPOSER_INLINE_REFERENCE_CLASS =
   "data-[selected]:ring-1 data-[selected]:ring-inset " +
   "data-[selected]:ring-orange-500/40 dark:data-[selected]:bg-orange-400/20 " +
   "dark:data-[selected]:ring-orange-300/40";
+
+/**
+ * Same surface as COMPOSER_INLINE_REFERENCE_CLASS with the padding and hover
+ * moved onto the zones below, so each half of a split chip reacts on its own.
+ */
+const INLINE_TEMPLATE_CHIP_CLASS =
+  "relative -top-px mx-0.5 inline-flex h-7 max-w-full select-none items-center " +
+  "overflow-hidden whitespace-nowrap rounded-md bg-orange-500/10 align-middle " +
+  "text-[13px] font-medium text-orange-600 transition-colors " +
+  "dark:bg-orange-400/15 dark:text-orange-300 data-[selected]:bg-orange-500/15 " +
+  "data-[selected]:ring-1 data-[selected]:ring-inset " +
+  "data-[selected]:ring-orange-500/40 dark:data-[selected]:bg-orange-400/20 " +
+  "dark:data-[selected]:ring-orange-300/40";
+
+const INLINE_TEMPLATE_NAME_ZONE_CLASS =
+  "flex h-full min-w-0 items-center gap-1.5 px-2 text-orange-600 " +
+  "transition-colors dark:text-orange-300 " +
+  "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-1 " +
+  "focus-visible:ring-inset focus-visible:ring-orange-500/40 " +
+  "dark:hover:bg-orange-400/20 dark:focus-visible:ring-orange-300/40";
+
+const INLINE_TEMPLATE_SPEC_ZONE_CLASS =
+  "flex h-full shrink-0 items-center gap-1 border-l border-orange-500/25 " +
+  "pl-2 pr-1.5 text-[12px] font-normal text-orange-600/75 transition-colors " +
+  "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-1 " +
+  "focus-visible:ring-inset focus-visible:ring-orange-500/40 " +
+  "dark:border-orange-300/25 dark:text-orange-300/75 " +
+  "dark:hover:bg-orange-400/20 dark:focus-visible:ring-orange-300/40";
 
 interface ChatThreadMentionAttributes {
   readonly threadId: string;
@@ -466,6 +509,7 @@ function createComposerIcon(
 function createFeedbackItemNodeView(
   node: ProseMirrorNode,
   removeFeedback: (id: number) => void,
+  localizedUi: Set<() => void>,
 ): NodeView {
   const dom = document.createElement("div");
   dom.dataset.feedbackItem = "";
@@ -496,8 +540,6 @@ function createFeedbackItemNodeView(
     "text-muted-foreground/70 transition-colors hover:bg-muted " +
     "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
     "focus-visible:ring-ring";
-  removeButton.setAttribute("aria-label", "Remove feedback");
-  removeButton.title = "Remove feedback";
   removeButton.append(
     createComposerIcon(14, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
   );
@@ -509,17 +551,27 @@ function createFeedbackItemNodeView(
   placeholderDom.className =
     "pointer-events-none absolute left-1 top-1 text-[0.9375rem] " +
     "leading-snug text-muted-foreground/40";
-  placeholderDom.textContent = "What should change about this?";
   placeholderDom.setAttribute("aria-hidden", "true");
   const contentDOM = document.createElement("div");
   contentDOM.dataset.feedbackNote = "";
   contentDOM.setAttribute("role", "textbox");
-  contentDOM.setAttribute("aria-label", "What should change about this?");
   contentDOM.setAttribute("aria-multiline", "true");
   noteDom.append(placeholderDom, contentDOM);
   dom.append(quoteDom, noteDom);
 
   let currentNode = node;
+  function localize(): void {
+    const removeLabel = i18n.t(($) => {
+      return $.chat.feedback.remove;
+    });
+    const placeholder = i18n.t(($) => {
+      return $.chat.feedback.placeholder;
+    });
+    removeButton.setAttribute("aria-label", removeLabel);
+    removeButton.title = removeLabel;
+    placeholderDom.textContent = placeholder;
+    contentDOM.setAttribute("aria-label", placeholder);
+  }
   function render(nextNode: ProseMirrorNode): void {
     const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
     dom.className = `flex flex-col gap-1.5 pb-1.5 pt-1.5${
@@ -538,6 +590,8 @@ function createFeedbackItemNodeView(
   removeButton.addEventListener("click", () => {
     removeFeedback(feedbackItemNodeAttributes(currentNode).feedbackId);
   });
+  localizedUi.add(localize);
+  localize();
   render(currentNode);
 
   return {
@@ -562,6 +616,9 @@ function createFeedbackItemNodeView(
         mutation.type !== "selection" && !contentDOM.contains(mutation.target)
       );
     },
+    destroy() {
+      localizedUi.delete(localize);
+    },
   };
 }
 
@@ -576,6 +633,7 @@ function templateAttachmentNodeAttributes(
     (type !== "presentation" &&
       type !== "illustration" &&
       type !== "video" &&
+      type !== "avatar" &&
       type !== "workflow" &&
       type !== "website") ||
     typeof title !== "string" ||
@@ -596,42 +654,126 @@ function templateAttachmentPreviewLabel(
   attachment: ComposerTemplateAttachment,
 ): string {
   if (attachment.type === "video") {
-    return `Preview video template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.previewVideo;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
   if (attachment.type === "workflow") {
-    return `Preview workflow template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.previewWorkflow;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
   if (attachment.type === "website") {
-    return `Preview website template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.previewWebsite;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
-  return `Preview template ${attachment.title}`;
+  return i18n.t(
+    ($) => {
+      return $.chat.templates.previewTemplate;
+    },
+    {
+      title: attachment.title,
+    },
+  );
 }
 
 function templateAttachmentRemoveLabel(
   attachment: ComposerTemplateAttachment,
 ): string {
   if (attachment.type === "video") {
-    return `Remove video template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.removeVideo;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
   if (attachment.type === "workflow") {
-    return `Remove workflow template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.removeWorkflow;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
   if (attachment.type === "website") {
-    return `Remove website template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.removeWebsite;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
-  return `Remove template ${attachment.title}`;
+  return i18n.t(
+    ($) => {
+      return $.chat.templates.removeTemplate;
+    },
+    {
+      title: attachment.title,
+    },
+  );
 }
 
 function templateAttachmentTypeLabel(
   type: ComposerTemplateAttachmentType,
 ): string {
-  return `${type.charAt(0).toUpperCase()}${type.slice(1)}`;
+  if (type === "presentation") {
+    return i18n.t(($) => {
+      return $.chat.templates.categories.presentation;
+    });
+  }
+  if (type === "illustration") {
+    return i18n.t(($) => {
+      return $.chat.templates.categories.illustration;
+    });
+  }
+  if (type === "video") {
+    return i18n.t(($) => {
+      return $.chat.templates.categories.video;
+    });
+  }
+  if (type === "avatar") {
+    return i18n.t(($) => {
+      return $.artifacts.templates.avatar;
+    });
+  }
+  if (type === "website") {
+    return i18n.t(($) => {
+      return $.chat.templates.categories.website;
+    });
+  }
+  return i18n.t(($) => {
+    return $.chat.templates.categories.workflow;
+  });
 }
 
 function createTemplateAttachmentNodeView(
   node: ProseMirrorNode,
   openTemplate: (category: string) => void,
   removeTemplate: () => void,
+  localizedUi: Set<() => void>,
 ): NodeView {
   const dom = document.createElement("div");
   dom.dataset.composerTemplateAttachment = "";
@@ -675,18 +817,20 @@ function createTemplateAttachmentNodeView(
   dom.append(chip);
 
   let currentNode = node;
-  function render(nextNode: ProseMirrorNode): void {
-    const attachment = templateAttachmentNodeAttributes(nextNode);
+  function localize(): void {
+    const attachment = templateAttachmentNodeAttributes(currentNode);
     openButton.setAttribute(
       "aria-label",
       templateAttachmentPreviewLabel(attachment),
     );
-    removeButton.setAttribute(
-      "aria-label",
-      templateAttachmentRemoveLabel(attachment),
-    );
-    removeButton.title = templateAttachmentRemoveLabel(attachment);
+    const removeLabel = templateAttachmentRemoveLabel(attachment);
+    removeButton.setAttribute("aria-label", removeLabel);
+    removeButton.title = removeLabel;
     typeText.textContent = templateAttachmentTypeLabel(attachment.type);
+  }
+  function render(nextNode: ProseMirrorNode): void {
+    const attachment = templateAttachmentNodeAttributes(nextNode);
+    localize();
     titleText.textContent = attachment.title;
     iconContainer.replaceChildren();
     if (attachment.previewImageUrl) {
@@ -716,6 +860,7 @@ function createTemplateAttachmentNodeView(
     event.preventDefault();
   });
   removeButton.addEventListener("click", removeTemplate);
+  localizedUi.add(localize);
   render(currentNode);
 
   return {
@@ -736,32 +881,98 @@ function createTemplateAttachmentNodeView(
     ignoreMutation() {
       return true;
     },
+    destroy() {
+      localizedUi.delete(localize);
+    },
+  };
+}
+
+interface InlineTemplateNodeActions {
+  readonly openTemplate: (category: string) => void;
+  readonly openOptions: (anchor: DOMRect) => void;
+  /** Read per render so a chip picks the switch up on its next update. */
+  readonly optionsEnabled: () => boolean;
+}
+
+/**
+ * Aspect ratio and duration for a text-to-video template, resolved against the
+ * model catalog so a chip shows the parameters the run will actually use even
+ * when the user has overridden none of them. Talking-avatar templates share the
+ * "video" envelope but take none of these parameters.
+ */
+function inlineTemplateSpecSegments(node: ProseMirrorNode): readonly string[] {
+  const parsed = generationTemplateRequestSchema.safeParse(node.attrs.template);
+  if (!parsed.success || parsed.data.type !== "video") {
+    return [];
+  }
+  const { selection } = parsed.data;
+  if (parseAvatarTemplateStylePresetId(selection.stylePresetId) !== undefined) {
+    return [];
+  }
+  const resolved = resolveVideoGenerationOptions(selection.videoOptions);
+  return [resolved.aspectRatio, resolved.duration];
+}
+
+function createInlineTemplateSpecZone(): {
+  readonly zone: HTMLButtonElement;
+  readonly render: (segments: readonly string[]) => void;
+} {
+  const zone = document.createElement("button");
+  zone.type = "button";
+  zone.className = INLINE_TEMPLATE_SPEC_ZONE_CLASS;
+  const lead = document.createElement("span");
+  // Everything after the ratio is dropped on narrow viewports so the chip
+  // stays readable inside a prompt sentence.
+  const rest = document.createElement("span");
+  rest.className = "hidden sm:inline";
+  const chevron = createComposerIcon(11, 1.7, ["M6 9l6 6 6 -6"]);
+  chevron.setAttribute("class", "shrink-0 opacity-70");
+  zone.append(lead, rest, chevron);
+  return {
+    zone,
+    render(segments) {
+      lead.textContent = segments[0] ?? "";
+      rest.textContent = segments
+        .slice(1)
+        .map((segment) => {
+          return ` \u00b7 ${segment}`;
+        })
+        .join("");
+      zone.setAttribute(
+        "aria-label",
+        i18n.t(
+          ($) => {
+            return $.chat.templates.videoOptionsLabel;
+          },
+          { spec: segments.join(" \u00b7 ") },
+        ),
+      );
+    },
   };
 }
 
 function createInlineTemplateNodeView(
   node: ProseMirrorNode,
-  selectAndOpenTemplate: (category: string) => void,
+  actions: InlineTemplateNodeActions,
+  localizedUi: Set<() => void>,
 ): NodeView {
   const dom = document.createElement("span");
   dom.dataset.composerInlineTemplate = "";
-  dom.className = COMPOSER_INLINE_REFERENCE_CLASS;
+  dom.className = INLINE_TEMPLATE_CHIP_CLASS;
   dom.contentEditable = "false";
   dom.style.outline = "none";
   dom.style.userSelect = "none";
 
   const openButton = document.createElement("button");
   openButton.type = "button";
-  openButton.className =
-    "flex h-full min-w-0 items-center gap-1.5 rounded-md text-orange-600 " +
-    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-orange-500/40 " +
-    "dark:text-orange-300 dark:focus-visible:ring-orange-300/40";
+  openButton.className = INLINE_TEMPLATE_NAME_ZONE_CLASS;
+  // Mirrors IconColorSwatch from @tabler/icons-react, which the composer
+  // template picker button and sent-message template chips also use.
   const icon = createComposerIcon(13, 1.7, [
-    "M4 4m-2 0a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2z",
-    "M4 14m-2 0a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2z",
-    "M16 14l6 0",
-    "M16 18l6 0",
-    "M16 22l6 0",
+    "M19 3h-4a2 2 0 0 0 -2 2v12a4 4 0 0 0 8 0v-12a2 2 0 0 0 -2 -2",
+    "M13 7.35l-2 -2a2 2 0 0 0 -2.828 0l-2.828 2.828a2 2 0 0 0 0 2.828l9 9",
+    "M7.3 13h-2.3a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h12",
+    "M17 17l0 .01",
   ]);
   icon.setAttribute("class", "shrink-0");
   const title = document.createElement("span");
@@ -770,22 +981,44 @@ function createInlineTemplateNodeView(
     "dark:text-orange-300";
   openButton.append(icon, title);
   dom.append(openButton);
+  const spec = createInlineTemplateSpecZone();
 
   let currentNode = node;
+  function localize(): void {
+    openButton.setAttribute(
+      "aria-label",
+      templateAttachmentPreviewLabel(
+        templateAttachmentNodeAttributes(currentNode),
+      ),
+    );
+  }
   function render(nextNode: ProseMirrorNode): void {
     const attachment = templateAttachmentNodeAttributes(nextNode);
     title.textContent = attachment.title;
-    openButton.setAttribute(
-      "aria-label",
-      templateAttachmentPreviewLabel(attachment),
-    );
+    const segments = actions.optionsEnabled()
+      ? inlineTemplateSpecSegments(nextNode)
+      : [];
+    if (segments.length > 0) {
+      spec.render(segments);
+      if (spec.zone.parentNode === null) {
+        dom.append(spec.zone);
+      }
+    } else {
+      spec.zone.remove();
+    }
+    localize();
   }
   openButton.addEventListener("mousedown", (event) => {
     event.preventDefault();
-    selectAndOpenTemplate(
+    actions.openTemplate(
       templateAttachmentNodeAttributes(currentNode).category,
     );
   });
+  spec.zone.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    actions.openOptions(dom.getBoundingClientRect());
+  });
+  localizedUi.add(localize);
   render(currentNode);
 
   return {
@@ -811,6 +1044,9 @@ function createInlineTemplateNodeView(
     },
     ignoreMutation() {
       return true;
+    },
+    destroy() {
+      localizedUi.delete(localize);
     },
   };
 }
@@ -991,6 +1227,7 @@ function isComposerTemplateAttachmentType(
     value === "presentation" ||
     value === "illustration" ||
     value === "video" ||
+    value === "avatar" ||
     value === "workflow" ||
     value === "website"
   );
@@ -1074,22 +1311,41 @@ function setTemplateAttachmentNode(
   );
 }
 
+function agentMentionInlineContent(value: string): JSONContent[] {
+  return splitAgentMentionSegments(value).map((segment): JSONContent => {
+    return segment.type === "text"
+      ? { type: "text", text: segment.text }
+      : {
+          type: AGENT_MENTION_NODE_NAME,
+          attrs: {
+            agentId: segment.agentId,
+            name: segment.name,
+            avatarUrl: null,
+          },
+        };
+  });
+}
+
+function composerInlineReferenceContent(line: string): JSONContent[] {
+  const content: JSONContent[] = [];
+  for (const segment of splitChatThreadMentionSegments(line)) {
+    if (segment.type === "text") {
+      content.push(...agentMentionInlineContent(segment.text));
+      continue;
+    }
+    content.push({
+      type: CHAT_THREAD_MENTION_NODE_NAME,
+      attrs: { threadId: segment.threadId, title: segment.title },
+    });
+  }
+  return content;
+}
+
 function valueToWorkflowComposerDoc(value: string): JSONContent {
   const content: JSONContent[] = value.split("\n").map((line) => {
-    if (line.length === 0) {
-      return { type: "paragraph" };
-    }
-    const inlineContent = splitChatThreadMentionSegments(line).map(
-      (segment): JSONContent => {
-        return segment.type === "text"
-          ? { type: "text", text: segment.text }
-          : {
-              type: CHAT_THREAD_MENTION_NODE_NAME,
-              attrs: { threadId: segment.threadId, title: segment.title },
-            };
-      },
-    );
-    return { type: "paragraph", content: inlineContent };
+    return line.length === 0
+      ? { type: "paragraph" }
+      : { type: "paragraph", content: composerInlineReferenceContent(line) };
   });
   return { type: "doc", content };
 }
@@ -1099,6 +1355,9 @@ function nodeText(
   to: number = node.content.size,
 ): string {
   return node.textBetween(0, to, "\n", (leafNode) => {
+    if (leafNode.type.name === AGENT_MENTION_NODE_NAME) {
+      return agentMentionText(leafNode);
+    }
     if (leafNode.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
       return chatThreadMentionText(leafNode);
     }
@@ -1280,10 +1539,14 @@ interface WorkflowComposerRuntime {
   blur(): void;
   templateAttachment: ComposerTemplateAttachment | undefined;
   openTemplate(category: string): void;
+  /** Resolved when the lifecycle bridge mounts; false until then. */
+  videoOptionsEnabled: boolean;
+  openTemplateOptions(anchor: DOMRect, position: number): void;
   removeTemplate(): void;
   templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
+  localizedUi: Set<() => void>;
 }
 
 function createTemplateAttachmentNode(
@@ -1323,6 +1586,7 @@ function createTemplateAttachmentNode(
           () => {
             runtime.removeTemplate();
           },
+          runtime.localizedUi,
         );
       };
     },
@@ -1387,18 +1651,38 @@ function createInlineTemplateNode(
     },
     addNodeView() {
       return ({ node, getPos, editor }) => {
-        return createInlineTemplateNodeView(node, (category) => {
+        const selectSelf = (): boolean => {
           const position = getPos();
           if (typeof position !== "number") {
-            return;
+            return false;
           }
           editor.view.dispatch(
             editor.state.tr.setSelection(
               NodeSelection.create(editor.state.doc, position),
             ),
           );
-          runtime.openTemplate(category);
-        });
+          return true;
+        };
+        return createInlineTemplateNodeView(
+          node,
+          {
+            openTemplate: (category) => {
+              if (selectSelf()) {
+                runtime.openTemplate(category);
+              }
+            },
+            openOptions: (anchor) => {
+              const position = getPos();
+              if (typeof position === "number" && selectSelf()) {
+                runtime.openTemplateOptions(anchor, position);
+              }
+            },
+            optionsEnabled: () => {
+              return runtime.videoOptionsEnabled;
+            },
+          },
+          runtime.localizedUi,
+        );
       };
     },
   });
@@ -1434,15 +1718,22 @@ function createFeedbackItemNode(
     },
     addNodeView() {
       return ({ node }) => {
-        return createFeedbackItemNodeView(node, (id) => {
-          runtime.removeFeedback(id);
-        });
+        return createFeedbackItemNodeView(
+          node,
+          (id) => {
+            runtime.removeFeedback(id);
+          },
+          runtime.localizedUi,
+        );
       };
     },
   });
 }
 
-function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
+function createWorkflowEditor(
+  runtime: WorkflowComposerRuntime,
+  agentMentionAvatarRuntime: AgentMentionAvatarRuntime,
+): Editor {
   return new Editor({
     element: null,
     extensions: [
@@ -1450,14 +1741,20 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
       createTemplateAttachmentNode(runtime),
       createInlineTemplateNode(runtime),
       createFeedbackItemNode(runtime),
+      createAgentMentionNode(
+        COMPOSER_INLINE_REFERENCE_CLASS,
+        agentMentionAvatarRuntime,
+      ),
       ChatThreadMentionNode,
       WorkflowHighlight,
     ],
     content: valueToWorkflowComposerDoc(""),
     editorProps: {
       attributes: {
-        "aria-label": "Message",
-        placeholder: COMPOSER_PLACEHOLDER,
+        "aria-label": i18n.t(($) => {
+          return $.chat.composer.message;
+        }),
+        placeholder: composerPlaceholder(),
         tabindex: "0",
         class: EDITOR_CONTENT_CLASS,
       },
@@ -1509,17 +1806,13 @@ function workflowComposerDocumentForValue(
 function workflowComposerDocumentForUserMessage(
   editor: Editor,
   value: Parameters<DraftInputSyncTarget["syncUserMessage"]>[0],
-  inlineTemplatesEnabled: boolean,
 ): ProseMirrorNode | null {
-  const document = messageDocumentToEditorDoc(value, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  const document = messageDocumentToEditorDoc(value);
   return document ? editor.schema.nodeFromJSON(document) : null;
 }
 
 function workflowComposerDocumentForDraft(
   editor: Editor,
-  inlineTemplatesEnabled: boolean,
   draft: {
     readonly input: string;
     readonly userMessage:
@@ -1532,11 +1825,7 @@ function workflowComposerDocumentForDraft(
     return editor.state.doc;
   }
   const userMessageDocument = draft.userMessage
-    ? workflowComposerDocumentForUserMessage(
-        editor,
-        draft.userMessage,
-        inlineTemplatesEnabled,
-      )
+    ? workflowComposerDocumentForUserMessage(editor, draft.userMessage)
     : null;
   const restoredEditorDocument = draft.editorDocument
     ? editor.schema.nodeFromJSON(draft.editorDocument.toEditorDocument())
@@ -1555,13 +1844,40 @@ function configureMountedWorkflowEditor(
   editor.setOptions({
     editorProps: {
       attributes: {
-        "aria-label": "Message",
-        placeholder: COMPOSER_PLACEHOLDER,
+        "aria-label": i18n.t(($) => {
+          return $.chat.composer.message;
+        }),
+        placeholder: composerPlaceholder(),
         tabindex: "0",
         class: editorContentClass(singleLineOnMobile),
       },
     },
   });
+}
+
+function refreshMountedWorkflowEditorLocalization(editor: Editor): void {
+  editor.setOptions({
+    editorProps: {
+      ...editor.options.editorProps,
+      attributes: {
+        ...editor.options.editorProps.attributes,
+        "aria-label": i18n.t(($) => {
+          return $.chat.composer.message;
+        }),
+        placeholder: composerPlaceholder(),
+      },
+    },
+  });
+}
+
+function refreshWorkflowComposerLocalization(
+  editor: Editor,
+  runtime: WorkflowComposerRuntime,
+): void {
+  refreshMountedWorkflowEditorLocalization(editor);
+  for (const localize of runtime.localizedUi) {
+    localize();
+  }
 }
 
 function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
@@ -1629,6 +1945,16 @@ function createSyncWorkflowNamesCommand(
   );
 }
 
+function createSyncAgentMentionAvatarsCommand(
+  avatarRuntime: AgentMentionAvatarRuntime,
+): AgentMentionAvatarsSyncCommand {
+  return command(async ({ get }, signal: AbortSignal): Promise<void> => {
+    const agents = await get(agents$);
+    signal.throwIfAborted();
+    avatarRuntime.replaceAgents(agents);
+  });
+}
+
 function mountCompositionListeners(
   editor: Editor,
   compositionGate: CompositionGate,
@@ -1646,6 +1972,20 @@ function mountCompositionListeners(
   );
 }
 
+function mountLocalizationListener(
+  editor: Editor,
+  runtime: WorkflowComposerRuntime,
+  signal: AbortSignal,
+): void {
+  const refreshLocalizedUi = () => {
+    refreshWorkflowComposerLocalization(editor, runtime);
+  };
+  i18n.on("languageChanged", refreshLocalizedUi);
+  signal.addEventListener("abort", () => {
+    i18n.off("languageChanged", refreshLocalizedUi);
+  });
+}
+
 interface MountEditorOptions {
   editor: Editor;
   draft: DraftSignals;
@@ -1653,12 +1993,25 @@ interface MountEditorOptions {
   caretIndex$: State<number>;
   editorFocusedState$: State<boolean>;
   selectedSuggestionIndexState$: State<number>;
-  feedback: FeedbackSignals;
+  feedback: ComposerFeedbackModel;
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
-  inlineTemplatesEnabled: boolean;
+  syncAgentMentionAvatars$: AgentMentionAvatarsSyncCommand;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
+}
+
+interface WorkflowComposerMountOptions {
+  readonly autoFocus?: boolean;
+  readonly singleLineOnMobile?: boolean;
+}
+
+function focusMountedEditorAtEnd(editor: Editor): void {
+  editor.view.dispatch(
+    editor.state.tr.setSelection(Selection.atEnd(editor.state.doc)),
+  );
+  editor.view.focus();
+  editor.commands.scrollIntoView();
 }
 
 function createMountEditorCommand({
@@ -1671,7 +2024,7 @@ function createMountEditorCommand({
   feedback,
   compositionGate,
   syncWorkflowNames$,
-  inlineTemplatesEnabled,
+  syncAgentMentionAvatars$,
   autoFocus,
   singleLineOnMobile,
 }: MountEditorOptions) {
@@ -1706,12 +2059,12 @@ function createMountEditorCommand({
         set(feedback.replaceFromEditor$, items);
       };
       runtime.removeFeedback = (id) => {
-        set(feedback.removeFeedback$, id);
+        set(feedback.signals.remove$, id);
       };
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
         editor,
-        workflowComposerDocumentForDraft(editor, inlineTemplatesEnabled, {
+        workflowComposerDocumentForDraft(editor, {
           input: get(draft.input$),
           userMessage: set(draft.takeRestoredUserMessage$),
           editorDocument: set(draft.readEditorDocument$),
@@ -1722,6 +2075,7 @@ function createMountEditorCommand({
         createEditorDocumentSnapshot(editor.state.doc),
       );
       editor.mount(element);
+      mountLocalizationListener(editor, runtime, signal);
       mountCompositionListeners(editor, compositionGate, signal);
       set(draft.setInputSyncTarget$, {
         syncInput(value: string) {
@@ -1746,7 +2100,6 @@ function createMountEditorCommand({
           const document = workflowComposerDocumentForUserMessage(
             editor,
             value,
-            inlineTemplatesEnabled,
           );
           if (!document) {
             return;
@@ -1769,8 +2122,8 @@ function createMountEditorCommand({
         mountSignal: signal,
       };
       set(registerMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
-      if (autoFocus && !isIOS()) {
-        editor.commands.focus("end");
+      if (autoFocus && !isMobileTextInputDevice()) {
+        focusMountedEditorAtEnd(editor);
       }
       signal.addEventListener("abort", () => {
         set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
@@ -1780,7 +2133,10 @@ function createMountEditorCommand({
         set(editorFocusedState$, false);
         editor.unmount();
       });
-      await set(syncWorkflowNames$, signal, signal);
+      await Promise.all([
+        set(syncWorkflowNames$, signal, signal),
+        set(syncAgentMentionAvatars$, signal),
+      ]);
     }),
   );
 }
@@ -1811,6 +2167,43 @@ function createInsertWorkflowCommand(
         { type: "text", text: `${token}${suffix}` },
       ])
       .setTextSelection(from + token.length + suffix.length)
+      .run();
+  });
+}
+
+function createInsertAgentCommand(
+  editor: Editor,
+  activeRange$: Computed<ChatThreadSuggestionRange | null>,
+) {
+  return command(({ get }, agent: ComposerAgentSuggestion) => {
+    const range = get(activeRange$);
+    if (!range) {
+      return;
+    }
+    const textblock = activeTextblock(editor);
+    if (!textblock) {
+      return;
+    }
+    const head = editor.state.selection.head;
+    const from = head - (range.end - range.start);
+    const content: JSONContent[] = [
+      {
+        type: AGENT_MENTION_NODE_NAME,
+        attrs: {
+          agentId: agent.id,
+          name: agent.name,
+          avatarUrl: agent.avatarUrl,
+        },
+      },
+    ];
+    if (!textblock.value.slice(range.end).startsWith(" ")) {
+      content.push({ type: "text", text: " " });
+    }
+    editor
+      .chain()
+      .focus()
+      .insertContentAt({ from, to: head }, content)
+      .setTextSelection(from + 2)
       .run();
   });
 }
@@ -1848,6 +2241,21 @@ function createInsertChatThreadCommand(
       .setTextSelection(from + 2)
       .run();
   });
+}
+
+function createSuggestionInsertionCommands(
+  editor: Editor,
+  activeSlashRange$: Computed<SlashWorkflowRange | null>,
+  activeMentionRange$: Computed<ChatThreadSuggestionRange | null>,
+) {
+  return {
+    insertWorkflow$: createInsertWorkflowCommand(editor, activeSlashRange$),
+    insertAgent$: createInsertAgentCommand(editor, activeMentionRange$),
+    insertChatThread$: createInsertChatThreadCommand(
+      editor,
+      activeMentionRange$,
+    ),
+  };
 }
 
 function createInsertTextCommands(editor: Editor) {
@@ -1942,7 +2350,7 @@ function inlineTemplateNode(
   return editor.schema.nodeFromJSON({
     type: INLINE_TEMPLATE_NODE_NAME,
     attrs: {
-      templateType: request.type,
+      templateType: attachment.type,
       template: request,
       title: attachment.title,
       category: attachment.category,
@@ -1981,6 +2389,39 @@ function createInsertTemplateCommand(editor: Editor) {
   );
 }
 
+/**
+ * Rewrites one inline template in place, addressed by position rather than by
+ * the editor selection. setNodeMarkup maps a NodeSelection to a TextSelection,
+ * so a selection-based update only works once; every later edit would fall
+ * through to inserting another chip.
+ */
+function createUpdateTemplateAtCommand(editor: Editor) {
+  return command(
+    (
+      _context,
+      position: number,
+      request: GenerationTemplateRequest,
+      attachment: ComposerTemplateAttachment,
+    ) => {
+      const target = editor.state.doc.nodeAt(position);
+      if (target?.type.name !== INLINE_TEMPLATE_NODE_NAME) {
+        return;
+      }
+      const node = inlineTemplateNode(editor, request, attachment);
+      const transaction = editor.state.tr.setNodeMarkup(
+        position,
+        undefined,
+        node.attrs,
+      );
+      editor.view.dispatch(
+        transaction.setSelection(
+          NodeSelection.create(transaction.doc, position),
+        ),
+      );
+    },
+  );
+}
+
 function createPrepareTemplateInsertionCommand(editor: Editor) {
   return command(() => {
     const { selection } = editor.state;
@@ -2012,34 +2453,30 @@ function createReadSelectedTemplateCommand(editor: Editor) {
 function createTemplateInsertionCommands(editor: Editor) {
   return {
     insertTemplate$: createInsertTemplateCommand(editor),
+    updateTemplateAt$: createUpdateTemplateAtCommand(editor),
     readSelectedTemplate$: createReadSelectedTemplateCommand(editor),
     prepareTemplateInsertion$: createPrepareTemplateInsertionCommand(editor),
   };
 }
 
-function createInsertUserMessageCommand(
-  editor: Editor,
-  inlineTemplatesEnabled: boolean,
-) {
+function createInsertUserMessageCommand(editor: Editor) {
   return command((_context, value: UserMessageDocument) => {
     const insertableParts = value.parts.filter((part) => {
       return (
         part.type === "text" ||
         part.type === "chat_thread" ||
+        part.type === "agent" ||
         part.type === "feedback" ||
-        (inlineTemplatesEnabled && part.type === "template")
+        part.type === "template"
       );
     });
     if (insertableParts.length === 0) {
       return;
     }
-    const restored = messageDocumentToEditorDoc(
-      {
-        version: 1,
-        parts: insertableParts,
-      },
-      { inlineTemplates: inlineTemplatesEnabled },
-    );
+    const restored = messageDocumentToEditorDoc({
+      version: 1,
+      parts: insertableParts,
+    });
     if (!restored?.content) {
       return;
     }
@@ -2086,10 +2523,13 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     blur(): void {},
     templateAttachment: undefined,
     openTemplate(_category: string): void {},
+    videoOptionsEnabled: false,
+    openTemplateOptions(_anchor: DOMRect, _position: number): void {},
     removeTemplate(): void {},
     templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
+    localizedUi: new Set(),
   };
 }
 
@@ -2107,7 +2547,7 @@ function createTemplateAttachmentControls(
     runtime.templateRemoved();
   };
   const setLifecycleRef$ = onRef(
-    command(({ set }, element: HTMLButtonElement, signal: AbortSignal) => {
+    command(({ get, set }, element: HTMLButtonElement, signal: AbortSignal) => {
       const attachment = templateAttachmentFromLifecycleElement(element);
       runtime.templateAttachment = attachment;
       set(activeState$, attachment !== undefined);
@@ -2117,6 +2557,18 @@ function createTemplateAttachmentControls(
         element.dataset.templateCategory = category;
         element.click();
       };
+      runtime.videoOptionsEnabled = get(videoTemplateOptionsEnabled$);
+      runtime.openTemplateOptions = (anchor, position) => {
+        element.dataset.templateAction = "options";
+        element.dataset.templateAnchor = [
+          anchor.left,
+          anchor.top,
+          anchor.width,
+          anchor.height,
+        ].join(",");
+        element.dataset.templatePosition = String(position);
+        element.click();
+      };
       runtime.templateRemoved = () => {
         element.dataset.templateAction = "remove";
         element.click();
@@ -2124,6 +2576,7 @@ function createTemplateAttachmentControls(
       signal.addEventListener("abort", () => {
         runtime.templateAttachment = undefined;
         runtime.openTemplate = () => {};
+        runtime.openTemplateOptions = () => {};
         runtime.templateRemoved = () => {};
         set(activeState$, false);
         setTemplateAttachmentNode(editor, undefined);
@@ -2140,27 +2593,30 @@ export function createWorkflowComposerSignals<
   T extends AgentIdValue = Promise<string | null>,
 >(
   draft: DraftSignals,
-  threadId?: string,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
-  inlineTemplatesEnabled = false,
+  mountOptions: WorkflowComposerMountOptions = {},
+  feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
   const selectedSuggestionIndexState$ = state(0);
   const runtime = createWorkflowComposerRuntime();
+  const agentMentionAvatarRuntime = createAgentMentionAvatarRuntime();
   const templatePreview = createTemplatePreviewRuntime();
   const compositionGate = createCompositionGate();
   const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
-  const editor = createWorkflowEditor(runtime);
+  const editor = createWorkflowEditor(runtime, agentMentionAvatarRuntime);
+  connectComposerFeedback(feedback, editor);
   const syncWorkflowNames$ = createSyncWorkflowNamesCommand(
     editor,
     agentId$,
     workflows$,
   );
+  const syncAgentMentionAvatars$ = createSyncAgentMentionAvatarsCommand(
+    agentMentionAvatarRuntime,
+  );
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
-  const feedback = createComposerFeedback(threadId, editor);
-
   const selectedSuggestionIndex$ = computed((get) => {
     return get(selectedSuggestionIndexState$);
   });
@@ -2200,36 +2656,28 @@ export function createWorkflowComposerSignals<
   const focus$ = command(() => {
     editor.commands.focus("end");
   });
-  const mountEditor = (autoFocus: boolean, singleLineOnMobile: boolean) => {
-    return createMountEditorCommand({
-      editor,
-      draft,
-      runtime,
-      caretIndex$,
-      editorFocusedState$,
-      selectedSuggestionIndexState$,
-      feedback,
-      compositionGate,
-      syncWorkflowNames$,
-      inlineTemplatesEnabled,
-      autoFocus,
-      singleLineOnMobile,
-    });
-  };
-  const insertWorkflow$ = createInsertWorkflowCommand(
+  const setContainerRef$ = createMountEditorCommand({
+    editor,
+    draft,
+    runtime,
+    caretIndex$,
+    editorFocusedState$,
+    selectedSuggestionIndexState$,
+    feedback,
+    compositionGate,
+    syncWorkflowNames$,
+    syncAgentMentionAvatars$,
+    autoFocus: mountOptions.autoFocus ?? false,
+    singleLineOnMobile: mountOptions.singleLineOnMobile ?? false,
+  });
+  const suggestionInsertionCommands = createSuggestionInsertionCommands(
     editor,
     activeSlashRange$,
-  );
-  const insertChatThread$ = createInsertChatThreadCommand(
-    editor,
     activeChatThreadSuggestionRange$,
   );
   const textCommands = createInsertTextCommands(editor);
   const templateCommands = createTemplateInsertionCommands(editor);
-  const insertUserMessage$ = createInsertUserMessageCommand(
-    editor,
-    inlineTemplatesEnabled,
-  );
+  const insertUserMessage$ = createInsertUserMessageCommand(editor);
   const readInputForSubmission$ = createReadInputForSubmissionCommand(
     editor,
     compositionGate,
@@ -2241,9 +2689,7 @@ export function createWorkflowComposerSignals<
   return {
     editor,
     templatePreview,
-    setContainerRef$: mountEditor(false, false),
-    setAutoFocusContainerRef$: mountEditor(true, false),
-    setCompactContainerRef$: mountEditor(false, true),
+    setContainerRef$,
     focus$,
     hasInput$,
     hasTemplateAttachment$: templateAttachment.active$,
@@ -2252,17 +2698,16 @@ export function createWorkflowComposerSignals<
     chatThreadSuggestions$,
     agentId$,
     workflows$,
-    reloadWorkflows$: reloadMountedWorkflowNames$,
+    reloadWorkflows$: reloadMountedComposerWorkflows$,
     selectedSuggestionIndex$,
     setSelectedSuggestionIndex$,
     closeSuggestionMenu$,
-    insertWorkflow$,
-    insertChatThread$,
+    ...suggestionInsertionCommands,
     ...textCommands,
     ...templateCommands,
     insertUserMessage$,
     readInputForSubmission$,
     setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
-    feedback,
+    feedback: feedback.signals,
   };
 }

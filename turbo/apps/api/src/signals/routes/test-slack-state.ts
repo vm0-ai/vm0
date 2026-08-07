@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getProviderRuntimeModel,
   getVm0Vendor,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -14,9 +13,8 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
@@ -25,14 +23,12 @@ import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { variables } from "@vm0/db/schema/variable";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
-import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -41,13 +37,15 @@ import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "../services/zero-chat-event-type.service";
+  acquireVm0ManagedModelKeyFixture,
+  releaseVm0ManagedModelKeyFixture,
+} from "../services/test-vm0-managed-model-key-fixture.service";
+import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
+import type { Tx } from "../../lib/db-types";
 
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_WORKSPACE_NAME = "E2E Test Workspace";
@@ -76,9 +74,9 @@ const SLACK_E2E_FIXTURES = {
   botUserId: "U_E2E_BOT",
   botToken: "xoxb-e2e-test-bot-token",
 } as const;
-const slackStateQueueRevoker = alias(chatMessages, "slack_state_queue_revoker");
+const slackStateQueueRevoker = alias(chatEvents, "slack_state_queue_revoker");
 
-type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type StarterGrantTx = Tx;
 
 function isoString(value: Date): string {
   return value.toISOString();
@@ -89,22 +87,6 @@ function contentKeys(value: unknown): string[] {
     return Object.keys(value);
   }
   return [];
-}
-
-function resolvedSlackApiUrl(): string | null {
-  const slackApiUrl = optionalEnv("SLACK_API_URL");
-  if (slackApiUrl) {
-    return slackApiUrl;
-  }
-
-  const flag = optionalEnv("E2E_SLACK_MOCK_ENABLED");
-  const mockEnabled = flag === "1" || flag === "true";
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (mockEnabled && vercelUrl) {
-    return `https://${vercelUrl}/api/test/slack-mock/`;
-  }
-
-  return null;
 }
 
 interface UpsertSlackInstallationInput {
@@ -210,16 +192,28 @@ async function seedDefaultAgent(
       name: input.name,
       displayName: input.displayName ?? null,
     })
-    .onConflictDoUpdate({
-      target: zeroAgents.id,
-      set: {
-        orgId: input.orgId,
-        owner: input.userId,
-        name: input.name,
-        displayName: input.displayName ?? null,
-        updatedAt: nowDate(),
-      },
-    });
+    // Telegram can seed this shared agent at the same time. Handle either
+    // unique key as the arbiter before updating the canonical compose row.
+    .onConflictDoNothing();
+
+  const [agent] = await db
+    .update(zeroAgents)
+    .set({
+      owner: input.userId,
+      displayName: input.displayName ?? null,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(zeroAgents.id, composeId),
+        eq(zeroAgents.orgId, input.orgId),
+        eq(zeroAgents.name, input.name),
+      ),
+    )
+    .returning({ id: zeroAgents.id });
+  if (!agent) {
+    throw new Error("Failed to resolve seeded default agent");
+  }
 
   await db.transaction(async (tx) => {
     await ensureStarterCreditGrant(tx, input.orgId);
@@ -238,36 +232,27 @@ async function seedDefaultAgent(
 }
 
 async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
-  await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, composeId));
-  await db.insert(vm0ApiKeys).values(vm0ManagedKeyRows(composeId));
+  await acquireVm0ManagedModelKeyFixture(
+    db,
+    composeId,
+    vm0ManagedKeyRows(composeId),
+  );
 }
 
 function vm0ManagedKeyRows(composeId: string) {
   return [
     {
       vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      model: getProviderRuntimeModel(
-        "vm0",
-        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      ),
       apiKey: `vm0-key-default-${composeId}`,
       label: composeId,
     },
     {
       vendor: "anthropic",
-      model: "claude-sonnet-4-6",
       apiKey: `vm0-key-anthropic-${composeId}`,
       label: composeId,
     },
     {
-      vendor: "deepseek",
-      model: "deepseek-v4-pro",
-      apiKey: `vm0-key-deepseek-${composeId}`,
-      label: composeId,
-    },
-    {
       vendor: "moonshot",
-      model: "kimi-k2.7-code",
       apiKey: `vm0-key-moonshot-${composeId}`,
       label: composeId,
     },
@@ -293,17 +278,7 @@ async function deleteVm0ManagedKeysForSeededDefaultAgent(
     return;
   }
 
-  const apiKeys = vm0ManagedKeyRows(compose.id).map((row) => {
-    return row.apiKey;
-  });
-  await db
-    .delete(vm0ApiKeys)
-    .where(
-      and(
-        eq(vm0ApiKeys.label, compose.id),
-        inArray(vm0ApiKeys.apiKey, apiKeys),
-      ),
-    );
+  await releaseVm0ManagedModelKeyFixture(db, compose.id);
 }
 
 async function getOrInsertCompose(
@@ -570,16 +545,15 @@ function slackChatIngressRows(db: ReadonlyDb, teamId: string) {
 function slackPendingChatEventRows(db: ReadonlyDb, teamId: string) {
   return db
     .select({
-      id: chatMessages.id,
-      chatThreadId: chatMessages.chatThreadId,
-      eventType: chatEventTypeSql().as("event_type"),
-      triggerSource: chatMessages.triggerSource,
-      createdAt: chatMessages.createdAt,
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      eventType: chatEvents.eventType,
+      createdAt: chatEvents.createdAt,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .innerJoin(
       slackChatThreadRoutes,
-      eq(chatMessages.chatThreadId, slackChatThreadRoutes.chatThreadId),
+      eq(chatEvents.chatThreadId, slackChatThreadRoutes.chatThreadId),
     )
     .innerJoin(
       slackOrgConnections,
@@ -589,12 +563,12 @@ function slackPendingChatEventRows(db: ReadonlyDb, teamId: string) {
       and(
         eq(slackOrgConnections.slackWorkspaceId, teamId),
         chatEventTypeIn(["input.prompt", "input.automation"]),
-        isNull(chatMessages.runId),
+        isNull(chatEvents.runId),
         notExists(
           db
             .select({ id: slackStateQueueRevoker.id })
             .from(slackStateQueueRevoker)
-            .where(eq(slackStateQueueRevoker.revokesEventId, chatMessages.id)),
+            .where(eq(slackStateQueueRevoker.revokesEventId, chatEvents.id)),
         ),
       ),
     );
@@ -717,28 +691,25 @@ async function upsertOrgCacheForTest(
   db: Db,
   args: {
     readonly orgId: string;
-    readonly slug?: string;
     readonly name?: string;
     readonly createdBy?: string;
   },
 ): Promise<void> {
-  if (!args.slug && !args.name) {
+  if (!args.name) {
     return;
   }
   await db
     .insert(orgCache)
     .values({
       orgId: args.orgId,
-      slug: args.slug ?? args.orgId,
-      name: args.name ?? "Test Org",
+      name: args.name,
       createdBy: args.createdBy,
       cachedAt: nowDate(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
       set: {
-        slug: args.slug ?? args.orgId,
-        name: args.name ?? "Test Org",
+        name: args.name,
         createdBy: args.createdBy,
         cachedAt: nowDate(),
       },
@@ -797,20 +768,6 @@ async function seedUserVariablesForTest(
   }
 }
 
-function recentMockCalls(db: ReadonlyDb) {
-  return db
-    .select({
-      method: e2eSlackMockCallLog.method,
-      teamId: e2eSlackMockCallLog.teamId,
-      channelId: e2eSlackMockCallLog.channelId,
-      bodyJson: e2eSlackMockCallLog.bodyJson,
-      createdAt: e2eSlackMockCallLog.createdAt,
-    })
-    .from(e2eSlackMockCallLog)
-    .orderBy(desc(e2eSlackMockCallLog.createdAt))
-    .limit(50);
-}
-
 const getSlackState$ = computed(async (get) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -851,8 +808,6 @@ const getSlackState$ = computed(async (get) => {
     db,
     compose?.headVersionId,
   );
-  const mockCalls = await recentMockCalls(db);
-
   return {
     status: 200 as const,
     body: {
@@ -896,13 +851,6 @@ const getSlackState$ = computed(async (get) => {
             content_keys: contentKeys(composeVersion.content),
           }
         : null,
-      resolved_slack_api_url: resolvedSlackApiUrl(),
-      mock_calls: mockCalls.map((call) => {
-        return {
-          ...call,
-          createdAt: isoString(call.createdAt),
-        };
-      }),
     },
   };
 });
@@ -1101,7 +1049,6 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   await upsertOrgCacheForTest(db, {
     orgId: actor.orgId,
-    slug: body.org_slug,
     name: body.org_name,
     createdBy: actor.userId,
   });

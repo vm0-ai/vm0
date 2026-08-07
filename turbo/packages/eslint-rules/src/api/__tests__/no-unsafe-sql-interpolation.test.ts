@@ -1,5 +1,4 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, it } from "vitest";
 
 import { noUnsafeSqlInterpolation } from "../rules/no-unsafe-sql-interpolation.ts";
@@ -8,23 +7,7 @@ RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 
-const dbPackageRoot = fileURLToPath(
-  new URL("../../../../db/", import.meta.url),
-);
-const ruleTester = new RuleTester({
-  defaultFilenames: {
-    ts: `${dbPackageRoot}rule-test.ts`,
-    tsx: `${dbPackageRoot}rule-test.tsx`,
-  },
-  languageOptions: {
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["rule-test.ts", "rule-test.tsx"],
-      },
-      tsconfigRootDir: dbPackageRoot,
-    },
-  },
-});
+const ruleTester = new RuleTester();
 
 const drizzlePreamble = `
   import { relations } from "drizzle-orm";
@@ -95,9 +78,15 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
         import * as drizzle from "drizzle-orm";
         declare const optionalCondition: SQL | undefined;
         declare const optionalConditions: readonly (SQL | undefined)[];
+        const fixedConditions = [
+          eq(users.id, 1),
+          optionalCondition,
+        ] as const;
         sql\`\${and(eq(users.id, 1), optionalCondition)}\`;
         sql\`\${or(eq(users.id, 1), ...optionalConditions)}\`;
         sql\`\${drizzle.and(drizzle.eq(users.id, 1), undefined)}\`;
+        sql\`\${and(or(eq(users.id, 1), optionalCondition), optionalCondition)}\`;
+        sql\`\${and(...fixedConditions)}\`;
       `,
     },
     {
@@ -107,6 +96,20 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
         }
         declare const value: any;
         sql\`\${value}\`;
+      `,
+    },
+    {
+      code: `
+        declare const value: any;
+        const client = { run(_config: unknown) {} };
+        client.run({
+          where: (
+            _fields: unknown,
+            operators: {
+              sql(strings: TemplateStringsArray, ...values: unknown[]): unknown;
+            },
+          ) => operators.sql\`\${value}\`,
+        });
       `,
     },
   ],
@@ -174,20 +177,16 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
     },
     {
       code: `${drizzlePreamble}
-        import { and, sql, type SQL } from "drizzle-orm";
+        import { and, or, sql, type SQL } from "drizzle-orm";
         declare const optionalCondition: SQL | undefined;
         declare const optionalConditions: readonly (SQL | undefined)[];
-        declare const unsafeCondition: unknown;
-        declare const unsafeConditions: readonly unknown[];
         declare function localAnd(condition: SQL): SQL | undefined;
         sql\`\${and(optionalCondition)}\`;
         sql\`\${and(...optionalConditions)}\`;
-        sql\`\${and(sql\`true\`, unsafeCondition)}\`;
-        sql\`\${and(sql\`true\`, ...unsafeConditions)}\`;
+        sql\`\${and(or(optionalCondition), optionalCondition)}\`;
         sql\`\${localAnd(sql\`true\`)}\`;
       `,
       errors: [
-        { messageId: "undefinedInterpolation" },
         { messageId: "undefinedInterpolation" },
         { messageId: "undefinedInterpolation" },
         { messageId: "undefinedInterpolation" },
@@ -196,28 +195,21 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
     },
     {
       code: `${drizzlePreamble}
-        import { sql, type SQL } from "drizzle-orm";
+        import { sql } from "drizzle-orm";
         declare function returnsVoid(): void;
-        function interpolateUnconstrained<T>(value: T) {
-          return sql\`\${value}\`;
-        }
-        function interpolateArray<T extends readonly string[]>(value: T) {
-          return sql\`\${value}\`;
-        }
-        function interpolateMixed<T extends string | SQL>(value: T) {
-          return sql\`\${value}\`;
-        }
         sql\`\${returnsVoid()}\`;
-        void interpolateUnconstrained;
-        void interpolateArray;
-        void interpolateMixed;
       `,
-      errors: [
-        { messageId: "unknownInterpolation" },
-        { messageId: "arrayInterpolation" },
-        { messageId: "mixedInterpolation" },
-        { messageId: "undefinedInterpolation" },
-      ],
+      errors: [{ messageId: "undefinedInterpolation" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        function recursive(): unknown {
+          return recursive();
+        }
+        sql\`\${recursive()}\`;
+      `,
+      errors: [{ messageId: "unknownInterpolation" }],
     },
   ],
 });

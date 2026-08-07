@@ -42,6 +42,10 @@ import {
   type FinalizedUsageRelation,
 } from "./finalized-usage-relation";
 import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
+import {
+  MODEL_TOKEN_CATEGORIES,
+  MODEL_TOKEN_USAGE_KINDS,
+} from "./model-token-categories";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
 import { resolveEmails } from "./zero-usage.service";
 import {
@@ -50,13 +54,6 @@ import {
   type UsageRangeArg,
 } from "./usage-period";
 
-const MODEL_USAGE_KIND = "model";
-const MODEL_TOKEN_CATEGORIES = [
-  "tokens.input",
-  "tokens.output",
-  "tokens.cache_read",
-  "tokens.cache_creation",
-] as const;
 const THREADED_SOURCES = ["chat", "automation"] as const;
 const USAGE_RECORD_KINDS = ["model", "image", "video", "connector"] as const;
 const PASSTHROUGH_TRIGGER_SOURCES = [
@@ -66,7 +63,6 @@ const PASSTHROUGH_TRIGGER_SOURCES = [
   "email",
   "agentphone",
   "github",
-  "cli",
   "agent",
 ] as const;
 const usageRecordKindDecoder = zodEnumDriverValueDecoder(usageRecordKindSchema);
@@ -109,7 +105,7 @@ interface UsageRecordProviderAccumulator {
 
 function tokenExpr(usage: FinalizedUsageRelation) {
   return sql`CASE WHEN ${and(
-    eq(usage.kind, MODEL_USAGE_KIND),
+    inArray(usage.kind, MODEL_TOKEN_USAGE_KINDS),
     inArray(usage.category, MODEL_TOKEN_CATEGORIES),
   )} THEN ${usage.quantity} ELSE 0 END::bigint`.mapWith(
     pgInt8ToSafeIntegerDecoder,
@@ -213,9 +209,7 @@ function threadedUsageRecordWith(db: Db, runs: UsageRecordRuns) {
         runId: sql`NULL::text`
           .mapWith(nullableDriverValueDecoder(pgTextDecoder))
           .as("run_id"),
-        title: sql`${chatThreads.title}`
-          .mapWith(nullableDriverValueDecoder(pgTextDecoder))
-          .as("title"),
+        title: chatThreads.title,
         credits: safeIntegerSum(runs.credits).as("credits"),
         tokens: safeIntegerSum(runs.tokens).as("tokens"),
         lastActivity: max(runs.createdAt)

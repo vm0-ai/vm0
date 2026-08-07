@@ -1,7 +1,7 @@
 import { zeroBillingInvoicesContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
@@ -9,8 +9,14 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { unixSecondsFromIso } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
 
 function buttonByText(text: string): HTMLElement {
   const element = queryAllByRoleFast("button").find((candidate) => {
@@ -35,7 +41,6 @@ function selectOptionByText(text: string): HTMLElement {
 function mockInvoicesStory(): void {
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
@@ -94,7 +99,6 @@ describe("organization invoices settings", () => {
   it("shows invoice row skeletons while history loads", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -125,10 +129,82 @@ describe("organization invoices settings", () => {
     }
   });
 
+  it("localizes invoice presentation while preserving provider values", async () => {
+    mockInvoicesStory();
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=invoices",
+    });
+
+    const date = new Date(
+      unixSecondsFromIso("2026-03-15T00:00:00.000Z") * 1000,
+    ).toLocaleDateString("pt-BR");
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(screen.getByText("Fatura")).toBeInTheDocument();
+      expect(screen.getByText("Data")).toBeInTheDocument();
+      expect(screen.getByText("Valor")).toBeInTheDocument();
+      expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
+      expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+      expect(screen.getByText(/US\$\s+20,00/u)).toBeInTheDocument();
+      expect(screen.getByText(date)).toBeInTheDocument();
+    });
+  });
+
+  it("formats invoice dates and amounts for German", async () => {
+    mockInvoicesStory();
+    context.mocks.data.userPreferences({ locale: "de-DE" });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=invoices",
+    });
+
+    const date = new Date(
+      unixSecondsFromIso("2026-03-15T00:00:00.000Z") * 1000,
+    ).toLocaleDateString("de-DE");
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("de-DE");
+      expect(screen.getByText("Rechnung")).toBeInTheDocument();
+      expect(screen.getByText("Datum")).toBeInTheDocument();
+      expect(screen.getByText("Betrag")).toBeInTheDocument();
+      expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+      expect(screen.getByText(/20,00\s+\$/u)).toBeInTheDocument();
+      expect(screen.getByText(date)).toBeInTheDocument();
+    });
+  });
+
+  it("formats Italian invoice dates and currency", async () => {
+    mockInvoicesStory();
+    context.mocks.data.userPreferences({ locale: "it-IT" });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=invoices",
+    });
+
+    const date = new Date(
+      unixSecondsFromIso("2026-03-15T00:00:00.000Z") * 1000,
+    ).toLocaleDateString("it-IT");
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("it-IT");
+      expect(screen.getByText("Fattura")).toBeInTheDocument();
+      expect(screen.getByText("Data")).toBeInTheDocument();
+      expect(screen.getByText("Importo")).toBeInTheDocument();
+      expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+      expect(screen.getByText(/20,00\s+USD/u)).toBeInTheDocument();
+      expect(screen.getByText(date)).toBeInTheDocument();
+    });
+  });
+
   it("hides ZIP downloads while an older API deployment is active", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });

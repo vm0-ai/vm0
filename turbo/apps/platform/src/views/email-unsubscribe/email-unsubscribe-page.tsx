@@ -1,4 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@vm0/ui";
 import { IconAlertCircle, IconCheck, IconLoader2 } from "@tabler/icons-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -12,6 +13,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 
 export function EmailUnsubscribePage() {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const brandName = useGet(brandName$);
   const status = useGet(emailUnsubscribeStatus$);
@@ -26,33 +28,48 @@ export function EmailUnsubscribePage() {
           <div className="flex flex-col items-center gap-2.5">
             <IconCheck size={20} className="text-muted-foreground" />
             <h1 className="text-lg font-medium text-foreground">
-              Unsubscribed
+              {t(($) => {
+                return $.lifecycle.emailUnsubscribe.doneTitle;
+              })}
             </h1>
             <p className="text-sm text-muted-foreground">
-              You will no longer receive system-initiated email notifications
-              from {brandName}.
+              {t(
+                ($) => {
+                  return $.lifecycle.emailUnsubscribe.body;
+                },
+                { brandName },
+              )}
             </p>
           </div>
         ) : status === "error" || !token ? (
           <div className="flex flex-col items-center gap-2.5">
             <IconAlertCircle size={20} className="text-destructive" />
             <h1 className="text-lg font-medium text-foreground">
-              Something went wrong
+              {t(($) => {
+                return $.lifecycle.emailUnsubscribe.errorTitle;
+              })}
             </h1>
             <p className="text-sm text-muted-foreground">
-              This unsubscribe link is invalid or expired. You can manage email
-              notifications in Settings.
+              {t(($) => {
+                return $.lifecycle.emailUnsubscribe.errorBody;
+              })}
             </p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-4">
             <div className="flex flex-col items-center gap-2.5">
               <h1 className="text-lg font-medium text-foreground">
-                Unsubscribe from email notifications?
+                {t(($) => {
+                  return $.lifecycle.emailUnsubscribe.confirmTitle;
+                })}
               </h1>
               <p className="text-sm text-muted-foreground">
-                You will no longer receive system-initiated email notifications
-                from {brandName}.
+                {t(
+                  ($) => {
+                    return $.lifecycle.emailUnsubscribe.body;
+                  },
+                  { brandName },
+                )}
               </p>
             </div>
             <Button
@@ -64,7 +81,9 @@ export function EmailUnsubscribePage() {
               {status === "submitting" ? (
                 <IconLoader2 size={16} className="animate-spin" />
               ) : null}
-              Unsubscribe
+              {t(($) => {
+                return $.lifecycle.emailUnsubscribe.action;
+              })}
             </Button>
           </div>
         )}

@@ -1,5 +1,6 @@
 import { useGet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   Select,
@@ -20,7 +21,81 @@ import {
 } from "../../../../signals/zero-page/cron.ts";
 import { onDomEventFn } from "../../../../signals/utils.ts";
 
+function useTimezoneNames(): Readonly<Record<string, string>> {
+  const { t } = useTranslation();
+  return {
+    "Etc/UTC": t(($) => {
+      return $.settings.preferences.timezone.zones.utc;
+    }),
+    "America/New_York": t(($) => {
+      return $.settings.preferences.timezone.zones.eastern;
+    }),
+    "America/Chicago": t(($) => {
+      return $.settings.preferences.timezone.zones.central;
+    }),
+    "America/Denver": t(($) => {
+      return $.settings.preferences.timezone.zones.mountain;
+    }),
+    "America/Los_Angeles": t(($) => {
+      return $.settings.preferences.timezone.zones.losAngeles;
+    }),
+    "America/Anchorage": t(($) => {
+      return $.settings.preferences.timezone.zones.alaska;
+    }),
+    "Pacific/Honolulu": t(($) => {
+      return $.settings.preferences.timezone.zones.hawaii;
+    }),
+    "America/Toronto": t(($) => {
+      return $.settings.preferences.timezone.zones.toronto;
+    }),
+    "America/Vancouver": t(($) => {
+      return $.settings.preferences.timezone.zones.vancouver;
+    }),
+    "America/Sao_Paulo": t(($) => {
+      return $.settings.preferences.timezone.zones.brasilia;
+    }),
+    "Europe/London": t(($) => {
+      return $.settings.preferences.timezone.zones.london;
+    }),
+    "Europe/Berlin": t(($) => {
+      return $.settings.preferences.timezone.zones.berlin;
+    }),
+    "Europe/Paris": t(($) => {
+      return $.settings.preferences.timezone.zones.paris;
+    }),
+    "Europe/Moscow": t(($) => {
+      return $.settings.preferences.timezone.zones.moscow;
+    }),
+    "Asia/Dubai": t(($) => {
+      return $.settings.preferences.timezone.zones.dubai;
+    }),
+    "Asia/Kolkata": t(($) => {
+      return $.settings.preferences.timezone.zones.india;
+    }),
+    "Asia/Shanghai": t(($) => {
+      return $.settings.preferences.timezone.zones.shanghai;
+    }),
+    "Asia/Tokyo": t(($) => {
+      return $.settings.preferences.timezone.zones.tokyo;
+    }),
+    "Asia/Seoul": t(($) => {
+      return $.settings.preferences.timezone.zones.seoul;
+    }),
+    "Asia/Singapore": t(($) => {
+      return $.settings.preferences.timezone.zones.singapore;
+    }),
+    "Australia/Sydney": t(($) => {
+      return $.settings.preferences.timezone.zones.sydney;
+    }),
+    "Pacific/Auckland": t(($) => {
+      return $.settings.preferences.timezone.zones.auckland;
+    }),
+  };
+}
+
 export function TimezoneSettings() {
+  const { t } = useTranslation();
+  const timezoneNames = useTimezoneNames();
   const preferences = useLastResolved(userPreferences$);
   const [tzLoadable, updatePreference] = useLoadableSet(updateUserPreference$);
   const pageSignal = useGet(pageSignal$);
@@ -46,23 +121,31 @@ export function TimezoneSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
-        <div className="shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center">
-            <IconClock
-              size={22}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
+      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex flex-1 items-center gap-4 min-w-0">
+          <div className="shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center">
+              <IconClock
+                size={22}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </div>
+          </div>
+          <div className="flex flex-1 flex-col gap-1 min-w-0">
+            <div className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.settings.preferences.timezone.rowTitle;
+              })}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {t(($) => {
+                return $.settings.preferences.timezone.rowDescription;
+              })}
+            </div>
           </div>
         </div>
-        <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">Time zone</div>
-          <div className="text-sm text-muted-foreground">
-            Your agents will use this time zone during runs
-          </div>
-        </div>
-        <div className="relative shrink-0 w-64">
+        <div className="relative w-full shrink-0 sm:w-64">
           <Select
             value={currentTimezone}
             onValueChange={handleChange}
@@ -75,7 +158,7 @@ export function TimezoneSettings() {
               {timezoneOptions.map((tz) => {
                 return (
                   <SelectItem key={tz} value={tz}>
-                    {getTimezoneLabel(tz)}
+                    {getTimezoneLabel(tz, timezoneNames[tz])}
                   </SelectItem>
                 );
               })}

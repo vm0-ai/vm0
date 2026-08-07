@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorCatalogContract,
@@ -13,7 +13,10 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorUpdate,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
@@ -30,6 +33,7 @@ import {
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
+  zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -64,37 +68,40 @@ function detachedSetupPage(
 function applyUserConnectorUpdate(
   current: readonly string[],
   body: {
-    readonly enabledTypes: readonly string[];
+    readonly enabledConnectorSlugs: readonly string[];
     readonly operation?: "replace" | "add" | "remove";
   },
 ): string[] {
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledTypes]));
+    return Array.from(new Set([...current, ...body.enabledConnectorSlugs]));
   }
   if (body.operation === "remove") {
-    return current.filter((type) => {
-      return !body.enabledTypes.includes(type);
+    return current.filter((connectorSlug) => {
+      return !body.enabledConnectorSlugs.includes(connectorSlug);
     });
   }
-  return [...body.enabledTypes];
+  return [...body.enabledConnectorSlugs];
 }
 
 function applyCustomConnectorUpdate(
   current: readonly string[],
-  body: {
-    readonly enabledIds: readonly string[];
-    readonly operation?: "replace" | "add" | "remove";
-  },
+  body: AgentCustomConnectorUpdate,
 ): string[] {
+  const enabledIds =
+    "enabledIds" in body
+      ? body.enabledIds
+      : body.grants.map((grant) => {
+          return grant.customConnectorId;
+        });
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledIds]));
+    return Array.from(new Set([...current, ...enabledIds]));
   }
   if (body.operation === "remove") {
     return current.filter((id) => {
-      return !body.enabledIds.includes(id);
+      return !enabledIds.includes(id);
     });
   }
-  return [...body.enabledIds];
+  return [...enabledIds];
 }
 
 function createAgent(id: string, displayName: string): TeamComposeItem {
@@ -145,14 +152,14 @@ function createWorkflowSummary({
 }
 
 function createConnector(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   externalUsername: string,
 ): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
-    type,
+    slug: connectorSlug,
     authMethod: "oauth",
-    externalId: `${type}-external-id`,
+    externalId: `${connectorSlug}-external-id`,
     externalUsername,
     externalEmail: null,
     oauthScopes: ["read"],
@@ -168,7 +175,7 @@ function axiomCatalogStatusItem(
   permissionSummary: PublicConnectorCatalogPermissionSummary,
 ): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: "axiom",
+    slug: "axiom",
     label: "Axiom",
     description: "Observability and log analytics",
     icon: {
@@ -351,13 +358,13 @@ async function openAxiomPermissionsDialog(): Promise<HTMLElement> {
 }
 
 function connectorCategoryLabel(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   category: string,
 ): string {
-  const metadata = testConnectorPermissionDetails.get(connectorRef);
+  const metadata = testConnectorPermissionDetails.get(connectorSlug);
   const categoryData = metadata?.categories;
   if (!categoryData) {
-    throw new Error(`${connectorRef} categories not found`);
+    throw new Error(`${connectorSlug} categories not found`);
   }
 
   const count = Object.values(categoryData.categories).filter((value) => {
@@ -382,22 +389,22 @@ function mockTeamAPIs({
     createConnector("axiom", "workspace"),
     createConnector("slack", "ops"),
   ]);
-  const enabledTypesByAgent = new Map<string, string[]>();
+  const enabledConnectorSlugsByAgent = new Map<string, string[]>();
   const enabledCustomConnectorIdsByAgent = new Map<string, string[]>();
   context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
     return respond(200, {
-      enabledTypes: enabledTypesByAgent.get(params.id) ?? [],
+      enabledConnectorSlugs: enabledConnectorSlugsByAgent.get(params.id) ?? [],
     });
   });
   context.mocks.api(
     zeroUserConnectorsContract.update,
     ({ body, params, respond }) => {
-      const enabledTypes = applyUserConnectorUpdate(
-        enabledTypesByAgent.get(params.id) ?? [],
+      const enabledConnectorSlugs = applyUserConnectorUpdate(
+        enabledConnectorSlugsByAgent.get(params.id) ?? [],
         body,
       );
-      enabledTypesByAgent.set(params.id, enabledTypes);
-      return respond(200, { enabledTypes });
+      enabledConnectorSlugsByAgent.set(params.id, enabledConnectorSlugs);
+      return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
     },
   );
   context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
@@ -606,6 +613,188 @@ describe("team page navigation", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("manages grant-required custom connector permissions from the agent auth tab", async () => {
+    const customConnector = {
+      ...createCustomConnector(),
+      permissionBundleRef: "builtin:feishu@1" as const,
+    };
+    let capturedUpdate: AgentCustomConnectorUpdate | null = null;
+    mockTeamAPIs({ customConnector });
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.permissions,
+      ({ params, respond }) => {
+        expect(params.id).toBe(customConnector.id);
+        return respond(200, {
+          ref: "builtin:feishu@1",
+          permissions: [
+            {
+              name: "standard:use",
+              description: "Use standard Feishu APIs with approval.",
+            },
+            {
+              name: "messages:send-as-user",
+              description: "Send or edit messages as the connected user.",
+            },
+            {
+              name: "resources:delete",
+              description: "Delete Feishu content.",
+            },
+          ],
+          defaultPolicies: {
+            "standard:use": "allow",
+            "messages:send-as-user": "deny",
+            "resources:delete": "deny",
+          },
+        });
+      },
+    );
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledIds: [customConnector.id],
+        grants: [
+          {
+            customConnectorId: customConnector.id,
+            permissionNames: [],
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, respond }) => {
+        capturedUpdate = body;
+        return respond(200, {
+          enabledIds: [customConnector.id],
+          grants:
+            "grants" in body
+              ? body.grants
+              : [
+                  {
+                    customConnectorId: customConnector.id,
+                    permissionNames: [],
+                  },
+                ],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await screen.findByText("Acme Search");
+    click(screen.getByLabelText("Manage Acme Search permissions"));
+
+    const messagePermission = await screen.findByText("messages:send-as-user");
+    const drawer = dialogForElement(messagePermission);
+    expect(within(drawer).queryByText("standard:use")).not.toBeInTheDocument();
+    const messageRow = messagePermission.parentElement?.parentElement;
+    if (!(messageRow instanceof HTMLElement)) {
+      throw new Error("custom connector permission row not found");
+    }
+    click(buttonByText("Allow", messageRow));
+    click(buttonByText("Apply", drawer));
+
+    await waitFor(() => {
+      expect(capturedUpdate).toStrictEqual({
+        grants: [
+          {
+            customConnectorId: customConnector.id,
+            permissionNames: ["messages:send-as-user"],
+          },
+        ],
+        operation: "add",
+      });
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show a custom connector permission draft on another agent", async () => {
+    const customConnector = {
+      ...createCustomConnector(),
+      permissionBundleRef: "builtin:feishu@1" as const,
+    };
+    const updatedAgentIds: string[] = [];
+    mockTeamAPIs({ customConnector });
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.permissions,
+      ({ respond }) => {
+        return respond(200, {
+          ref: "builtin:feishu@1",
+          permissions: [
+            {
+              name: "messages:send-as-user",
+              description: "Send or edit messages as the connected user.",
+            },
+          ],
+          defaultPolicies: {
+            "messages:send-as-user": "deny",
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        updatedAgentIds.push(params.id);
+        return respond(200, {
+          enabledIds: [customConnector.id],
+          grants:
+            "grants" in body
+              ? body.grants
+              : [
+                  {
+                    customConnectorId: customConnector.id,
+                    permissionNames: [],
+                  },
+                ],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await screen.findByText("Acme Search");
+    click(screen.getByLabelText("Manage Acme Search permissions"));
+    const messagePermission = await screen.findByText("messages:send-as-user");
+    const permissionRow = messagePermission.parentElement?.parentElement;
+    if (!(permissionRow instanceof HTMLElement)) {
+      throw new Error("custom connector permission row not found");
+    }
+    click(buttonByText("Allow", permissionRow));
+
+    context.store.set(detachedNavigateTo$, ROUTES.agentDetail, {
+      pathParams: { agentId: zeroAgentId },
+      searchParams: new URLSearchParams(),
+    });
+
+    await screen.findByRole("heading", { name: "Zero" });
+    await waitFor(() => {
+      expect(
+        screen.queryByText("messages:send-as-user"),
+      ).not.toBeInTheDocument();
+    });
+    expect(updatedAgentIds).toStrictEqual([]);
+  });
+
+  it("hides custom connector permission management without a bundle", async () => {
+    mockTeamAPIs();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await screen.findByText("Acme Search");
+    expect(
+      screen.queryByLabelText("Manage Acme Search permissions"),
+    ).not.toBeInTheDocument();
+  });
+
   it("does not reuse a failed connector authorization draft across agents", async () => {
     mockTeamAPIs();
     let updateCalls = 0;
@@ -795,17 +984,13 @@ describe("team page navigation", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (
-          query.sinceSeqId !== undefined ||
-          query.beforeSeqId !== undefined ||
-          query.sinceId !== undefined ||
-          query.beforeId !== undefined
-        ) {
+        if (query.sinceSeqId !== undefined || query.beforeSeqId !== undefined) {
           return respond(200, { events: [] });
         }
         return respond(200, {
@@ -816,7 +1001,7 @@ describe("team page navigation", () => {
                     id: firstMessageId,
                     threadId: firstThreadId,
                     eventType: "input.prompt" as const,
-                    content: "First shortcut thread message",
+                    content: null,
                     userMessage: {
                       version: 1,
                       parts: [
@@ -831,7 +1016,6 @@ describe("team page navigation", () => {
                   },
                 ]
               : [],
-          hasHistoryBefore: false,
         });
       },
     );
@@ -1218,7 +1402,7 @@ describe("team page navigation", () => {
       zeroConnectorCatalogContract.permissions,
       ({ respond }) => {
         const permissions = {
-          connectorRef: "cloudflare",
+          connectorSlug: "cloudflare",
           label: "Cloudflare",
           icon: {
             url: "https://icons.example.test/cloudflare.svg",
@@ -1248,7 +1432,7 @@ describe("team page navigation", () => {
           body.grants.map((grant) => {
             return {
               agentId: body.agentId,
-              connectorRef: body.connectorRef,
+              connectorSlug: body.connectorSlug,
               permission: grant.permission,
               action: grant.action,
               expiresAt: null,
@@ -1301,7 +1485,7 @@ describe("team page navigation", () => {
     expect(capturedApplies).toStrictEqual([
       {
         agentId: researchAgentId,
-        connectorRef: "cloudflare",
+        connectorSlug: "cloudflare",
         mode: "patch",
         grants: [
           {
@@ -1320,7 +1504,7 @@ describe("team page navigation", () => {
       return respond(200, [
         {
           agentId: researchAgentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "channels:join",
           action: "allow",
           expiresAt: isoFromNowMs(-60 * 1000),
@@ -1388,7 +1572,7 @@ describe("team page navigation", () => {
     ): UserPermissionGrantResponse => {
       return {
         agentId: researchAgentId,
-        connectorRef: "slack",
+        connectorSlug: "slack",
         permission,
         action: "allow",
         expiresAt: expiration,
@@ -1456,7 +1640,7 @@ describe("team page navigation", () => {
     let grants: UserPermissionGrantResponse[] = [
       {
         agentId: researchAgentId,
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         permission: "annotations|create",
         action: "allow",
         expiresAt: isoFromNowMs(30 * 60 * 1000),
@@ -1465,7 +1649,7 @@ describe("team page navigation", () => {
       },
       {
         agentId: researchAgentId,
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         permission: "dashboards|read",
         action: "allow",
         expiresAt: isoFromNowMs(2 * 60 * 60 * 1000),
@@ -1474,7 +1658,7 @@ describe("team page navigation", () => {
       },
       {
         agentId: researchAgentId,
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         permission: "datasets|read",
         action: "allow",
         expiresAt: isoFromNowMs(-60 * 1000),
@@ -1483,7 +1667,7 @@ describe("team page navigation", () => {
       },
       {
         agentId: researchAgentId,
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         permission: "legacy|removed",
         action: "deny",
         expiresAt: null,
@@ -1502,7 +1686,7 @@ describe("team page navigation", () => {
           (grant) => {
             return {
               agentId: body.agentId,
-              connectorRef: body.connectorRef,
+              connectorSlug: body.connectorSlug,
               permission: grant.permission,
               action: grant.action,
               expiresAt:
@@ -1516,7 +1700,7 @@ describe("team page navigation", () => {
         );
         const appliedGrantKeys = new Set(
           appliedGrants.map((grant) => {
-            return `${grant.agentId}\u0000${grant.connectorRef}\u0000${grant.permission}`;
+            return `${grant.agentId}\u0000${grant.connectorSlug}\u0000${grant.permission}`;
           }),
         );
         grants = [
@@ -1524,12 +1708,12 @@ describe("team page navigation", () => {
             if (
               body.mode === "replace" &&
               current.agentId === body.agentId &&
-              current.connectorRef === body.connectorRef
+              current.connectorSlug === body.connectorSlug
             ) {
               return false;
             }
             return !appliedGrantKeys.has(
-              `${current.agentId}\u0000${current.connectorRef}\u0000${current.permission}`,
+              `${current.agentId}\u0000${current.connectorSlug}\u0000${current.permission}`,
             );
           }),
           ...appliedGrants,
@@ -1572,7 +1756,7 @@ describe("team page navigation", () => {
     expect(capturedApplies).toStrictEqual([
       {
         agentId: researchAgentId,
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         mode: "patch",
         grants: [
           {

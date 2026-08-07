@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { env } from "../../lib/env";
 
-type BuiltInGenerationProviderWebhookProvider = "fal" | "byteplus";
+type BuiltInGenerationProviderWebhookProvider = "fal" | "byteplus" | "minimax";
 
 function webhookTokenPayload(args: {
   readonly provider: BuiltInGenerationProviderWebhookProvider;
@@ -48,6 +48,18 @@ export function verifyBuiltInGenerationProviderWebhookToken(args: {
   return timingSafeEqual(actual, expectedBuffer);
 }
 
+export function verifyJoggAiWebhookSignature(args: {
+  readonly body: string;
+  readonly secret: string;
+  readonly signature: string;
+}): boolean {
+  const expected = Buffer.from(
+    createHmac("sha256", args.secret).update(args.body).digest("hex"),
+  );
+  const actual = Buffer.from(args.signature);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
 export function falBuiltInGenerationWebhookUrl(args: {
   readonly generationId: string;
   readonly visualKey?: string;
@@ -82,6 +94,28 @@ export function bytePlusBuiltInGenerationWebhookUrl(args: {
     "token",
     signBuiltInGenerationProviderWebhookToken({
       provider: "byteplus",
+      generationId: args.generationId,
+      visualKey: args.visualKey,
+    }),
+  );
+  if (args.visualKey) {
+    baseUrl.searchParams.set("visualKey", args.visualKey);
+  }
+  return baseUrl.toString();
+}
+
+export function miniMaxBuiltInGenerationWebhookUrl(args: {
+  readonly generationId: string;
+  readonly visualKey?: string;
+}): string {
+  const baseUrl = new URL(
+    `/api/webhooks/built-in-generations/minimax/${args.generationId}`,
+    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+  );
+  baseUrl.searchParams.set(
+    "token",
+    signBuiltInGenerationProviderWebhookToken({
+      provider: "minimax",
       generationId: args.generationId,
       visualKey: args.visualKey,
     }),

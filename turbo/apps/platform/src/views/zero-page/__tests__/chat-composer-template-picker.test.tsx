@@ -13,9 +13,14 @@ import type {
   GenerationTemplateRequest,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  zeroAvatarVideoContract,
+  type ZeroAvatarVideoAvatarsQuery,
+  type ZeroAvatarVideoVoicesQuery,
+} from "@vm0/api-contracts/contracts/zero-avatar-video";
+import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
 import {
   click,
   detachedSetupPage,
@@ -36,13 +41,27 @@ import {
   mockActiveTemplateThread,
   trackTemplatePreviewImagePreloads,
   mockImmediateIdleCallback,
-  openTemplatePicker,
   selectTemplate,
   selectIllustrationTemplate,
   composerElementFrom,
   findComposerEditor,
-  expectTemplateAttachedToComposer,
+  expectInlineTemplateInComposer,
+  composerInlineTemplates,
+  appendAndSend,
 } from "./chat-composer-test-helpers.ts";
+
+// Templates are sent as inline parts of the structured userMessage rather than
+// through the legacy top-level generationTemplate field.
+function sentInlineTemplate(
+  userMessage: UserMessageDocument | undefined,
+): GenerationTemplateRequest | undefined {
+  for (const part of userMessage?.parts ?? []) {
+    if (part.type === "template") {
+      return part.template;
+    }
+  }
+  return undefined;
+}
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
@@ -84,9 +103,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -118,6 +134,9 @@ describe("chat composer templates", () => {
         "-top-px",
         "bg-orange-500/10",
         "text-orange-600",
+      );
+      // Hover lives on the zones so each half of a split chip reacts alone.
+      expect(chip.querySelector("button")).toHaveClass(
         "hover:bg-orange-500/15",
       );
       expect(
@@ -151,6 +170,103 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("edits video parameters from the second half of an inline chip", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = VIDEO_TEMPLATE_ITEMS[0]!;
+    let submittedUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedUserMessage = body.userMessage;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    await user.click(tabByText("Video"));
+    await user.click(
+      await screen.findByLabelText(`Select video template ${template.title}`),
+    );
+
+    // Catalog defaults are shown even though nothing is stored yet.
+    const spec = await screen.findByLabelText("Video options 16:9 \u00b7 8s");
+    const chip = document.querySelector("[data-composer-inline-template]");
+    expect(chip?.querySelectorAll("button")).toHaveLength(2);
+
+    await user.click(spec);
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.textContent === "Reset to default";
+      }),
+    ).toBeFalsy();
+    await user.click(await screen.findByRole("combobox", { name: "Model" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Seedance 2.0" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(
+        /^Seedance 2\.0$/,
+      );
+    });
+
+    await user.click(await screen.findByRole("combobox", { name: "Ratio" }));
+    await user.click(await screen.findByRole("option", { name: "9:16" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Video options 9:16 \u00b7 8s"),
+      ).toBeInTheDocument();
+    });
+
+    // A second edit has to land in place too: setNodeMarkup drops the node
+    // selection, so a selection-based update would insert another chip here.
+    await user.click(await screen.findByRole("combobox", { name: "Duration" }));
+    await user.click(await screen.findByRole("option", { name: "6s" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Video options 9:16 \u00b7 6s"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      document.querySelectorAll("[data-composer-inline-template]"),
+    ).toHaveLength(1);
+
+    await user.click(screen.getByLabelText("Send"));
+    await waitFor(() => {
+      expect(submittedUserMessage?.parts[0]).toMatchObject({
+        type: "template",
+        template: {
+          type: "video",
+          selection: {
+            stylePresetId: template.id,
+            // Only the changed values are persisted.
+            videoOptions: {
+              model: "dreamina-seedance-2-0-260128",
+              aspectRatio: "9:16",
+              duration: "6s",
+            },
+          },
+        },
+      });
+    });
+  });
+
   it("replaces a selected inline template instead of inserting another", async () => {
     const user = userEvent.setup({ delay: null });
     const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
@@ -159,9 +275,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -340,74 +453,6 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("places the template control immediately after upload when the popover switch is enabled", async () => {
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerUploadPopover]: true,
-      },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const composer = composerElementFrom(
-      await screen.findByPlaceholderText(PLACEHOLDER),
-    );
-
-    await waitFor(() => {
-      const controls = Array.from(
-        composer.querySelectorAll(
-          [
-            'button[aria-label="Upload"]',
-            'button[aria-label="Template"]',
-            'button[aria-label="Connectors"]',
-          ].join(","),
-        ),
-      ).map((button) => {
-        return button.getAttribute("aria-label");
-      });
-
-      expect(controls).toStrictEqual(["Upload", "Template", "Connectors"]);
-      expect(
-        composer.querySelector('button[aria-label="Attach"]'),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("adds upload links to the composer draft", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerUploadPopover]: true,
-      },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await screen.findByPlaceholderText(PLACEHOLDER);
-    const editor = await findComposerEditor();
-    const composer = composerElementFrom(editor);
-
-    await user.click(within(composer).getByTestId("composer-upload"));
-    await expect(
-      screen.findByText("Upload from computer"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByText("Upload from link")).toBeInTheDocument();
-
-    await user.type(
-      screen.getByTestId("composer-upload-link-input"),
-      "https://example.com/image.png",
-    );
-    await user.click(screen.getByTestId("composer-upload-link-add"));
-
-    await waitFor(() => {
-      expect(editor.textContent).toBe("https://example.com/image.png");
-    });
-  });
-
   it("opens the template picker with responsive category navigation", async () => {
     const user = userEvent.setup({ delay: null });
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
@@ -430,18 +475,19 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
+    expect(screen.queryByLabelText("Search templates")).not.toBeInTheDocument();
 
     expect(tabByText("Presentation")).toBeInTheDocument();
     expect(tabByText("Illustration")).toBeInTheDocument();
     expect(tabByText("Video")).toBeInTheDocument();
     expect(tabByText("Website")).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent === "Avatar";
+      }),
+    ).toBeFalsy();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
-    expect(tabByText("Presentation")).toHaveClass("bg-gray-200");
-    expect(tabByText("Presentation")).toHaveClass("font-medium");
-    expect(tabByText("Presentation")).toHaveClass("text-sidebar-foreground");
-    expect(tabByText("Illustration")).toHaveClass("text-sidebar-foreground");
-    expect(tabByText("Illustration")).not.toHaveClass("bg-gray-200");
     const categorySelect = screen.getByRole("combobox", {
       name: "Template category",
     });
@@ -452,9 +498,6 @@ describe("chat composer templates", () => {
     });
     expect(categorySidebar).toBeInstanceOf(HTMLElement);
     expect(categorySidebar).toHaveAttribute("aria-orientation", "vertical");
-    expect(categorySidebar).toHaveClass("hidden");
-    expect(categorySidebar).toHaveClass("sm:flex");
-    expect(categorySidebar).toHaveClass("bg-gray-50");
 
     await user.click(categorySelect);
     await user.click(
@@ -493,7 +536,7 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(tabByText("Workflow")).toHaveFocus();
       expect(tabByText("Workflow")).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByLabelText("Search connectors")).toBeInTheDocument();
+      expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
     });
 
     fireEvent.keyDown(tabByText("Workflow"), { key: "Home" });
@@ -506,115 +549,510 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("selects a presentation template from the picker", async () => {
+  it("previews avatars and sends the selected avatar and voice", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
+    const observedQueries: ZeroAvatarVideoAvatarsQuery[] = [];
+    const observedVoiceQueries: ZeroAvatarVideoVoicesQuery[] = [];
+    const avatarFilterReady = context.mocks.deferred<void>();
+    const avatarPageTwoReady = context.mocks.deferred<void>();
+    const voiceFilterReady = context.mocks.deferred<void>();
+    const voicePageTwoReady = context.mocks.deferred<void>();
+    const playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+    const pauseSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "pause")
+      .mockImplementation(() => {});
+    const firstPage = Array.from({ length: 24 }, (_, index) => {
+      const id = index + 1;
+      return {
+        id,
+        name: `Avatar ${String(id)}`,
+        videoUrl: `https://example.com/avatar-${String(id)}.${index === 1 ? "jpg" : "mp4"}`,
+        coverUrl: `https://example.com/avatar-${String(id)}.jpg`,
+        aspectRatio: 0,
+      };
     });
-
-    await openTemplatePicker(user, template);
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
-    });
-    await expectTemplateAttachedToComposer(`Remove template ${template.title}`);
-
-    click(screen.getByLabelText(`Remove template ${template.title}`));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-      expect(
-        screen.queryByLabelText(`Remove template ${template.title}`),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("activates an embedded template control with Enter without sending the draft", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await selectTemplate(user, template);
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Keep this draft");
-
-    const removeTemplate = screen.getByLabelText(
-      `Remove template ${template.title}`,
+    const selectedAvatar = {
+      id: 81,
+      name: "Ada",
+      videoUrl: "https://example.com/ada.mp4",
+      coverUrl: "https://example.com/ada.jpg",
+      aspectRatio: 0,
+      style: "professional",
+      gender: "male",
+      age: "young_adult",
+    };
+    const selectedVoice = {
+      id: "en-US-ChristopherNeural",
+      name: "Christopher",
+      sampleUrl: "https://example.com/christopher.mp3",
+      language: "English",
+      gender: "male",
+      age: "young",
+      accent: "american",
+      useCase: "advertisement",
+    };
+    const alternateVoice = {
+      id: "es-ES-AlvaroNeural",
+      name: "Alvaro",
+      sampleUrl: "https://example.com/alvaro.mp3",
+      language: "Spanish",
+      gender: "male",
+      age: "young",
+      accent: "british",
+      useCase: "advertisement",
+    };
+    const secondVoice = {
+      id: "en-US-AvaNeural",
+      name: "Ava",
+      sampleUrl: "https://example.com/ava.mp3",
+      language: "English",
+      gender: "female",
+      age: "young",
+      accent: "american",
+      useCase: "advertisement",
+    };
+    context.mocks.api(
+      zeroAvatarVideoContract.avatars,
+      async ({ query, respond }) => {
+        observedQueries.push(query);
+        if (
+          query.page === 1 &&
+          query.style === "professional" &&
+          query.scene === "business" &&
+          query.ethnicity === "north_american"
+        ) {
+          await avatarFilterReady.promise;
+        }
+        if (query.page === 2) {
+          await avatarPageTwoReady.promise;
+        }
+        return respond(200, {
+          avatars: query.page === 2 ? [selectedAvatar] : firstPage,
+        });
+      },
     );
-    removeTemplate.focus();
-    expect(removeTemplate).toHaveFocus();
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText(`Remove template ${template.title}`),
-      ).not.toBeInTheDocument();
-      expect(editor).toHaveTextContent("Keep this draft");
-    });
-  });
-
-  it("keeps a selected template attached when replacing all prompt text", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    let submittedPrompt: string | undefined;
+    context.mocks.api(
+      zeroAvatarVideoContract.voices,
+      async ({ query, respond }) => {
+        observedVoiceQueries.push(query);
+        if (
+          query.pageSize === 24 &&
+          query.page === 1 &&
+          query.language === "spanish"
+        ) {
+          await voiceFilterReady.promise;
+        }
+        if (query.pageSize === 24 && query.page === 2) {
+          await voicePageTwoReady.promise;
+        }
+        const loadingFilterOptions =
+          query.pageSize === 100 &&
+          query.language === undefined &&
+          query.gender === undefined &&
+          query.age === undefined &&
+          query.useCase === undefined;
+        const loadingRecommendation =
+          query.pageSize === 100 && query.language !== undefined;
+        const voices = loadingFilterOptions
+          ? [alternateVoice, selectedVoice]
+          : loadingRecommendation
+            ? [alternateVoice, selectedVoice]
+            : query.page === 2
+              ? [secondVoice]
+              : query.language === "english"
+                ? [selectedVoice]
+                : [alternateVoice, selectedVoice];
+        return respond(200, {
+          voices,
+          hasMore:
+            query.page === 1 && (query.pageSize === 24 || loadingFilterOptions),
+          filterOptions: loadingFilterOptions
+            ? {
+                languages: ["english", "spanish"],
+                useCases: ["advertisement", "narrative_story", "social_media"],
+              }
+            : {
+                languages: ["english"],
+                useCases: ["narrative_story"],
+              },
+        });
+      },
+    );
     let submittedTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      onRunCreate: (body) => {
-        submittedPrompt = body.prompt;
-        submittedTemplate = body.generationTemplate;
+      onRunCreate(body) {
+        submittedTemplate = sentInlineTemplate(body.userMessage);
       },
     });
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await selectTemplate(user, template);
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Initial prompt");
-    await fill(editor, "Replacement prompt");
-
-    await waitFor(() => {
-      expect(
-        editor.querySelectorAll("[data-composer-template-attachment]"),
-      ).toHaveLength(1);
-      expect(editor).toHaveTextContent("Replacement prompt");
-      expect(editor).not.toHaveTextContent("Initial prompt");
-    });
-
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => {
-      expect(submittedPrompt).toBe("Replacement prompt");
-      expect(submittedTemplate).toMatchObject({
-        type: "presentation",
-        selection: { templateId: template.templateId },
+    try {
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+        path: `/chats/${THREAD_ID}`,
       });
+
+      await user.click(
+        await waitFor(() => {
+          return screen.getByLabelText("Template");
+        }),
+      );
+      await user.click(
+        await waitFor(() => {
+          return tabByText("Avatar");
+        }),
+      );
+
+      const dialog = screen.getByRole("dialog");
+      await within(dialog).findByLabelText("Select template Avatar 1");
+      await user.click(within(dialog).getByLabelText("Aspect ratio: 16:9"));
+      await waitFor(() => {
+        expect(observedQueries).toContainEqual({
+          page: 1,
+          pageSize: 24,
+          aspectRatio: "landscape",
+        });
+      });
+      await user.click(within(dialog).getByText("Filters"));
+      await user.click(screen.getByLabelText("Style: All"));
+      await user.click(screen.getByRole("option", { name: "Professional" }));
+      await user.click(screen.getByLabelText("Scene: All"));
+      await user.click(screen.getByRole("option", { name: "Business" }));
+      await user.click(screen.getByLabelText("Ethnicity: All"));
+      await user.click(screen.getByRole("option", { name: "North american" }));
+      await user.keyboard("{Escape}");
+      await waitFor(() => {
+        expect(
+          dialog.querySelector("[data-avatar-template-skeleton-grid]"),
+        ).toBeInTheDocument();
+      });
+      avatarFilterReady.resolve();
+      await waitFor(() => {
+        expect(observedQueries).toContainEqual({
+          page: 1,
+          pageSize: 24,
+          aspectRatio: "landscape",
+          style: "professional",
+          scene: "business",
+          ethnicity: "north_american",
+        });
+      });
+      const firstCard = within(dialog).getByLabelText(
+        "Select template Avatar 1",
+      );
+      const firstPreview = firstCard.querySelector(
+        "[data-avatar-template-preview]",
+      );
+      if (!(firstPreview instanceof HTMLElement)) {
+        throw new Error("Avatar preview not found");
+      }
+      const firstVideo = firstPreview.querySelector("video");
+      if (!(firstVideo instanceof HTMLVideoElement)) {
+        throw new Error("Avatar preview video not found");
+      }
+      expect(firstPreview).toHaveClass("aspect-video");
+      expect(firstVideo).toHaveAttribute("preload", "none");
+      expect(firstVideo).toHaveAttribute("poster", firstPage[0]?.coverUrl);
+      expect(firstVideo).toHaveAttribute("src", firstPage[0]?.videoUrl);
+      fireEvent.mouseEnter(firstCard);
+      expect(playSpy).toHaveBeenCalledTimes(1);
+      expect(firstVideo.preload).toBe("metadata");
+      firstVideo.currentTime = 3;
+      fireEvent.mouseLeave(firstCard);
+      expect(pauseSpy).toHaveBeenCalledTimes(1);
+      expect(firstVideo.currentTime).toBe(0);
+      const imageOnlyPreview = within(dialog)
+        .getByAltText("Avatar 2")
+        .closest("[data-avatar-template-preview]");
+      expect(imageOnlyPreview).not.toBeNull();
+      expect(imageOnlyPreview?.querySelector("video")).toBeNull();
+
       expect(
-        editor.querySelectorAll("[data-composer-template-attachment]"),
-      ).toHaveLength(0);
-      expect(
-        screen.queryByLabelText(`Remove template ${template.title}`),
+        within(dialog).queryByLabelText("Next page"),
       ).not.toBeInTheDocument();
-    });
+      const avatarScroll = dialog.querySelector(
+        "[data-avatar-template-grid-scroll]",
+      );
+      if (!(avatarScroll instanceof HTMLElement)) {
+        throw new Error("Avatar catalog scroll area not found");
+      }
+      expect(avatarScroll).toHaveClass(
+        "overflow-y-auto",
+        "[scrollbar-width:none]",
+      );
+      const avatarToolbar = avatarScroll.querySelector(
+        "[data-avatar-catalog-toolbar]",
+      );
+      expect(avatarToolbar).toHaveClass("sticky", "top-0");
+      Object.defineProperties(avatarScroll, {
+        scrollHeight: { configurable: true, value: 1200 },
+        clientHeight: { configurable: true, value: 500 },
+        scrollTop: { configurable: true, value: 500 },
+      });
+      fireEvent.scroll(avatarScroll);
+      await within(dialog).findByText("Loading");
+      avatarPageTwoReady.resolve();
+      const selectAvatar = await within(dialog).findByLabelText(
+        "Select template Ada",
+      );
+      expect(within(dialog).getByLabelText("Select template Avatar 1")).toBe(
+        firstCard,
+      );
+      expect(avatarScroll.scrollTop).toBe(500);
+      const adaPreview = selectAvatar.querySelector(
+        "[data-avatar-template-preview]",
+      );
+      expect(adaPreview?.querySelector("video")).toHaveAttribute(
+        "poster",
+        selectedAvatar.coverUrl,
+      );
+      await user.click(selectAvatar);
+
+      await within(dialog).findByText("Choose a voice for Ada");
+      await expect(
+        within(dialog).findByLabelText("Preview avatar video Ada"),
+      ).resolves.toBeInTheDocument();
+      const selectedAvatarCard = dialog.querySelector(
+        "[data-selected-avatar-card]",
+      );
+      expect(selectedAvatarCard).toHaveClass("rounded-xl", "bg-card");
+      expect(selectedAvatarCard).not.toHaveClass(
+        "border-primary",
+        "ring-primary",
+      );
+      const voicePicker = dialog.querySelector("[data-avatar-voice-picker]");
+      const voiceScroll = dialog.querySelector(
+        "[data-avatar-voice-list-scroll]",
+      );
+      expect(voicePicker).toHaveClass("overflow-hidden");
+      expect(voiceScroll).toHaveClass(
+        "overflow-y-auto",
+        "[scrollbar-width:none]",
+      );
+      expect(voiceScroll?.contains(selectedAvatarCard)).toBeFalsy();
+      await waitFor(() => {
+        expect(observedVoiceQueries).toContainEqual({
+          page: 1,
+          pageSize: 24,
+          language: "english",
+          gender: "male",
+          age: "young",
+          useCase: "advertisement",
+        });
+      });
+      const firstVoiceCard = await within(dialog).findByLabelText(
+        "Select voice Christopher",
+      );
+      expect(voiceScroll?.querySelector("[data-avatar-voice-card]")).toBe(
+        firstVoiceCard,
+      );
+      expect(firstVoiceCard).toHaveAttribute("data-recommended");
+      expect(firstVoiceCard).toHaveAttribute("aria-pressed", "false");
+      expect(firstVoiceCard).toHaveAccessibleDescription("Recommended");
+      expect(within(firstVoiceCard).getByText("Recommended")).toBeVisible();
+      const voiceFiltersButton = within(dialog).getByText("Filters", {
+        selector: "button",
+      });
+      expect(voiceFiltersButton).not.toHaveClass(
+        "border-primary/40",
+        "text-primary",
+      );
+      await user.click(voiceFiltersButton);
+      expect(screen.getByLabelText("Gender: Male")).toBeInTheDocument();
+      expect(screen.getByLabelText("Age: Young")).toBeInTheDocument();
+      expect(screen.getByLabelText("Language: English")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Use case: Advertisement"),
+      ).toBeInTheDocument();
+      await user.click(screen.getByLabelText("Language: English"));
+      expect(
+        screen.getByRole("option", { name: "Spanish" }),
+      ).toBeInTheDocument();
+      await user.click(screen.getByRole("option", { name: "Spanish" }));
+      await user.keyboard("{Escape}");
+      await waitFor(() => {
+        expect(
+          dialog.querySelector("[data-avatar-voice-skeleton-grid]"),
+        ).toBeInTheDocument();
+      });
+      voiceFilterReady.resolve();
+      await waitFor(() => {
+        expect(observedVoiceQueries).toContainEqual({
+          page: 1,
+          pageSize: 24,
+          language: "spanish",
+          gender: "male",
+          age: "young",
+          useCase: "advertisement",
+        });
+      });
+      const filteredFirstVoiceCard = await within(dialog).findByLabelText(
+        "Select voice Christopher",
+      );
+      if (!(voiceScroll instanceof HTMLElement)) {
+        throw new Error("Voice catalog scroll area not found");
+      }
+      Object.defineProperties(voiceScroll, {
+        scrollHeight: { configurable: true, value: 1200 },
+        clientHeight: { configurable: true, value: 500 },
+        scrollTop: { configurable: true, value: 500 },
+      });
+      fireEvent.scroll(voiceScroll);
+      await within(dialog).findByText("Loading");
+      voicePageTwoReady.resolve();
+      await within(dialog).findByLabelText("Select voice Ava");
+      expect(within(dialog).getByLabelText("Select voice Christopher")).toBe(
+        filteredFirstVoiceCard,
+      );
+      expect(voiceScroll.scrollTop).toBe(500);
+      const voicePreview = within(dialog).getByLabelText(
+        "Preview voice Christopher",
+      );
+      const voiceCard = within(dialog).getByLabelText(
+        "Select voice Christopher",
+      );
+      expect(voiceCard).not.toHaveClass("hover:-translate-y-px");
+      const voiceAudio = voiceCard.querySelector("audio");
+      expect(voiceAudio).toHaveAttribute("src", selectedVoice.sampleUrl);
+      expect(voiceAudio).toHaveAttribute("preload", "none");
+      expect(within(voiceCard).queryByText("Use")).not.toBeInTheDocument();
+      const playCallsBeforeVoicePreview = playSpy.mock.calls.length;
+      await user.click(voicePreview);
+      expect(playSpy).toHaveBeenCalledTimes(playCallsBeforeVoicePreview + 1);
+      expect(
+        within(dialog).getByText("Choose a voice for Ada"),
+      ).toBeInTheDocument();
+      await user.click(voiceCard);
+
+      await expectInlineTemplateInComposer("Ada");
+      await appendAndSend(user, "Introduce our new product");
+
+      await waitFor(() => {
+        expect(observedQueries).toStrictEqual([
+          { page: 1, pageSize: 24, aspectRatio: "portrait" },
+          { page: 1, pageSize: 24, aspectRatio: "landscape" },
+          {
+            page: 1,
+            pageSize: 24,
+            aspectRatio: "landscape",
+            style: "professional",
+          },
+          {
+            page: 1,
+            pageSize: 24,
+            aspectRatio: "landscape",
+            style: "professional",
+            scene: "business",
+          },
+          {
+            page: 1,
+            pageSize: 24,
+            aspectRatio: "landscape",
+            style: "professional",
+            scene: "business",
+            ethnicity: "north_american",
+          },
+          {
+            page: 2,
+            pageSize: 24,
+            aspectRatio: "landscape",
+            style: "professional",
+            scene: "business",
+            ethnicity: "north_american",
+          },
+        ]);
+        expect(observedVoiceQueries).toStrictEqual(
+          expect.arrayContaining([
+            { page: 1, pageSize: 100 },
+            {
+              page: 1,
+              pageSize: 100,
+              language: "english",
+              gender: "male",
+              age: "young",
+              useCase: "advertisement",
+            },
+            {
+              page: 1,
+              pageSize: 100,
+              language: "spanish",
+              gender: "male",
+              age: "young",
+              useCase: "advertisement",
+            },
+            {
+              page: 1,
+              pageSize: 24,
+              language: "english",
+              gender: "male",
+              age: "young",
+              useCase: "advertisement",
+            },
+            {
+              page: 1,
+              pageSize: 24,
+              language: "spanish",
+              gender: "male",
+              age: "young",
+              useCase: "advertisement",
+            },
+            {
+              page: 2,
+              pageSize: 24,
+              language: "spanish",
+              gender: "male",
+              age: "young",
+              useCase: "advertisement",
+            },
+          ]),
+        );
+        expect(
+          observedVoiceQueries.filter((query) => {
+            return (
+              query.pageSize === 100 &&
+              query.language === undefined &&
+              query.gender === undefined &&
+              query.age === undefined &&
+              query.useCase === undefined
+            );
+          }),
+        ).toStrictEqual([{ page: 1, pageSize: 100 }]);
+        const avatarOptions = {
+          titleSnapshot: selectedAvatar.name,
+          previewUrl: selectedAvatar.coverUrl,
+          voiceId: selectedVoice.id,
+          aspectRatio: "landscape" as const,
+        };
+        // Nested options carry the selection; the flat fields are mirrored for
+        // readers that predate avatarOptions.
+        expect(submittedTemplate).toStrictEqual({
+          type: "video",
+          selection: {
+            stylePresetId: avatarTemplateStylePresetId(selectedAvatar.id),
+            avatarOptions,
+            ...avatarOptions,
+          },
+        });
+      });
+    } finally {
+      if (!avatarFilterReady.settled()) {
+        avatarFilterReady.resolve();
+      }
+      if (!avatarPageTwoReady.settled()) {
+        avatarPageTwoReady.resolve();
+      }
+      if (!voiceFilterReady.settled()) {
+        voiceFilterReady.resolve();
+      }
+      if (!voicePageTwoReady.settled()) {
+        voicePageTwoReady.resolve();
+      }
+      playSpy.mockRestore();
+      pauseSpy.mockRestore();
+    }
   });
 
   it("keeps the draft visible while send waits for draft attachments", async () => {
@@ -653,15 +1091,15 @@ describe("chat composer templates", () => {
     });
 
     const editor = await findComposerEditor();
-    await sendMessageInUI(user, editor, "Use this");
+    await appendAndSend(user, "Use this", editor);
 
     expect(editor).toHaveTextContent("Use this");
     expect(
       screen.getByLabelText("Cancel upload launch-notes.txt"),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText(`Remove template ${template.title}`),
-    ).toBeInTheDocument();
+      editor.querySelectorAll("[data-composer-inline-template]"),
+    ).toHaveLength(1);
   });
 
   it("renders presentation template card hover previews from HTML when available", async () => {
@@ -995,9 +1433,9 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       onRunCreate: (body) => {
-        if (body.generationTemplate?.type === "presentation") {
-          selectedColorSystemId =
-            body.generationTemplate.selection.colorSystemId;
+        const template = sentInlineTemplate(body.userMessage);
+        if (template?.type === "presentation") {
+          selectedColorSystemId = template.selection.colorSystemId;
         }
       },
     });
@@ -1006,6 +1444,11 @@ describe("chat composer templates", () => {
       context,
       path: `/chats/${THREAD_ID}`,
     });
+
+    // Type the prompt before picking a template: the picker inserts the
+    // template at the caret, and typing over a freshly selected node replaces
+    // it.
+    await fill(await findComposerEditor(), "Create a launch deck");
 
     click(
       await waitFor(() => {
@@ -1057,15 +1500,11 @@ describe("chat composer templates", () => {
       throw new Error("Prism card preview not found");
     }
     await user.click(
-      within(templateDialog).getByLabelText("Select style Prism"),
+      within(templateDialog).getByLabelText("Select style Candy party"),
     );
     expect(
-      within(templateDialog).getByLabelText("Select style Prism"),
+      within(templateDialog).getByLabelText("Select style Candy party"),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      context.store.get(templateCardThemeIdBySlug$)[template.slug],
-    ).toBeUndefined();
-
     const prismDetailImage = within(templateDialog).getByTestId(
       `${template.title} detail image preview`,
     );
@@ -1188,14 +1627,8 @@ describe("chat composer templates", () => {
     );
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
     });
-    expect(context.store.get(templateCardThemeIdBySlug$)).toMatchObject({
-      [template.slug]: "prism",
-    });
-
+    await expectInlineTemplateInComposer(template.title);
     await user.click(
       screen.getByLabelText(`Preview template ${template.title}`),
     );
@@ -1215,11 +1648,7 @@ describe("chat composer templates", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    await sendMessageInUI(
-      user,
-      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
-      "Create a launch deck",
-    );
+    await user.click(screen.getByLabelText("Send"));
     await waitFor(() => {
       expect(selectedColorSystemId).toBe("color-system:prism");
     });
@@ -1367,7 +1796,7 @@ describe("chat composer templates", () => {
       ).not.toBeNull();
 
       await user.click(
-        within(templateDialog).getByLabelText("Select style Prism"),
+        within(templateDialog).getByLabelText("Select style Candy party"),
       );
       await waitFor(() => {
         expect(frame()).toHaveAttribute(
@@ -1478,15 +1907,8 @@ describe("chat composer templates", () => {
         }),
       ).toBeInTheDocument();
     });
-    const defaultThemeLabel = (
-      template.colorSystemId ?? "color-system:warm-sand"
-    )
-      .replace("color-system:", "")
-      .replace(/-/g, " ");
     expect(
-      within(templateDialog).getByLabelText(
-        new RegExp(`^Select style ${defaultThemeLabel}$`, "i"),
-      ),
+      within(templateDialog).getByLabelText("Select style Lavender dusk"),
     ).toHaveAttribute("aria-pressed", "true");
 
     const templateButton = queryAllByRoleFast("button", templateDialog).find(
@@ -1508,14 +1930,8 @@ describe("chat composer templates", () => {
     click(screen.getByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
     });
+    await expectInlineTemplateInComposer(template.title);
   });
 
   it("opens presentation template detail at the scrubbed card slide", async () => {
@@ -1916,13 +2332,13 @@ describe("chat composer templates", () => {
       carnivalShadowRoot?.querySelector("[tabindex]"),
     ).not.toBeInTheDocument();
     expect(firstSlidePreviewButton.querySelectorAll("span")).toHaveLength(1);
-    expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+    expect(screen.getByLabelText("Select style Funfair")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
 
-    click(screen.getByLabelText("Select style Prism"));
-    expect(screen.getByLabelText("Select style Prism")).toHaveAttribute(
+    click(screen.getByLabelText("Select style Candy party"));
+    expect(screen.getByLabelText("Select style Candy party")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -1961,7 +2377,7 @@ describe("chat composer templates", () => {
         within(templateDialog).getByLabelText("Preview slide 1"),
       ).toHaveAttribute("aria-pressed", "true");
     });
-    expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+    expect(screen.getByLabelText("Select style Funfair")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -1994,7 +2410,7 @@ describe("chat composer templates", () => {
       );
     });
 
-    const themeButton = screen.getByLabelText("Select style Carnival");
+    const themeButton = screen.getByLabelText("Select style Funfair");
     themeButton.focus();
     expect(themeButton).toHaveFocus();
     fireEvent.keyDown(themeButton, {
@@ -2042,7 +2458,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("selects and removes an illustration style from the picker", async () => {
+  it("selects an illustration style from the picker", async () => {
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -2079,7 +2495,9 @@ describe("chat composer templates", () => {
 
     // Variant thumbnails switch the hero inline within the card; there is no
     // longer a second preview dialog.
-    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    const card = screen
+      .getByAltText(heroAlt)
+      .closest<HTMLElement>("[data-illustration-template-card]");
     if (!card) {
       throw new Error("Illustration card not found");
     }
@@ -2092,40 +2510,15 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
-    expect(screen.queryByLabelText("Search connectors")).toBeNull();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(
       screen.getByLabelText(`Select template ${illustrationTemplate.title}`),
     );
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      expect(
-        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
-      ).toBeInTheDocument();
     });
-    await expectTemplateAttachedToComposer(
-      `Remove template ${illustrationTemplate.title}`,
-    );
-
-    click(
-      screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-      expect(
-        screen.queryByLabelText(
-          `Remove template ${illustrationTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
-    });
+    await expectInlineTemplateInComposer(illustrationTemplate.title);
   });
 
   it("scrolls illustration thumbnails only after clicking a variant thumbnail", async () => {
@@ -2250,7 +2643,9 @@ describe("chat composer templates", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(scrollTo).not.toHaveBeenCalled();
 
-    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    const card = screen
+      .getByAltText(heroAlt)
+      .closest<HTMLElement>("[data-illustration-template-card]");
     if (!card) {
       throw new Error("Illustration card not found");
     }
@@ -2364,7 +2759,7 @@ describe("chat composer templates", () => {
     // Clicking near the right boundary scrolls all the way to the end.
     const remountedCard = screen
       .getByAltText(heroAlt)
-      .closest<HTMLElement>("div.group");
+      .closest<HTMLElement>("[data-illustration-template-card]");
     if (!remountedCard) {
       throw new Error("Remounted illustration card not found");
     }
@@ -2501,7 +2896,7 @@ describe("chat composer templates", () => {
     }
   });
 
-  it("queues a selected template during an active run and clears the picker state", async () => {
+  it("renders a selected template inline during an active run and clears the picker state", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockActiveTemplateThread();
@@ -2515,15 +2910,16 @@ describe("chat composer templates", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
     await selectTemplate(user, template);
-    const queuedComposer = await screen.findByRole("textbox", {
+    const activeComposer = await screen.findByRole("textbox", {
       name: "Message",
     });
-    await sendMessageInUI(user, queuedComposer, "Queue a matching deck");
+    await sendMessageInUI(user, activeComposer, "Steer with a matching deck");
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Queue a matching deck",
-      );
+      expect(
+        screen.getByText("Steer with a matching deck"),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Template")).toHaveAttribute(
         "aria-pressed",
         "false",
@@ -2534,8 +2930,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("clears a recalled template after queueing the message again", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("restores a recalled Morning Brief message as an inline template", async () => {
     const template = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const generationTemplate = {
       type: "illustration",
@@ -2543,11 +2938,9 @@ describe("chat composer templates", () => {
         illustrationStyleId: template.illustrationStyleId,
       },
     } satisfies GenerationTemplateRequest;
-    let queuedGenerationTemplate: GenerationTemplateRequest | undefined;
-    let queuedUserMessageTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-template-active-user",
           role: "user",
@@ -2576,20 +2969,13 @@ describe("chat composer templates", () => {
                 template: generationTemplate,
               },
               { type: "text", text: "Queue a recalled illustration" },
+              { type: "morning_brief", briefDate: "2026-06-09" },
             ],
           },
           createdAt: "2026-06-09T10:00:02Z",
         },
       ],
       activeRunIds: ["run-template-active"],
-      onQueuedMessageAppend: (body) => {
-        queuedGenerationTemplate = body.generationTemplate;
-        const templatePart = body.userMessage?.parts.find((part) => {
-          return part.type === "template";
-        });
-        queuedUserMessageTemplate =
-          templatePart?.type === "template" ? templatePart.template : undefined;
-      },
     });
 
     detachedSetupPage({
@@ -2609,32 +2995,16 @@ describe("chat composer templates", () => {
 
     const composer = await screen.findByRole("textbox", { name: "Message" });
     await waitFor(() => {
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
       expect(composer).toHaveTextContent("Queue a recalled illustration");
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
     });
-
-    await user.click(composer);
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Queue a recalled illustration",
-      );
-      expect(queuedGenerationTemplate).toStrictEqual(generationTemplate);
-      expect(queuedUserMessageTemplate).toStrictEqual(generationTemplate);
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-      expect(
-        screen.queryByLabelText(`Remove template ${template.title}`),
-      ).not.toBeInTheDocument();
-    });
+    // The template comes back as an inline node, and the morning-brief part is
+    // dropped from the restored draft.
+    await expectInlineTemplateInComposer(template.title);
+    expect(composer).not.toHaveTextContent("Morning Brief");
   });
 
-  it("keeps newer template selections visible after a queued template is sent", async () => {
+  it("keeps newer template selections visible after an inline template steer", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const nextTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
@@ -2649,35 +3019,27 @@ describe("chat composer templates", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
     await selectTemplate(user, template);
-    await sendMessageInUI(
-      user,
-      await screen.findByRole("textbox", { name: "Message" }),
-      "Queue a matching deck",
-    );
+    await appendAndSend(user, "Steer with a matching deck");
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Queue a matching deck",
-      );
+      expect(
+        screen.getByText("Steer with a matching deck"),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     });
 
     await selectIllustrationTemplate(user, nextTemplate);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
       expect(
-        screen.getByLabelText(`Remove template ${nextTemplate.title}`),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByLabelText(`Remove template ${template.title}`),
-      ).not.toBeInTheDocument();
+        composerInlineTemplates().map((node) => {
+          return node.textContent;
+        }),
+      ).toStrictEqual([nextTemplate.title]);
     });
   });
 
-  it("selects and removes a video template from the picker", async () => {
+  it("selects a video template from the picker", async () => {
     const videoStyle = VIDEO_TEMPLATE_ITEMS.find((item) => {
       return item.title === "Luxury Product Macro";
     })!;
@@ -2705,34 +3067,13 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.queryByLabelText("Search connectors")).toBeNull();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(screen.getByLabelText(`Select video template ${videoStyle.title}`));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      expect(
-        screen.getByLabelText(`Remove video template ${videoStyle.title}`),
-      ).toBeInTheDocument();
     });
-    await expectTemplateAttachedToComposer(
-      `Remove video template ${videoStyle.title}`,
-    );
-
-    click(screen.getByLabelText(`Remove video template ${videoStyle.title}`));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-      expect(
-        screen.queryByLabelText(`Remove video template ${videoStyle.title}`),
-      ).not.toBeInTheDocument();
-    });
+    await expectInlineTemplateInComposer(videoStyle.title);
   });
 
   it("selects and sends a workflow template from the picker", async () => {
@@ -2742,7 +3083,7 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       onRunCreate: (body) => {
-        submittedTemplate = body.generationTemplate;
+        submittedTemplate = sentInlineTemplate(body.userMessage);
       },
     });
 
@@ -2768,16 +3109,16 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText("Search connectors")).toHaveAttribute(
+    expect(screen.getByLabelText("Search templates")).toHaveAttribute(
       "placeholder",
-      "Search connector...",
+      "Search templates",
     );
-    await fill(screen.getByLabelText("Search connectors"), "no workflow match");
+    await fill(screen.getByLabelText("Search templates"), "no workflow match");
     await waitFor(() => {
       expect(screen.getByText("No matches")).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search connectors"), "auto-inbox");
+    await fill(screen.getByLabelText("Search templates"), "auto-inbox");
     click(
       screen.getByLabelText(
         `Select workflow template ${workflowTemplate.title}`,
@@ -2786,37 +3127,17 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      expect(
-        screen.getByLabelText(
-          `Remove workflow template ${workflowTemplate.title}`,
-        ),
-      ).toBeInTheDocument();
     });
-    await expectTemplateAttachedToComposer(
-      `Remove workflow template ${workflowTemplate.title}`,
-    );
+    await expectInlineTemplateInComposer(workflowTemplate.title);
 
-    const editor = await findComposerEditor();
-    await sendMessageInUI(user, editor, "Create this inbox workflow");
+    await appendAndSend(user, "Create this inbox workflow");
 
     await waitFor(() => {
       expect(submittedTemplate).toStrictEqual({
         type: "workflow",
         selection: { workflowTemplateId: workflowTemplate.id },
       });
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-      expect(
-        screen.queryByLabelText(
-          `Remove workflow template ${workflowTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
+      expect(composerInlineTemplates()).toHaveLength(0);
     });
   });
 
@@ -2831,7 +3152,7 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       onRunCreate: (body) => {
-        submittedTemplate = body.generationTemplate;
+        submittedTemplate = sentInlineTemplate(body.userMessage);
       },
     });
 
@@ -2839,6 +3160,11 @@ describe("chat composer templates", () => {
       context,
       path: `/chats/${THREAD_ID}`,
     });
+
+    // Type the prompt before picking a template: the picker inserts the
+    // template at the caret, and typing over a freshly selected node replaces
+    // it.
+    await fill(await findComposerEditor(), "Create a warm website");
 
     click(
       await waitFor(() => {
@@ -2867,28 +3193,19 @@ describe("chat composer templates", () => {
       expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
       expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
     });
-    expect(screen.queryByLabelText("Search connectors")).toBeNull();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(
       screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
     );
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      expect(
-        screen.getByLabelText(
-          `Remove website template ${websiteTemplate.title}`,
-        ),
-      ).toBeInTheDocument();
     });
-    await expectTemplateAttachedToComposer(
-      `Remove website template ${websiteTemplate.title}`,
-    );
+    await expectInlineTemplateInComposer(websiteTemplate.title);
 
-    click(
+    // The inline template node opens the picker on mousedown, which the
+    // lightweight `click` helper does not dispatch.
+    await user.click(
       screen.getByLabelText(
         `Preview website template ${websiteTemplate.title}`,
       ),
@@ -2994,135 +3311,14 @@ describe("chat composer templates", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    const editor = await findComposerEditor();
-    await sendMessageInUI(user, editor, "Create a warm website");
+    await user.click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
       expect(submittedTemplate).toStrictEqual({
         type: "website",
         selection: { websiteTemplateId: websiteTemplate.id },
       });
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-      expect(
-        screen.queryByLabelText(
-          `Remove website template ${websiteTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
+      expect(composerInlineTemplates()).toHaveLength(0);
     });
-  });
-
-  it("reopens the picker on the presentation tab from the selected chip", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await selectTemplate(user, template);
-
-    click(await screen.findByLabelText(`Preview template ${template.title}`));
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-      expect(tabByText("Presentation")).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
-    });
-  });
-
-  it("reopens on the illustration tab from the chip after the last-used tab changed", async () => {
-    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    // Select an illustration style, which leaves the picker on the
-    // Illustration tab.
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-    await waitFor(() => {
-      expect(tabByText("Illustration")).toBeInTheDocument();
-    });
-    click(tabByText("Illustration"));
-    click(
-      await screen.findByLabelText(
-        `Select template ${illustrationTemplate.title}`,
-      ),
-    );
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(
-        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
-      ).toBeInTheDocument();
-    });
-
-    // Move the last-used tab back to Presentation, then close without changing
-    // the selection so the persisted tab no longer matches the selection.
-    click(screen.getByLabelText("Template"));
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-    click(tabByText("Presentation"));
-    await waitFor(() => {
-      expect(tabByText("Presentation")).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
-    });
-    click(screen.getByLabelText("Close"));
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-
-    // Clicking the chip reopens on the tab matching the selection's type.
-    click(
-      screen.getByLabelText(`Preview template ${illustrationTemplate.title}`),
-    );
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-      expect(tabByText("Illustration")).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
-    });
-  });
-
-  it("removes the selected template from the chip without opening the picker", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await selectTemplate(user, template);
-
-    click(screen.getByLabelText(`Remove template ${template.title}`));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-    });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText(`Preview template ${template.title}`),
-    ).not.toBeInTheDocument();
   });
 });

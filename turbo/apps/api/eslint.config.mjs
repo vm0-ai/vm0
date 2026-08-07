@@ -95,7 +95,10 @@ const apiTestDirectDbImportMessage =
   "API tests must not import DB handles directly. Exercise setup and assertions through API endpoints; add a test route only when an external-behavior exception is justified.";
 
 const productionRouteTestImportMessage =
-  "Production route composition must not import test-only routes. Mount required test fixture routes explicitly from tests.";
+  "Production source must not import test-only routes. Mount required test fixture routes explicitly from tests through setupApp().";
+
+const lowerLayerRouteImportMessage =
+  "Lower layers must not import HTTP route or bootstrap aggregation modules. Move shared behavior to lib, command, computed, external, or service modules.";
 
 const apiTestDirectDbImportPatterns = [
   "./lib/db",
@@ -160,15 +163,12 @@ const apiTestServiceImportPatterns = [
 ];
 
 export default [
+  {
+    ignores: [".typecheck/**"],
+  },
   ...config,
   {
     files: ["src/**/*.ts"],
-    languageOptions: {
-      parserOptions: {
-        project: "./tsconfig.json",
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
     plugins: {
       api: apiLintPlugin,
     },
@@ -193,6 +193,12 @@ export default [
       // PostgreSQL's DO statement requires a code literal, so this local-only
       // seed script uses pg.escapeLiteral before passing the block to sql.raw.
       "api/no-sql-raw": "off",
+    },
+  },
+  {
+    files: ["src/signals/utils.ts"],
+    rules: {
+      "api/no-new-promise": "off",
     },
   },
   {
@@ -261,14 +267,74 @@ export default [
     },
   },
   {
-    // Keep the finite SemVer/build-identity policy matrix as a narrow
-    // state-machine exception. Route tests cover the constructible sync
-    // behavior, while arbitrary build versions are not a production API input.
+    files: ["src/**/*.ts"],
+    ignores: [
+      "src/**/__tests__/**/*.ts",
+      "src/**/*.test.ts",
+      "src/test-fixtures/thread-bound-run-admission.ts",
+      "src/signals/routes/test-zero-run-fixture.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/zero-runs-create.service"],
+              importNames: ["createTestFixtureZeroRun$"],
+              message:
+                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Keep finite persisted/state-machine contract matrices as narrow
+    // exceptions. Route tests cover constructible behavior, while these exact
+    // transition inputs are not available through production APIs.
     files: [
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
+      "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
+      // A pre-migration schema cannot be constructed through a production API.
+      // This focused transaction validates the rollout contract against real
+      // PostgreSQL tables before and after the autonomy-budget columns exist.
+      "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
+      // A pre-0835 table cannot be constructed through a production API. This
+      // focused transaction proves Calendar watch reads and initial writes stay
+      // legal on both sides of the transition-column migration.
+      "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
+      "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {
       "no-restricted-syntax": ["error", ...restrictedSyntax],
+    },
+  },
+  {
+    files: ["src/**/*.ts"],
+    ignores: [
+      "src/**/__tests__/**/*.ts",
+      "src/signals/routes/test-*.ts",
+      "src/signals/routes/cli-auth-test.ts",
+      "src/signals/route.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/routes/test-*", "**/routes/test-*/**"],
+              message: productionRouteTestImportMessage,
+            },
+            {
+              group: ["**/routes/cli-auth-test"],
+              message: productionRouteTestImportMessage,
+            },
+          ],
+        },
+      ],
     },
   },
   {
@@ -279,14 +345,63 @@ export default [
         {
           patterns: [
             {
-              group: ["./routes/test-*", "./routes/test-*/**"],
+              group: ["**/routes/test-*", "**/routes/test-*/**"],
               message: productionRouteTestImportMessage,
             },
-          ],
-          paths: [
             {
-              name: "./routes/cli-auth-test",
+              group: ["**/routes/cli-auth-test"],
               message: productionRouteTestImportMessage,
+            },
+            {
+              group: ["**/zero-runs-create.service"],
+              importNames: ["createTestFixtureZeroRun$"],
+              message:
+                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      "src/lib/**/*.ts",
+      "src/signals/commands/**/*.ts",
+      "src/signals/computed/**/*.ts",
+      "src/signals/external/**/*.ts",
+      "src/signals/services/**/*.ts",
+    ],
+    ignores: [
+      "src/**/__tests__/**/*.ts",
+      "src/**/__benches__/**/*.ts",
+      "src/**/*.bench.ts",
+      "src/**/*.spec.ts",
+      "src/**/*.suite.ts",
+      "src/**/*.test.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "**/routes/*",
+                "**/routes/**/*",
+                "**/signals/route",
+                "**/signals/route.ts",
+                "**/signals/e2e-routes",
+                "**/signals/e2e-routes.ts",
+                "**/production-bootstrap",
+                "**/production-bootstrap.ts",
+              ],
+              message: lowerLayerRouteImportMessage,
+            },
+            {
+              group: ["**/zero-runs-create.service"],
+              importNames: ["createTestFixtureZeroRun$"],
+              message:
+                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
             },
           ],
         },
@@ -299,6 +414,18 @@ export default [
       // Central test lifecycle owns connection-pool teardown; it does not
       // construct or assert API behavior.
       "src/__tests__/test-context.ts",
+      // A finite event-type matrix locks persisted payload rendering and
+      // policy lookup byte-for-byte; individual provider routes cannot cover
+      // every lookup-table row without duplicating the contract under test.
+      "src/signals/services/__tests__/workflow-automation-context.test.ts",
+      // A pre-migration schema cannot be constructed through a production API.
+      // This focused transaction validates the rollout contract against real
+      // PostgreSQL tables before and after the autonomy-budget columns exist.
+      "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
+      // A pre-0835 table cannot be constructed through a production API. This
+      // focused transaction proves Calendar watch reads and initial writes stay
+      // legal on both sides of the transition-column migration.
+      "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
     ],
     rules: {
       "no-restricted-imports": [

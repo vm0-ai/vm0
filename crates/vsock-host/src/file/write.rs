@@ -402,6 +402,39 @@ impl VsockHost {
     /// truncated file at the destination.
     ///
     /// Non-sudo writes create missing parent directories on the guest.
+    ///
+    /// # Cancellation
+    ///
+    /// This contract applies to every public file-write future on [`VsockHost`]:
+    /// this method, [`write_files`](Self::write_files),
+    /// [`write_private_file`](Self::write_private_file),
+    /// [`write_file_with_write_observer`](Self::write_file_with_write_observer),
+    /// [`write_files_with_write_observer`](Self::write_files_with_write_observer),
+    /// and [`write_private_file_with_write_observer`](Self::write_private_file_with_write_observer).
+    ///
+    /// Dropping one of these futures before any request frame starts writing
+    /// sends no file-write request and leaves the connection reusable for later
+    /// normal operations. Once a frame starts writing, cancellation cannot prove
+    /// the guest-side file outcome or safe connection reuse. An interrupted frame
+    /// write poisons the connection because the guest may have received a partial
+    /// frame. If a complete frame was written but its terminal response is
+    /// abandoned, the socket may remain open while later normal operations become
+    /// unavailable. In either post-boundary case, discard the connection instead
+    /// of reusing it or returning it to a pool.
+    ///
+    /// The methods without a [`FrameWriteObserver`] do not generally reveal which
+    /// side of that boundary cancellation occurred on. Unless other
+    /// synchronization proves that no frame started writing, callers must
+    /// conservatively discard the connection after cancelling one of those
+    /// futures.
+    ///
+    /// Cancelling a large standard write after staging begins attempts
+    /// best-effort removal of its temporary file. Cleanup is not guaranteed and
+    /// does not prove the destination outcome or restore connection reuse. A
+    /// chunked private write modifies the final path directly, can leave partial
+    /// content, and has no rollback cleanup. The effects of a cancelled
+    /// [`write_files`](Self::write_files) batch are likewise unproven once its
+    /// frame starts writing.
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
         self.write_file_with_write_observer(path, content, sudo, FrameWriteObserver::default())
             .await
@@ -409,10 +442,15 @@ impl VsockHost {
 
     /// Write multiple ordinary files on the guest in one request.
     ///
-    /// Every file uses non-sudo create-parent and truncate semantics. The
-    /// caller must use [`write_file`](Self::write_file) for private, sudo,
-    /// append, or larger individual writes. Empty batches are accepted as a
-    /// no-op to match the higher-level sandbox trait default.
+    /// Every file uses non-sudo create-parent and truncate semantics. Use
+    /// [`write_private_file`](Self::write_private_file) for private runtime
+    /// files and [`write_file`](Self::write_file) for sudo or individual writes
+    /// that exceed the batch content limit. No public [`VsockHost`] write method
+    /// exposes caller-requested append semantics. Empty batches are accepted as
+    /// a no-op to match the higher-level sandbox trait default.
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file).
     pub async fn write_files(&self, files: &[WriteFileEntry<'_>]) -> io::Result<()> {
         self.write_files_with_write_observer(files, FrameWriteObserver::default())
             .await
@@ -430,6 +468,9 @@ impl VsockHost {
     /// the call finishes. This does not coordinate guest processes, other
     /// connections, hard links, or aliases that depend on guest filesystem
     /// state.
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file).
     pub async fn write_private_file(&self, path: &str, content: &[u8]) -> io::Result<()> {
         self.write_private_file_with_write_observer(path, content, FrameWriteObserver::default())
             .await
@@ -440,6 +481,10 @@ impl VsockHost {
     ///
     /// This uses the destination-isolation semantics documented on
     /// [`write_private_file`](Self::write_private_file).
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file); the observer
+    /// reports the frame-write boundary described there.
     pub async fn write_private_file_with_write_observer(
         &self,
         path: &str,
@@ -486,6 +531,10 @@ impl VsockHost {
 
     /// Write a file on the guest and report before each helper frame is
     /// written to the guest.
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file); the observer
+    /// reports the frame-write boundary described there.
     pub async fn write_file_with_write_observer(
         &self,
         path: &str,
@@ -589,6 +638,10 @@ impl VsockHost {
 
     /// Write multiple ordinary files on the guest and report before the batch
     /// frame is written.
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file); the observer
+    /// reports the frame-write boundary described there.
     pub async fn write_files_with_write_observer(
         &self,
         files: &[WriteFileEntry<'_>],

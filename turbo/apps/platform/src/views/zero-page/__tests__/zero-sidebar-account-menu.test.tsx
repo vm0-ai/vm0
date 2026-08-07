@@ -16,6 +16,8 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { clearMockNow, mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -24,8 +26,10 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
-afterEach(() => {
+afterEach(async () => {
   clearMockNow();
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
 });
 
 function connectedPersonalCodexProvider(
@@ -132,6 +136,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function linkByText(text: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`${text} link not found`);
+  }
+  return link;
+}
+
 function buttonByLabel(
   label: string,
   container: ParentNode = document.body,
@@ -228,7 +242,6 @@ function mockAdminAccountSidebar(): void {
   prepareDefaultAgent();
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
@@ -589,7 +602,7 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("keeps the user profile inside settings and changes debug capture", async () => {
+  it("links to the hosted user profile in a new tab and changes debug capture", async () => {
     prepareDefaultAgent();
     context.mocks.data.userPreferences({
       captureNetworkBodiesRemaining: 0,
@@ -649,40 +662,17 @@ describe("zero sidebar account menu", () => {
       );
     });
 
-    const clerkProfileModals: HTMLDivElement[] = [];
-    mockedClerk.openUserProfile.mockImplementation((options) => {
-      const container = options?.getContainer?.();
-      if (!container) {
-        throw new Error("Clerk profile portal container not found");
-      }
-      const modal = document.createElement("div");
-      modal.dataset.clerkUserProfile = "";
-      container.append(modal);
-      clerkProfileModals.push(modal);
-    });
-
-    click(buttonByText("Manage"));
-
-    await waitFor(() => {
-      expect(clerkProfileModals).toHaveLength(1);
-      expect(mockedClerk.openUserProfile).toHaveBeenCalledWith({
-        apiKeysProps: { hide: true },
-        getContainer: expect.any(Function),
-      });
-    });
-
-    const clerkProfileModal = clerkProfileModals[0];
-    if (!clerkProfileModal) {
-      throw new Error("Clerk profile modal not found");
-    }
-    expect(openedSettingsDialog).toContainElement(clerkProfileModal);
-    clerkProfileModal.remove();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Settings" }),
-      ).toBeInTheDocument();
-    });
+    const userProfileLink = linkByText("Manage");
+    expect(userProfileLink).toHaveAttribute(
+      "href",
+      "https://accounts.example.test/user",
+    );
+    expect(userProfileLink).toHaveAttribute("target", "_blank");
+    expect(userProfileLink).toHaveAttribute("rel", "noreferrer");
+    expect(mockedClerk.buildUserProfileUrl).toHaveBeenCalledWith();
+    expect(mockedClerk.buildUrlWithAuth).toHaveBeenCalledWith(
+      "https://accounts.example.test/user",
+    );
 
     click(buttonByText("Debug"));
 
@@ -709,7 +699,6 @@ describe("zero sidebar account menu", () => {
     });
 
     const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
-    mockedClerk.closeUserProfile.mockClear();
     click(buttonByLabel("Close", settingsDialog));
 
     await waitFor(() => {
@@ -718,11 +707,42 @@ describe("zero sidebar account menu", () => {
       ).not.toBeInTheDocument();
       expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
     });
-    expect(mockedClerk.closeUserProfile).toHaveBeenCalledTimes(1);
     expect(document.body.style.pointerEvents).not.toBe("none");
 
     const reopenedMenu = await openAccountMenu();
     expect(within(reopenedMenu).getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("links the production satellite to the primary hosted user profile", async () => {
+    const previousUrl = window.location.href;
+    window.location.href = "https://app.okou.ai/";
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        window.location.href = previousUrl;
+      },
+      { once: true },
+    );
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Settings"));
+
+    await screen.findByRole("dialog", { name: "Settings" });
+    expect(linkByText("Manage")).toHaveAttribute(
+      "href",
+      "https://accounts.vm0.ai/user",
+    );
   });
 
   it("hides debug settings when ZeroDebug is disabled", async () => {
@@ -860,6 +880,33 @@ describe("zero sidebar account menu", () => {
     });
   });
 
+  it("preserves satellite session sync after signing out", async () => {
+    prepareDefaultAgent();
+    window.location.href = "https://app.okou.ai/";
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Sign out"));
+
+    await waitFor(() => {
+      expect(mockedClerk.signOut).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "test-session-id",
+          redirectUrl: expect.stringMatching(/__clerk_synced%3Dfalse/),
+        }),
+      );
+    });
+  });
+
   it("retries auth recovery network failures before replaying the request", async () => {
     mockAdminAccountSidebar();
     const provider = connectedPersonalCodexProvider();
@@ -867,6 +914,7 @@ describe("zero sidebar account menu", () => {
 
     let modelProviderRequests = 0;
     let forcedTokenRefreshes = 0;
+    const authRecoveryCompleted = context.mocks.deferred<void>();
     context.mocks.http.get("*/api/zero/me/model-providers", () => {
       modelProviderRequests += 1;
       if (modelProviderRequests === 1) {
@@ -882,6 +930,9 @@ describe("zero sidebar account menu", () => {
       }
       if (modelProviderRequests === 2) {
         return HttpResponse.error();
+      }
+      if (modelProviderRequests === 3) {
+        authRecoveryCompleted.resolve();
       }
       return HttpResponse.json({ modelProviders: [provider] });
     });
@@ -914,10 +965,9 @@ describe("zero sidebar account menu", () => {
       featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
     });
 
-    await waitFor(() => {
-      expect(modelProviderRequests).toBe(3);
-      expect(forcedTokenRefreshes).toBe(3);
-    });
+    await authRecoveryCompleted.promise;
+    expect(modelProviderRequests).toBe(3);
+    expect(forcedTokenRefreshes).toBe(3);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
 
     const menu = await openAccountMenu();
@@ -965,6 +1015,48 @@ describe("zero sidebar account menu", () => {
       expect(modelProviderRequests).toBe(2);
       expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
     });
+    expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
+  });
+
+  it("keeps the app open when auth recovery remains unauthorized in the background", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+
+    let modelProviderRequests = 0;
+    context.mocks.api(
+      zeroPersonalModelProvidersMainContract.list,
+      ({ respond }) => {
+        modelProviderRequests += 1;
+        return respond(401, {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        });
+      },
+    );
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    await waitFor(() => {
+      expect(modelProviderRequests).toBe(2);
+    });
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
 
@@ -1060,5 +1152,88 @@ describe("zero sidebar account menu", () => {
       expect(modelProviderRefreshes).toBeGreaterThan(0);
       expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
     });
+  });
+
+  it("localizes account actions without changing account data or routes", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+    const openMock = context.mocks.browser.open(null);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        clientSessions: [
+          {
+            id: "test-session-id",
+            status: "active",
+            user: {
+              fullName: "Alex Rivera",
+              primaryEmailAddress: {
+                emailAddress: "alex.rivera@example.test",
+              },
+            },
+          },
+          {
+            id: "session-jamie",
+            status: "active",
+            user: {
+              fullName: "Jamie Chen",
+              primaryEmailAddress: {
+                emailAddress: "jamie.chen@example.test",
+              },
+            },
+          },
+        ],
+      },
+      featureSwitches: {
+        [FeatureSwitchKey.SidebarSubscriptionUsage]: true,
+      },
+    });
+
+    let menu = await openAccountMenu();
+    expect(within(menu).getByText("Alex Rivera")).toBeVisible();
+    expect(within(menu).getByText("alex.rivera@example.test")).toBeVisible();
+    expect(within(menu).getByText("Configurações")).toBeVisible();
+    expect(within(menu).getByText("Trocar de conta")).toBeVisible();
+    expect(within(menu).getByText("Exportar dados")).toBeVisible();
+    expect(within(menu).getByText("Sair")).toBeVisible();
+    expect(within(menu).getByText("12.500 créditos")).toBeVisible();
+    const subscriptions = await within(menu).findByTestId(
+      "account-menu-subscriptions",
+    );
+    expect(
+      within(subscriptions).getByText("2 redefinições restantes"),
+    ).toBeVisible();
+    expect(
+      within(subscriptions).getByRole("progressbar", {
+        name: "Codex: 5h restante",
+      }),
+    ).toHaveAttribute("aria-valuenow", "82");
+    expect(within(subscriptions).getByText("Redefinir")).toBeInTheDocument();
+
+    click(within(menu).getByText("Exportar dados"));
+    await waitFor(() => {
+      expect(
+        openMock.calls.some((call) => {
+          return call.url?.endsWith("/export") ?? false;
+        }),
+      ).toBeTruthy();
+    });
+
+    menu = await openAccountMenu();
+    click(within(menu).getByText("Trocar de conta"));
+    expect(screen.getByText("Jamie Chen")).toBeVisible();
+    expect(screen.getByText("jamie.chen@example.test")).toBeVisible();
+    expect(screen.getByText("Adicionar conta")).toBeVisible();
   });
 });

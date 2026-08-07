@@ -4,6 +4,7 @@ import {
   type UserExportStatusResponse,
 } from "@vm0/api-contracts/contracts/user-export";
 import { accept } from "../../lib/accept.ts";
+import { i18n } from "../../i18n/index.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { onRef, setLoop } from "../utils.ts";
 
@@ -69,7 +70,12 @@ export const startUserExport$ = command(
       return;
     }
 
-    set(exportStartError$, "You can export once every 24 hours.");
+    set(
+      exportStartError$,
+      i18n.t(($) => {
+        return $.settings.export.errors.rateLimited;
+      }),
+    );
     set(reloadUserExportStatus$);
   },
 );

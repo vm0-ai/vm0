@@ -1,1 +1,0 @@
-ALTER TABLE "zero_agent_schedules" RENAME COLUMN "slack_channel_id" TO "notify_slack_channel_id";

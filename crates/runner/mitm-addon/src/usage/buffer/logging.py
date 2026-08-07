@@ -14,6 +14,8 @@ Dropped retained batches always emit ``usage_underbilling`` with
 ``reason=retry_budget_exhausted`` and ``underbilling_class=confirmed``.
 Shutdown-retained batches emit ``usage_underbilling`` with
 ``reason=shutdown_retained_without_retry`` and ``underbilling_class=risk``.
+Failed shutdown admission remains an ordinary error record; its separate
+retained-only summary emits the shutdown underbilling signal.
 
 Operators should use ``retained_source_event_count`` and
 ``retained_webhook_batch_count`` for retained work, and
@@ -122,7 +124,11 @@ def _log_flush_summaries(
                 **extra,
             )
             continue
-        if trigger == "shutdown" and retained_webhook_batch_count:
+        if (
+            phase in ("enqueued", "retained")
+            and trigger == "shutdown"
+            and retained_webhook_batch_count
+        ):
             message = "Usage event buffer retained shutdown batches without retry"
             log_usage_underbilling(
                 summary.proxy_log_path,

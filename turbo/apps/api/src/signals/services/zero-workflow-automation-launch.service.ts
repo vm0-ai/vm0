@@ -1,23 +1,21 @@
 import { randomBytes } from "node:crypto";
-
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
-
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import {
   isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
-import type { PersistWorkflowQueueSourceTransition } from "./chat-message-queue.service";
+import type { PersistWorkflowQueueSourceTransition } from "./workflow-chat-event-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   finalizeClaimedRunUserMessage,
   resolveRunChatThreadModelContext,
-} from "./zero-chat-run-message.service";
+} from "./zero-chat-run-event.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
 import {
   ApiDispatchTimingCollector,
@@ -26,6 +24,7 @@ import {
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
 export type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 
@@ -34,7 +33,6 @@ export interface DueWorkflowAutomation {
   // The owning agent is derived from the workflow row (hard 1:N); automations no
   // longer carry an agentId column, so callers resolve it and pass it here.
   readonly agentId: string;
-  readonly workflowName: string;
   readonly chatThreadId: string;
   // One-time schedule automations are disabled as part of the optimistic claim.
   // That claimed row can still proceed through the run-start readability gate.
@@ -79,20 +77,14 @@ type ModelContext =
 
 export interface RunWorkflowAutomationNowArgs {
   readonly due: DueWorkflowAutomation;
+  readonly automationContext: WorkflowAutomationContext;
   readonly apiStartTime: number;
-  // Overrides the default `/<workflowName>` slash-command prompt.
-  readonly prompt?: string;
-  // Display-only source context surfaced through workflowSnapshot.triggerBrief.
+  // Display-only source context stored in the user-message automation part.
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
-  readonly appendSystemPrompt?: string;
-  readonly callbacks?: readonly InternalRunCallbackInput[];
-  readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
   // Automated schedule ticks coalesce while pending. Explicit manual runs set
   // this false so every user action remains a distinct queue item.
   readonly coalescePendingScheduleRun?: boolean;
-  readonly recordLastRunId?: boolean;
-  readonly recordLastRunAt?: boolean;
   /**
    * Admission-only source transition. This callback is never serialized into
    * the durable workflow queue payload.
@@ -102,7 +94,23 @@ export interface RunWorkflowAutomationNowArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-interface LaunchQueuedWorkflowAutomationArgs extends RunWorkflowAutomationNowArgs {
+interface WorkflowAutomationLaunchArgs {
+  readonly due: DueWorkflowAutomation;
+  readonly apiStartTime: number;
+  readonly prompt: string;
+  readonly triggerBrief?: string;
+  readonly triggerSource?: TriggerSource;
+  readonly appendSystemPrompt: string;
+  readonly callbacks: readonly InternalRunCallbackInput[];
+  readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
+  readonly autonomyBudget: number;
+  readonly recordLastRunId: boolean;
+  readonly recordLastRunAt: boolean;
+  readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+  readonly timing?: ApiDispatchTimingCollector;
+}
+
+interface LaunchQueuedWorkflowAutomationArgs extends WorkflowAutomationLaunchArgs {
   readonly queueEventId: string;
 }
 
@@ -128,13 +136,12 @@ function isActivePreviousRunStatus(status: string): boolean {
 function workflowAutomationRunMetadata(
   automation: AutomationRow,
   triggerBrief: string | undefined,
+  autonomyBudget: number,
 ) {
   return {
     workflowAutomationId: automation.id,
     triggerBrief,
-    // The automation id is the run group id: all runs fired by the same automation
-    // share a group for chat folding and carry the same row-level association.
-    runGroupId: automation.id,
+    autonomyBudget,
   };
 }
 
@@ -144,12 +151,15 @@ function workflowAutomationRunMetadata(
  * render). Cron and once both use the cron callback; once carries no
  * cronExpression so it does not recur.
  */
-function buildWorkflowAutomationCallbacks(
+export function buildWorkflowAutomationCallbacks(
   automation: AutomationRow,
   agentId: string,
   chatThreadId: string,
 ): InternalRunCallbackInput[] {
   const callbacks: InternalRunCallbackInput[] = [];
+  if (automation.kind !== "schedule") {
+    return buildChatOnlyWorkflowAutomationCallbacks(chatThreadId, agentId);
+  }
   if (automation.scheduleType === "loop") {
     callbacks.push({
       internalKind: "workflow-automation:loop",
@@ -179,14 +189,39 @@ function buildWorkflowAutomationCallbacks(
   return callbacks;
 }
 
-function buildAppendSystemPrompt(workflowName: string): string {
-  return [
-    "# Current context",
-    `You are running on a schedule for the "${workflowName}" workflow.`,
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "Connector permissions use the same agent-run permission settings as chat runs. If a connector request fails, do not retry blindly or assume an HTTP error came from Zero permission policy. Run `zero connector check --url <FAILED_URL> --method <METHOD> [--connector <connector-ref>]`; only when it reports a deny or ask outcome, request access with `zero connector permission-request <connector-ref> --permission <name>` and tell the user which permission this automation needs. The user chooses the grant duration in the confirmation UI. Omit query strings or fragments when they may contain secrets because permission matching does not need them.",
-  ].join("\n");
+/**
+ * Consecutive ticks of the same schedule are otherwise indistinguishable, so the
+ * fire time is this run's unique identifier. The scheduler owns the fire time and
+ * builds this at admission; the launch fallback below only serves rows enqueued
+ * before schedules carried a trigger line.
+ */
+export function scheduleTriggerContext(args: {
+  readonly automation: AutomationRow;
+  readonly workflowName: string;
+  readonly firedAt: Date;
+}): WorkflowAutomationContext {
+  const firedAt = args.firedAt.toISOString();
+  const recurrence =
+    args.automation.scheduleType === "loop"
+      ? `every ${args.automation.intervalSeconds}s`
+      : args.automation.cronExpression
+        ? `cron "${args.automation.cronExpression}" in ${args.automation.timezone}`
+        : `once in ${args.automation.timezone}`;
+  return {
+    workflowName: args.workflowName,
+    eventType: "schedule",
+    trigger: `schedule fired at ${firedAt} (${recurrence}).`,
+    event: {
+      automationId: args.automation.id,
+      trigger: "schedule",
+      scheduleType: args.automation.scheduleType,
+      cronExpression: args.automation.cronExpression,
+      intervalSeconds: args.automation.intervalSeconds,
+      atTime: args.automation.atTime,
+      timezone: args.automation.timezone,
+      firedAt,
+    },
+  };
 }
 
 function appendComputerUseSystemPrompt(
@@ -270,6 +305,7 @@ function workflowThreadSessionRoute(
   return {
     selectedModel: modelContext.modelPin.selectedModel,
     modelProvider: modelContext.effectiveModelProvider ?? null,
+    modelProviderId: modelContext.modelPin.modelProviderId,
     cliAgentType: modelContext.cliAgentType,
   };
 }
@@ -291,7 +327,7 @@ function workflowAutomationTiming(
 async function checkActivePreviousWorkflowRun(args: {
   readonly db: Db;
   readonly automation: AutomationRow;
-  readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
+  readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
 }): Promise<RunFailure | undefined> {
@@ -378,11 +414,8 @@ async function resolveTimedWorkflowModelContext(args: {
 }
 
 async function buildTimedWorkflowAutomationRunInput(args: {
-  readonly command: RunWorkflowAutomationNowArgs;
+  readonly command: WorkflowAutomationLaunchArgs;
   readonly automation: AutomationRow;
-  readonly agentId: string;
-  readonly workflowName: string;
-  readonly chatThreadId: string;
   readonly computerUseHostGrant: ComputerUseHostGrant;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<WorkflowAutomationRunInput> {
@@ -392,22 +425,16 @@ async function buildTimedWorkflowAutomationRunInput(args: {
     "nested",
     () => {
       return {
-        prompt: args.command.prompt ?? `/${args.workflowName}`,
+        prompt: args.command.prompt,
         appendSystemPrompt: appendComputerUseSystemPrompt(
-          args.command.appendSystemPrompt ??
-            buildAppendSystemPrompt(args.workflowName),
+          args.command.appendSystemPrompt,
           args.computerUseHostGrant,
         ),
-        callbacks:
-          args.command.callbacks ??
-          buildWorkflowAutomationCallbacks(
-            args.automation,
-            args.agentId,
-            args.chatThreadId,
-          ),
+        callbacks: args.command.callbacks,
         zeroRunMetadata: workflowAutomationRunMetadata(
           args.automation,
           args.command.triggerBrief,
+          args.command.autonomyBudget,
         ),
       };
     },
@@ -416,10 +443,10 @@ async function buildTimedWorkflowAutomationRunInput(args: {
 
 async function recordWorkflowAutomationRunStart(input: {
   readonly db: Db;
-  readonly args: RunWorkflowAutomationNowArgs;
+  readonly args: WorkflowAutomationLaunchArgs;
   readonly runId: string;
   readonly runStatus: string;
-  readonly claimedMessageCreatedAt: Date;
+  readonly claimedEventCreatedAt: Date;
   readonly signal: AbortSignal;
 }): Promise<void> {
   const { db, args, runId, signal } = input;
@@ -430,8 +457,7 @@ async function recordWorkflowAutomationRunStart(input: {
     userId: automation.ownerUserId,
     runId,
     runStatus: input.runStatus,
-    runGroupId: automation.id,
-    createdAt: input.claimedMessageCreatedAt,
+    createdAt: input.claimedEventCreatedAt,
   });
   signal.throwIfAborted();
 
@@ -456,7 +482,7 @@ export const launchQueuedWorkflowAutomation$ = command(
     signal: AbortSignal,
   ): Promise<RunWorkflowAutomationResult> => {
     const db = set(writeDb$);
-    const { automation, agentId, workflowName, chatThreadId } = args.due;
+    const { automation, agentId, chatThreadId } = args.due;
     const timing = workflowAutomationTiming(args);
 
     const activePreviousRunFailure = await checkActivePreviousWorkflowRun({
@@ -506,9 +532,6 @@ export const launchQueuedWorkflowAutomation$ = command(
     const runInput = await buildTimedWorkflowAutomationRunInput({
       command: args,
       automation,
-      agentId,
-      workflowName,
-      chatThreadId,
       computerUseHostGrant,
       timing,
     });
@@ -552,7 +575,7 @@ export const launchQueuedWorkflowAutomation$ = command(
           threadId: chatThreadId,
           eventId: args.queueEventId,
           prompt: runInput.prompt,
-          runGroupId: automation.id,
+          automationId: automation.id,
         },
         zeroRunModelPin: {
           modelProvider: effectiveModelProvider ?? null,
@@ -579,7 +602,7 @@ export const launchQueuedWorkflowAutomation$ = command(
       args,
       runId: result.body.runId,
       runStatus: result.body.status,
-      claimedMessageCreatedAt: result.queueFirstClaim.createdAt,
+      claimedEventCreatedAt: result.queueFirstClaim.createdAt,
       signal,
     });
 

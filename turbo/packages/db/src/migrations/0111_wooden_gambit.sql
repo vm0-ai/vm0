@@ -1,1 +1,0 @@
-ALTER TABLE "telegram_messages" ADD COLUMN "file_id" varchar(255);

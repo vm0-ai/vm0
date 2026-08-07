@@ -21,21 +21,40 @@ const variableStateSchema = z.object({
   connector_id: z.uuid(),
 });
 
+const customOauthStateSchema = z.object({
+  storage_version: z.number().int().positive().nullable(),
+  context_storage_version: z.number().int().positive().nullable(),
+});
+
 export const testConnectorCredentialStorageStateActionBodySchema =
   z.discriminatedUnion("action", [
     z.object({
       action: z.literal("read"),
       org_id: z.string(),
       user_id: z.string(),
-      connector_ref: z.string(),
+      connector_slug: z.string(),
       secret_names: z.array(z.string()),
       variable_names: z.array(z.string()),
+    }),
+    z.object({
+      action: z.literal("read-custom-parent"),
+      org_id: z.string(),
+      user_id: z.string(),
+      custom_connector_id: z.uuid(),
+    }),
+    z.object({
+      action: z.literal("read-custom-oauth-state"),
+      state: z.string(),
+    }),
+    z.object({
+      action: z.literal("downgrade-custom-oauth-state"),
+      state: z.string(),
     }),
     z.object({
       action: z.literal("seed-owned-secret"),
       org_id: z.string(),
       user_id: z.string(),
-      connector_ref: z.string(),
+      connector_slug: z.string(),
       auth_method: z.string(),
       storage_version: z.number().int().positive(),
       name: z.string(),
@@ -46,7 +65,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       action: z.literal("seed-connector"),
       org_id: z.string(),
       user_id: z.string(),
-      connector_ref: z.string(),
+      connector_slug: z.string(),
       auth_method: z.string(),
       storage_version: z.number().int().positive(),
     }),
@@ -54,7 +73,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       action: z.literal("set-connector-state"),
       org_id: z.string(),
       user_id: z.string(),
-      connector_ref: z.string(),
+      connector_slug: z.string(),
       storage_version: z.number().int().positive(),
       token_expires_at: z.iso.datetime().nullable().optional(),
     }),
@@ -79,6 +98,7 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     ok: z.literal(true),
     connector: connectorStateSchema.nullable().optional(),
     connector_id: z.uuid().optional(),
+    custom_oauth_state: customOauthStateSchema.nullable().optional(),
     secrets: z.array(secretStateSchema).optional(),
     variables: z.array(variableStateSchema).optional(),
   },

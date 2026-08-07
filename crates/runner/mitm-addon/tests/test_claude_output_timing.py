@@ -11,14 +11,21 @@ import pytest
 from mitmproxy import http
 from mitmproxy.flow import Error
 
+import claude_output_timing
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from tests.model_provider_flow_helpers import make_model_provider_sse_flow
+from tests.pending_helpers import assert_current_pending, assert_pending
+from tests.usage_buffer_helpers import event as usage_event
 from tests.usage_helpers import CapturedWebhookRequest, UsageWebhookServer
-from tests.webhook_test_helpers import QueuedUsageExecutor
+from tests.webhook_test_helpers import (
+    QueuedUsageExecutor,
+    install_runner_usage_flush_request,
+    request_runner_usage_flush,
+)
 
 _TELEMETRY_PATH = "/api/webhooks/agent/telemetry"
 _FIRST_MESSAGE_START = "claude_proxy_first_message_start"
@@ -44,20 +51,22 @@ def _claude_sse_flow(
     )
 
 
-def _message_start(*, secret: str | None = None) -> bytes:
+def _message_start(*, secret: str | None = None, include_usage: bool = True) -> bytes:
     content: list[dict[str, str]] = []
     if secret is not None:
         content.append({"type": "text", "text": secret})
+    message: dict[str, object] = {
+        "id": "msg_1",
+        "model": "claude-sonnet-4-6",
+        "content": content,
+    }
+    if include_usage:
+        message["usage"] = {"input_tokens": 50, "output_tokens": 1}
     return _sse_event(
         "message_start",
         {
             "type": "message_start",
-            "message": {
-                "id": "msg_1",
-                "model": "claude-sonnet-4-6",
-                "content": content,
-                "usage": {"input_tokens": 50, "output_tokens": 1},
-            },
+            "message": message,
         },
     )
 
@@ -164,7 +173,7 @@ def test_reports_content_free_lifecycle_milestones_and_preserves_usage(
     assert secret not in read_jsonl_text_after_flush(proxy_log)
 
 
-def test_text_first_uses_one_observation_time_for_broad_and_text_milestones(
+def test_content_block_first_retains_broad_and_text_milestones(
     tmp_path: Path,
     real_flow,
     mitm_ctx,
@@ -172,21 +181,23 @@ def test_text_first_uses_one_observation_time_for_broad_and_text_milestones(
     sync_usage_executor,
 ) -> None:
     flow = _claude_sse_flow(real_flow, tmp_path)
+    secret = "provider-secret-that-must-not-be-reported"
 
     with mitm_ctx(api_url=usage_webhook_server.api_url):
         mitm_addon.responseheaders(flow)
-        _feed(flow, _message_start(), _content_block_start("text"))
+        _feed(flow, _content_block_start("text", secret=secret))
         mitm_addon.response(flow)
 
     requests = _timing_requests(usage_webhook_server)
-    assert [len(request.json_body()["sandboxOperations"]) for request in requests] == [1, 2]
+    assert [len(request.json_body()["sandboxOperations"]) for request in requests] == [2]
     operations = _operations(requests)
     assert [operation["action_type"] for operation in operations] == [
-        _FIRST_MESSAGE_START,
         _FIRST_THINKING_OR_TEXT_BLOCK_START,
         _FIRST_TEXT_BLOCK_START,
     ]
-    assert operations[1]["ts"] == operations[2]["ts"]
+    assert operations[0]["ts"] == operations[1]["ts"]
+    assert all(request.json_body()["runId"] == "run-abc-123" for request in requests)
+    assert secret.encode() not in b"".join(request.body for request in requests)
 
 
 def test_tool_turns_reconnects_and_reused_sandboxes_preserve_run_boundaries(
@@ -276,6 +287,10 @@ def test_irrelevant_flows_and_events_do_not_report_timings(
         mitm_addon.responseheaders(non_sse)
         _feed(non_sse, _message_start(), _content_block_start("text"))
 
+        tool_only = _claude_sse_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(tool_only)
+        _feed(tool_only, _content_block_start("tool_use"))
+
         mismatched = _claude_sse_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(mismatched)
         _feed(
@@ -331,8 +346,126 @@ def test_gzip_chunks_are_observed_without_changing_forwarded_bytes(
     ]
 
 
+def test_eviction_and_reset_release_retained_buffered_report(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+) -> None:
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+
+    with (
+        mitm_ctx(api_url="https://api.test"),
+        patch.object(
+            usage.webhook,
+            "enqueue_webhook_delivery",
+            return_value=False,
+        ),
+        patch.object(claude_output_timing._store, "_max_tracked_runs", 1),
+    ):
+        first_flow = _claude_sse_flow(real_flow, tmp_path)
+        first_flow.metadata[metadata_keys.VM_RUN_ID] = "run-first"
+        mitm_addon.responseheaders(first_flow)
+        _feed(first_flow, _message_start(include_usage=False))
+
+        second_flow = _claude_sse_flow(real_flow, tmp_path)
+        second_flow.metadata[metadata_keys.VM_RUN_ID] = "run-second"
+        mitm_addon.responseheaders(second_flow)
+        _feed(second_flow, _message_start(include_usage=False))
+
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=1,
+            reports=0,
+            flush_request_id="after-eviction",
+        )
+
+        claude_output_timing.reset_for_tests()
+
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-reset",
+    )
+
+
+def test_lru_hit_recency_preserves_recent_buffered_report(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+) -> None:
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    delivery_available = False
+
+    def enqueue_timing_delivery(
+        _url: str,
+        _sandbox_token: str,
+        _payload: dict[str, object],
+        _proxy_log_path: str,
+        _log_type: str,
+    ) -> bool:
+        return delivery_available
+
+    def claude_flow(run_id: str) -> http.HTTPFlow:
+        flow = _claude_sse_flow(real_flow, tmp_path)
+        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        mitm_addon.responseheaders(flow)
+        return flow
+
+    with (
+        mitm_ctx(api_url="https://api.test"),
+        patch.object(
+            usage.webhook,
+            "enqueue_webhook_delivery",
+            side_effect=enqueue_timing_delivery,
+        ),
+        patch.object(claude_output_timing._store, "_max_tracked_runs", 2),
+    ):
+        first_flow = claude_flow("run-a")
+        _feed(first_flow, _message_start(include_usage=False))
+
+        second_flow = claude_flow("run-b")
+        _feed(second_flow, _message_start(include_usage=False))
+
+        mitm_addon.response(claude_flow("run-a"))
+
+        overflow_flow = claude_flow("run-c")
+        _feed(overflow_flow, _message_start(include_usage=False))
+
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=0,
+            flush_request_id="after-overflow",
+        )
+
+        delivery_available = True
+        mitm_addon.response(claude_flow("run-b"))
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=0,
+            flush_request_id="after-cold-retry",
+        )
+
+        mitm_addon.response(claude_flow("run-a"))
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=1,
+            reports=0,
+            flush_request_id="after-recent-retry",
+        )
+
+
 @pytest.mark.parametrize("terminal_hook", ["response", "error"])
-def test_saturated_delivery_retries_at_terminal_with_original_observation_time(
+def test_repeated_runner_flush_retries_saturated_timing_after_terminal(
     tmp_path: Path,
     real_flow,
     mitm_ctx,
@@ -341,6 +474,8 @@ def test_saturated_delivery_retries_at_terminal_with_original_observation_time(
 ) -> None:
     flow = _claude_sse_flow(real_flow, tmp_path)
     executor = QueuedUsageExecutor()
+    pending_path = install_runner_usage_flush_request(tmp_path)
+    secret = "provider-secret-that-must-not-be-reported"
 
     with (
         mitm_ctx(api_url=usage_webhook_server.api_url),
@@ -356,29 +491,70 @@ def test_saturated_delivery_retries_at_terminal_with_original_observation_time(
                 "usage_event",
             )
 
-        _feed(flow, _message_start())
+        _feed(flow, _message_start(secret=secret, include_usage=False))
         assert _timing_requests(usage_webhook_server) == []
 
-        first_delivery, first_args, first_kwargs = executor.submissions.pop(0)
-        assert callable(first_delivery)
-        first_delivery(*first_args, **first_kwargs)
-        retry_started_at = datetime.now(UTC)
         if terminal_hook == "error":
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
         else:
             mitm_addon.response(flow)
 
-        submissions = list(executor.submissions)
-        executor.submissions.clear()
-        for delivery, args, kwargs in submissions:
-            assert callable(delivery)
-            delivery(*args, **kwargs)
+        usage.buffer_usage_events(
+            usage_webhook_server.url("/usage-priority"),
+            "tok-xyz",
+            f"usage-priority-{terminal_hook}",
+            [usage_event(source_key=f"source-{terminal_hook}")],
+            str(tmp_path / "proxy.jsonl"),
+        )
+        first_flush_started_at = datetime.now(UTC)
+        request_runner_usage_flush()
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+            flush_request_id="request-1",
+        )
+
+        executor.run_next()
+        request_runner_usage_flush()
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+            flush_request_id="request-1",
+        )
+
+        executor.run_last()
+        request_runner_usage_flush()
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+            flush_request_id="request-1",
+        )
+
+        executor.run_all()
+        request_runner_usage_flush()
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
 
     [request] = _timing_requests(usage_webhook_server)
     [operation] = _operations([request])
     assert operation["action_type"] == _FIRST_MESSAGE_START
-    assert datetime.fromisoformat(str(operation["ts"])) <= retry_started_at
+    assert datetime.fromisoformat(str(operation["ts"])) <= first_flush_started_at
+    assert secret.encode() not in request.body
+    assert [
+        captured.path for captured in usage_webhook_server.requests if captured.path != "/filler"
+    ] == ["/usage-priority", _TELEMETRY_PATH]
     assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
     assert flow.response is not None
     assert flow.response.stream is False

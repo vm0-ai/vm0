@@ -2,6 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useLoadable, useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { IconUpload } from "@tabler/icons-react";
 import {
   Input,
@@ -24,8 +25,6 @@ import {
   clearPendingLogo$,
   profileName$,
   setProfileName$,
-  profileSlug$,
-  setProfileSlug$,
   profileLogoUrl$,
   pendingLogoFile$,
   pendingLogoPreview$,
@@ -40,6 +39,7 @@ import {
   saveOrgProfile$,
   leaveOrg$,
   deleteOrg$,
+  WORKSPACE_DELETE_CONFIRMATION,
 } from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
 import { readImageDimensions } from "./read-image-dimensions.ts";
 
@@ -57,11 +57,9 @@ function ProfileSection({
   org: OrgResponse;
   isAdmin: boolean;
 }) {
+  const { t } = useTranslation();
   const name = useGet(profileName$);
   const setName = useSet(setProfileName$);
-
-  const slug = useGet(profileSlug$);
-  const setSlug = useSet(setProfileSlug$);
 
   const [saveLoadable, saveProfile] = useLoadableSet(saveOrgProfile$);
   const saving = saveLoadable.state === "loading";
@@ -82,8 +80,7 @@ function ProfileSection({
   const setLogoLoaded = useSet(setLogoLoaded$);
   const loadOrgLogo = useSet(loadOrgLogo$);
   const hasNameChange = name !== (org.name ?? "");
-  const hasSlugChange = slug !== (org.slug ?? "");
-  const hasChanges = hasNameChange || hasSlugChange || !!pendingLogoFile;
+  const hasChanges = hasNameChange || !!pendingLogoFile;
 
   const handleFileSelect = async (file: File) => {
     if (!modalSignal) {
@@ -92,19 +89,41 @@ function ProfileSection({
     const dimensions = await readImageDimensions(file);
     modalSignal.throwIfAborted();
     if (!dimensions) {
-      toast.error("Could not read image file");
+      toast.error(
+        t(($) => {
+          return $.settings.workspace.validation.imageUnreadable;
+        }),
+      );
       return;
     }
     const { width, height } = dimensions;
     if (width < MIN_LOGO_DIMENSION || height < MIN_LOGO_DIMENSION) {
       toast.error(
-        `Logo is too small (${width}×${height}px). Minimum size is ${MIN_LOGO_DIMENSION}×${MIN_LOGO_DIMENSION}px.`,
+        t(
+          ($) => {
+            return $.settings.workspace.validation.logoTooSmall;
+          },
+          {
+            width,
+            height,
+            minimum: MIN_LOGO_DIMENSION,
+          },
+        ),
       );
       return;
     }
     if (width > MAX_LOGO_DIMENSION || height > MAX_LOGO_DIMENSION) {
       toast.error(
-        `Logo is too large (${width}×${height}px). Maximum size is ${MAX_LOGO_DIMENSION}×${MAX_LOGO_DIMENSION}px.`,
+        t(
+          ($) => {
+            return $.settings.workspace.validation.logoTooLarge;
+          },
+          {
+            width,
+            height,
+            maximum: MAX_LOGO_DIMENSION,
+          },
+        ),
       );
       return;
     }
@@ -113,7 +132,6 @@ function ProfileSection({
 
   const handleDiscard = () => {
     setName(org.name ?? "");
-    setSlug(org.slug ?? "");
     clearPendingLogo();
   };
 
@@ -124,7 +142,6 @@ function ProfileSection({
     await saveProfile(
       {
         name,
-        slug,
         logoFile: pendingLogoFile,
       },
       modalSignal,
@@ -141,7 +158,11 @@ function ProfileSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium text-foreground">Profile</h3>
+      <h3 className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.settings.workspace.profile.sectionTitle;
+        })}
+      </h3>
       <div
         className="overflow-hidden rounded-xl bg-card"
         style={sectionCardStyle}
@@ -149,9 +170,15 @@ function ProfileSection({
         {/* Logo row */}
         <div className="flex items-center justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">Logo</p>
+            <p className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.settings.workspace.profile.logo.title;
+              })}
+            </p>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              Workspace avatar displayed across the app
+              {t(($) => {
+                return $.settings.workspace.profile.logo.description;
+              })}
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
@@ -159,7 +186,9 @@ function ProfileSection({
               <input
                 ref={setFileInputEl}
                 type="file"
-                aria-label="Upload logo"
+                aria-label={t(($) => {
+                  return $.settings.workspace.profile.logo.upload;
+                })}
                 accept="image/png,image/jpeg,image/gif,image/webp"
                 className="hidden"
                 onChange={(e) => {
@@ -189,7 +218,12 @@ function ProfileSection({
               {(pendingLogoPreview ?? logoUrl) ? (
                 <img
                   src={(pendingLogoPreview ?? logoUrl)!}
-                  alt={org.slug ?? "Org"}
+                  alt={
+                    org.name ||
+                    t(($) => {
+                      return $.settings.workspace.profile.logo.fallbackAlt;
+                    })
+                  }
                   className="h-full w-full object-cover"
                 />
               ) : (
@@ -207,9 +241,15 @@ function ProfileSection({
         {/* Name row */}
         <div className="flex items-center justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">Name</p>
+            <p className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.settings.workspace.profile.name.title;
+              })}
+            </p>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              Used to identify this workspace
+              {t(($) => {
+                return $.settings.workspace.profile.name.description;
+              })}
             </p>
           </div>
           {isAdmin ? (
@@ -219,37 +259,14 @@ function ProfileSection({
               onChange={(e) => {
                 return setName(e.target.value);
               }}
-              placeholder="Workspace name"
+              placeholder={t(($) => {
+                return $.settings.workspace.profile.name.placeholder;
+              })}
               className="w-[220px] shrink-0"
             />
           ) : (
             <span className="text-sm text-foreground shrink-0">
               {org.name ?? ""}
-            </span>
-          )}
-        </div>
-        <div className="h-0 zero-border-t mx-5" />
-        {/* Slug row */}
-        <div className="flex items-center justify-between gap-4 px-5 py-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">Slug</p>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
-              URL-friendly identifier for the organization
-            </p>
-          </div>
-          {isAdmin ? (
-            <Input
-              id="org-slug"
-              value={slug}
-              onChange={(e) => {
-                return setSlug(e.target.value);
-              }}
-              placeholder="organization-slug"
-              className="w-[220px] shrink-0"
-            />
-          ) : (
-            <span className="text-sm text-foreground shrink-0">
-              {org.slug ?? ""}
             </span>
           )}
         </div>
@@ -264,7 +281,13 @@ function ProfileSection({
               onClick={onDomEventFn(handleSave)}
               disabled={saving}
             >
-              {saving ? "Saving..." : "Save changes"}
+              {saving
+                ? t(($) => {
+                    return $.settings.shared.saving;
+                  })
+                : t(($) => {
+                    return $.settings.shared.saveChanges;
+                  })}
             </Button>
             <Button
               variant="ghost"
@@ -273,7 +296,9 @@ function ProfileSection({
               onClick={handleDiscard}
               disabled={saving}
             >
-              Discard
+              {t(($) => {
+                return $.settings.shared.discard;
+              })}
             </Button>
           </div>
         </div>
@@ -282,13 +307,8 @@ function ProfileSection({
   );
 }
 
-function DangerZoneSection({
-  org,
-  isAdmin,
-}: {
-  org: OrgResponse;
-  isAdmin: boolean;
-}) {
+function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
+  const { t } = useTranslation();
   const canLeave = !isAdmin;
   const modalSignal = useGet(settingsDialogSignal$);
   const [leaveLoadable, leave] = useLoadableSet(leaveOrg$);
@@ -307,15 +327,23 @@ function DangerZoneSection({
   };
 
   const handleDelete = async () => {
-    if (deleting || deleteConfirm !== org.slug || !modalSignal) {
+    if (
+      deleting ||
+      deleteConfirm !== WORKSPACE_DELETE_CONFIRMATION ||
+      !modalSignal
+    ) {
       return;
     }
-    await deleteWorkspace(org.slug, modalSignal);
+    await deleteWorkspace(modalSignal);
   };
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium text-foreground">Danger zone</h3>
+      <h3 className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.settings.workspace.danger.sectionTitle;
+        })}
+      </h3>
       <div
         className="overflow-hidden rounded-xl bg-card"
         style={sectionCardStyle}
@@ -326,10 +354,14 @@ function DangerZoneSection({
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">
-                  Leave workspace
+                  {t(($) => {
+                    return $.settings.workspace.danger.leave.title;
+                  })}
                 </p>
                 <p className="text-[13px] text-muted-foreground mt-0.5">
-                  You will lose access to this workspace and its resources.
+                  {t(($) => {
+                    return $.settings.workspace.danger.leave.description;
+                  })}
                 </p>
               </div>
               <Dialog>
@@ -339,21 +371,35 @@ function DangerZoneSection({
                     size="sm"
                     className="shrink-0 gap-1.5"
                   >
-                    Leave
+                    {t(($) => {
+                      return $.settings.workspace.danger.leave.title;
+                    })}
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent
+                  closeLabel={t(($) => {
+                    return $.settings.shared.close;
+                  })}
+                >
                   <DialogHeader>
-                    <DialogTitle>Leave workspace?</DialogTitle>
+                    <DialogTitle>
+                      {t(($) => {
+                        return $.settings.workspace.danger.leave.titleQuestion;
+                      })}
+                    </DialogTitle>
                     <DialogDescription>
-                      You will no longer have access to this workspace. You can
-                      rejoin only if an admin invites you again.
+                      {t(($) => {
+                        return $.settings.workspace.danger.leave
+                          .confirmDescription;
+                      })}
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
                     <DialogClose asChild>
                       <Button variant="outline" size="sm">
-                        Cancel
+                        {t(($) => {
+                          return $.settings.shared.cancel;
+                        })}
                       </Button>
                     </DialogClose>
                     <Button
@@ -362,7 +408,13 @@ function DangerZoneSection({
                       onClick={onDomEventFn(handleLeave)}
                       disabled={leaving}
                     >
-                      {leaving ? "Leaving..." : "Leave"}
+                      {leaving
+                        ? t(($) => {
+                            return $.settings.workspace.danger.leave.progress;
+                          })
+                        : t(($) => {
+                            return $.settings.workspace.danger.leave.title;
+                          })}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -377,11 +429,14 @@ function DangerZoneSection({
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">
-                  Delete workspace
+                  {t(($) => {
+                    return $.settings.workspace.danger.delete.title;
+                  })}
                 </p>
                 <p className="text-[13px] text-muted-foreground mt-0.5">
-                  Permanently delete this workspace and all its data. This
-                  action cannot be undone.
+                  {t(($) => {
+                    return $.settings.workspace.danger.delete.description;
+                  })}
                 </p>
               </div>
               <Dialog>
@@ -391,23 +446,31 @@ function DangerZoneSection({
                     size="sm"
                     className="shrink-0 gap-1.5"
                   >
-                    Delete
+                    {t(($) => {
+                      return $.settings.shared.delete;
+                    })}
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent
+                  closeLabel={t(($) => {
+                    return $.settings.shared.close;
+                  })}
+                >
                   <DialogHeader>
-                    <DialogTitle>Delete workspace?</DialogTitle>
+                    <DialogTitle>
+                      {t(($) => {
+                        return $.settings.workspace.danger.delete.titleQuestion;
+                      })}
+                    </DialogTitle>
                     <DialogDescription>
-                      This will permanently delete{" "}
-                      <span className="font-semibold text-foreground">
-                        {org.slug}
-                      </span>{" "}
-                      and all its data. This action cannot be undone. Type the
-                      workspace name to confirm.
+                      {t(($) => {
+                        return $.settings.workspace.danger.delete
+                          .confirmDescription;
+                      })}
                     </DialogDescription>
                   </DialogHeader>
                   <Input
-                    placeholder={org.slug}
+                    placeholder={WORKSPACE_DELETE_CONFIRMATION}
                     value={deleteConfirm}
                     onChange={(e) => {
                       return setDeleteConfirm(e.target.value);
@@ -416,16 +479,27 @@ function DangerZoneSection({
                   <DialogFooter>
                     <DialogClose asChild>
                       <Button variant="outline" size="sm">
-                        Cancel
+                        {t(($) => {
+                          return $.settings.shared.cancel;
+                        })}
                       </Button>
                     </DialogClose>
                     <Button
                       variant="destructive"
                       size="sm"
                       onClick={onDomEventFn(handleDelete)}
-                      disabled={deleting || deleteConfirm !== org.slug}
+                      disabled={
+                        deleting ||
+                        deleteConfirm !== WORKSPACE_DELETE_CONFIRMATION
+                      }
                     >
-                      {deleting ? "Deleting..." : "Delete workspace"}
+                      {deleting
+                        ? t(($) => {
+                            return $.settings.workspace.danger.delete.progress;
+                          })
+                        : t(($) => {
+                            return $.settings.workspace.danger.delete.button;
+                          })}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -453,14 +527,21 @@ export function OrgGeneralTab() {
   return (
     <div className="flex flex-col gap-8">
       <ProfileSection org={org} isAdmin={isAdmin} />
-      <DangerZoneSection org={org} isAdmin={isAdmin} />
+      <DangerZoneSection isAdmin={isAdmin} />
     </div>
   );
 }
 
 function GeneralTabSkeleton() {
+  const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-8" role="status" aria-label="Loading">
+    <div
+      className="flex flex-col gap-8"
+      role="status"
+      aria-label={t(($) => {
+        return $.settings.shared.loading;
+      })}
+    >
       {/* Profile section skeleton */}
       <section className="flex flex-col gap-3">
         <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
@@ -482,15 +563,6 @@ function GeneralTabSkeleton() {
             <div className="min-w-0">
               <div className="h-4 w-10 rounded bg-muted/50 animate-pulse" />
               <div className="h-3 w-40 rounded bg-muted/30 animate-pulse mt-1.5" />
-            </div>
-            <div className="h-9 w-[220px] shrink-0 rounded-lg bg-muted/30 animate-pulse" />
-          </div>
-          <div className="h-0 zero-border-t mx-5" />
-          {/* Slug row */}
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="min-w-0">
-              <div className="h-4 w-8 rounded bg-muted/50 animate-pulse" />
-              <div className="h-3 w-52 rounded bg-muted/30 animate-pulse mt-1.5" />
             </div>
             <div className="h-9 w-[220px] shrink-0 rounded-lg bg-muted/30 animate-pulse" />
           </div>

@@ -9,42 +9,6 @@ export function isInteractive(): boolean {
 }
 
 /**
- * Prompt for text input with optional default value
- * @param message - The prompt message
- * @param initial - Optional default value
- * @param validate - Optional validation function
- * @returns The user's input, or undefined if cancelled or non-interactive
- */
-export async function promptText(
-  message: string,
-  initial?: string,
-  validate?: (value: string) => boolean | string,
-): Promise<string | undefined> {
-  // In non-interactive mode, return undefined immediately
-  if (!isInteractive()) {
-    return undefined;
-  }
-
-  const response = await prompts(
-    {
-      type: "text",
-      name: "value",
-      message,
-      initial,
-      validate,
-    },
-    {
-      onCancel: () => {
-        // Return undefined on Ctrl+C
-        return false;
-      },
-    },
-  );
-
-  return response.value;
-}
-
-/**
  * Prompt for yes/no confirmation
  * @param message - The prompt message
  * @param initial - Default value (true = yes, false = no)
@@ -65,35 +29,6 @@ export async function promptConfirm(
       name: "value",
       message,
       initial,
-    },
-    {
-      onCancel: () => {
-        return false;
-      },
-    },
-  );
-
-  return response.value;
-}
-
-/**
- * Prompt for password/secret input (masked)
- * @param message - The prompt message
- * @returns The user's input, or undefined if cancelled or non-interactive
- */
-export async function promptPassword(
-  message: string,
-): Promise<string | undefined> {
-  // In non-interactive mode, return undefined immediately
-  if (!isInteractive()) {
-    return undefined;
-  }
-
-  const response = await prompts(
-    {
-      type: "password",
-      name: "value",
-      message,
     },
     {
       onCancel: () => {

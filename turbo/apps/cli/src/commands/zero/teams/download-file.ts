@@ -1,8 +1,8 @@
 import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
-import { downloadTeamsFile } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { downloadTeamsFile } from "../../../lib/api/domains/integrations-teams";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 function defaultOutPath(fileId: string): string {
   return join(tmpdir(), `teams-${basename(fileId).slice(0, 48)}`);

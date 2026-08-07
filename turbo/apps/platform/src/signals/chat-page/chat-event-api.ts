@@ -11,14 +11,7 @@ import type { ZeroClientFactory } from "../api-client.ts";
 interface ChatEventListQuery {
   readonly sinceSeqId?: number;
   readonly beforeSeqId?: number;
-  readonly sinceId?: string;
-  readonly beforeId?: string;
   readonly limit?: number;
-}
-
-interface ChatEventListResult {
-  readonly events: ChatEvent[];
-  readonly hasHistoryBefore: boolean;
 }
 
 export async function sendChatEvent(
@@ -42,7 +35,7 @@ export async function listChatEvents(
   threadId: string,
   query: ChatEventListQuery,
   signal: AbortSignal,
-): Promise<ChatEventListResult> {
+): Promise<ChatEvent[]> {
   const result = await accept(
     createClient(chatThreadEventsContract).list({
       params: { threadId },
@@ -52,8 +45,5 @@ export async function listChatEvents(
     [200],
     signal,
   );
-  return {
-    events: result.body.events,
-    hasHistoryBefore: result.body.hasHistoryBefore ?? false,
-  };
+  return result.body.events;
 }

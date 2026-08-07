@@ -6,8 +6,9 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 const triggerMorningBriefResponseSchema = z.object({
-  runId: z.string(),
+  runId: z.string().nullable(),
   briefDate: z.string(),
+  queued: z.boolean(),
 });
 
 /**

@@ -9,16 +9,16 @@ import { zeroClient$ } from "../api-client.ts";
 import { createRunLoop } from "../zero-page/polling.ts";
 import { delay } from "signal-timers";
 import { accept } from "../../lib/accept.ts";
-import {
-  groupVisibleMessages,
-  type GroupedMessage,
-} from "./log-detail-utils.ts";
+import { groupVisibleGroups, type EventGroup } from "./log-detail-utils.ts";
 import {
   autoScrollActivityDetail$,
   scrollToBottomActivityDetail$,
 } from "./activity-detail-scroll.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { formatActivityClockTime } from "./activity-time.ts";
+import {
+  formatActivityClockTime,
+  formatActivityDurationMs,
+} from "./activity-time.ts";
 
 // ---------------------------------------------------------------------------
 // Filters — URL-derived
@@ -342,12 +342,12 @@ export const zeroActivityEvents$ = computed(async (get) => {
   } satisfies ZeroActivityEvents;
 });
 
-interface ZeroActivityVisibleMessages {
+interface ZeroActivityVisibleGroups {
   runId: string | null;
-  messages: GroupedMessage[];
+  groups: EventGroup[];
 }
 
-export const zeroActivityVisibleMessages$ = computed(async (get) => {
+export const zeroActivityVisibleGroups$ = computed(async (get) => {
   const [detail, events] = await Promise.all([
     get(zeroActivityDetail$),
     get(zeroActivityEvents$),
@@ -355,15 +355,15 @@ export const zeroActivityVisibleMessages$ = computed(async (get) => {
   if (!detail || !events || events.runId !== detail.id) {
     return {
       runId: events?.runId ?? null,
-      messages: [],
-    } satisfies ZeroActivityVisibleMessages;
+      groups: [],
+    } satisfies ZeroActivityVisibleGroups;
   }
   return {
     runId: detail.id,
-    messages: groupVisibleMessages(events.events, {
+    groups: groupVisibleGroups(events.events, {
       framework: detail.framework,
     }),
-  } satisfies ZeroActivityVisibleMessages;
+  } satisfies ZeroActivityVisibleGroups;
 });
 
 // ---------------------------------------------------------------------------
@@ -385,14 +385,5 @@ export function formatDuration(
   if (!Number.isFinite(ms) || ms < 0) {
     return undefined;
   }
-  if (ms < 1000) {
-    return `${ms}ms`;
-  }
-  const seconds = ms / 1000;
-  if (seconds < 60) {
-    return `${seconds.toFixed(1)}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSec = Math.round(seconds % 60);
-  return `${minutes}m ${remainingSec}s`;
+  return formatActivityDurationMs(ms);
 }

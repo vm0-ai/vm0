@@ -23,7 +23,7 @@ const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
 
 const connectedGithub = {
   id: "1",
-  type: "github",
+  slug: "github",
   authMethod: "oauth",
   externalId: "12345",
   externalUsername: "octocat",
@@ -36,7 +36,7 @@ const connectedGithub = {
 
 function statusItemFromConnector(connector: Record<string, unknown>) {
   return catalogStatusItem({
-    connectorRef: connector.type as string,
+    connectorSlug: connector.slug as string,
     authMethods: [authCodeMethod(connector.authMethod as string)],
     connection: {
       authMethod: connector.authMethod as string,
@@ -54,7 +54,7 @@ function statusItemFromConnector(connector: Record<string, unknown>) {
 function stubConnector(
   body: Record<string, unknown>,
   status = 200,
-  type = "github",
+  connectorSlug = "github",
 ) {
   if (status === 200) {
     return stubConnectorCatalogStatus([statusItemFromConnector(body)]);
@@ -62,7 +62,7 @@ function stubConnector(
   if (status === 404) {
     return stubConnectorCatalogStatus([
       catalogStatusItem({
-        connectorRef: type,
+        connectorSlug,
         authMethods: [authCodeMethod("oauth")],
       }),
     ]);
@@ -94,19 +94,19 @@ function stubAgent(
 
 function stubUserConnectors(
   id: string,
-  enabledTypes: string[],
+  enabledConnectorSlugs: string[],
   origin = "http://localhost:3000",
 ) {
   return http.get(`${origin}/api/zero/agents/${id}/user-connectors`, () => {
-    return HttpResponse.json({ enabledTypes });
+    return HttpResponse.json({ enabledConnectorSlugs: enabledConnectorSlugs });
   });
 }
 
-function stubAvailableConnectors(types: string[]) {
+function stubAvailableConnectors(connectorSlugs: string[]) {
   return stubConnectorCatalogStatus(
-    types.map((type) => {
+    connectorSlugs.map((connectorSlug) => {
       return catalogStatusItem({
-        connectorRef: type,
+        connectorSlug,
         authMethods: [authCodeMethod("oauth")],
       });
     }),
@@ -124,7 +124,7 @@ describe("zero connector status command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_APP_URL", "");
+    vi.stubEnv("ZERO_APP_URL", "");
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-token");
     vi.stubEnv("ZERO_AGENT_ID", "");
@@ -314,11 +314,11 @@ describe("zero connector status command", () => {
       );
     });
 
-    it("uses VM0_APP_URL in authorization links", async () => {
+    it("prefers ZERO_APP_URL in authorization links", async () => {
       const apiOrigin = "https://api.example.test";
       const appOrigin = "https://app.example.test";
       vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
-      vi.stubEnv("VM0_APP_URL", `${appOrigin}/ignored-path`);
+      vi.stubEnv("ZERO_APP_URL", `${appOrigin}/ignored-path`);
       server.use(
         stubConnectorCatalogStatus(
           [statusItemFromConnector(connectedGithub)],
@@ -503,7 +503,7 @@ describe("zero connector status command", () => {
   });
 
   describe("input validation", () => {
-    it("should reject unavailable connector refs", async () => {
+    it("should reject unavailable connector slugs", async () => {
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli", "invalid-type"]);
       }).rejects.toThrow("process.exit called");

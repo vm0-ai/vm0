@@ -18,12 +18,8 @@ TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
 
+_TEST_ENDPOINT_PATH_PREFIX: Final = "/api/test/"
 _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
-_PLATFORM_FIREWALL_PATH_PREFIXES: Final = (
-    "/api/test/",
-    "/api/internal/vm0-model/v1/",
-)
-_VM0_MODEL_PROXY_PATH_PREFIX: Final = "/api/internal/vm0-model/v1/"
 _UPSTREAM_BINDING_DIAGNOSTICS = "_upstream_binding_diagnostics"
 
 TlsAdmissionKind = Literal[
@@ -79,6 +75,17 @@ def _connected_verified_tls_destination_endpoint(
     port: int,
     extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> tuple[str, int] | None:
+    """Return verified live endpoint evidence for the exact TLS destination.
+
+    After the caller establishes that ``server`` remains connected, a non-``None`` result supplies
+    the remaining evidence for the ``connected_address`` trust precondition of
+    ``upstream_destination_binding.refresh_server_binding_connected_address_if_matching()``. The
+    upstream TLS connection is verified for normalized SNI ``host``, carries certificate evidence
+    without a connection error, and has authoritative connected endpoint evidence for ``port``.
+
+    The fail-closed ``without_verified_tls`` and positive ``after_retargeting`` integration cases
+    in ``tests/test_request_handler_connector_admission.py`` exercise this contract.
+    """
     if bool(getattr(getattr(ctx, "options", object()), "ssl_insecure", False)):
         return None
     if not bool(getattr(server, "tls_established", False)):
@@ -100,15 +107,16 @@ def _connected_verified_tls_destination_endpoint(
     # mitmproxy verifies the upstream certificate against server.sni when
     # ssl_insecure is false. At this point the connected IP is authenticated as
     # the same host we plan to bind, so CDN/Anycast DNS drift does not matter.
-    return connection_endpoints.connected_ip_destination_endpoint(
+    connected_endpoint = connection_endpoints.connected_ip_destination_endpoint(
         server,
         port=port,
         extra_endpoints=extra_endpoints,
     )
+    return connected_endpoint.address if connected_endpoint is not None else None
 
 
 def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
-    if not flow.request.path.startswith("/api/test/"):
+    if not flow.request.path.startswith(_TEST_ENDPOINT_PATH_PREFIX):
         return False
     expected_bypass = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
     if not expected_bypass:
@@ -117,17 +125,7 @@ def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
 
 
 def request_path_uses_platform_firewall(path: str) -> bool:
-    return path.startswith(_PLATFORM_FIREWALL_PATH_PREFIXES)
-
-
-def _request_allows_platform_connector_auth(flow: http.HTTPFlow) -> bool:
-    if flow.request.path.startswith(_VM0_MODEL_PROXY_PATH_PREFIX):
-        return True
-    # Synthetic test providers live on the platform API preview host but
-    # intentionally exercise connector auth injection instead of API auto-allow.
-    # Keep this path limited to test endpoints gated by the same internal
-    # bypass secret that the API route validates.
-    return _request_has_platform_test_endpoint_bypass(flow)
+    return path.startswith(_TEST_ENDPOINT_PATH_PREFIX)
 
 
 def api_destination_matches(api_url: str, hostname: str, port: int) -> bool:
@@ -291,7 +289,28 @@ def handle_server_connect(
     registry_path: str,
     api_url: str,
 ) -> None:
-    """Bind privileged HTTPS upstream connections to their trusted SNI host."""
+    """Prebind an eligible privileged HTTPS upstream from trusted connection identity.
+
+    The event must expose client and server connections, a client peer IP registered in the
+    current available registry, and usable SNI. The hook prefers client SNI and falls back to
+    recorded ClientHello SNI. Any TLS admission record must identify the same client IP and a valid
+    registry VM, and its recorded run identity must match the current run. Missing, stale,
+    malformed, or untrusted inputs return without retargeting the server or creating or extending
+    a binding.
+
+    The normalized SNI host and current server destination port select one binding purpose. The
+    configured platform API host and its subdomains at the configured port qualify for
+    ``api_allow``. Every other exact HTTPS authority qualifies for ``connector_auth`` only when the
+    current VM's compiled firewall set admits ordinary credential mutation there. A matching
+    direct binding that already has the selected kind may be reused; otherwise the selected purpose
+    must currently qualify before a matching binding is extended or a new binding is recorded. A
+    nonmatching binding is preserved.
+
+    Without a matching binding, only an unconnected server may be retargeted and bound; SNI alone
+    never binds an already-connected server. This connection-phase binding records eligibility,
+    not HTTP request authorization. Request handling must still authorize the current request
+    before platform API allowance or connector credential mutation.
+    """
     client = getattr(data, "client", None)
     server = getattr(data, "server", None)
     if client is None or server is None:
@@ -331,10 +350,18 @@ def handle_tls_clienthello(
     registry_path: str,
     api_url: str,
 ) -> None:
-    """
-    Handle TLS ClientHello — decide whether to MITM intercept.
-    All registered VMs use MITM mode for HTTP-level filtering and logging.
-    Unregistered IPs are passed through without interception.
+    """Apply the MITM admission decision for a TLS ClientHello.
+
+    With no client peer IP, leave the interception decision unchanged. Valid registry VMs stay
+    intercepted and may prebind a privileged upstream. Invalid VM entries and unavailable registry
+    lookups also stay intercepted, preserving the request hook's fail-closed path. When the
+    connection can be keyed, these outcomes record ``valid_registry_vm`` with run and SNI identity,
+    ``invalid_registry_vm``, or ``registry_unavailable`` respectively.
+
+    Only a client IP positively absent from a successfully loaded registry clears prior admission
+    state and switches to passthrough. TLS admission is connection identity evidence for later
+    classification, not cached authorization; current request-time registry state remains
+    authoritative for enforcement.
     """
     client_ip = data.context.client.peername[0] if data.context.client.peername else None
     if not client_ip:
@@ -503,6 +530,10 @@ def ensure_bound_destination(
         return False
 
     api_destination = _api_destination(api_url) if kind == "connector_auth" else None
+    # Synthetic test providers live on the platform API preview host but
+    # intentionally exercise connector auth injection instead of API auto-allow.
+    # Keep this path limited to test endpoints gated by the same internal
+    # bypass secret that the API route validates.
     if (
         api_destination is not None
         and _hostname_port_matches_api_destination(
@@ -510,7 +541,7 @@ def ensure_bound_destination(
             port=destination.port,
             api_destination=api_destination,
         )
-        and not _request_allows_platform_connector_auth(flow)
+        and not _request_has_platform_test_endpoint_bypass(flow)
     ):
         return False
 

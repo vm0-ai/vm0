@@ -1,38 +1,49 @@
 import type { z } from "zod";
 import {
-  runEventsContract,
-  runMetricsContract,
-  runsByIdContract,
-  runsCancelContract,
-  runsMainContract,
-  runSystemLogContract,
-} from "@vm0/api-contracts/contracts/runs";
-import { sessionsByIdContract } from "@vm0/api-contracts/contracts/sessions";
-import {
   logsByIdContract,
   logsListContract,
 } from "@vm0/api-contracts/contracts/logs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import {
   zeroRunAgentEventsContract,
+  zeroRunMetricsContract,
   zeroRunNetworkLogsContract,
+  zeroRunSystemLogContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 
 import { createApp } from "../../../../app-factory";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+  createDirectRunFixture,
+  listAgentRunsFixture,
+  type DirectRunFixtureRequest,
+} from "../../../../test-fixtures/agent-runs";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { zeroLogsRoutes } from "../../zero-logs";
+import { zeroQueuePositionRoutes } from "../../zero-queue-position";
+import { zeroRunDetailRoutes } from "../../zero-run-detail";
 
-type AuthHeaders = { readonly authorization?: string };
-type DirectRunRequest = z.input<(typeof runsMainContract.create)["body"]>;
-type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
-type RunEventsQuery = z.input<(typeof runEventsContract.getEvents)["query"]>;
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroLogsRoutes,
+  ...zeroQueuePositionRoutes,
+  ...zeroRunDetailRoutes,
+]);
+
+type AuthHeaders = {
+  readonly authorization?: string;
+};
+type DirectRunRequest = DirectRunFixtureRequest;
+interface RunsListQuery {
+  readonly status?: string;
+  readonly agent?: string;
+  readonly since?: string;
+  readonly until?: string;
+  readonly limit?: number;
+}
 type PagedTelemetryQuery = z.input<
-  (typeof runSystemLogContract.getSystemLog)["query"]
+  (typeof zeroRunSystemLogContract.getSystemLog)["query"]
 >;
 type ZeroAgentEventsQuery = z.input<
   (typeof zeroRunAgentEventsContract.getAgentEvents)["query"]
@@ -95,142 +106,67 @@ export function createRunReadsApi(context: TestContext) {
       body: DirectRunRequest,
       statuses: readonly TStatus[],
     ) {
-      return await accept(
-        setupApp({ context })(runsMainContract).create({
-          headers: authenticate(context, actor),
-          body,
-        }),
-        statuses,
-      );
+      const response = !actor?.orgId
+        ? {
+            status: 401 as const,
+            body: {
+              error: {
+                message: "Not authenticated",
+                code: "UNAUTHORIZED" as const,
+              },
+            },
+          }
+        : await createDirectRunFixture({
+            userId: actor.userId,
+            orgId: actor.orgId,
+            body,
+            signal: context.signal,
+          });
+      return await accept(Promise.resolve(response), statuses);
     },
 
-    async requestListAgentRuns<TStatus extends 200 | 400 | 401>(
-      actor: ApiTestUser | null,
+    async requestListAgentRuns<TStatus extends 200 | 400>(
+      actor: ApiTestUser,
       query: RunsListQuery,
       statuses: readonly TStatus[],
     ) {
-      return await accept(
-        setupApp({ context })(runsMainContract).list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        statuses,
-      );
+      if (!actor.orgId) {
+        throw new Error("Agent run list service requires an organization");
+      }
+      const result = await listAgentRunsFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
+        status: query.status,
+        agent: query.agent,
+        since: query.since,
+        until: query.until,
+        limit: query.limit,
+      });
+      const response =
+        result.kind === "bad-request"
+          ? {
+              status: 400 as const,
+              body: {
+                error: {
+                  message: result.message,
+                  code: "BAD_REQUEST" as const,
+                },
+              },
+            }
+          : { status: 200 as const, body: result.body };
+      return await accept(Promise.resolve(response), statuses);
     },
 
-    async requestReadAgentRun<TStatus extends 200 | 400 | 401 | 404>(
-      actor: ApiTestUser | null,
-      runId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runsByIdContract).getById({
-          headers: authenticate(context, actor),
-          params: { id: runId },
-        }),
-        statuses,
-      );
-    },
-
-    /** Reads a run detail with a raw bearer credential (sandbox token). */
-    async requestReadAgentRunAs<TStatus extends 200 | 400 | 401 | 404>(
-      authorization: string,
-      runId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runsByIdContract).getById({
-          headers: { authorization },
-          params: { id: runId },
-        }),
-        statuses,
-      );
-    },
-
-    async requestCancelAgentRun<TStatus extends 200 | 400 | 401 | 404>(
-      actor: ApiTestUser | null,
-      runId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runsCancelContract).cancel({
-          headers: authenticate(context, actor),
-          params: { id: runId },
-        }),
-        statuses,
-      );
-    },
-
-    /** Cancels through the agent route with a raw bearer credential. */
-    async requestCancelAgentRunAs<TStatus extends 200 | 400 | 401 | 404>(
-      authorization: string,
-      runId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runsCancelContract).cancel({
-          headers: { authorization },
-          params: { id: runId },
-        }),
-        statuses,
-      );
-    },
-
-    async requestReadSession<TStatus extends 200 | 401 | 403 | 404>(
-      actor: ApiTestUser | null,
-      sessionId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(sessionsByIdContract).getById({
-          headers: authenticate(context, actor),
-          params: { id: sessionId },
-        }),
-        statuses,
-      );
-    },
-
-    async requestRunEvents<TStatus extends 200 | 400 | 401 | 404>(
-      actor: ApiTestUser | null,
-      runId: string,
-      query: RunEventsQuery,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runEventsContract).getEvents({
-          headers: authenticate(context, actor),
-          params: { id: runId },
-          query,
-        }),
-        statuses,
-      );
-    },
-
-    /** Reads run events with a raw bearer credential (sandbox token). */
-    async requestRunEventsAs<TStatus extends 200 | 400 | 401 | 404>(
-      authorization: string,
-      runId: string,
-      query: RunEventsQuery,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runEventsContract).getEvents({
-          headers: { authorization },
-          params: { id: runId },
-          query,
-        }),
-        statuses,
-      );
-    },
-
-    async requestRunSystemLog<TStatus extends 200 | 400 | 401 | 404>(
+    async requestRunSystemLog<TStatus extends 200 | 400 | 401 | 403 | 404>(
       actor: ApiTestUser | null,
       runId: string,
       query: PagedTelemetryQuery,
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(runSystemLogContract).getSystemLog({
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunSystemLogContract,
+        ).getSystemLog({
           headers: authenticate(context, actor),
           params: { id: runId },
           query,
@@ -239,14 +175,16 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    async requestRunMetrics<TStatus extends 200 | 400 | 401 | 404>(
+    async requestRunMetrics<TStatus extends 200 | 400 | 401 | 403 | 404>(
       actor: ApiTestUser | null,
       runId: string,
       query: PagedTelemetryQuery,
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(runMetricsContract).getMetrics({
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunMetricsContract,
+        ).getMetrics({
           headers: authenticate(context, actor),
           params: { id: runId },
           query,
@@ -264,7 +202,9 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunAgentEventsContract).getAgentEvents({
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunAgentEventsContract,
+        ).getAgentEvents({
           headers: authenticate(context, actor),
           params: { id: runId },
           query,
@@ -282,7 +222,9 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunNetworkLogsContract).getNetworkLogs({
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunNetworkLogsContract,
+        ).getNetworkLogs({
           headers: authenticate(context, actor),
           params: { id: runId },
           query,
@@ -297,7 +239,9 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(zeroQueuePositionContract).getPosition({
+        setupApp({ context, routes: zeroQueuePositionRoutes })(
+          zeroQueuePositionContract,
+        ).getPosition({
           headers: authenticate(context, actor),
           query: { runId },
         }),
@@ -311,7 +255,7 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(logsListContract).list({
+        setupApp({ context, routes: zeroLogsRoutes })(logsListContract).list({
           headers: authenticate(context, actor),
           query,
         }),
@@ -324,7 +268,7 @@ export function createRunReadsApi(context: TestContext) {
       actor: ApiTestUser | null,
     ) {
       return await accept(
-        setupApp({ context })(logsListContract).list({
+        setupApp({ context, routes: zeroLogsRoutes })(logsListContract).list({
           headers: authenticate(context, actor),
           query: { triggerSource: "automation" } as unknown as LogsListQuery,
         }),
@@ -339,7 +283,7 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(logsListContract).list({
+        setupApp({ context, routes: zeroLogsRoutes })(logsListContract).list({
           headers: { authorization },
           query,
         }),
@@ -353,10 +297,12 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(logsByIdContract).getById({
-          headers: authenticate(context, actor),
-          params: { id: runId },
-        }),
+        setupApp({ context, routes: zeroLogsRoutes })(logsByIdContract).getById(
+          {
+            headers: authenticate(context, actor),
+            params: { id: runId },
+          },
+        ),
         statuses,
       );
     },
@@ -368,10 +314,12 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(logsByIdContract).getById({
-          headers: { authorization },
-          params: { id: runId },
-        }),
+        setupApp({ context, routes: zeroLogsRoutes })(logsByIdContract).getById(
+          {
+            headers: { authorization },
+            params: { id: runId },
+          },
+        ),
         statuses,
       );
     },
@@ -383,33 +331,16 @@ export function createRunReadsApi(context: TestContext) {
       path: string,
     ): Promise<{ readonly status: number; readonly body: unknown }> {
       const { authorization } = authenticate(context, actor);
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request(path, {
         method: "GET",
         headers: authorization === undefined ? {} : { authorization },
       });
       const body: unknown = await response.json();
       return { status: response.status, body };
-    },
-
-    // Raw POST for the direct-run invalid-body 400 (the create contract
-    // requires `prompt`, so the typed client cannot send the malformed body).
-    async rawCreateDirectRun(
-      actor: ApiTestUser,
-      body: unknown,
-    ): Promise<{ readonly status: number; readonly body: unknown }> {
-      const { authorization } = authenticate(context, actor);
-      const app = createApp({ signal: context.signal });
-      const response = await app.request("/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(authorization === undefined ? {} : { authorization }),
-        },
-        body: JSON.stringify(body),
-      });
-      const responseBody: unknown = await response.json();
-      return { status: response.status, body: responseBody };
     },
   };
 }

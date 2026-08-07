@@ -69,7 +69,7 @@ export type MembershipRequestAction = z.infer<
  * Org members response schema (status + members list)
  */
 export const orgMembersResponseSchema = z.object({
-  slug: z.string(),
+  name: z.string(),
   role: orgRoleSchema,
   members: z.array(orgMemberSchema),
   pendingInvitations: z.array(orgPendingInvitationSchema).optional(),

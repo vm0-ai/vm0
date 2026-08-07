@@ -36,14 +36,13 @@ import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-
 import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   publishConnectorPermissionUpdatedSafely,
   publishNetworkPolicyRefreshToRunnerGroup,
 } from "../external/realtime";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
@@ -61,22 +60,35 @@ import {
   currentConnectorCatalogValidatorIdentity,
 } from "./connector-catalog-validator-authority";
 
+const userPermissionGrantSelection = Object.freeze({
+  id: userPermissionGrants.id,
+  orgId: userPermissionGrants.orgId,
+  userId: userPermissionGrants.userId,
+  agentId: userPermissionGrants.agentId,
+  connectorSlug: userPermissionGrants.connectorSlug,
+  permission: userPermissionGrants.permission,
+  action: userPermissionGrants.action,
+  expiresAt: userPermissionGrants.expiresAt,
+  createdAt: userPermissionGrants.createdAt,
+  updatedAt: userPermissionGrants.updatedAt,
+});
+
 type UserPermissionGrantRow = typeof userPermissionGrants.$inferSelect;
 type StoredPermissionGrantRow = UserPermissionGrantRow;
 type ResolvedPermissionGrant = Pick<
   UserPermissionGrantRow,
-  "connectorRef" | "permission" | "action" | "expiresAt"
+  "connectorSlug" | "permission" | "action" | "expiresAt"
 >;
 type UserPermissionGrantAction = UserPermissionGrantResponse["action"];
 
 interface ActiveNetworkPolicyRefresh {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly networkPolicy: NetworkPolicy;
   readonly nextRefreshAt: string | null;
 }
 
 interface ConnectorPermissionPolicyBaseline {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly permissionNames: readonly string[];
   readonly defaultPolicy: FirewallPolicy;
 }
@@ -92,6 +104,10 @@ type BaselineNetworkPolicyRefreshResolution =
     }
   | { readonly kind: "incompatible" };
 
+type BaselineNetworkPolicyDatabaseMeasure = <T>(
+  operation: () => Promise<T>,
+) => Promise<T>;
+
 interface UserPermissionGrantBaseScope {
   readonly orgId: string;
   readonly userId: string;
@@ -101,11 +117,6 @@ interface UserPermissionGrantBaseScope {
 type UserPermissionGrantScope = UserPermissionGrantBaseScope & {
   readonly agentId: string;
 };
-
-type ApplyUserPermissionGrantsAgentRequest =
-  ApplyUserPermissionGrantsRequest & {
-    readonly agentId: string;
-  };
 
 interface ApplyUserPermissionGrantsArgs {
   readonly orgId: string;
@@ -163,15 +174,6 @@ function validationError(message: string): ValidationErrorResponse {
 
 function visibleZeroAgentCondition(userId: string) {
   return or(eq(zeroAgents.visibility, "public"), eq(zeroAgents.owner, userId));
-}
-
-function requireAgentGrantApply(
-  apply: ApplyUserPermissionGrantsRequest,
-): ApplyUserPermissionGrantsAgentRequest {
-  if (apply.agentId === undefined) {
-    throw new Error("Expected agent permission grant scope");
-  }
-  return apply as ApplyUserPermissionGrantsAgentRequest;
 }
 
 async function findVisibleAgent(
@@ -272,12 +274,12 @@ function resolvedExpiresAt({
 
 function earliestTemporaryAllowExpiresAt(
   grants: readonly ResolvedPermissionGrant[],
-  connectorRef: string,
+  connectorSlug: string,
 ): Date | null {
   let earliest: Date | null = null;
   for (const grant of grants) {
     if (
-      grant.connectorRef !== connectorRef ||
+      grant.connectorSlug !== connectorSlug ||
       grant.action !== "allow" ||
       !grant.expiresAt
     ) {
@@ -296,14 +298,14 @@ function resolvedConnectorFirewallPolicies(
   return permissionGrantsToFirewallPolicies(grants) ?? {};
 }
 
-export function networkPolicyRefreshConnectorRefs(
+export function networkPolicyRefreshConnectorSlugs(
   catalog: ConnectorServerFirewallCatalog,
-  connectorRefs: readonly string[],
+  connectorSlugs: readonly string[],
 ): string[] {
   return [
     ...new Set(
-      connectorRefs.filter((connectorRef) => {
-        return catalog.has(connectorRef);
+      connectorSlugs.filter((connectorSlug) => {
+        return catalog.has(connectorSlug);
       }),
     ),
   ];
@@ -312,45 +314,46 @@ export function networkPolicyRefreshConnectorRefs(
 export async function resolveActiveNetworkPolicyRefreshes(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
-  connectorRefs: readonly string[],
+  connectorSlugs: readonly string[],
   preloadedSnapshot?: ConnectorRuntimeSnapshot,
   checkedAt: Date = nowDate(),
 ): Promise<readonly ActiveNetworkPolicyRefresh[]> {
-  if (connectorRefs.length === 0) {
+  if (connectorSlugs.length === 0) {
     return [];
   }
 
   const snapshot =
     preloadedSnapshot ?? (await loadConnectorRuntimeSnapshot(db));
-  const uniqueConnectorRefs = networkPolicyRefreshConnectorRefs(
+  const uniqueConnectorSlugs = networkPolicyRefreshConnectorSlugs(
     snapshot.serverFirewalls,
-    connectorRefs,
+    connectorSlugs,
   );
-  if (uniqueConnectorRefs.length === 0) {
+  if (uniqueConnectorSlugs.length === 0) {
     return [];
   }
 
-  const grants = await loadActiveUserPermissionGrantsForConnectorRefs(
+  const grants = await loadActiveUserPermissionGrantsForConnectorSlugs(
     db,
     scope,
-    uniqueConnectorRefs,
+    uniqueConnectorSlugs,
     checkedAt,
   );
   const indexes = await Promise.all(
-    uniqueConnectorRefs.map(async (connectorRef) => {
+    uniqueConnectorSlugs.map(async (connectorSlug) => {
       return {
-        connectorRef,
-        index: await snapshot.serverFirewalls.loadPermissionIndex(connectorRef),
+        connectorSlug,
+        index:
+          await snapshot.serverFirewalls.loadPermissionIndex(connectorSlug),
       };
     }),
   );
 
   return activeNetworkPolicyRefreshesForPermissionBaselines(
-    indexes.flatMap(({ connectorRef, index }) => {
+    indexes.flatMap(({ connectorSlug, index }) => {
       return index
         ? [
             {
-              connectorRef,
+              connectorSlug,
               permissionNames: [...index.permissionNames],
               defaultPolicy: defaultFirewallPolicyForPermissionIndex(index),
             },
@@ -427,17 +430,20 @@ function activeNetworkPolicyRefreshesForPermissionBaselines(
   const policies = resolvedConnectorFirewallPolicies(grants);
   return baselines.map((baseline) => {
     const defaultPolicy = baseline.defaultPolicy;
-    const connectorRef = baseline.connectorRef;
-    const overlay = policies[connectorRef];
+    const connectorSlug = baseline.connectorSlug;
+    const overlay = policies[connectorSlug];
     const policy: FirewallPolicy = overlay
       ? {
           policies: { ...defaultPolicy.policies, ...overlay.policies },
           unknownPolicy: overlay.unknownPolicy ?? defaultPolicy.unknownPolicy,
         }
       : defaultPolicy;
-    const nextRefreshAt = earliestTemporaryAllowExpiresAt(grants, connectorRef);
+    const nextRefreshAt = earliestTemporaryAllowExpiresAt(
+      grants,
+      connectorSlug,
+    );
     return {
-      connectorRef,
+      connectorSlug,
       networkPolicy: networkPolicyForFirewallPolicy(
         baseline.permissionNames,
         policy,
@@ -451,10 +457,11 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
   baseline: StoredConnectorPermissionBaseline,
+  measureDatabase: BaselineNetworkPolicyDatabaseMeasure,
   checkedAt: Date = nowDate(),
 ): Promise<BaselineNetworkPolicyRefreshResolution> {
-  const connectorRefs = Object.keys(baseline.connectors);
-  if (connectorRefs.length === 0) {
+  const connectorSlugs = Object.keys(baseline.connectors);
+  if (connectorSlugs.length === 0) {
     return { kind: "empty", refreshes: [] };
   }
   const current = {
@@ -466,52 +473,54 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
     return { kind: "incompatible" };
   }
 
-  const rows = await db
-    .select({
-      identity: {
-        schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
-        catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
-        catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
-      },
-      grant: {
-        connectorRef: userPermissionGrants.connectorRef,
-        permission: userPermissionGrants.permission,
-        action: userPermissionGrants.action,
-        expiresAt: userPermissionGrants.expiresAt,
-      },
-    })
-    .from(connectorCatalogActiveSnapshot)
-    .innerJoin(
-      connectorCatalogCompatibilityEvaluation,
-      connectorCatalogIdentityJoin(),
-    )
-    .leftJoin(
-      userPermissionGrants,
-      and(
-        eq(userPermissionGrants.orgId, scope.orgId),
-        eq(userPermissionGrants.userId, scope.userId),
-        eq(userPermissionGrants.agentId, scope.agentId),
-        inArray(userPermissionGrants.connectorRef, connectorRefs),
-        activeUserPermissionGrantCondition(checkedAt),
-      ),
-    )
-    .where(
-      and(
-        eq(connectorCatalogActiveSnapshot.sourceId, current.sourceId),
-        eq(
-          connectorCatalogActiveSnapshot.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+  const rows = await measureDatabase(async () => {
+    return await db
+      .select({
+        identity: {
+          schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
+          catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
+          catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
+        },
+        grant: {
+          connectorSlug: userPermissionGrants.connectorSlug,
+          permission: userPermissionGrants.permission,
+          action: userPermissionGrants.action,
+          expiresAt: userPermissionGrants.expiresAt,
+        },
+      })
+      .from(connectorCatalogActiveSnapshot)
+      .innerJoin(
+        connectorCatalogCompatibilityEvaluation,
+        connectorCatalogIdentityJoin(),
+      )
+      .leftJoin(
+        userPermissionGrants,
+        and(
+          eq(userPermissionGrants.orgId, scope.orgId),
+          eq(userPermissionGrants.userId, scope.userId),
+          eq(userPermissionGrants.agentId, scope.agentId),
+          inArray(userPermissionGrants.connectorSlug, connectorSlugs),
+          activeUserPermissionGrantCondition(checkedAt),
         ),
-        eq(
-          connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
-          current.capabilityDigest,
+      )
+      .where(
+        and(
+          eq(connectorCatalogActiveSnapshot.sourceId, current.sourceId),
+          eq(
+            connectorCatalogActiveSnapshot.schemaVersion,
+            SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+          ),
+          eq(
+            connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
+            current.capabilityDigest,
+          ),
         ),
-      ),
-    )
-    .orderBy(
-      asc(userPermissionGrants.connectorRef),
-      asc(userPermissionGrants.permission),
-    );
+      )
+      .orderBy(
+        asc(userPermissionGrants.connectorSlug),
+        asc(userPermissionGrants.permission),
+      );
+  });
 
   const first = rows[0];
   if (
@@ -529,9 +538,9 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
   return {
     kind: "compatible",
     refreshes: activeNetworkPolicyRefreshesForPermissionBaselines(
-      Object.entries(baseline.connectors).map(([connectorRef, entry]) => {
+      Object.entries(baseline.connectors).map(([connectorSlug, entry]) => {
         return {
-          connectorRef,
+          connectorSlug,
           permissionNames: entry.permissionNames,
           defaultPolicy: defaultFirewallPolicyForBaseline(entry),
         };
@@ -549,7 +558,10 @@ export function networkPolicyRefreshesRecord(
       return [];
     }
     return [
-      [refresh.connectorRef, { nextRefreshAt: refresh.nextRefreshAt }] as const,
+      [
+        refresh.connectorSlug,
+        { nextRefreshAt: refresh.nextRefreshAt },
+      ] as const,
     ];
   });
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
@@ -566,11 +578,11 @@ export function mergeNetworkPolicyRefreshes(
   for (const refresh of refreshes) {
     if (
       networkPolicies &&
-      !Object.hasOwn(networkPolicies, refresh.connectorRef)
+      !Object.hasOwn(networkPolicies, refresh.connectorSlug)
     ) {
       continue;
     }
-    merged[refresh.connectorRef] = refresh.networkPolicy;
+    merged[refresh.connectorSlug] = refresh.networkPolicy;
   }
   return merged;
 }
@@ -578,7 +590,7 @@ export function mergeNetworkPolicyRefreshes(
 function formatUserPermissionGrant(
   row: Pick<
     StoredPermissionGrantRow,
-    | "connectorRef"
+    | "connectorSlug"
     | "permission"
     | "action"
     | "expiresAt"
@@ -589,7 +601,7 @@ function formatUserPermissionGrant(
 ): UserPermissionGrantResponse {
   return {
     ...scope,
-    connectorRef: row.connectorRef,
+    connectorSlug: row.connectorSlug,
     permission: row.permission,
     action: row.action,
     expiresAt: row.expiresAt?.toISOString() ?? null,
@@ -604,7 +616,7 @@ async function loadActiveUserPermissionGrants(
   checkedAt: Date = nowDate(),
 ): Promise<readonly StoredPermissionGrantRow[]> {
   return await db
-    .select()
+    .select(userPermissionGrantSelection)
     .from(userPermissionGrants)
     .where(
       and(
@@ -615,31 +627,31 @@ async function loadActiveUserPermissionGrants(
       ),
     )
     .orderBy(
-      asc(userPermissionGrants.connectorRef),
+      asc(userPermissionGrants.connectorSlug),
       asc(userPermissionGrants.permission),
     );
 }
 
-async function loadActiveUserPermissionGrantsForConnectorRefs(
+async function loadActiveUserPermissionGrantsForConnectorSlugs(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
-  connectorRefs: readonly string[],
+  connectorSlugs: readonly string[],
   checkedAt: Date,
 ): Promise<readonly StoredPermissionGrantRow[]> {
   return await db
-    .select()
+    .select(userPermissionGrantSelection)
     .from(userPermissionGrants)
     .where(
       and(
         eq(userPermissionGrants.orgId, scope.orgId),
         eq(userPermissionGrants.userId, scope.userId),
         eq(userPermissionGrants.agentId, scope.agentId),
-        inArray(userPermissionGrants.connectorRef, connectorRefs),
+        inArray(userPermissionGrants.connectorSlug, connectorSlugs),
         activeUserPermissionGrantCondition(checkedAt),
       ),
     )
     .orderBy(
-      asc(userPermissionGrants.connectorRef),
+      asc(userPermissionGrants.connectorSlug),
       asc(userPermissionGrants.permission),
     );
 }
@@ -676,9 +688,9 @@ async function validateApplyUserPermissionGrants(
   apply: ApplyUserPermissionGrantsRequest,
   catalog: ConnectorServerFirewallCatalog,
 ): Promise<ValidationErrorResponse | null> {
-  const index = await catalog.loadPermissionIndex(apply.connectorRef);
+  const index = await catalog.loadPermissionIndex(apply.connectorSlug);
   if (!index) {
-    return validationError(`Unknown connector ref: ${apply.connectorRef}`);
+    return validationError(`Unknown connector slug: ${apply.connectorSlug}`);
   }
 
   const seenPermissions = new Set<string>();
@@ -693,7 +705,7 @@ async function validateApplyUserPermissionGrants(
       !index.hasPermission(grant.permission)
     ) {
       return validationError(
-        `Unknown permission "${grant.permission}" for connector "${apply.connectorRef}"`,
+        `Unknown permission "${grant.permission}" for connector "${apply.connectorSlug}"`,
       );
     }
 
@@ -709,11 +721,7 @@ async function applyVisibleGrantRows(
   db: Db,
   args: ApplyUserPermissionGrantsArgs,
 ): Promise<readonly StoredPermissionGrantRow[] | NotFoundResponse> {
-  return await applyVisibleAgentGrantRows(
-    db,
-    args,
-    requireAgentGrantApply(args.apply).agentId,
-  );
+  return await applyVisibleAgentGrantRows(db, args, args.apply.agentId);
 }
 
 async function applyVisibleAgentGrantRows(
@@ -737,7 +745,7 @@ async function applyVisibleAgentGrantRows(
       eq(userPermissionGrants.orgId, args.orgId),
       eq(userPermissionGrants.userId, args.userId),
       eq(userPermissionGrants.agentId, agentId),
-      eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
+      eq(userPermissionGrants.connectorSlug, args.apply.connectorSlug),
     );
 
     if (args.apply.mode === "replace") {
@@ -752,7 +760,7 @@ async function applyVisibleAgentGrantRows(
       args.apply.mode === "replace"
         ? []
         : await tx
-            .select()
+            .select(userPermissionGrantSelection)
             .from(userPermissionGrants)
             .where(connectorScopeCondition)
             .for("update");
@@ -783,25 +791,28 @@ async function applyVisibleAgentGrantRows(
                 eq(userPermissionGrants.orgId, args.orgId),
                 eq(userPermissionGrants.userId, args.userId),
                 eq(userPermissionGrants.agentId, agentId),
-                eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
+                eq(
+                  userPermissionGrants.connectorSlug,
+                  args.apply.connectorSlug,
+                ),
                 eq(userPermissionGrants.permission, grant.permission),
               ),
             )
-            .returning()
+            .returning(userPermissionGrantSelection)
         : await tx
             .insert(userPermissionGrants)
             .values({
               orgId: args.orgId,
               userId: args.userId,
               agentId,
-              connectorRef: args.apply.connectorRef,
+              connectorSlug: args.apply.connectorSlug,
               permission: grant.permission,
               action: grant.action,
               expiresAt,
               createdAt: timestamp,
               updatedAt: timestamp,
             })
-            .returning();
+            .returning(userPermissionGrantSelection);
       if (!row) {
         throw new Error("User permission grant apply did not return a row");
       }
@@ -836,7 +847,7 @@ async function loadActiveNetworkPolicyRefreshRuns(
 async function publishActiveNetworkPolicyRefreshes(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
-  connectorRef: string,
+  connectorSlug: string,
 ): Promise<void> {
   const runs = await loadActiveNetworkPolicyRefreshRuns(db, scope);
   await Promise.all(
@@ -847,7 +858,7 @@ async function publishActiveNetworkPolicyRefreshes(
       return publishNetworkPolicyRefreshToRunnerGroup(
         run.runnerGroup,
         run.runId,
-        connectorRef,
+        connectorSlug,
       );
     }),
   );
@@ -862,7 +873,7 @@ function permissionGrantResponseScope(scope: UserPermissionGrantScope): {
 function applyPermissionGrantResponseScope(
   args: ApplyUserPermissionGrantsArgs,
 ): { readonly agentId: string } {
-  return { agentId: requireAgentGrantApply(args.apply).agentId };
+  return { agentId: args.apply.agentId };
 }
 
 async function applyRowsAndPublishNetworkPolicyRefreshes(
@@ -875,7 +886,7 @@ async function applyRowsAndPublishNetworkPolicyRefreshes(
     return rows;
   }
 
-  if (!serverFirewalls.has(args.apply.connectorRef)) {
+  if (!serverFirewalls.has(args.apply.connectorSlug)) {
     return rows;
   }
 
@@ -887,7 +898,7 @@ async function applyRowsAndPublishNetworkPolicyRefreshes(
       userId: args.userId,
       agentId: responseScope.agentId,
     },
-    args.apply.connectorRef,
+    args.apply.connectorSlug,
   );
   return rows;
 }

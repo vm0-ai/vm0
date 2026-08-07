@@ -33,6 +33,10 @@ inputs:
     description: "Backend API URL used by web proxy routes"
     required: false
     default: ""
+  cli-pkg-url:
+    description: "Commit-addressed Zero CLI npm package URL"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -48,6 +52,7 @@ runs:
         INPUT_WEB_URL: ${{ inputs.web-url }}
         INPUT_APP_URL: ${{ inputs.app-url }}
         INPUT_API_BACKEND_URL: ${{ inputs.api-backend-url }}
+        INPUT_CLI_PKG_URL: ${{ inputs.cli-pkg-url }}
       run: |
         set -euo pipefail
 
@@ -181,9 +186,14 @@ runs:
           add_env VM0_API_BACKEND_URL "$api_backend_url"
         fi
         if [[ "$INPUT_APP" == "api" ]]; then
+          if [[ -z "$INPUT_CLI_PKG_URL" ]]; then
+            echo "::error::cli-pkg-url is required for API deployments"
+            exit 1
+          fi
           add_env FEISHU_CALLBACK_BASE_URL "$api_backend_url"
           add_env VM0_WEB_URL "$web_url"
           add_env ENV "$deploy_env"
+          add_env CLI_PKG_URL "$INPUT_CLI_PKG_URL"
           if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
             add_secret CLOUDFLARE_BROWSER_RENDERING_API_TOKEN CLOUDFLARE_BROWSER_RENDERING_API_TOKEN
             add_secret ARTIFACT_PREVIEW_WAF_SECRET ARTIFACT_PREVIEW_WAF_SECRET
@@ -208,7 +218,6 @@ runs:
         add_env STRAPI_URL "$strapi_url"
         add_var CLERK_PUBLISHABLE_KEY CLERK_PUBLISHABLE_KEY
         add_secret CLERK_SECRET_KEY CLERK_SECRET_KEY
-        add_secret E2B_API_KEY E2B_API_KEY
         add_var CF_ACCOUNT_ID CF_ACCOUNT_ID
         add_var R2_ACCOUNT_ID R2_ACCOUNT_ID
         add_secret R2_ACCESS_KEY_ID R2_ACCESS_KEY_ID
@@ -245,7 +254,12 @@ runs:
         add_secret OPENROUTER_API_KEY OPENROUTER_API_KEY
         add_secret OPENAI_API_KEY OPENAI_API_KEY
         add_secret FAL_KEY FAL_KEY
+        add_secret JOGGAI_API_KEY JOGGAI_API_KEY
+        if [[ "$INPUT_APP" == "api" ]]; then
+          add_secret JOGGAI_WEBHOOK_SECRET JOGGAI_WEBHOOK_SECRET
+        fi
         add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
+        add_secret MINIMAX_API_KEY MINIMAX_API_KEY
         add_secret BYTEPLUS_STT_API_KEY BYTEPLUS_STT_API_KEY
         add_secret UNSPLASH_ACCESS_KEY UNSPLASH_ACCESS_KEY
         add_var VAPID_PUBLIC_KEY VAPID_PUBLIC_KEY
@@ -265,11 +279,6 @@ runs:
           add_var MICROSOFT_TEAMS_APP_TENANT_ID MICROSOFT_TEAMS_APP_TENANT_ID
         fi
         add_env SLACK_REDIRECT_BASE_URL "$slack_redirect_base_url"
-        if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
-          add_env E2E_SLACK_MOCK_ENABLED "1"
-          add_env E2E_TELEGRAM_MOCK_ENABLED "1"
-          add_env E2E_TEAMS_MOCK_ENABLED "1"
-        fi
         add_env PLAUSIBLE_SCRIPT_URL "$plausible_script_url"
         if [[ "$INPUT_APP" == "web" && "$INPUT_ENVIRONMENT" == "production" ]]; then
           add_var POSTHOG_KEY POSTHOG_KEY
@@ -319,6 +328,7 @@ runs:
           TODOIST
           ASANA
           POSTHOG
+          QUICKBOOKS
           GUMROAD
           MERCURY
           SPOTIFY
@@ -346,10 +356,17 @@ runs:
         add_var MONDAY_OAUTH_APP_ID MONDAY_OAUTH_APP_ID
         add_oauth_client_config_key STRIPE_OAUTH_CLIENT_ID
         add_secret STRIPE_SECRET_KEY STRIPE_SECRET_KEY
+        add_var STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID
         add_secret STRIPE_WEBHOOK_SECRET STRIPE_WEBHOOK_SECRET
         add_secret CLERK_WEBHOOK_SIGNING_SECRET CLERK_WEBHOOK_SIGNING_SECRET
         add_var ZERO_PRICE_PRO ZERO_PRICE_PRO
         add_var ZERO_PRICE_TEAM ZERO_PRICE_TEAM
+        add_var ZERO_PRICE_USAGE_PACK_PLAN_PRO ZERO_PRICE_USAGE_PACK_PLAN_PRO
+        add_var ZERO_PRICE_USAGE_PACK_PLAN_TEAM ZERO_PRICE_USAGE_PACK_PLAN_TEAM
+        add_var ZERO_PRICE_USAGE_PACK_20 ZERO_PRICE_USAGE_PACK_20
+        add_var ZERO_PRICE_USAGE_PACK_50 ZERO_PRICE_USAGE_PACK_50
+        add_var ZERO_PRICE_USAGE_PACK_100 ZERO_PRICE_USAGE_PACK_100
+        add_var ZERO_PRICE_USAGE_PACK_200 ZERO_PRICE_USAGE_PACK_200
         add_var ATOM_GRANT_PRICE ATOM_GRANT_PRICE
         add_var ZERO_PRICE_CUSTOM_CREDITS ZERO_PRICE_CUSTOM_CREDITS
         add_var ZERO_PRICE_CUSTOM_CREDIT_UNIT ZERO_PRICE_CUSTOM_CREDIT_UNIT
@@ -368,6 +385,9 @@ runs:
         add_var GMAIL_PUBSUB_TOPIC_NAME GMAIL_PUBSUB_TOPIC_NAME
         add_var GMAIL_PUBSUB_PUSH_AUDIENCE GMAIL_PUBSUB_PUSH_AUDIENCE
         add_var GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL
+        add_var GOOGLE_FORMS_PUBSUB_TOPIC_NAME GOOGLE_FORMS_PUBSUB_TOPIC_NAME
+        add_var GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE
+        add_var GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL
         add_var GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME
         add_var GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE
         add_var GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL

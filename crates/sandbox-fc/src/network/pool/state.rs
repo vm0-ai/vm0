@@ -9,7 +9,6 @@ use futures_util::future::join_all;
 use tokio::sync::watch;
 use tracing::{error, info, warn};
 
-use crate::guest_dns_netfilter_trace::GuestDnsNetfilterTraceReader;
 use crate::paths::LockPaths;
 
 use super::super::error::{NetworkError, Result};
@@ -23,16 +22,17 @@ use super::completion::{
     CreationCompletion, CreationCompletionCoordinator, CreationNotifier, NetnsKind, PendingId,
     PreparedCreationWait, spawn_creation_worker,
 };
+use super::firewall::setup_dns_input_filter;
 #[cfg(test)]
 use super::host::ConntrackFlushOutcome;
 use super::host::{
-    NamespaceDeleteOutcome, NetnsLifecycleOps, PoolIndexLock, acquire_pool_lock,
-    create_single_namespace, enable_host_ip_forwarding, get_default_interface,
-    reconcile_orphan_namespaces, setup_dns_input_filter,
+    NetnsLifecycleOps, PoolIndexLock, acquire_pool_lock, create_single_namespace,
+    enable_host_ip_forwarding, get_default_interface, reconcile_orphan_namespaces,
 };
 use super::naming::{MAX_NAMESPACES, format_hex_index, make_host_device_dnsmasq_pattern};
 use super::types::{
-    CheckedNetnsPoolConfig, NetnsInfo, NetnsLease, NetnsPoolConfig, NetnsReleaseOutcome,
+    CheckedNetnsPoolConfig, NamespaceDeleteOutcome, NetnsInfo, NetnsLease, NetnsPoolConfig,
+    NetnsReleaseOutcome,
 };
 
 const BUFFER_SIZE: usize = 4;
@@ -135,8 +135,6 @@ struct NetnsPoolState {
     pool_index: u32,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
-    guest_dns_netfilter_trace_requested: bool,
-    guest_dns_netfilter_trace_reader: Option<GuestDnsNetfilterTraceReader>,
     dns_readiness_state: DnsReadinessState,
     dns_readiness_probe: DnsReadinessProbe,
     dns_readiness_timeout: Duration,
@@ -145,6 +143,7 @@ struct NetnsPoolState {
     /// Cleanup keeps this ownership marker until the bounded firewall delete
     /// completes so cancellation cannot silently orphan the rules.
     dns_input_filter_comment: Option<String>,
+    /// Background creation failure retained until no ready entry can satisfy an acquire.
     creation_failure: Option<NetworkError>,
     default_iface: String,
     ops: NetnsLifecycleOps,
@@ -177,8 +176,6 @@ impl NetnsPoolState {
             pool_index: 0,
             proxy_port: None,
             dns_port: None,
-            guest_dns_netfilter_trace_requested: false,
-            guest_dns_netfilter_trace_reader: None,
             dns_readiness_state: DnsReadinessState::NotRequired,
             dns_readiness_probe: production_dns_readiness_probe(),
             dns_readiness_timeout: DNS_READINESS_OPERATION_TIMEOUT,
@@ -205,11 +202,7 @@ impl NetnsPoolState {
     }
 
     async fn create_checked(config: CheckedNetnsPoolConfig) -> Result<Self> {
-        let CheckedNetnsPoolConfig {
-            inner: config,
-            guest_dns_netfilter_trace_requested,
-            guest_dns_netfilter_trace_reader,
-        } = config;
+        let CheckedNetnsPoolConfig { inner: config } = config;
         let lock_paths = LockPaths::new();
         let (index, lock) = acquire_pool_lock(&lock_paths)?;
 
@@ -248,8 +241,6 @@ impl NetnsPoolState {
             pool_index: index,
             proxy_port: config.proxy_port,
             dns_port: config.dns_port,
-            guest_dns_netfilter_trace_requested,
-            guest_dns_netfilter_trace_reader,
             dns_readiness_state: if config.dns_port.is_some() && config.proxy_port.is_some() {
                 DnsReadinessState::Pending
             } else {
@@ -425,8 +416,6 @@ impl NetnsPoolState {
         let ns_index = self.reserve_ns_index()?;
         let pool_index = self.pool_index;
         let default_iface = self.default_iface.clone();
-        let guest_dns_netfilter_trace_requested = self.guest_dns_netfilter_trace_requested;
-        let guest_dns_netfilter_trace_reader = self.guest_dns_netfilter_trace_reader.clone();
         let (proxy_port, dns_port) = match kind {
             NetnsKind::Plain => (None, None),
             NetnsKind::Proxy => {
@@ -456,15 +445,7 @@ impl NetnsPoolState {
             kind,
             self.creation_notifier(),
             create_namespace_with_readiness(
-                create_single_namespace(
-                    pool_index,
-                    ns_index,
-                    default_iface,
-                    proxy_port,
-                    dns_port,
-                    guest_dns_netfilter_trace_requested,
-                    guest_dns_netfilter_trace_reader,
-                ),
+                create_single_namespace(pool_index, ns_index, default_iface, proxy_port, dns_port),
                 readiness,
                 ops,
             ),
@@ -531,11 +512,10 @@ impl NetnsPoolState {
         }
     }
 
-    fn checkout(&mut self, mut info: NetnsInfo) -> std::result::Result<NetnsLease, NetnsInfo> {
+    fn checkout(&mut self, info: NetnsInfo) -> std::result::Result<NetnsLease, NetnsInfo> {
         if !self.in_flight.insert(info.name.clone()) {
             return Err(info);
         }
-        info.attachment_generation = info.attachment_generation.saturating_add(1);
         Ok(NetnsLease::new(info, self.instance_id))
     }
 
@@ -603,9 +583,7 @@ impl NetnsPoolState {
                     error = %e,
                     "background namespace creation failed"
                 );
-                if !queue_when_inactive
-                    && matches!(self.dns_readiness_state, DnsReadinessState::Ready)
-                {
+                if !queue_when_inactive {
                     self.creation_failure = Some(e);
                 }
             }
@@ -613,6 +591,13 @@ impl NetnsPoolState {
     }
 
     fn prepare_acquire(&mut self) -> Result<AcquirePlan> {
+        self.prepare_acquire_with(Self::spawn_creation_for_kind)
+    }
+
+    fn prepare_acquire_with(
+        &mut self,
+        mut spawn: impl FnMut(&mut Self, NetnsKind) -> Result<()>,
+    ) -> Result<AcquirePlan> {
         loop {
             if !self.active {
                 return Err(NetworkError::PoolNotActive);
@@ -636,7 +621,7 @@ impl NetnsPoolState {
 
             let kind = self.active_kind();
             if self.pending_set(kind).is_empty() {
-                self.spawn_creation(kind)?;
+                spawn(self, kind)?;
             }
 
             let (delete, waiter) = self.prepare_completion_wait(false);
@@ -1932,6 +1917,45 @@ mod tests {
         pool.cleanup().await.unwrap();
     }
 
+    #[test]
+    fn not_required_acquire_returns_creation_failure_without_retrying() {
+        let mut state = NetnsPoolState::inactive_for_test();
+        state.active = true;
+        state.next_ns_index = 7;
+        let mut attempts = 0;
+
+        let error = match state.prepare_acquire_with(|state, kind| {
+            assert_eq!(kind, NetnsKind::Plain);
+            state.reserve_ns_index()?;
+            attempts += 1;
+            let id = state.reserve_pending_id();
+            state.pending_set_mut(kind).insert(id);
+            state.completion.enqueue_for_test(CreationCompletion {
+                id,
+                kind,
+                result: Err(NetworkError::Prerequisite(
+                    "injected plain namespace creation failure".into(),
+                )),
+            });
+            Ok(())
+        }) {
+            Ok(_) => panic!("acquire planning should return the creation failure"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            NetworkError::Prerequisite(message)
+                if message == "injected plain namespace creation failure"
+        ));
+        assert_eq!(attempts, 1);
+        assert_eq!(state.next_ns_index, 8);
+        assert!(state.pending_plain.is_empty());
+        assert!(state.pending_proxy.is_empty());
+        assert!(state.plain_queue.is_empty());
+        assert!(state.proxy_queue.is_empty());
+    }
+
     #[tokio::test]
     async fn healthy_entry_wins_over_parallel_readiness_failure() {
         let lifecycle = counted_deleted_lifecycle();
@@ -2645,27 +2669,6 @@ mod tests {
         assert!(pool.in_flight.is_empty());
         assert_eq!(pool.plain_queue.len(), 1);
         assert_eq!(pool.plain_queue.front().unwrap().name(), "ready-ns");
-    }
-
-    #[tokio::test]
-    async fn attachment_generation_increments_when_namespace_is_reused() {
-        let mut pool = NetnsPoolState::inactive_for_test();
-        pool.active = true;
-        pool.ops = NetnsLifecycleOps::trusted_for_test();
-        let first = pool.checkout(test_info("reused-ns")).unwrap();
-        assert_eq!(first.info().attachment_generation(), 1);
-        let mut first = Some(first);
-        let handle = NetnsPoolHandle::from_state_for_test(pool);
-
-        let outcome = handle.release(&mut first).await;
-        assert!(matches!(outcome, NetnsReleaseOutcome::Released));
-
-        let second = {
-            let mut pool = handle.inner.state.lock().await;
-            let info = pool.plain_queue.pop_front().unwrap();
-            pool.checkout(info).unwrap()
-        };
-        assert_eq!(second.info().attachment_generation(), 2);
     }
 
     #[tokio::test]

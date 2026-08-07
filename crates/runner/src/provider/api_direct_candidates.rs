@@ -6,9 +6,10 @@ use tokio::sync::{Mutex, Notify};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-use super::{JobCandidate, JobDiscoverySource};
+use super::{JobCandidate, JobDiscoverySource, RunnerPreferenceContext};
+#[cfg(test)]
+use super::{RunnerPreference, RunnerPreferenceResolution};
 use crate::ids::RunId;
-use crate::types::SessionAffinityResource;
 
 pub(super) const DIRECT_CANDIDATE_STALE_AFTER: Duration = Duration::from_secs(60);
 
@@ -18,11 +19,9 @@ pub(super) struct DirectJobCandidate {
     profile_name: String,
     discovered_at: StdInstant,
     enqueued_at: Option<StdInstant>,
-    cli_agent_session_id: Option<String>,
-    session_affinity_resource: Option<SessionAffinityResource>,
+    reuse_key: Option<String>,
     history_generation_run_id: Option<RunId>,
-    history_generation_affinity_protected_until: Option<String>,
-    affinity_protected_until: Option<String>,
+    runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
 impl DirectJobCandidate {
@@ -37,7 +36,7 @@ impl DirectJobCandidate {
         profile_name: String,
         discovered_at: StdInstant,
     ) -> Self {
-        Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None)
+        Self::new_with_routing_metadata(run_id, profile_name, discovered_at, None, None)
     }
 
     #[cfg(test)]
@@ -48,28 +47,26 @@ impl DirectJobCandidate {
         enqueued_at: StdInstant,
     ) -> Self {
         let mut candidate =
-            Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None);
+            Self::new_with_routing_metadata(run_id, profile_name, discovered_at, None, None);
         candidate.enqueued_at = Some(enqueued_at);
         candidate
     }
 
-    pub(super) fn new_with_affinity_metadata(
+    pub(super) fn new_with_routing_metadata(
         run_id: RunId,
         profile_name: String,
         discovered_at: StdInstant,
-        cli_agent_session_id: Option<String>,
-        affinity_protected_until: Option<String>,
+        reuse_key: Option<String>,
+        runner_preference_context: Option<RunnerPreferenceContext>,
     ) -> Self {
         Self {
             run_id,
             profile_name,
             discovered_at,
             enqueued_at: None,
-            cli_agent_session_id,
-            session_affinity_resource: None,
+            reuse_key,
             history_generation_run_id: None,
-            history_generation_affinity_protected_until: None,
-            affinity_protected_until,
+            runner_preference_context,
         }
     }
 
@@ -105,19 +102,17 @@ impl DirectJobCandidate {
         self
     }
 
-    pub(super) fn with_session_affinity_resource(
+    #[cfg(test)]
+    pub(super) fn with_runner_preference_resolution(
         mut self,
-        resource: Option<SessionAffinityResource>,
+        runner_preference_resolution: Option<RunnerPreferenceResolution>,
     ) -> Self {
-        self.session_affinity_resource = resource;
-        self
-    }
-
-    pub(super) fn with_history_generation_affinity_protected_until(
-        mut self,
-        protected_until: Option<String>,
-    ) -> Self {
-        self.history_generation_affinity_protected_until = protected_until;
+        let runner_preference = self
+            .runner_preference_context
+            .take()
+            .and_then(|context| context.preference().cloned());
+        self.runner_preference_context =
+            RunnerPreferenceContext::legacy(runner_preference, runner_preference_resolution);
         self
     }
 
@@ -130,12 +125,9 @@ impl DirectJobCandidate {
             .enqueued_at
             .map(|enqueued_at| dequeued_at.saturating_duration_since(enqueued_at));
         JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
-            .with_affinity_metadata(self.cli_agent_session_id, self.affinity_protected_until)
-            .with_session_affinity_resource(self.session_affinity_resource)
+            .with_reuse_key(self.reuse_key)
             .with_history_generation_run_id(self.history_generation_run_id)
-            .with_history_generation_affinity_protected_until(
-                self.history_generation_affinity_protected_until,
-            )
+            .with_parsed_runner_preference_context(self.runner_preference_context)
             .with_discovery_source(JobDiscoverySource::Ably)
             .with_direct_candidate_timing(notification_to_enqueue_elapsed, inbox_wait_elapsed)
     }
@@ -150,27 +142,38 @@ impl DirectJobCandidate {
             );
             return;
         }
-        if candidate.cli_agent_session_id.is_some() {
-            self.cli_agent_session_id = candidate.cli_agent_session_id;
-        }
-        if candidate.affinity_protected_until.is_some() {
-            self.affinity_protected_until = candidate.affinity_protected_until;
-        }
-        if self.session_affinity_resource.is_none()
-            || candidate.session_affinity_resource == Some(SessionAffinityResource::ReusableSandbox)
+        if self
+            .runner_preference_context
+            .as_ref()
+            .is_some_and(RunnerPreferenceContext::is_atomic)
         {
-            self.session_affinity_resource = candidate.session_affinity_resource;
+            return;
         }
-        if candidate
-            .history_generation_affinity_protected_until
-            .is_some()
-        {
-            self.history_generation_affinity_protected_until =
-                candidate.history_generation_affinity_protected_until;
+        let incoming_is_atomic = candidate
+            .runner_preference_context
+            .as_ref()
+            .is_some_and(RunnerPreferenceContext::is_atomic);
+        let preserve_existing = !incoming_is_atomic
+            && matches!(
+                (
+                    self.runner_preference_context
+                        .as_ref()
+                        .and_then(RunnerPreferenceContext::preference),
+                    candidate
+                        .runner_preference_context
+                        .as_ref()
+                        .and_then(RunnerPreferenceContext::preference),
+                ),
+                (Some(existing), Some(candidate))
+                    if existing.admission() == candidate.admission()
+                        && existing.deadline() < candidate.deadline()
+            );
+        if preserve_existing {
+            return;
         }
-        if candidate.history_generation_run_id.is_some() {
-            self.history_generation_run_id = candidate.history_generation_run_id;
-        }
+        self.reuse_key = candidate.reuse_key;
+        self.history_generation_run_id = candidate.history_generation_run_id;
+        self.runner_preference_context = candidate.runner_preference_context;
     }
 }
 
@@ -422,6 +425,36 @@ mod tests {
         DirectCandidateInbox::new(capacity, stale_after)
     }
 
+    fn runner_preference(
+        runner_id: u128,
+        reason: super::super::RunnerPreferenceReason,
+        deadline: StdInstant,
+    ) -> RunnerPreferenceContext {
+        RunnerPreferenceContext::legacy(
+            Some(RunnerPreference::for_test(
+                uuid::Uuid::from_u128(runner_id),
+                7,
+                reason,
+                deadline,
+            )),
+            None,
+        )
+        .unwrap()
+    }
+
+    fn ranked_preference_context(
+        runner_id: u128,
+        tier: super::super::RunnerPreferenceTier,
+        deadline: StdInstant,
+    ) -> RunnerPreferenceContext {
+        RunnerPreferenceContext::atomic_for_test(RunnerPreference::ranked_for_test(
+            uuid::Uuid::from_u128(runner_id),
+            7,
+            tier,
+            deadline,
+        ))
+    }
+
     fn candidate_with_enqueued_at(run_id: RunId, enqueued_at: StdInstant) -> DirectJobCandidate {
         let mut candidate = DirectJobCandidate::new_with_discovered_at(
             run_id,
@@ -440,16 +473,23 @@ mod tests {
         let history_generation_run_id = run_id(2);
         let run_id = run_id(1);
 
+        let first_deadline = StdInstant::now() + Duration::from_secs(5);
         let inserted = inbox
             .push(
-                DirectJobCandidate::new_with_affinity_metadata(
+                DirectJobCandidate::new_with_routing_metadata(
                     run_id,
                     "vm0/default".to_string(),
                     first_discovered_at,
-                    Some("sess-1".to_string()),
-                    None,
+                    Some("session:sess-1".to_string()),
+                    Some(runner_preference(
+                        10,
+                        super::super::RunnerPreferenceReason::MatchingReuseKey,
+                        first_deadline,
+                    )),
                 )
-                .with_session_affinity_resource(Some(SessionAffinityResource::WorkspaceCache)),
+                .with_runner_preference_resolution(Some(
+                    RunnerPreferenceResolution::MatchingReusableSandbox,
+                )),
             )
             .await;
         assert_eq!(
@@ -460,20 +500,24 @@ mod tests {
             }
         );
 
+        let exact_deadline = StdInstant::now() + Duration::from_secs(8);
         let updated = inbox
             .push(
-                DirectJobCandidate::new_with_affinity_metadata(
+                DirectJobCandidate::new_with_routing_metadata(
                     run_id,
                     "vm0/default".to_string(),
                     second_discovered_at,
-                    None,
-                    Some("2999-01-01T00:00:00.000Z".to_string()),
+                    Some("session:sess-2".to_string()),
+                    Some(runner_preference(
+                        20,
+                        super::super::RunnerPreferenceReason::ExactHistoryGeneration,
+                        exact_deadline,
+                    )),
                 )
-                .with_history_generation_run_id(Some(history_generation_run_id))
-                .with_history_generation_affinity_protected_until(Some(
-                    "2999-01-01T00:00:00.000Z".to_string(),
+                .with_runner_preference_resolution(Some(
+                    RunnerPreferenceResolution::ExactHistoryGeneration,
                 ))
-                .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox)),
+                .with_history_generation_run_id(Some(history_generation_run_id)),
             )
             .await;
         assert!(matches!(
@@ -487,20 +531,26 @@ mod tests {
             }
         ));
 
-        let downgraded = inbox
+        let renewed = inbox
             .push(
-                DirectJobCandidate::new_with_affinity_metadata(
+                DirectJobCandidate::new_with_routing_metadata(
                     run_id,
                     "vm0/default".to_string(),
                     second_discovered_at,
-                    None,
-                    None,
+                    Some("session:must-not-renew".to_string()),
+                    Some(runner_preference(
+                        30,
+                        super::super::RunnerPreferenceReason::ExactHistoryGeneration,
+                        StdInstant::now() + Duration::from_secs(30),
+                    )),
                 )
-                .with_session_affinity_resource(Some(SessionAffinityResource::WorkspaceCache)),
+                .with_runner_preference_resolution(Some(
+                    RunnerPreferenceResolution::MatchingWorkspaceCache,
+                )),
             )
             .await;
         assert!(matches!(
-            downgraded,
+            renewed,
             DirectCandidateInsertOutcome::Updated { .. }
         ));
 
@@ -508,16 +558,29 @@ mod tests {
         assert_eq!(candidate.discovered_at(), first_discovered_at);
         assert!(candidate.enqueued_at().is_some());
         let candidate = candidate.into_job_candidate();
-        assert_eq!(candidate.cli_agent_session_id(), Some("sess-1"));
+        assert_eq!(candidate.reuse_key(), Some("session:sess-2"));
         assert_eq!(
             candidate.history_generation_run_id(),
             Some(history_generation_run_id)
         );
-        assert!(candidate.is_affinity_protected());
-        assert!(candidate.is_history_generation_affinity_protected());
+        let preference = candidate
+            .runner_preference()
+            .expect("updated canonical preference");
         assert_eq!(
-            candidate.session_affinity_resource(),
-            Some(SessionAffinityResource::ReusableSandbox)
+            preference.admission(),
+            super::super::RunnerPreferenceAdmission::Legacy(
+                super::super::RunnerPreferenceReason::ExactHistoryGeneration
+            )
+        );
+        assert_eq!(preference.deadline(), exact_deadline);
+        assert!(preference.targets(&uuid::Uuid::from_u128(20).to_string(), 7));
+        assert_eq!(
+            candidate.runner_preference_claim_telemetry(&uuid::Uuid::from_u128(20).to_string(), 7,),
+            Some(super::super::RunnerPreferenceClaimTelemetry {
+                resolution: RunnerPreferenceResolution::ExactHistoryGeneration,
+                state: super::super::RunnerPreferenceClaimState::Active,
+                targeted_self: Some(true),
+            })
         );
         assert!(
             candidate
@@ -526,6 +589,206 @@ mod tests {
         );
         assert!(candidate.direct_candidate_inbox_wait_elapsed().is_some());
         assert!(inbox.try_pop().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn duplicate_without_preference_clears_the_previous_routing_snapshot() {
+        let inbox = direct_candidate_inbox(1);
+        let candidate_run_id = run_id(3);
+        inbox
+            .push(
+                DirectJobCandidate::new_with_routing_metadata(
+                    candidate_run_id,
+                    "vm0/default".to_string(),
+                    StdInstant::now(),
+                    Some("session:stale".to_string()),
+                    Some(runner_preference(
+                        10,
+                        super::super::RunnerPreferenceReason::ExactHistoryGeneration,
+                        StdInstant::now() + Duration::from_secs(5),
+                    )),
+                )
+                .with_runner_preference_resolution(Some(
+                    RunnerPreferenceResolution::ExactHistoryGeneration,
+                ))
+                .with_history_generation_run_id(Some(run_id(4))),
+            )
+            .await;
+
+        inbox
+            .push(
+                DirectJobCandidate::new_with_routing_metadata(
+                    candidate_run_id,
+                    "vm0/default".to_string(),
+                    StdInstant::now(),
+                    None,
+                    None,
+                )
+                .with_runner_preference_resolution(Some(
+                    RunnerPreferenceResolution::NoViableHolder,
+                )),
+            )
+            .await;
+
+        let candidate = inbox
+            .try_pop()
+            .await
+            .expect("updated direct candidate")
+            .into_job_candidate();
+        assert!(candidate.reuse_key().is_none());
+        assert!(candidate.history_generation_run_id().is_none());
+        assert!(candidate.runner_preference().is_none());
+        assert_eq!(
+            candidate.runner_preference_claim_telemetry(&uuid::Uuid::from_u128(10).to_string(), 7,),
+            Some(super::super::RunnerPreferenceClaimTelemetry {
+                resolution: RunnerPreferenceResolution::NoViableHolder,
+                state: super::super::RunnerPreferenceClaimState::Absent,
+                targeted_self: None,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_retains_first_atomic_routing_snapshot_and_deadline() {
+        let inbox = direct_candidate_inbox(1);
+        let candidate_run_id = run_id(5);
+        let first_history_generation = run_id(6);
+        let first_deadline = StdInstant::now() + Duration::from_secs(5);
+        inbox
+            .push(
+                DirectJobCandidate::new_with_routing_metadata(
+                    candidate_run_id,
+                    "vm0/default".to_string(),
+                    StdInstant::now(),
+                    Some("session:first-atomic".to_string()),
+                    Some(ranked_preference_context(
+                        10,
+                        super::super::RunnerPreferenceTier::WorkspaceCache,
+                        first_deadline,
+                    )),
+                )
+                .with_history_generation_run_id(Some(first_history_generation)),
+            )
+            .await;
+
+        inbox
+            .push(
+                DirectJobCandidate::new_with_routing_metadata(
+                    candidate_run_id,
+                    "vm0/default".to_string(),
+                    StdInstant::now(),
+                    Some("session:must-not-replace".to_string()),
+                    Some(ranked_preference_context(
+                        20,
+                        super::super::RunnerPreferenceTier::ExactSandbox,
+                        StdInstant::now() + Duration::from_secs(30),
+                    )),
+                )
+                .with_history_generation_run_id(Some(run_id(7))),
+            )
+            .await;
+
+        inbox
+            .push(DirectJobCandidate::new_with_routing_metadata(
+                candidate_run_id,
+                "vm0/default".to_string(),
+                StdInstant::now(),
+                None,
+                Some(RunnerPreferenceContext::atomic_negative(
+                    RunnerPreferenceResolution::NoViableHolder,
+                )),
+            ))
+            .await;
+
+        let candidate = inbox
+            .try_pop()
+            .await
+            .expect("retained direct candidate")
+            .into_job_candidate();
+        assert_eq!(candidate.reuse_key(), Some("session:first-atomic"));
+        assert_eq!(
+            candidate.history_generation_run_id(),
+            Some(first_history_generation)
+        );
+        let preference = candidate.runner_preference().expect("atomic preference");
+        assert_eq!(
+            preference.admission(),
+            super::super::RunnerPreferenceAdmission::Ranked(
+                super::super::RunnerPreferenceTier::WorkspaceCache
+            )
+        );
+        assert_eq!(preference.deadline(), first_deadline);
+        assert!(preference.targets(&uuid::Uuid::from_u128(10).to_string(), 7));
+        assert_eq!(
+            candidate.runner_preference_claim_telemetry(&uuid::Uuid::from_u128(10).to_string(), 7,),
+            Some(super::super::RunnerPreferenceClaimTelemetry {
+                resolution: RunnerPreferenceResolution::MatchingWorkspaceCache,
+                state: super::super::RunnerPreferenceClaimState::Active,
+                targeted_self: Some(true),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn first_atomic_duplicate_replaces_legacy_routing_snapshot_as_a_unit() {
+        let inbox = direct_candidate_inbox(1);
+        let candidate_run_id = run_id(8);
+        inbox
+            .push(
+                DirectJobCandidate::new_with_routing_metadata(
+                    candidate_run_id,
+                    "vm0/default".to_string(),
+                    StdInstant::now(),
+                    Some("session:legacy".to_string()),
+                    Some(runner_preference(
+                        10,
+                        super::super::RunnerPreferenceReason::MatchingReuseKey,
+                        StdInstant::now() + Duration::from_secs(5),
+                    )),
+                )
+                .with_runner_preference_resolution(Some(
+                    RunnerPreferenceResolution::MatchingReusableSandbox,
+                ))
+                .with_history_generation_run_id(Some(run_id(9))),
+            )
+            .await;
+
+        let atomic_history_generation = run_id(10);
+        inbox
+            .push(
+                DirectJobCandidate::new_with_routing_metadata(
+                    candidate_run_id,
+                    "vm0/default".to_string(),
+                    StdInstant::now(),
+                    Some("session:atomic".to_string()),
+                    Some(ranked_preference_context(
+                        20,
+                        super::super::RunnerPreferenceTier::ExactSandbox,
+                        StdInstant::now() + Duration::from_secs(8),
+                    )),
+                )
+                .with_history_generation_run_id(Some(atomic_history_generation)),
+            )
+            .await;
+
+        let candidate = inbox
+            .try_pop()
+            .await
+            .expect("updated direct candidate")
+            .into_job_candidate();
+        assert_eq!(candidate.reuse_key(), Some("session:atomic"));
+        assert_eq!(
+            candidate.history_generation_run_id(),
+            Some(atomic_history_generation)
+        );
+        assert_eq!(
+            candidate
+                .runner_preference()
+                .map(RunnerPreference::admission),
+            Some(super::super::RunnerPreferenceAdmission::Ranked(
+                super::super::RunnerPreferenceTier::ExactSandbox
+            ))
+        );
     }
 
     #[tokio::test]

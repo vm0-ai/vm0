@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.9.193](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.192...vsock-test-v0.9.193) (2026-08-07)
+
+## [0.9.192](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.191...vsock-test-v0.9.192) (2026-08-07)
+
+## [0.9.191](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.190...vsock-test-v0.9.191) (2026-08-07)
+
+## [0.9.190](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.189...vsock-test-v0.9.190) (2026-08-06)
+
+## [0.9.189](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.188...vsock-test-v0.9.189) (2026-08-06)
+
+## [0.9.188](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.187...vsock-test-v0.9.188) (2026-08-05)
+
+## [0.9.187](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.186...vsock-test-v0.9.187) (2026-08-05)
+
+## [0.9.186](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.185...vsock-test-v0.9.186) (2026-08-04)
+
+## [0.9.185](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.184...vsock-test-v0.9.185) (2026-08-04)
+
+## [0.9.184](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.183...vsock-test-v0.9.184) (2026-08-04)
+
+## [0.9.183](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.182...vsock-test-v0.9.183) (2026-08-04)
+
+## [0.9.182](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.181...vsock-test-v0.9.182) (2026-08-03)
+
+## [0.9.181](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.180...vsock-test-v0.9.181) (2026-08-03)
+
+## [0.9.180](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.179...vsock-test-v0.9.180) (2026-08-03)
+
+## [0.9.179](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.178...vsock-test-v0.9.179) (2026-08-02)
+
+## [0.9.178](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.177...vsock-test-v0.9.178) (2026-08-02)
+
+## [0.9.177](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.176...vsock-test-v0.9.177) (2026-08-01)
+
+## [0.9.176](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.175...vsock-test-v0.9.176) (2026-07-31)
+
+## [0.9.175](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.174...vsock-test-v0.9.175) (2026-07-30)
+
+## [0.9.174](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.173...vsock-test-v0.9.174) (2026-07-30)
+
+## [0.9.173](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.172...vsock-test-v0.9.173) (2026-07-29)
+
+## [0.9.172](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.171...vsock-test-v0.9.172) (2026-07-29)
+
+
+### Bug Fixes
+
+* **vsock:** retain guest transport until host disconnect ([#23679](https://github.com/vm0-ai/vm0/issues/23679)) ([b3a059c](https://github.com/vm0-ai/vm0/commit/b3a059c9a65b25adddcd6b9a1ca7c88be5e50b45))
+
 ## [0.9.171](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.170...vsock-test-v0.9.171) (2026-07-29)
 
 ## [0.9.170](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.169...vsock-test-v0.9.170) (2026-07-28)

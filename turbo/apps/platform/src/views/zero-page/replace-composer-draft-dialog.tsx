@@ -7,24 +7,35 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
+import { useGet, useSet } from "ccstate-react";
+import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 
 export function ReplaceComposerDraftDialog({
-  open,
-  onOpenChange,
-  onConfirm,
+  signals,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
+  signals: ComposerSignals;
 }) {
+  const { t } = useTranslation();
+  const open = useGet(signals.workflow.replaceWorkflowPromptOpen$);
+  const setOpen = useSet(signals.workflow.setReplaceWorkflowPromptOpen$);
+  const confirm = useSet(signals.workflow.confirmReplaceWorkflowPrompt$);
+  const pageSignal = useGet(pageSignal$);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="zero-app sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Replace composer draft?</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.chat.replaceDraft.title;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            Continuing will clear your current composer draft and start a
-            workflow prompt.
+            {t(($) => {
+              return $.chat.replaceDraft.description;
+            })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -32,13 +43,22 @@ export function ReplaceComposerDraftDialog({
             type="button"
             variant="outline"
             onClick={() => {
-              onOpenChange(false);
+              setOpen(false);
             }}
           >
-            Cancel
+            {t(($) => {
+              return $.chat.actions.cancel;
+            })}
           </Button>
-          <Button type="button" onClick={onConfirm}>
-            Continue
+          <Button
+            type="button"
+            onClick={() => {
+              detach(confirm(pageSignal), Reason.DomCallback);
+            }}
+          >
+            {t(($) => {
+              return $.chat.actions.continue;
+            })}
           </Button>
         </DialogFooter>
       </DialogContent>

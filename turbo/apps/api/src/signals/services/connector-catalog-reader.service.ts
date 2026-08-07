@@ -33,7 +33,7 @@ interface ConnectorCatalogSearchArgs extends ConnectorCatalogReadArgs {
 }
 
 interface ConnectorCatalogConnectorReadArgs extends ConnectorCatalogReadArgs {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
 }
 
 export async function searchConnectorCatalog(
@@ -51,7 +51,7 @@ export async function listPublicConnectorCatalog(
 export async function readPublicConnectorCatalogStatus(
   args: ConnectorCatalogReadArgs & {
     readonly connectors: readonly ConnectorResponse[];
-    readonly referenceConnectorRefs: readonly string[];
+    readonly referenceConnectorSlugs: readonly string[];
   },
 ): Promise<ConnectorCatalogStatusRead> {
   return await listExternalPublicConnectorCatalogStatus(args);
@@ -64,7 +64,7 @@ export async function listPublicConnectorCatalogStatus(
 ): Promise<PublicConnectorCatalogStatusResponse> {
   const read = await readPublicConnectorCatalogStatus({
     ...args,
-    referenceConnectorRefs: [],
+    referenceConnectorSlugs: [],
   });
   return read.status;
 }

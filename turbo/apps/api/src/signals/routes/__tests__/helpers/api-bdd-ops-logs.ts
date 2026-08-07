@@ -1,15 +1,13 @@
 import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { createDeferredPromise } from "../../../utils";
-import { modelStatsContract } from "../../model-stats";
+import { modelStatsContract, modelStatsRoutes } from "../../model-stats";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { userExportRoutes } from "../../user-export";
 
 type AuthHeaders = { readonly authorization?: string };
 
@@ -63,16 +61,17 @@ export function createOpsLogsApi(context: TestContext) {
   return {
     async requestAggregateModelStats<TStatus extends 200 | 401>(
       auth: "valid" | "invalid",
-      hours: number | undefined,
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(cronAggregateModelStatsContract).aggregate({
+        setupApp({ context, routes: modelStatsRoutes })(
+          cronAggregateModelStatsContract,
+        ).aggregate({
           headers: {
             authorization:
               auth === "valid" ? CRON_AUTHORIZATION : "Bearer wrong-secret",
           },
-          query: { hours },
+          query: {},
         }),
         statuses,
       );
@@ -80,7 +79,9 @@ export function createOpsLogsApi(context: TestContext) {
 
     async readModelRankings(period?: string) {
       return await accept(
-        setupApp({ context })(modelStatsContract).rankings({
+        setupApp({ context, routes: modelStatsRoutes })(
+          modelStatsContract,
+        ).rankings({
           query: { period },
         }),
         [200],
@@ -92,9 +93,11 @@ export function createOpsLogsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(userExportContract).get({
-          headers: authenticate(context, actor),
-        }),
+        setupApp({ context, routes: userExportRoutes })(userExportContract).get(
+          {
+            headers: authenticate(context, actor),
+          },
+        ),
         statuses,
       );
     },
@@ -104,7 +107,9 @@ export function createOpsLogsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(userExportContract).post({
+        setupApp({ context, routes: userExportRoutes })(
+          userExportContract,
+        ).post({
           headers: authenticate(context, actor),
         }),
         statuses,

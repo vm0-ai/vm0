@@ -13,7 +13,7 @@ use crate::support::{BIN, ChildWaitOutcome, require_session_file, run, wait_chil
 const APP_SERVER_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const APP_SERVER_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 
-struct AppServerProcess {
+pub(crate) struct AppServerProcess {
     child: Option<Child>,
     stdin: Option<ChildStdin>,
     stdout_rx: Receiver<Result<Option<Value>, String>>,
@@ -21,7 +21,12 @@ struct AppServerProcess {
 }
 
 impl AppServerProcess {
-    fn request(&mut self, id: i64, method: &str, params: Value) -> std::io::Result<Value> {
+    pub(crate) fn request(
+        &mut self,
+        id: i64,
+        method: &str,
+        params: Value,
+    ) -> std::io::Result<Value> {
         self.send(&json!({
             "id": id,
             "method": method,
@@ -78,7 +83,7 @@ impl AppServerProcess {
         }
     }
 
-    fn close_and_wait(&mut self) -> std::io::Result<i32> {
+    pub(crate) fn close_and_wait(&mut self) -> std::io::Result<i32> {
         self.stdin.take();
         let child = self
             .child
@@ -161,7 +166,7 @@ impl Drop for AppServerProcess {
     }
 }
 
-fn spawn_app_server(
+pub(crate) fn spawn_app_server(
     codex_home: &Path,
     args: &[&str],
     scenario: Option<&str>,
@@ -177,7 +182,6 @@ fn spawn_app_server_with_env(
 ) -> std::io::Result<AppServerProcess> {
     let mut cmd = Command::new(BIN);
     cmd.env("CODEX_HOME", codex_home).args(args);
-    cmd.env_remove("MOCK_CODEX_FIXTURE");
     cmd.env_remove("MOCK_CODEX_APP_SERVER_SCENARIO");
     if let Some(value) = scenario {
         cmd.env("MOCK_CODEX_APP_SERVER_SCENARIO", value);
@@ -239,7 +243,7 @@ fn spawn_app_server_with_env(
     })
 }
 
-fn text_input(text: &str) -> Value {
+pub(crate) fn text_input(text: &str) -> Value {
     json!({
         "type": "text",
         "text": text,
@@ -247,7 +251,7 @@ fn text_input(text: &str) -> Value {
     })
 }
 
-fn initialize_params() -> Value {
+pub(crate) fn initialize_params() -> Value {
     json!({
         "clientInfo": {
             "name": "guest-mock-codex-tests",
@@ -584,29 +588,6 @@ fn app_server_rejects_non_stdio_listen_url() -> std::io::Result<()> {
         "unsupported app-server listen URL should fail clearly: {:?}",
         out.stderr
     );
-    Ok(())
-}
-
-#[test]
-fn app_server_ignores_exec_fixture_mode() -> std::io::Result<()> {
-    let dir = TempDir::new().unwrap();
-    let mut server = spawn_app_server_with_env(
-        dir.path(),
-        &["app-server", "--stdio"],
-        None,
-        &[("MOCK_CODEX_FIXTURE", "event-mapping-rich")],
-    )?;
-
-    let initialized = server.request(1, "initialize", initialize_params())?;
-
-    assert_eq!(initialized["id"], 1);
-    assert!(initialized.get("type").is_none());
-    assert!(
-        initialized["result"]["userAgent"]
-            .as_str()
-            .is_some_and(|user_agent| user_agent.starts_with("guest-mock-codex-app-server/"))
-    );
-    assert_eq!(server.close_and_wait()?, 0);
     Ok(())
 }
 

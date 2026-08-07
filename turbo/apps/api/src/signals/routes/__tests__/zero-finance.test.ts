@@ -3,23 +3,28 @@ import { describe, expect, it } from "vitest";
 
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroFinanceContract } from "@vm0/api-contracts/contracts/zero-finance";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { zeroFinanceRoutes } from "../zero-finance";
 
 const context = testContext();
+const FINANCE_ROUTES = Object.freeze([
+  ...zeroBillingStatusRoutes,
+  ...zeroFinanceRoutes,
+]);
 const APIDOJO_BASE_URL = "https://apidojo-yahoo-finance-v1.p.rapidapi.com";
 
 function authenticate(actor: ApiTestUser) {
@@ -32,24 +37,7 @@ function authenticate(actor: ApiTestUser) {
 }
 
 function client() {
-  return setupApp({ context });
-}
-
-async function financeEnabledActor(): Promise<ApiTestUser> {
-  const actor = createBddApi(context).user();
-  if (!actor.orgId) {
-    throw new Error("Zero Finance test actor must belong to an organization");
-  }
-  await updateFeatureSwitchesForUser(
-    context,
-    {
-      userId: actor.userId,
-      orgId: actor.orgId,
-      ...(actor.orgRole ? { orgRole: actor.orgRole } : {}),
-    },
-    { [FeatureSwitchKey.ZeroFinance]: true },
-  );
-  return actor;
+  return setupApp({ context, routes: FINANCE_ROUTES });
 }
 
 async function fundActor(actor: ApiTestUser): Promise<void> {
@@ -71,30 +59,6 @@ function configureProvider(): void {
 }
 
 describe("zero finance routes", () => {
-  it("rejects requests when the feature switch is disabled", async () => {
-    const actor = createBddApi(context).user();
-    let providerRequests = 0;
-    configureProvider();
-    server.use(
-      http.get(`${APIDOJO_BASE_URL}/auto-complete`, () => {
-        providerRequests += 1;
-        return HttpResponse.json({});
-      }),
-    );
-
-    const response = await accept(
-      client()(zeroFinanceContract).search({
-        headers: authenticate(actor),
-        body: { query: "Tencent" },
-      }),
-      [403],
-    );
-
-    expectApiError(response.body);
-    expect(response.body.error.message).toBe("Zero Finance is not enabled");
-    expect(providerRequests).toBe(0);
-  });
-
   it("rejects zero tokens without finance:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
@@ -128,7 +92,7 @@ describe("zero finance routes", () => {
   });
 
   it("maps all operations to APIDojo and charges one credit each", async () => {
-    const actor = await financeEnabledActor();
+    const actor = createBddApi(context).user();
     await fundActor(actor);
     configureProvider();
     const beforeCredits = await credits(actor);
@@ -216,7 +180,7 @@ describe("zero finance routes", () => {
   });
 
   it("does not charge credits when APIDojo fails", async () => {
-    const actor = await financeEnabledActor();
+    const actor = createBddApi(context).user();
     await fundActor(actor);
     configureProvider();
     const beforeCredits = await credits(actor);
@@ -243,7 +207,7 @@ describe("zero finance routes", () => {
   });
 
   it("returns not configured without calling APIDojo", async () => {
-    const actor = await financeEnabledActor();
+    const actor = createBddApi(context).user();
     let providerRequests = 0;
     mockEnv("ZERO_FINANCE_APIDOJO_TOKEN", undefined);
     server.use(

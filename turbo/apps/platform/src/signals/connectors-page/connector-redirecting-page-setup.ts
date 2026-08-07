@@ -1,6 +1,6 @@
 import {
-  connectorRefSchema,
-  type ConnectorRef,
+  connectorSlugSchema,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   publicConnectorCatalogIconSchema,
@@ -8,6 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { ZeroConnectorRedirectingPage } from "../../views/zero-page/zero-connector-redirecting-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -19,8 +20,10 @@ import {
   type ConnectorRedirectingStatus,
 } from "./connector-redirecting.ts";
 
-function connectorTypeFromPath(value: string | undefined): ConnectorRef | null {
-  const parsed = connectorRefSchema.safeParse(value?.toLowerCase());
+function connectorSlugFromPath(
+  value: string | undefined,
+): ConnectorSlug | null {
+  const parsed = connectorSlugSchema.safeParse(value?.toLowerCase());
   return parsed.success ? parsed.data : null;
 }
 
@@ -44,12 +47,14 @@ function connectorIconFromSearchParams(
 export const setupConnectorRedirectingPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParams$);
-    const connectorType = connectorTypeFromPath(
-      typeof params?.type === "string" ? params.type : undefined,
+    const connectorSlug = connectorSlugFromPath(
+      typeof params?.connectorSlug === "string"
+        ? params.connectorSlug
+        : undefined,
     );
     const searchParams = get(searchParams$);
     const connectorLabel =
-      searchParams.get("label")?.trim() || connectorType || "connector";
+      searchParams.get("label")?.trim() || connectorSlug || "connector";
     const status: ConnectorRedirectingStatus =
       searchParams.get("status") === "error" ? "error" : "redirecting";
     const connectorIcon = connectorIconFromSearchParams(searchParams);
@@ -63,7 +68,15 @@ export const setupConnectorRedirectingPage$ = command(
         status,
       }),
     );
-    set(updateDocumentTitle$, `Connect ${connectorLabel}`);
+    set(
+      updateDocumentTitle$,
+      i18n.t(
+        ($) => {
+          return $.connectors.callback.documentTitle;
+        },
+        { connector: connectorLabel },
+      ),
+    );
     await set(hideAppSkeleton$, signal);
     if (status === "redirecting") {
       await set(showConnectorRedirectingMobileWarningAfterDelay$, signal);

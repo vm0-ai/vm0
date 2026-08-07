@@ -19,16 +19,18 @@ use super::message::{decode_data, message_targets_channel};
 use super::session::{SessionState, TokenRenewalFailure};
 use super::state::{ChannelLifecycleState, reconnect_spacing_delay, retry_delay};
 use super::transport::{
-    WsTransport, connect_pending, websocket_close_frame_reason, websocket_close_reason,
-    websocket_error_reason,
+    TransportCloseTracker, WsTransport, close_websocket_sink, connect_pending,
+    websocket_close_frame_reason, websocket_close_reason, websocket_error_reason,
 };
 use crate::Error;
 use crate::protocol::{
     AuthDetails, ProtocolMessage, action, decode_msg, encode_msg, error_code, flags,
 };
+use crate::subscribe::CloseRequest;
 use crate::types::{Event, Message, TimingConfig, TokenDetails, TokenFuture};
 
 const DROP_WARNING_INTERVAL: Duration = Duration::from_secs(60);
+type CloseReceiver = oneshot::Receiver<CloseRequest>;
 
 #[derive(Default)]
 pub(crate) struct DropWarningState {
@@ -103,6 +105,7 @@ pub(crate) struct EventLoopState {
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
     pub timing: TimingConfig,
     pub drop_warnings: DropWarningState,
+    pub transport_close_tracker: TransportCloseTracker,
 }
 
 async fn sleep_until_optional(deadline: Option<Instant>) {
@@ -112,10 +115,7 @@ async fn sleep_until_optional(deadline: Option<Instant>) {
     }
 }
 
-async fn enter_suspended_retry(
-    p: &mut EventLoopState,
-    close_rx: &mut oneshot::Receiver<()>,
-) -> bool {
+async fn enter_suspended_retry(p: &mut EventLoopState, close_rx: &mut CloseReceiver) -> bool {
     p.session.enter_suspended_retry_state();
     let event = Event::Disconnected {
         reason: Some("connection state expired; entering suspended retry".to_string()),
@@ -125,37 +125,79 @@ async fn enter_suspended_retry(
 
 // Caller-requested shutdown should send Ably CLOSE before closing the WebSocket
 // so the connection state is explicitly terminated.
-async fn send_close_message(p: &mut EventLoopState) {
+async fn send_close_message(p: &mut EventLoopState) -> Result<(), Error> {
     p.session.request_closing();
-    let Some(transport) = p.transport.take() else {
-        p.session.mark_closed();
-        return;
-    };
-    let WsTransport {
-        ws_read: _ws_read,
-        mut ws_write,
-    } = transport;
-    let close_timeout = p.timing.close_timeout;
-    let result = tokio::time::timeout(close_timeout, async move {
-        let close_msg = ProtocolMessage {
-            action: action::CLOSE,
-            ..Default::default()
-        };
-        if let Ok(data) = encode_msg(&close_msg) {
-            let _ = ws_write
-                .send(tungstenite::Message::Binary(data.into()))
-                .await;
+    let result = if let Some(transport) = p.transport.take() {
+        let WsTransport {
+            ws_read: _ws_read,
+            mut ws_write,
+        } = transport;
+        let close_timeout = p.timing.close_timeout;
+        match tokio::time::timeout(close_timeout, async move {
+            let close_msg = ProtocolMessage {
+                action: action::CLOSE,
+                ..Default::default()
+            };
+            let protocol_result = match encode_msg(&close_msg) {
+                Ok(data) => ws_write
+                    .send(tungstenite::Message::Binary(data.into()))
+                    .await
+                    .map_err(Error::from),
+                Err(error) => Err(error),
+            };
+            let websocket_result = close_websocket_sink(&mut ws_write).await;
+            match (protocol_result, websocket_result) {
+                (Ok(()), result) | (result, Ok(())) => result,
+                (Err(error), Err(close_error)) => {
+                    tracing::warn!(
+                        error = %close_error,
+                        "Additional websocket close failure"
+                    );
+                    Err(error)
+                }
+            }
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(Error::Protocol {
+                code: error_code::TIMEOUT,
+                message: "Subscription close timed out".to_string(),
+            }),
         }
-        let _ = ws_write.close().await;
-    })
-    .await;
-    if result.is_err() {
-        tracing::warn!(
-            timeout_ms = close_timeout.as_millis(),
-            "Timed out while closing websocket"
-        );
-    }
+    } else {
+        Ok(())
+    };
     p.session.mark_closed();
+    result
+}
+
+async fn complete_close_request(
+    p: &mut EventLoopState,
+    request: Result<CloseRequest, oneshot::error::RecvError>,
+) {
+    // `tokio::select!` drops non-selected branch futures before running their
+    // handlers, so a canceled reconnect registers its cleanup before this wait.
+    let direct_result = send_close_message(p).await;
+    let cleanup_result = p.transport_close_tracker.close_and_wait().await;
+    let result = match (direct_result, cleanup_result) {
+        (Ok(()), result) | (result, Ok(())) => result,
+        (Err(error), Err(cleanup_error)) => {
+            tracing::warn!(
+                error = %cleanup_error,
+                "Additional websocket transport close failure"
+            );
+            Err(error)
+        }
+    };
+    match request {
+        Ok(request) => request.complete(result),
+        Err(_) => {
+            if let Err(error) = result {
+                tracing::warn!(%error, "Failed to close subscription");
+            }
+        }
+    }
 }
 
 // Transport-only shutdown paths must not send Ably CLOSE, which would terminate
@@ -168,20 +210,20 @@ fn close_websocket_transport(p: &mut EventLoopState) {
     let Some(transport) = p.transport.take() else {
         return;
     };
-    transport.close_in_background(p.timing.close_timeout);
+    transport.close_in_background(p.timing.close_timeout, &p.transport_close_tracker);
 }
 
 async fn send_status_event(
     p: &mut EventLoopState,
-    close_rx: &mut oneshot::Receiver<()>,
+    close_rx: &mut CloseReceiver,
     event: Event,
     status_event: &'static str,
 ) -> bool {
     tokio::select! {
         biased;
-        _ = &mut *close_rx => {
+        request = &mut *close_rx => {
             tracing::info!(status_event, "Close requested while sending status event");
-            send_close_message(p).await;
+            complete_close_request(p, request).await;
             false
         }
         result = p.event_tx.send(event) => result.is_ok(),
@@ -190,7 +232,7 @@ async fn send_status_event(
 
 async fn send_terminal_status_event(
     p: &mut EventLoopState,
-    close_rx: &mut oneshot::Receiver<()>,
+    close_rx: &mut CloseReceiver,
     event: Event,
     status_event: &'static str,
 ) -> bool {
@@ -200,7 +242,7 @@ async fn send_terminal_status_event(
     send_status_event(p, close_rx, event, status_event).await
 }
 
-pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiver<()>) {
+pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: CloseReceiver) {
     let mut last_reconnect_attempt: Option<Instant> = None;
 
     'outer: loop {
@@ -265,8 +307,8 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
             let event = tokio::select! {
                 biased;
 
-                _ = &mut close_rx => {
-                    ReceiveLoopEvent::CloseRequested
+                request = &mut close_rx => {
+                    ReceiveLoopEvent::CloseRequested(request)
                 }
 
                 _ = sleep_until_optional(p.session.token_renewal_at()), if p.session.token_renewal_at().is_some() => {
@@ -298,18 +340,18 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
             };
 
             match event {
-                ReceiveLoopEvent::CloseRequested => {
+                ReceiveLoopEvent::CloseRequested(request) => {
                     tracing::info!("Close requested");
-                    send_close_message(&mut p).await;
+                    complete_close_request(&mut p, request).await;
                     return;
                 }
                 ReceiveLoopEvent::TokenRenewal => {
                     let connect_timeout = p.timing.connect_timeout;
                     let result = tokio::select! {
                         biased;
-                        _ = &mut close_rx => {
+                        request = &mut close_rx => {
                             tracing::info!("Close requested during token renewal");
-                            send_close_message(&mut p).await;
+                            complete_close_request(&mut p, request).await;
                             return;
                         }
                         result = tokio::time::timeout(connect_timeout, renew_token(&mut p)) => result,
@@ -478,9 +520,9 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
             let suspend_at = p.session.suspend_deadline();
             tokio::select! {
                 biased;
-                _ = &mut close_rx => {
+                request = &mut close_rx => {
                     tracing::info!("Close requested during reconnect");
-                    send_close_message(&mut p).await;
+                    complete_close_request(&mut p, request).await;
                     return;
                 }
                 _ = sleep_until_optional(suspend_at), if suspend_at.is_some() => {
@@ -497,9 +539,9 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
             let suspend_at = p.session.suspend_deadline();
             let reconnect_result = tokio::select! {
                 biased;
-                _ = &mut close_rx => {
+                request = &mut close_rx => {
                     tracing::info!("Close requested during reconnect attempt");
-                    send_close_message(&mut p).await;
+                    complete_close_request(&mut p, request).await;
                     return;
                 }
                 _ = sleep_until_optional(suspend_at), if suspend_at.is_some() => {
@@ -560,7 +602,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 }
 
 enum ReceiveLoopEvent {
-    CloseRequested,
+    CloseRequested(Result<CloseRequest, oneshot::error::RecvError>),
     TokenRenewal,
     DropWarningDeadline,
     ChannelOperationDeadline,
@@ -606,7 +648,7 @@ enum ReconnectOutcome {
     Closed,
 }
 
-async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()>) -> LoopAction {
+async fn send_attach(p: &mut EventLoopState, close_rx: &mut CloseReceiver) -> LoopAction {
     let data = match encode_attach_for_channel(
         &p.channel,
         p.channel_params.as_ref(),
@@ -632,9 +674,9 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()
     };
     let send_result = tokio::select! {
         biased;
-        _ = &mut *close_rx => {
+        request = &mut *close_rx => {
             tracing::info!("Close requested during channel attach");
-            send_close_message(p).await;
+            complete_close_request(p, request).await;
             return LoopAction::Stop;
         }
         result = tokio::time::timeout(
@@ -664,7 +706,7 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()
 async fn handle_message(
     p: &mut EventLoopState,
     msg: ProtocolMessage,
-    close_rx: &mut oneshot::Receiver<()>,
+    close_rx: &mut CloseReceiver,
 ) -> LoopAction {
     match msg.action {
         action::HEARTBEAT => {
@@ -833,9 +875,9 @@ async fn handle_message(
             let connect_timeout = p.timing.connect_timeout;
             let result = tokio::select! {
                 biased;
-                _ = &mut *close_rx => {
+                request = &mut *close_rx => {
                     tracing::info!("Close requested during server-requested token renewal");
-                    send_close_message(p).await;
+                    complete_close_request(p, request).await;
                     return LoopAction::Stop;
                 }
                 result = tokio::time::timeout(connect_timeout, renew_token(p)) => result,
@@ -859,7 +901,7 @@ async fn handle_message(
 /// is fatal (caller should terminate).
 async fn handle_renewal_result(
     p: &mut EventLoopState,
-    close_rx: &mut oneshot::Receiver<()>,
+    close_rx: &mut CloseReceiver,
     result: Result<Result<(), Error>, tokio::time::error::Elapsed>,
 ) -> bool {
     let failure_reason = match result {
@@ -937,8 +979,11 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 // Reconnection
 // ---------------------------------------------------------------------------
 
-/// Attempt a single reconnect (resume or fresh). Callers are responsible for
-/// applying an outer timeout (e.g. `timing.reconnect_timeout`).
+/// Attempt a single reconnect (resume or fresh).
+///
+/// Reconnect setup through sending the channel `ATTACH` is bounded by
+/// `timing.reconnect_timeout`. Waiting for the attach outcome is then separately
+/// bounded by `timing.realtime_request_timeout`.
 ///
 /// Connection mutations are deferred until the transport is connected and the
 /// channel attach attempt has produced a definitive outcome. If the server
@@ -970,7 +1015,12 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             };
 
             let ws_url = build_ws_url(&p.realtime_host, &active_token, resume.as_deref())?;
-            let mut transport = connect_pending(&ws_url, p.timing.close_timeout).await?;
+            let mut transport = connect_pending(
+                &ws_url,
+                p.timing.close_timeout,
+                p.transport_close_tracker.clone(),
+            )
+            .await?;
 
             let connected_msg = wait_for_connected(transport.read_mut()?).await?;
 
@@ -1142,6 +1192,7 @@ mod tests {
             }),
             timing,
             drop_warnings: DropWarningState::default(),
+            transport_close_tracker: TransportCloseTracker::new(),
         }
     }
 

@@ -10,7 +10,10 @@ import mitm_addon
 import response_streaming
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
-from tests.x_flow_helpers import make_x_response_flow
+from tests.x_flow_helpers import (
+    json_body_that_exceeds_x_json_work_limit,
+    make_x_response_flow,
+)
 
 _OVERSIZED_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT + 1024
 
@@ -119,6 +122,59 @@ class TestNdjsonExtractor:
         assert state["data_count"] == 2
         assert state["lines_parsed"] == 2
         assert state["lines_failed"] == 1
+
+    @pytest.mark.parametrize(
+        "failed_line",
+        [
+            pytest.param(
+                b'{"data":{"id":"blocked"},"includes":{"users":[{},{},{}]},'
+                b'"matching_rules":[' + b",".join([b"0"] * 40_000) + b"]}",
+                id="dense-array",
+            ),
+            pytest.param(
+                json_body_that_exceeds_x_json_work_limit(),
+                id="dense-objects",
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("split_failed_row", [False, True], ids=["one-chunk", "split-row"])
+    def test_work_limited_line_forwards_and_recovers(
+        self,
+        real_flow,
+        failed_line,
+        split_failed_row,
+    ):
+        parse, state = self._stream_parser(real_flow)
+        valid_line = b'{"data":{"id":"after"},"includes":{"users":[{}]}}\n'
+        body = failed_line + b"\n" + valid_line
+        chunks = (
+            [body]
+            if not split_failed_row
+            else [body[:37], body[37 : len(failed_line) + 1], valid_line]
+        )
+
+        for chunk in chunks:
+            assert parse(chunk) == chunk
+
+        assert state["lines_failed"] == 1
+        assert state["lines_parsed"] == 1
+        assert state["data_count"] == 1
+        assert state["includes"] == {"users": 1}
+
+    def test_byte_cap_line_with_bulk_discarded_string_is_accepted(self, real_flow):
+        parse, state = self._stream_parser(real_flow)
+        prefix = b'{"data":{"id":"1"},"discarded":"'
+        suffix = b'"}'
+        line = (
+            prefix + b"x" * (LARGE_RESPONSE_DECOMPRESS_LIMIT - len(prefix) - len(suffix)) + suffix
+        )
+        body = line + b"\n"
+
+        assert len(line) == LARGE_RESPONSE_DECOMPRESS_LIMIT
+        assert parse(body) == body
+        assert state["lines_failed"] == 0
+        assert state["lines_parsed"] == 1
+        assert state["data_count"] == 1
 
     def test_invalid_utf8_line_increments_failures_and_continues(self, real_flow):
         parse, state = self._stream_parser(real_flow)
@@ -331,6 +387,83 @@ class TestXJsonFinalize:
 
         response_streaming.finalize_connector_response_state(flow)
         assert flow.metadata[metadata_keys.X_JSON_STATE] == state
+
+    def test_protocol_shaped_data_array_stays_within_work_limit(self, real_flow):
+        flow = self._billable_x_json_flow(real_flow)
+        data_item = b'{"id":"123456"}'
+        body = b'{"data":[' + b",".join([data_item] * 3_600) + b"]}"
+
+        mitm_addon.responseheaders(flow)
+        assert response_stream(flow)(body) == body
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 3_600,
+        }
+
+    @pytest.mark.parametrize(
+        "chunk_size",
+        [
+            pytest.param(2, id="two-byte"),
+            pytest.param(None, id="whole-body"),
+        ],
+    )
+    def test_escaped_discarded_strings_stay_within_work_limit_across_chunks(
+        self,
+        real_flow,
+        chunk_size,
+    ):
+        discarded_property = b',"' + b"k" * 26 + b'":"q\\"s\\\\"'
+        body = b'{"data":[{"id":"1"}]' + discarded_property * 13_104 + b"}   "
+        assert len(body) == 497_976
+        resolved_chunk_size = len(body) if chunk_size is None else chunk_size
+        flow = self._billable_x_json_flow(real_flow)
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        for offset in range(0, len(body), resolved_chunk_size):
+            chunk = body[offset : offset + resolved_chunk_size]
+            assert callback(chunk) == chunk
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 1,
+        }
+
+    def test_x_json_work_limit_discards_partial_state_and_next_flow_recovers(self, real_flow):
+        body = json_body_that_exceeds_x_json_work_limit()
+        flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        midpoint = len(body) // 2
+
+        assert callback(body[:midpoint]) == body[:midpoint]
+        assert callback(body[midpoint:]) == body[midpoint:]
+        response_streaming.finalize_connector_response_state(flow)
+
+        state = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": "work limit exceeded",
+        }
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == state
+        response_streaming.finalize_connector_response_state(flow)
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == state
+
+        next_flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(next_flow)
+        response_stream(next_flow)(b'{"data":[{"id":"after"}]}')
+        response_streaming.finalize_connector_response_state(next_flow)
+
+        assert next_flow.metadata[metadata_keys.X_JSON_STATE] == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 1,
+        }
 
     def test_forensic_buffer_truncation_does_not_stop_x_json_parser(self, real_flow):
         flow = make_x_response_flow(

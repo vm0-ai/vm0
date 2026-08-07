@@ -13,37 +13,39 @@ use guest_contracts::diagnostics::{
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ExecTermination, ProcessControlMode, ProcessExit,
     ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxError, SandboxFactory,
-    SandboxGuestDnsReadinessReason, SandboxId,
+    SandboxGuestDnsReadinessReason, SandboxId, SandboxOperationReason,
 };
 use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
 
-use super::super::agent_run::{RunControls, RunStart};
+use super::super::agent_run::{ProcessCancelTimeouts, RunControls, RunStart};
 use super::super::env::{guest_run_payload_file_path, guest_user_env_file_path};
 use super::super::sandbox_run::{
     NewSandboxHooks, PreparedSandboxRun, execute_new_sandbox,
     execute_new_sandbox_with_prepared_notifier, execute_prepared_sandbox_run,
-    execute_reused_sandbox, log_proxy_register_failure, log_proxy_register_success, register_proxy,
+    execute_prepared_sandbox_run_with_process_cancel_timeouts, execute_reused_sandbox,
+    log_proxy_register_failure, log_proxy_register_success, register_proxy,
 };
 use super::super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JOB_TIMEOUT,
-    JobParams, NewSandboxDispatch, ResourceFailureKind, STDOUT_STREAM_LIMIT_MARKER,
-    STDOUT_STREAM_OVERFLOW_MARKER, SandboxPreparedNotifier, USER_ENV_FILE_ENV_KEY, execute_job,
-    execute_job_reuse, job_terminal_wait_timeout,
+    JobParams, NewSandboxDispatch, ResourceFailureKind, STDOUT_STREAM_INCOMPLETE_MARKER,
+    STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER, SandboxPreparedNotifier,
+    USER_ENV_FILE_ENV_KEY, execute_job, execute_job_reuse, job_supervisor_timeout,
+    job_terminal_wait_timeout,
 };
 use super::support::{
-    CapturedEvent, CapturedEvents, DestroyPanicFactory, QueuedCopyFileSandbox, api_artifact,
-    api_storage, assert_proxy_registry_empty, create_overridden_sandbox, default_params,
+    CapturedEvent, CapturedEvents, DestroyPanicFactory, api_artifact, api_storage,
+    assert_proxy_registry_empty, create_overridden_sandbox, default_params,
     make_reusable_idle_sandbox, minimal_context, run_new_sandbox_outcome, run_new_sandbox_status,
     sandbox_create_error, sandbox_exec_error, sandbox_write_file_error, seed_workspace_image_cache,
-    seed_workspace_image_cache_with_fingerprints, test_budget_lease, test_device_rate_limits,
-    test_executor_config, test_telemetry,
+    seed_workspace_image_cache_with_fingerprints, seed_workspace_image_cache_with_sidecar,
+    test_budget_lease, test_device_rate_limits, test_executor_config, test_telemetry,
 };
 use crate::ids::RunId;
-use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key};
+use crate::paths::{RunnerPaths, scoped_workspace_image_cache_key};
 use crate::storage_manifest::StorageManifest;
 use crate::types::{FirewallEntry, ResumeSession, SandboxReuseResult};
 use crate::workspace_image_cache::{
-    SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
+    WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageCache,
     WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
 };
 use tracing::Level;

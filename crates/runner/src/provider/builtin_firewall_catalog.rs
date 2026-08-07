@@ -1,4 +1,45 @@
-//! Runner-owned builtin firewall catalog cache refresh.
+//! Runner-owned builtin firewall catalog publication boundary.
+//!
+//! # Lifecycle
+//!
+//! The catalog returned by the API is untrusted. The API client validates its
+//! envelope and firewall payload before an initial or periodic refresh can
+//! reach `write_catalog_cache`. The writer validates the schema-tagged cache
+//! again, bounds its serialized size, and, on Unix runner hosts, publishes it
+//! through a private atomic target-path replacement. The Python addon then
+//! opens that file as a separate trust boundary and independently validates its
+//! ownership, permissions, schema, and firewall payload.
+//!
+//! Cache publication contains unresolved builtin definitions. For each VM, the
+//! Python registry path substitutes base URL variables, validates the resolved
+//! credentialed destination and host policy, assigns run-scoped API IDs, and
+//! compiles matchers before request enforcement.
+//!
+//! # Failure behavior
+//!
+//! A catalog that remains unavailable or invalid after the initial refresh
+//! retries prevents provider startup readiness. A rejected periodic refresh
+//! never replaces the published file, so any previously published valid cache
+//! remains available. If the Python consumer rejects a new file identity, it
+//! exposes no catalog for that identity and marks builtin-dependent VM entries
+//! invalid until a usable cache is loaded.
+//!
+//! # Cross-language compatibility
+//!
+//! Catalog changes must stay compatible with TypeScript artifact validation in
+//! `turbo/apps/api/src/signals/services/connector-catalog-artifacts/firewall.ts`
+//! and `turbo/packages/connectors/src/firewall-types.ts`, the runtime projection
+//! in
+//! `turbo/packages/connectors/src/firewall-metadata/runner-runtime-catalog.ts`,
+//! and the Python cache and resolver boundaries in
+//! `crates/runner/mitm-addon/src/builtin_firewall_cache.py` and
+//! `crates/runner/mitm-addon/src/registry_firewalls.py`. Changes to base URL,
+//! auth, `hostPolicy`, permission, or serialized firewall semantics must be
+//! reconciled across all three owners; cache-schema changes must be reconciled
+//! between Rust and Python. The shared base URL cases live in
+//! `turbo/packages/connectors/src/__tests__/firewall-base-url-validation-contract.json`
+//! and are exercised by TypeScript and Python. Keep individual parser rules in
+//! executable validation and tests rather than duplicating them here.
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -518,6 +559,17 @@ mod tests {
         }
     }
 
+    fn oversized_catalog() -> BuiltinFirewallCatalog {
+        let mut catalog = catalog("github");
+        catalog.catalog_version = "x".repeat(
+            usize::try_from(crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES).unwrap(),
+        );
+        catalog
+            .validate_for_api_response()
+            .expect("oversized catalog should remain schema-valid");
+        catalog
+    }
+
     fn catalog_with_auth(auth: serde_json::Value) -> BuiltinFirewallCatalog {
         let mut catalog = catalog("auth-strategy");
         catalog.firewalls.get_mut("auth-strategy").unwrap().apis[0].auth =
@@ -929,6 +981,49 @@ mod tests {
         assert_eq!(cache.catalog_digest, digest());
         assert_eq!(cache.catalog_version, "test-catalog");
         assert_eq!(cache.firewalls["github"].name, "github");
+    }
+
+    #[tokio::test]
+    async fn write_catalog_cache_rejects_oversized_catalog_without_replacing_existing_cache() {
+        use std::os::unix::fs::MetadataExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+        let expected_error = format!(
+            "builtin firewall catalog cache exceeds {} bytes",
+            crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES
+        );
+
+        let error = write_catalog_cache(&cache_path, &lock_path, oversized_catalog())
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains(&expected_error),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !cache_path.exists(),
+            "oversized catalog should not publish a cache file"
+        );
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+        let before = tokio::fs::read(&cache_path).await.unwrap();
+        let before_ino = std::fs::metadata(&cache_path).unwrap().ino();
+
+        let error = write_catalog_cache(&cache_path, &lock_path, oversized_catalog())
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains(&expected_error),
+            "unexpected error: {error}"
+        );
+        let after = tokio::fs::read(&cache_path).await.unwrap();
+        let after_ino = std::fs::metadata(&cache_path).unwrap().ino();
+        assert_eq!(after, before);
+        assert_eq!(after_ino, before_ino);
     }
 
     #[tokio::test]
@@ -1548,6 +1643,46 @@ mod tests {
             assert_eq!(
                 after, before,
                 "{name} replaced the valid cache after {refresh_error}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_shared_contract_bases_do_not_publish_or_replace_cache() {
+        let invalid_cases =
+            crate::test_fixtures::firewall_base_url_contract::firewall_base_url_validation_cases()
+                .into_iter()
+                .filter(|test_case| !test_case.expected_valid);
+
+        for test_case in invalid_cases {
+            let dir = tempfile::tempdir().unwrap();
+            let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+            let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+            let initial_error =
+                write_catalog_cache(&cache_path, &lock_path, catalog_with_base(&test_case.base))
+                    .await
+                    .unwrap_err();
+            assert!(
+                !cache_path.exists(),
+                "shared case {:?} unexpectedly published an initial cache after {initial_error}",
+                test_case.name
+            );
+
+            write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+                .await
+                .unwrap();
+            let before = tokio::fs::read(&cache_path).await.unwrap();
+
+            let refresh_error =
+                write_catalog_cache(&cache_path, &lock_path, catalog_with_base(&test_case.base))
+                    .await
+                    .unwrap_err();
+            let after = tokio::fs::read(&cache_path).await.unwrap();
+            assert_eq!(
+                after, before,
+                "shared case {:?} replaced the valid cache after {refresh_error}",
+                test_case.name
             );
         }
     }

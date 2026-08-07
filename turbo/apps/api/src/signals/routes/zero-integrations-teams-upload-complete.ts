@@ -6,15 +6,12 @@ import {
 import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
 import { eq } from "drizzle-orm";
 
-import { env } from "../../lib/env";
-import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
-import { inferMimetype } from "../../lib/mimetype";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
-import { listS3Objects } from "../external/s3";
 import { sendTeamsMessage } from "../external/teams-bot-client";
+import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { recordTeamsUploadedFile$ } from "../services/run-uploaded-files.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -128,23 +125,22 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const prefix = buildArtifactPrefix(auth.userId, body.uploadId);
-  const objects = await get(listS3Objects(bucket, prefix));
-  signal.throwIfAborted();
-  const object = objects[0];
+  const object = await set(
+    resolveArtifactObject$,
+    { userId: auth.userId, id: body.uploadId },
+    signal,
+  );
   if (!object) {
     return routeError(404, "Uploaded file not found", "NOT_FOUND");
   }
 
-  const filename = object.key.split("/").pop() ?? body.uploadId;
   const file: UploadedFileInfo = {
     key: object.key,
     size: object.size,
-    filename,
-    fileUrl: buildFileUrl(auth.userId, body.uploadId, filename),
+    filename: object.filename,
+    fileUrl: object.url,
   };
-  const mimetype = body.contentType ?? inferMimetype(file.filename);
+  const mimetype = body.contentType ?? object.contentType;
 
   const result = await sendTeamsMessage({
     serviceUrl: installation.serviceUrl,

@@ -1,13 +1,12 @@
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { feishuChatThreadRoutes } from "@vm0/db/schema/feishu-chat-thread-route";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
-
 import { buildFeishuAgentResponseMessage } from "../../lib/feishu-message-card";
 import { logger } from "../../lib/log";
 import {
@@ -17,7 +16,7 @@ import {
 } from "../external/feishu-client";
 import type { Db } from "../external/db";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import {
   feishuChatCallbackPayloadSchema,
@@ -118,26 +117,26 @@ async function loadFeishuChatDeliveryContext(args: {
     throw new Error("Feishu chat delivery run context is unavailable");
   }
 
-  const [message] = await args.db
-    .select({ content: chatMessages.content })
-    .from(chatMessages)
+  const [event] = await args.db
+    .select({ content: chatEvents.content })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.id, payload.chatMessageId),
-        eq(chatMessages.runId, args.callback.runId),
-        eq(chatMessages.chatThreadId, run.chatThreadId),
+        eq(chatEvents.id, payload.chatEventId),
+        eq(chatEvents.runId, args.callback.runId),
+        eq(chatEvents.chatThreadId, run.chatThreadId),
         chatEventTypeIn([
           "output.message",
           "output.error",
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatMessages.content),
+        isNotNull(chatEvents.content),
       ),
     )
     .limit(1);
   args.signal.throwIfAborted();
-  if (!message?.content) {
+  if (!event?.content) {
     throw new Error("Feishu chat delivery message is unavailable");
   }
 
@@ -169,7 +168,7 @@ async function loadFeishuChatDeliveryContext(args: {
     )
     .limit(1);
   args.signal.throwIfAborted();
-  return { payload, run, messageContent: message.content, binding };
+  return { payload, run, messageContent: event.content, binding };
 }
 
 async function countFeishuMentioners(args: {
@@ -193,6 +192,97 @@ async function countFeishuMentioners(args: {
       ),
     );
   return row?.count ?? 0;
+}
+
+async function loadFeishuAdmissionFailureContext(args: {
+  readonly db: Db;
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly target: FeishuDeliveryTarget;
+  readonly chatEventId: string;
+  readonly signal: AbortSignal;
+}): Promise<{ readonly messageContent: string }> {
+  const [eventRows, bindingRows] = await Promise.all([
+    args.db
+      .select({ content: chatEvents.content })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.id, args.chatEventId),
+          eq(chatEvents.chatThreadId, args.chatThreadId),
+          chatEventTypeIn(["output.error"]),
+          isNotNull(chatEvents.content),
+        ),
+      )
+      .limit(1),
+    args.db
+      .select({ id: feishuChatThreadRoutes.id })
+      .from(feishuChatThreadRoutes)
+      .innerJoin(
+        feishuOrgConnections,
+        eq(feishuOrgConnections.id, feishuChatThreadRoutes.connectionId),
+      )
+      .innerJoin(
+        feishuOrgInstallations,
+        eq(feishuOrgInstallations.id, feishuOrgConnections.installationId),
+      )
+      .where(
+        and(
+          eq(feishuChatThreadRoutes.chatThreadId, args.chatThreadId),
+          eq(feishuChatThreadRoutes.chatId, args.target.chatId),
+          eq(feishuChatThreadRoutes.threadId, args.target.threadId),
+          eq(feishuChatThreadRoutes.userId, args.userId),
+          eq(feishuChatThreadRoutes.connectionId, args.target.connectionId),
+          eq(feishuOrgConnections.vm0UserId, args.userId),
+          eq(feishuOrgConnections.installationId, args.target.installationId),
+          eq(feishuOrgInstallations.id, args.target.installationId),
+          eq(feishuOrgInstallations.orgId, args.orgId),
+        ),
+      )
+      .limit(1),
+  ]);
+  args.signal.throwIfAborted();
+  const event = eventRows[0];
+  if (!event?.content || !bindingRows[0]) {
+    throw new Error("Feishu admission failure delivery context is unavailable");
+  }
+  return { messageContent: event.content };
+}
+
+export async function deliverFeishuChatAdmissionFailure(args: {
+  readonly db: Db;
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly target: FeishuDeliveryTarget;
+  readonly chatEventId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const context = await loadFeishuAdmissionFailureContext(args);
+  const message = buildFeishuAgentResponseMessage({
+    text: context.messageContent,
+  });
+  if (args.target.replyInThread) {
+    await replyWithFeishuMessage({
+      db: args.db,
+      installationId: args.target.installationId,
+      messageId: args.target.messageId,
+      message,
+      replyInThread: true,
+      signal: args.signal,
+    });
+    return;
+  }
+  await sendFeishuMessage({
+    db: args.db,
+    installationId: args.target.installationId,
+    receiveIdType: "chat_id",
+    receiveId: args.target.chatId,
+    message,
+    idempotencyKey: args.chatEventId,
+    signal: args.signal,
+  });
 }
 
 async function deliverClaimedFeishuChatCallback(args: {

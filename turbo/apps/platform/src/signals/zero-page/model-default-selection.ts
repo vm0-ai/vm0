@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import {
   isCodexFastModeModel,
+  isSupportedRunModel,
   type OrgModelPoliciesResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
@@ -18,7 +19,7 @@ interface UserModelDefaultSource {
 function createModelFirstSelection(
   selectedModel: string | null | undefined,
 ): ModelProviderSelection | null {
-  if (!selectedModel) {
+  if (!isSupportedRunModel(selectedModel)) {
     return null;
   }
   return {

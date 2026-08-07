@@ -57,10 +57,10 @@ export interface RegistryEntry {
   readonly desc?: string;
   readonly source: ResourceSourceRef;
   /**
-   * Generation targets this entry applies to. Mandatory for `kind: "template"`
-   * so we can filter templates per `generate` subcommand. Optional and unused
-   * for other kinds — design systems apply to all HTML targets, image styles
-   * apply only to image generation, and so on.
+   * Generation targets this entry applies to. Mandatory for `kind: "skill"`
+   * and `kind: "template"` so we can filter them per `generate` subcommand.
+   * Optional and unused for other kinds — design systems apply to all HTML
+   * targets, image styles apply only to image generation, and so on.
    */
   readonly targets?: readonly GenerationTarget[];
 }
@@ -78,29 +78,15 @@ export interface VideoTemplateRegistryEntry extends Omit<
 
 export interface ResourceCandidateSlice {
   readonly registryVersion: string;
+  /** Pinned Git source for every candidate without `source.archive`. */
   readonly source: {
     readonly repo: string;
     readonly ref: string;
   };
-  readonly sources: readonly (
-    | {
-        readonly type?: "git";
-        readonly repo: string;
-        readonly ref: string;
-      }
-    | {
-        readonly type: "r2-archive";
-        readonly description: string;
-      }
-  )[];
   readonly candidates: {
     readonly skills: readonly RegistryEntry[];
     readonly templates: readonly RegistryEntry[];
     readonly designSystems: readonly RegistryEntry[];
-    readonly imageStyles: readonly RegistryEntry[];
-    readonly audioStyles: readonly RegistryEntry[];
-    readonly videoTemplates: readonly VideoTemplateRegistryEntry[];
-    readonly bundleTemplates: readonly RegistryEntry[];
   };
 }
 
@@ -113,7 +99,7 @@ const VIDEO_TEMPLATE_REGISTRY_SOURCE = {
   ref: VM0_SKILLS_REF,
 } as const;
 
-const RESOURCE_REGISTRY_VERSION = "v1";
+export const RESOURCE_REGISTRY_VERSION = "v1";
 
 function privateR2ArchiveSource(
   path: string,
@@ -202,25 +188,15 @@ function imageStyleArchiveSha256(slug: string): string {
   return sha256;
 }
 
-function vm0ImageStyleSource(
-  slug: string,
-  r2ArchiveAvailable = true,
-): ResourceSourceRef {
-  const archiveSha256 = r2ArchiveAvailable
-    ? imageStyleArchiveSha256(slug)
-    : undefined;
+function vm0ImageStyleSource(slug: string): ResourceSourceRef {
   return {
     repo: VM0_SKILLS_REPO,
     ref: VM0_SKILLS_REF,
     path: `illustration-template/${slug}`,
-    ...(archiveSha256
-      ? {
-          archive: {
-            type: "tar.gz" as const,
-            sha256: archiveSha256,
-          },
-        }
-      : {}),
+    archive: {
+      type: "tar.gz",
+      sha256: imageStyleArchiveSha256(slug),
+    },
   };
 }
 
@@ -357,6 +333,26 @@ const VIDEO_TEMPLATE_REGISTRY: readonly VideoTemplateRegistryEntry[] = [
   },
 ];
 
+// These targets mirror each skill's `od.mode` in the pinned Open Design commit.
+const OPEN_DESIGN_SKILL_TARGETS = {
+  prototype: [
+    "website",
+    "dashboard-design",
+    "mobile-app-design",
+    "poster",
+    "report",
+    "docs-design",
+  ],
+  deck: ["presentation"],
+  image: ["image", "poster"],
+  video: ["intro-video"],
+  template: ["intro-video"],
+  "design-system": [],
+} as const satisfies Record<
+  "prototype" | "deck" | "image" | "video" | "template" | "design-system",
+  readonly GenerationTarget[]
+>;
+
 const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   {
     id: "skill:article-magazine",
@@ -365,6 +361,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Shapes research or editorial material into a magazine-like narrative with strong hierarchy.",
     source: { path: "skills/article-magazine/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:design-brief",
@@ -373,6 +370,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Converts a product, brand, or feature request into a structured design brief.",
     source: { path: "skills/design-brief/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:8-bit-orbit-video-template",
@@ -381,6 +379,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "HyperFrames-based video template for retro pixel deck motion design — multi-scene HTML-to-video composition with advanced transitions and ready-to-render default style.",
     source: { path: "skills/8-bit-orbit-video-template/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.template,
   },
   {
     id: "skill:after-hours-editorial-template",
@@ -389,6 +388,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Luxury dark-editorial HyperFrames template for three-page cinematic storyboards — haute couture title cards and magazine chapter spreads with moody serif-led storytelling.",
     source: { path: "skills/after-hours-editorial-template/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.template,
   },
   {
     id: "skill:algorithmic-art",
@@ -397,6 +397,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create generative art using p5.js with seeded randomness so every render is reproducible. Useful for procedural posters, motion-style stills, and artistic frame studies.",
     source: { path: "skills/algorithmic-art/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.image,
   },
   {
     id: "skill:apple-hig",
@@ -405,6 +406,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Apple Human Interface Guidelines as 14 agent skills covering platforms, foundations, components, patterns, inputs, and technologies for iOS, macOS, visionOS, watchOS, and tvOS.",
     source: { path: "skills/apple-hig/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:brainstorming",
@@ -413,6 +415,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Transform rough ideas into fully-formed designs through structured questioning and alternative exploration. Useful early in concept work.",
     source: { path: "skills/brainstorming/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:brand-guidelines",
@@ -421,6 +424,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Apply Anthropic's official brand colors and typography to artifacts for consistent visual identity and professional design standards. A reference for shaping your own.",
     source: { path: "skills/brand-guidelines/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:canvas-design",
@@ -429,6 +433,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create beautiful visual art in PNG and PDF documents using design philosophy and aesthetic principles for posters, illustrations, and static pieces.",
     source: { path: "skills/canvas-design/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.image,
   },
   {
     id: "skill:card-twitter",
@@ -436,6 +441,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     name: "Card Twitter",
     description: "Twitter quote or data card designed to pair with a post.",
     source: { path: "skills/card-twitter/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:card-xiaohongshu",
@@ -444,6 +450,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Xiaohongshu-style knowledge cards, arranged as a swipeable multi-card carousel.",
     source: { path: "skills/card-xiaohongshu/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:color-expert",
@@ -452,6 +459,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Color science expert skill with 286K words of reference material covering OKLCH/OKLAB, palette generation, accessibility/contrast, color naming, pigment mixing, and historical color theory.",
     source: { path: "skills/color-expert/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:creative-director",
@@ -460,6 +468,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "AI creative director with recursive self-assessment: 20+ methodologies (SIT, TRIZ, Bisociation, SCAMPER, Synectics), 3-axis evaluation calibrated against Cannes/D&AD/HumanKind, 5-phase process from brief to presentation.",
     source: { path: "skills/creative-director/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:d3-visualization",
@@ -468,6 +477,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Teaches the agent to produce D3 charts and interactive data visualizations. Useful for editorial dashboards, reports, and explanatory graphics.",
     source: { path: "skills/d3-visualization/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:deck-guizang-editorial",
@@ -476,6 +486,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial magazine meets e-ink: 10 layouts and 5 palettes (Ink, Indigo Porcelain, Forest Ink, Kraft Paper, Dune).",
     source: { path: "skills/deck-guizang-editorial/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.deck,
   },
   {
     id: "skill:deck-open-slide-canvas",
@@ -484,6 +495,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Locked 1920x1080 canvas deck with React component-level free composition, not bound to a fixed template.",
     source: { path: "skills/deck-open-slide-canvas/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.deck,
   },
   {
     id: "skill:deck-swiss-international",
@@ -492,6 +504,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "16-column grid, one saturated accent, and 22 locked layouts (Klein Blue, Lemon, Mint, Safety Orange).",
     source: { path: "skills/deck-swiss-international/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.deck,
   },
   {
     id: "skill:design-consultation",
@@ -500,6 +513,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Build a complete design system from scratch with creative risks and realistic product mockups. Useful for kickoff workshops and brand-from-zero work.",
     source: { path: "skills/design-consultation/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:design-md",
@@ -508,6 +522,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create and manage DESIGN.md files. Useful for capturing design direction, tokens, and visual rules in a single source of truth.",
     source: { path: "skills/design-md/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:design-review",
@@ -516,6 +531,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Designer Who Codes: visual audit then fixes with atomic commits and before/after screenshots. Useful for tightening shipped UI before launch.",
     source: { path: "skills/design-review/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:digits-fintech-swiss-template",
@@ -524,6 +540,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Swiss-grid fintech deck template in black / warm paper / neon-lime — strict modular layout, bold numeric cards, restrained motion, keyboard/click navigation.",
     source: { path: "skills/digits-fintech-swiss-template/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.template,
   },
   {
     id: "skill:doc-kami-parchment",
@@ -532,6 +549,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Warm parchment canvas (#f5f4ed), monochrome ink-blue accent (#1B365D), one serif family, and editorial-grade typography.",
     source: { path: "skills/doc-kami-parchment/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:editorial-burgundy-principles-template",
@@ -540,6 +558,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial studio deck template in burgundy / blush / muted-gold — pill tags, large typographic statements, principle cards, guided keyboard/click navigation.",
     source: { path: "skills/editorial-burgundy-principles-template/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.template,
   },
   {
     id: "skill:enhance-prompt",
@@ -548,6 +567,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Improve prompts with design specs and UI/UX vocabulary. Useful for design-to-code workflows and clarifying requests for visual output.",
     source: { path: "skills/enhance-prompt/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:faq-page",
@@ -556,6 +576,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A Frequently Asked Questions (FAQ) page with collapsible accordion sections, search functionality, and category filtering.",
     source: { path: "skills/faq-page/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:field-notes-editorial-template",
@@ -564,6 +585,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial Field Notes report template — soft paper background, serif hero typography, rounded pastel insight cards, retention chart panel. Premium magazine-style.",
     source: { path: "skills/field-notes-editorial-template/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.template,
   },
   {
     id: "skill:figma-create-design-system-rules",
@@ -572,6 +594,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Generate project-specific design system rules for Figma-to-code workflows. Useful for capturing tokens, naming, and lint rules in one source.",
     source: { path: "skills/figma-create-design-system-rules/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:figma-generate-design",
@@ -580,6 +603,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Build or update screens in Figma from code or description using design system components. Translate app pages into Figma using design tokens.",
     source: { path: "skills/figma-generate-design/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:figma-generate-library",
@@ -588,6 +612,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Build or update a professional-grade design system library in Figma from a codebase. Useful for keeping the Figma source of truth in sync with shipped components.",
     source: { path: "skills/figma-generate-library/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:figma-implement-design",
@@ -596,6 +621,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Translate Figma designs into production-ready code with 1:1 visual fidelity. Useful for handing off Figma frames straight to a frontend agent.",
     source: { path: "skills/figma-implement-design/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:flutter-animating-apps",
@@ -604,6 +630,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Implement animated effects, transitions, and motion in Flutter apps. Useful for native iOS/Android motion design.",
     source: { path: "skills/flutter-animating-apps/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:frame-data-chart-nyt",
@@ -612,6 +639,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "NYT-newsroom typography, staggered reveal animation, and editorial-grade charts (line, bar, or range band).",
     source: { path: "skills/frame-data-chart-nyt/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.video,
   },
   {
     id: "skill:frame-flowchart-sticky",
@@ -620,6 +648,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "SVG curve connectors, sticky-note nodes, and cursor interaction with a whiteboard-brainstorm feel.",
     source: { path: "skills/frame-flowchart-sticky/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.video,
   },
   {
     id: "skill:frame-glitch-title",
@@ -628,6 +657,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Digital glitch, chromatic offset, and data-corruption title frame for video transitions or cyberpunk heroes.",
     source: { path: "skills/frame-glitch-title/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.video,
   },
   {
     id: "skill:frame-light-leak-cinema",
@@ -636,6 +666,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Film light leaks, grain, 16:9 letterbox, and large serif type for cinematic openings or chapter cards.",
     source: { path: "skills/frame-light-leak-cinema/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.video,
   },
   {
     id: "skill:frame-liquid-bg-hero",
@@ -644,6 +675,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "WebGL-style fluid displacement background with a quote overlay, suited to video intros, landing heroes, or posters.",
     source: { path: "skills/frame-liquid-bg-hero/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.video,
   },
   {
     id: "skill:frame-logo-outro",
@@ -652,6 +684,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Segmented logo assembly, glow bloom, and tagline reveal for video outros or brand closing frames.",
     source: { path: "skills/frame-logo-outro/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.video,
   },
   {
     id: "skill:frame-macos-notification",
@@ -660,6 +693,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Realistic macOS notification banner with app icon, title, and body, suited to video overlays or product teasers.",
     source: { path: "skills/frame-macos-notification/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.video,
   },
   {
     id: "skill:frontend-design",
@@ -668,6 +702,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Frontend design and UI/UX development tools for shipping production-ready interfaces with strong typographic and layout discipline.",
     source: { path: "skills/frontend-design/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:frontend-dev",
@@ -676,6 +711,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Full-stack frontend with cinematic animations, AI-generated media via MiniMax API, and generative art. Useful for hero pages and showcase sites.",
     source: { path: "skills/frontend-dev/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:frontend-skill",
@@ -684,6 +720,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create visually strong landing pages, websites, and app UIs with restrained composition. OpenAI's production frontend playbook.",
     source: { path: "skills/frontend-skill/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:frontend-slides",
@@ -692,6 +729,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Generate animation-rich HTML presentations with visual style previews. Useful for online keynotes, embedded talks, and interactive briefs.",
     source: { path: "skills/frontend-slides/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.deck,
   },
   {
     id: "skill:gsap-core",
@@ -700,6 +738,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Core GSAP API with gsap.to(), from(), fromTo(), easing, duration, stagger, and defaults. Production-grade web animation primitives.",
     source: { path: "skills/gsap-core/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:gsap-react",
@@ -708,6 +747,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "GSAP React integration with useGSAP hook, refs, gsap.context(), cleanup, and SSR. Ships safe motion in React + Next.js apps.",
     source: { path: "skills/gsap-react/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:gsap-scrolltrigger",
@@ -716,6 +756,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "GSAP ScrollTrigger for scroll-linked animations, pinning, scrub, and refresh handling. Useful for editorial sites and product pages.",
     source: { path: "skills/gsap-scrolltrigger/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:gsap-timeline",
@@ -724,6 +765,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "GSAP Timelines with sequencing, position parameter, labels, nesting, and playback control. Useful for orchestrating multi-step motion sequences.",
     source: { path: "skills/gsap-timeline/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:hand-drawn-diagrams",
@@ -732,6 +774,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Generate hand-drawn Excalidraw diagrams from a prompt - animated SVG, hosted edit link, and PNG export. Works with Claude Code, Codex, Gemini CLI, and any agent supporting standard skill paths.",
     source: { path: "skills/hand-drawn-diagrams/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:hatch-pet",
@@ -740,6 +783,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create, repair, validate, preview, and package Codex-compatible animated pet spritesheets with an 8x9 atlas, QA contact sheets, preview videos, and pet.json packaging.",
     source: { path: "skills/hatch-pet/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.image,
   },
   {
     id: "skill:html-ppt-retro-quarterly-review",
@@ -748,6 +792,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Retro Quarterly Review template — bold blue + orange editorial with slab headlines, cream paper sections, structured grids, fast premium motion pacing in video mode.",
     source: { path: "skills/html-ppt-retro-quarterly-review/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.template,
   },
   {
     id: "skill:login-flow",
@@ -755,6 +800,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     name: "Login Flow",
     description: "Mobile login and authentication flow screens.",
     source: { path: "skills/login-flow/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:mockup-device-3d",
@@ -763,6 +809,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Static iPhone and MacBook 3D-style showcase with real HTML embedded on screens, glass-lens refraction, and 360-degree turntable composition.",
     source: { path: "skills/mockup-device-3d/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:paywall-upgrade-cro",
@@ -771,6 +818,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Design and optimize upgrade screens, paywalls, and upsell modals. Useful for SaaS conversion design and pricing-page experiments.",
     source: { path: "skills/paywall-upgrade-cro/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:plan-design-review",
@@ -779,6 +827,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Senior Designer review: rates each design dimension 0-10, explains what a 10 looks like, and flags AI Slop signals. Useful as a gate before merging UI work.",
     source: { path: "skills/plan-design-review/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:platform-design",
@@ -787,6 +836,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "300+ design rules from Apple HIG, Material Design 3, and WCAG 2.2 for cross-platform apps. Useful when shipping a single design across iOS, Android, and the web.",
     source: { path: "skills/platform-design/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:poster-hero",
@@ -795,6 +845,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Vertical poster or Moments-style share image with strong visual impact.",
     source: { path: "skills/poster-hero/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:ppt-keynote",
@@ -803,6 +854,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Apple Keynote-quality slides, one card per screen, with keyboard left/right navigation.",
     source: { path: "skills/ppt-keynote/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.deck,
   },
   {
     id: "skill:release-notes-one-pager",
@@ -811,6 +863,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'Release notes one-page HTML with highlights, Added, Fixed, Breaking changes, Known issues, and Upgrade note. Writes explicit "None" style sections whenever the user does not provide details.',
     source: { path: "skills/release-notes-one-pager/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:resume-modern",
@@ -819,6 +872,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Modern minimal resume, single A4 page, ready for print or PDF export.",
     source: { path: "skills/resume-modern/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:screenshots-marketing",
@@ -827,6 +881,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Generate marketing screenshots with Playwright. Useful for landing-page hero shots, App Store screenshots, and changelog visuals.",
     source: { path: "skills/screenshots-marketing/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.image,
   },
   {
     id: "skill:shadcn-ui",
@@ -835,6 +890,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Build UI components with shadcn/ui. Pairs with the Stitch design loop to ship structured, accessible components quickly.",
     source: { path: "skills/shadcn-ui/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:shader-dev",
@@ -843,6 +899,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "GLSL shader techniques for ray marching, fluid simulation, particle systems, and procedural generation. Useful for hero visuals and motion stills.",
     source: { path: "skills/shader-dev/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:slack-gif-creator",
@@ -851,6 +908,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create animated GIFs optimized for Slack with validators for size constraints and composable animation primitives.",
     source: { path: "skills/slack-gif-creator/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.image,
   },
   {
     id: "skill:slides",
@@ -859,6 +917,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create and edit .pptx presentation decks with PptxGenJS. Useful for sales decks, kickoff briefs, and design-system showcases.",
     source: { path: "skills/slides/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.deck,
   },
   {
     id: "skill:social-reddit-card",
@@ -867,6 +926,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Realistic Reddit post card with vote rail and comment count, suited to video overlays or story sharing.",
     source: { path: "skills/social-reddit-card/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:social-spotify-card",
@@ -875,6 +935,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Spotify Now Playing-style card with album art, progress bar, and playback controls, suited to video overlays or personal homepages.",
     source: { path: "skills/social-spotify-card/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:social-x-post-card",
@@ -883,6 +944,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Realistic X post card with engagement metrics (likes, reposts, views), suited to video overlays or shareable image cards.",
     source: { path: "skills/social-x-post-card/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:stitch-loop",
@@ -891,6 +953,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Iterative design-to-code feedback loop. Critique adjust ship cycle for tightening visual fidelity between brief and built UI.",
     source: { path: "skills/stitch-loop/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:swiftui-design",
@@ -899,6 +962,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "SwiftUI skill - anti AI-slop rules, design direction advisor, brand asset protocol, and five-dimension review. Works with Claude Code, Cursor, Codex, and OpenCode.",
     source: { path: "skills/swiftui-design/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:swiss-creative-mode-template",
@@ -907,6 +971,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Swiss-inspired creative-mode presentation template — bold editorial typography, high-contrast geometric cards, interactive slide navigation, theme switching, hotspot overlays.",
     source: { path: "skills/swiss-creative-mode-template/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.template,
   },
   {
     id: "skill:swiss-user-research-video-template",
@@ -915,6 +980,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Swiss-style user-research narrative template in warm-paper editorial aesthetics — minimalist typography, donut breakdowns, keyboard/click navigation, single-file HTML.",
     source: { path: "skills/swiss-user-research-video-template/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.template,
   },
   {
     id: "skill:taste-skill",
@@ -923,6 +989,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "High-agency frontend skill that gives AI good taste with tunable design variance, motion intensity, and visual density to stop generic UI slop.",
     source: { path: "skills/taste-skill/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:theme-factory",
@@ -931,6 +998,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Apply professional font and color themes to artifacts including slides, docs, reports, and HTML landing pages. Ships 10 pre-set themes.",
     source: { path: "skills/theme-factory/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:threejs",
@@ -939,6 +1007,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Three.js skills for creating 3D elements and interactive experiences in the browser - scenes, materials, controls, and post-processing.",
     source: { path: "skills/threejs/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.prototype,
   },
   {
     id: "skill:ui-skills",
@@ -947,6 +1016,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Opinionated, evolving constraints to guide agents when building interfaces. Useful for keeping output coherent across many small UI pieces.",
     source: { path: "skills/ui-skills/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:ui-ux-pro-max",
@@ -955,6 +1025,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Catalog-only UI/UX Pro Max entry. The full upstream templates, data, and search workflow are not bundled in this registry.",
     source: { path: "skills/ui-ux-pro-max/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:vfx-text-cursor",
@@ -963,6 +1034,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Cursor light trail, chromatic rays, and directional flares for word-by-word quote reveals in video intros.",
     source: { path: "skills/vfx-text-cursor/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.video,
   },
   {
     id: "skill:video-hyperframes",
@@ -971,6 +1043,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hyperframes / Remotion-compatible continuous frame animation with autoplay support.",
     source: { path: "skills/video-hyperframes/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.video,
   },
   {
     id: "skill:web-design-guidelines",
@@ -979,6 +1052,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Web design guidelines and standards by the Vercel engineering team. Covers layout, typography, color, motion, and accessibility for product UI.",
     source: { path: "skills/web-design-guidelines/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "skill:weread-year-in-review-video-template",
@@ -987,6 +1061,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "WeRead-inspired HyperFrames video template for vertical annual reading reports — warm paper texture, editorial Chinese typography, book-page metaphors, deterministic motion.",
     source: { path: "skills/weread-year-in-review-video-template/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS.template,
   },
   {
     id: "skill:wpds",
@@ -995,6 +1070,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "WordPress Design System. Apply WordPress's official design tokens, typography, and component patterns to themes and sites.",
     source: { path: "skills/wpds/SKILL.md" },
+    targets: OPEN_DESIGN_SKILL_TARGETS["design-system"],
   },
   {
     id: "template:dashboard",
@@ -3242,17 +3318,6 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     desc: 'Boutique-poster illustration style — a single-color hand-drawn ink line drawing of a small storefront (café, boulangerie, florist, bookshop, ramen, wine bar, barber, record store, etc.) seen from street level on warm cream paper #f4ecd8. Locked frame: portrait 1024x1536, monochromatic ink with occasional double-stroke shadow under awnings and signs, a hand-lettered shop sign baked into the building, foliage and at least one small street prop (bike, A-frame chalkboard, planters, lanterns, café tables, dog/cat at the door), and a faint horizontal sidewalk line across the bottom. No solid color fills, no shading, no gradients. Seven dials per brief — ink color, shop name + subtitle, archetype, perspective (flat facade vs 3/4 corner), foreground props, foliage density, and complexity (L1 single facade / L2 small scene / L3 full vignette). Trigger when user says /ink-storefront, asks for a "shopfront illustration", "storefront poster", "boutique fineliner illustration", "café line drawing", or briefs with a shop name + ink color + archetype in this house style.',
     source: vm0ImageStyleSource("ink-storefront"),
   },
-  {
-    id: "image-style:chibi-hero",
-    kind: "image-style",
-    name: "Chibi Hero",
-    description:
-      "Chibi mobile-RPG mascot illustration — oversized-head super-deformed character, warm-dark hand-drawn outlines, cel-shaded flat fills, mid-action pose, transparent background.",
-    desc: 'Chibi mobile-RPG mascot illustration style — single full-body hero character with super-deformed proportions (head ~1:1 head-to-body ratio, head dominates the silhouette), bold warm dark brown outline (NOT pure black) of confident even weight, cel-shaded flat color fills with exactly one tier of subtle shadow per surface, always isolated on a transparent background with no scene or ground line. Pose is always mid-action and dynamic (sprint, lunge, mid-cast, low sneak, leap, raised prayer, mid-stumble) — never a static T-pose. Face is simplified and expressive (slit/narrow eyes by default, tiny mouth or none, no fine detail), 3/4 angle view at eye level. Square 1024x1024 canvas. Six dials per brief: archetype (ninja, mage, knight, ranger, alchemist, bard, cleric, rogue, monk, summoner, beastmaster, paladin, druid, necromancer), palette (warm earthy / cool arcane / forest scout / steel + crimson / tinkerer mustard + teal + copper / devout gold + ivory + cyan / desert ochre / ice wraith), hero prop (spear, longbow, staff, dual daggers, tome, hammer, sword + kite shield, smoking flask, lute, scythe, mace, war horn, summoning crystal), pose energy (the verb), outfit complexity (L1 simple tunic / L2 layered cloak + belt + 1-2 accessories / L3 full kit with pauldrons, pouches, sashes, scabbard, trinkets, goggles, capes), and mood (determined, fierce, stoic, focused, mischievous, gleeful, weary, smug, serene-focused). Trigger when user says /chibi-hero, asks for a "chibi hero", a "chibi RPG mascot", a "pocket adventurer character", a "super-deformed hero illustration", or briefs with an archetype + palette + weapon + pose in this style.',
-    // Source PR vm0-ai/vm0-skills#240 has not merged, so this style remains
-    // GitHub-only until its package exists on the default branch.
-    source: vm0ImageStyleSource("chibi-hero", false),
-  },
 ];
 
 // ── Presentation runbook packages ────────────────────────────────────────────
@@ -3829,8 +3894,16 @@ export function listImageStyles(): readonly RegistryEntry[] {
   return filterByKind("image-style");
 }
 
-export function listSkills(): readonly RegistryEntry[] {
-  return filterByKind("skill");
+export function listSkills(
+  target?: GenerationTarget,
+): readonly RegistryEntry[] {
+  const all = filterByKind("skill");
+  if (target === undefined) {
+    return all;
+  }
+  return all.filter((entry) => {
+    return entry.targets?.includes(target) ?? false;
+  });
 }
 
 export function findSkill(id: string): RegistryEntry | undefined {
@@ -3853,10 +3926,6 @@ export function findImageStyle(id: string): RegistryEntry | undefined {
   return listImageStyles().find((entry) => {
     return entry.id === id;
   });
-}
-
-export function hasR2Archive(entry: RegistryEntry): boolean {
-  return entry.source.archive !== undefined;
 }
 
 const VIDEO_TEMPLATE_ID_ALIASES: Readonly<Record<string, string>> = {
@@ -3941,22 +4010,6 @@ export function findTemplate(id: string): RegistryEntry | undefined {
   });
 }
 
-export function toGenerationTarget(value: string): GenerationTarget {
-  if (value === "dashboard") {
-    return "dashboard-design";
-  }
-
-  if (value === "docs") {
-    return "docs-design";
-  }
-
-  if (value === "mobile-app") {
-    return "mobile-app-design";
-  }
-
-  return value as GenerationTarget;
-}
-
 export function selectResourceCandidates(
   target?: GenerationTarget,
 ): ResourceCandidateSlice {
@@ -3966,29 +4019,10 @@ export function selectResourceCandidates(
       repo: RESOURCE_REGISTRY_REPO,
       ref: RESOURCE_REGISTRY_COMMIT,
     },
-    sources: [
-      {
-        repo: RESOURCE_REGISTRY_REPO,
-        ref: RESOURCE_REGISTRY_COMMIT,
-      },
-      {
-        repo: VM0_SKILLS_REPO,
-        ref: VM0_SKILLS_REF,
-      },
-      {
-        type: "r2-archive",
-        description:
-          "Private R2-backed resource archives resolved through authenticated `zero resource pull` requests",
-      },
-    ],
     candidates: {
-      skills: listSkills(),
+      skills: listSkills(target),
       templates: listTemplates(target),
       designSystems: filterByKind("design-system"),
-      imageStyles: filterByKind("image-style"),
-      audioStyles: filterByKind("audio-style"),
-      videoTemplates: listVideoTemplates(),
-      bundleTemplates: filterByKind("bundle-template"),
     },
   };
 }

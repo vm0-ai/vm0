@@ -46,8 +46,8 @@ git -C "$repo" add turbo/file.ts
 git -C "$repo" commit -q -m "main advance"
 merge_parent=$(git -C "$repo" rev-parse HEAD)
 
+git -C "$repo" switch -q -c pull-merge
 git -C "$repo" merge -q --no-ff feature -m "merge feature"
-merge_ref=$(git -C "$repo" rev-parse HEAD)
 
 actual=$(
   cd "$repo"
@@ -70,6 +70,10 @@ actual=$(
 )
 assert_eq "$actual" "$event_base"
 
+git -C "$repo" switch -q -C merge-group "$merge_parent"
+git -C "$repo" cherry-pick "$feature_head" >/dev/null
+merge_group_head=$(git -C "$repo" rev-parse HEAD)
+
 actual=$(
   cd "$repo"
   run_clean \
@@ -79,14 +83,38 @@ actual=$(
 )
 assert_eq "$actual" "$merge_parent"
 
+missing_base=0000000000000000000000000000000000000000
+if output=$(
+  cd "$repo"
+  run_clean \
+    GITHUB_EVENT_NAME=merge_group \
+    MERGE_GROUP_BASE_SHA="$missing_base" \
+    "$CHANGED_BASE_REF" 2>&1
+); then
+  fail "expected unavailable merge-group base to fail"
+fi
+[[ "$output" == *"MERGE_GROUP_BASE_SHA is not an available commit: $missing_base"* ]] ||
+  fail "unexpected unavailable merge-group base error: $output"
+
+if output=$(
+  cd "$repo"
+  run_clean \
+    GITHUB_EVENT_NAME=merge_group \
+    MERGE_GROUP_BASE_SHA="$event_base" \
+    "$CHANGED_BASE_REF" 2>&1
+); then
+  fail "expected non-parent merge-group base to fail"
+fi
+[[ "$output" == *"MERGE_GROUP_BASE_SHA does not match merge_group HEAD parent"* ]] ||
+  fail "unexpected non-parent merge-group base error: $output"
+
 actual=$(
   cd "$repo"
   run_clean GITHUB_EVENT_NAME=push "$CHANGED_BASE_REF"
 )
 assert_eq "$actual" "HEAD^"
 
-git -C "$repo" switch -q --detach "$merge_ref"
-changed_files=$(git -C "$repo" diff --name-only "$merge_parent" HEAD)
+changed_files=$(git -C "$repo" diff --name-only "$merge_parent" "$merge_group_head")
 assert_eq "$changed_files" "crates/lib.rs"
 
 echo "changed-base-ref-test: ok"

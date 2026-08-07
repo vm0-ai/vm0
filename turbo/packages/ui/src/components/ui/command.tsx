@@ -28,6 +28,7 @@ interface CommandDialogProps extends React.ComponentPropsWithoutRef<
   typeof Dialog
 > {
   readonly className?: string | undefined;
+  readonly closeLabel?: string | undefined;
   readonly commandClassName?: string | undefined;
   readonly commandProps?:
     | React.ComponentPropsWithoutRef<typeof Command>
@@ -37,13 +38,17 @@ interface CommandDialogProps extends React.ComponentPropsWithoutRef<
 function CommandDialog({
   children,
   className,
+  closeLabel,
   commandClassName,
   commandProps,
   ...props
 }: CommandDialogProps) {
   return (
     <Dialog {...props}>
-      <DialogContent className={cn("overflow-hidden p-0", className)}>
+      <DialogContent
+        closeLabel={closeLabel}
+        className={cn("overflow-hidden p-0", className)}
+      >
         <Command
           {...commandProps}
           className={cn(commandClassName, commandProps?.className)}

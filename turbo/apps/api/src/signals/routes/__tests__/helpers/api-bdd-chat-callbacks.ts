@@ -15,6 +15,7 @@ import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+import type { AgentEvent } from "../../../../lib/event-consumer/verify";
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
 const OPENROUTER_COMPLETIONS_URL =
@@ -33,7 +34,9 @@ type OpenRouterCompletionBody = z.infer<typeof openRouterCompletionBodySchema>;
 interface StoredS3Object {
   readonly bucket: string;
   readonly body?: Uint8Array;
+  readonly contentType?: string;
   readonly key: string;
+  readonly metadata?: Readonly<Record<string, string>>;
   readonly size: number;
 }
 
@@ -43,6 +46,7 @@ interface CapturedS3Put {
   readonly ifNoneMatch: string | null;
   readonly key: string;
   readonly contentType: string | null;
+  readonly metadata: Readonly<Record<string, string>> | null;
 }
 
 interface AuthHeaders {
@@ -72,6 +76,35 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    isRecord(value) &&
+    Object.values(value).every((entry) => {
+      return typeof entry === "string";
+    })
+  );
+}
+
+function webhookEventFromAxiomFixture(
+  event: Readonly<Record<string, unknown>>,
+): AgentEvent {
+  const type =
+    typeof event.type === "string"
+      ? event.type
+      : typeof event.eventType === "string"
+        ? event.eventType
+        : null;
+  const sequenceNumber = event.sequenceNumber;
+  if (type === null || typeof sequenceNumber !== "number") {
+    throw new Error("Chat output fixture requires an event type and sequence");
+  }
+  return {
+    ...(isRecord(event.eventData) ? event.eventData : event),
+    type,
+    sequenceNumber,
+  };
+}
+
 function commandInput(command: unknown): Record<string, unknown> {
   if (isRecord(command) && isRecord(command.input)) {
     return command.input;
@@ -97,6 +130,9 @@ function storedS3ObjectResponse(
     object?.body ?? (object ? new Uint8Array(object.size) : undefined);
   return {
     ContentLength: object?.size,
+    ContentType: object?.contentType,
+    LastModified: object ? nowDate() : undefined,
+    Metadata: object?.metadata,
     Body: body
       ? {
           async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
@@ -163,6 +199,24 @@ function capturedRunContextSnapshot(
 }
 
 export function createChatCallbacksApi(context: TestContext) {
+  let stagedOutputEvents: AgentEvent[] = [];
+
+  function mockOutputEventQuery(
+    events: readonly Record<string, unknown>[],
+  ): void {
+    const snapshot = [...events];
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (apl.includes("['run-context']")) {
+        const runId = /runId == "([^"]+)"/.exec(apl)?.[1];
+        return Promise.resolve(
+          runId ? capturedRunContextSnapshot(context, runId) : [],
+        );
+      }
+      return Promise.resolve(snapshot);
+    });
+  }
+
   function pushSubscriptionsClient() {
     return setupAppWithRoutes({
       context,
@@ -264,24 +318,18 @@ export function createChatCallbacksApi(context: TestContext) {
     },
 
     /**
-     * Persistent Axiom query fake: agent-run-event queries (the visibility
-     * barrier and the chat output read) resolve to `events`; run-context
-     * queries replay the snapshot the API itself ingested at run creation.
-     * Give events top-level contiguous `sequenceNumber` 0..lastEventSequence
-     * or the barrier burns its 2s poll window per callback.
+     * Stages output for the current /events DB projection. Run-context queries
+     * replay the snapshot the API itself ingested at run creation.
      */
     mockChatOutputEvents(events: readonly Record<string, unknown>[]): void {
-      const snapshot = [...events];
-      context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
-        const apl = typeof args[0] === "string" ? args[0] : "";
-        if (apl.includes("['run-context']")) {
-          const runId = /runId == "([^"]+)"/.exec(apl)?.[1];
-          return Promise.resolve(
-            runId ? capturedRunContextSnapshot(context, runId) : [],
-          );
-        }
-        return Promise.resolve(snapshot);
-      });
+      stagedOutputEvents = events.map(webhookEventFromAxiomFixture);
+      mockOutputEventQuery(events);
+    },
+
+    consumeMockChatOutputEvents(): AgentEvent[] {
+      const events = stagedOutputEvents;
+      stagedOutputEvents = [];
+      return events;
     },
 
     /**
@@ -330,6 +378,7 @@ export function createChatCallbacksApi(context: TestContext) {
             key,
             contentType:
               typeof input.ContentType === "string" ? input.ContentType : null,
+            metadata: isStringRecord(input.Metadata) ? input.Metadata : null,
           });
           if (rejectNextImmutablePut && input.IfNoneMatch === "*") {
             rejectNextImmutablePut = false;

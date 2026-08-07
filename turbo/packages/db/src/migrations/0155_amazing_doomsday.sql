@@ -1,1 +1,0 @@
-ALTER TABLE "org_members_cache" ADD COLUMN "onboarding_done" boolean DEFAULT false NOT NULL;

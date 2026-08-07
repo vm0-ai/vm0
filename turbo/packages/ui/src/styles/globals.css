@@ -92,6 +92,8 @@
   --color-sidebar-primary: hsl(var(--sidebar-primary));
   --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
   --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-active: hsl(var(--sidebar-accent-active));
+  --color-sidebar-accent-strong: hsl(var(--sidebar-accent-strong));
   --color-semantic-foreground: hsl(var(--semantic-foreground));
   --color-on-filled: hsl(var(--on-filled));
   --color-background-50: hsl(var(--background-50));
@@ -217,7 +219,9 @@
     --sidebar-foreground: var(--gray-950); /* gray-950 */
     --sidebar-primary: var(--primary-800); /* primary-800 */
     --sidebar-primary-foreground: var(--gray-50); /* gray-50 */
-    --sidebar-accent: var(--gray-100); /* gray-100 */
+    --sidebar-accent: 215 25% 94.6%; /* sidebar row hover - one step above sidebar surface */
+    --sidebar-accent-active: 214 23% 92.2%; /* sidebar row selected - always heavier than hover */
+    --sidebar-accent-strong: 213 22% 89.8%; /* controls layered on an already-hovered/selected row */
 
     --semantic-foreground: var(--gray-0); /* gray-0 */
 
@@ -321,9 +325,9 @@
     --sidebar-foreground: var(--gray-950); /* gray-950 */
     --sidebar-primary: var(--primary-800); /* primary-800 */
     --sidebar-primary-foreground: var(--gray-50); /* gray-50 */
-    --sidebar-accent: var(
-      --gray-300
-    ); /* gray-300 - visible hover against sidebar */
+    --sidebar-accent: 240 3% 17.5%; /* sidebar row hover - one step above sidebar surface */
+    --sidebar-accent-active: 240 3% 20%; /* sidebar row selected - always heavier than hover */
+    --sidebar-accent-strong: 240 3% 22.5%; /* controls layered on an already-hovered/selected row */
 
     --tooltip-bg: hsl(
       var(--gray-300)

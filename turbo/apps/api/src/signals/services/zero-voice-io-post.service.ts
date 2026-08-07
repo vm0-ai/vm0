@@ -7,14 +7,13 @@ import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { parseBuffer } from "music-metadata";
 
-import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
-import { nowDate } from "../external/time";
-import { putS3Object } from "../external/s3";
+import { nowDate } from "../../lib/time";
 import { tapError } from "../utils";
+import { storeGeneratedArtifactObject$ } from "./artifact-storage.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
@@ -108,6 +107,14 @@ interface VoiceInputSttTranscript {
 }
 
 type VoiceInputSttProviderResult = VoiceInputSttTranscript | ErrorResponse;
+
+interface BytePlusSttAttempt {
+  readonly response: Response;
+  readonly requestId: string;
+  readonly providerStatus: string | null;
+  readonly providerDurationMs: number;
+  readonly attempt: number;
+}
 
 interface SttDailyPolicy {
   readonly recordLifetimeUsage: boolean;
@@ -300,6 +307,53 @@ function isBytePlusTranscriptionSuccessStatus(
   );
 }
 
+function isRetryableBytePlusStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
+}
+
+async function sendBytePlusSttRequest(
+  apiKey: string,
+  requestBody: string,
+  signal: AbortSignal,
+  attempt: number,
+): Promise<BytePlusSttAttempt> {
+  const requestId = randomUUID();
+  const providerRequestStartedAt = performance.now();
+  const response = await fetch(BYTEPLUS_ASR_FLASH_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Key": apiKey,
+      "X-Api-Resource-Id": BYTEPLUS_ASR_RESOURCE_ID,
+      "X-Api-Request-Id": requestId,
+      "X-Api-Sequence": "-1",
+    },
+    body: requestBody,
+    signal,
+  });
+  signal.throwIfAborted();
+
+  const providerStatus = bytePlusTranscriptionStatus(response);
+  const providerDurationMs = Math.round(
+    performance.now() - providerRequestStartedAt,
+  );
+  L.debug("BytePlus STT response received", {
+    requestId,
+    attempt,
+    status: response.status,
+    statusText: response.statusText,
+    providerStatus,
+    providerDurationMs,
+  });
+  return {
+    response,
+    requestId,
+    providerStatus,
+    providerDurationMs,
+    attempt,
+  };
+}
+
 function isBytePlusTranscriptionBody(value: unknown): value is {
   readonly result: {
     readonly text: string;
@@ -353,43 +407,77 @@ export async function transcribeBytePlusVoiceInputFile(
     );
   }
 
-  const requestId = randomUUID();
   const fileBytes = await file.arrayBuffer();
   signal.throwIfAborted();
+  const fileBytesView = new Uint8Array(fileBytes);
+  const audioFormat = bytePlusAudioFormat(file);
+  const audioCodec = bytePlusAudioCodec(file);
+  const hasWebmEbmlHeader =
+    audioFormat === "webm"
+      ? fileBytes.byteLength >= EBML_HEADER.length &&
+        EBML_HEADER.every((byte, index) => {
+          return fileBytesView[index] === byte;
+        })
+      : null;
   const audio: Record<string, unknown> = {
     data: Buffer.from(fileBytes).toString("base64"),
-    format: bytePlusAudioFormat(file),
+    format: audioFormat,
   };
-  const codec = bytePlusAudioCodec(file);
-  if (codec) {
-    audio.codec = codec;
+  if (audioCodec) {
+    audio.codec = audioCodec;
   }
 
-  const bytePlusResponse = await fetch(BYTEPLUS_ASR_FLASH_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Api-Key": apiKey,
-      "X-Api-Resource-Id": BYTEPLUS_ASR_RESOURCE_ID,
-      "X-Api-Request-Id": requestId,
-      "X-Api-Sequence": "-1",
-    },
-    body: JSON.stringify({
-      audio,
-      request: {
-        model_name: BYTEPLUS_ASR_MODEL,
-        enable_itn: true,
-        enable_punc: true,
-        enable_ddc: true,
-        enable_speaker_info: false,
-        show_utterances: true,
-      },
-    }),
-    signal,
+  L.debug("BytePlus STT request prepared", {
+    fileMime: file.type,
+    fileSize: file.size,
+    fileName: file.name,
+    audioByteLength: fileBytes.byteLength,
+    audioFormat,
+    audioCodec: audioCodec ?? null,
+    hasWebmEbmlHeader,
   });
-  signal.throwIfAborted();
 
-  const providerStatus = bytePlusTranscriptionStatus(bytePlusResponse);
+  const requestBody = JSON.stringify({
+    audio,
+    request: {
+      model_name: BYTEPLUS_ASR_MODEL,
+      enable_itn: true,
+      enable_punc: true,
+      enable_ddc: true,
+      enable_speaker_info: false,
+      show_utterances: true,
+    },
+  });
+  let providerAttempt = await sendBytePlusSttRequest(
+    apiKey,
+    requestBody,
+    signal,
+    1,
+  );
+  if (isRetryableBytePlusStatus(providerAttempt.response.status)) {
+    L.warn("Retrying BytePlus STT after transient response", {
+      requestId: providerAttempt.requestId,
+      status: providerAttempt.response.status,
+      statusText: providerAttempt.response.statusText,
+      providerDurationMs: providerAttempt.providerDurationMs,
+    });
+    await providerAttempt.response.arrayBuffer();
+    signal.throwIfAborted();
+    providerAttempt = await sendBytePlusSttRequest(
+      apiKey,
+      requestBody,
+      signal,
+      2,
+    );
+  }
+
+  const {
+    response: bytePlusResponse,
+    requestId,
+    providerStatus,
+    providerDurationMs,
+    attempt,
+  } = providerAttempt;
   if (
     !bytePlusResponse.ok ||
     !isBytePlusTranscriptionSuccessStatus(providerStatus)
@@ -400,11 +488,13 @@ export async function transcribeBytePlusVoiceInputFile(
       status: bytePlusResponse.status,
       statusText: bytePlusResponse.statusText,
       providerStatus,
+      providerDurationMs,
       responseBody,
       fileMime: file.type,
       fileSize: file.size,
       fileName: file.name,
       requestId,
+      attempt,
     });
     return internalError("Transcription failed");
   }
@@ -807,7 +897,7 @@ export const speechPricing$: Computed<Promise<SpeechPricing | null>> = computed(
 export const checkSpeechCredits$ = command(
   async (
     { set },
-    args: { readonly orgId: string },
+    args: { readonly orgId: string; readonly userId: string },
     signal: AbortSignal,
   ): Promise<boolean> => {
     return await set(checkBillableOperationCredits$, args, signal);
@@ -959,7 +1049,7 @@ export const recordSttUsage$ = command(
 
 export const recordGeneratedSpeech$ = command(
   async (
-    { get, set },
+    { set },
     params: {
       readonly orgId: string;
       readonly userId: string;
@@ -972,21 +1062,18 @@ export const recordGeneratedSpeech$ = command(
     signal: AbortSignal,
   ): Promise<RecordedSpeech> => {
     const writeDb = set(writeDb$);
-    const fileId = randomUUID();
-    const filename = `voice-${fileId.slice(0, 8)}.wav`;
-    const s3Key = buildArtifactKey(params.userId, fileId, filename);
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    await get(
-      putS3Object(
-        bucket,
-        s3Key,
-        Buffer.from(params.audioBytes),
-        SPEECH_CONTENT_TYPE,
-      ),
+    const artifact = await set(
+      storeGeneratedArtifactObject$,
+      {
+        userId: params.userId,
+        filenamePrefix: "voice",
+        extension: "wav",
+        body: Buffer.from(params.audioBytes),
+        contentType: SPEECH_CONTENT_TYPE,
+      },
+      signal,
     );
-    signal.throwIfAborted();
-
-    const url = buildFileUrl(params.userId, fileId, filename);
+    const { id: fileId, filename, key: s3Key, url } = artifact;
     await set(
       recordWebUploadedFile$,
       {

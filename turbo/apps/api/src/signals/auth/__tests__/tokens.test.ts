@@ -12,7 +12,7 @@ import {
   verifySandboxToken,
   verifyZeroToken,
 } from "../tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { safeJsonParse } from "../../utils";
 
 function currentSecond(): number {
@@ -147,6 +147,19 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:write");
   });
 
+  it("includes chat event read and write capabilities in zero-scoped tokens", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+
+    expect(decodeZeroTokenPayloadForTest(token)).toMatchObject({
+      capabilities: expect.arrayContaining([
+        "chat-event:read",
+        "chat-event:write",
+      ]),
+    });
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-event:read");
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-event:write");
+  });
+
   it("gates banking capability behind the banking feature switch", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const enabledToken = generateZeroToken(
@@ -164,6 +177,12 @@ describe("auth tokens", () => {
     );
   });
 
+  it("grants custom connector writes by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+
+    expect(verifyZeroToken(token)?.capabilities).toContain("connector:write");
+  });
+
   it("grants scrape capability by default", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
@@ -176,21 +195,10 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("web-search:read");
   });
 
-  it("grants finance capability from user feature switch overrides", () => {
-    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const overrideToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.ZeroFinance]: true },
-    );
+  it("grants finance capability by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
-      "finance:read",
-    );
-    expect(verifyZeroToken(overrideToken)?.capabilities).toContain(
-      "finance:read",
-    );
+    expect(verifyZeroToken(token)?.capabilities).toContain("finance:read");
   });
 
   it("includes people-search capability in zero-scoped tokens", () => {
@@ -201,46 +209,53 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates browser capabilities on both the rollout and thread access", () => {
-    const defaultToken = generateZeroToken(
+  it("grants translation capability by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+
+    expect(verifyZeroToken(token)?.capabilities).toContain("translation:write");
+  });
+
+  it("gates image recognition on run eligibility", () => {
+    const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+    const ineligibleToken = generateZeroToken(
       "user_zero",
       "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      staffOrgId,
     );
+    const eligibleToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      staffOrgId,
+      undefined,
+      { imageRecognitionAvailable: true },
+    );
+    expect(verifyZeroToken(ineligibleToken)?.capabilities).not.toContain(
+      "image-recognition:write",
+    );
+    expect(verifyZeroToken(eligibleToken)?.capabilities).toContain(
+      "image-recognition:write",
+    );
+  });
+
+  it("gates browser capabilities on thread access", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const enabledToken = generateZeroToken(
       "user_zero",
       "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      "org_zero",
       undefined,
       { cloudBrowserEnabled: true },
     );
-    const disabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      { [FeatureSwitchKey.ZeroBrowser]: false },
-      { cloudBrowserEnabled: true },
-    );
 
-    for (const token of [defaultToken, disabledToken]) {
-      expect(verifyZeroToken(token)?.capabilities).not.toContain(
-        "browser:read",
-      );
-      expect(verifyZeroToken(token)?.capabilities).not.toContain(
-        "browser:write",
-      );
-    }
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "browser:read",
+    );
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "browser:write",
+    );
     expect(verifyZeroToken(enabledToken)).toMatchObject({
       cloudBrowserEnabled: true,
       capabilities: expect.arrayContaining(["browser:read", "browser:write"]),
-    });
-    expect(decodeZeroTokenPayloadForTest(disabledToken)).not.toHaveProperty(
-      "cloudBrowserEnabled",
-    );
-    expect(decodeZeroTokenPayloadForTest(disabledToken)).toMatchObject({
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: false,
-      },
     });
   });
 

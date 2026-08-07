@@ -1,10 +1,12 @@
 use super::super::super::*;
 use super::env::MockRunEnv;
+use futures_util::FutureExt;
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 
 use crate::idle_pool::ParkingState;
 use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistry};
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::workspace_image_cache::WorkspaceImageCache;
 
 const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -19,15 +21,78 @@ where
     Fut: Future<Output = WaitProbe<T>>,
 {
     let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        match probe().await {
-            WaitProbe::Ready(value) => return value,
-            WaitProbe::Pending(message) => {
-                assert!(tokio::time::Instant::now() < deadline, "{message}");
-                tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+    let mut last_pending_message = None;
+    let result = tokio::time::timeout_at(deadline, async {
+        loop {
+            match probe().await {
+                WaitProbe::Ready(value) => return value,
+                WaitProbe::Pending(message) => {
+                    last_pending_message = Some(message);
+                    tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+                }
             }
         }
+    })
+    .await;
+
+    match result {
+        Ok(value) => value,
+        Err(_) => match last_pending_message {
+            Some(message) => panic!("{message}"),
+            None => panic!("probe did not complete within {timeout:?}"),
+        },
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_for_probe_times_out_while_probe_is_pending() {
+    let local_timeout = Duration::from_secs(1);
+    let result = tokio::time::timeout(
+        local_timeout + Duration::from_secs(1),
+        AssertUnwindSafe(wait_for_probe(local_timeout, || {
+            std::future::pending::<WaitProbe<()>>()
+        }))
+        .catch_unwind(),
+    )
+    .await
+    .expect("test guard elapsed before wait_for_probe's local deadline");
+
+    let panic = result.expect_err("wait_for_probe should panic at its local deadline");
+    let message = panic
+        .downcast_ref::<String>()
+        .expect("wait_for_probe panic should contain a String message");
+    assert_eq!(message, "probe did not complete within 1s");
+}
+
+#[tokio::test(start_paused = true)]
+#[should_panic(expected = "probe attempt 3")]
+async fn wait_for_probe_preserves_latest_pending_message() {
+    let mut attempt = 0;
+    wait_for_probe(Duration::from_millis(25), || {
+        attempt += 1;
+        let attempt = attempt;
+        async move { WaitProbe::<()>::Pending(format!("probe attempt {attempt}")) }
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_for_probe_returns_after_pending_probe_becomes_ready() {
+    let mut attempt = 0;
+    let value = wait_for_probe(Duration::from_secs(1), || {
+        attempt += 1;
+        let attempt = attempt;
+        async move {
+            if attempt == 1 {
+                WaitProbe::Pending("probe is not ready".to_string())
+            } else {
+                WaitProbe::Ready(42)
+            }
+        }
+    })
+    .await;
+
+    assert_eq!(value, 42);
 }
 
 pub(in super::super) async fn assert_run_exits_within(
@@ -90,87 +155,55 @@ pub(in super::super) async fn wait_idle_pool_len(
     .await;
 }
 
-pub(in super::super) async fn wait_idle_pool_sessions(
+pub(in super::super) async fn wait_idle_pool_reuse_keys(
     pool: &SharedIdlePool,
     expected: &[&str],
     timeout: Duration,
 ) {
     let mut expected: Vec<String> = expected
         .iter()
-        .map(|session| (*session).to_string())
+        .map(|reuse_key| (*reuse_key).to_string())
         .collect();
     expected.sort_unstable();
     wait_for_probe(timeout, || async {
-        let actual = pool.lock().await.held_sessions();
+        let actual = pool.lock().await.held_reuse_keys();
         if actual == expected {
             WaitProbe::Ready(())
         } else {
             WaitProbe::Pending(format!(
-                "idle pool sessions did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
+                "idle pool reuse keys did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
             ))
         }
     })
     .await;
 }
 
-pub(in super::super) async fn wait_idle_pool_session_states(
-    pool: &SharedIdlePool,
+pub(in super::super) async fn wait_workspace_cache_reuse_keys(
+    cache: &WorkspaceImageCache,
     expected: &[&str],
     timeout: Duration,
 ) {
     let mut expected: Vec<String> = expected
         .iter()
-        .map(|session| (*session).to_string())
+        .map(|reuse_key| (*reuse_key).to_string())
         .collect();
     expected.sort_unstable();
     wait_for_probe(timeout, || async {
-        let states = pool.lock().await.held_session_states();
+        let states = cache.held_workspace_states().await;
         for state in &states {
             if chrono::DateTime::parse_from_rfc3339(&state.last_completed_at).is_err() {
                 return WaitProbe::Pending(format!(
-                    "idle pool session state had invalid timestamp: {state:?}",
+                    "workspace cache state had invalid timestamp: {state:?}",
                 ));
             }
         }
-        let mut actual: Vec<String> = states.into_iter().map(|state| state.session_id).collect();
+        let mut actual: Vec<String> = states.into_iter().map(|state| state.reuse_key).collect();
         actual.sort_unstable();
         if actual == expected {
             WaitProbe::Ready(())
         } else {
             WaitProbe::Pending(format!(
-                "idle pool session states did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
-            ))
-        }
-    })
-    .await;
-}
-
-pub(in super::super) async fn wait_workspace_cache_sessions(
-    cache: &SessionWorkspaceCache,
-    expected: &[&str],
-    timeout: Duration,
-) {
-    let mut expected: Vec<String> = expected
-        .iter()
-        .map(|session| (*session).to_string())
-        .collect();
-    expected.sort_unstable();
-    wait_for_probe(timeout, || async {
-        let states = cache.held_session_states().await;
-        for state in &states {
-            if chrono::DateTime::parse_from_rfc3339(&state.last_completed_at).is_err() {
-                return WaitProbe::Pending(format!(
-                    "workspace cache session state had invalid timestamp: {state:?}",
-                ));
-            }
-        }
-        let mut actual: Vec<String> = states.into_iter().map(|state| state.session_id).collect();
-        actual.sort_unstable();
-        if actual == expected {
-            WaitProbe::Ready(())
-        } else {
-            WaitProbe::Pending(format!(
-                "workspace cache sessions did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
+                "workspace cache reuse keys did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
             ))
         }
     })

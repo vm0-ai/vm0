@@ -1,7 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
@@ -22,7 +22,7 @@ import {
 type ConnectorCatalogGrantKind =
   PublicConnectorCatalogAuthMethodDetail["grantKind"];
 
-export type ConnectorRefResolutionFailure =
+export type ConnectorSlugResolutionFailure =
   | { readonly ok: false; readonly reason: "unknown_connector" }
   | {
       readonly ok: false;
@@ -30,7 +30,7 @@ export type ConnectorRefResolutionFailure =
     };
 
 export type ConnectorActionResolutionFailure =
-  | ConnectorRefResolutionFailure
+  | ConnectorSlugResolutionFailure
   | {
       readonly ok: false;
       readonly reason: "unknown_auth_method";
@@ -44,36 +44,36 @@ export type ConnectorActionResolutionFailure =
     }
   | { readonly ok: false; readonly reason: "hidden_auth_method" };
 
-export type ResolvedConnectorRef = {
+export type ResolvedConnectorSlug = {
   readonly ok: true;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly catalogConnector: PublicConnectorCatalogDetail;
   readonly runtimeConnector: ConnectorRuntimeConnector;
   readonly snapshot: ConnectorRuntimeSnapshot;
 };
 
-export type ResolvedConnectorActionMethod = ResolvedConnectorRef & {
+export type ResolvedConnectorActionMethod = ResolvedConnectorSlug & {
   readonly authMethodId: ConnectorAuthMethodId;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly runtimeMethod: ConnectorRuntimeMethod;
 };
 
-export type ConnectorRefResolution =
-  | ResolvedConnectorRef
-  | ConnectorRefResolutionFailure;
+export type ConnectorSlugResolution =
+  | ResolvedConnectorSlug
+  | ConnectorSlugResolutionFailure;
 
 export type ConnectorActionMethodResolution =
   | ResolvedConnectorActionMethod
   | ConnectorActionResolutionFailure;
 
-export type ConnectorRefsResolution =
+export type ConnectorSlugsResolution =
   | {
       readonly ok: true;
-      readonly connectors: readonly ResolvedConnectorRef[];
+      readonly connectors: readonly ResolvedConnectorSlug[];
     }
-  | (ConnectorRefResolutionFailure & {
-      readonly connectorRef: ConnectorRef;
+  | (ConnectorSlugResolutionFailure & {
+      readonly connectorSlug: ConnectorSlug;
     });
 
 /**
@@ -88,32 +88,32 @@ export type ConnectorRefsResolution =
  * local executable capability.
  */
 export interface ConnectorActionResolver {
-  readonly resolveRef: (args: {
-    readonly connectorRef: ConnectorRef;
+  readonly resolveSlug: (args: {
+    readonly connectorSlug: ConnectorSlug;
     readonly requireExecutable: boolean;
-  }) => ConnectorRefResolution;
+  }) => ConnectorSlugResolution;
   readonly resolveMethod: (args: {
-    readonly connectorRef: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
     readonly authMethodId: ConnectorAuthMethodId;
     readonly expectedGrantKind: ConnectorCatalogGrantKind;
   }) => ConnectorActionMethodResolution;
   readonly resolveNewActionMethod: (args: {
-    readonly connectorRef: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
     readonly authMethodId: ConnectorAuthMethodId;
     readonly expectedGrantKind: ConnectorCatalogGrantKind;
   }) => ConnectorActionMethodResolution;
-  readonly resolveRefs: (args: {
-    readonly connectorRefs: readonly ConnectorRef[];
+  readonly resolveSlugs: (args: {
+    readonly connectorSlugs: readonly ConnectorSlug[];
     readonly requireExecutable: boolean;
-  }) => ConnectorRefsResolution;
+  }) => ConnectorSlugsResolution;
 }
 
-function resolvedRef(args: {
-  readonly connectorRef: ConnectorRef;
+function resolvedSlug(args: {
+  readonly connectorSlug: ConnectorSlug;
   readonly requireExecutable: boolean;
   readonly runtimeConnector: ConnectorRuntimeConnector;
   readonly snapshot: ConnectorRuntimeSnapshot;
-}): ResolvedConnectorRef | ConnectorRefResolutionFailure {
+}): ResolvedConnectorSlug | ConnectorSlugResolutionFailure {
   if (
     args.requireExecutable &&
     ![...args.runtimeConnector.methods.values()].some((method) => {
@@ -124,7 +124,7 @@ function resolvedRef(args: {
   }
   return {
     ok: true,
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     catalogConnector: args.runtimeConnector.catalogConnector,
     runtimeConnector: args.runtimeConnector,
     snapshot: args.snapshot,
@@ -132,13 +132,13 @@ function resolvedRef(args: {
 }
 
 function executableMethod(args: {
-  readonly resolvedRef: ResolvedConnectorRef;
+  readonly resolvedSlug: ResolvedConnectorSlug;
   readonly authMethodId: ConnectorAuthMethodId;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
 }): ResolvedConnectorActionMethod | ConnectorActionResolutionFailure {
   const runtimeMethod = getConnectorRuntimeMethod({
-    snapshot: args.resolvedRef.snapshot,
-    connectorRef: args.resolvedRef.connectorRef,
+    snapshot: args.resolvedSlug.snapshot,
+    connectorSlug: args.resolvedSlug.connectorSlug,
     authMethodId: args.authMethodId,
     requireExecutable: true,
   });
@@ -149,7 +149,7 @@ function executableMethod(args: {
     return { ok: false, reason: "missing_executable_capability" };
   }
   return {
-    ...args.resolvedRef,
+    ...args.resolvedSlug,
     authMethodId: args.authMethodId,
     catalogMethod: args.catalogMethod,
     method: runtimeMethod.method,
@@ -160,16 +160,16 @@ function executableMethod(args: {
 function createConnectorActionResolver(
   snapshot: ConnectorRuntimeSnapshot,
 ): ConnectorActionResolver {
-  const resolveRef: ConnectorActionResolver["resolveRef"] = (input) => {
+  const resolveSlug: ConnectorActionResolver["resolveSlug"] = (input) => {
     const runtimeConnector = getConnectorRuntimeConnector(
       snapshot,
-      input.connectorRef,
+      input.connectorSlug,
     );
     if (runtimeConnector === undefined) {
       return { ok: false, reason: "unknown_connector" };
     }
-    return resolvedRef({
-      connectorRef: input.connectorRef,
+    return resolvedSlug({
+      connectorSlug: input.connectorSlug,
       requireExecutable: input.requireExecutable,
       runtimeConnector,
       snapshot,
@@ -179,7 +179,7 @@ function createConnectorActionResolver(
   const resolveMethod: ConnectorActionResolver["resolveMethod"] = (input) => {
     const runtimeConnector = getConnectorRuntimeConnector(
       snapshot,
-      input.connectorRef,
+      input.connectorSlug,
     );
     if (runtimeConnector === undefined) {
       return { ok: false, reason: "unknown_connector" };
@@ -204,30 +204,30 @@ function createConnectorActionResolver(
       };
     }
 
-    const selectedRef = resolvedRef({
-      connectorRef: input.connectorRef,
+    const selectedSlug = resolvedSlug({
+      connectorSlug: input.connectorSlug,
       requireExecutable: true,
       runtimeConnector,
       snapshot,
     });
-    if (!selectedRef.ok) {
-      return selectedRef;
+    if (!selectedSlug.ok) {
+      return selectedSlug;
     }
     return executableMethod({
-      resolvedRef: selectedRef,
+      resolvedSlug: selectedSlug,
       authMethodId: input.authMethodId,
       catalogMethod,
     });
   };
 
   return {
-    resolveRef,
+    resolveSlug,
     resolveMethod,
 
     resolveNewActionMethod(input) {
       const runtimeConnector = getConnectorRuntimeConnector(
         snapshot,
-        input.connectorRef,
+        input.connectorSlug,
       );
       const catalogMethod = runtimeConnector?.catalogConnector.authMethods.find(
         (method) => {
@@ -245,15 +245,15 @@ function createConnectorActionResolver(
       return resolveMethod(input);
     },
 
-    resolveRefs(input) {
-      const connectors: ResolvedConnectorRef[] = [];
-      for (const connectorRef of input.connectorRefs) {
-        const resolved = resolveRef({
-          connectorRef,
+    resolveSlugs(input) {
+      const connectors: ResolvedConnectorSlug[] = [];
+      for (const connectorSlug of input.connectorSlugs) {
+        const resolved = resolveSlug({
+          connectorSlug,
           requireExecutable: input.requireExecutable,
         });
         if (!resolved.ok) {
-          return { ...resolved, connectorRef };
+          return { ...resolved, connectorSlug };
         }
         connectors.push(resolved);
       }

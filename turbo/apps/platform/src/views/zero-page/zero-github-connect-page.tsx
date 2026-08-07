@@ -8,6 +8,8 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
 import { clerk$, resolveAppAuthUrl } from "../../signals/auth.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -31,13 +33,16 @@ function signInHref(): string {
 }
 
 function BackLink() {
+  const { t } = useTranslation();
   return (
     <Link
       pathname="/workflows"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
       <IconArrowLeft size={14} />
-      Back to workflows
+      {t(($) => {
+        return $.connectors.providerConnect.github.back;
+      })}
     </Link>
   );
 }
@@ -101,31 +106,36 @@ function InvalidState({ title, message }: { title: string; message: string }) {
 
 function githubUserLabel(username: string | undefined): string {
   const normalized = username?.trim().replace(/^@+/, "");
-  return normalized ? `@${normalized}` : "this GitHub account";
+  return normalized
+    ? `@${normalized}`
+    : i18n.t(($) => {
+        return $.connectors.providerConnect.github.accountFallback;
+      });
 }
 
 function getGithubConnectErrorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
-    : "We couldn't connect GitHub. Try again from GitHub.";
+    : i18n.t(($) => {
+        return $.connectors.providerConnect.github.errorFallback;
+      });
 }
 
 function SuccessState({ githubUsername }: { githubUsername?: string }) {
+  const { t } = useTranslation();
   return (
     <PageShell>
       <GithubMark state="success" />
       <CenterText
-        title="Connected to GitHub!"
-        body={
-          <>
-            You&apos;re connected as{" "}
-            <span className="font-medium">
-              {githubUserLabel(githubUsername)}
-            </span>
-            . Mention your agent in GitHub issues or pull requests to start
-            chatting.
-          </>
-        }
+        title={t(($) => {
+          return $.connectors.providerConnect.github.successTitle;
+        })}
+        body={t(
+          ($) => {
+            return $.connectors.providerConnect.github.successDescription;
+          },
+          { account: githubUserLabel(githubUsername) },
+        )}
       />
       <BackLink />
     </PageShell>
@@ -137,21 +147,20 @@ function AlreadyConnectedState({
 }: {
   githubUsername?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <PageShell>
       <GithubMark state="success" />
       <CenterText
-        title="Already connected to GitHub"
-        body={
-          <>
-            You&apos;re already connected as{" "}
-            <span className="font-medium">
-              {githubUserLabel(githubUsername)}
-            </span>
-            . Mention your agent in GitHub issues or pull requests to start
-            chatting.
-          </>
-        }
+        title={t(($) => {
+          return $.connectors.providerConnect.github.alreadyTitle;
+        })}
+        body={t(
+          ($) => {
+            return $.connectors.providerConnect.github.alreadyDescription;
+          },
+          { account: githubUserLabel(githubUsername) },
+        )}
       />
       <BackLink />
     </PageShell>
@@ -175,19 +184,32 @@ function LoadingState({
 
 function SignInState(): JSX.Element {
   const brandName = useGet(brandName$);
+  const { t } = useTranslation();
 
   return (
     <PageShell>
       <GithubMark />
       <CenterText
-        title="Sign in to continue"
-        body={`Use your ${brandName} account before connecting this GitHub user.`}
+        title={t(($) => {
+          return $.connectors.providerConnect.github.signInTitle;
+        })}
+        body={t(
+          ($) => {
+            return $.connectors.providerConnect.github.signInDescription;
+          },
+          { brandName },
+        )}
       />
       <a
         href={signInHref()}
         className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
       >
-        Sign in to {brandName}
+        {t(
+          ($) => {
+            return $.connectors.providerConnect.github.signInButton;
+          },
+          { brandName },
+        )}
       </a>
     </PageShell>
   );
@@ -205,22 +227,24 @@ function ConnectState({
   onConnect: () => void;
 }): JSX.Element {
   const brandName = useGet(brandName$);
+  const { t } = useTranslation();
 
   return (
     <PageShell>
       <GithubMark />
       <CenterText
-        title="Connect to GitHub"
-        body={
-          <>
-            Link your {brandName} account to{" "}
-            <span className="font-medium">
-              {githubUserLabel(params.githubUsername)}
-            </span>{" "}
-            so GitHub mentions can run your agents from issues and pull
-            requests.
-          </>
-        }
+        title={t(($) => {
+          return $.connectors.providerConnect.github.connectTitle;
+        })}
+        body={t(
+          ($) => {
+            return $.connectors.providerConnect.github.connectDescription;
+          },
+          {
+            account: githubUserLabel(params.githubUsername),
+            brandName,
+          },
+        )}
       />
       {error ? (
         <div
@@ -235,7 +259,13 @@ function ConnectState({
           {connecting ? (
             <IconLoader2 size={16} className="animate-spin" />
           ) : null}
-          {connecting ? "Connecting..." : "Connect"}
+          {connecting
+            ? t(($) => {
+                return $.connectors.actions.connecting;
+              })
+            : t(($) => {
+                return $.connectors.actions.connect;
+              })}
         </Button>
         <div className="flex justify-center">
           <BackLink />
@@ -245,7 +275,50 @@ function ConnectState({
   );
 }
 
+type GithubConnectParamErrorCode = Extract<
+  ReturnType<typeof parseGithubConnectParams>,
+  { ok: false }
+>["error"]["code"];
+
+function InvalidGithubConnectParams({
+  code,
+}: {
+  code: GithubConnectParamErrorCode;
+}) {
+  const { t } = useTranslation();
+  const title =
+    code === "incomplete"
+      ? t(($) => {
+          return $.connectors.providerConnect.github.linkIncompleteTitle;
+        })
+      : t(($) => {
+          return $.connectors.providerConnect.github.invalidTitle;
+        });
+  const messages: Record<GithubConnectParamErrorCode, string> = {
+    incomplete: t(($) => {
+      return $.connectors.providerConnect.github.linkIncomplete;
+    }),
+    invalid_installation: t(($) => {
+      return $.connectors.providerConnect.github.invalidInstallation;
+    }),
+    invalid_signature: t(($) => {
+      return $.connectors.providerConnect.github.invalidSignature;
+    }),
+    invalid_timestamp: t(($) => {
+      return $.connectors.providerConnect.github.invalidTimestamp;
+    }),
+    invalid_user: t(($) => {
+      return $.connectors.providerConnect.github.invalidUser;
+    }),
+    invalid_username: t(($) => {
+      return $.connectors.providerConnect.github.invalidUsername;
+    }),
+  };
+  return <InvalidState title={title} message={messages[code]} />;
+}
+
 export function ZeroGithubConnectPage(): JSX.Element {
+  const { t } = useTranslation();
   const brandName = useGet(brandName$);
   const params = useGet(searchParams$);
   const parsed = parseGithubConnectParams(params);
@@ -264,16 +337,21 @@ export function ZeroGithubConnectPage(): JSX.Element {
       : null;
 
   if (!parsed.ok) {
-    return (
-      <InvalidState title={parsed.error.title} message={parsed.error.message} />
-    );
+    return <InvalidGithubConnectParams code={parsed.error.code} />;
   }
 
   if (clerkLoadable.state === "loading") {
     return (
       <LoadingState
-        title="Checking account status..."
-        body={`Please wait while we verify your ${brandName} session.`}
+        title={t(($) => {
+          return $.connectors.providerConnect.common.checkingTitle;
+        })}
+        body={t(
+          ($) => {
+            return $.connectors.providerConnect.github.checkingSession;
+          },
+          { brandName },
+        )}
       />
     );
   }
@@ -281,8 +359,12 @@ export function ZeroGithubConnectPage(): JSX.Element {
   if (clerkLoadable.state === "hasError") {
     return (
       <InvalidState
-        title="Couldn't check sign-in"
-        message="Refresh this page and try again."
+        title={t(($) => {
+          return $.connectors.providerConnect.github.signInCheckFailed;
+        })}
+        message={t(($) => {
+          return $.connectors.providerConnect.github.refresh;
+        })}
       />
     );
   }
@@ -298,8 +380,13 @@ export function ZeroGithubConnectPage(): JSX.Element {
   if (linkStatusLoadable.state === "loading") {
     return (
       <LoadingState
-        title="Checking connection..."
-        body="Please wait while we check your GitHub connection."
+        title={t(($) => {
+          return $.connectors.providerConnect.github.checkingConnectionTitle;
+        })}
+        body={t(($) => {
+          return $.connectors.providerConnect.github
+            .checkingConnectionDescription;
+        })}
       />
     );
   }
@@ -318,16 +405,25 @@ export function ZeroGithubConnectPage(): JSX.Element {
   if (linkStatus?.kind === "not_installed") {
     return (
       <InvalidState
-        title="GitHub is not installed"
-        message="Ask an organization admin to install GitHub before connecting your account."
+        title={t(($) => {
+          return $.connectors.providerConnect.github.notInstalledTitle;
+        })}
+        message={t(($) => {
+          return $.connectors.providerConnect.github.notInstalledDescription;
+        })}
       />
     );
   }
   if (linkStatus?.kind === "wrong_organization") {
     return (
       <InvalidState
-        title="Switch organization"
-        message="Your active organization doesn't match this GitHub installation. Switch to the correct organization and open the link again."
+        title={t(($) => {
+          return $.connectors.providerConnect.github.wrongOrganizationTitle;
+        })}
+        message={t(($) => {
+          return $.connectors.providerConnect.github
+            .wrongOrganizationDescription;
+        })}
       />
     );
   }

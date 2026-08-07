@@ -4,13 +4,9 @@ import {
   type TelegramUploadCompleteBody,
 } from "@vm0/api-contracts/contracts/integrations";
 
-import { env } from "../../lib/env";
-import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
-import { inferMimetype } from "../../lib/mimetype";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { listS3Objects } from "../external/s3";
 import {
   sendDocument,
   type SendTelegramDocumentResult,
@@ -19,6 +15,7 @@ import {
   getOfficialTelegramBotConfig,
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
+import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { recordTelegramUploadedFile$ } from "../services/run-uploaded-files.service";
 import { zeroTelegramInstallation } from "../services/zero-telegram-data.service";
 import type { RouteEntry } from "../route-entry";
@@ -127,16 +124,16 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return botNotFound;
   }
 
-  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const prefix = buildArtifactPrefix(userId, body.uploadId);
-  const objects = await get(listS3Objects(bucket, prefix));
-  signal.throwIfAborted();
-  const s3Object = objects[0];
+  const s3Object = await set(
+    resolveArtifactObject$,
+    { userId, id: body.uploadId },
+    signal,
+  );
   if (!s3Object) {
     return uploadedFileNotFound;
   }
-  const filename = s3Object.key.split("/").pop() ?? body.uploadId;
-  const fileUrl = buildFileUrl(userId, body.uploadId, filename);
+  const filename = s3Object.filename;
+  const fileUrl = s3Object.url;
 
   const result = await sendDocument(botToken, body.chatId, fileUrl, {
     caption: body.caption,
@@ -149,7 +146,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const document = result.document;
   const mimetype =
-    document?.mime_type ?? body.contentType ?? inferMimetype(filename);
+    document?.mime_type ?? body.contentType ?? s3Object.contentType;
   const size = document?.file_size ?? s3Object.size;
   const fileId = document?.file_id;
   const responseFilename = document?.file_name ?? filename;

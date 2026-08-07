@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { timeout } from "signal-timers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   zeroIntegrationsTelegramContract,
@@ -10,6 +11,8 @@ import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { writeToClipboard } from "./clipboard.ts";
+import { i18n } from "../../i18n/index.ts";
+import { resetSignal } from "../utils.ts";
 
 export type TelegramAddSetupStep = "token" | "domain" | "privacy" | "create";
 export type TelegramSetupCheckTarget = "token" | "domain" | "privacy";
@@ -38,7 +41,7 @@ const internalTelegramAddSetupState$ = state<TelegramAddSetupState>(
   initialTelegramAddSetupState(),
 );
 const internalTelegramCopiedValue$ = state<string | null>(null);
-const internalTelegramCopyTimeoutId$ = state<number | null>(null);
+const resetTelegramCopySignal$ = resetSignal();
 const internalTelegramFailedAvatarKeys$ = state<Record<string, boolean>>({});
 const internalTelegramSavingBotId$ = state<string | null>(null);
 const internalTelegramUnlinkingBotId$ = state<string | null>(null);
@@ -97,9 +100,13 @@ function isTelegramSetupCheckSatisfied(
 
 function getTelegramSetupCheckFailureMessage(target: TelegramSetupCheckTarget) {
   if (target === "domain") {
-    return "Domain is not visible to Telegram yet. Check BotFather and try again.";
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.errors.telegramDomain;
+    });
   }
-  return "Privacy mode still appears to be on. Turn it off in BotFather, then try again.";
+  return i18n.t(($) => {
+    return $.connectors.providerSettings.errors.telegramPrivacy;
+  });
 }
 
 export const telegramBotTokenForm$ = computed((get) => {
@@ -197,17 +204,22 @@ export const copyTelegramValue$ = command(
       return;
     }
 
-    const existingTimeoutId = get(internalTelegramCopyTimeoutId$);
-    if (existingTimeoutId !== null) {
-      window.clearTimeout(existingTimeoutId);
-    }
-
+    const copySignal = set(resetTelegramCopySignal$, signal);
     set(internalTelegramCopiedValue$, value);
-    const timeoutId = window.setTimeout(() => {
-      set(internalTelegramCopiedValue$, null);
-      set(internalTelegramCopyTimeoutId$, null);
-    }, 1500);
-    set(internalTelegramCopyTimeoutId$, timeoutId);
+    const clearCopiedValue = () => {
+      if (get(internalTelegramCopiedValue$) === value) {
+        set(internalTelegramCopiedValue$, null);
+      }
+    };
+    copySignal.addEventListener("abort", clearCopiedValue, { once: true });
+    timeout(
+      () => {
+        copySignal.removeEventListener("abort", clearCopiedValue);
+        clearCopiedValue();
+      },
+      1500,
+      { signal: copySignal },
+    );
   },
 );
 
@@ -339,7 +351,11 @@ export const registerTelegramBot$ = command(
     );
     signal.throwIfAborted();
     set(reloadTelegramBots$);
-    toast.success("Telegram bot added");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.telegramBotAdded;
+      }),
+    );
     return (result as { body: TelegramBotStatus }).body;
   },
 );
@@ -423,7 +439,11 @@ export const reinstallTelegramBot$ = command(
     );
     signal.throwIfAborted();
     set(reloadTelegramBots$);
-    toast.success("Telegram bot reinstalled");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.telegramBotReinstalled;
+      }),
+    );
     return (result as { body: TelegramBotStatus }).body;
   },
 );
@@ -436,7 +456,11 @@ export const updateTelegramBotAgent$ = command(
       | { botId: string; selectedAgentId: string | null },
     signal: AbortSignal,
   ): Promise<TelegramBotStatus> => {
-    const toastId = toast.loading("Updating default agent...");
+    const toastId = toast.loading(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.telegramUpdatingAgent;
+      }),
+    );
     signal.addEventListener("abort", () => {
       return toast.dismiss(toastId);
     });
@@ -455,7 +479,12 @@ export const updateTelegramBotAgent$ = command(
     );
     signal.throwIfAborted();
     set(reloadTelegramBots$);
-    toast.success("Default agent updated", { id: toastId });
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.telegramAgentUpdated;
+      }),
+      { id: toastId },
+    );
     return result.body;
   },
 );
@@ -473,7 +502,11 @@ export const disconnectTelegramAccount$ = command(
     );
     signal.throwIfAborted();
     set(reloadTelegramBots$);
-    toast.success("Telegram account disconnected");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.telegramDisconnected;
+      }),
+    );
   },
 );
 
@@ -490,6 +523,10 @@ export const uninstallTelegramBot$ = command(
     );
     signal.throwIfAborted();
     set(reloadTelegramBots$);
-    toast.success("Telegram bot uninstalled");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.telegramBotUninstalled;
+      }),
+    );
   },
 );

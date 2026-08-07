@@ -1,4 +1,4 @@
-//! Late active-input coverage for the experimental Codex app-server backend.
+//! Late active-input coverage for Codex app-server execution.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
@@ -54,7 +54,7 @@ async fn codex_app_server_backend_rejects_active_input_after_turn_completion()
 
     let payload = common::active_input_payload("late follow-up prompt")?;
     assert!(matches!(
-        controller.handle_control_payload("active-msg-late", &payload),
+        controller.handle_control_payload(&payload),
         ActiveInputControlOutcome::Rejected { diagnostic }
             if diagnostic == "active input is closed"
     ));

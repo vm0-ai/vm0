@@ -2,8 +2,8 @@ import { readFileSync } from "fs";
 import { Command } from "commander";
 import type { SendTeamsMessageBody } from "@vm0/api-contracts/contracts/integrations";
 import chalk from "chalk";
-import { sendTeamsMessage } from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+import { sendTeamsMessage } from "../../../../lib/api/domains/integrations-teams";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
 type TeamsCardInput = NonNullable<SendTeamsMessageBody["card"]>;
 

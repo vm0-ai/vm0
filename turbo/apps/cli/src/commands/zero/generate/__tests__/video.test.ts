@@ -51,18 +51,14 @@ function imageResponse(width: number, height: number) {
 }
 
 function stubBillingStatus(
-  videoGenerationAllowed: boolean | undefined,
+  videoGenerationAllowed: boolean,
   tier = videoGenerationAllowed ? "pro" : "limited-free-1",
 ) {
   return http.get("http://localhost:3000/api/zero/billing/status", () => {
     return HttpResponse.json({
       tier,
-      ...(videoGenerationAllowed === undefined
-        ? {}
-        : {
-            canBuyCredits: videoGenerationAllowed,
-            videoGenerationAllowed,
-          }),
+      canBuyCredits: videoGenerationAllowed,
+      videoGenerationAllowed,
       credits: 0,
       onboardingPaymentPending: false,
       subscriptionStatus: null,
@@ -111,7 +107,7 @@ describe("zero generate video command", () => {
 
   it("should generate a video and print the /f file URL", async () => {
     server.use(
-      stubBillingStatus(undefined, "free"),
+      stubBillingStatus(true),
       http.get(FIRST_FRAME_URL, () => {
         return imageResponse(900, 1600);
       }),
@@ -327,11 +323,14 @@ describe("zero generate video command", () => {
     expect(helpOutput).toContain("dreamina-seedance-2.0-fast");
     expect(helpOutput).toContain("dreamina-seedance-2.0");
     expect(helpOutput).toContain("seedance-1.5-pro");
+    expect(helpOutput).toContain("minimax-h3");
     expect(helpOutput).toContain("veo3.1-fast");
     expect(helpOutput).toContain("kling-v3-4k");
     expect(helpOutput).not.toContain("seedance-1.0-pro");
     expect(helpOutput).toContain("4s-15s");
     expect(helpOutput).toContain("21:9");
+    expect(helpOutput).toContain("768p");
+    expect(helpOutput).toContain("2k");
     expect(helpOutput).toContain("--template");
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--first-frame-image-url");
@@ -372,7 +371,7 @@ describe("zero generate video command", () => {
   it("should stop before generation when the workspace plan blocks video", async () => {
     let generationRequests = 0;
     server.use(
-      stubBillingStatus(undefined, "limited-free-1"),
+      stubBillingStatus(false),
       http.post(VIDEO_URL, () => {
         generationRequests += 1;
         return HttpResponse.json(VIDEO_RESULT);

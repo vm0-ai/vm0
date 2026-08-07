@@ -13,7 +13,7 @@ export function openTeamsClient(): void {
 }
 
 export const teamsConnectStatus$ = computed(
-  async (get, { signal }): Promise<TeamsConnectPageStatus> => {
+  async (get): Promise<TeamsConnectPageStatus> => {
     const params = get(searchParams$);
     const initialStatus = params.get("status");
     const initialError = params.get("error");
@@ -28,14 +28,8 @@ export const teamsConnectStatus$ = computed(
 
     const client = get(zeroClient$)(zeroTeamsConnectContract);
     const [result] = await Promise.allSettled([
-      accept(
-        client.getStatus({
-          fetchOptions: { signal },
-        }),
-        [200],
-      ),
+      accept(client.getStatus(), [200]),
     ]);
-    signal.throwIfAborted();
 
     return result.status === "fulfilled" && result.value.body.isConnected
       ? "success"

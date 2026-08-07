@@ -1,5 +1,4 @@
 import {
-  getProviderRuntimeModel,
   getVm0Vendor,
   MODEL_PROVIDER_TYPES,
 } from "@vm0/api-contracts/contracts/model-providers";
@@ -18,23 +17,29 @@ import { compatibleStoredExecutionContextSchema } from "@vm0/api-contracts/contr
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
-  browserProfiles,
+  browserSessionTabSnapshots,
   browserSessions,
 } from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { hostedSites } from "@vm0/db/schema/hosted-site";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import {
+  chatEventAssetRefs,
+  runUploadedFiles,
+} from "@vm0/db/schema/run-uploaded-file";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, sql, type SQL } from "drizzle-orm";
+import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
-
+import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
+import { nowDate } from "../../lib/time";
 import {
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
@@ -42,18 +47,28 @@ import {
 } from "../../lib/secret-kms-client";
 import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
-import { createDeferredPromise, onRejection } from "../utils";
+import {
+  createDeferredPromise,
+  onRejection,
+  settleIncludingAbort,
+} from "../utils";
+import {
+  acquireVm0ManagedModelKeyFixture,
+  releaseVm0ManagedModelKeyFixture,
+} from "../services/test-vm0-managed-model-key-fixture.service";
+import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
+import { chatAgentRunContextSchemaAvailable } from "../services/chat-agent-run-context-schema.service";
+import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 // Test-only support actions for generic infrastructure fixtures.
 
 const actionBody$ = bodyResultOf(testRuntimeStateContract.action);
 const fakeKmsDataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
-const RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY =
-  "vm0-key-run-lifecycle-bdd-default-model";
+const VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
 const fakeKmsDecryptCallCount = testOverride<number>(() => {
   return 0;
 });
@@ -202,42 +217,100 @@ function fakeSecretKmsClient(): SecretKmsClient {
 
 async function seedVm0ManagedDefaultModelKey(
   db: Db,
+  fixtureId: string,
   signal: AbortSignal,
 ): Promise<string> {
   const selectedModel = MODEL_PROVIDER_TYPES.vm0.defaultModel;
   if (!selectedModel) {
     throw new Error("Expected vm0 to define a default model");
   }
-  return await seedVm0ManagedModelKey(db, selectedModel, signal);
+  return await seedVm0ManagedModelKey(db, fixtureId, selectedModel, signal);
 }
 
 async function seedVm0ManagedModelKey(
   db: Db,
+  fixtureId: string,
   selectedModel: string,
   signal: AbortSignal,
 ): Promise<string> {
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY));
-  signal.throwIfAborted();
-  await db.insert(vm0ApiKeys).values({
-    vendor: getVm0Vendor(selectedModel),
-    model: getProviderRuntimeModel("vm0", selectedModel),
-    apiKey: RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY,
-    label: "run-lifecycle-bdd",
-  });
+  const vendor = getVm0Vendor(selectedModel);
+  await acquireVm0ManagedModelKeyFixture(db, fixtureId, [
+    {
+      vendor,
+      apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
+    },
+  ]);
   signal.throwIfAborted();
   return selectedModel;
 }
 
-async function deleteVm0ManagedDefaultModelKey(
+async function deleteVm0ManagedModelKey(
   db: Db,
+  fixtureId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY));
+  await releaseVm0ManagedModelKeyFixture(db, fixtureId);
   signal.throwIfAborted();
+}
+
+type Vm0ManagedModelKeyAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "seed-vm0-managed-default-model-key"
+      | "seed-vm0-managed-model-key"
+      | "delete-vm0-managed-model-key";
+  }
+>;
+
+function isVm0ManagedModelKeyAction(
+  body: TestRuntimeStateActionBody,
+): body is Vm0ManagedModelKeyAction {
+  return (
+    body.action === "seed-vm0-managed-default-model-key" ||
+    body.action === "seed-vm0-managed-model-key" ||
+    body.action === "delete-vm0-managed-model-key"
+  );
+}
+
+async function vm0ManagedModelKeyActionResponse(
+  db: Db,
+  body: Vm0ManagedModelKeyAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "seed-vm0-managed-default-model-key": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          selected_model: await seedVm0ManagedDefaultModelKey(
+            db,
+            body.fixture_id,
+            signal,
+          ),
+        },
+      };
+    }
+    case "seed-vm0-managed-model-key": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          selected_model: await seedVm0ManagedModelKey(
+            db,
+            body.fixture_id,
+            body.selected_model,
+            signal,
+          ),
+        },
+      };
+    }
+    case "delete-vm0-managed-model-key": {
+      await deleteVm0ManagedModelKey(db, body.fixture_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+  }
 }
 
 async function clearRunApiStart(
@@ -319,6 +392,145 @@ async function clearThreadSessionBinding(
   }
 }
 
+type AutonomyBudgetFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "set-run-autonomy-budget"
+      | "read-run-autonomy-budget"
+      | "set-workflow-automation-autonomy-budget"
+      | "read-workflow-automation-autonomy-state"
+      | "read-latest-workflow-automation-run"
+      | "read-thread-goal-autonomy-budget";
+  }
+>;
+
+function isAutonomyBudgetFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is AutonomyBudgetFixtureAction {
+  return [
+    "set-run-autonomy-budget",
+    "read-run-autonomy-budget",
+    "set-workflow-automation-autonomy-budget",
+    "read-workflow-automation-autonomy-state",
+    "read-latest-workflow-automation-run",
+    "read-thread-goal-autonomy-budget",
+  ].includes(body.action);
+}
+
+async function autonomyBudgetFixtureActionResponse(
+  db: Db,
+  body: AutonomyBudgetFixtureAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "set-run-autonomy-budget": {
+      const [run] = await db
+        .update(zeroRuns)
+        .set({ autonomyBudget: body.autonomy_budget })
+        .where(eq(zeroRuns.id, body.run_id))
+        .returning({ id: zeroRuns.id });
+      signal.throwIfAborted();
+      if (!run) {
+        throw new Error("Expected the autonomy-budget run fixture");
+      }
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-run-autonomy-budget": {
+      const [run] = await db
+        .select({ autonomyBudget: zeroRuns.autonomyBudget })
+        .from(zeroRuns)
+        .where(eq(zeroRuns.id, body.run_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          autonomy_budget: run?.autonomyBudget ?? null,
+        },
+      };
+    }
+    case "set-workflow-automation-autonomy-budget": {
+      const [automation] = await db
+        .update(zeroWorkflowAutomations)
+        .set({ autonomyBudget: body.autonomy_budget })
+        .where(eq(zeroWorkflowAutomations.id, body.automation_id))
+        .returning({ id: zeroWorkflowAutomations.id });
+      signal.throwIfAborted();
+      if (!automation) {
+        throw new Error("Expected the autonomy-budget automation fixture");
+      }
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-workflow-automation-autonomy-state": {
+      const [automation] = await db
+        .select({
+          autonomyBudget: zeroWorkflowAutomations.autonomyBudget,
+          enabled: zeroWorkflowAutomations.enabled,
+          lastRunId: zeroWorkflowAutomations.lastRunId,
+        })
+        .from(zeroWorkflowAutomations)
+        .where(eq(zeroWorkflowAutomations.id, body.automation_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          workflow_automation_state: automation
+            ? {
+                autonomy_budget: automation.autonomyBudget,
+                enabled: automation.enabled,
+                last_run_id: automation.lastRunId,
+              }
+            : null,
+        },
+      };
+    }
+    case "read-latest-workflow-automation-run": {
+      const [run] = await db
+        .select({
+          runId: zeroRuns.id,
+          autonomyBudget: zeroRuns.autonomyBudget,
+        })
+        .from(zeroRuns)
+        .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+        .where(eq(zeroRuns.workflowAutomationId, body.automation_id))
+        .orderBy(desc(agentRuns.createdAt))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          workflow_automation_run: run
+            ? {
+                run_id: run.runId,
+                autonomy_budget: run.autonomyBudget,
+              }
+            : null,
+        },
+      };
+    }
+    case "read-thread-goal-autonomy-budget": {
+      const [goal] = await db
+        .select({ autonomyBudget: threadGoals.autonomyBudget })
+        .from(threadGoals)
+        .where(eq(threadGoals.chatThreadId, body.thread_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          autonomy_budget: goal?.autonomyBudget ?? null,
+        },
+      };
+    }
+  }
+}
+
 async function mutateRunnerJobSecretValueEnvironmentKeys(
   db: Db,
   runId: string,
@@ -362,6 +574,15 @@ async function mutateRunnerJobConnectorPermissionBaseline(
         ${runnerJobQueue.executionContext},
         '{connectorPermissionBaseline}',
         '{"version":2}'::jsonb,
+        true
+      )`;
+      break;
+    }
+    case "capability-mismatch": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline,catalogIdentity,capabilityDigest}',
+        '"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"'::jsonb,
         true
       )`;
       break;
@@ -520,20 +741,50 @@ type ReadRunnerJobStorageStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-runner-job-storage-state" }
 >;
-type AnyStorageStateAction =
+type ReadRunClaimOwnerAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-run-claim-owner" }
+>;
+type ReadBrowserScreenshotSchemaStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-browser-screenshot-schema-state" }
+>;
+type ReadChatAgentRunContextSchemaStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-chat-agent-run-context-schema-state" }
+>;
+type ResetDatabasePoolAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "reset-database-pool" }
+>;
+type PersistenceStateAction =
   | StorageStateAction
   | ReadStorageStateAction
-  | ReadRunnerJobStorageStateAction;
+  | ReadRunnerJobStorageStateAction
+  | ReadRunClaimOwnerAction
+  | ReadBrowserScreenshotSchemaStateAction
+  | ReadChatAgentRunContextSchemaStateAction
+  | ResetDatabasePoolAction;
 
-function isStorageStateAction(
+function isPersistenceStateAction(
   body: TestRuntimeStateActionBody,
-): body is AnyStorageStateAction {
+): body is PersistenceStateAction {
   switch (body.action) {
     case "remove-run-canonical-storage-state":
     case "read-storage-persistence-state": {
       return true;
     }
-    case "read-runner-job-storage-state": {
+    case "read-runner-job-storage-state":
+    case "read-run-claim-owner": {
+      return true;
+    }
+    case "read-browser-screenshot-schema-state": {
+      return true;
+    }
+    case "read-chat-agent-run-context-schema-state": {
+      return true;
+    }
+    case "reset-database-pool": {
       return true;
     }
     default: {
@@ -551,9 +802,9 @@ async function mutateStorageState(
   signal.throwIfAborted();
 }
 
-async function storageStateActionResponse(
+async function persistenceStateActionResponse(
   db: Db,
-  body: AnyStorageStateAction,
+  body: PersistenceStateAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
@@ -587,11 +838,70 @@ async function storageStateActionResponse(
         },
       };
     }
+    case "read-run-claim-owner": {
+      return await readRunClaimOwnerActionResponse(db, body, signal);
+    }
+    case "read-browser-screenshot-schema-state": {
+      const available = await browserScreenshotSchemaAvailable(db);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          browser_screenshot_schema_available: available,
+        },
+      };
+    }
+    case "read-chat-agent-run-context-schema-state": {
+      const available = await chatAgentRunContextSchemaAvailable(db);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          chat_agent_run_context_schema_available: available,
+        },
+      };
+    }
+    case "reset-database-pool": {
+      await closeDbPool();
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
     case "remove-run-canonical-storage-state": {
       await mutateStorageState(db, body, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
   }
+}
+
+async function readRunClaimOwnerActionResponse(
+  db: Db,
+  body: ReadRunClaimOwnerAction,
+  signal: AbortSignal,
+) {
+  const [run] = await db
+    .select({
+      runnerId: agentRuns.runnerId,
+      heartbeatGeneration: agentRuns.runnerHeartbeatGeneration,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, body.run_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    throw new Error("Agent run not found");
+  }
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      runner_claim_owner: {
+        runner_id: run.runnerId,
+        heartbeat_generation: run.heartbeatGeneration,
+      },
+    },
+  };
 }
 
 type TimingStateAction = Extract<
@@ -706,6 +1016,113 @@ async function insertLegacyArtifactCatalogFile(
   };
 }
 
+type PreviousApiHostedSiteAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "insert-hosted-site-as-previous-api" }
+>;
+
+async function insertHostedSiteAsPreviousApi(
+  db: Db,
+  body: PreviousApiHostedSiteAction,
+  signal: AbortSignal,
+) {
+  // The previous API writes only the organization-level slug and originating
+  // run. Migration 0742 derives the canonical requested slug and chat owner.
+  const [site] = await db
+    .insert(hostedSites)
+    .values({
+      orgId: body.org_id,
+      userId: body.user_id,
+      slug: body.site,
+      publicSlug: body.public_slug,
+      createdFromRunId: body.run_id,
+    })
+    .returning({ id: hostedSites.id });
+  signal.throwIfAborted();
+  if (!site) {
+    throw new Error("Failed to insert a previous API hosted site");
+  }
+  return {
+    status: 200 as const,
+    body: { ok: true as const, hosted_site_id: site.id },
+  };
+}
+
+type PreviousApiHostedDeploymentAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "insert-hosted-deployment-as-previous-api" }
+>;
+
+function isHostedDeploymentScopeConflict(error: unknown): boolean {
+  const databaseError =
+    error instanceof Error && error.cause instanceof Error
+      ? error.cause
+      : error;
+  return (
+    databaseError instanceof Error &&
+    "code" in databaseError &&
+    databaseError.code === "23514" &&
+    databaseError.message.includes("Hosted site belongs to a different chat")
+  );
+}
+
+async function writeHostedDeploymentAsPreviousApi(
+  db: Db,
+  body: PreviousApiHostedDeploymentAction,
+): Promise<void> {
+  await db.execute(sql`
+      INSERT INTO "hosted_deployments" (
+        "site_id",
+        "org_id",
+        "user_id",
+        "run_id",
+        "status",
+        "r2_prefix",
+        "manifest",
+        "manifest_hash",
+        "content_hash",
+        "file_count",
+        "size_bytes",
+        "url"
+      )
+      VALUES (
+        ${body.hosted_site_id},
+        ${body.org_id},
+        ${body.user_id},
+        ${body.run_id},
+        'uploading',
+        'previous-api-scope-fixture',
+        '{}'::jsonb,
+        repeat('0', 64),
+        repeat('0', 64),
+        0,
+        0,
+        'https://previous-api-scope-fixture.invalid'
+      )
+    `);
+}
+
+async function insertHostedDeploymentAsPreviousApi(
+  db: Db,
+  body: PreviousApiHostedDeploymentAction,
+  signal: AbortSignal,
+) {
+  const inserted = await settleIncludingAbort(
+    writeHostedDeploymentAsPreviousApi(db, body),
+  );
+  signal.throwIfAborted();
+  if (!inserted.ok && !isHostedDeploymentScopeConflict(inserted.error)) {
+    throw inserted.error;
+  }
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      hosted_deployment_scope_blocked: !inserted.ok,
+    },
+  };
+}
+
 type PreviousApiComputerAccessAction = Extract<
   TestRuntimeStateActionBody,
   { action: "set-computer-use-host-as-previous-api" }
@@ -736,6 +1153,54 @@ type PreviousApiRunnerJobContextProfileAction = Extract<
   { action: "set-runner-job-context-profile-as-previous-api" }
 >;
 
+type ChatEventAssetRefFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-chat-event-asset-refs" | "insert-chat-event-asset-ref" }
+>;
+
+type PreviousApiBrowserTabSnapshotAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-browser-tab-snapshot-as-previous-api" }
+>;
+
+async function setBrowserTabSnapshotAsPreviousApi(
+  db: Db,
+  body: PreviousApiBrowserTabSnapshotAction,
+  signal: AbortSignal,
+) {
+  // Older snapshots may already contain duplicate URLs. No current production
+  // API can reproduce that persisted input after capture-side deduplication.
+  const [browser] = await db
+    .select({ userId: browserSessions.userId })
+    .from(browserSessions)
+    .where(eq(browserSessions.chatThreadId, body.thread_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!browser) {
+    throw new Error("Expected a managed browser for previous API tab snapshot");
+  }
+  const encryptedTabUrls = await encryptPersistentSecretValue(
+    JSON.stringify(body.tab_urls),
+    { userId: browser.userId },
+  );
+  signal.throwIfAborted();
+  await db
+    .insert(browserSessionTabSnapshots)
+    .values({
+      chatThreadId: body.thread_id,
+      encryptedTabUrls,
+    })
+    .onConflictDoUpdate({
+      target: browserSessionTabSnapshots.chatThreadId,
+      set: {
+        encryptedTabUrls,
+        updatedAt: nowDate(),
+      },
+    });
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 async function setRunnerJobContextProfileAsPreviousApi(
   db: Db,
   body: PreviousApiRunnerJobContextProfileAction,
@@ -762,78 +1227,35 @@ async function setRunnerJobContextProfileAsPreviousApi(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
-type PreviousApiBrowserProfileAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "read-browser-profile-as-previous-api" }
->;
-
-async function readBrowserProfileAsPreviousApi(
-  db: Db,
-  body: PreviousApiBrowserProfileAction,
-  signal: AbortSignal,
-) {
-  // Keep this query limited to the columns and owner checks understood by the
-  // API version immediately before browser_thread_profiles existed.
-  const [browser] = await db
-    .select({ browserProfileId: browserSessions.browserProfileId })
-    .from(browserSessions)
-    .where(
-      and(
-        eq(browserSessions.id, body.browser_id),
-        eq(browserSessions.orgId, body.org_id),
-        eq(browserSessions.userId, body.user_id),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  if (!browser) {
-    throw new Error("Expected a browser session for previous API read");
-  }
-  const [profile] = await db
-    .select({
-      id: browserProfiles.id,
-      providerProfileId: browserProfiles.providerProfileId,
-    })
-    .from(browserProfiles)
-    .where(
-      and(
-        eq(browserProfiles.id, browser.browserProfileId),
-        eq(browserProfiles.orgId, body.org_id),
-        eq(browserProfiles.userId, body.user_id),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  if (!profile) {
-    throw new Error("Expected a browser profile for previous API read");
-  }
-  return {
-    status: 200 as const,
-    body: {
-      ok: true as const,
-      previous_api_browser_profile: {
-        browser_profile_id: profile.id,
-        provider_profile_id: profile.providerProfileId,
-      },
-    },
-  };
-}
-
 type CompatibilityFixtureAction =
+  | AutonomyBudgetFixtureAction
   | LegacyArtifactCatalogFileAction
+  | PreviousApiHostedSiteAction
+  | PreviousApiHostedDeploymentAction
   | PreviousApiComputerAccessAction
+  | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
-  | PreviousApiBrowserProfileAction
+  | ChatEventAssetRefFixtureAction
   | ConnectorPermissionBaselineMutationAction;
 
 function isCompatibilityFixtureAction(
   body: TestRuntimeStateActionBody,
 ): body is CompatibilityFixtureAction {
   return [
+    "set-run-autonomy-budget",
+    "read-run-autonomy-budget",
+    "set-workflow-automation-autonomy-budget",
+    "read-workflow-automation-autonomy-state",
+    "read-latest-workflow-automation-run",
+    "read-thread-goal-autonomy-budget",
     "insert-legacy-artifact-catalog-file",
+    "insert-hosted-site-as-previous-api",
+    "insert-hosted-deployment-as-previous-api",
     "set-computer-use-host-as-previous-api",
+    "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
-    "read-browser-profile-as-previous-api",
+    "read-chat-event-asset-refs",
+    "insert-chat-event-asset-ref",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
 }
@@ -843,18 +1265,53 @@ async function compatibilityFixtureActionResponse(
   body: CompatibilityFixtureAction,
   signal: AbortSignal,
 ) {
+  if (isAutonomyBudgetFixtureAction(body)) {
+    return await autonomyBudgetFixtureActionResponse(db, body, signal);
+  }
   switch (body.action) {
     case "insert-legacy-artifact-catalog-file": {
       return await insertLegacyArtifactCatalogFile(db, body, signal);
     }
+    case "insert-hosted-site-as-previous-api": {
+      return await insertHostedSiteAsPreviousApi(db, body, signal);
+    }
+    case "insert-hosted-deployment-as-previous-api": {
+      return await insertHostedDeploymentAsPreviousApi(db, body, signal);
+    }
     case "set-computer-use-host-as-previous-api": {
       return await setComputerUseHostAsPreviousApi(db, body, signal);
+    }
+    case "set-browser-tab-snapshot-as-previous-api": {
+      return await setBrowserTabSnapshotAsPreviousApi(db, body, signal);
     }
     case "set-runner-job-context-profile-as-previous-api": {
       return await setRunnerJobContextProfileAsPreviousApi(db, body, signal);
     }
-    case "read-browser-profile-as-previous-api": {
-      return await readBrowserProfileAsPreviousApi(db, body, signal);
+    case "read-chat-event-asset-refs": {
+      const rows = await db
+        .select({ assetId: chatEventAssetRefs.assetId })
+        .from(chatEventAssetRefs)
+        .where(eq(chatEventAssetRefs.chatEventId, body.event_id))
+        .orderBy(chatEventAssetRefs.position);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          chat_event_asset_ref_ids: rows.map((row) => {
+            return row.assetId;
+          }),
+        },
+      };
+    }
+    case "insert-chat-event-asset-ref": {
+      await db.insert(chatEventAssetRefs).values({
+        chatEventId: body.event_id,
+        assetId: body.asset_id,
+        position: body.position,
+      });
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
     }
     case "mutate-runner-job-connector-permission-baseline": {
       await mutateRunnerJobConnectorPermissionBaseline(db, body, signal);
@@ -877,8 +1334,8 @@ const postRuntimeStateAction$ = command(
 
     const body = bodyResult.data;
     const db = set(writeDb$);
-    if (isStorageStateAction(body)) {
-      return await storageStateActionResponse(db, body, signal);
+    if (isPersistenceStateAction(body)) {
+      return await persistenceStateActionResponse(db, body, signal);
     }
     if (isTimingStateAction(body)) {
       return await timingStateActionResponse(db, body, signal);
@@ -889,33 +1346,10 @@ const postRuntimeStateAction$ = command(
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);
     }
+    if (isVm0ManagedModelKeyAction(body)) {
+      return await vm0ManagedModelKeyActionResponse(db, body, signal);
+    }
     switch (body.action) {
-      case "seed-vm0-managed-default-model-key": {
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            selected_model: await seedVm0ManagedDefaultModelKey(db, signal),
-          },
-        };
-      }
-      case "seed-vm0-managed-model-key": {
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            selected_model: await seedVm0ManagedModelKey(
-              db,
-              body.selected_model,
-              signal,
-            ),
-          },
-        };
-      }
-      case "delete-vm0-managed-default-model-key": {
-        await deleteVm0ManagedDefaultModelKey(db, signal);
-        return { status: 200 as const, body: { ok: true as const } };
-      }
       case "enable-fake-kms": {
         fakeKmsDecryptCallCount.set(0);
         setSecretKmsClientForTests(fakeSecretKmsClient());

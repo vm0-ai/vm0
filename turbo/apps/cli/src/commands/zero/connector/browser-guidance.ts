@@ -1,12 +1,12 @@
-const BROWSER_CONNECTOR_REF = "browser";
+const BROWSER_CONNECTOR_SLUG = "browser";
 const BROWSER_WRITE_CAPABILITY = "browser:write";
 
 export function isBrowserPermissionTarget(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly permission: string;
 }): boolean {
   return (
-    args.connectorRef === BROWSER_CONNECTOR_REF ||
+    args.connectorSlug === BROWSER_CONNECTOR_SLUG ||
     args.permission === BROWSER_WRITE_CAPABILITY
   );
 }

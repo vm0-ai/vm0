@@ -1,1 +1,0 @@
-CREATE INDEX "runner_job_queue_group_profile_idx" ON "runner_job_queue" USING btree ("runner_group","profile");

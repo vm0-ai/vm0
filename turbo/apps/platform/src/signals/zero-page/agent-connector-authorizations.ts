@@ -1,13 +1,13 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { withCleanup } from "../utils.ts";
 
-export interface AgentConnectorAuthorizations {
+interface AgentConnectorAuthorizations {
   readonly agentId: string;
-  readonly enabledTypes: readonly ConnectorRef[];
+  readonly enabledConnectorSlugs: readonly ConnectorSlug[];
 }
 
 type MissingPolicy = "throw" | "null";
@@ -45,21 +45,36 @@ interface AgentConnectorAuthorizationRequestBroker {
   }): Promise<AgentConnectorAuthorizations | null>;
 }
 
+interface ResolvedAgentConnectorAuthorizationRequest {
+  readonly key: string;
+  readonly value: AgentConnectorAuthorizations | null;
+}
+
 function createAgentConnectorAuthorizationRequestBroker(): AgentConnectorAuthorizationRequestBroker {
   const pendingRequestsByClient = new WeakMap<
     ZeroClientFactory,
     Map<string, Promise<AgentConnectorAuthorizations | null>>
   >();
+  const latestRequestedKeyByClient = new WeakMap<ZeroClientFactory, string>();
+  const latestResolvedByClient = new WeakMap<
+    ZeroClientFactory,
+    ResolvedAgentConnectorAuthorizationRequest
+  >();
 
   return {
     load(params) {
+      const key = pendingRequestKey(params);
+      latestRequestedKeyByClient.set(params.createClient, key);
+      const resolved = latestResolvedByClient.get(params.createClient);
+      if (resolved?.key === key) {
+        return Promise.resolve(resolved.value);
+      }
       let pendingRequests = pendingRequestsByClient.get(params.createClient);
       if (!pendingRequests) {
         pendingRequests = new Map();
         pendingRequestsByClient.set(params.createClient, pendingRequests);
       }
 
-      const key = pendingRequestKey(params);
       const pendingRequest = pendingRequests.get(key);
       if (pendingRequest) {
         return pendingRequest;
@@ -77,11 +92,18 @@ function createAgentConnectorAuthorizationRequestBroker(): AgentConnectorAuthori
         }
         return {
           agentId: params.agentId,
-          enabledTypes: result.body.enabledTypes,
+          enabledConnectorSlugs: result.body.enabledConnectorSlugs,
         };
       };
 
-      const sharedRequest = withCleanup(load(), () => {
+      const loadAndRemember = async () => {
+        const value = await load();
+        if (latestRequestedKeyByClient.get(params.createClient) === key) {
+          latestResolvedByClient.set(params.createClient, { key, value });
+        }
+        return value;
+      };
+      const sharedRequest = withCleanup(loadAndRemember(), () => {
         pendingRequests.delete(key);
         if (pendingRequests.size === 0) {
           pendingRequestsByClient.delete(params.createClient);
@@ -140,12 +162,12 @@ export function agentConnectorAuthorizations(params: {
 
 export function isAgentConnectorAuthorized(params: {
   readonly agentId: string;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
 }): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const authorizations = await get(
       agentConnectorAuthorizations({ agentId: params.agentId }),
     );
-    return authorizations.enabledTypes.includes(params.connectorRef);
+    return authorizations.enabledConnectorSlugs.includes(params.connectorSlug);
   });
 }

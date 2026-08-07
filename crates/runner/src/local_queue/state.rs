@@ -13,13 +13,13 @@ pub(crate) struct LocalDiscoveredJob {
     pub(crate) run_id: RunId,
     pub(crate) profile_name: String,
     pub(crate) job_path: PathBuf,
-    pub(crate) cli_agent_session_id: Option<String>,
+    pub(crate) reuse_key: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
 struct LocalDiscoveryMetadata {
     #[serde(default)]
-    session_id: Option<String>,
+    reuse_key: Option<String>,
 }
 
 pub(crate) enum LocalClaimResult {
@@ -188,18 +188,18 @@ impl LocalQueue {
                 if self.discovery_candidate_ineligible(&candidate, snapshot.as_ref()) {
                     continue;
                 }
-                let cli_agent_session_id =
+                let metadata =
                     super::read_private_file(&candidate.path, "local job discovery metadata")
                         .ok()
                         .and_then(|bytes| {
                             serde_json::from_slice::<LocalDiscoveryMetadata>(&bytes).ok()
-                        })
-                        .and_then(|metadata| metadata.session_id);
+                        });
+                let reuse_key = metadata.and_then(|metadata| metadata.reuse_key);
                 return Some(LocalDiscoveredJob {
                     run_id: candidate.run_id,
                     profile_name: profile.clone(),
                     job_path: candidate.path,
-                    cli_agent_session_id,
+                    reuse_key,
                 });
             }
         }
@@ -501,12 +501,6 @@ impl LocalQueue {
                 "local active input sequence must be greater than zero",
             ));
         }
-        if entry.message_id.is_empty() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "local active input message id must not be empty",
-            ));
-        }
         if entry.text.is_empty() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -598,11 +592,7 @@ impl LocalQueue {
             let Ok(input) = serde_json::from_slice::<ActiveInputEntry>(&bytes) else {
                 continue;
             };
-            if input.run_id != run_id
-                || input.sequence != sequence
-                || input.message_id.is_empty()
-                || input.text.is_empty()
-            {
+            if input.run_id != run_id || input.sequence != sequence || input.text.is_empty() {
                 continue;
             }
             parsed.push(input);
@@ -1063,6 +1053,7 @@ mod tests {
             secret_environment: None,
             user_timezone: None,
             profile: Some(profile.to_owned()),
+            reuse_key: None,
             session_id: Some("session-123".into()),
             feature_flags: None,
             active_input: None,
@@ -1150,13 +1141,11 @@ mod tests {
         let entry_10 = ActiveInputEntry {
             run_id,
             sequence: 10,
-            message_id: "msg-10".to_string(),
             text: "ten".to_string(),
         };
         let entry_2 = ActiveInputEntry {
             run_id,
             sequence: 2,
-            message_id: "msg-2".to_string(),
             text: "two".to_string(),
         };
 
@@ -1188,7 +1177,6 @@ mod tests {
         let valid = ActiveInputEntry {
             run_id,
             sequence: 1,
-            message_id: "msg-1".to_string(),
             text: "one".to_string(),
         };
         queue.write_active_input_sync(&valid).unwrap();
@@ -1199,7 +1187,6 @@ mod tests {
             serde_json::to_vec(&ActiveInputEntry {
                 run_id: other_run_id,
                 sequence: 3,
-                message_id: "msg-3".to_string(),
                 text: "wrong run".to_string(),
             })
             .unwrap(),
@@ -1210,7 +1197,6 @@ mod tests {
             serde_json::to_vec(&ActiveInputEntry {
                 run_id,
                 sequence: 5,
-                message_id: "msg-5".to_string(),
                 text: "wrong sequence".to_string(),
             })
             .unwrap(),
@@ -1221,8 +1207,7 @@ mod tests {
             serde_json::to_vec(&ActiveInputEntry {
                 run_id,
                 sequence: 5,
-                message_id: String::new(),
-                text: "empty message id".to_string(),
+                text: String::new(),
             })
             .unwrap(),
         )
@@ -1243,13 +1228,11 @@ mod tests {
         let entry_1 = ActiveInputEntry {
             run_id,
             sequence: 1,
-            message_id: "msg-1".to_string(),
             text: "one".to_string(),
         };
         let entry_3 = ActiveInputEntry {
             run_id,
             sequence: 3,
-            message_id: "msg-3".to_string(),
             text: "three".to_string(),
         };
         queue.write_active_input_sync(&entry_1).unwrap();
@@ -1270,13 +1253,11 @@ mod tests {
         let original = ActiveInputEntry {
             run_id,
             sequence: 1,
-            message_id: "msg-1".to_string(),
             text: "one".to_string(),
         };
         let duplicate = ActiveInputEntry {
             run_id,
             sequence: 1,
-            message_id: "msg-duplicate".to_string(),
             text: "duplicate".to_string(),
         };
 
@@ -1299,25 +1280,7 @@ mod tests {
             .write_active_input_sync(&ActiveInputEntry {
                 run_id: RunId::new_v4(),
                 sequence: 0,
-                message_id: "msg-0".to_string(),
                 text: "zero".to_string(),
-            })
-            .unwrap_err();
-
-        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
-    }
-
-    #[test]
-    fn active_input_write_rejects_empty_message_id() {
-        let dir = tempfile::tempdir().unwrap();
-        let queue = LocalQueue::new(dir.path().to_path_buf());
-
-        let error = queue
-            .write_active_input_sync(&ActiveInputEntry {
-                run_id: RunId::new_v4(),
-                sequence: 1,
-                message_id: String::new(),
-                text: "one".to_string(),
             })
             .unwrap_err();
 
@@ -1334,7 +1297,6 @@ mod tests {
             .write_active_input_sync(&ActiveInputEntry {
                 run_id,
                 sequence: 1,
-                message_id: "msg-1".to_string(),
                 text: "one".to_string(),
             })
             .unwrap();
@@ -1357,7 +1319,6 @@ mod tests {
             .write_active_input_sync(&ActiveInputEntry {
                 run_id,
                 sequence: 1,
-                message_id: "msg-1".to_string(),
                 text: "one".to_string(),
             })
             .unwrap();

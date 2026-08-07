@@ -1,0 +1,229 @@
+import type { Command, Computed } from "ccstate";
+import type {
+  ChatFollowupsEvent,
+  ChatPromptEvent,
+  GenerationTemplateRequest,
+  ChatThreadArtifactRun,
+  ChatThreadDraft,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
+import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
+import type { BodyRenderBlock } from "./parse-body-blocks.ts";
+import type { ChatEventGroup } from "./chat-event.ts";
+import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
+import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
+import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
+import type { MailDraftSignals } from "./mail-draft.ts";
+import type { BrowserSessionSignals } from "./browser-session-block.ts";
+import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
+import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
+import type { ArtifactSignals } from "./artifact-card-signals.ts";
+import type {
+  createChatThreadScrollSignals,
+  ThreadScrollPosition,
+} from "./chat-thread-scroll.ts";
+import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
+import type { ComposerSignals } from "../zero-page/composer-signals.ts";
+import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
+import type { ChatThreadSharingSignals } from "./chat-thread-sharing.ts";
+
+type RecommendedFollowup = NonNullable<
+  ChatFollowupsEvent["recommendedFollowups"]
+>[number];
+
+export interface RecommendedFollowupSource {
+  readonly eventId: string;
+  readonly followups: readonly RecommendedFollowup[];
+}
+
+export type ThinkingIndicatorMode =
+  | "waiting"
+  | "waiting-queued"
+  | "running"
+  | "running-queued"
+  | "finished"
+  | null;
+
+export interface EventImageGroupProjection {
+  readonly role: ChatEventGroup["role"];
+  readonly events: readonly {
+    readonly attachFiles?: ChatPromptEvent["attachFiles"];
+    readonly blocks: readonly BodyRenderBlock[];
+  }[];
+}
+
+/**
+ * Message rendering and interaction signals owned by a chat thread.
+ *
+ * These are derived from chat events but are not part of the chat event data
+ * source consumed by other features such as the composer.
+ */
+export interface MessageListSignals {
+  readonly setup$: Command<Promise<void>, [AbortSignal]>;
+  readonly scroll: ReturnType<typeof createChatThreadScrollSignals>;
+  readonly sidebar: ThreadSidebarSignals;
+  readonly latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  readonly latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
+  readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
+  readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
+  readonly chatSkeletonVisible$: Computed<boolean>;
+  readonly assistantErrorRecovery$: Computed<
+    Promise<AssistantErrorRecovery | null>
+  >;
+  readonly retryAssistantError$: Command<Promise<boolean>, [AbortSignal]>;
+  readonly resetCodexSubscriptionAndRetry$: Command<
+    Promise<boolean>,
+    [AbortSignal]
+  >;
+  readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
+  readonly artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
+  readonly agentReferenceSignalsForId: (
+    agentId: string,
+  ) => AgentReferenceSignals;
+  readonly mailDraftCardSignalsById$: Computed<
+    ReadonlyMap<string, MailDraftSignals>
+  >;
+  readonly browserSessionSignals: BrowserSessionSignals;
+  readonly subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
+  readonly hasEvents$: Computed<Promise<boolean>>;
+  readonly thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
+  readonly thinkingEventId$: Computed<Promise<string | null>>;
+  readonly thinkingText$: Computed<Promise<string | null>>;
+  readonly recommendedFollowupSource$: Computed<
+    Promise<RecommendedFollowupSource | null>
+  >;
+  readonly historyBackfillPending$: Computed<boolean>;
+  readonly donePhrase$: Computed<Promise<string>>;
+  readonly loadMoreRenderedChatGroups$: Command<
+    Promise<boolean>,
+    [AbortSignal]
+  >;
+  readonly resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
+  readonly artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
+  readonly reloadArtifacts$: Command<void, []>;
+}
+
+export interface SendMessageOptions {
+  readonly revokesEventId?: string;
+  readonly includeDraftAttachments?: boolean;
+  readonly computerUseHostId?: string | null;
+  readonly cloudBrowserEnabled?: boolean;
+  readonly generationTemplate?: GenerationTemplateRequest;
+  readonly editorDocument?: EditorDocumentSnapshot;
+}
+
+export interface QueueMessageOptions {
+  readonly computerUseHostId: string | null | undefined;
+  readonly cloudBrowserEnabled: boolean | undefined;
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly editorDocument: EditorDocumentSnapshot;
+}
+
+export interface ChatPanelSignals {
+  readonly threadId: string;
+  /** Unique to this mounted chat panel lifetime. */
+  readonly lifecycleId: string;
+  /** Aborts when this chat panel is replaced or its page is left. */
+  readonly signal: AbortSignal;
+  // -- Data signals ----------------------------------------------------------
+  readonly threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
+  readonly threadMeta$: Computed<ThreadMeta | null>;
+  readonly threadTitle$: Computed<string | null>;
+  readonly threadTitleEmoji$: Computed<string | null>;
+  readonly threadTitleText$: Computed<string>;
+  readonly threadSettledInServer$: Computed<boolean>;
+  readonly assistantErrorRecovery$: Computed<
+    Promise<AssistantErrorRecovery | null>
+  >;
+  readonly retryAssistantError$: Command<Promise<boolean>, [AbortSignal]>;
+  readonly resetCodexSubscriptionAndRetry$: Command<
+    Promise<boolean>,
+    [AbortSignal]
+  >;
+  readonly scrollContainerOnRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  readonly scrollContentOnRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
+  readonly scrollToBottom$: Command<void, []>;
+  readonly scrollToTop$: Command<void, []>;
+  readonly containerEl$: Computed<HTMLElement | null>;
+  readonly setContainerRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  readonly setMainContainerRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  // True when the event list is scrolled away from the bottom - drives the
+  // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
+  readonly awayFromBottom$: Computed<boolean>;
+  readonly composer: ComposerSignals;
+  readonly feedback: ChatThreadFeedbackSignals;
+  readonly sharing: ChatThreadSharingSignals;
+  // -- Agent info (derived from threadMeta$.agentId) ------------------------
+  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
+  readonly agentId$: Computed<string | null>;
+  readonly agentDisplayName$: Computed<Promise<string | null>>;
+  readonly agentPinned$: Computed<Promise<boolean | null>>;
+  // -- Thread-owned automation resources -----------------------------------
+  readonly headerAutomations: HeaderAutomationSignals;
+  // -- Thread-owned utility sidebar -----------------------------------------
+  readonly sidebar: ThreadSidebarSignals;
+  // -- Per-thread UI state --------------------------------------------------
+  readonly timelineExpandedIds$: Computed<Set<string>>;
+  readonly toggleTimelineExpanded$: Command<void, [string]>;
+  readonly copiedEventId$: Computed<string | null>;
+  readonly copyEvent$: Command<
+    Promise<void>,
+    [string, ChatClipboardPayload, AbortSignal]
+  >;
+  // -- Paged events (sole rendering path) ----------------------------------
+  readonly latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  readonly latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
+  readonly chatSkeletonVisible$: Computed<boolean>;
+  readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
+  readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
+  readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
+  readonly artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
+  readonly agentReferenceSignalsForId: (
+    agentId: string,
+  ) => AgentReferenceSignals;
+  readonly mailDraftCardSignalsById$: Computed<
+    ReadonlyMap<string, MailDraftSignals>
+  >;
+  readonly browserSessionSignals: BrowserSessionSignals;
+  readonly hasEvents$: Computed<Promise<boolean>>;
+  readonly thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
+  readonly thinkingEventId$: Computed<Promise<string | null>>;
+  readonly thinkingText$: Computed<Promise<string | null>>;
+  readonly recommendedFollowupSource$: Computed<
+    Promise<RecommendedFollowupSource | null>
+  >;
+  readonly historyBackfillPending$: Computed<boolean>;
+  readonly loadMoreRenderedChatGroups$: Command<
+    Promise<boolean>,
+    [AbortSignal]
+  >;
+  readonly resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
+  readonly subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
+  // -- Thinking indicator ---------------------------------------------------
+  readonly blockColors$: Computed<[string, string, string]>;
+  readonly thinkingPhrase$: Computed<string>;
+  readonly donePhrase$: Computed<Promise<string>>;
+  readonly displayedThinkingText$: Computed<Promise<string>>;
+  readonly thinkingTextFadingOut$: Computed<Promise<boolean>>;
+  readonly setThinkingIndicatorTextRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  // -- Artifacts ------------------------------------------------------------
+  readonly artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
+  readonly reloadArtifacts$: Command<void, []>;
+}

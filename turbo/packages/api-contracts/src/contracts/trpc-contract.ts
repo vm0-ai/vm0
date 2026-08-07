@@ -264,9 +264,7 @@ export type InitClientReturn<
   TArgs,
 > = TArgs extends unknown
   ? {
-      readonly [Key in keyof TContract]: TContract[Key] extends AppRoute
-        ? ClientMethod<TContract[Key]>
-        : never;
+      readonly [Key in keyof TContract]: ClientMethod<TContract[Key]>;
     }
   : never;
 
@@ -384,6 +382,25 @@ type RouterFromSpec<TSpec extends Record<string, AppRouteSpec>> = {
   readonly [Key in keyof TSpec]: RouteFromSpec<TSpec[Key]>;
 };
 
+function mapRecordValues<
+  TInput extends object,
+  TOutput extends { readonly [Key in keyof TInput]: unknown },
+>(
+  input: TInput,
+  mapValue: <Key extends keyof TInput>(
+    key: Key,
+    value: TInput[Key],
+  ) => TOutput[Key],
+): TOutput {
+  const output: Partial<{
+    -readonly [Key in keyof TOutput]: TOutput[Key];
+  }> = {};
+  for (const key of Object.keys(input) as (keyof TInput)[]) {
+    output[key] = mapValue(key, input[key]);
+  }
+  return output as TOutput;
+}
+
 export function initContract(): {
   readonly router: <TSpec extends Record<string, AppRouteSpec>>(
     spec: TSpec,
@@ -396,12 +413,12 @@ export function initContract(): {
 } {
   return {
     router: (spec) => {
-      const router = Object.fromEntries(
-        Object.entries(spec).map(([name, route]) => {
-          return [name, { ...route, procedure: createProcedure(route) }];
-        }),
+      return mapRecordValues<typeof spec, RouterFromSpec<typeof spec>>(
+        spec,
+        (_name, route) => {
+          return { ...route, procedure: createProcedure(route) };
+        },
       );
-      return router as unknown as RouterFromSpec<typeof spec>;
     },
     noBody: () => {
       return { [noBodySymbol]: true };
@@ -543,61 +560,66 @@ function responseStatusIsKnown(route: AppRoute, status: number): boolean {
   return Object.hasOwn(route.responses, status);
 }
 
+function createClientMethod<R extends AppRoute>(
+  route: R,
+  config: InitClientArgs,
+): ClientMethod<R> {
+  const callRoute = async (input?: ClientInferRequest<R>) => {
+    const requestInput =
+      typeof input === "object" && input !== null
+        ? (input as {
+            readonly params?: unknown;
+            readonly query?: unknown;
+            readonly body?: unknown;
+            readonly headers?: unknown;
+            readonly extraHeaders?: Record<string, string>;
+            readonly fetchOptions?: RequestInit;
+          })
+        : {};
+    const path = applyPathParams(route.path, requestInput.params);
+    const url = new URL(path, config.baseUrl);
+    appendQuery(url, requestInput.query);
+    const body = createRequestBody(requestInput.body);
+    const headers = mergeHeaders(config, requestInput, body.contentType);
+    const fetcher = config.api ?? trpcRestFetchApi;
+    const result = await fetcher({
+      path: url.toString(),
+      method: route.method,
+      headers,
+      body: body.body,
+      route,
+      fetchOptions: requestInput.fetchOptions,
+    });
+
+    if (
+      config.throwOnUnknownStatus &&
+      !responseStatusIsKnown(route, result.status)
+    ) {
+      throw new Error(
+        `Unknown response status ${result.status} for ${route.method} ${route.path}`,
+      );
+    }
+
+    const response = config.validateResponse
+      ? validateResponse({
+          appRoute: route,
+          response: result,
+        })
+      : result;
+    return response as ClientInferResponses<R>;
+  };
+
+  return callRoute as ClientMethod<R>;
+}
+
 export function initClient<TContract extends AppRouter>(
   contract: TContract,
   config: InitClientArgs,
 ): InitClientReturn<TContract, InitClientArgs> {
-  const client = Object.fromEntries(
-    Object.entries(contract).map(([name, route]) => {
-      const callRoute = async (input?: unknown) => {
-        const requestInput =
-          typeof input === "object" && input !== null
-            ? (input as {
-                readonly params?: unknown;
-                readonly query?: unknown;
-                readonly body?: unknown;
-                readonly headers?: unknown;
-                readonly extraHeaders?: Record<string, string>;
-                readonly fetchOptions?: RequestInit;
-              })
-            : {};
-        const path = applyPathParams(route.path, requestInput.params);
-        const url = new URL(path, config.baseUrl);
-        appendQuery(url, requestInput.query);
-        const body = createRequestBody(requestInput.body);
-        const headers = mergeHeaders(config, requestInput, body.contentType);
-        const fetcher = config.api ?? trpcRestFetchApi;
-        const result = await fetcher({
-          path: url.toString(),
-          method: route.method,
-          headers,
-          body: body.body,
-          route,
-          fetchOptions: requestInput.fetchOptions,
-        });
-
-        if (
-          config.throwOnUnknownStatus &&
-          !responseStatusIsKnown(route, result.status)
-        ) {
-          throw new Error(
-            `Unknown response status ${result.status} for ${route.method} ${route.path}`,
-          );
-        }
-
-        if (config.validateResponse) {
-          return validateResponse({
-            appRoute: route,
-            response: result,
-          });
-        }
-
-        return result;
-      };
-
-      return [name, callRoute];
-    }),
-  );
-
-  return client as unknown as InitClientReturn<TContract, InitClientArgs>;
+  return mapRecordValues<
+    TContract,
+    InitClientReturn<TContract, InitClientArgs>
+  >(contract, (_name, route) => {
+    return createClientMethod(route, config);
+  });
 }

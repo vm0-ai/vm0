@@ -3,9 +3,13 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { desktopUpdateRoutes } from "../desktop-updates";
+
+const TEST_APP_ROUTES = Object.freeze([...desktopUpdateRoutes]);
 
 const context = testContext();
 const DESKTOP_UPDATE_MANIFEST_URL =
@@ -29,12 +33,17 @@ interface DesktopUpdateManifest {
 }
 
 function client() {
-  return setupApp({ context })(desktopUpdatesContract);
+  return setupApp({ context, routes: desktopUpdateRoutes })(
+    desktopUpdatesContract,
+  );
 }
 
 function appRequest(path: string): Promise<Response> {
   return Promise.resolve(
-    createApp({ signal: context.signal }).request(path, { method: "GET" }),
+    createApp({ signal: context.signal, routes: TEST_APP_ROUTES }).request(
+      path,
+      { method: "GET" },
+    ),
   );
 }
 

@@ -12,13 +12,15 @@ import {
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   ensureUsagePricingRow,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -29,6 +31,7 @@ import {
   insertUsageEvent$,
   materializeHourlyUsage$,
 } from "./helpers/zero-usage-insight";
+import { zeroUsageInsightRoutes } from "../zero-usage-insight";
 
 /*
  * Finalized usage is filtered and bucketed by settlement time. Database
@@ -47,7 +50,9 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroUsageInsightContract);
+  return setupApp({ context, routes: zeroUsageInsightRoutes })(
+    zeroUsageInsightContract,
+  );
 }
 
 function sumBucketSeries(
@@ -110,8 +115,11 @@ async function createSourceRun(
     triggerSource,
   });
   // Free the org's concurrent-run slot; usage attribution only needs the
-  // run row and its trigger source, not a live run.
+  // run row and its trigger source, not a live run. Wait for cancellation's
+  // background settlement before reporting fixture usage so the source query
+  // never races the route's waitUntil work.
   await api.requestCancelRun(actor, run.runId, [200]);
+  await flushWaitUntilForTest();
   return run.runId;
 }
 
@@ -372,7 +380,7 @@ describe("GET /api/zero/usage/insight", () => {
       const name = `tie-agent-${String(i).padStart(2, "0")}-${suffix}`;
       names.push(name);
       const compose = await createInsightCompose(actor, name);
-      const runId = await createSourceRun(actor, compose.composeId, "cli");
+      const runId = await createSourceRun(actor, compose.composeId, "test");
       await reportRunUsage(actor, runId, [
         {
           kind: "connector",
@@ -406,7 +414,7 @@ describe("GET /api/zero/usage/insight", () => {
     mockNow(new Date("2026-07-29T00:30:00.500Z"));
     const actor = await entitledInsightActor();
     const compose = await createInsightCompose(actor);
-    const runId = await createSourceRun(actor, compose.composeId, "cli");
+    const runId = await createSourceRun(actor, compose.composeId, "test");
     await reportRunUsage(actor, runId, [
       { kind: "connector", category: "call", quantity: 1, credits: 10 },
     ]);
@@ -428,7 +436,7 @@ describe("GET /api/zero/usage/insight", () => {
   it("day window returns the selected calendar day with hourly buckets", async () => {
     const actor = await entitledInsightActor();
     const compose = await createInsightCompose(actor);
-    const runId = await createSourceRun(actor, compose.composeId, "cli");
+    const runId = await createSourceRun(actor, compose.composeId, "test");
     await reportRunUsage(actor, runId, [
       { kind: "connector", category: "call", quantity: 1, credits: 42 },
     ]);
@@ -512,8 +520,8 @@ describe("GET /api/zero/usage/insight", () => {
     }
     const orgId = actor.orgId;
     const compose = await createInsightCompose(actor);
-    const hourlyRunId = await createSourceRun(actor, compose.composeId, "cli");
-    const rawRunId = await createSourceRun(actor, compose.composeId, "cli");
+    const hourlyRunId = await createSourceRun(actor, compose.composeId, "test");
+    const rawRunId = await createSourceRun(actor, compose.composeId, "test");
     const insertProcessedEvent = async (
       runId: string,
       processedAt: Date,
@@ -638,12 +646,27 @@ describe("GET /api/zero/usage/insight", () => {
     await reportRunUsage(actor, runId, [
       { kind: "model", category: "tokens.input", quantity: 100, credits: 10 },
       { kind: "model", category: "tokens.output", quantity: 50, credits: 0 },
-      { kind: "model", category: "tokens.input", quantity: 30, credits: 3 },
-      { kind: "model", category: "tokens.output", quantity: 20, credits: 2 },
-      { kind: "model", category: "tokens.cache_read", quantity: 5, credits: 1 },
       {
         kind: "model",
-        category: "tokens.cache_creation",
+        category: "tokens.input.long_context",
+        quantity: 30,
+        credits: 3,
+      },
+      {
+        kind: "model",
+        category: "tokens.output.long_context",
+        quantity: 20,
+        credits: 2,
+      },
+      {
+        kind: "model",
+        category: "tokens.cache_read.long_context",
+        quantity: 5,
+        credits: 1,
+      },
+      {
+        kind: "model",
+        category: "tokens.cache_creation.long_context",
         quantity: 10,
         credits: 4,
       },

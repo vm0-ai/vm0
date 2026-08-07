@@ -1,4 +1,5 @@
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { IconDotsVertical } from "@tabler/icons-react";
 import {
   Button,
@@ -53,7 +54,22 @@ export function PersonalProvidersTab() {
   );
 }
 
+function PersonalModelsHeading() {
+  const { t } = useTranslation();
+  return (
+    <SettingsSectionHeading
+      title={t(($) => {
+        return $.settings.models.personal.sectionTitle;
+      })}
+      description={t(($) => {
+        return $.settings.models.personal.description;
+      })}
+    />
+  );
+}
+
 function OAuthCredentialsSection() {
+  const { t } = useTranslation();
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
   const modelCapabilitiesLoadable = useLastLoadable(modelPlanCapabilities$);
   const openBillingPlans = useSet(openSettingsBillingPlans$);
@@ -83,6 +99,13 @@ function OAuthCredentialsSection() {
   const openAIStatus = getOpenAIStatus(openAI);
   const actionPending = actionLoadable.state === "loading";
   const codexResetCredits = openAI?.subscriptionResetCredits ?? null;
+  const providerActionLabel = supportByok
+    ? t(($) => {
+        return $.settings.shared.connect;
+      })
+    : t(($) => {
+        return $.settings.models.actions.upgradePro;
+      });
 
   const connectClaudeCode = () => {
     if (!supportByok) {
@@ -123,10 +146,7 @@ function OAuthCredentialsSection() {
 
   return (
     <section className="flex flex-col gap-4">
-      <SettingsSectionHeading
-        title="Personal"
-        description="Used only in your runs, with your own credentials."
-      />
+      <PersonalModelsHeading />
       <div
         className="overflow-hidden rounded-xl bg-card"
         style={{ border: "0.7px solid hsl(var(--gray-400))" }}
@@ -140,7 +160,7 @@ function OAuthCredentialsSection() {
           <>
             <ClaudeOAuthCredentialRow
               actionPending={actionPending}
-              actionLabel={supportByok ? "Connect" : "Upgrade Pro to use"}
+              actionLabel={providerActionLabel}
               provider={claudeCode}
               status={getOpenAIStatus(claudeCode)}
               onAction={connectClaudeCode}
@@ -153,7 +173,7 @@ function OAuthCredentialsSection() {
             />
             <CodexOAuthCredentialRow
               actionPending={actionPending}
-              actionLabel={supportByok ? "Connect" : "Upgrade Pro to use"}
+              actionLabel={providerActionLabel}
               provider={openAI}
               resetCredits={codexResetCredits}
               status={openAIStatus}
@@ -197,11 +217,16 @@ function ClaudeOAuthCredentialRow({
   onAction: () => void;
   onDisconnect: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <OAuthCredentialRow
       type="claude-code-oauth-token"
-      title="Claude Code OAuth"
-      description="Connect with Claude Code login for Claude-backed model routes."
+      title={t(($) => {
+        return $.settings.models.personal.claudeTitle;
+      })}
+      description={t(($) => {
+        return $.settings.models.personal.claudeDescription;
+      })}
       provider={provider}
       status={status}
       actionLabel={actionLabel}
@@ -209,12 +234,16 @@ function ClaudeOAuthCredentialRow({
         provider
           ? [
               {
-                label: "Replace",
+                label: t(($) => {
+                  return $.settings.shared.replace;
+                }),
                 onSelect: onAction,
                 opensModal: true,
               },
               {
-                label: "Disconnect",
+                label: t(($) => {
+                  return $.settings.shared.disconnect;
+                }),
                 disabled: actionPending,
                 onSelect: onDisconnect,
               },
@@ -246,11 +275,17 @@ function CodexOAuthCredentialRow({
   onDisconnect: () => void;
   onOpenReset: () => void;
 }) {
+  const { t } = useTranslation();
+  const resetCreditLabel = formatCodexResetCredits(resetCredits);
   return (
     <OAuthCredentialRow
       type="codex-oauth-token"
-      title="ChatGPT (Codex)"
-      description="Connect with Codex device login for Codex-backed model routes."
+      title={t(($) => {
+        return $.settings.models.personal.codexTitle;
+      })}
+      description={t(($) => {
+        return $.settings.models.personal.codexDescription;
+      })}
       provider={provider}
       status={status}
       actionLabel={actionLabel}
@@ -259,25 +294,30 @@ function CodexOAuthCredentialRow({
           ? [
               {
                 kind: "status",
-                label: formatCodexResetCredits(resetCredits),
+                label: resetCreditLabel,
               },
               {
                 kind: "separator",
-                label: "codex-reset-separator",
               },
               {
-                label: "Reset usage",
+                label: t(($) => {
+                  return $.settings.models.actions.resetUsage;
+                }),
                 disabled: actionPending || resetCredits === 0,
                 onSelect: onOpenReset,
                 opensModal: true,
               },
               {
-                label: "Replace",
+                label: t(($) => {
+                  return $.settings.shared.replace;
+                }),
                 onSelect: onAction,
                 opensModal: true,
               },
               {
-                label: "Disconnect",
+                label: t(($) => {
+                  return $.settings.shared.disconnect;
+                }),
                 disabled: actionPending,
                 onSelect: onDisconnect,
               },
@@ -378,14 +418,19 @@ function fallbackSubscriptionUsage(
 }
 
 function usageWindows(usage: SubscriptionUsage | null | undefined): readonly {
-  readonly label: string;
+  readonly kind: "fiveHour" | "week";
   readonly window: SubscriptionUsageWindow;
 }[] {
   return [
-    { label: "5h", window: usage?.fiveHour ?? null },
-    { label: "Week", window: usage?.weekly ?? null },
+    { kind: "fiveHour" as const, window: usage?.fiveHour ?? null },
+    { kind: "week" as const, window: usage?.weekly ?? null },
   ].filter(
-    (item): item is { label: string; window: SubscriptionUsageWindow } => {
+    (
+      item,
+    ): item is {
+      kind: "fiveHour" | "week";
+      window: SubscriptionUsageWindow;
+    } => {
       return hasUsageWindow(item.window);
     },
   );
@@ -422,6 +467,7 @@ function SubscriptionUsageMeter({
 }: {
   usage: SubscriptionUsage | null | undefined;
 }) {
+  const { t } = useTranslation();
   const windows = usageWindows(usage);
 
   if (windows.length === 0) {
@@ -431,7 +477,15 @@ function SubscriptionUsageMeter({
   return (
     <div className="w-full rounded-lg bg-muted/30 px-3 py-2.5">
       <div className="space-y-2">
-        {windows.map(({ label, window }) => {
+        {windows.map(({ kind, window }) => {
+          const windowLabel =
+            kind === "week"
+              ? t(($) => {
+                  return $.settings.models.personal.status.week;
+                })
+              : t(($) => {
+                  return $.settings.models.personal.status.fiveHour;
+                });
           const remainingPercent =
             window.remainingPercent ??
             (window.usedPercent === null ? null : 100 - window.usedPercent);
@@ -439,12 +493,21 @@ function SubscriptionUsageMeter({
           const reset = formatSubscriptionUsageReset(window.resetAt);
           const tone = usageTone(remainingPercent);
           return (
-            <div key={label} className="space-y-1">
+            <div key={kind} className="space-y-1">
               <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] leading-none">
-                <span className="font-medium text-foreground">{label}</span>
+                <span className="font-medium text-foreground">
+                  {windowLabel}
+                </span>
                 {displayPercent ? (
                   <span className={`font-medium ${tone.textClassName}`}>
-                    {displayPercent} left
+                    {t(
+                      ($) => {
+                        return $.settings.models.personal.status.left;
+                      },
+                      {
+                        percent: displayPercent,
+                      },
+                    )}
                   </span>
                 ) : null}
               </div>
@@ -485,13 +548,21 @@ function SubscriptionUsageMeter({
   );
 }
 
-interface OAuthMenuItem {
-  label: string;
-  kind?: "item" | "status" | "separator";
-  disabled?: boolean;
-  onSelect?: () => void;
-  opensModal?: boolean;
-}
+type OAuthMenuItem =
+  | {
+      readonly kind: "separator";
+    }
+  | {
+      readonly kind: "status";
+      readonly label: string;
+    }
+  | {
+      readonly kind?: "item";
+      readonly label: string;
+      readonly disabled?: boolean;
+      readonly onSelect?: () => void;
+      readonly opensModal?: boolean;
+    };
 
 function OAuthMenuEntry({ item }: { item: OAuthMenuItem }) {
   if (item.kind === "separator") {
@@ -552,6 +623,7 @@ function OAuthCredentialRow({
   onAction: () => void;
   testId: string;
 }) {
+  const { t } = useTranslation();
   const connectedDetail = provider
     ? formatConnectedStatusDetail(provider)
     : null;
@@ -585,11 +657,15 @@ function OAuthCredentialRow({
             variant="outline"
             size="sm"
             className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
-            aria-label={
-              actionLabel === "Connect"
-                ? `Connect ${title}`
-                : `${actionLabel} ${title}`
-            }
+            aria-label={t(
+              ($) => {
+                return $.settings.models.personal.actionForProvider;
+              },
+              {
+                action: actionLabel,
+                provider: title,
+              },
+            )}
             disabled={disabled}
             onClick={onAction}
           >
@@ -608,14 +684,18 @@ function OAuthCredentialRow({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
-                    aria-label="More options"
+                    aria-label={t(($) => {
+                      return $.settings.shared.moreOptions;
+                    })}
                   >
                     <IconDotsVertical size={14} stroke={1.5} />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
                   {menuItems.map((item) => {
-                    return <OAuthMenuEntry key={item.label} item={item} />;
+                    const key =
+                      item.kind === "separator" ? "separator" : item.label;
+                    return <OAuthMenuEntry key={key} item={item} />;
                   })}
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -639,12 +719,24 @@ function OAuthFooterStatus({
   status: OAuthStatus;
   detail: string | null;
 }) {
+  const { t } = useTranslation();
   if (status === "connected") {
     return (
       <span className="flex min-w-0 items-center gap-2 truncate text-xs text-muted-foreground">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
         <span className="min-w-0 truncate">
-          Connected{detail ? ` (${detail})` : ""}
+          {detail
+            ? t(
+                ($) => {
+                  return $.settings.models.personal.status.connectedWithDetail;
+                },
+                {
+                  detail,
+                },
+              )
+            : t(($) => {
+                return $.settings.models.personal.status.connected;
+              })}
         </span>
       </span>
     );
@@ -653,13 +745,17 @@ function OAuthFooterStatus({
     return (
       <span className="flex min-w-0 items-center gap-2 truncate text-xs text-amber-600 dark:text-amber-400">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-        Attention
+        {t(($) => {
+          return $.settings.models.personal.status.stale;
+        })}
       </span>
     );
   }
   return (
     <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-      Connect
+      {t(($) => {
+        return $.settings.shared.connect;
+      })}
     </span>
   );
 }

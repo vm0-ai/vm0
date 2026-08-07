@@ -9,14 +9,16 @@ import secrets
 import time
 import urllib.parse
 from collections import OrderedDict
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from typing import NoReturn
 
 from mitmproxy import http
 
 import body_decoding
+import content_length
 import flow_metadata
+from runtime_url_parsing import split_runtime_url
 
 FRESH_SECONDS = 60.0
 MAX_ENTRY_BYTES = 1024 * 1024
@@ -26,8 +28,6 @@ MAX_IN_FLIGHT_REQUESTS = MAX_TOTAL_BYTES // MAX_ENTRY_BYTES
 MAX_WAITERS_PER_KEY = MAX_IN_FLIGHT_REQUESTS
 MAX_TOTAL_WAITERS = MAX_IN_FLIGHT_REQUESTS * 2
 MAX_IN_FLIGHT_WAIT_SECONDS = 10.0
-_MAX_CONTENT_LENGTH_DIGITS = len(str(MAX_ENTRY_BYTES))
-
 _FIREWALL_NAME = "model-provider:codex-oauth-token"
 _CATALOG_HOST = "chatgpt.com"
 _CATALOG_PATH = "/backend-api/codex/models"
@@ -79,6 +79,23 @@ class _CacheEntry:
     prefetched: bool
 
 
+@dataclass(frozen=True)
+class _ResponseValidationSnapshot:
+    status_code: int
+    header_fields: tuple[tuple[bytes, bytes], ...] = field(repr=False)
+    has_trailers: bool
+    body: bytes = field(repr=False)
+    upstream_encoding: str | None
+    compressed_content_length: int | None
+
+
+@dataclass(frozen=True)
+class _ValidatedResponse:
+    body: bytes = field(repr=False)
+    content_type: str
+    etag: str = field(repr=False)
+
+
 @dataclass
 class _FlowTelemetry:
     status: str
@@ -95,6 +112,7 @@ class _InFlight:
     future: asyncio.Future[_CacheEntry | None] = field(repr=False)
     prefetch_owner: bool
     waiters: int = 0
+    observed_etag: str | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -120,6 +138,8 @@ _in_flight: dict[_CacheKey, _InFlight] = {}
 _owned_body_bytes = 0
 _active_flow_states = 0
 _process_hmac_key = secrets.token_bytes(32)
+_validation_loop: asyncio.AbstractEventLoop | None = None
+_validation_semaphore: asyncio.Semaphore | None = None
 
 
 def _bounded_milliseconds(seconds: float) -> int:
@@ -208,7 +228,7 @@ def _credential_digest(flow: http.HTTPFlow) -> bytes | None:
 
 def _split_expected_url(original_url: str) -> urllib.parse.SplitResult | None:
     try:
-        parsed = urllib.parse.urlsplit(original_url)
+        parsed = split_runtime_url(original_url)
         port = parsed.port
     except ValueError:
         return None
@@ -382,20 +402,11 @@ def _json_nesting_is_bounded(document: str) -> bool:
     return True
 
 
-def _content_length(headers: http.Headers) -> int | None:
-    values = headers.get_all("Content-Length")
-    if not values:
-        return None
-    parts = [part.strip() for value in values for part in value.split(",")]
-    if not parts or any(
-        not part.isascii() or not part.isdecimal() or len(part) > _MAX_CONTENT_LENGTH_DIGITS
-        for part in parts
-    ):
-        return -1
-    lengths = {int(part) for part in parts}
-    if len(lengths) != 1:
-        return -1
-    return lengths.pop()
+def _parse_content_length(headers: http.Headers) -> content_length.ContentLengthResult:
+    return content_length.parse(
+        headers.get_all("Content-Length"),
+        max_value=MAX_ENTRY_BYTES,
+    )
 
 
 def _set_telemetry(
@@ -463,11 +474,11 @@ def _request_bypass_reason(
         return "request_body"
     if flow.request.stream:
         return "request_streaming"
-    content_length = _content_length(flow.request.headers)
+    parsed_content_length = _parse_content_length(flow.request.headers)
     if (
         flow.request.headers.get_all("Transfer-Encoding")
-        or content_length == -1
-        or (content_length is not None and content_length > 0)
+        or parsed_content_length.kind in ("invalid", "conflicting", "over_limit")
+        or (parsed_content_length.kind == "valid" and parsed_content_length.value > 0)
     ):
         return "request_framing"
     if any(flow.request.headers.get_all(name) for name in _REQUEST_CONDITIONAL_HEADERS):
@@ -489,21 +500,33 @@ def capture_and_strip_prefetch_marker(flow: http.HTTPFlow) -> None:
         flow.metadata[_PREFETCH_REQUEST] = True
 
 
-async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> None:
-    """Serve or prepare one exact authenticated Codex catalog request."""
+async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> bool:
+    """Serve or prepare a catalog request and report whether it crossed a wait.
+
+    ``True`` means the request waited for at least one in-flight owner. The wait may
+    end through owner success, failure or release, timeout, invalidation, or
+    replacement, and the waiter may subsequently become the replacement owner. A
+    local cache response does not continue upstream. Otherwise, a caller that may
+    inject ordinary upstream credentials must revalidate the current upstream
+    continuation before proceeding after a ``True`` result.
+
+    ``mitm_addon._prepare_codex_catalog_request_with_upstream_revalidation()``
+    implements this contract. Its focused lifecycle coverage is
+    ``test_catalog_wait_revalidates_only_provider_continuation``.
+    """
     if _FLOW_STATE in flow.metadata or _FLOW_TELEMETRY in flow.metadata:
-        return
+        return False
     if flow_metadata.firewall_name(flow.metadata) != _FIREWALL_NAME:
-        return
+        return False
 
     original_url = flow_metadata.original_url(flow.metadata)
     if not _is_catalog_path(original_url):
-        return
+        return False
 
     canonical_url = _catalog_url(original_url)
     if canonical_url is None:
         _set_telemetry(flow, "model_catalog_bypass", bypass_reason="request_url")
-        return
+        return False
 
     bypass_reason = _request_bypass_reason(
         flow,
@@ -511,12 +534,12 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
     )
     if bypass_reason is not None:
         _set_telemetry(flow, "model_catalog_bypass", bypass_reason=bypass_reason)
-        return
+        return False
 
     credential_digest = _credential_digest(flow)
     if credential_digest is None:
         _set_telemetry(flow, "model_catalog_bypass", bypass_reason="request_identity")
-        return
+        return False
 
     key = _CacheKey(canonical_url, credential_digest)
     is_prefetch = flow.metadata.get(_PREFETCH_REQUEST) is True
@@ -538,7 +561,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                         "completed_consumer" if entry.prefetched and not is_prefetch else None
                     ),
                 )
-                return
+                return wait_deadline is not None
             _remove_entry(key)
         else:
             entry_age_ms = None
@@ -552,7 +575,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                     bypass_reason="request_capacity",
                     entry_age_ms=entry_age_ms,
                 )
-                return
+                return wait_deadline is not None
             if wait_deadline is None:
                 wait_deadline = now + MAX_IN_FLIGHT_WAIT_SECONDS
             remaining_wait_seconds = wait_deadline - now
@@ -563,7 +586,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                     bypass_reason="request_capacity",
                     entry_age_ms=entry_age_ms,
                 )
-                return
+                return True
             joined_prefetch = in_flight.prefetch_owner and not is_prefetch
             in_flight.waiters += 1
             try:
@@ -578,7 +601,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                     bypass_reason="request_capacity",
                     entry_age_ms=entry_age_ms,
                 )
-                return
+                return True
             finally:
                 in_flight.waiters -= 1
             if completed_entry is None:
@@ -595,7 +618,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                 entry_age_ms=_age_milliseconds(completed_entry, completed_at),
                 prefetch_role="inflight_consumer" if joined_prefetch else None,
             )
-            return
+            return True
 
         if not _reserve_flow_capacity():
             _set_telemetry(
@@ -604,7 +627,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                 bypass_reason="request_capacity",
                 entry_age_ms=entry_age_ms,
             )
-            return
+            return wait_deadline is not None
         in_flight = _InFlight(
             future=asyncio.get_running_loop().create_future(),
             prefetch_owner=is_prefetch,
@@ -619,32 +642,33 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
         )
         flow.metadata[_FLOW_STATE] = state
         flow.request.headers["Accept-Encoding"] = _BROTLI_ENCODING
-        return
+        return wait_deadline is not None
 
 
 def _response_headers_bypass_reason(
-    response: http.Response,
+    status_code: int,
+    headers: http.Headers,
     *,
     allow_brotli: bool = False,
 ) -> str | None:
-    if response.status_code != _HTTP_STATUS_OK:
+    if status_code != _HTTP_STATUS_OK:
         return "response_status"
-    encoding = _single_content_encoding(response.headers)
+    encoding = _single_content_encoding(headers)
     if encoding != _IDENTITY_ENCODING and not (allow_brotli and encoding == _BROTLI_ENCODING):
         return "response_encoding"
-    content_type = response.headers.get("Content-Type", "")
+    content_type = headers.get("Content-Type", "")
     if len(content_type.encode()) > _MAX_CONTENT_TYPE_BYTES or not _content_type_is_json(
         content_type
     ):
         return "response_content_type"
-    if _response_cache_control_is_unsafe(response.headers):
+    if _response_cache_control_is_unsafe(headers):
         return "response_cache_control"
-    if response.headers.get_all("Vary"):
+    if headers.get_all("Vary"):
         return "response_vary"
-    if _single_usable_etag(response.headers) is None:
+    if _single_usable_etag(headers) is None:
         return "response_etag"
-    content_length = _content_length(response.headers)
-    if content_length == -1 or (content_length is not None and content_length > MAX_ENTRY_BYTES):
+    parsed_content_length = _parse_content_length(headers)
+    if parsed_content_length.kind not in ("missing", "valid"):
         return "response_size"
     return None
 
@@ -672,7 +696,18 @@ def _bypass_response(
 
 
 def handle_response_headers(flow: http.HTTPFlow) -> bool:
-    """Select pass-through streaming with bounded catalog capture."""
+    """Prepare catalog handling and tell mitm_addon.responseheaders() whether to continue.
+
+    Return False only for a fresh response served from the local catalog cache; the hook
+    must stop the normal response-header pipeline in that case. Return True for all other flows,
+    including unrelated traffic, cache bypasses, and eligible cold responses, so the hook
+    continues that pipeline. For an eligible cold response, ordinary streaming is installed before
+    wrap_response_stream() composes the bounded catalog capture.
+
+    ``mitm_addon.responseheaders()`` implements this contract. Focused coverage is
+    ``test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions`` for the stop branch and
+    ``test_request_bypasses_do_not_touch_unrelated_traffic`` for continuation.
+    """
     state = flow.metadata.get(_FLOW_STATE)
     telemetry = flow.metadata.get(_FLOW_TELEMETRY)
     if isinstance(telemetry, _FlowTelemetry) and telemetry.status == "model_catalog_fresh_hit":
@@ -683,7 +718,10 @@ def handle_response_headers(flow: http.HTTPFlow) -> bool:
     encoding = _single_content_encoding(flow.response.headers)
     if encoding == _IDENTITY_ENCODING:
         state.upstream_encoding = _IDENTITY_ENCODING
-        bypass_reason = _response_headers_bypass_reason(flow.response)
+        bypass_reason = _response_headers_bypass_reason(
+            flow.response.status_code,
+            flow.response.headers,
+        )
         if bypass_reason is not None:
             _bypass_response(flow, state, bypass_reason)
         return True
@@ -692,23 +730,25 @@ def handle_response_headers(flow: http.HTTPFlow) -> bool:
         return True
 
     state.upstream_encoding = _BROTLI_ENCODING
-    bypass_reason = _response_headers_bypass_reason(flow.response, allow_brotli=True)
+    bypass_reason = _response_headers_bypass_reason(
+        flow.response.status_code,
+        flow.response.headers,
+        allow_brotli=True,
+    )
     if bypass_reason is not None:
         _bypass_response(flow, state, bypass_reason)
         return True
 
-    compressed_content_length = _content_length(flow.response.headers)
-    if (
-        compressed_content_length == -1
-        or (compressed_content_length is not None and compressed_content_length > MAX_ENTRY_BYTES)
-        or (
-            compressed_content_length is not None
-            and flow.response.headers.get_all("Transfer-Encoding")
-        )
+    compressed_content_length = _parse_content_length(flow.response.headers)
+    if compressed_content_length.kind not in ("missing", "valid") or (
+        compressed_content_length.kind == "valid"
+        and flow.response.headers.get_all("Transfer-Encoding")
     ):
         _bypass_response(flow, state, "response_size")
         return True
-    state.compressed_content_length = compressed_content_length
+    state.compressed_content_length = (
+        compressed_content_length.value if compressed_content_length.kind == "valid" else None
+    )
     return True
 
 
@@ -720,7 +760,8 @@ def wrap_response_stream(flow: http.HTTPFlow) -> None:
         or state.finalized
         or flow.response is None
         or _response_headers_bypass_reason(
-            flow.response,
+            flow.response.status_code,
+            flow.response.headers,
             allow_brotli=state.upstream_encoding == _BROTLI_ENCODING,
         )
         is not None
@@ -760,27 +801,43 @@ def _unwrap_response_stream(flow: http.HTTPFlow, state: _FlowState) -> None:
     state.downstream_stream = None
 
 
-def _validated_response_body(
-    response: http.Response,
-    state: _FlowState,
-) -> tuple[bytes, str, str] | str:
+def _validate_response_snapshot(
+    snapshot: _ResponseValidationSnapshot,
+) -> _ValidatedResponse | str:
+    headers = http.Headers(snapshot.header_fields)
+    body = snapshot.body
+    if snapshot.upstream_encoding == _BROTLI_ENCODING:
+        if (
+            snapshot.compressed_content_length is not None
+            and len(body) != snapshot.compressed_content_length
+        ) or snapshot.has_trailers:
+            return "response_body"
+        body, decode_error = body_decoding.decompress_json_usage_body(
+            body,
+            headers,
+            max_output=MAX_ENTRY_BYTES,
+            log_errors=False,
+        )
+        if decode_error == body_decoding.DECODED_BODY_LIMIT_EXCEEDED:
+            return "response_size"
+        if decode_error is not None:
+            return "response_encoding"
+
     bypass_reason = _response_headers_bypass_reason(
-        response,
-        allow_brotli=state.upstream_encoding == _BROTLI_ENCODING,
+        snapshot.status_code,
+        headers,
+        allow_brotli=snapshot.upstream_encoding == _BROTLI_ENCODING,
     )
     if bypass_reason is not None:
         return bypass_reason
-    if response.trailers:
+    if snapshot.has_trailers:
         return "response_body"
-    if state.capture is None or state.capture_overflow:
-        return "response_size"
 
-    body = bytes(state.capture)
-    content_length = _content_length(response.headers)
+    parsed_content_length = _parse_content_length(headers)
     if (
-        state.upstream_encoding == _IDENTITY_ENCODING
-        and content_length is not None
-        and content_length != len(body)
+        snapshot.upstream_encoding == _IDENTITY_ENCODING
+        and parsed_content_length.kind == "valid"
+        and parsed_content_length.value != len(body)
     ):
         return "response_body"
     try:
@@ -799,88 +856,113 @@ def _validated_response_body(
         return "response_json"
     if not isinstance(payload, dict) or not isinstance(payload.get("models"), list):
         return "response_shape"
-    content_type = response.headers.get("Content-Type", "")
-    etag = _single_usable_etag(response.headers)
+    content_type = headers.get("Content-Type", "")
+    etag = _single_usable_etag(headers)
     if etag is None:
         return "response_etag"
-    return body, content_type, etag
+    return _ValidatedResponse(body=body, content_type=content_type, etag=etag)
 
 
-def _decode_captured_brotli_response(
-    response: http.Response,
+def _validation_semaphore_for_running_loop() -> asyncio.Semaphore:
+    global _validation_loop, _validation_semaphore
+    loop = asyncio.get_running_loop()
+    if _validation_loop is not loop or _validation_semaphore is None:
+        _validation_loop = loop
+        _validation_semaphore = asyncio.Semaphore(1)
+    return _validation_semaphore
+
+
+async def _validate_response_off_loop(
+    snapshot: _ResponseValidationSnapshot,
+) -> tuple[_ValidatedResponse | str, asyncio.CancelledError | None]:
+    semaphore = _validation_semaphore_for_running_loop()
+    async with semaphore:
+        loop = asyncio.get_running_loop()
+        validation = loop.run_in_executor(None, _validate_response_snapshot, snapshot)
+        cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                result = await asyncio.shield(validation)
+                return result, cancellation
+            except asyncio.CancelledError as error:
+                if cancellation is None:
+                    cancellation = error
+
+
+async def _finalize_response_snapshot(
+    flow: http.HTTPFlow,
     state: _FlowState,
-) -> str | None:
-    if state.upstream_encoding != _BROTLI_ENCODING:
-        return None
-    if state.capture is None or state.capture_overflow:
-        return "response_size"
-    compressed = bytes(state.capture)
-    if (
-        state.compressed_content_length is not None
-        and len(compressed) != state.compressed_content_length
-    ) or response.trailers:
-        return "response_body"
+    snapshot: _ResponseValidationSnapshot,
+) -> None:
+    try:
+        validated, cancellation = await _validate_response_off_loop(snapshot)
+        completed_at = time.monotonic()
+        if isinstance(validated, str):
+            _set_not_stored(flow, state, validated, now=completed_at)
+        else:
+            observed_etag = state.in_flight.observed_etag
+            if state.key in _entries or (
+                observed_etag is not None and observed_etag != validated.etag
+            ):
+                _set_not_stored(flow, state, "concurrent_change", now=completed_at)
+            else:
+                entry = _CacheEntry(
+                    body=validated.body,
+                    content_type=validated.content_type,
+                    etag=validated.etag,
+                    validated_at=completed_at,
+                    prefetched=state.prefetch_owner,
+                )
+                evictions = _replace_entry(state.key, entry)
+                _publish_result(state, entry)
+                _set_telemetry(
+                    flow,
+                    "model_catalog_cold_stored",
+                    entry_age_ms=state.entry_age_ms,
+                    validation_latency_ms=_bounded_milliseconds(
+                        completed_at - state.request_started_at
+                    ),
+                    eviction_count=evictions,
+                    upstream_encoding=state.upstream_encoding,
+                    prefetch_role="producer" if state.prefetch_owner else None,
+                )
+        if cancellation is not None:
+            raise cancellation
+    finally:
+        _release_flow_capacity(state)
 
-    decoded, decode_error = body_decoding.decompress_json_usage_body(
-        compressed,
-        response.headers,
-        max_output=MAX_ENTRY_BYTES,
-    )
-    if decode_error == body_decoding.DECODED_BODY_LIMIT_EXCEEDED:
-        return "response_size"
-    if decode_error is not None:
-        return "response_encoding"
 
-    state.capture = bytearray(decoded)
-    return None
-
-
-def finalize_response(flow: http.HTTPFlow) -> None:
-    """Normalize, validate, and install one complete catalog response."""
+def finalize_response(flow: http.HTTPFlow) -> Awaitable[None] | None:
+    """Start validation for one complete catalog response when eligible."""
     state = flow.metadata.get(_FLOW_STATE)
     if not isinstance(state, _FlowState) or state.finalized:
-        return
+        return None
     state.finalized = True
     try:
         _unwrap_response_stream(flow, state)
-        now = time.monotonic()
         response = flow.response
         if response is None:
-            _set_not_stored(flow, state, "response_missing", now=now)
-            return
-        decode_failure = _decode_captured_brotli_response(response, state)
-        if decode_failure is not None:
-            _set_not_stored(flow, state, decode_failure, now=now)
-            return
-        validated = _validated_response_body(response, state)
-        if isinstance(validated, str):
-            _set_not_stored(flow, state, validated, now=now)
-            return
-        if state.key in _entries:
-            _set_not_stored(flow, state, "concurrent_change", now=now)
-            return
-
-        body, content_type, etag = validated
-        entry = _CacheEntry(
+            _set_not_stored(flow, state, "response_missing")
+            _release_flow_capacity(state)
+            return None
+        if state.capture is None or state.capture_overflow:
+            _set_not_stored(flow, state, "response_size")
+            _release_flow_capacity(state)
+            return None
+        body = bytes(state.capture)
+        state.capture = None
+        snapshot = _ResponseValidationSnapshot(
+            status_code=response.status_code,
+            header_fields=tuple(response.headers.fields),
+            has_trailers=bool(response.trailers),
             body=body,
-            content_type=content_type,
-            etag=etag,
-            validated_at=now,
-            prefetched=state.prefetch_owner,
-        )
-        evictions = _replace_entry(state.key, entry)
-        _publish_result(state, entry)
-        _set_telemetry(
-            flow,
-            "model_catalog_cold_stored",
-            entry_age_ms=state.entry_age_ms,
-            validation_latency_ms=_bounded_milliseconds(now - state.request_started_at),
-            eviction_count=evictions,
             upstream_encoding=state.upstream_encoding,
-            prefetch_role="producer" if state.prefetch_owner else None,
+            compressed_content_length=state.compressed_content_length,
         )
-    finally:
+    except BaseException:
         _release_flow_capacity(state)
+        raise
+    return _finalize_response_snapshot(flow, state, snapshot)
 
 
 def handle_error(flow: http.HTTPFlow) -> None:
@@ -914,6 +996,10 @@ def observe_authenticated_models_etag(flow: http.HTTPFlow) -> None:
     credential_digest = _credential_digest(flow)
     if credential_digest is None:
         return
+
+    for key, in_flight in _in_flight.items():
+        if key.credential_digest == credential_digest:
+            in_flight.observed_etag = signal_etag
 
     keys = [key for key in _entries if key.credential_digest == credential_digest]
     if not keys:
@@ -971,6 +1057,7 @@ def release_flow_state(flow: http.HTTPFlow) -> None:
 def reset_for_tests() -> None:
     """Reset process cache ownership between tests."""
     global _active_flow_states, _owned_body_bytes, _process_hmac_key
+    global _validation_loop, _validation_semaphore
     for in_flight in _in_flight.values():
         if not in_flight.future.done():
             in_flight.future.set_result(None)
@@ -979,3 +1066,5 @@ def reset_for_tests() -> None:
     _owned_body_bytes = 0
     _active_flow_states = 0
     _process_hmac_key = secrets.token_bytes(32)
+    _validation_loop = None
+    _validation_semaphore = None

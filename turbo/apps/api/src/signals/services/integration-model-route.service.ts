@@ -56,7 +56,8 @@ export const resolveIntegrationModelRouteForUser$ = command(
 
     return {
       modelProviderType: routePolicy.defaultProviderType,
-      modelProviderId: routePolicy.modelProviderId,
+      modelProviderId:
+        routePolicy.modelProviderSurfaceId ?? routePolicy.modelProviderId,
       modelProviderCredentialScope: routePolicy.credentialScope,
       selectedModel: routePolicy.model,
       cliAgentType: getFrameworkForType(

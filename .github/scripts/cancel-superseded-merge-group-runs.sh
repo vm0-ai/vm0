@@ -133,7 +133,6 @@ printf '%s\n' "$superseded_runs"
 run_ids=()
 while IFS= read -r run_record; do
   run_id=${run_record%%$'\t'*}
-  run_ids+=("$run_id")
   if ! cancel_error=$(
     gh api --method POST \
       "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/cancel" 2>&1
@@ -144,11 +143,34 @@ while IFS= read -r run_record; do
         --jq '.status'
     )
     if [ "$current_status" != "completed" ]; then
+      # GitHub can wedge a run so that it keeps reporting an active status
+      # while refusing every cancel request with HTTP 409. A run only claims
+      # the shared pr-N runner once it starts a job, so a wedged run whose
+      # latest attempt started no job cannot be the writer this barrier
+      # protects against, and it would never reach "completed" for the
+      # barrier below. Skip it; every other cancel failure still fails closed.
+      if ! started_jobs=$(
+        gh api --method GET \
+          "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs" \
+          --jq '.total_count' 2>&1
+      ); then
+        started_jobs=""
+      fi
+      if [[ "$cancel_error" == *"HTTP 409"* ]] && [ "$started_jobs" = "0" ]; then
+        echo "skipping wedged superseded run ${run_id}: reported ${current_status} with no started job"
+        continue
+      fi
       echo "failed to cancel superseded run ${run_id}: ${cancel_error}" >&2
       exit 1
     fi
   fi
+  run_ids+=("$run_id")
 done <<<"$superseded_runs"
+
+if [ "${#run_ids[@]}" -eq 0 ]; then
+  echo "All superseded CI runs were wedged without starting a job; nothing to await."
+  exit 0
+fi
 
 started_at=$SECONDS
 while true; do

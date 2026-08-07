@@ -124,7 +124,11 @@ pub(super) fn agent_message_item_started_notification(
     })
 }
 
-fn assistant_item_completed_notification(thread_id: &str, turn_id: &str) -> Value {
+pub(super) fn assistant_item_completed_notification(
+    thread_id: &str,
+    turn_id: &str,
+    text: &str,
+) -> Value {
     json!({
         "method": "item/completed",
         "params": {
@@ -134,7 +138,7 @@ fn assistant_item_completed_notification(thread_id: &str, turn_id: &str) -> Valu
             "item": {
                 "id": Uuid::now_v7().to_string(),
                 "type": "agentMessage",
-                "text": "guest-mock-codex app-server response"
+                "text": text
             }
         }
     })
@@ -150,6 +154,32 @@ pub(super) fn turn_completed_notification(thread_id: &str, turn_id: &str) -> Val
                 "inputTokens": 7,
                 "outputTokens": 11,
                 "totalTokens": 18
+            }
+        }
+    })
+}
+
+pub(super) fn turn_failed_notification(thread_id: &str, turn_id: &str) -> Value {
+    json!({
+        "method": "turn/completed",
+        "params": {
+            "threadId": thread_id,
+            "turn": {
+                "id": turn_id,
+                "items": [],
+                "itemsView": "notLoaded",
+                "status": "failed",
+                "error": {
+                    "message": "mock codex primary failure"
+                },
+                "startedAt": 1,
+                "completedAt": 3,
+                "durationMs": 2
+            },
+            "usage": {
+                "inputTokens": 7,
+                "outputTokens": 0,
+                "totalTokens": 7
             }
         }
     })
@@ -183,6 +213,7 @@ pub(super) fn write_turn_notifications<W: Write>(
     output: &mut W,
     thread_id: &str,
     turn_id: &str,
+    response_text: &str,
 ) -> io::Result<()> {
     write_json_line(output, &turn_started_notification(thread_id, turn_id))?;
     let started_at_ms = SystemTime::now()
@@ -212,17 +243,18 @@ pub(super) fn write_turn_notifications<W: Write>(
             ),
         )?;
     }
-    write_turn_completion_notifications(output, thread_id, turn_id)
+    write_turn_completion_notifications(output, thread_id, turn_id, response_text)
 }
 
 pub(super) fn write_turn_completion_notifications<W: Write>(
     output: &mut W,
     thread_id: &str,
     turn_id: &str,
+    response_text: &str,
 ) -> io::Result<()> {
     write_json_line(
         output,
-        &assistant_item_completed_notification(thread_id, turn_id),
+        &assistant_item_completed_notification(thread_id, turn_id, response_text),
     )?;
     write_json_line(output, &turn_completed_notification(thread_id, turn_id))
 }

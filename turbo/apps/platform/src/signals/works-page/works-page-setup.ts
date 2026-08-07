@@ -10,6 +10,7 @@ import {
   watchSlackConnection$,
 } from "../zero-page/zero-slack.ts";
 import { watchTeamsConnection$ } from "../zero-page/zero-teams.ts";
+import { watchGithubIntegration$ } from "../zero-page/zero-github.ts";
 import {
   resetAgentPhoneConnectUi$,
   setAgentPhoneConnectDialogOpen$,
@@ -18,6 +19,7 @@ import {
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { detach, Reason } from "../utils.ts";
+import { i18n } from "../../i18n/index.ts";
 
 const initWorksRedirect$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
@@ -30,7 +32,11 @@ const initWorksRedirect$ = command(({ get, set }) => {
   if (error || feishuError) {
     toast.error(error ?? feishuError);
   } else if (feishuConnected) {
-    toast.success("Feishu connected successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.works.feishuConnected;
+      }),
+    );
   }
   params.delete("error");
   params.delete("feishuError");
@@ -42,7 +48,12 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(resetAgentPhoneConnectUi$);
   set(setAgentPhoneConnectDialogOpen$, false);
   set(updatePage$, createElement(ZeroWorksPage), "sidebar");
-  set(updateDocumentTitle$, "Works");
+  set(
+    updateDocumentTitle$,
+    i18n.t(($) => {
+      return $.works.documentTitle;
+    }),
+  );
   set(initWorksRedirect$);
   set(initSlackOrg$);
 
@@ -52,6 +63,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     Promise.all([
       set(watchSlackConnection$, signal),
       set(watchTeamsConnection$, signal),
+      set(watchGithubIntegration$, signal),
       set(watchAgentPhoneConnection$, signal),
     ]),
     Reason.Entrance,

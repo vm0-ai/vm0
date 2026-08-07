@@ -41,7 +41,7 @@ export function deriveServiceOrigin(
 }
 
 export function deriveAppUrl(sourceUrl: string): string {
-  return process.env.VM0_APP_URL ?? deriveServiceOrigin(sourceUrl, "app");
+  return process.env.ZERO_APP_URL ?? deriveServiceOrigin(sourceUrl, "app");
 }
 
 export const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");
@@ -79,7 +79,6 @@ export default defineConfig({
         "chat.spec.ts",
         "create-agent.spec.ts",
         "billing-payment.spec.ts",
-        "webchat.spec.ts",
         "workflows.spec.ts",
       ],
       dependencies: ["setup"],

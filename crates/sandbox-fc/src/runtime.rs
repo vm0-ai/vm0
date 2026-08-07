@@ -11,7 +11,6 @@ use nbd_cow::pool::{DevicePoolConfig, DevicePoolHandle};
 use crate::config::{FirecrackerConfig, SnapshotConfig};
 use crate::duration::duration_ms;
 use crate::factory::FirecrackerFactory;
-use crate::guest_dns_netfilter_trace::GuestDnsNetfilterTraceMonitor;
 use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::runtime_dirs::checked_runtime_sock_dir;
@@ -25,7 +24,6 @@ pub struct FirecrackerRuntime {
     device_pool: DevicePoolHandle,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
-    guest_dns_netfilter_trace_monitor: Option<GuestDnsNetfilterTraceMonitor>,
 }
 
 impl FirecrackerRuntime {
@@ -42,33 +40,9 @@ impl FirecrackerRuntime {
         }
         .into_checked()
         .await?;
-        let trace_requested = config.guest_dns_netfilter_trace && config.dns_port.is_some();
-        let mut guest_dns_netfilter_trace_monitor = if trace_requested {
-            match GuestDnsNetfilterTraceMonitor::start().await {
-                Ok(monitor) => Some(monitor),
-                Err(error) => {
-                    warn!(
-                        %error,
-                        "root netfilter trace unavailable; continuing without trace diagnostics"
-                    );
-                    None
-                }
-            }
-        } else {
-            None
-        };
-        let netns_config = netns_config.with_guest_dns_netfilter_trace(
-            trace_requested,
-            guest_dns_netfilter_trace_monitor
-                .as_ref()
-                .map(GuestDnsNetfilterTraceMonitor::reader),
-        );
         let netns_pool = match NetnsPoolHandle::create_checked(netns_config).await {
             Ok(pool) => pool,
             Err(e) => {
-                if let Some(monitor) = guest_dns_netfilter_trace_monitor.as_mut() {
-                    monitor.shutdown().await;
-                }
                 return Err(SandboxError::Initialization {
                     phase: SandboxInitializationPhase::Runtime,
                     message: format!("netns pool: {e}"),
@@ -92,7 +66,6 @@ impl FirecrackerRuntime {
             device_pool,
             proxy_port: config.proxy_port,
             dns_port: config.dns_port,
-            guest_dns_netfilter_trace_monitor,
         })
     }
 
@@ -175,10 +148,6 @@ impl SandboxRuntime for FirecrackerRuntime {
         // Clean up shared netns pool.
         if let Err(e) = self.netns_pool.cleanup().await {
             warn!(error = %e, "failed to cleanup shared netns pool");
-        }
-
-        if let Some(monitor) = self.guest_dns_netfilter_trace_monitor.as_mut() {
-            monitor.shutdown().await;
         }
 
         // Clean up shared device pool.

@@ -97,6 +97,108 @@ pub mod runners {
     pub mod runs {
         /// Generated route bindings under `runners::runs::by_run_id`.
         pub mod by_run_id {
+            /// Generated route bindings under `runners::runs::by_run_id::active_inputs`.
+            pub mod active_inputs {
+                /// List pending input prompts for a running agent run.
+                /// Route contract: `GET /api/runners/runs/:runId/active-inputs`.
+                pub const LIST: crate::RouteTemplate = crate::RouteTemplate {
+                    method: crate::Method::Get,
+                    path: "/api/runners/runs/:runId/active-inputs",
+                };
+
+                /// Path parameters for `GET /api/runners/runs/:runId/active-inputs`.
+                #[derive(Debug, Clone, Copy)]
+                pub struct Params<'a> {
+                    /// Value for the `:runId` path parameter.
+                    pub run_id: &'a str,
+                }
+
+                /// Build the concrete path for `GET /api/runners/runs/:runId/active-inputs`.
+                /// Percent-encodes each path parameter as a URL path segment.
+                #[must_use]
+                pub fn path(params: Params<'_>) -> String {
+                    format!(
+                        "/api/runners/runs/{}/active-inputs",
+                        crate::route::encode_path_segment(params.run_id),
+                    )
+                }
+
+                /// Build a resolved route for `GET /api/runners/runs/:runId/active-inputs`.
+                #[must_use]
+                pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
+                    crate::ResolvedRoute::new(LIST.method, path(params))
+                }
+
+                /// Generated route bindings under `runners::runs::by_run_id::active_inputs::claim`.
+                pub mod claim {
+                    /// Claim pending input prompts for a running agent run.
+                    /// Route contract: `POST /api/runners/runs/:runId/active-inputs/claim`.
+                    pub const CLAIM: crate::RouteTemplate = crate::RouteTemplate {
+                        method: crate::Method::Post,
+                        path: "/api/runners/runs/:runId/active-inputs/claim",
+                    };
+
+                    /// Path parameters for `POST /api/runners/runs/:runId/active-inputs/claim`.
+                    #[derive(Debug, Clone, Copy)]
+                    pub struct Params<'a> {
+                        /// Value for the `:runId` path parameter.
+                        pub run_id: &'a str,
+                    }
+
+                    /// Build the concrete path for `POST /api/runners/runs/:runId/active-inputs/claim`.
+                    /// Percent-encodes each path parameter as a URL path segment.
+                    #[must_use]
+                    pub fn path(params: Params<'_>) -> String {
+                        format!(
+                            "/api/runners/runs/{}/active-inputs/claim",
+                            crate::route::encode_path_segment(params.run_id),
+                        )
+                    }
+
+                    /// Build a resolved route for `POST /api/runners/runs/:runId/active-inputs/claim`.
+                    #[must_use]
+                    pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
+                        crate::ResolvedRoute::new(CLAIM.method, path(params))
+                    }
+                }
+            }
+
+            /// Generated route bindings under `runners::runs::by_run_id::connector_runtime`.
+            pub mod connector_runtime {
+                /// Generated route bindings under `runners::runs::by_run_id::connector_runtime::sync`.
+                pub mod sync {
+                    /// Sync active run connector runtime targets.
+                    /// Route contract: `POST /api/runners/runs/:runId/connector-runtime/sync`.
+                    pub const SYNC: crate::RouteTemplate = crate::RouteTemplate {
+                        method: crate::Method::Post,
+                        path: "/api/runners/runs/:runId/connector-runtime/sync",
+                    };
+
+                    /// Path parameters for `POST /api/runners/runs/:runId/connector-runtime/sync`.
+                    #[derive(Debug, Clone, Copy)]
+                    pub struct Params<'a> {
+                        /// Value for the `:runId` path parameter.
+                        pub run_id: &'a str,
+                    }
+
+                    /// Build the concrete path for `POST /api/runners/runs/:runId/connector-runtime/sync`.
+                    /// Percent-encodes each path parameter as a URL path segment.
+                    #[must_use]
+                    pub fn path(params: Params<'_>) -> String {
+                        format!(
+                            "/api/runners/runs/{}/connector-runtime/sync",
+                            crate::route::encode_path_segment(params.run_id),
+                        )
+                    }
+
+                    /// Build a resolved route for `POST /api/runners/runs/:runId/connector-runtime/sync`.
+                    #[must_use]
+                    pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
+                        crate::ResolvedRoute::new(SYNC.method, path(params))
+                    }
+                }
+            }
+
             /// Generated route bindings under `runners::runs::by_run_id::network_policy_refresh`.
             pub mod network_policy_refresh {
                 /// Refresh active run network policies.
@@ -184,6 +286,16 @@ pub mod webhooks {
             pub const SEND: crate::Route = crate::Route {
                 method: crate::Method::Post,
                 path: "/api/webhooks/agent/heartbeat",
+            };
+        }
+
+        /// Generated route bindings under `webhooks::agent::pi_transcript`.
+        pub mod pi_transcript {
+            /// Read the Pi transcript for the run's chat thread.
+            /// Route contract: `GET /api/webhooks/agent/pi-transcript`.
+            pub const READ: crate::Route = crate::Route {
+                method: crate::Method::Get,
+                path: "/api/webhooks/agent/pi-transcript",
             };
         }
 

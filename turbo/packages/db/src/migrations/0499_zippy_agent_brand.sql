@@ -1,1 +1,0 @@
-ALTER TABLE "zero_workflow_triggers" ADD COLUMN "unattended_permission_policy" jsonb;

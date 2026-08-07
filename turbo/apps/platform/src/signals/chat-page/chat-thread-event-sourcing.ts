@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadsContract,
   type ChatThreadsContract,
+  type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
@@ -20,11 +21,10 @@ import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { pathParams$ } from "../route.ts";
 import { bestEffort } from "../utils.ts";
-import {
-  chatThreadEventHasSeqId,
-  type ChatThreadEventView,
-  type CompatibleChatThreadEvent,
-  type OptimisticChatThreadEvent,
+import { i18n } from "../../i18n/index.ts";
+import type {
+  ChatThreadEventView,
+  OptimisticChatThreadEvent,
 } from "./chat-thread-event-types.ts";
 
 const L = logger("ChatThreadEventSourcing");
@@ -36,7 +36,7 @@ type ChatThreadEventSyncMode = "incremental" | "snapshot-rebase";
 
 interface ChatThreadEventData {
   readonly snapshot: readonly ChatThreadSnapshotProjection[];
-  readonly events: readonly CompatibleChatThreadEvent[];
+  readonly events: readonly ChatThreadEvent[];
 }
 
 interface ChatThreadSnapshotData {
@@ -47,7 +47,7 @@ interface ChatThreadSnapshotData {
 
 interface ChatThreadEventState {
   readonly snapshot: ChatThreadSnapshotData | null;
-  readonly events: readonly CompatibleChatThreadEvent[];
+  readonly events: readonly ChatThreadEvent[];
   readonly latestEventId: string | null;
   readonly latestSeqId: number | null;
 }
@@ -55,12 +55,12 @@ interface ChatThreadEventState {
 interface ChatThreadEventUpdate {
   readonly state: ChatThreadEventState;
   readonly replacementSnapshot: ChatThreadSnapshotData | null;
-  readonly newEvents: readonly CompatibleChatThreadEvent[];
+  readonly newEvents: readonly ChatThreadEvent[];
 }
 
 interface ChatThreadEventCursor {
   readonly eventId: string;
-  readonly seqId: number | null;
+  readonly seqId: number;
 }
 
 interface ChatThreadEventSyncResult {
@@ -148,7 +148,7 @@ const chatThreadEventStores$ = computed((get): Stores => {
 
 const lastEventCursor$ = computed((get): ChatThreadEventCursor | null => {
   const state = get(chatThreadEventState$);
-  if (state.latestEventId === null) {
+  if (state.latestEventId === null || state.latestSeqId === null) {
     return null;
   }
   return {
@@ -160,7 +160,7 @@ const lastEventCursor$ = computed((get): ChatThreadEventCursor | null => {
 function snapshotCursor(
   snapshot: ChatThreadSnapshotData,
 ): ChatThreadEventCursor | null {
-  return snapshot.latestEventId === null
+  return snapshot.latestEventId === null || snapshot.latestSeqId === null
     ? null
     : {
         eventId: snapshot.latestEventId,
@@ -168,10 +168,10 @@ function snapshotCursor(
       };
 }
 
-function eventCursor(event: CompatibleChatThreadEvent): ChatThreadEventCursor {
+function eventCursor(event: ChatThreadEvent): ChatThreadEventCursor {
   return {
     eventId: event.id,
-    seqId: chatThreadEventHasSeqId(event) ? event.seqId : null,
+    seqId: event.seqId,
   };
 }
 
@@ -190,9 +190,7 @@ async function fetchRemoteSnapshot(
   return {
     chatThreads: result.body.chatThreads,
     latestEventId: result.body.latestEventId,
-    // App promotion can precede API promotion. The old API response does not
-    // carry latestSeqId, so retain its UUID cursor during that rollout window.
-    latestSeqId: result.body.latestSeqId ?? null,
+    latestSeqId: result.body.latestSeqId,
   };
 }
 
@@ -203,12 +201,7 @@ async function fetchRemoteEvents(
   signal?: AbortSignal,
 ) {
   const request = client.events({
-    query: {
-      ...(cursor?.seqId !== null && cursor?.seqId !== undefined
-        ? { sinceSeqId: cursor.seqId }
-        : {}),
-      ...(cursor ? { sinceEventId: cursor.eventId } : {}),
-    },
+    query: cursor ? { sinceSeqId: cursor.seqId } : {},
     fetchOptions: { signal },
   });
   return await accept(request, [200, 410], signal, {
@@ -218,10 +211,10 @@ async function fetchRemoteEvents(
 
 function createChatThreadEventUpdate(
   snapshot: ChatThreadSnapshotData,
-  events: readonly CompatibleChatThreadEvent[],
+  events: readonly ChatThreadEvent[],
   cursor: ChatThreadEventCursor | null,
   snapshotReplaced: boolean,
-  newEvents: readonly CompatibleChatThreadEvent[],
+  newEvents: readonly ChatThreadEvent[],
 ): ChatThreadEventUpdate | null {
   if (!snapshotReplaced && newEvents.length === 0) {
     return null;
@@ -249,7 +242,7 @@ async function fetchChatThreadEventUpdate(
   let events = currentState.events;
   let cursor = initialCursor;
   let snapshotReplaced = false;
-  let newEvents: readonly CompatibleChatThreadEvent[] = [];
+  let newEvents: readonly ChatThreadEvent[] = [];
 
   if (mode === "snapshot-rebase" || !snapshot || cursor === null) {
     snapshot = await fetchRemoteSnapshot(client, mode, signal);
@@ -272,7 +265,7 @@ async function fetchChatThreadEventUpdate(
       continue;
     }
 
-    const pageEvents: readonly CompatibleChatThreadEvent[] = result.body.events;
+    const pageEvents: readonly ChatThreadEvent[] = result.body.events;
     if (pageEvents.length > 0) {
       events = [...events, ...pageEvents];
       newEvents = [...newEvents, ...pageEvents];
@@ -336,14 +329,7 @@ const syncChatThreadEvents$ = command(
       };
     }
 
-    // The seq_id index cannot represent legacy events. Once one appears in the
-    // in-memory tail, keep the whole tail remote-only so IndexedDB never
-    // advances past an event it omitted during an API promotion boundary.
-    const persistableNewEvents = update.state.events.every(
-      chatThreadEventHasSeqId,
-    )
-      ? update.newEvents.filter(chatThreadEventHasSeqId)
-      : [];
+    const persistableNewEvents = update.newEvents;
     if (update.replacementSnapshot) {
       await store.writeStore.replaceFromSnapshot(
         update.replacementSnapshot,
@@ -492,7 +478,13 @@ const syncCurrentChatThreadDocumentTitle$ = command(
     const meta = get(threadMeta(threadId));
     signal.throwIfAborted();
     if (meta) {
-      set(updateDocumentTitle$, meta.title ?? "New chat");
+      set(
+        updateDocumentTitle$,
+        meta.title ??
+          i18n.t(($) => {
+            return $.chat.newChat;
+          }),
+      );
     }
   },
 );

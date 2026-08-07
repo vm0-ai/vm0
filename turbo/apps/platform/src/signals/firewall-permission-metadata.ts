@@ -1,24 +1,22 @@
 import { computed, type Computed } from "ccstate";
-import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
-import {
-  zeroConnectorCatalogContract,
-  type PublicConnectorCatalogPermissionDetail,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { accept } from "../lib/accept.ts";
 import { zeroClient$ } from "./api-client.ts";
+import type { PlatformConnectorPermissionMetadata } from "./connector-domain.ts";
 import { connectorsReloadVersion$ } from "./external/connectors.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 
 interface FirewallPermissionMetadataParams {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
 }
 
 export function firewallPermissionMetadataByConnector(
   params: FirewallPermissionMetadataParams,
-): Computed<Promise<PublicConnectorCatalogPermissionDetail | null>> {
-  const key = params.connectorRef;
+): Computed<Promise<PlatformConnectorPermissionMetadata | null>> {
+  const key = params.connectorSlug;
   return computed(async (get) => {
-    if (!connectorRefSchema.safeParse(key).success) {
+    if (!connectorSlugSchema.safeParse(key).success) {
       return null;
     }
     get(connectorsReloadVersion$);
@@ -28,17 +26,17 @@ export function firewallPermissionMetadataByConnector(
     const client = createClient(zeroConnectorCatalogContract);
     const result = await accept(
       client.permissions({
-        params: { connectorRef: key },
+        params: { connectorSlug: key },
       }),
       [200, 404],
     );
     if (result.status === 404) {
       return null;
     }
-    const { permissions } = result.body;
-    if (permissions.connectorRef !== key) {
+    const permissions = result.body.permissions;
+    if (permissions.connectorSlug !== key) {
       throw new Error(
-        `Permission metadata connectorRef mismatch: expected ${key}, got ${permissions.connectorRef}`,
+        `Permission metadata connector slug mismatch: expected ${key}, got ${permissions.connectorSlug}`,
       );
     }
     return permissions;

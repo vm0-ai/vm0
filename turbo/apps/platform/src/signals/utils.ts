@@ -1,5 +1,5 @@
 import { command, state, type Command } from "ccstate";
-import { delay } from "signal-timers";
+import { delay, timeout } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { logger } from "./log.ts";
 
@@ -134,6 +134,23 @@ export const isAbortError = (error: unknown): boolean => {
   return false;
 };
 
+/**
+ * Treat cancellation by a nested lifecycle as successful completion while
+ * preserving parent cancellation and unrelated failures.
+ */
+export function completeOnLocalAbort(
+  completion: Promise<void>,
+  localSignal: AbortSignal,
+  parentSignal: AbortSignal,
+): Promise<void> {
+  return completion.then(undefined, (error) => {
+    parentSignal.throwIfAborted();
+    if (!localSignal.aborted || !isAbortError(error)) {
+      throw error;
+    }
+  });
+}
+
 function throwIfNotAbort(e: unknown) {
   if (!isAbortError(e)) {
     throw e;
@@ -162,25 +179,6 @@ export function jsonParseOr<T>(value: string, fallback: T): T {
     throwIfAbort(error);
     return fallback;
   }
-}
-
-const base64UrlPattern = /^[A-Za-z0-9_-]*$/;
-
-export function jsonParseBase64UrlOr<T>(value: string, fallback: T): T {
-  if (!base64UrlPattern.test(value) || value.length % 4 === 1) {
-    return fallback;
-  }
-
-  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
-  const padded = base64.padEnd(
-    base64.length + ((4 - (base64.length % 4)) % 4),
-    "=",
-  );
-  const raw = atob(padded);
-  const bytes = Uint8Array.from(raw, (char) => {
-    return char.charCodeAt(0);
-  });
-  return jsonParseOr(new TextDecoder().decode(bytes), fallback);
 }
 
 /**
@@ -358,9 +356,7 @@ async function waitForFibonacciRetry(
   signal: AbortSignal,
 ): Promise<void> {
   const delayMs = fibonacciRetryDelayMs(retryIndex);
-  await (IN_VITEST
-    ? delay(0, { signal: AbortSignal.any([]) })
-    : delay(delayMs, { signal }));
+  await (IN_VITEST ? waitForNextMacrotask(signal) : delay(delayMs, { signal }));
   signal.throwIfAborted();
 }
 
@@ -374,23 +370,30 @@ export async function retryWithFibonacciBackoff<T>(
   shouldRetry: (error: unknown) => boolean,
   signal: AbortSignal,
 ): Promise<T> {
-  let retryIndex = 0;
-  while (true) {
-    if (IN_VITEST && retryIndex > MAX_LOOP_COUNT_IN_TEST) {
-      throw new Error(
-        `retryWithFibonacciBackoff: infinite retry detected — exceeded ${MAX_LOOP_COUNT_IN_TEST} attempts in test`,
-      );
-    }
-    const result = await settle(runRetriedLoad(operation), signal);
-    if (result.ok) {
-      return result.value;
-    }
-    if (!shouldRetry(result.error)) {
-      throw result.error;
-    }
-    await waitForFibonacciRetry(retryIndex, signal);
-    retryIndex++;
+  const completion: { result?: { readonly value: T } } = {};
+  await setLoop(
+    async (loopSignal) => {
+      const result = await settle(runRetriedLoad(operation), loopSignal);
+      if (!result.ok) {
+        throw result.error;
+      }
+      completion.result = result;
+      return true;
+    },
+    0,
+    signal,
+    {
+      shouldRetryError: shouldRetry,
+      logTransientErrors: false,
+    },
+  );
+
+  const completed = completion.result;
+  if (!completed) {
+    signal.throwIfAborted();
+    throw new Error("Retry loop ended before the operation completed");
   }
+  return completed.value;
 }
 
 /**
@@ -402,7 +405,11 @@ export async function setLoop(
   loopBody: (signal: AbortSignal) => Promise<boolean> | boolean,
   interval: number,
   signal: AbortSignal,
-  options: { retryTransientErrors?: boolean } = {},
+  options: {
+    retryTransientErrors?: boolean;
+    shouldRetryError?: (error: unknown) => boolean;
+    logTransientErrors?: boolean;
+  } = {},
 ): Promise<void> {
   let fibIndex = 0;
   let loopCount = 0;
@@ -422,29 +429,47 @@ export async function setLoop(
         return;
       }
       fibIndex = 0;
-      // In VITEST, yield to the macrotask queue via setTimeout so React can
-      // flush renders between iterations. Using Promise.resolve() only queues
-      // a microtask, which starves React's render cycle. We avoid
-      // delay(0, { signal }) because signal-timers' Promise.race leaves an
-      // abandoned promiseFromSignal that rejects as an unhandled rejection
-      // when the abort signal fires during afterEach cleanup.
+      // In VITEST, yield to the macrotask queue so React can flush renders
+      // between iterations. Using Promise.resolve() only queues a microtask,
+      // which starves React's render cycle. The callback timer avoids
+      // signal-timers' delay Promise.race while still honoring the loop signal.
       await (IN_VITEST
-        ? delay(0, { signal: AbortSignal.any([]) })
+        ? waitForNextMacrotask(signal)
         : delay(interval, { signal }));
     } catch (error) {
       throwIfAbort(error);
-      if (options.retryTransientErrors === false) {
+      if (
+        options.retryTransientErrors === false ||
+        (options.shouldRetryError !== undefined &&
+          !options.shouldRetryError(error))
+      ) {
         throw error;
       }
       const backoff = fibonacciRetryDelayMs(fibIndex);
-      L.warn(
-        `setLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
-        error,
-      );
+      if (options.logTransientErrors !== false) {
+        L.warn(
+          `setLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
+          error,
+        );
+      }
       await waitForFibonacciRetry(fibIndex, signal);
       fibIndex++;
     }
   }
+}
+
+function waitForNextMacrotask(signal: AbortSignal): Promise<void> {
+  const deferred = createDeferredPromise<void>(signal);
+  if (!signal.aborted) {
+    timeout(
+      () => {
+        deferred.resolve(undefined);
+      },
+      0,
+      { signal },
+    );
+  }
+  return deferred.promise;
 }
 
 export function resetSignal(): Command<AbortSignal, AbortSignal[]> {

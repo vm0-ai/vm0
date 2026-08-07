@@ -93,10 +93,38 @@ async fn shutdown_drains_memory_prefetch_before_stopped() {
     wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
 }
 
-#[tokio::test]
-async fn kmsg_stdout_eof_stops_runner_and_reaps_child_before_teardown() {
+#[derive(Clone, Copy)]
+enum NetworkLogTestComponent {
+    Kmsg,
+    Dns,
+}
+
+impl NetworkLogTestComponent {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Kmsg => "kmsg",
+            Self::Dns => "dns",
+        }
+    }
+
+    fn eof_error_prefix(self) -> &'static str {
+        match self {
+            Self::Kmsg => "kmsg monitor exited unexpectedly: Eof",
+            Self::Dns => "dns monitor exited unexpectedly: Eof",
+        }
+    }
+
+    async fn install(self, config: &mut RunConfig) -> (tokio::process::ChildStdin, u32, u64) {
+        match self {
+            Self::Kmsg => install_controllable_kmsg(config).await,
+            Self::Dns => install_controllable_dns(config).await,
+        }
+    }
+}
+
+async fn assert_network_log_eof_stops_runner(component: NetworkLogTestComponent) {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let (stdin, pid, starttime) = install_controllable_kmsg(&mut config).await;
+    let (stdin, pid, starttime) = component.install(&mut config).await;
     env.handle.block_heartbeats();
     let run_handle = tokio::spawn(run(config));
 
@@ -107,23 +135,27 @@ async fn kmsg_stdout_eof_stops_runner_and_reaps_child_before_teardown() {
         env.handle
             .wait_heartbeat_in_flight(1, Duration::from_secs(2))
             .await,
-        "kmsg EOF should drive runner teardown",
+        "{} EOF should drive runner teardown",
+        component.label(),
     );
     assert!(
         !run_handle.is_finished(),
         "blocked final heartbeat should hold teardown open",
     );
-    assert_kmsg_child_reaped(pid, starttime).await;
-    assert!(env.cancel.is_cancelled(), "kmsg EOF should stop discovery");
+    assert_child_reaped(component.label(), pid, starttime).await;
+    assert!(
+        env.cancel.is_cancelled(),
+        "{} EOF should stop discovery",
+        component.label(),
+    );
 
     env.handle.unblock_heartbeats();
-    assert_run_error_contains(run_handle, "Eof").await;
+    assert_run_error_contains(run_handle, component.eof_error_prefix()).await;
 }
 
-#[tokio::test]
-async fn kmsg_stdout_read_error_stops_runner_and_kills_child() {
+async fn assert_network_log_read_error_stops_runner(component: NetworkLogTestComponent) {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let (mut stdin, pid, starttime) = install_controllable_kmsg(&mut config).await;
+    let (mut stdin, pid, starttime) = component.install(&mut config).await;
     env.handle.block_heartbeats();
     let run_handle = tokio::spawn(run(config));
 
@@ -135,30 +167,127 @@ async fn kmsg_stdout_read_error_stops_runner_and_kills_child() {
         env.handle
             .wait_heartbeat_in_flight(1, Duration::from_secs(2))
             .await,
-        "kmsg read error should drive runner teardown",
+        "{} read error should drive runner teardown",
+        component.label(),
     );
-    assert_kmsg_child_reaped(pid, starttime).await;
+    assert_child_reaped(component.label(), pid, starttime).await;
+    assert!(
+        env.cancel.is_cancelled(),
+        "{} read error should stop discovery",
+        component.label(),
+    );
 
     env.handle.unblock_heartbeats();
     assert_run_error_contains(run_handle, "ReadError").await;
 }
 
-#[tokio::test]
-async fn normal_shutdown_cancels_kmsg_and_reaps_child_without_error() {
+async fn assert_normal_shutdown_reaps_network_log_child(component: NetworkLogTestComponent) {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let (_stdin, pid, starttime) = install_controllable_kmsg(&mut config).await;
+    let (_stdin, pid, starttime) = component.install(&mut config).await;
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
     env.trigger_stopping().await;
 
-    assert_run_exits_within(
-        run_handle,
-        Duration::from_secs(3),
-        "normal hard shutdown should stop the kmsg monitor",
-    )
-    .await;
-    assert_kmsg_child_reaped(pid, starttime).await;
+    let timeout_message = format!(
+        "normal hard shutdown should stop the {} monitor",
+        component.label(),
+    );
+    assert_run_exits_within(run_handle, Duration::from_secs(3), &timeout_message).await;
+    assert_child_reaped(component.label(), pid, starttime).await;
+}
+
+#[tokio::test]
+async fn kmsg_stdout_eof_stops_runner_and_reaps_child_before_teardown() {
+    assert_network_log_eof_stops_runner(NetworkLogTestComponent::Kmsg).await;
+}
+
+#[tokio::test]
+async fn kmsg_stdout_read_error_stops_runner_and_kills_child() {
+    assert_network_log_read_error_stops_runner(NetworkLogTestComponent::Kmsg).await;
+}
+
+#[tokio::test]
+async fn normal_shutdown_cancels_kmsg_and_reaps_child_without_error() {
+    assert_normal_shutdown_reaps_network_log_child(NetworkLogTestComponent::Kmsg).await;
+}
+
+#[tokio::test]
+async fn dns_stderr_eof_stops_runner_and_reaps_child_before_teardown() {
+    assert_network_log_eof_stops_runner(NetworkLogTestComponent::Dns).await;
+}
+
+#[tokio::test]
+async fn dns_stderr_read_error_stops_runner_and_kills_child() {
+    assert_network_log_read_error_stops_runner(NetworkLogTestComponent::Dns).await;
+}
+
+#[tokio::test]
+async fn dns_monitor_task_panic_stops_runner_and_cancels_active_job() {
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (mut config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let (_stdin, pid, starttime) = install_controllable_dns(&mut config).await;
+    let panic_trigger = config
+        .shutdown
+        .dns_handle
+        .replace_monitor_with_panic_trigger_for_test()
+        .await;
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    let token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter the lifecycle gate");
+
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(0, Duration::from_secs(2))
+            .await,
+        "ordinary heartbeats should be idle before the DNS monitor panic",
+    );
+    env.handle.block_heartbeats();
+    panic_trigger.notify_one();
+
+    tokio::time::timeout(Duration::from_secs(2), token.cancelled())
+        .await
+        .expect("DNS monitor panic should cancel the active job");
+    assert!(
+        env.cancel.is_cancelled(),
+        "DNS monitor panic should stop discovery",
+    );
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(1, Duration::from_secs(2))
+            .await,
+        "DNS monitor panic should drive runner teardown",
+    );
+    assert!(
+        !run_handle.is_finished(),
+        "blocked final heartbeat should hold teardown open",
+    );
+    assert_child_reaped("dns", pid, starttime).await;
+
+    env.handle.unblock_heartbeats();
+    assert_run_error_contains(run_handle, "dns monitor task failed").await;
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+    let completions = env.handle.completions.lock().unwrap();
+    let completion = completions
+        .iter()
+        .find(|completion| completion.run_id == run_id)
+        .expect("cancelled job should report completion");
+    assert_eq!(completion.error.as_deref(), Some("cancelled by user"));
+}
+
+#[tokio::test]
+async fn normal_shutdown_cancels_dns_and_reaps_child_without_error() {
+    assert_normal_shutdown_reaps_network_log_child(NetworkLogTestComponent::Dns).await;
 }
 
 /// SIGTERM while a job is in flight: per-job cancellation fires, the
@@ -365,14 +494,37 @@ async fn install_controllable_kmsg(
     (stdin, pid, starttime)
 }
 
-async fn assert_kmsg_child_reaped(pid: u32, starttime: u64) {
+async fn install_controllable_dns(
+    config: &mut RunConfig,
+) -> (tokio::process::ChildStdin, u32, u64) {
+    let mut child = tokio::process::Command::new("sh")
+        .args(["-c", "exec cat >&2"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn controllable dns child");
+    let stdin = child.stdin.take().expect("capture test child stdin");
+    let pid = child.id().expect("test child pid");
+    let starttime = crate::process::read_process_stat(pid)
+        .await
+        .expect("test child should be visible in procfs")
+        .starttime;
+    config.shutdown.dns_handle =
+        crate::dns::DnsProxy::from_test_child(child, NetworkLogManager::new())
+            .await
+            .expect("create test dns handle");
+    (stdin, pid, starttime)
+}
+
+async fn assert_child_reaped(component: &str, pid: u32, starttime: u64) {
     let observed_starttime = crate::process::read_process_stat(pid)
         .await
         .map(|stat| stat.starttime);
     assert_ne!(
         observed_starttime,
         Some(starttime),
-        "kmsg child pid {pid} with start time {starttime} was not reaped",
+        "{component} child pid {pid} with start time {starttime} was not reaped",
     );
 }
 
@@ -385,10 +537,10 @@ async fn assert_run_error_contains(
         Err(_) => {
             run_handle.abort();
             let _ = run_handle.await;
-            panic!("runner did not finish after kmsg failure");
+            panic!("runner did not finish after required component failure");
         }
     };
-    let error = result.expect_err("kmsg failure should return a runner error");
+    let error = result.expect_err("required component failure should return a runner error");
     assert!(
         error.to_string().contains(expected),
         "expected error containing {expected:?}, got {error}",

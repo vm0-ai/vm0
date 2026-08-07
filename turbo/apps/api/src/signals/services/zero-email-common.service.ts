@@ -17,9 +17,10 @@ import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
+import type { Tx } from "../../lib/db-types";
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
-type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type Transaction = Tx;
 
 interface EmailOutboxDrainContext {
   readonly currentTimeMs: number;

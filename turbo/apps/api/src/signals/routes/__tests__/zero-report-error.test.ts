@@ -6,13 +6,15 @@ import { beforeEach, expect } from "vitest";
 import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroReportErrorRoutes } from "../zero-report-error";
 
 const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
@@ -222,7 +224,9 @@ async function seedFailedReportRun(
 }
 
 function client() {
-  return setupApp({ context })(zeroReportErrorContract);
+  return setupApp({ context, routes: zeroReportErrorRoutes })(
+    zeroReportErrorContract,
+  );
 }
 
 function submitReport(body: {
@@ -529,6 +533,7 @@ describe("POST /api/zero/report-error", () => {
       upstream_binding_reason: "connector_auth",
       upstream_binding_server_connected: false,
       upstream_binding_client_binding_count: 0,
+      connector_diagnostic_slug: "github",
       connector_route_reason: "connector_intent_required",
       connector_route_candidates: ["auditor", "primary"],
       auth_resolved_secrets: ["GITHUB_TOKEN"],
@@ -545,6 +550,20 @@ describe("POST /api/zero/report-error", () => {
       response_body: '{"ok":true}',
       response_body_encoding: networkBodyUtf8Encoding,
       response_body_truncated: false,
+    } satisfies AxiomNetworkEvent;
+    const canonicalNetworkEntry = {
+      ...networkEntry,
+      _time: "2026-04-28T07:00:01.123Z",
+      host: "api.slack.com",
+      url: "https://api.slack.com/methods/auth.test",
+      connector_diagnostic_slug: "slack",
+    } satisfies AxiomNetworkEvent;
+    const identityFreeNetworkEntry = {
+      ...networkEntry,
+      _time: "2026-04-28T07:00:03.123Z",
+      host: "example.com",
+      url: "https://example.com/health",
+      connector_diagnostic_slug: undefined,
     } satisfies AxiomNetworkEvent;
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
@@ -567,7 +586,11 @@ describe("POST /api/zero/report-error", () => {
         ]);
       }
       if (apl.includes("sandbox-telemetry-network")) {
-        return Promise.resolve([networkEntry]);
+        return Promise.resolve([
+          networkEntry,
+          canonicalNetworkEntry,
+          identityFreeNetworkEntry,
+        ]);
       }
       return Promise.resolve([]);
     });
@@ -576,11 +599,29 @@ describe("POST /api/zero/report-error", () => {
 
     const zip = uploadedZip();
     expect(zipText(zip, "system-log.txt")).toBe("booting sandbox\nready\n");
-    const networkLog = JSON.parse(zipText(zip, "network-log.jsonl")) as {
-      readonly method: string;
-      readonly firewall_action?: string;
-    };
-    expect(networkLog.method).toBe("POST");
+    const networkLogs = zipText(zip, "network-log.jsonl")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        return JSON.parse(line) as Record<string, unknown>;
+      });
+    expect(networkLogs).toStrictEqual([
+      expect.objectContaining({
+        _time: "2026-04-28T07:00:00.123Z",
+        method: "POST",
+        connector_diagnostic_slug: "github",
+      }),
+      expect.objectContaining({
+        _time: "2026-04-28T07:00:01.123Z",
+        host: "api.slack.com",
+        connector_diagnostic_slug: "slack",
+      }),
+      expect.objectContaining({
+        _time: "2026-04-28T07:00:03.123Z",
+        host: "example.com",
+      }),
+    ]);
+    expect(networkLogs[2]).not.toHaveProperty("connector_diagnostic_slug");
 
     const activityLogEntry = zip.getEntries().find((entry) => {
       return entry.entryName.startsWith("activity-log-");
@@ -625,6 +666,7 @@ describe("POST /api/zero/report-error", () => {
       upstream_binding_reason: "connector_auth",
       upstream_binding_server_connected: false,
       upstream_binding_client_binding_count: 0,
+      connector_diagnostic_slug: "github",
       connector_route_reason: "connector_intent_required",
       connector_route_candidates: ["auditor", "primary"],
       auth_resolved_secrets: ["GITHUB_TOKEN"],
@@ -642,6 +684,19 @@ describe("POST /api/zero/report-error", () => {
       response_body_encoding: networkBodyUtf8Encoding,
       response_body_truncated: false,
     });
+    expect(activityLog.networkLogs).toHaveLength(3);
+    expect(activityLog.networkLogs?.[1]).toMatchObject({
+      timestamp: "2026-04-28T07:00:01.123Z",
+      host: "api.slack.com",
+      connector_diagnostic_slug: "slack",
+    });
+    expect(activityLog.networkLogs?.[2]).toMatchObject({
+      timestamp: "2026-04-28T07:00:03.123Z",
+      host: "example.com",
+    });
+    expect(activityLog.networkLogs?.[2]).not.toHaveProperty(
+      "connector_diagnostic_slug",
+    );
   });
 
   it("includes run context when a same-org non-owner submits the report", async () => {

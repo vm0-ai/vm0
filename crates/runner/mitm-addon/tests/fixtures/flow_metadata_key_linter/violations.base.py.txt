@@ -30,7 +30,7 @@ flow.metadata.update({"firewall_params": {}}.items())
 flow.metadata.update({("firewall_billable", True)})
 flow.metadata.update(tuple([("trusted_authority_host", "api.example.com")]))
 flow.metadata.update(set([("firewall_permission", "read")]))
-flow.metadata.update(frozenset([("connector_diagnostic_type", "github")]))
+flow.metadata.update(frozenset([("connector_diagnostic_slug", "github")]))
 flow.metadata.update(sorted([("connector_diagnostic_reason", "missing")]))
 flow.metadata.update(reversed([("connector_diagnostic_base", "https://api.example.com")]))
 flow.metadata = {**({"vm_run_id": "run-1"} if condition else {})}
@@ -176,7 +176,7 @@ copy_meta["vm_run_id"] = "run-1"
 "firewall_name" in (flow.metadata if condition else {})
 (merged_named_expr_meta := flow.metadata | {"firewall_name": "github"})
 (inline_conditional_meta := flow.metadata if condition else {})["vm_run_id"] = "run-1"
-(inline_meta := flow.metadata)["connector_diagnostic_type"] = "github"
+(inline_meta := flow.metadata)["connector_diagnostic_slug"] = "github"
 (call_meta := flow.metadata).get("connector_diagnostic_reason")
 def function_default_meta(default_meta=flow.metadata):
     default_meta["vm_run_id"] = "run-1"

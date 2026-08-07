@@ -1,7 +1,7 @@
-import type { ChatMessage } from "./chat-message-types.ts";
+import type { ChatEvent } from "./chat-event-types.ts";
 
 export function isCancelledRunEvent(
-  event: ChatMessage,
-): event is Extract<ChatMessage, { eventType: "run.cancelled" }> {
+  event: ChatEvent,
+): event is Extract<ChatEvent, { eventType: "run.cancelled" }> {
   return event.eventType === "run.cancelled";
 }

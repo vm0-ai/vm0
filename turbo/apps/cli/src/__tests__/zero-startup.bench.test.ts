@@ -57,7 +57,7 @@ describe.skipIf(!SHOULD_RUN)("zero startup benchmark", () => {
   it("keeps the built zero help path fast", () => {
     expect(
       existsSync(ZERO_DIST_PATH),
-      "Run `pnpm -F @vm0/cli build` before the startup benchmark.",
+      "Run `pnpm -F @vm0/zero-cli build` before the startup benchmark.",
     ).toBe(true);
 
     const env = benchmarkEnv();

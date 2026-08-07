@@ -21,7 +21,8 @@ import { http, HttpResponse } from "msw";
 import { create as createTar } from "tar";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createBddApi } from "./helpers/api-bdd";
@@ -36,6 +37,7 @@ import {
   seedCurrentSkillVersionsState,
   setAllSkillsCommitShaState,
 } from "./helpers/cron-sync-skills-state";
+import { cronSyncSkillsRoutes } from "../cron-sync-skills";
 
 const context = testContext();
 const CRON_SECRET = "test-cron-secret";
@@ -158,7 +160,9 @@ async function seedCurrentSkillVersions(
 }
 
 function apiClient() {
-  return setupApp({ context })(cronSyncSkillsContract);
+  return setupApp({ context, routes: cronSyncSkillsRoutes })(
+    cronSyncSkillsContract,
+  );
 }
 
 function cronHeaders(secret = CRON_SECRET) {

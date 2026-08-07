@@ -100,7 +100,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -158,7 +157,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -183,7 +181,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -227,7 +224,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -297,7 +293,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -340,7 +335,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -492,7 +486,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId || query.sinceId) {
+        if (query.sinceSeqId) {
           return respond(200, { events: [] });
         }
         if (params.threadId === RUNNING_THREAD_ID) {
@@ -502,7 +496,7 @@ describe("chat lifecycle", () => {
                 id: "msg-running-user",
                 threadId: RUNNING_THREAD_ID,
                 eventType: "input.prompt" as const,
-                content: "Active task prompt",
+                content: null,
                 userMessage: {
                   version: 1,
                   parts: [{ type: "text", text: "Active task prompt" }],
@@ -530,7 +524,7 @@ describe("chat lifecycle", () => {
               id: "msg-completed-user",
               threadId: COMPLETED_THREAD_ID,
               eventType: "input.prompt" as const,
-              content: "Done task",
+              content: null,
               userMessage: {
                 version: 1,
                 parts: [{ type: "text", text: "Done task" }],
@@ -553,6 +547,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
@@ -565,7 +560,6 @@ describe("chat lifecycle", () => {
         modelProvider: null,
         selectedModel: null,
         triggerSource: "web",
-        triggerAgentName: null,
         status: "running",
         prompt: "Active task prompt",
         appendSystemPrompt: null,
@@ -629,7 +623,7 @@ describe("initial thinking indicator", () => {
     const threadId = "thread-initial-thinking";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-user",
           eventType: "input.prompt" as const,
@@ -667,7 +661,7 @@ describe("initial thinking indicator", () => {
     mockChatLifecycle(context, {
       threadId,
       threadGate: threadGate.promise,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-detail-gated-user",
           eventType: "input.prompt" as const,
@@ -735,7 +729,7 @@ describe("initial thinking indicator", () => {
     );
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-rollover-user",
           eventType: "input.prompt" as const,
@@ -780,11 +774,93 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("keeps the thinking marker visible while later messages are queued", async () => {
+  it("shows every explicit thinking line in sequence", async () => {
+    const threadId = "thread-initial-thinking-multiline";
+    const thinking = "ONE\nTWO\nTHREE";
+    mockThinkingTypewriterLayout({
+      text: thinking,
+      labelWidth: 520,
+      parentWidth: 640,
+      graphemeWidth: 10,
+    });
+    const displayedLabels = new Set<string>();
+    const recordDisplayedLabel = () => {
+      const label = document.querySelector<HTMLParagraphElement>(
+        "[data-thinking-indicator] p[aria-label]",
+      );
+      if (label?.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+    };
+    const labelObserver = new MutationObserver(recordDisplayedLabel);
+    labelObserver.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        labelObserver.disconnect();
+      },
+      { once: true },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-thinking-multiline-user",
+          eventType: "input.prompt" as const,
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-multiline-marker",
+          eventType: "output.thinking" as const,
+          content: null,
+          thinking,
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const label = await waitFor(() => {
+      const currentLabel = document.querySelector<HTMLParagraphElement>(
+        "[data-thinking-indicator] p[aria-label]",
+      );
+      if (!currentLabel) {
+        throw new Error("Thinking label not found");
+      }
+      expect(currentLabel).toHaveAttribute("aria-label", thinking);
+      return currentLabel;
+    });
+    await waitFor(() => {
+      recordDisplayedLabel();
+      const displayedSequence = Array.from(displayedLabels);
+      const firstLineIndex = displayedSequence.indexOf("ONE");
+      const secondLineIndex = displayedSequence.indexOf("TWO");
+      const thirdLineIndex = displayedSequence.indexOf("THREE");
+      expect(firstLineIndex).toBeGreaterThanOrEqual(0);
+      expect(secondLineIndex).toBeGreaterThan(firstLineIndex);
+      expect(thirdLineIndex).toBeGreaterThan(secondLineIndex);
+    });
+    expect(label).toHaveTextContent(/^THREE$/);
+    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+  });
+
+  it("keeps the thinking marker visible while a later Morning Brief is queued", async () => {
     const threadId = "thread-initial-thinking-with-queue";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-queued-user",
           eventType: "input.prompt" as const,
@@ -803,7 +879,14 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-queued-followup",
           eventType: "input.prompt" as const,
-          content: "Also include owners",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Also include owners" },
+              { type: "morning_brief", briefDate: "2026-03-10" },
+            ],
+          },
           runId: undefined,
           createdAt: "2026-03-10T00:00:02Z",
         },
@@ -829,7 +912,7 @@ describe("initial thinking indicator", () => {
     const threadId = "thread-initial-thinking-answer";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-answer-user",
           eventType: "input.prompt" as const,

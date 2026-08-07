@@ -64,7 +64,7 @@ export function OverlayScrollArea({
     <div className={`group/sidebar-scroll relative ${className ?? ""}`}>
       <div
         ref={setViewportRef}
-        className="h-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="h-full overflow-y-auto overflow-x-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={style}
         onFocus={onFocus}
         onPointerDownCapture={onPointerDownCapture}

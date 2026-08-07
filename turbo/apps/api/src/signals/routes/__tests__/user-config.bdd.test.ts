@@ -15,7 +15,7 @@ import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 /*
 Round-5 cluster auth-03 (AUTH-01/AUTH-03): user-owned configuration plus the
 auth probe matrix. State is constructed only through public APIs (onboarding,
-CLI auth, secrets, variables, agents, composes); the only mocks are the Clerk
+CLI auth, agents, composes); the only mocks are the Clerk
 SDK boundary and the S3 accept for agent creation. Sandbox/zero/forged-PAT
 bearers are minted with the exported test token signers (api-bdd-github and
 api-bdd-computer-use precedent).
@@ -35,10 +35,6 @@ function shortId(): string {
 
 function slug(prefix: string): string {
   return `${prefix}-${shortId()}`;
-}
-
-function upperName(prefix: string): string {
-  return `${prefix}_${shortId().toUpperCase()}`;
 }
 
 async function onboardAdmin(
@@ -63,81 +59,9 @@ async function onboardAdmin(
 }
 
 describe("AUTH-03 user config CRUD error boundaries", () => {
-  it("isolates secret and variable deletion across users and missing names", async () => {
-    const admin = api.user();
-    const member = api.user({ orgId: admin.orgId, orgRole: "org:member" });
-    await onboardAdmin(admin, { slug: slug("bdd-uc-a1") });
-
-    const secretName = upperName("BDD_UC_SECRET");
-    await api.setSecret(admin, {
-      name: secretName,
-      value: "uc-secret-value",
-    });
-    const missingSecret = await cfg.requestDeleteSecret(
-      admin,
-      "NONEXISTENT",
-      [404],
-    );
-    expectApiError(missingSecret.body);
-    expect(missingSecret.body.error).toStrictEqual({
-      message: 'Secret "NONEXISTENT" not found',
-      code: "NOT_FOUND",
-    });
-    const crossUserSecret = await cfg.requestDeleteSecret(
-      member,
-      secretName,
-      [404],
-    );
-    expectApiError(crossUserSecret.body);
-    expect(crossUserSecret.body.error.code).toBe("NOT_FOUND");
-    const secretsAfter = await api.listSecrets(admin);
-    expect(
-      secretsAfter.secrets.some((candidate) => {
-        return candidate.name === secretName;
-      }),
-    ).toBeTruthy();
-
-    const variableName = upperName("BDD_UC_VARIABLE");
-    await api.setVariable(admin, {
-      name: variableName,
-      value: "uc-variable-value",
-    });
-    const missingVariable = await cfg.requestDeleteVariable(
-      admin,
-      "NONEXISTENT",
-      [404],
-    );
-    expectApiError(missingVariable.body);
-    expect(missingVariable.body.error).toStrictEqual({
-      message: 'Variable "NONEXISTENT" not found',
-      code: "NOT_FOUND",
-    });
-    const crossUserVariable = await cfg.requestDeleteVariable(
-      member,
-      variableName,
-      [404],
-    );
-    expectApiError(crossUserVariable.body);
-    expect(crossUserVariable.body.error.code).toBe("NOT_FOUND");
-    const variablesAfter = await api.listVariables(admin);
-    expect(
-      variablesAfter.variables.some((candidate) => {
-        return candidate.name === variableName;
-      }),
-    ).toBeTruthy();
-  });
-
   it("rejects invalid config bodies with 400s", async () => {
     const admin = api.user();
     await onboardAdmin(admin, { slug: slug("bdd-uc-a2") });
-
-    const invalidVariable = await cfg.requestSetVariable(
-      admin,
-      { name: "invalid name", value: "v" },
-      [400],
-    );
-    expectApiError(invalidVariable.body);
-    expect(invalidVariable.body.error.code).toBe("BAD_REQUEST");
 
     const invalidPush = await cfg.requestRegisterPush(
       admin,
@@ -182,11 +106,11 @@ describe("AUTH-03 agent user connectors", () => {
       "github",
       "slack",
     ]);
-    expect(new Set(set.enabledTypes)).toStrictEqual(
+    expect(new Set(set.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
     const readBack = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(new Set(readBack.enabledTypes)).toStrictEqual(
+    expect(new Set(readBack.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
 
@@ -195,8 +119,8 @@ describe("AUTH-03 agent user connectors", () => {
       "github",
       "slack",
     ]);
-    expect(deduped.enabledTypes).toHaveLength(2);
-    expect(new Set(deduped.enabledTypes)).toStrictEqual(
+    expect(deduped.enabledConnectorSlugs).toHaveLength(2);
+    expect(new Set(deduped.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
 
@@ -206,25 +130,25 @@ describe("AUTH-03 agent user connectors", () => {
       ["linear"],
       "add",
     );
-    expect(new Set(added.enabledTypes)).toStrictEqual(
+    expect(new Set(added.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack", "linear"]),
     );
     const readAfterAdd = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(new Set(readAfterAdd.enabledTypes)).toStrictEqual(
+    expect(new Set(readAfterAdd.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack", "linear"]),
     );
 
     const replaced = await cfg.updateUserConnectors(admin, agent.agentId, [
       "linear",
     ]);
-    expect(replaced.enabledTypes).toStrictEqual(["linear"]);
+    expect(replaced.enabledConnectorSlugs).toStrictEqual(["linear"]);
     const readReplaced = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readReplaced.enabledTypes).toStrictEqual(["linear"]);
+    expect(readReplaced.enabledConnectorSlugs).toStrictEqual(["linear"]);
 
     const cleared = await cfg.updateUserConnectors(admin, agent.agentId, []);
-    expect(cleared.enabledTypes).toStrictEqual([]);
+    expect(cleared.enabledConnectorSlugs).toStrictEqual([]);
     const readCleared = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readCleared.enabledTypes).toStrictEqual([]);
+    expect(readCleared.enabledConnectorSlugs).toStrictEqual([]);
 
     const invalid = await cfg.requestUpdateUserConnectors(
       admin,
@@ -234,7 +158,7 @@ describe("AUTH-03 agent user connectors", () => {
     );
     expectApiError(invalid.body);
     expect(invalid.body.error).toStrictEqual({
-      message: "Invalid connector types: not-a-connector",
+      message: "Invalid connector slugs: not-a-connector",
       code: "VALIDATION_ERROR",
     });
 
@@ -243,9 +167,9 @@ describe("AUTH-03 agent user connectors", () => {
       agent.agentId,
       ["bentoml"],
     );
-    expect(discoveryHidden.enabledTypes).toStrictEqual(["bentoml"]);
+    expect(discoveryHidden.enabledConnectorSlugs).toStrictEqual(["bentoml"]);
     const readAfterHidden = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readAfterHidden.enabledTypes).toStrictEqual(["bentoml"]);
+    expect(readAfterHidden.enabledConnectorSlugs).toStrictEqual(["bentoml"]);
 
     const missingAgentId = randomUUID();
     const missingRead = await cfg.requestReadUserConnectors(
@@ -287,9 +211,9 @@ describe("AUTH-03 agent user connectors", () => {
       agent.agentId,
       ["github"],
     );
-    expect(patSet.enabledTypes).toStrictEqual(["github"]);
+    expect(patSet.enabledConnectorSlugs).toStrictEqual(["github"]);
     const readAfterPat = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readAfterPat.enabledTypes).toStrictEqual(["github"]);
+    expect(readAfterPat.enabledConnectorSlugs).toStrictEqual(["github"]);
   });
 
   it("serializes concurrent user-connector replaces for the same agent", async () => {
@@ -305,7 +229,7 @@ describe("AUTH-03 agent user connectors", () => {
       cfg.updateUserConnectors(admin, agent.agentId, ["github", "slack"]),
     ]);
     for (const update of sameSetUpdates) {
-      expect(new Set(update.enabledTypes)).toStrictEqual(
+      expect(new Set(update.enabledConnectorSlugs)).toStrictEqual(
         new Set(["github", "slack"]),
       );
     }
@@ -315,8 +239,8 @@ describe("AUTH-03 agent user connectors", () => {
       cfg.updateUserConnectors(admin, agent.agentId, ["slack"]),
     ]);
     const readBack = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readBack.enabledTypes).toHaveLength(1);
-    const enabledType = readBack.enabledTypes[0];
+    expect(readBack.enabledConnectorSlugs).toHaveLength(1);
+    const enabledType = readBack.enabledConnectorSlugs[0];
     expect(["github", "slack"]).toContain(enabledType);
 
     await cfg.updateUserConnectors(admin, agent.agentId, [], "replace");
@@ -325,7 +249,7 @@ describe("AUTH-03 agent user connectors", () => {
       cfg.updateUserConnectors(admin, agent.agentId, ["slack"], "add"),
     ]);
     const readAfterAdds = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(new Set(readAfterAdds.enabledTypes)).toStrictEqual(
+    expect(new Set(readAfterAdds.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
 
@@ -337,7 +261,7 @@ describe("AUTH-03 agent user connectors", () => {
       admin,
       agent.agentId,
     );
-    expect(readAfterRemoveAdd.enabledTypes).toStrictEqual(["slack"]);
+    expect(readAfterRemoveAdd.enabledConnectorSlugs).toStrictEqual(["slack"]);
   });
 
   it("recomposes a stale compose-target on user-connector updates through public APIs", async () => {
@@ -357,7 +281,7 @@ describe("AUTH-03 agent user connectors", () => {
       created.composeId,
       [],
     );
-    expect(updated.enabledTypes).toStrictEqual([]);
+    expect(updated.enabledConnectorSlugs).toStrictEqual([]);
 
     const compose = await api.readComposeById(admin, created.composeId);
     expect(compose.headVersionId).not.toBe(created.versionId);
@@ -389,23 +313,6 @@ describe("AUTH-03 user model preference", () => {
     const readUpdated = await cfg.readModelPreference(admin);
     expect(readUpdated).toStrictEqual(updated);
 
-    for (const retiredModel of ["gpt-5.4", "gpt-5.4-mini"]) {
-      const normalized = await cfg.rawUpdateModelPreference(
-        admin,
-        { selectedModel: retiredModel },
-        [200],
-      );
-      expect(normalized.body).toMatchObject({
-        selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-        updatedAt: expect.any(String),
-      });
-    }
-    const readAfterRetiredWrites = await cfg.readModelPreference(admin);
-    expect(readAfterRetiredWrites).toMatchObject({
-      selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      updatedAt: expect.any(String),
-    });
-
     const cleared = await cfg.updateModelPreference(admin, {
       selectedModel: null,
     });
@@ -422,7 +329,7 @@ describe("AUTH-03 user model preference", () => {
     expectApiError(emptyBody.body);
     expect(emptyBody.body.error.code).toBe("BAD_REQUEST");
     expect(emptyBody.body.error.message).toContain(
-      "selectedModel: Invalid input",
+      "selectedModel: Invalid option",
     );
 
     const removedModel = await cfg.rawUpdateModelPreference(
@@ -433,7 +340,7 @@ describe("AUTH-03 user model preference", () => {
     expectApiError(removedModel.body);
     expect(removedModel.body.error.code).toBe("BAD_REQUEST");
     expect(removedModel.body.error.message).toContain(
-      "selectedModel: Invalid model selection",
+      "selectedModel: Invalid option",
     );
 
     const unauthenticated = await cfg.requestReadModelPreference(null, [401]);
@@ -757,9 +664,9 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       agent.agentId,
       ["github"],
     );
-    expect(updated.enabledTypes).toStrictEqual(["github"]);
+    expect(updated.enabledConnectorSlugs).toStrictEqual(["github"]);
     const readBack = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readBack.enabledTypes).toStrictEqual(["github"]);
+    expect(readBack.enabledConnectorSlugs).toStrictEqual(["github"]);
 
     const fileCap = cfg.zeroBearer(admin, ["file:read"]);
     const forbidden = await cfg.requestUpdateUserConnectors(

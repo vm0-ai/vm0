@@ -9,14 +9,14 @@ parameterized hosts are meaningful only for firewall config bases.
 """
 
 import json
-import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, NamedTuple
 from urllib.parse import urlsplit
 
 import connector_intent
+import connector_template_syntax
 from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from firewall_matching import base_url as _firewall_base_url
 from firewall_matching import patterns as _firewall_patterns
@@ -74,12 +74,19 @@ _VALID_RULE_METHODS = frozenset(
 )
 _VALID_AUTH_BASE_SCHEME = "https"
 _AUTH_TEMPLATE_START = "${{"
-_AUTH_REFERENCE_PATTERN = re.compile(r"\$\{\{\s*(?:secrets|vars)\.[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}")
-_AUTH_REFERENCE_PREFIX_PATTERN = re.compile(
-    r"^\$\{\{\s*(?:secrets|vars)\.[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}"
-)
 _AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
 _PathSpecificity = tuple[int, int, int, int, int, int, int]
+
+
+class _CompiledPrefixTrieNode[T](NamedTuple):
+    values: tuple[T, ...]
+    children: Mapping[str, "_CompiledPrefixTrieNode[T]"]
+
+
+@dataclass
+class _PrefixTrieBuilder[T]:
+    values: list[T] = field(default_factory=list)
+    children: dict[str, "_PrefixTrieBuilder[T]"] = field(default_factory=dict)
 
 
 class _CompiledRule(NamedTuple):
@@ -100,20 +107,9 @@ class _CompiledRuleEntry(NamedTuple):
     rule: _CompiledRule
 
 
-class _CompiledRuleTrieNode(NamedTuple):
-    entries: tuple[_CompiledRuleEntry, ...]
-    children: Mapping[str, "_CompiledRuleTrieNode"]
-
-
-@dataclass
-class _RuleTrieBuilder:
-    entries: list[_CompiledRuleEntry] = field(default_factory=list)
-    children: dict[str, "_RuleTrieBuilder"] = field(default_factory=dict)
-
-
 class _CompiledRuleMethodIndex(NamedTuple):
     fallback: tuple[_CompiledRuleEntry, ...]
-    prefix_root: _CompiledRuleTrieNode
+    prefix_root: _CompiledPrefixTrieNode[_CompiledRuleEntry]
 
 
 class _CompiledRuleIndex(NamedTuple):
@@ -178,6 +174,7 @@ class _CompiledApi(NamedTuple):
 
 class CompiledFirewallCore(NamedTuple):
     name: str
+    intent_identity: str
     api_cores: tuple[_CompiledApiCore, ...]
     name_malformed: bool
 
@@ -191,6 +188,10 @@ class _CompiledFirewall(NamedTuple):
         return self.core.name
 
     @property
+    def intent_identity(self) -> str:
+        return self.core.intent_identity
+
+    @property
     def name_malformed(self) -> bool:
         return self.core.name_malformed
 
@@ -201,21 +202,13 @@ class _CompiledApiCandidate(NamedTuple):
     api: _CompiledApi
 
 
-class _CompiledApiTrieNode(NamedTuple):
-    candidates: tuple[_CompiledApiCandidate, ...]
-    children: Mapping[str, "_CompiledApiTrieNode"]
-
-
-@dataclass
-class _ApiTrieBuilder:
-    candidates: list[_CompiledApiCandidate] = field(default_factory=list)
-    children: dict[str, "_ApiTrieBuilder"] = field(default_factory=dict)
-
-
 class _CompiledApiIndex(NamedTuple):
     all_candidates: tuple[_CompiledApiCandidate, ...]
     fallback: tuple[_CompiledApiCandidate, ...]
-    static_roots: Mapping[tuple[str, str], _CompiledApiTrieNode]
+    static_roots: Mapping[
+        tuple[str, str],
+        _CompiledPrefixTrieNode[_CompiledApiCandidate],
+    ]
 
 
 class _CompiledOrdinaryCredentialAuthorityIndex(NamedTuple):
@@ -322,18 +315,35 @@ class _AuthBaseStaticValidationTarget(NamedTuple):
     dynamic_prefix_suffix: str
 
 
+def _auth_base_with_reference_placeholders(
+    auth_base: str,
+    references: tuple[connector_template_syntax.SimpleTemplateReference, ...],
+    *,
+    start: int,
+) -> str:
+    parts: list[str] = []
+    last_index = start
+    for reference in references:
+        parts.append(auth_base[last_index : reference.start])
+        parts.append(_AUTH_TEMPLATE_URL_PLACEHOLDER)
+        last_index = reference.end
+    parts.append(auth_base[last_index:])
+    return "".join(parts)
+
+
 def _auth_base_for_static_url_validation(auth_base: str) -> _AuthBaseStaticValidationTarget:
     if _AUTH_TEMPLATE_START not in auth_base:
         return _AuthBaseStaticValidationTarget(auth_base, "")
 
-    replaced = _AUTH_REFERENCE_PATTERN.sub(_AUTH_TEMPLATE_URL_PLACEHOLDER, auth_base)
+    references = tuple(connector_template_syntax.iter_simple_references(auth_base))
+    replaced = _auth_base_with_reference_placeholders(auth_base, references, start=0)
     if _AUTH_TEMPLATE_START in replaced:
         return _AuthBaseStaticValidationTarget(auth_base, "")
-    prefix_match = _AUTH_REFERENCE_PREFIX_PATTERN.match(auth_base)
-    if prefix_match is not None:
-        suffix = _AUTH_REFERENCE_PATTERN.sub(
-            _AUTH_TEMPLATE_URL_PLACEHOLDER,
-            auth_base[prefix_match.end() :],
+    if references and references[0].start == 0:
+        suffix = _auth_base_with_reference_placeholders(
+            auth_base,
+            references[1:],
+            start=references[0].end,
         )
         return _AuthBaseStaticValidationTarget(None, suffix)
     return _AuthBaseStaticValidationTarget(replaced, "")
@@ -549,25 +559,27 @@ def _static_api_index_key(
     )
 
 
-def _insert_api_trie_candidate(
-    root: _ApiTrieBuilder,
+def _insert_prefix_trie_value[T](
+    root: _PrefixTrieBuilder[T],
     path_key: tuple[str, ...],
-    candidate: _CompiledApiCandidate,
+    value: T,
 ) -> None:
     node = root
     for segment in path_key:
-        node = node.children.setdefault(segment, _ApiTrieBuilder())
-    node.candidates.append(candidate)
+        node = node.children.setdefault(segment, _PrefixTrieBuilder())
+    node.values.append(value)
 
 
-def _freeze_api_trie_node(builder: _ApiTrieBuilder) -> _CompiledApiTrieNode:
-    frozen_nodes: dict[int, _CompiledApiTrieNode] = {}
-    stack: list[tuple[_ApiTrieBuilder, bool]] = [(builder, False)]
+def _freeze_prefix_trie[T](
+    builder: _PrefixTrieBuilder[T],
+) -> _CompiledPrefixTrieNode[T]:
+    frozen_nodes: dict[int, _CompiledPrefixTrieNode[T]] = {}
+    stack: list[tuple[_PrefixTrieBuilder[T], bool]] = [(builder, False)]
     while stack:
         node, visited = stack.pop()
         if visited:
-            frozen_nodes[id(node)] = _CompiledApiTrieNode(
-                tuple(node.candidates),
+            frozen_nodes[id(node)] = _CompiledPrefixTrieNode(
+                tuple(node.values),
                 MappingProxyType(
                     {segment: frozen_nodes[id(child)] for segment, child in node.children.items()}
                 ),
@@ -578,19 +590,19 @@ def _freeze_api_trie_node(builder: _ApiTrieBuilder) -> _CompiledApiTrieNode:
     return frozen_nodes[id(builder)]
 
 
-def _extend_api_trie_candidates(
-    candidates: list[_CompiledApiCandidate],
-    root: _CompiledApiTrieNode,
+def _visit_prefix_trie_values[T](
+    root: _CompiledPrefixTrieNode[T],
     path_segs: list[str],
+    visit_values: Callable[[tuple[T, ...]], None],
 ) -> None:
-    candidates.extend(root.candidates)
+    visit_values(root.values)
     node = root
     for segment in path_segs:
         child = node.children.get(segment)
         if child is None:
             break
         node = child
-        candidates.extend(node.candidates)
+        visit_values(node.values)
 
 
 def _compile_api_candidate_index(
@@ -598,7 +610,10 @@ def _compile_api_candidate_index(
 ) -> _CompiledApiIndex:
     all_candidates: list[_CompiledApiCandidate] = []
     fallback: list[_CompiledApiCandidate] = []
-    static_roots: dict[tuple[str, str], _ApiTrieBuilder] = {}
+    static_roots: dict[
+        tuple[str, str],
+        _PrefixTrieBuilder[_CompiledApiCandidate],
+    ] = {}
 
     order = 0
     for firewall in firewalls:
@@ -610,14 +625,14 @@ def _compile_api_candidate_index(
                 fallback.append(candidate)
             else:
                 scheme, authority, path_key = key
-                root = static_roots.setdefault((scheme, authority), _ApiTrieBuilder())
-                _insert_api_trie_candidate(root, path_key, candidate)
+                root = static_roots.setdefault((scheme, authority), _PrefixTrieBuilder())
+                _insert_prefix_trie_value(root, path_key, candidate)
             order += 1
 
     return _CompiledApiIndex(
         tuple(all_candidates),
         tuple(fallback),
-        MappingProxyType({key: _freeze_api_trie_node(root) for key, root in static_roots.items()}),
+        MappingProxyType({key: _freeze_prefix_trie(root) for key, root in static_roots.items()}),
     )
 
 
@@ -628,7 +643,11 @@ def _indexed_api_candidates(
     candidates = list(api_index.fallback)
     root = api_index.static_roots.get((url_parts.scheme.lower(), url_parts.authority.lower()))
     if root is not None:
-        _extend_api_trie_candidates(candidates, root, _split_path_segments(url_parts.path))
+        _visit_prefix_trie_values(
+            root,
+            _split_path_segments(url_parts.path),
+            candidates.extend,
+        )
     if len(candidates) <= 1:
         return tuple(candidates)
     return tuple(sorted(candidates, key=lambda candidate: candidate.order))
@@ -643,35 +662,6 @@ def _rule_path_index_key(rule: _CompiledRule) -> tuple[str, ...] | None:
     return tuple(prefix) if prefix else None
 
 
-def _insert_rule_trie_entry(
-    root: _RuleTrieBuilder,
-    path_key: tuple[str, ...],
-    entry: _CompiledRuleEntry,
-) -> None:
-    node = root
-    for segment in path_key:
-        node = node.children.setdefault(segment, _RuleTrieBuilder())
-    node.entries.append(entry)
-
-
-def _freeze_rule_trie_node(builder: _RuleTrieBuilder) -> _CompiledRuleTrieNode:
-    frozen_nodes: dict[int, _CompiledRuleTrieNode] = {}
-    stack: list[tuple[_RuleTrieBuilder, bool]] = [(builder, False)]
-    while stack:
-        node, visited = stack.pop()
-        if visited:
-            frozen_nodes[id(node)] = _CompiledRuleTrieNode(
-                tuple(node.entries),
-                MappingProxyType(
-                    {segment: frozen_nodes[id(child)] for segment, child in node.children.items()}
-                ),
-            )
-            continue
-        stack.append((node, True))
-        stack.extend((child, False) for child in node.children.values())
-    return frozen_nodes[id(builder)]
-
-
 def _add_rule_entries(
     candidates: list[_CompiledRuleEntry],
     seen_orders: set[int],
@@ -683,36 +673,20 @@ def _add_rule_entries(
             candidates.append(entry)
 
 
-def _extend_rule_trie_candidates(
-    candidates: list[_CompiledRuleEntry],
-    seen_orders: set[int],
-    root: _CompiledRuleTrieNode,
-    rel_path_segs: list[str],
-) -> None:
-    _add_rule_entries(candidates, seen_orders, root.entries)
-    node = root
-    for segment in rel_path_segs:
-        child = node.children.get(segment)
-        if child is None:
-            break
-        node = child
-        _add_rule_entries(candidates, seen_orders, node.entries)
-
-
 def _compile_rule_method_index(
     entries: list[_CompiledRuleEntry],
 ) -> _CompiledRuleMethodIndex:
     fallback: list[_CompiledRuleEntry] = []
-    prefix_root = _RuleTrieBuilder()
+    prefix_root = _PrefixTrieBuilder[_CompiledRuleEntry]()
     for entry in entries:
         key = _rule_path_index_key(entry.rule)
         if key is None:
             fallback.append(entry)
         else:
-            _insert_rule_trie_entry(prefix_root, key, entry)
+            _insert_prefix_trie_value(prefix_root, key, entry)
     return _CompiledRuleMethodIndex(
         tuple(fallback),
-        _freeze_rule_trie_node(prefix_root),
+        _freeze_prefix_trie(prefix_root),
     )
 
 
@@ -749,16 +723,18 @@ def _indexed_rule_candidates(
     candidates: list[_CompiledRuleEntry] = []
     seen_orders: set[int] = set()
 
+    def add_entries(entries: tuple[_CompiledRuleEntry, ...]) -> None:
+        _add_rule_entries(candidates, seen_orders, entries)
+
     def add_method_candidates(method: str) -> None:
         method_index = api_entry.rule_index.by_method.get(method)
         if method_index is None:
             return
-        _add_rule_entries(candidates, seen_orders, method_index.fallback)
-        _extend_rule_trie_candidates(
-            candidates,
-            seen_orders,
+        add_entries(method_index.fallback)
+        _visit_prefix_trie_values(
             method_index.prefix_root,
             rel_path_segs,
+            add_entries,
         )
 
     add_method_candidates("ANY")
@@ -838,13 +814,30 @@ def firewall_rule_is_valid(rule_str: str) -> bool:
 # firewall config; malformed unknownPolicy only affects unknown-endpoint
 # resolution.
 def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
-    """Compile one firewall into VM-independent matcher data."""
+    """Compile one firewall into reusable matcher data.
+
+    The core retains the firewall name and, for each compilable raw API, its original list index
+    plus matcher-relevant ``base``, ``auth``, optional ``hostPolicy``, permissions, rules, ordering,
+    and malformed state. The original index lets ``bind_compiled_firewall_core`` attach a later raw
+    API shell without recompiling this data.
+
+    Return ``None`` when the firewall is not a dictionary, ``apis`` is not a list, or no API has a
+    compilable string base. Other selected malformed inputs are retained according to the compiled
+    matcher contract above. A caller that reuses this core with another firewall dictionary must
+    satisfy the compatibility contract documented by ``bind_compiled_firewall_core``.
+    """
     if not isinstance(fw_entry, dict):
         return None
 
     raw_name = fw_entry.get("name")
     name_malformed = not isinstance(raw_name, str) or raw_name == ""
     firewall_name = raw_name if isinstance(raw_name, str) else ""
+    raw_custom_connector_id = fw_entry.get("customConnectorId")
+    intent_identity = (
+        raw_custom_connector_id
+        if isinstance(raw_custom_connector_id, str) and raw_custom_connector_id != ""
+        else firewall_name
+    )
 
     raw_apis = fw_entry.get("apis", [])
     if not isinstance(raw_apis, list):
@@ -933,14 +926,37 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
 
     if not api_cores:
         return None
-    return CompiledFirewallCore(firewall_name, tuple(api_cores), name_malformed)
+    return CompiledFirewallCore(
+        firewall_name,
+        intent_identity,
+        tuple(api_cores),
+        name_malformed,
+    )
 
 
 def bind_compiled_firewall_core(
     fw_entry: dict,
     core: CompiledFirewallCore,
 ) -> _CompiledFirewall | None:
-    """Bind VM-specific raw API entries to reusable compiled firewall core data."""
+    """Bind compatible raw API shell entries to reusable compiled firewall data.
+
+    ``fw_entry`` must describe the same matcher definition that produced ``core``. Its firewall
+    name and raw ``apis`` positional structure must be unchanged, including which entries compile.
+    At every retained position, ``base``, ``auth``, optional ``hostPolicy``, permissions, permission
+    names, rules, and their ordering must have the same values. Each API core is paired with the raw
+    dictionary at its original ``raw_api_index``; reordering or replacing entries is incompatible
+    even when the target list still has a dictionary at that index.
+
+    Fields excluded from core compilation may remain shell-local. Builtin reuse currently rebinds
+    generated API ``id`` values and snapshot-owned ``_builtinHostPolicyRuntime`` metadata. Such raw
+    fields remain subject to their own validity and lifecycle contracts; in particular, runtime
+    host-policy metadata must stay paired with the target shell's resolved registry snapshot.
+
+    The caller or its cache key must enforce this compatibility before reuse. This function does
+    not compare semantic content. It returns ``None`` only when the target ``apis`` value is not a
+    list, a retained index is unavailable or does not contain a dictionary, or no APIs are bound;
+    that result is a structural failure, not a semantic compatibility verdict.
+    """
     raw_apis = fw_entry.get("apis", [])
     if not isinstance(raw_apis, list):
         return None
@@ -1414,6 +1430,20 @@ def _winning_owner_names(collection: _FirewallMatchCollection) -> tuple[str, ...
     return tuple(sorted(names))
 
 
+def _owner_name_for_intent(
+    collection: _FirewallMatchCollection,
+    intent_value: str,
+) -> str | None:
+    matching_names = {
+        match.firewall.name
+        for match in _winning_api_matches(collection)
+        if not match.firewall.name_malformed and match.firewall.intent_identity == intent_value
+    }
+    if len(matching_names) != 1:
+        return None
+    return next(iter(matching_names))
+
+
 def _ambiguity_reason(
     intent: connector_intent.ConnectorIntent,
 ) -> ConnectorRouteAmbiguityReason:
@@ -1436,8 +1466,10 @@ def _selected_owner_name(
         return None
     if len(owners) == 1:
         return owners[0]
-    if intent.status == "present" and intent.value in owners:
-        return intent.value
+    if intent.status == "present" and intent.value is not None:
+        selected_name = _owner_name_for_intent(collection, intent.value)
+        if selected_name is not None:
+            return selected_name
     return FirewallAmbiguous(
         upper_method,
         path,

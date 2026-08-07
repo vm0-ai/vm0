@@ -9,39 +9,39 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
-use guest_contracts::diagnostics::{
-    CliObservedExitDiagnostic, CliObservedExitKind, CliTerminationDiagnostic, FailureClass,
-    FailureDiagnostic, FailureReason,
-};
 use sandbox::SandboxId;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
-use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
-use super::active_sessions::{ActiveCliAgentSessionGuard, ActiveCliAgentSessions};
+use super::active_reuse_keys::{ActiveReuseKeyGuard, ActiveReuseKeys};
 use super::factory_lifecycle::SharedFactory;
-use super::heartbeat::HeldSessionStateSnapshot;
+use super::heartbeat::WorkspaceCacheStateSnapshot;
 use super::idle_lifecycle::SharedIdlePool;
 use super::job_lifecycle::{
     ActiveBudgetLease, CompletionPayload, CompletionReady, RunCleanupDisposition, RunCleanupState,
 };
+use super::job_terminal_log::log_terminal_job_outcome;
 use super::orphan_reap::OrphanedActiveRuns;
 use super::ownership::{OwnershipTransitions, RunSandbox};
-use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
+use super::sandbox_finalization::{
+    FinalizeContext, finalize_sandbox_for_completion_with_telemetry,
+};
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{
-    self, ExecutionFailureKind, ExecutorConfig, RunnerPreSpawnPhase, RunnerPreSpawnTiming,
-    SessionHistoryRestorePlan,
+    self, ExecutorConfig, RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryRestorePlan,
 };
+use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
 use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
 use crate::resource_budget::BudgetLease;
-use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistration};
+use crate::run_cancellation::{
+    RunCancellationHandle, RunCancellationRegistration, RunCancellationSignals,
+};
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::telemetry::JobTelemetry;
@@ -71,15 +71,15 @@ pub(super) struct SpawnContext {
     /// completion so soft-drain/resume races do not depend on a stale
     /// spawn-time mode snapshot.
     pub(super) parking_gate: ParkingGate,
-    /// Notifies the main loop to send an immediate heartbeat after session
-    /// affinity state changes. This eliminates the up-to-10s blind spot where
-    /// the server does not know which runner holds a session VM or workspace
-    /// image cache.
-    pub(super) park_notify: Arc<tokio::sync::Notify>,
+    /// Notifies the main loop to send an immediate heartbeat after reusable
+    /// state changes. This eliminates the up-to-10s blind spot where
+    /// the server does not know which runner holds a reusable sandbox or
+    /// workspace image cache.
+    pub(super) reuse_state_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
-    pub(super) active_cli_agent_sessions: ActiveCliAgentSessions,
-    pub(super) held_session_snapshot: HeldSessionStateSnapshot,
+    pub(super) active_reuse_keys: ActiveReuseKeys,
+    pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
@@ -95,7 +95,7 @@ pub(super) struct SpawnJobRequest {
     pub(super) reuse_result: SandboxReuseResult,
     pub(super) pre_spawn_timing: RunnerPreSpawnTiming,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
-    pub(super) active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
+    pub(super) active_reuse_key_guard: ActiveReuseKeyGuard,
 }
 
 struct ExecutorInvocation {
@@ -109,10 +109,11 @@ struct ExecutorInvocation {
     reuse_result: SandboxReuseResult,
     pre_spawn_timing: RunnerPreSpawnTiming,
     session_history_restore_plan: SessionHistoryRestorePlan,
-    cancel: CancellationToken,
+    cancellation: RunCancellationSignals,
     sandbox_token: String,
     sandbox_prepared: Option<executor::SandboxPreparedNotifier>,
     active_input_source: Option<crate::active_input::ActiveInputSource>,
+    pi_standby_source: Option<crate::pi_standby::PiStandbySubscription>,
 }
 
 struct ExecutorPhaseOutcome {
@@ -135,13 +136,15 @@ impl ExecutorInvocation {
             reuse_result,
             pre_spawn_timing,
             session_history_restore_plan,
-            cancel,
+            cancellation,
             sandbox_token,
             sandbox_prepared,
             active_input_source,
+            pi_standby_source,
         } = self;
         let exec_config_for_panic = Arc::clone(&exec_config);
-        let cancel_for_executor = cancel.clone();
+        let cancel_for_outcome = cancellation.any();
+        let cancellation_for_executor = cancellation.clone();
 
         // Inner spawn isolates panics: if execute_job panics, the outer task
         // still reports completion and releases budget.
@@ -152,10 +155,11 @@ impl ExecutorInvocation {
                     context,
                     &exec_config,
                     &params,
-                    cancel_for_executor,
+                    cancellation_for_executor,
                     executor::ExecutionHooks {
                         sandbox_prepared: None,
                         active_input_source,
+                        pi_standby_source,
                         pre_spawn_timing: Some(pre_spawn_timing),
                         session_history_restore_plan,
                     },
@@ -171,10 +175,11 @@ impl ExecutorInvocation {
                     },
                     &exec_config,
                     &params,
-                    cancel_for_executor,
+                    cancellation_for_executor,
                     executor::ExecutionHooks {
                         sandbox_prepared,
                         active_input_source,
+                        pi_standby_source,
                         pre_spawn_timing: Some(pre_spawn_timing),
                         session_history_restore_plan,
                     },
@@ -185,7 +190,7 @@ impl ExecutorInvocation {
 
         match inner.await {
             Ok((mut outcome, telemetry)) => {
-                if cancel.is_cancelled() {
+                if cancel_for_outcome.is_cancelled() {
                     outcome.mark_cancelled();
                 }
                 let exit_code = outcome.exit_code();
@@ -213,6 +218,7 @@ impl ExecutorInvocation {
                 ExecutorPhaseOutcome {
                     outcome: executor::ExecuteOutcome {
                         failure: Some(failure),
+                        sandbox_reuse_disposition: executor::SandboxReuseDisposition::default(),
                         sandbox: None,
                         source_ip: String::new(),
                         network_log_session: None,
@@ -237,14 +243,16 @@ struct FinalizationPhase {
     reuse_result: SandboxReuseResult,
     workspace_disk_mb: u32,
     profile_name: String,
+    reuse_key: Option<String>,
     cli_agent_session_id: Option<String>,
     storage_fingerprints: StorageFingerprints,
     device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    guest_timezone_intent: GuestTimezoneIntent,
     factory: SharedFactory,
     idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
-    park_notify: Arc<tokio::sync::Notify>,
-    held_session_snapshot: HeldSessionStateSnapshot,
+    reuse_state_notify: Arc<tokio::sync::Notify>,
+    workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     parking_gate: ParkingGate,
     network_log_drain: NetworkLogDrainCoordinator,
     cancel: RunCancellationHandle,
@@ -270,14 +278,16 @@ impl FinalizationPhase {
             reuse_result,
             workspace_disk_mb,
             profile_name,
+            reuse_key,
             cli_agent_session_id,
             storage_fingerprints,
             device_rate_limits,
+            guest_timezone_intent,
             factory,
             idle_pool,
             status,
-            park_notify,
-            held_session_snapshot,
+            reuse_state_notify,
+            workspace_cache_snapshot,
             parking_gate,
             network_log_drain,
             cancel,
@@ -295,6 +305,7 @@ impl FinalizationPhase {
         } = executor_result;
         let executor::ExecuteOutcome {
             failure: _,
+            sandbox_reuse_disposition,
             sandbox,
             source_ip,
             network_log_session,
@@ -302,6 +313,7 @@ impl FinalizationPhase {
             discovered_cli_agent_session_id,
             restored_session_identity,
         } = outcome;
+        let had_sandbox = sandbox.is_some();
         let has_restored_session_identity = restored_session_identity.is_some();
         let cleanup_state_after_finalize = cleanup_state.clone();
 
@@ -316,14 +328,23 @@ impl FinalizationPhase {
         // Cancellation can arrive after terminal logging or while
         // `sandbox.park()` is in flight. Pass the live handle so finalization
         // can synchronize the final idle-pool ownership transfer.
-        let completion_ready = finalize_sandbox_for_completion(
+        let finalization_started = Instant::now();
+        telemetry.record(
+            "runner_host_finalization_started",
+            Duration::ZERO,
+            true,
+            None,
+        );
+        let completion_ready = finalize_sandbox_for_completion_with_telemetry(
             sandbox,
             ActiveBudgetLease::new(active_lease),
             completion_payload,
+            &mut telemetry,
             FinalizeContext {
                 run_id,
                 sandbox_id,
                 profile_name,
+                reuse_key,
                 cli_agent_session_id,
                 discovered_cli_agent_session_id,
                 restored_session_identity,
@@ -333,14 +354,16 @@ impl FinalizationPhase {
                 workspace_image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
                 storage_fingerprints,
                 device_rate_limits,
+                guest_timezone_intent,
                 factory,
                 idle_pool,
                 status,
-                park_notify,
-                held_session_snapshot,
+                reuse_state_notify,
+                workspace_cache_snapshot,
                 parking_gate,
                 network_log_drain,
                 exit_code,
+                sandbox_reuse_disposition,
                 cancel,
                 cleanup_state,
                 #[cfg(test)]
@@ -350,9 +373,43 @@ impl FinalizationPhase {
             },
         )
         .await;
+        let finalization_duration = finalization_started.elapsed();
+        let disposition = cleanup_state_after_finalize.disposition();
+        let reuse_state_changed = completion_ready.reuse_state_changed();
+        if had_sandbox {
+            telemetry.record(
+                sandbox_reuse_disposition.telemetry_action(),
+                Duration::ZERO,
+                true,
+                None,
+            );
+        }
+        let (finalization_action, finalization_success, finalization_error) = match disposition {
+            RunCleanupDisposition::IdlePoolOwned => {
+                ("runner_host_finalization_reusable_sandbox", true, None)
+            }
+            _ if reuse_state_changed => ("runner_host_finalization_workspace_cache", true, None),
+            RunCleanupDisposition::DestroyCompleted | RunCleanupDisposition::StatusRemoved => {
+                ("runner_host_finalization_no_resource", true, None)
+            }
+            RunCleanupDisposition::ActiveOrUnknown if !had_sandbox => {
+                ("runner_host_finalization_no_resource", true, None)
+            }
+            RunCleanupDisposition::ActiveOrUnknown => (
+                "runner_host_finalization_failed",
+                false,
+                Some("sandbox ownership unresolved"),
+            ),
+        };
+        telemetry.record(
+            finalization_action,
+            finalization_duration,
+            finalization_success,
+            finalization_error,
+        );
         record_session_history_identity_park_telemetry(
             &mut telemetry,
-            cleanup_state_after_finalize.disposition(),
+            disposition,
             has_restored_session_identity,
         );
 
@@ -384,33 +441,46 @@ struct CompletionPhase {
     provider: Arc<dyn JobProvider>,
     status: Arc<StatusTracker>,
     usage_flush_tx: mpsc::Sender<()>,
-    park_notify: Arc<tokio::sync::Notify>,
-    active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
+    reuse_state_notify: Arc<tokio::sync::Notify>,
+    active_reuse_key_guard: ActiveReuseKeyGuard,
     cleanup_state: RunCleanupState,
 }
 
 impl CompletionPhase {
-    async fn complete(self, completion_ready: CompletionReady) {
+    async fn complete(self, completion_ready: CompletionReady, telemetry: &mut JobTelemetry) {
         let Self {
             run_id,
             provider,
             status,
             usage_flush_tx,
-            park_notify,
-            active_cli_agent_session_guard,
+            reuse_state_notify,
+            active_reuse_key_guard,
             cleanup_state,
         } = self;
 
         // Structural guarantee: claim (in provider) is always paired with complete.
         signal_usage_flush(run_id, &usage_flush_tx);
         let ownership = OwnershipTransitions::new(status.as_ref());
-        let session_affinity_changed = completion_ready.session_affinity_changed();
-        completion_ready
+        let reuse_state_changed = completion_ready.reuse_state_changed();
+        let provider_completion_duration = completion_ready
             .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
             .await;
-        drop(active_cli_agent_session_guard);
-        if session_affinity_changed {
-            park_notify.notify_one();
+        telemetry.record(
+            "runner_host_completion_fallback",
+            provider_completion_duration,
+            true,
+            None,
+        );
+        if active_reuse_key_guard.release() {
+            telemetry.record(
+                "runner_active_reuse_key_released",
+                Duration::ZERO,
+                true,
+                None,
+            );
+        }
+        if reuse_state_changed {
+            reuse_state_notify.notify_one();
         }
     }
 }
@@ -470,15 +540,15 @@ impl DeferredUploadPhase {
 /// The provider has already claimed the job and the caller has reserved
 /// resources in the budget. The spawned task runs the executor, reports
 /// completion through the provider, and delegates the post-executor
-/// park-or-destroy decision to [`finalize_sandbox_for_completion`].
+/// park-or-destroy decision to [`finalize_sandbox_for_completion_with_telemetry`].
 ///
 /// If `reuse_entry` is `Some`, the job reuses an existing idle sandbox.
 /// Otherwise it creates a new one via the factory.
 ///
-/// A sandbox is considered for idle parking only after a successful, uncancelled
-/// execution while parking is open and a validated supplied or discovered CLI
-/// agent session id is available. Park failure, cancellation before idle-pool
-/// transfer, or pool rejection falls back to destruction.
+/// A sandbox is considered for idle parking only after execution supplies a
+/// positive reuse disposition while parking is open, no hard cancellation is
+/// active, and a reuse key is available. Park failure, hard cancellation before
+/// idle-pool transfer, or pool rejection falls back to destruction.
 ///
 /// The completion state returned by finalization carries
 /// [`BudgetOwnership`](super::job_lifecycle::BudgetOwnership). Non-accepted paths
@@ -499,15 +569,18 @@ pub(super) fn spawn_job(
         reuse_result,
         pre_spawn_timing,
         session_history_restore_plan,
-        active_cli_agent_session_guard,
+        active_reuse_key_guard,
     } = request;
-    let (context, completion_auth, active_input_source) = claimed.into_parts();
+    let (context, completion_auth, active_input_source, pi_standby_source) =
+        claimed.into_run_parts();
     let run_id = context.run_id;
+    let reuse_key = context.reuse_key().map(str::to_owned);
     let cli_agent_session_id = if executor::validate_resume_session_id(&context).is_ok() {
         context.cli_agent_session_id().map(String::from)
     } else {
         None
     };
+    let guest_timezone_intent = GuestTimezoneIntent::from_context(&context);
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
     let workspace_disk_mb = job_profile.workspace_disk_mb;
@@ -536,8 +609,8 @@ pub(super) fn spawn_job(
     let exec_config = Arc::clone(&ctx.exec_config);
     let status = Arc::clone(&ctx.status);
     let idle_pool = Arc::clone(&ctx.idle_pool);
-    let park_notify = Arc::clone(&ctx.park_notify);
-    let held_session_snapshot = ctx.held_session_snapshot.clone();
+    let reuse_state_notify = Arc::clone(&ctx.reuse_state_notify);
+    let workspace_cache_snapshot = ctx.workspace_cache_snapshot.clone();
     let usage_flush_tx = ctx.usage_flush_tx.clone();
     let parking_gate = ctx.parking_gate.clone();
     let cleanup_state = RunCleanupState::new();
@@ -590,10 +663,11 @@ pub(super) fn spawn_job(
         reuse_result,
         pre_spawn_timing,
         session_history_restore_plan,
-        cancel: job_cancel.token(),
+        cancellation: job_cancel.signals(),
         sandbox_token: sandbox_token.clone(),
         sandbox_prepared,
         active_input_source,
+        pi_standby_source,
     };
     let finalization = FinalizationPhase {
         run_id,
@@ -603,14 +677,16 @@ pub(super) fn spawn_job(
         reuse_result,
         workspace_disk_mb,
         profile_name,
+        reuse_key,
         cli_agent_session_id,
         storage_fingerprints,
         device_rate_limits: job_device_rate_limits,
+        guest_timezone_intent,
         factory,
         idle_pool: Arc::clone(&idle_pool),
         status: Arc::clone(&status),
-        park_notify: Arc::clone(&park_notify),
-        held_session_snapshot,
+        reuse_state_notify: Arc::clone(&reuse_state_notify),
+        workspace_cache_snapshot,
         parking_gate,
         network_log_drain: exec_config.network_log_drain.clone(),
         cancel: job_cancel.clone(),
@@ -631,19 +707,12 @@ pub(super) fn spawn_job(
         .record_phase_elapsed(RunnerPreSpawnPhase::SpawnJobSetup, started_at);
     executor.pre_spawn_timing.mark_task_enqueued();
     jobs.spawn(async move {
-        let mut active_cli_agent_session_guard = active_cli_agent_session_guard;
+        let active_reuse_key_guard = active_reuse_key_guard;
         let body = async move {
             #[cfg(test)]
             maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
 
             let executor_result = executor.execute().await;
-            if let Some(discovered_cli_agent_session_id) = executor_result
-                .outcome
-                .discovered_cli_agent_session_id
-                .as_deref()
-            {
-                active_cli_agent_session_guard.activate_late(discovered_cli_agent_session_id);
-            }
             let cancelled_for_log = job_cancel.is_cancelled();
             log_terminal_job_outcome(
                 run_id,
@@ -655,18 +724,18 @@ pub(super) fn spawn_job(
 
             let FinalizedJob {
                 completion_ready,
-                telemetry,
+                mut telemetry,
             } = finalization.finalize(executor_result).await;
             CompletionPhase {
                 run_id,
                 provider,
                 status,
                 usage_flush_tx,
-                park_notify,
-                active_cli_agent_session_guard,
+                reuse_state_notify,
+                active_reuse_key_guard,
                 cleanup_state: cleanup_state_for_body,
             }
-            .complete(completion_ready)
+            .complete(completion_ready, &mut telemetry)
             .await;
             deferred_upload.flush(telemetry).await;
         };
@@ -696,233 +765,12 @@ pub(super) fn spawn_job(
     });
 }
 
-fn log_terminal_job_outcome(
-    run_id: RunId,
-    exit_code: i32,
-    reused: bool,
-    cancelled: bool,
-    failure: Option<&executor::ExecutionFailure>,
-) {
-    // Single sink for any claimed job's terminal state. Cancellation gets
-    // its own info marker; every other failure is represented by a single
-    // object carrying the exit code, error, and optional guest-authored diagnostic.
-    match (cancelled, failure) {
-        (true, _) => info!(run_id = %run_id, exit_code, reused, "job cancelled"),
-        (false, Some(failure)) => {
-            log_job_execution_failed(run_id, exit_code, reused, failure);
-        }
-        (false, None) => info!(run_id = %run_id, exit_code, reused, "job finished"),
-    }
-}
-
 fn signal_usage_flush(run_id: RunId, usage_flush_tx: &mpsc::Sender<()>) {
     match usage_flush_tx.try_send(()) {
         Ok(()) | Err(mpsc::error::TrySendError::Full(())) => {}
         Err(mpsc::error::TrySendError::Closed(())) => {
             warn!(run_id = %run_id, "proxy usage flush signal channel closed before completion");
         }
-    }
-}
-
-fn log_job_execution_failed(
-    run_id: RunId,
-    exit_code: i32,
-    reused: bool,
-    failure: &executor::ExecutionFailure,
-) {
-    let diagnostic = failure.diagnostic.as_ref();
-    let cli_termination_fields = JobCliTerminationLogFields::from(
-        diagnostic.and_then(|diagnostic| diagnostic.cli_termination.as_ref()),
-    );
-    let cli_observed_exit_fields = JobCliObservedExitLogFields::from(
-        diagnostic.and_then(|diagnostic| diagnostic.cli_observed_exit.as_ref()),
-    );
-    let resource_fields = JobResourceLogFields::from(failure.resource_diagnostics);
-    let (timeout_ms, elapsed_ms, guest_duration_ms) = match failure.kind {
-        ExecutionFailureKind::Generic => (None, None, None),
-        ExecutionFailureKind::RunnerJobTimeout {
-            timeout_ms,
-            elapsed_ms,
-            guest_duration_ms,
-        } => (Some(timeout_ms), Some(elapsed_ms), guest_duration_ms),
-    };
-
-    macro_rules! emit_job_execution_failed {
-        ($level:expr, $message:literal) => {
-            tracing::event!(
-                $level,
-                run_id = %run_id,
-                exit_code,
-                reused,
-                error = %failure.error,
-                timeout_ms,
-                elapsed_ms,
-                guest_duration_ms,
-                failure_class = diagnostic.map(|diagnostic| diagnostic.failure_class.as_str()),
-                failure_framework = diagnostic.map(|diagnostic| diagnostic.framework.as_str()),
-                failure_cli_exit_code =
-                    diagnostic.and_then(|diagnostic| diagnostic.cli_exit_code),
-                failure_claude_num_turns =
-                    diagnostic.and_then(|diagnostic| diagnostic.claude_num_turns),
-                failure_detail_source = diagnostic
-                    .and_then(|diagnostic| diagnostic.failure_detail_source)
-                    .map(|source| source.as_str()),
-                failure_reason = diagnostic
-                    .and_then(|diagnostic| diagnostic.failure_reason)
-                    .map(|reason| reason.as_str()),
-                cli_termination_initiator = cli_termination_fields.initiator,
-                cli_termination_reason = cli_termination_fields.reason,
-                cli_termination_signal_sent = cli_termination_fields.signal_sent,
-                cli_termination_signal_pgid = cli_termination_fields.signal_pgid,
-                cli_termination_signal_grace_ms = cli_termination_fields.signal_grace_ms,
-                cli_termination_escalated = cli_termination_fields.escalated,
-                cli_termination_observed_exit_code = cli_termination_fields.observed_exit_code,
-                cli_observed_exit_kind = cli_observed_exit_fields.kind,
-                cli_observed_exit_code = cli_observed_exit_fields.exit_code,
-                cli_observed_signal_number = cli_observed_exit_fields.signal_number,
-                cli_observed_signal_name = cli_observed_exit_fields.signal_name,
-                cli_observed_mapped_exit_code = cli_observed_exit_fields.mapped_exit_code,
-                session_history_status =
-                    diagnostic.map(|diagnostic| diagnostic.session_history_status.as_str()),
-                prompt_shape = diagnostic.map(|diagnostic| diagnostic.prompt_shape.as_str()),
-                prompt_bytes = diagnostic.map(|diagnostic| diagnostic.prompt_bytes),
-                first_line_bytes = diagnostic.map(|diagnostic| diagnostic.first_line_bytes),
-                resource_failure_kind = resource_fields.resource_failure_kind,
-                guest_root_fs_used_percent = resource_fields.guest_root_fs_used_percent,
-                guest_root_fs_available_kb = resource_fields.guest_root_fs_available_kb,
-                guest_root_fs_inode_used_percent =
-                    resource_fields.guest_root_fs_inode_used_percent,
-                guest_root_fs_available_inodes = resource_fields.guest_root_fs_available_inodes,
-                guest_workspace_fs_used_percent = resource_fields.guest_workspace_fs_used_percent,
-                guest_memory_available_mb = resource_fields.guest_memory_available_mb,
-                $message
-            )
-        };
-    }
-
-    match failure.kind {
-        ExecutionFailureKind::RunnerJobTimeout { .. } => {
-            emit_job_execution_failed!(tracing::Level::ERROR, "runner job timed out");
-        }
-        ExecutionFailureKind::Generic if diagnostic.is_some_and(is_info_level_job_failure) => {
-            emit_job_execution_failed!(tracing::Level::INFO, "job execution failed");
-        }
-        ExecutionFailureKind::Generic => {
-            emit_job_execution_failed!(tracing::Level::ERROR, "job execution failed");
-        }
-    }
-}
-
-struct JobResourceLogFields {
-    resource_failure_kind: Option<&'static str>,
-    guest_root_fs_used_percent: Option<u64>,
-    guest_root_fs_available_kb: Option<u64>,
-    guest_root_fs_inode_used_percent: Option<u64>,
-    guest_root_fs_available_inodes: Option<u64>,
-    guest_workspace_fs_used_percent: Option<u64>,
-    guest_memory_available_mb: Option<u64>,
-}
-
-struct JobCliTerminationLogFields {
-    initiator: Option<&'static str>,
-    reason: Option<&'static str>,
-    signal_sent: Option<&'static str>,
-    signal_pgid: Option<i32>,
-    signal_grace_ms: Option<u64>,
-    escalated: Option<bool>,
-    observed_exit_code: Option<i32>,
-}
-
-struct JobCliObservedExitLogFields {
-    kind: Option<&'static str>,
-    exit_code: Option<i32>,
-    signal_number: Option<i32>,
-    signal_name: Option<&'static str>,
-    mapped_exit_code: Option<i32>,
-}
-
-impl From<Option<&CliTerminationDiagnostic>> for JobCliTerminationLogFields {
-    fn from(diagnostic: Option<&CliTerminationDiagnostic>) -> Self {
-        Self {
-            initiator: diagnostic.map(|diagnostic| diagnostic.initiator.as_str()),
-            reason: diagnostic.map(|diagnostic| diagnostic.reason.as_str()),
-            signal_sent: diagnostic
-                .and_then(|diagnostic| diagnostic.signal_sent.map(|signal| signal.as_str())),
-            signal_pgid: diagnostic.and_then(|diagnostic| diagnostic.signal_pgid),
-            signal_grace_ms: diagnostic.and_then(|diagnostic| diagnostic.signal_grace_ms),
-            escalated: diagnostic.map(|diagnostic| diagnostic.escalated),
-            observed_exit_code: diagnostic.and_then(|diagnostic| diagnostic.observed_exit_code),
-        }
-    }
-}
-
-impl From<Option<&CliObservedExitDiagnostic>> for JobCliObservedExitLogFields {
-    fn from(diagnostic: Option<&CliObservedExitDiagnostic>) -> Self {
-        let is_exit =
-            diagnostic.is_some_and(|diagnostic| diagnostic.kind == CliObservedExitKind::Exit);
-        let is_signal =
-            diagnostic.is_some_and(|diagnostic| diagnostic.kind == CliObservedExitKind::Signal);
-        Self {
-            kind: diagnostic.map(|diagnostic| diagnostic.kind.as_str()),
-            exit_code: is_exit
-                .then(|| diagnostic.and_then(|diagnostic| diagnostic.exit_code))
-                .flatten(),
-            signal_number: is_signal
-                .then(|| diagnostic.and_then(|diagnostic| diagnostic.signal_number))
-                .flatten(),
-            signal_name: is_signal
-                .then(|| diagnostic.and_then(CliObservedExitDiagnostic::known_signal_name))
-                .flatten(),
-            mapped_exit_code: diagnostic.map(|diagnostic| diagnostic.mapped_exit_code),
-        }
-    }
-}
-
-impl From<Option<executor::ResourceFailureDiagnostics>> for JobResourceLogFields {
-    fn from(diagnostics: Option<executor::ResourceFailureDiagnostics>) -> Self {
-        Self {
-            resource_failure_kind: diagnostics
-                .and_then(|diagnostics| diagnostics.failure_kind)
-                .map(executor::ResourceFailureKind::as_str),
-            guest_root_fs_used_percent: diagnostics
-                .and_then(|diagnostics| diagnostics.guest_root_fs_used_percent)
-                .map(u64::from),
-            guest_root_fs_available_kb: diagnostics
-                .and_then(|diagnostics| diagnostics.guest_root_fs_available_kb),
-            guest_root_fs_inode_used_percent: diagnostics
-                .and_then(|diagnostics| diagnostics.guest_root_fs_inode_used_percent)
-                .map(u64::from),
-            guest_root_fs_available_inodes: diagnostics
-                .and_then(|diagnostics| diagnostics.guest_root_fs_available_inodes),
-            guest_workspace_fs_used_percent: diagnostics
-                .and_then(|diagnostics| diagnostics.guest_workspace_fs_used_percent)
-                .map(u64::from),
-            guest_memory_available_mb: diagnostics
-                .and_then(|diagnostics| diagnostics.guest_memory_available_mb),
-        }
-    }
-}
-
-fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
-    match diagnostic.failure_class {
-        FailureClass::CliNonzero => matches!(
-            diagnostic.failure_reason,
-            Some(
-                FailureReason::InsufficientCredits
-                    | FailureReason::InvalidApiKey
-                    | FailureReason::InvalidCredentials
-                    | FailureReason::ContextWindowExceeded
-                    | FailureReason::OutputTokenLimit
-                    | FailureReason::ProviderOverloaded
-                    | FailureReason::ProviderStreamTimeout
-                    | FailureReason::ProviderServerError
-                    | FailureReason::SafetyPolicyRefusal
-                    | FailureReason::ReconnectRequired
-                    | FailureReason::UsageLimit
-            )
-        ),
-        FailureClass::ClaudeZeroTurnNoHistory => true,
-        _ => false,
     }
 }
 
@@ -980,15 +828,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use guest_contracts::diagnostics::{
-        AgentFramework, CliObservedExitKind, CliTerminationDiagnostic, CliTerminationReason,
-        CliTerminationSignal, FailureClass, FailureDetailSource, PromptMetadata,
-        SessionHistoryStatus,
-    };
     use sandbox::SandboxId;
-    use tracing::Level;
-    use tracing_subscriber::prelude::*;
-    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::RunCleanupState;
@@ -1035,79 +875,6 @@ mod tests {
         async fn shutdown(&self) {}
     }
 
-    fn job_failure_diagnostic(failure_reason: Option<FailureReason>) -> FailureDiagnostic {
-        let mut diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::Codex,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(FailureDetailSource::CodexJsonl)
-        .with_session_history_status(SessionHistoryStatus::NotApplicable);
-        if let Some(reason) = failure_reason {
-            diagnostic = diagnostic.with_failure_reason(reason);
-        }
-        diagnostic
-    }
-
-    fn post_result_cli_termination() -> CliTerminationDiagnostic {
-        CliTerminationDiagnostic::new(CliTerminationReason::PostResultReap)
-            .record_signal(CliTerminationSignal::Sigterm, Some(1401), Some(10_000))
-            .with_observed_exit_code(143)
-    }
-
-    fn capture_job_failure_log(failure: &executor::ExecutionFailure) -> CapturedEvent {
-        let captured = CapturedEvents::default();
-        let subscriber = tracing_subscriber::registry().with(captured.clone());
-        tracing::subscriber::with_default(subscriber, || {
-            log_job_execution_failed(RunId::nil(), failure.exit_code, false, failure);
-        });
-        let events = captured.entries();
-        assert_eq!(events.len(), 1, "captured events: {events:#?}");
-        events[0].clone()
-    }
-
-    fn assert_field_eq(event: &CapturedEvent, field: &str, expected: &str) {
-        let value = event
-            .fields
-            .get(field)
-            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
-        assert_eq!(value, expected, "field {field} mismatch; event={event:#?}");
-    }
-
-    fn assert_field_kind(event: &CapturedEvent, field: &str, expected: &str) {
-        let kind = event
-            .field_kinds
-            .get(field)
-            .unwrap_or_else(|| panic!("missing field kind {field}; event={event:#?}"));
-        assert_eq!(
-            kind, &expected,
-            "field {field} kind mismatch; event={event:#?}"
-        );
-    }
-
-    fn assert_shared_failure_log_fields(generic: &CapturedEvent, timeout: &CapturedEvent) {
-        let mut generic_fields = generic.fields.clone();
-        let mut timeout_fields = timeout.fields.clone();
-        generic_fields.remove("message");
-        timeout_fields.remove("message");
-
-        let mut generic_field_kinds = generic.field_kinds.clone();
-        let mut timeout_field_kinds = timeout.field_kinds.clone();
-        generic_field_kinds.remove("message");
-        timeout_field_kinds.remove("message");
-
-        for timeout_field in ["timeout_ms", "elapsed_ms", "guest_duration_ms"] {
-            assert!(!generic_fields.contains_key(timeout_field));
-            assert!(!generic_field_kinds.contains_key(timeout_field));
-            assert!(timeout_fields.remove(timeout_field).is_some());
-            assert!(timeout_field_kinds.remove(timeout_field).is_some());
-        }
-
-        assert_eq!(generic_fields, timeout_fields);
-        assert_eq!(generic_field_kinds, timeout_field_kinds);
-    }
-
     fn test_http_client() -> HttpClient {
         HttpClient::new(HttpClientConfig {
             api_url: "http://localhost".into(),
@@ -1131,12 +898,29 @@ mod tests {
         );
     }
 
+    fn assert_failed_telemetry_action(telemetry: &JobTelemetry, action: &str, error: &str) {
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter()
+                .any(|op| op.0 == action && !op.1 && op.2.as_deref() == Some(error)),
+            "expected failed telemetry action {action} with {error}, got: {ops:?}"
+        );
+    }
+
+    fn assert_no_telemetry_action(telemetry: &JobTelemetry, action: &str) {
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter().all(|op| op.0 != action),
+            "unexpected telemetry action {action}, got: {ops:?}"
+        );
+    }
+
     struct FinalizationTelemetryFixture {
         _dir: tempfile::TempDir,
         status: Arc<StatusTracker>,
         idle_pool: SharedIdlePool,
         parking_gate: ParkingGate,
-        park_notify: Arc<tokio::sync::Notify>,
+        reuse_state_notify: Arc<tokio::sync::Notify>,
     }
 
     impl FinalizationTelemetryFixture {
@@ -1163,7 +947,7 @@ mod tests {
                 status,
                 idle_pool,
                 parking_gate,
-                park_notify: Arc::new(tokio::sync::Notify::new()),
+                reuse_state_notify: Arc::new(tokio::sync::Notify::new()),
             }
         }
 
@@ -1183,14 +967,16 @@ mod tests {
                 reuse_result: SandboxReuseResult::PoolMiss,
                 workspace_disk_mb: 0,
                 profile_name: "vm0/default".into(),
+                reuse_key: Some(session_id.into()),
                 cli_agent_session_id: Some(session_id.into()),
                 storage_fingerprints: StorageFingerprints::default(),
+                guest_timezone_intent: GuestTimezoneIntent::Unknown,
                 device_rate_limits: None,
                 factory: Arc::new(Box::new(sandbox_mock::MockSandboxFactory::new())),
                 idle_pool: Arc::clone(&self.idle_pool),
                 status: Arc::clone(&self.status),
-                park_notify: Arc::clone(&self.park_notify),
-                held_session_snapshot: HeldSessionStateSnapshot::new(),
+                reuse_state_notify: Arc::clone(&self.reuse_state_notify),
+                workspace_cache_snapshot: WorkspaceCacheStateSnapshot::new(),
                 parking_gate: self.parking_gate.clone(),
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
                 cancel: RunCancellationHandle::new(),
@@ -1206,10 +992,25 @@ mod tests {
         sandbox_name: &str,
         restored_session_identity: Option<RestoredSessionIdentity>,
     ) -> ExecutorPhaseOutcome {
+        executor_phase_outcome_with_sandbox(
+            run_id,
+            Box::new(mock_sandbox_ready_for_idle_reuse(sandbox_name)),
+            restored_session_identity,
+        )
+    }
+
+    fn executor_phase_outcome_with_sandbox(
+        run_id: RunId,
+        sandbox: Box<dyn sandbox::Sandbox>,
+        restored_session_identity: Option<RestoredSessionIdentity>,
+    ) -> ExecutorPhaseOutcome {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
-                sandbox: Some(Box::new(mock_sandbox_ready_for_idle_reuse(sandbox_name))),
+                sandbox_reuse_disposition: executor::SandboxReuseDisposition::Eligible(
+                    executor::SandboxReuseTerminal::Success,
+                ),
+                sandbox: Some(sandbox),
                 source_ip: "10.0.0.1".into(),
                 network_log_session: None,
                 workspace_image: None,
@@ -1218,6 +1019,24 @@ mod tests {
             },
             exit_code: 0,
             err: None,
+            telemetry: JobTelemetry::new(test_http_client(), run_id, "sandbox-token".into()),
+        }
+    }
+
+    fn executor_phase_outcome_without_sandbox(run_id: RunId) -> ExecutorPhaseOutcome {
+        ExecutorPhaseOutcome {
+            outcome: executor::ExecuteOutcome {
+                failure: None,
+                sandbox_reuse_disposition: executor::SandboxReuseDisposition::default(),
+                sandbox: None,
+                source_ip: String::new(),
+                network_log_session: None,
+                workspace_image: None,
+                discovered_cli_agent_session_id: None,
+                restored_session_identity: None,
+            },
+            exit_code: 1,
+            err: Some("sandbox unavailable".into()),
             telemetry: JobTelemetry::new(test_http_client(), run_id, "sandbox-token".into()),
         }
     }
@@ -1284,6 +1103,22 @@ mod tests {
             ))
             .await;
 
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_finalization_reusable_sandbox",
+        );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_eligible_success",
+        );
+        for action in [
+            "runner_host_finalization_started",
+            "runner_host_reuse_preparation",
+            "runner_host_physical_park",
+            "runner_host_idle_publication",
+        ] {
+            assert_telemetry_action(&finalized.telemetry, action);
+        }
         assert_telemetry_action(&finalized.telemetry, "session_history_identity_parked");
         assert_eq!(
             cleanup_state.disposition(),
@@ -1295,10 +1130,97 @@ mod tests {
             .await
             .take("sess-restore-plan")
             .expect("parked sandbox should be in idle pool");
-        let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
+        let IdleUnparkResult::Reused { sandbox, .. } =
+            entry.try_unpark_for_run(RunId::new_v4()).await
+        else {
             panic!("parked sandbox should unpark");
         };
         assert_eq!(sandbox.restored_session_identity(), Some(&identity));
+    }
+
+    #[tokio::test]
+    async fn cooperative_cancellation_reuse_does_not_record_hard_cancellation_marker() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-cooperative-cancellation";
+        let cleanup_state = RunCleanupState::new();
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            session_id,
+            lease,
+            cleanup_state.clone(),
+        );
+        finalization
+            .cancel
+            .request_cooperative_user_cancellation()
+            .await;
+        let mut executor_result = executor_phase_outcome(run_id, "cooperative-cancellation", None);
+        executor_result.outcome.sandbox_reuse_disposition =
+            executor::SandboxReuseDisposition::Eligible(
+                executor::SandboxReuseTerminal::CooperativeCancellation,
+            );
+
+        let finalized = finalization.finalize(executor_result).await;
+
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_finalization_reusable_sandbox",
+        );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_eligible_cooperative_cancellation",
+        );
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_finalization_cancelled");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::IdlePoolOwned,
+        );
+        assert!(fixture.idle_pool.lock().await.take(session_id).is_some());
+    }
+
+    #[tokio::test]
+    async fn hard_cancellation_records_finalization_cancellation_marker() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-hard-cancellation",
+            lease,
+            cleanup_state.clone(),
+        );
+        finalization.cancel.request_hard_cancellation().await;
+        let mut executor_result = executor_phase_outcome(run_id, "hard-cancellation", None);
+        executor_result.outcome.sandbox_reuse_disposition =
+            executor::SandboxReuseDisposition::Ineligible(
+                executor::SandboxReuseRejection::HardCancellation,
+            );
+
+        let finalized = finalization.finalize(executor_result).await;
+
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_finalization_cancelled",
+            "cancelled",
+        );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_rejected_hard_cancellation",
+        );
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_reuse_preparation");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_physical_park");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::DestroyCompleted,
+        );
     }
 
     #[tokio::test]
@@ -1339,10 +1261,114 @@ mod tests {
             .await
             .take(session_id)
             .expect("parked sandbox should be in idle pool");
-        let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
+        let IdleUnparkResult::Reused { sandbox, .. } =
+            entry.try_unpark_for_run(RunId::new_v4()).await
+        else {
             panic!("parked sandbox should unpark");
         };
         assert!(sandbox.restored_session_identity().is_none());
+    }
+
+    #[tokio::test]
+    async fn finalization_records_no_resource_when_execution_has_no_sandbox() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-no-sandbox",
+            lease,
+            RunCleanupState::new(),
+        );
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome_without_sandbox(run_id))
+            .await;
+
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
+    }
+
+    #[tokio::test]
+    async fn finalization_records_reuse_preparation_failure_without_physical_park() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let sandbox = sandbox_mock::MockSandbox::new("reuse-preparation-failed");
+        sandbox.push_exec_result(Err(sandbox::SandboxError::Operation {
+            operation: sandbox::SandboxOperation::Exec,
+            reason: sandbox::SandboxOperationReason::Guest,
+            message: "reuse preparation disconnected".into(),
+        }));
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-reuse-preparation-failed",
+            lease,
+            cleanup_state,
+        );
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome_with_sandbox(
+                run_id,
+                Box::new(sandbox),
+                None,
+            ))
+            .await;
+
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_reuse_preparation",
+            "reuse preparation failed",
+        );
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_physical_park");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
+    }
+
+    #[tokio::test]
+    async fn finalization_records_physical_park_failure_after_reuse_preparation() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+        overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition {
+            transition: sandbox::SandboxIdleTransition::Park,
+            message: "physical park failed".into(),
+        }));
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-physical-park-failed",
+            lease,
+            cleanup_state,
+        );
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome_with_sandbox(
+                run_id,
+                Box::new(sandbox_mock::MockSandbox::with_overrides(
+                    "physical-park-failed",
+                    overrides,
+                )),
+                None,
+            ))
+            .await;
+
+        assert_telemetry_action(&finalized.telemetry, "runner_host_reuse_preparation");
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_physical_park",
+            "physical park failed",
+        );
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
     }
 
     #[tokio::test]
@@ -1360,7 +1386,10 @@ mod tests {
             lease,
             RunCleanupState::new(),
         );
-        let finalized = finalization
+        let FinalizedJob {
+            completion_ready,
+            mut telemetry,
+        } = finalization
             .finalize(executor_phase_outcome(
                 run_id,
                 "post-complete-refresh",
@@ -1368,13 +1397,18 @@ mod tests {
             ))
             .await;
         assert!(
-            fixture.park_notify.notified().now_or_never().is_some(),
+            fixture
+                .reuse_state_notify
+                .notified()
+                .now_or_never()
+                .is_some(),
             "finalizer should send the early park refresh"
         );
 
-        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
-        let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
-            Arc::clone(&active_sessions),
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        let active_reuse_key_guard = ActiveReuseKeyGuard::new(
+            Arc::clone(&active_reuse_keys),
+            Arc::clone(&fixture.reuse_state_notify),
             Some(session_id.to_owned()),
         );
         let (usage_flush_tx, _usage_flush_rx) = mpsc::channel(1);
@@ -1384,509 +1418,50 @@ mod tests {
             provider: Arc::new(NoopCompletionProvider),
             status: Arc::clone(&fixture.status),
             usage_flush_tx,
-            park_notify: Arc::clone(&fixture.park_notify),
-            active_cli_agent_session_guard,
+            reuse_state_notify: Arc::clone(&fixture.reuse_state_notify),
+            active_reuse_key_guard,
             cleanup_state: RunCleanupState::new(),
         }
-        .complete(finalized.completion_ready)
+        .complete(completion_ready, &mut telemetry)
         .await;
 
+        assert_telemetry_action(&telemetry, "runner_host_completion_fallback");
+        assert_telemetry_action(&telemetry, "runner_active_reuse_key_released");
+
         assert!(
-            super::super::active_sessions::active_cli_agent_session_ids(&active_sessions)
-                .is_empty(),
-            "completion should release the active session guard before notifying"
+            super::super::active_reuse_keys::active_reuse_keys(&active_reuse_keys).is_empty(),
+            "completion should release the active reuse-key guard before notifying"
         );
         assert!(
-            fixture.park_notify.notified().now_or_never().is_some(),
+            fixture
+                .reuse_state_notify
+                .notified()
+                .now_or_never()
+                .is_some(),
             "completion should send a post-guard-release refresh"
         );
     }
 
-    #[test]
-    fn expected_cli_failure_reasons_log_job_execution_failed_at_info() {
-        for reason in [
-            FailureReason::InsufficientCredits,
-            FailureReason::InvalidApiKey,
-            FailureReason::InvalidCredentials,
-            FailureReason::ContextWindowExceeded,
-            FailureReason::OutputTokenLimit,
-            FailureReason::ProviderOverloaded,
-            FailureReason::ProviderStreamTimeout,
-            FailureReason::ProviderServerError,
-            FailureReason::SafetyPolicyRefusal,
-            FailureReason::ReconnectRequired,
-            FailureReason::UsageLimit,
-        ] {
-            let diagnostic = job_failure_diagnostic(Some(reason));
-            let failure_error = format!("classified failure: {}", reason.as_str());
-            let failure =
-                executor::ExecutionFailure::new(1, failure_error.clone(), Some(diagnostic));
-
-            let event = capture_job_failure_log(&failure);
-
-            assert_eq!(event.level, Level::INFO);
-            assert_eq!(
-                event.fields.get("message").map(String::as_str),
-                Some("job execution failed")
-            );
-            assert_field_eq(&event, "error", &failure_error);
-            assert_field_eq(&event, "run_id", &RunId::nil().to_string());
-            assert_field_eq(&event, "exit_code", "1");
-            assert_field_eq(&event, "failure_reason", reason.as_str());
-            assert_field_eq(&event, "failure_class", "cli_nonzero");
-            assert_field_eq(&event, "failure_framework", "codex");
-            assert_field_eq(&event, "failure_detail_source", "codex_jsonl");
-        }
-    }
-
-    #[test]
-    fn claude_result_provider_overloaded_logs_job_execution_failed_at_info() {
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(FailureDetailSource::ClaudeResult)
-        .with_session_history_status(SessionHistoryStatus::Present)
-        .with_failure_reason(FailureReason::ProviderOverloaded);
-        let failure = executor::ExecutionFailure::new(1, "API Error: Overloaded", Some(diagnostic));
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_eq!(event.level, Level::INFO);
-        assert_eq!(
-            event.fields.get("message").map(String::as_str),
-            Some("job execution failed")
-        );
-        assert_field_eq(&event, "error", "API Error: Overloaded");
-        assert_field_eq(&event, "failure_reason", "provider_overloaded");
-        assert_field_eq(&event, "failure_class", "cli_nonzero");
-        assert_field_eq(&event, "failure_framework", "claude_code");
-        assert_field_eq(&event, "failure_detail_source", "claude_result");
-    }
-
-    #[test]
-    fn claude_result_provider_stream_timeout_logs_job_execution_failed_at_info() {
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(FailureDetailSource::ClaudeResult)
-        .with_session_history_status(SessionHistoryStatus::Present)
-        .with_failure_reason(FailureReason::ProviderStreamTimeout);
-        let failure = executor::ExecutionFailure::new(
-            1,
-            "API Error: Stream idle timeout - no chunks received",
-            Some(diagnostic),
-        );
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_eq!(event.level, Level::INFO);
-        assert_eq!(
-            event.fields.get("message").map(String::as_str),
-            Some("job execution failed")
-        );
-        assert_field_eq(
-            &event,
-            "error",
-            "API Error: Stream idle timeout - no chunks received",
-        );
-        assert_field_eq(&event, "failure_reason", "provider_stream_timeout");
-        assert_field_eq(&event, "failure_class", "cli_nonzero");
-        assert_field_eq(&event, "failure_framework", "claude_code");
-        assert_field_eq(&event, "failure_detail_source", "claude_result");
-    }
-
-    #[test]
-    fn claude_zero_turn_no_history_logs_job_execution_failed_at_info() {
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::ClaudeZeroTurnNoHistory,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("/help"),
-        )
-        .with_cli_exit_code(0)
-        .with_claude_num_turns(Some(0))
-        .with_session_history_status(SessionHistoryStatus::Missing);
-        let failure = executor::ExecutionFailure::new(
-            1,
-            "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint",
-            Some(diagnostic),
-        );
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_eq!(event.level, Level::INFO);
-        assert_eq!(
-            event.fields.get("message").map(String::as_str),
-            Some("job execution failed")
-        );
-        assert_field_eq(&event, "failure_class", "claude_zero_turn_no_history");
-        assert_field_eq(&event, "session_history_status", "missing");
-    }
-
-    #[test]
-    fn info_level_reason_on_non_cli_failure_logs_job_execution_failed_at_error() {
-        for reason in [
-            FailureReason::InvalidApiKey,
-            FailureReason::InvalidCredentials,
-            FailureReason::ContextWindowExceeded,
-            FailureReason::OutputTokenLimit,
-            FailureReason::ProviderOverloaded,
-            FailureReason::ProviderStreamTimeout,
-            FailureReason::ProviderServerError,
-            FailureReason::SafetyPolicyRefusal,
-            FailureReason::ReconnectRequired,
-            FailureReason::UsageLimit,
-        ] {
-            let diagnostic = FailureDiagnostic::new(
-                FailureClass::CheckpointFailed,
-                AgentFramework::Codex,
-                PromptMetadata::from_prompt("plain prompt"),
-            )
-            .with_failure_reason(reason);
-            let failure = executor::ExecutionFailure::new(
-                1,
-                format!("checkpoint upload failed after {} event", reason.as_str()),
-                Some(diagnostic),
-            );
-
-            let event = capture_job_failure_log(&failure);
-
-            assert_eq!(event.level, Level::ERROR);
-            assert_eq!(
-                event.fields.get("message").map(String::as_str),
-                Some("job execution failed")
-            );
-            assert_field_eq(&event, "failure_reason", reason.as_str());
-            assert_field_eq(&event, "failure_class", "checkpoint_failed");
-        }
-    }
-
-    #[test]
-    fn unclassified_diagnostic_failure_logs_job_execution_failed_at_error() {
-        let diagnostic = job_failure_diagnostic(None);
-        let failure = executor::ExecutionFailure::new(1, "permission denied", Some(diagnostic));
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_eq!(event.level, Level::ERROR);
-        assert_eq!(
-            event.fields.get("message").map(String::as_str),
-            Some("job execution failed")
-        );
-        assert!(!event.fields.contains_key("failure_reason"));
-        assert!(!event.fields.contains_key("timeout_ms"));
-        assert!(!event.fields.contains_key("cli_termination_reason"));
-        assert!(!event.fields.contains_key("cli_observed_exit_kind"));
-    }
-
-    #[test]
-    fn diagnostic_failure_logs_cli_termination_fields() {
-        let diagnostic =
-            job_failure_diagnostic(None).with_cli_termination(post_result_cli_termination());
-        let failure =
-            executor::ExecutionFailure::new(143, "Agent exited with code 143", Some(diagnostic));
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_eq!(event.level, Level::ERROR);
-        assert_eq!(
-            event.fields.get("message").map(String::as_str),
-            Some("job execution failed")
-        );
-        assert_field_eq(&event, "cli_termination_initiator", "guest_agent");
-        assert_field_eq(&event, "cli_termination_reason", "post_result_reap");
-        assert_field_eq(&event, "cli_termination_signal_sent", "sigterm");
-        assert_field_eq(&event, "cli_termination_signal_pgid", "1401");
-        assert_field_eq(&event, "cli_termination_signal_grace_ms", "10000");
-        assert_field_eq(&event, "cli_termination_escalated", "false");
-        assert_field_eq(&event, "cli_termination_observed_exit_code", "143");
-    }
-
-    #[test]
-    fn diagnostic_failure_logs_cli_observed_exit_fields() {
-        let diagnostic = job_failure_diagnostic(None)
-            .with_cli_exit_code(137)
-            .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL));
-        let failure =
-            executor::ExecutionFailure::new(137, "Agent exited with code 137", Some(diagnostic));
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_eq!(event.level, Level::ERROR);
-        assert_eq!(
-            event.fields.get("message").map(String::as_str),
-            Some("job execution failed")
-        );
-        assert_field_eq(&event, "failure_cli_exit_code", "137");
-        assert_field_eq(&event, "cli_observed_exit_kind", "signal");
-        assert!(!event.fields.contains_key("cli_observed_exit_code"));
-        assert_field_eq(&event, "cli_observed_signal_number", "9");
-        assert_field_eq(&event, "cli_observed_signal_name", "sigkill");
-        assert_field_eq(&event, "cli_observed_mapped_exit_code", "137");
-    }
-
-    #[test]
-    fn diagnostic_failure_logs_cli_observed_normal_exit_fields() {
-        let diagnostic = job_failure_diagnostic(None)
-            .with_cli_exit_code(2)
-            .with_cli_observed_exit(CliObservedExitDiagnostic::from_exit_code(2));
-        let failure =
-            executor::ExecutionFailure::new(2, "Agent exited with code 2", Some(diagnostic));
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_field_eq(&event, "cli_observed_exit_kind", "exit");
-        assert_field_eq(&event, "cli_observed_exit_code", "2");
-        assert!(!event.fields.contains_key("cli_observed_signal_number"));
-        assert!(!event.fields.contains_key("cli_observed_signal_name"));
-        assert_field_eq(&event, "cli_observed_mapped_exit_code", "2");
-    }
-
-    #[test]
-    fn diagnostic_failure_logs_observed_signal_name_from_number() {
-        let diagnostic = job_failure_diagnostic(None)
-            .with_cli_exit_code(137)
-            .with_cli_observed_exit(CliObservedExitDiagnostic {
-                kind: CliObservedExitKind::Signal,
-                exit_code: Some(137),
-                signal_number: Some(libc::SIGKILL),
-                signal_name: Some("tampered".to_string()),
-                mapped_exit_code: 137,
-            });
-        let failure =
-            executor::ExecutionFailure::new(137, "Agent exited with code 137", Some(diagnostic));
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_field_eq(&event, "cli_observed_signal_name", "sigkill");
-        assert!(!event.fields.contains_key("cli_observed_exit_code"));
-    }
-
-    #[test]
-    fn failure_without_diagnostic_logs_job_execution_failed_at_error() {
-        let failure = executor::ExecutionFailure::new(1, "executor task panicked", None);
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_eq!(event.level, Level::ERROR);
-        assert_eq!(
-            event.fields.get("message").map(String::as_str),
-            Some("job execution failed")
-        );
-        assert!(!event.fields.contains_key("failure_class"));
-        assert!(!event.fields.contains_key("failure_reason"));
-        assert!(!event.fields.contains_key("prompt_shape"));
-        assert!(!event.fields.contains_key("timeout_ms"));
-    }
-
-    #[test]
-    fn classified_resource_failure_logs_resource_fields() {
-        let failure = executor::ExecutionFailure::new(137, "Agent exited with code 137", None)
-            .with_resource_diagnostics(Some(executor::ResourceFailureDiagnostics {
-                failure_kind: Some(executor::ResourceFailureKind::GuestRootFilesystemFull),
-                guest_root_fs_used_percent: Some(100),
-                guest_root_fs_available_kb: Some(20),
-                guest_root_fs_inode_used_percent: Some(99),
-                guest_root_fs_available_inodes: Some(42),
-                guest_workspace_fs_used_percent: Some(1),
-                guest_memory_available_mb: Some(624),
-            }));
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_eq!(event.level, Level::ERROR);
-        assert_eq!(
-            event.fields.get("message").map(String::as_str),
-            Some("job execution failed")
-        );
-        assert_field_eq(&event, "exit_code", "137");
-        assert_field_eq(&event, "reused", "false");
-        assert_field_eq(&event, "error", "Agent exited with code 137");
-        assert_field_eq(
-            &event,
-            "resource_failure_kind",
-            "guest_root_filesystem_full",
-        );
-        assert_field_eq(&event, "guest_root_fs_used_percent", "100");
-        assert_field_eq(&event, "guest_root_fs_available_kb", "20");
-        assert_field_eq(&event, "guest_root_fs_inode_used_percent", "99");
-        assert_field_eq(&event, "guest_root_fs_available_inodes", "42");
-        assert_field_eq(&event, "guest_workspace_fs_used_percent", "1");
-        assert_field_eq(&event, "guest_memory_available_mb", "624");
-    }
-
-    #[test]
-    fn oom_resource_failure_logs_resource_kind() {
-        let failure =
-            executor::ExecutionFailure::new(1, "Agent process killed by OOM killer", None)
-                .with_resource_diagnostics(Some(
-                    executor::ResourceFailureDiagnostics::from_failure_kind(
-                        executor::ResourceFailureKind::GuestMemoryOomKilled,
-                    ),
-                ));
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_eq!(event.level, Level::ERROR);
-        assert_eq!(
-            event.fields.get("message").map(String::as_str),
-            Some("job execution failed")
-        );
-        assert_field_eq(&event, "exit_code", "1");
-        assert_field_eq(&event, "error", "Agent process killed by OOM killer");
-        assert_field_eq(&event, "resource_failure_kind", "guest_memory_oom_killed");
-    }
-
-    #[test]
-    fn runner_job_timeout_logs_specific_terminal_message_and_fields() {
-        let failure = executor::ExecutionFailure::runner_job_timeout(
-            124,
-            "Timeout",
-            None,
-            Duration::from_secs(7200),
-            Duration::from_millis(7_199_949),
-            Some(7_200_084),
-        );
-
-        let event = capture_job_failure_log(&failure);
-
-        assert_eq!(event.level, Level::ERROR);
-        assert_eq!(
-            event.fields.get("message").map(String::as_str),
-            Some("runner job timed out")
-        );
-        assert_field_eq(&event, "exit_code", "124");
-        assert_field_eq(&event, "reused", "false");
-        assert_field_eq(&event, "error", "Timeout");
-        assert_field_eq(&event, "timeout_ms", "7200000");
-        assert_field_eq(&event, "elapsed_ms", "7199949");
-        assert_field_eq(&event, "guest_duration_ms", "7200084");
-        assert!(!event.fields.contains_key("failure_class"));
-        assert!(!event.fields.contains_key("failure_reason"));
-        assert!(!event.fields.contains_key("prompt_shape"));
-    }
-
-    #[test]
-    fn generic_and_timeout_failures_share_diagnostic_and_resource_fields() {
-        let diagnostic = job_failure_diagnostic(Some(FailureReason::UsageLimit))
-            .with_claude_num_turns(Some(2))
-            .with_cli_termination(post_result_cli_termination())
-            .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL));
-        let resource_diagnostics = executor::ResourceFailureDiagnostics {
-            failure_kind: Some(executor::ResourceFailureKind::GuestRootFilesystemFull),
-            guest_root_fs_used_percent: Some(100),
-            guest_root_fs_available_kb: Some(20),
-            guest_root_fs_inode_used_percent: Some(99),
-            guest_root_fs_available_inodes: Some(42),
-            guest_workspace_fs_used_percent: Some(1),
-            guest_memory_available_mb: Some(624),
-        };
-        let generic_failure =
-            executor::ExecutionFailure::new(124, "Timeout", Some(diagnostic.clone()))
-                .with_resource_diagnostics(Some(resource_diagnostics));
-        let timeout_failure = executor::ExecutionFailure::runner_job_timeout(
-            124,
-            "Timeout",
-            Some(diagnostic),
-            Duration::from_secs(7200),
-            Duration::from_millis(7_200_100),
-            Some(7_200_000),
-        )
-        .with_resource_diagnostics(Some(resource_diagnostics));
-
-        let generic_event = capture_job_failure_log(&generic_failure);
-        let timeout_event = capture_job_failure_log(&timeout_failure);
-
-        assert_eq!(generic_event.level, Level::INFO);
-        assert_eq!(timeout_event.level, Level::ERROR);
-        assert_eq!(
-            generic_event.fields.get("message").map(String::as_str),
-            Some("job execution failed")
-        );
-        assert_eq!(
-            timeout_event.fields.get("message").map(String::as_str),
-            Some("runner job timed out")
-        );
-        assert_field_eq(&timeout_event, "timeout_ms", "7200000");
-        assert_field_eq(&timeout_event, "elapsed_ms", "7200100");
-        assert_field_eq(&timeout_event, "guest_duration_ms", "7200000");
-        assert_field_kind(&timeout_event, "timeout_ms", "u128");
-        assert_field_kind(&timeout_event, "elapsed_ms", "u128");
-        assert_field_kind(&timeout_event, "guest_duration_ms", "u64");
-
-        for event in [&generic_event, &timeout_event] {
-            assert_field_eq(event, "run_id", &RunId::nil().to_string());
-            assert_field_eq(event, "exit_code", "124");
-            assert_field_eq(event, "reused", "false");
-            assert_field_eq(event, "error", "Timeout");
-            assert_field_eq(event, "failure_reason", "usage_limit");
-            assert_field_eq(event, "failure_class", "cli_nonzero");
-            assert_field_eq(event, "failure_framework", "codex");
-            assert_field_eq(event, "failure_cli_exit_code", "1");
-            assert_field_eq(event, "failure_claude_num_turns", "2");
-            assert_field_eq(event, "failure_detail_source", "codex_jsonl");
-            assert_field_eq(event, "session_history_status", "not_applicable");
-            assert_field_eq(event, "prompt_shape", "plain");
-            assert_field_eq(event, "prompt_bytes", "12");
-            assert_field_eq(event, "first_line_bytes", "12");
-            assert_field_eq(event, "cli_termination_initiator", "guest_agent");
-            assert_field_eq(event, "cli_termination_reason", "post_result_reap");
-            assert_field_eq(event, "cli_termination_signal_sent", "sigterm");
-            assert_field_eq(event, "cli_termination_signal_pgid", "1401");
-            assert_field_eq(event, "cli_termination_signal_grace_ms", "10000");
-            assert_field_eq(event, "cli_termination_escalated", "false");
-            assert_field_eq(event, "cli_termination_observed_exit_code", "143");
-            assert_field_eq(event, "cli_observed_exit_kind", "signal");
-            assert_field_eq(event, "cli_observed_signal_number", "9");
-            assert_field_eq(event, "cli_observed_signal_name", "sigkill");
-            assert_field_eq(event, "cli_observed_mapped_exit_code", "137");
-            assert_field_eq(event, "resource_failure_kind", "guest_root_filesystem_full");
-            assert_field_eq(event, "guest_root_fs_used_percent", "100");
-            assert_field_eq(event, "guest_root_fs_available_kb", "20");
-            assert_field_eq(event, "guest_workspace_fs_used_percent", "1");
-            assert_field_eq(event, "guest_memory_available_mb", "624");
-
-            assert_field_kind(event, "message", "debug");
-            assert_field_kind(event, "run_id", "debug");
-            assert_field_kind(event, "exit_code", "i64");
-            assert_field_kind(event, "reused", "bool");
-            assert_field_kind(event, "error", "debug");
-            assert_field_kind(event, "failure_class", "str");
-            assert_field_kind(event, "failure_cli_exit_code", "i64");
-            assert_field_kind(event, "failure_claude_num_turns", "u64");
-            assert_field_kind(event, "cli_termination_escalated", "bool");
-            assert_field_kind(event, "prompt_bytes", "u64");
-            assert_field_kind(event, "guest_root_fs_used_percent", "u64");
-        }
-
-        assert_shared_failure_log_fields(&generic_event, &timeout_event);
-    }
-
-    async fn status_idle_sessions_and_active_runs(
+    async fn status_idle_reuse_keys_and_active_runs(
         status_path: &std::path::Path,
     ) -> (Vec<String>, Vec<String>) {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
         let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let mut sessions: Vec<String> = status
+        let mut reuse_keys: Vec<String> = status
             .get("idle_vms")
             .and_then(|v| v.as_array())
             .map(|idle_vms| {
                 idle_vms
                     .iter()
                     .filter_map(|vm| {
-                        vm.get("session_id")
-                            .and_then(|session| session.as_str())
+                        vm.get("reuse_key")
+                            .and_then(|reuse_key| reuse_key.as_str())
                             .map(str::to_string)
                     })
                     .collect()
             })
             .unwrap_or_default();
-        sessions.sort_unstable();
+        reuse_keys.sort_unstable();
         let mut run_ids: Vec<String> = status["active_runs"]
             .as_array()
             .unwrap()
@@ -1898,7 +1473,7 @@ mod tests {
             })
             .collect();
         run_ids.sort_unstable();
-        (sessions, run_ids)
+        (reuse_keys, run_ids)
     }
     async fn status_active_run_records(status_path: &std::path::Path) -> Vec<(String, String)> {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
@@ -1997,8 +1572,8 @@ mod tests {
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
         assert_eq!(fixture.orphans.len(), 0);
     }
@@ -2014,8 +1589,8 @@ mod tests {
             .await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
         assert_eq!(active_runs, vec![run_id.to_string()]);
         assert_eq!(fixture.orphans.len(), 1);
     }
@@ -2032,8 +1607,8 @@ mod tests {
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
         assert_eq!(fixture.orphans.len(), 0);
     }
@@ -2095,9 +1670,9 @@ mod tests {
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
-        assert_eq!(idle_sessions, vec!["sess-idle-owned-cleanup"]);
+        let (idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
+        assert_eq!(idle_reuse_keys, vec!["sess-idle-owned-cleanup"]);
         assert!(active_runs.is_empty());
         assert_eq!(fixture.orphans.len(), 0);
     }

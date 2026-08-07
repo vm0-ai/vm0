@@ -10,7 +10,9 @@ import request_classification
 import request_streaming
 import upstream_destination_binding
 from tests.connector_diagnostic_helpers import (
+    write_connector_diagnostic_capture_registry,
     write_connector_diagnostic_catalog_cache,
+    write_shared_base_diagnostic_catalog,
 )
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
@@ -43,7 +45,7 @@ def _assert_fal_local_connector_diagnostic(flow):
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == "fal"
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured_for_run"
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] == "fal"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "fal"
     assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] == "not_configured_for_run"
     assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] == ["FAL_TOKEN"]
     assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] == "https://fal.run"
@@ -75,64 +77,6 @@ def _write_shared_base_active_firewall_registry(
     )
 
 
-def _shared_base_catalog_firewall(
-    name: str,
-    token_name: str,
-    *,
-    auth: dict[str, object] | None = None,
-    permissions: list[dict[str, object]] | None = None,
-) -> dict:
-    resolved_auth = (
-        {
-            "headers": {
-                "Authorization": f"Bearer ${{{{ secrets.{token_name} }}}}",
-            },
-            "query": {
-                "api_key": f"${{{{ secrets.{token_name} }}}}",
-            },
-        }
-        if auth is None
-        else auth
-    )
-    return {
-        "name": name,
-        "apis": [
-            {
-                "base": "https://shared.example.com",
-                "hostPolicy": {
-                    "kind": "providerOwned",
-                    "exactHosts": ["shared.example.com"],
-                },
-                "auth": resolved_auth,
-                "permissions": permissions or [],
-            }
-        ],
-    }
-
-
-def _write_shared_base_diagnostic_catalog(
-    tmp_path,
-    *,
-    active_permissions: list[dict[str, object]] | None = None,
-    inactive_auth: dict[str, object] | None = None,
-    inactive_permissions: list[dict[str, object]] | None = None,
-) -> None:
-    firewalls = {
-        "active-shared": _shared_base_catalog_firewall(
-            "active-shared",
-            "ACTIVE_TOKEN",
-            permissions=active_permissions,
-        ),
-        "inactive-shared": _shared_base_catalog_firewall(
-            "inactive-shared",
-            "INACTIVE_TOKEN",
-            auth=inactive_auth,
-            permissions=inactive_permissions,
-        ),
-    }
-    write_connector_diagnostic_catalog_cache(tmp_path, firewalls=firewalls)
-
-
 def _assert_shared_base_inactive_diagnostic(flow):
     assert flow.response is not None
     assert flow.response.status_code == 424
@@ -154,13 +98,13 @@ def _assert_shared_base_inactive_diagnostic(flow):
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == "inactive-shared"
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured_for_run"
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] == "inactive-shared"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "inactive-shared"
 
 
 async def test_shared_base_unknown_endpoint_diagnoses_inactive_sibling_before_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _write_shared_base_diagnostic_catalog(
+    write_shared_base_diagnostic_catalog(
         tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_permissions=[{"name": "inactive-read", "rules": ["GET /inactive"]}],
@@ -195,10 +139,56 @@ async def test_shared_base_unknown_endpoint_diagnoses_inactive_sibling_before_au
     assert proxy_log_entry["ownership_hint_status"] == "ignored"
 
 
+async def test_shared_base_head_diagnostic_is_bodyless(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    write_shared_base_diagnostic_catalog(
+        tmp_path,
+        active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
+        inactive_permissions=[{"name": "inactive-read", "rules": ["HEAD /inactive"]}],
+    )
+    reg_path = _write_shared_base_active_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/inactive",
+        method="HEAD",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("X-VM0-Connector-Intent", "inactive-shared"),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 424
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "inactive-shared"
+    [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert network_entry["response_size"] == 0
+    assert "response_body" not in network_entry
+    [connector_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert connector_entry["type"] == "connector_diagnostic"
+    assert http_error_entry["type"] == "http_error"
+
+
 async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_before_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _write_shared_base_diagnostic_catalog(tmp_path)
+    write_shared_base_diagnostic_catalog(tmp_path)
     reg_path = _write_shared_base_active_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
@@ -232,7 +222,7 @@ async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_befor
 async def test_shared_base_active_connector_intent_keeps_active_auth_path(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _write_shared_base_diagnostic_catalog(tmp_path)
+    write_shared_base_diagnostic_catalog(tmp_path)
     reg_path = _write_shared_base_active_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
@@ -258,7 +248,7 @@ async def test_shared_base_active_connector_intent_keeps_active_auth_path(
     assert "X-VM0-Connector-Intent" not in flow.request.headers
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == "active-shared"
     assert metadata_keys.FIREWALL_ERROR not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
 
 @pytest.mark.parametrize(
@@ -278,7 +268,7 @@ async def test_shared_base_unknown_endpoint_with_configured_auth_keeps_active_au
     path,
     request_header_pairs,
 ):
-    _write_shared_base_diagnostic_catalog(
+    write_shared_base_diagnostic_catalog(
         tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_auth={
@@ -314,13 +304,13 @@ async def test_shared_base_unknown_endpoint_with_configured_auth_keeps_active_au
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer active"
     assert "X-VM0-Connector-Intent" not in flow.request.headers
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
 
 async def test_shared_base_malformed_connector_intent_is_ignored_and_stripped(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _write_shared_base_diagnostic_catalog(tmp_path)
+    write_shared_base_diagnostic_catalog(tmp_path)
     reg_path = _write_shared_base_active_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
@@ -344,13 +334,13 @@ async def test_shared_base_malformed_connector_intent_is_ignored_and_stripped(
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer active"
     assert "X-VM0-Connector-Intent" not in flow.request.headers
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
 
 async def test_shared_base_known_permission_skips_pre_auth_diagnostic(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
-    _write_shared_base_diagnostic_catalog(
+    write_shared_base_diagnostic_catalog(
         tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_permissions=[{"name": "inactive-read", "rules": ["GET /inactive"]}],
@@ -374,13 +364,13 @@ async def test_shared_base_known_permission_skips_pre_auth_diagnostic(
     assert flow.request.headers["Authorization"] == "Bearer active"
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == "active-shared"
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "active-read"
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
 
 async def test_shared_base_requestheaders_diagnoses_before_stream_safe_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _write_shared_base_diagnostic_catalog(
+    write_shared_base_diagnostic_catalog(
         tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_permissions=[{"name": "inactive-write", "rules": ["POST /inactive"]}],
@@ -441,13 +431,43 @@ async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic
     assert entry["action"] == "ALLOW"
     assert entry["status"] == 424
     assert entry["firewall_error"] == "connector_not_configured_for_run"
-    assert entry["connector_diagnostic_type"] == "fal"
+    assert entry["connector_diagnostic_slug"] == "fal"
     [proxy_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
     assert proxy_entry["type"] == "connector_diagnostic"
     assert proxy_entry["connector"] == "fal"
     assert proxy_entry["upstream_status"] == 0
     assert http_error_entry["type"] == "http_error"
     assert http_error_entry["status"] == 424
+
+
+async def test_inactive_builtin_connector_head_diagnostic_is_bodyless(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="HEAD",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 424
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "fal"
+    [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert network_entry["response_size"] == 0
+    assert "response_body" not in network_entry
+    [connector_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert connector_entry["type"] == "connector_diagnostic"
+    assert http_error_entry["type"] == "http_error"
 
 
 @pytest.mark.parametrize(
@@ -505,7 +525,7 @@ async def test_inactive_builtin_connector_url_with_user_auth_allows_upstream(
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
 
 @pytest.mark.parametrize(
@@ -568,7 +588,7 @@ async def test_inactive_connector_url_with_configured_auth_allows_upstream(
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
 
 async def test_streamed_inactive_builtin_connector_request_waits_for_response_fallback(
@@ -597,7 +617,7 @@ async def test_streamed_inactive_builtin_connector_request_waits_for_response_fa
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert metadata_keys.FIREWALL_ERROR not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
     assert request_streaming.streamed_request_size(flow) == len(b"partial request")
     assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
@@ -628,7 +648,7 @@ async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidat
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
 
 async def test_asterisk_form_without_active_firewall_skips_connector_diagnostic(
@@ -653,7 +673,7 @@ async def test_asterisk_form_without_active_firewall_skips_connector_diagnostic(
     assert flow.request.path == "*"
     assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.openweathermap.org"
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
 
 async def test_active_builtin_connector_url_uses_firewall_path(
@@ -689,4 +709,4 @@ async def test_active_builtin_connector_url_uses_firewall_path(
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://fal.run"
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == "fal"
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata

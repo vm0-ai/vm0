@@ -11,13 +11,16 @@ export const testRuntimeStateErrorSchema = z.object({
 export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("seed-vm0-managed-default-model-key"),
+    fixture_id: z.uuid(),
   }),
   z.object({
     action: z.literal("seed-vm0-managed-model-key"),
+    fixture_id: z.uuid(),
     selected_model: z.string(),
   }),
   z.object({
-    action: z.literal("delete-vm0-managed-default-model-key"),
+    action: z.literal("delete-vm0-managed-model-key"),
+    fixture_id: z.uuid(),
   }),
   z.object({
     action: z.literal("enable-fake-kms"),
@@ -27,6 +30,41 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("read-fake-kms-state"),
+  }),
+  z.object({
+    action: z.literal("read-browser-screenshot-schema-state"),
+  }),
+  z.object({
+    action: z.literal("read-chat-agent-run-context-schema-state"),
+  }),
+  z.object({
+    action: z.literal("set-run-autonomy-budget"),
+    run_id: z.uuid(),
+    autonomy_budget: z.int().min(0).max(10),
+  }),
+  z.object({
+    action: z.literal("read-run-autonomy-budget"),
+    run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("set-workflow-automation-autonomy-budget"),
+    automation_id: z.uuid(),
+    autonomy_budget: z.int().min(0).max(10),
+  }),
+  z.object({
+    action: z.literal("read-workflow-automation-autonomy-state"),
+    automation_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-latest-workflow-automation-run"),
+    automation_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-thread-goal-autonomy-budget"),
+    thread_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("reset-database-pool"),
   }),
   z.object({
     action: z.literal("mutate-runner-job-secret-value-environment-keys"),
@@ -39,6 +77,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     mode: z.enum([
       "remove",
       "malformed",
+      "capability-mismatch",
       "catalog-mismatch",
       "authority-mismatch",
       "inconsistent",
@@ -51,6 +90,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("read-runner-job-storage-state"),
+    run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-run-claim-owner"),
     run_id: z.uuid(),
   }),
   z.object({
@@ -79,6 +122,16 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("read-chat-event-asset-refs"),
+    event_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("insert-chat-event-asset-ref"),
+    event_id: z.uuid(),
+    asset_id: z.uuid(),
+    position: z.int().nonnegative(),
+  }),
+  z.object({
     action: z.literal("clear-run-api-start"),
     run_id: z.uuid(),
   }),
@@ -102,20 +155,34 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     url: z.url(),
   }),
   z.object({
+    action: z.literal("insert-hosted-site-as-previous-api"),
+    user_id: z.string(),
+    org_id: z.string(),
+    run_id: z.uuid(),
+    site: z.string(),
+    public_slug: z.string(),
+  }),
+  z.object({
+    action: z.literal("insert-hosted-deployment-as-previous-api"),
+    user_id: z.string(),
+    org_id: z.string(),
+    run_id: z.uuid(),
+    hosted_site_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("set-computer-use-host-as-previous-api"),
     thread_id: z.uuid(),
     computer_use_host_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("set-browser-tab-snapshot-as-previous-api"),
+    thread_id: z.uuid(),
+    tab_urls: z.array(z.string().max(8192)).max(50),
+  }),
+  z.object({
     action: z.literal("set-runner-job-context-profile-as-previous-api"),
     run_id: z.uuid(),
     profile: z.string(),
-  }),
-  z.object({
-    action: z.literal("read-browser-profile-as-previous-api"),
-    browser_id: z.uuid(),
-    user_id: z.string(),
-    org_id: z.string(),
   }),
 ]);
 
@@ -123,9 +190,28 @@ export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
   selected_model: z.string().optional(),
   decrypt_call_count: z.number().optional(),
+  browser_screenshot_schema_available: z.boolean().optional(),
+  chat_agent_run_context_schema_available: z.boolean().optional(),
+  autonomy_budget: z.int().min(0).max(10).nullable().optional(),
+  workflow_automation_state: z
+    .object({
+      autonomy_budget: z.int().min(0).max(10),
+      enabled: z.boolean(),
+      last_run_id: z.uuid().nullable(),
+    })
+    .nullable()
+    .optional(),
+  workflow_automation_run: z
+    .object({
+      run_id: z.uuid(),
+      autonomy_budget: z.int().min(0).max(10),
+    })
+    .nullable()
+    .optional(),
   admission_lock_held: z.boolean().optional(),
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),
+  chat_event_asset_ref_ids: z.array(z.uuid()).optional(),
   api_started_at: z.string().nullable().optional(),
   thread_session_binding: z
     .object({
@@ -135,12 +221,8 @@ export const testRuntimeStateActionResponseSchema = z.object({
     })
     .optional(),
   file_id: z.uuid().optional(),
-  previous_api_browser_profile: z
-    .object({
-      browser_profile_id: z.uuid(),
-      provider_profile_id: z.uuid(),
-    })
-    .optional(),
+  hosted_site_id: z.uuid().optional(),
+  hosted_deployment_scope_blocked: z.boolean().optional(),
   storage_persistence: z
     .object({
       run_canonical: z.boolean(),
@@ -153,6 +235,17 @@ export const testRuntimeStateActionResponseSchema = z.object({
       has_stored_storage_manifest: z.boolean(),
       canonical_mount_count: z.number().int().nonnegative(),
       has_run_context_storage: z.boolean(),
+    })
+    .optional(),
+  runner_claim_owner: z
+    .object({
+      runner_id: z.uuid().nullable(),
+      heartbeat_generation: z
+        .number()
+        .int()
+        .positive()
+        .max(Number.MAX_SAFE_INTEGER)
+        .nullable(),
     })
     .optional(),
 });

@@ -2,13 +2,13 @@ use super::super::super::*;
 use super::super::support::{
     MockRunEnv, context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool,
     shutdown, test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
-    wait_status_idle_sessions_and_active_runs, wait_workspace_cache_sessions,
+    wait_status_idle_reuse_keys_and_active_runs, wait_workspace_cache_reuse_keys,
 };
 use super::support::assert_no_completion_for_run;
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::workspace_image_cache::WorkspaceImageCache;
 use sandbox_mock::MockLifecycleGate;
 
 fn severe_memory_retention() -> sandbox::SandboxParkOutcome {
@@ -80,10 +80,13 @@ async fn park_failure_promotes_workspace_cache_before_destroy() {
 }
 
 #[tokio::test]
-async fn non_reusable_park_promotes_workspace_cache_through_parked_path() {
+async fn non_reusable_park_destroy_panic_preserves_workspace_cache_and_cleanup() {
     assert_workspace_cache_after_park_cleanup(
-        "sess-severe-retention-cache",
-        |overrides| overrides.push_park_result(Ok(severe_memory_retention())),
+        "sess-severe-retention-destroy-panic-cache",
+        |overrides| {
+            overrides.push_park_result(Ok(severe_memory_retention()));
+            overrides.push_destroy_panic("simulated non-reusable destroy panic");
+        },
         true,
         1,
     )
@@ -118,7 +121,7 @@ async fn assert_workspace_cache_after_park_cleanup(
     let (mut config, env) =
         mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -160,6 +163,7 @@ async fn assert_workspace_cache_after_park_cleanup(
         .await
         .expect("job should complete normally after park cleanup destroy");
     assert_eq!(completion.exit_code, 0);
+    assert!(completion.error.is_none());
 
     wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
     assert_eq!(idle_pool.lock().await.len(), 0);
@@ -167,10 +171,10 @@ async fn assert_workspace_cache_after_park_cleanup(
     assert_eq!(counter.unpark_call_count(), expected_unpark_calls);
     assert_eq!(counter.destroy_call_count(), 1);
     if expect_cache {
-        wait_workspace_cache_sessions(&workspace_cache, &[session_id], Duration::from_secs(2))
+        wait_workspace_cache_reuse_keys(&workspace_cache, &[session_id], Duration::from_secs(2))
             .await;
     } else {
-        let held = workspace_cache.held_session_states().await;
+        let held = workspace_cache.held_workspace_states().await;
         assert!(held.is_empty());
     }
 
@@ -217,7 +221,7 @@ async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_stat
         "non-reusable parked VM must never enter the idle pool",
     )
     .await;
-    wait_status_idle_sessions_and_active_runs(
+    wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
         &[],
         &[run_id.to_string()],
@@ -239,7 +243,8 @@ async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_stat
     .await;
 
     assert_post_destroy_cleanup(&budget, &idle_pool, None, run_id, 0, 0).await;
-    wait_status_idle_sessions_and_active_runs(&status_path, &[], &[], Duration::from_secs(5)).await;
+    wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
+        .await;
     assert_eq!(counter.park_call_count(), 1);
     assert_eq!(counter.destroy_call_count(), 1);
 
@@ -287,45 +292,6 @@ async fn repeated_non_reusable_parks_use_fresh_sandboxes() {
     assert_eq!(counter.park_call_count(), 2);
     assert_eq!(counter.unpark_call_count(), 0);
     assert_eq!(counter.destroy_call_count(), 2);
-
-    shutdown(&env, run_handle).await;
-}
-
-#[tokio::test(start_paused = true)]
-async fn non_reusable_park_destroy_panic_still_completes_and_releases_budget() {
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_park_result(Ok(severe_memory_retention()));
-    overrides.push_destroy_panic("simulated non-reusable destroy panic");
-    let counter = Arc::clone(&overrides);
-    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.capacity.budget);
-    let idle_pool = Arc::clone(&config.shared.idle_pool);
-    let run_handle = tokio::spawn(run(config));
-
-    let run_id = RunId::new_v4();
-    push_job(
-        &env,
-        run_id,
-        "vm0/default",
-        Some(context_with_session(run_id, "sess-severe-destroy-panic")),
-    );
-
-    let completion = env
-        .handle
-        .wait_completion(run_id, Duration::from_secs(5))
-        .await
-        .expect("destroy uncertainty must not rewrite or skip provider completion");
-    assert_eq!(completion.exit_code, 0);
-    assert!(completion.error.is_none());
-    wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
-    assert_idle_pool_len(
-        &idle_pool,
-        0,
-        "destroy uncertainty must not publish a non-reusable VM as idle",
-    )
-    .await;
-    assert_eq!(counter.park_call_count(), 1);
-    assert_eq!(counter.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
 }
@@ -433,7 +399,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     let (mut config, env) =
         mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -475,7 +441,7 @@ async fn assert_workspace_cache_after_late_cancellation(
 
     match cancellation_point {
         LateCancellationPoint::DuringPark => {
-            cancel_handle.cancel().await;
+            cancel_handle.request_hard_cancellation().await;
             park_gate.release_one();
         }
         LateCancellationPoint::BeforeIdlePoolTransfer => {
@@ -484,7 +450,7 @@ async fn assert_workspace_cache_after_late_cancellation(
             env.start_observer
                 .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
                 .await;
-            cancel_handle.cancel().await;
+            cancel_handle.request_hard_cancellation().await;
             drop(pool_guard);
         }
     }
@@ -516,7 +482,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     .await;
 
     assert_post_destroy_cleanup(&budget, &idle_pool, Some(&cancel_tokens), run_id, 0, 0).await;
-    wait_workspace_cache_sessions(&workspace_cache, &[session_id], Duration::from_secs(2)).await;
+    wait_workspace_cache_reuse_keys(&workspace_cache, &[session_id], Duration::from_secs(2)).await;
 
     shutdown(&env, run_handle).await;
 }
@@ -608,7 +574,7 @@ async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
     wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
     let pool = idle_pool.lock().await;
     assert_eq!(pool.len(), 1);
-    assert_eq!(pool.held_sessions(), vec!["sess-existing"]);
+    assert_eq!(pool.held_reuse_keys(), vec!["sess-existing"]);
     drop(pool);
 
     shutdown(&env, run_handle).await;
@@ -711,7 +677,7 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
     env.start_observer
         .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
         .await;
-    cancel_handle.cancel().await;
+    cancel_handle.request_hard_cancellation().await;
     drop(pool_guard);
 
     wait_lifecycle_gate_entered(
@@ -779,7 +745,7 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
     wait_lifecycle_gate_entered(&park_gate, "sandbox park should enter gate").await;
     assert_eq!(counter.park_call_count(), 1);
 
-    cancel_handle.cancel().await;
+    cancel_handle.request_hard_cancellation().await;
     park_gate.release_one();
 
     wait_lifecycle_gate_entered(

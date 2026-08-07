@@ -13,7 +13,7 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import { issueCliToken$ } from "../services/cli-auth.service";
 import {

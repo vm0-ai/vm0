@@ -26,7 +26,7 @@ const {
   refreshConnectorAuthProviderAccessToken,
   startConnectorExternalCodeAuthorization,
 } = providerOperationFixture({
-  connectorRef: "nintendo-store",
+  connectorSlug: "nintendo-store",
   authMethodId: "api",
   method: NINTENDO_STORE_PROVIDER_METHOD,
 });
@@ -67,7 +67,7 @@ function sha256Base64Url(value: string): string {
 
 async function startNintendoStoreSession() {
   const result = await startConnectorExternalCodeAuthorization({
-    type: "nintendo-store",
+    connectorSlug: "nintendo-store",
     authMethod: "api",
     authClient: nintendoStoreAuthClient(),
   });
@@ -168,7 +168,7 @@ describe("Nintendo Store external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "nintendo-store",
+        connectorSlug: "nintendo-store",
         authMethod: "api",
         authClient: nintendoStoreAuthClient(),
         providerState: result.providerState,
@@ -239,7 +239,7 @@ describe("Nintendo Store external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "nintendo-store",
+        connectorSlug: "nintendo-store",
         authMethod: "api",
         authClient: nintendoStoreAuthClient(),
         providerState: result.providerState,
@@ -271,7 +271,7 @@ describe("Nintendo Store external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "nintendo-store",
+        connectorSlug: "nintendo-store",
         authMethod: "api",
         authClient: nintendoStoreAuthClient(),
         providerState: result.providerState,
@@ -300,7 +300,7 @@ describe("Nintendo Store external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "nintendo-store",
+        connectorSlug: "nintendo-store",
         authMethod: "api",
         authClient: nintendoStoreAuthClient(),
         providerState: result.providerState,
@@ -342,7 +342,7 @@ describe("Nintendo Store external-code provider", () => {
 
     await expect(
       refreshConnectorAuthProviderAccessToken({
-        type: "nintendo-store",
+        connectorSlug: "nintendo-store",
         authMethod: "api",
         authClient: nintendoStoreAuthClient(),
         inputs: {

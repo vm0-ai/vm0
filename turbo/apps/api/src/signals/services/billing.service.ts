@@ -1,10 +1,11 @@
 import { command, computed, type Computed } from "ccstate";
 import type { AutoRechargeConfig } from "@vm0/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
 import { eq } from "drizzle-orm";
 
-import { db$, writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { db$, writeDb$, type ReadonlyDb } from "../external/db";
+import { nowDate } from "../../lib/time";
 import { getStripeClient } from "../external/stripe-client";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
@@ -31,12 +32,32 @@ export function autoRechargeConfig(
   });
 }
 
+async function stripeCustomerIdForOrg(
+  db: ReadonlyDb,
+  orgId: string,
+): Promise<string | null> {
+  const [org] = await db
+    .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  if (org?.stripeCustomerId) {
+    return org.stripeCustomerId;
+  }
+
+  const [allowance] = await db
+    .select({
+      stripeCustomerId: orgUsageAllowanceEntitlements.stripeCustomerId,
+    })
+    .from(orgUsageAllowanceEntitlements)
+    .where(eq(orgUsageAllowanceEntitlements.orgId, orgId))
+    .limit(1);
+  return allowance?.stripeCustomerId ?? null;
+}
+
 /**
  * Create a Stripe Billing Portal session for managing subscriptions.
- * Mirrors apps/web's `createBillingPortalSession`. Returns the portal URL.
- *
- * Throws if the org has no Stripe customer yet (defensive — web's
- * tests don't exercise this branch either; framework returns 500).
+ * Returns the portal URL and throws if the org has no Stripe customer yet.
  */
 export const createBillingPortalSession$ = command(
   async (
@@ -45,20 +66,16 @@ export const createBillingPortalSession$ = command(
     signal: AbortSignal,
   ): Promise<string> => {
     const db = get(db$);
-    const [org] = await db
-      .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, args.orgId))
-      .limit(1);
+    const stripeCustomerId = await stripeCustomerIdForOrg(db, args.orgId);
     signal.throwIfAborted();
 
-    if (!org?.stripeCustomerId) {
+    if (!stripeCustomerId) {
       throw new Error("Org has no Stripe customer — subscribe first");
     }
 
     const stripe = getStripeClient();
     const session = await stripe.billingPortal.sessions.create({
-      customer: org.stripeCustomerId,
+      customer: stripeCustomerId,
       return_url: args.returnUrl,
     });
     signal.throwIfAborted();

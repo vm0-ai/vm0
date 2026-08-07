@@ -11,7 +11,6 @@ import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 const OPENROUTER_USAGE_IDEMPOTENCY_NAMESPACE =
   "3cf6f344-d67b-4d96-ae5d-fd6c0d134b70";
 
-const USAGE_KIND = "model";
 const INPUT_CATEGORY = "tokens.input";
 const CACHE_READ_CATEGORY = "tokens.cache_read";
 const OUTPUT_CATEGORY = "tokens.output";
@@ -22,7 +21,7 @@ const OPENROUTER_USAGE_CATEGORIES = [
 ] as const;
 
 interface OpenRouterUsageEntry {
-  readonly category: string;
+  readonly category: (typeof OPENROUTER_USAGE_CATEGORIES)[number];
   readonly quantity: number;
 }
 
@@ -31,10 +30,18 @@ interface RecordOpenRouterUsageArgs {
   readonly userId: string;
   readonly runId: string | undefined;
   readonly provider: string;
+  // Recorded as the usage event `kind`, so pricing rows and usage displays
+  // are scoped per task (like web-search vs people-search on one provider),
+  // not per model.
   readonly operation: string;
   readonly operationId: string;
   readonly usage: OpenRouterUsage | undefined;
 }
+
+type OpenRouterUsageSettlement =
+  | { readonly kind: "no-usage" }
+  | { readonly kind: "settled"; readonly creditsCharged: number }
+  | { readonly kind: "unsettled" };
 
 function positiveInteger(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value) || value <= 0) {
@@ -58,11 +65,12 @@ function usageEntries(
   const inputTokens = promptTokens - cachedTokens;
   const outputTokens = positiveInteger(usage.completion_tokens);
 
-  return [
+  const entries: OpenRouterUsageEntry[] = [
     { category: INPUT_CATEGORY, quantity: inputTokens },
     { category: CACHE_READ_CATEGORY, quantity: cachedTokens },
     { category: OUTPUT_CATEGORY, quantity: outputTokens },
-  ].filter((entry) => {
+  ];
+  return entries.filter((entry) => {
     return entry.quantity > 0;
   });
 }
@@ -83,7 +91,7 @@ function usageIdempotencyKey(args: {
 export const checkOpenRouterUsagePricing$ = command(
   async (
     { set },
-    args: { readonly provider: string },
+    args: { readonly provider: string; readonly operation: string },
     signal: AbortSignal,
   ): Promise<readonly string[]> => {
     const writeDb = set(writeDb$);
@@ -92,7 +100,7 @@ export const checkOpenRouterUsagePricing$ = command(
       .from(usagePricing)
       .where(
         and(
-          eq(usagePricing.kind, USAGE_KIND),
+          eq(usagePricing.kind, args.operation),
           eq(usagePricing.provider, args.provider),
           inArray(usagePricing.category, [...OPENROUTER_USAGE_CATEGORIES]),
         ),
@@ -115,39 +123,66 @@ export const recordOpenRouterUsage$ = command(
     { set },
     args: RecordOpenRouterUsageArgs,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<OpenRouterUsageSettlement> => {
     const entries = usageEntries(args.usage);
     if (entries.length === 0) {
-      return;
+      return { kind: "no-usage" };
     }
 
     const writeDb = set(writeDb$);
+    const eventRows = entries.map((entry) => {
+      return {
+        runId: args.runId ?? null,
+        idempotencyKey: usageIdempotencyKey({
+          orgId: args.orgId,
+          operation: args.operation,
+          operationId: args.operationId,
+          provider: args.provider,
+          category: entry.category,
+        }),
+        orgId: args.orgId,
+        userId: args.userId,
+        kind: args.operation,
+        provider: args.provider,
+        category: entry.category,
+        quantity: entry.quantity,
+      };
+    });
     await writeDb
       .insert(usageEvent)
-      .values(
-        entries.map((entry) => {
-          return {
-            runId: args.runId ?? null,
-            idempotencyKey: usageIdempotencyKey({
-              orgId: args.orgId,
-              operation: args.operation,
-              operationId: args.operationId,
-              provider: args.provider,
-              category: entry.category,
-            }),
-            orgId: args.orgId,
-            userId: args.userId,
-            kind: USAGE_KIND,
-            provider: args.provider,
-            category: entry.category,
-            quantity: entry.quantity,
-          };
-        }),
-      )
+      .values(eventRows)
       .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
     signal.throwIfAborted();
 
     await set(processOrgUsageEvents$, args.orgId, signal);
     signal.throwIfAborted();
+
+    const processed = await writeDb
+      .select({
+        billingError: usageEvent.billingError,
+        creditsCharged: usageEvent.creditsCharged,
+      })
+      .from(usageEvent)
+      .where(
+        inArray(
+          usageEvent.idempotencyKey,
+          eventRows.map((event) => {
+            return event.idempotencyKey;
+          }),
+        ),
+      );
+    signal.throwIfAborted();
+    if (processed.length !== eventRows.length) {
+      return { kind: "unsettled" };
+    }
+
+    let creditsCharged = 0;
+    for (const event of processed) {
+      if (event.billingError !== null || event.creditsCharged === null) {
+        return { kind: "unsettled" };
+      }
+      creditsCharged += event.creditsCharged;
+    }
+    return { kind: "settled", creditsCharged };
   },
 );

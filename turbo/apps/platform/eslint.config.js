@@ -50,6 +50,7 @@ export default [
       "ccstate/require-accept": "error",
       "ccstate/require-client-signal": "error",
       "ccstate/command-async-signal": "error",
+      "ccstate/no-computed-signal": "error",
       "ccstate/no-getter-setter-params": "error",
       "ccstate/no-accessor-escape": "error",
       "ccstate/no-store-in-params": [
@@ -189,10 +190,11 @@ export default [
       "ccstate/no-direct-local-storage": "off",
     },
   },
-  // Allow new Promise() in dedicated infrastructure helpers that wrap browser
-  // primitives. App code should continue using createDeferredPromise().
+  // Allow Promise primitives in the centralized deferred helper and dedicated
+  // browser wrappers. App code should continue using createDeferredPromise().
   {
     files: [
+      "src/signals/utils.ts",
       "src/polyfill.ts",
       "src/views/zero-page/components/org-manage/read-image-dimensions.ts",
     ],

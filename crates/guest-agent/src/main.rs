@@ -21,7 +21,8 @@ use guest_agent::telemetry::{Telemetry, UploadMode};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use guest_contracts::diagnostics::{
-    CliTerminationReason, FailureClass, FailureDiagnostic, FailureReason,
+    AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationReason, EventDeliveryDiagnostic, FailureClass,
+    FailureDiagnostic, FailureReason,
 };
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
@@ -45,7 +46,7 @@ async fn main() {
     if let Some(exit_code) = helper_exit_code_from_args() {
         std::process::exit(exit_code);
     }
-    let runtime = match GuestRuntime::from_process_env() {
+    let runtime = match initialize_guest_runtime() {
         Ok(runtime) => runtime,
         Err(e) => {
             log_error!(LOG_TAG, "Fatal: {e}");
@@ -55,6 +56,26 @@ async fn main() {
     };
     let exit_code = run(runtime).await;
     std::process::exit(exit_code);
+}
+
+fn initialize_guest_runtime() -> Result<GuestRuntime, String> {
+    #[cfg(target_os = "linux")]
+    deny_unprivileged_process_inspection()?;
+    GuestRuntime::from_process_env()
+}
+
+#[cfg(target_os = "linux")]
+fn deny_unprivileged_process_inspection() -> Result<(), String> {
+    // SAFETY: PR_SET_DUMPABLE only changes the calling process's inspection
+    // policy. It must run before the credential-bearing runtime is captured.
+    let result = unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0) };
+    if result == 0 {
+        return Ok(());
+    }
+    Err(format!(
+        "protect guest-agent from unprivileged process inspection: {}",
+        std::io::Error::last_os_error()
+    ))
 }
 
 fn helper_exit_code_from_args() -> Option<i32> {
@@ -199,6 +220,8 @@ fn parse_session_history_identity_expectation(
 /// Final telemetry upload is attempted on all paths where the HTTP client can
 /// be initialized; when no API token is configured, that upload is a no-op.
 async fn run(runtime: GuestRuntime) -> i32 {
+    let start = Instant::now();
+
     // Record API-to-agent E2E time (as early as possible)
     guest_agent::timing::record_e2e_from_api_start(
         "api_to_agent_start",
@@ -214,10 +237,8 @@ async fn run(runtime: GuestRuntime) -> i32 {
     let http = runtime.http.clone();
     let masker = Arc::new(masker::SecretMasker::from_config(&runtime.config));
     let shutdown = CancellationToken::new();
-    let framework_supports_active_input = framework_supports_active_input(
-        runtime.config.framework,
-        runtime.config.use_codex_app_server_backend,
-    );
+    let cli_cancellation = CancellationToken::new();
+    let framework_supports_active_input = framework_supports_active_input(runtime.config.framework);
     let has_process_control_endpoint = matches!(
         std::env::var(process_control_ipc::BOOTSTRAP_ENV),
         Ok(endpoint) if !endpoint.is_empty()
@@ -227,9 +248,13 @@ async fn run(runtime: GuestRuntime) -> i32 {
         framework_supports_active_input && has_process_control_endpoint,
         &runtime.config.prompt,
     );
-    let control_handle = control::ControlHandle::spawn(shutdown.clone(), active_input.controller());
-    let start = Instant::now();
-
+    let pi_standby = guest_agent::pi_standby::PiStandbyRuntime::new();
+    let control_handle = control::ControlHandle::spawn(
+        shutdown.clone(),
+        active_input.controller(),
+        cli_cancellation.clone(),
+        pi_standby.controller(),
+    );
     log_info!(
         LOG_TAG,
         "Working directory: {}",
@@ -276,7 +301,11 @@ async fn run(runtime: GuestRuntime) -> i32 {
         start,
         Some(heartbeat_status_rx),
         &telemetry,
-        active_input.into_writer(),
+        ExecutionControls {
+            active_input: active_input.into_writer(),
+            pi_standby: pi_standby.into_reader(),
+            cli_cancellation,
+        },
         &runtime,
     )
     .await;
@@ -299,12 +328,17 @@ async fn run(runtime: GuestRuntime) -> i32 {
     exit_code
 }
 
-fn framework_supports_active_input(
-    framework: env::Framework,
-    use_codex_app_server_backend: bool,
-) -> bool {
-    matches!(framework, env::Framework::ClaudeCode)
-        || (matches!(framework, env::Framework::Codex) && use_codex_app_server_backend)
+fn framework_supports_active_input(framework: env::Framework) -> bool {
+    matches!(
+        framework,
+        env::Framework::ClaudeCode | env::Framework::Codex
+    )
+}
+
+struct ExecutionControls {
+    active_input: guest_agent::active_input::ActiveInputWriter,
+    pi_standby: guest_agent::pi_standby::PiStandbyReader,
+    cli_cancellation: CancellationToken,
 }
 
 /// Main execution logic: working dir, CLI, checkpoint/recovery, and `/complete`.
@@ -316,12 +350,20 @@ async fn execute(
     start: Instant,
     heartbeat_monitor: cli::HeartbeatMonitor,
     telemetry: &Telemetry,
-    active_input: guest_agent::active_input::ActiveInputWriter,
+    controls: ExecutionControls,
     runtime: &GuestRuntime,
 ) -> i32 {
+    let ExecutionControls {
+        active_input,
+        pi_standby,
+        cli_cancellation,
+    } = controls;
     let config = &runtime.config;
     let runtime_paths = &runtime.paths;
     let http = runtime.http.clone();
+    let uses_pi_agent_loop = !config.pi_system_prompt.is_empty()
+        || !config.pi_model_config.is_empty()
+        || !config.run_skill_snapshot.is_empty();
 
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
@@ -352,12 +394,19 @@ async fn execute(
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
+    let codex_startup = (!uses_pi_agent_loop && matches!(config.framework, env::Framework::Codex))
+        .then(cli::CodexStartupTiming::start);
+
     // Codex setup must complete before the CLI starts. On reused sandboxes,
     // continuing after a setup failure can inherit stale auth or runtime state
     // from an earlier run.
-    if matches!(config.framework, env::Framework::Codex)
+    if !uses_pi_agent_loop
+        && matches!(config.framework, env::Framework::Codex)
         && let Err(e) = cli::setup_codex_for_config(masker, config).await
     {
+        if let Some(codex_startup) = codex_startup.as_ref() {
+            codex_startup.record_failure();
+        }
         let msg = format!("Codex setup failed: {}", masker.mask_string(&e.to_string()));
         log_error!(LOG_TAG, "{msg}");
         failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
@@ -386,25 +435,42 @@ async fn execute(
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
     let mut last_event_sequence = None;
-    let (
-        cli_exit_code,
-        exit_code,
-        error_message,
-        skip_recovery_checkpoint_for_no_history,
-        failure_diagnostic,
-        cli_execution_succeeded,
-    ) = match cli::execute_cli_with_active_input_for_config(
+    let mut event_delivery_failure = None;
+    let mut completion_disposition = cli::CliCompletionDisposition::Terminal;
+    let cli_result = cli::execute_cli_with_controls_for_config_started_at(
         masker,
         heartbeat_monitor,
         http.clone(),
-        active_input,
+        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref())
+            .with_pi_standby_reader(pi_standby),
         config,
         runtime_paths,
+        start,
     )
-    .await
-    {
+    .await;
+    if let Some(codex_startup) = codex_startup.as_ref() {
+        codex_startup.record_failure();
+    }
+    let (
+        cli_exit_code,
+        mut exit_code,
+        mut error_message,
+        skip_recovery_checkpoint_for_no_history,
+        mut failure_diagnostic,
+        cli_execution_succeeded,
+    ) = match cli_result {
         Ok(cli_result) => {
             last_event_sequence = cli_result.last_event_sequence;
+            completion_disposition = cli_result.completion_disposition;
+            if let Some(event_delivery) = cli_result.event_delivery.clone() {
+                let diagnostic = failure_diagnostics::event_delivery_failure_for_config(
+                    config,
+                    runtime_paths,
+                    &cli_result,
+                    event_delivery.clone(),
+                );
+                event_delivery_failure = Some((event_delivery, diagnostic));
+            }
             let cli_exit_code = cli_result.exit_code;
             if let Some(control_error) = cli_result.control_error.as_ref() {
                 let msg = control_error.to_string();
@@ -413,7 +479,24 @@ async fn execute(
                     runtime_paths,
                     &cli_result,
                 );
-                (cli_exit_code, 1, msg, false, Some(diagnostic), false)
+                let exit_code = if cli_result
+                    .cli_termination
+                    .as_ref()
+                    .is_some_and(|termination| {
+                        termination.reason == CliTerminationReason::ExecutionTimeout
+                    }) {
+                    AGENT_EXECUTION_TIMEOUT_EXIT_CODE
+                } else {
+                    1
+                };
+                (
+                    cli_exit_code,
+                    exit_code,
+                    msg,
+                    false,
+                    Some(diagnostic),
+                    false,
+                )
             } else if preserves_successful_post_result_cleanup(config.framework, &cli_result) {
                 (cli_exit_code, 0, String::new(), false, None, true)
             } else if cli_exit_code != 0 {
@@ -494,6 +577,31 @@ async fn execute(
         },
     );
 
+    if let cli::CliCompletionDisposition::PiStandbyReleased(reason) = completion_disposition {
+        log_info!(
+            LOG_TAG,
+            "Pi standby released without terminal run completion: {reason:?}"
+        );
+        return match reason {
+            cli::PiStandbyReleaseReason::ApiComplete => 0,
+            cli::PiStandbyReleaseReason::Ttl => guest_contracts::pi_standby::TTL_RELEASE_EXIT_CODE,
+        };
+    }
+
+    if let Some((event_delivery, event_failure_diagnostic)) = event_delivery_failure {
+        match failure_diagnostic.take() {
+            Some(diagnostic) => {
+                failure_diagnostic = Some(diagnostic.with_event_delivery(event_delivery));
+            }
+            None => {
+                error_message = event_delivery_failure_message(&event_delivery);
+                log_error!(LOG_TAG, "{error_message}");
+                exit_code = 1;
+                failure_diagnostic = Some(event_failure_diagnostic);
+            }
+        }
+    }
+
     complete_execution(
         cli_exit_code,
         exit_code,
@@ -503,11 +611,47 @@ async fn execute(
             failure_message: (exit_code != 0).then_some(error_message.as_str()),
             failure_diagnostic,
             skip_recovery_checkpoint_for_no_history,
+            skip_success_checkpoint: matches!(
+                completion_disposition,
+                cli::CliCompletionDisposition::PiCompleted
+            ),
         },
         telemetry,
         runtime,
     )
     .await
+}
+
+fn event_delivery_failure_message(diagnostic: &EventDeliveryDiagnostic) -> String {
+    let last_acknowledged = diagnostic
+        .last_acknowledged_sequence
+        .map_or_else(|| "none".to_string(), |sequence| sequence.to_string());
+    let first_failed = diagnostic.first_failed_batch.as_ref();
+    let drain_active = diagnostic
+        .drain_timeout
+        .as_ref()
+        .and_then(|drain| drain.active_batch.as_ref());
+
+    match (first_failed, drain_active) {
+        (Some(failed), Some(active)) => format!(
+            "Event delivery failed after acknowledged sequence {last_acknowledged}: batch {}-{} exhausted retries and the global drain deadline interrupted batch {}-{}",
+            failed.first_sequence,
+            failed.last_sequence,
+            active.first_sequence,
+            active.last_sequence
+        ),
+        (Some(failed), None) => format!(
+            "Event delivery failed after acknowledged sequence {last_acknowledged}: batch {}-{} exhausted retries",
+            failed.first_sequence, failed.last_sequence
+        ),
+        (None, Some(active)) => format!(
+            "Event delivery failed after acknowledged sequence {last_acknowledged}: the global drain deadline interrupted batch {}-{}",
+            active.first_sequence, active.last_sequence
+        ),
+        (None, None) => format!(
+            "Event delivery did not complete before the global drain deadline after acknowledged sequence {last_acknowledged}"
+        ),
+    }
 }
 
 fn is_claude_zero_turn_result(
@@ -545,6 +689,7 @@ struct CompletionState<'a> {
     failure_message: Option<&'a str>,
     failure_diagnostic: Option<FailureDiagnostic>,
     skip_recovery_checkpoint_for_no_history: bool,
+    skip_success_checkpoint: bool,
 }
 
 async fn complete_execution(
@@ -558,9 +703,6 @@ async fn complete_execution(
     let config = &runtime.config;
     let runtime_paths = &runtime.paths;
     let http = &runtime.http;
-    let has_failure_message = state
-        .failure_message
-        .is_some_and(|message| !message.trim().is_empty());
     if let Some(message) = state.failure_message {
         failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), message);
     }
@@ -571,34 +713,6 @@ async fn complete_execution(
             diagnostic,
         );
         wrote_failure_diagnostic = true;
-    }
-
-    // Check if any events failed to send (before logging execution result)
-    if std::path::Path::new(runtime_paths.event_error_flag()).exists() {
-        let msg = "Some events failed to send, marking run as failed";
-        log_error!(LOG_TAG, "{msg}");
-        if !has_failure_message {
-            failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), msg);
-        }
-        if !wrote_failure_diagnostic {
-            let diagnostic = failure_diagnostics::base_failure_diagnostic_for_config(
-                config,
-                FailureClass::EventUploadFailed,
-            )
-            .with_cli_exit_code(cli_exit_code)
-            .with_session_history_status(
-                failure_diagnostics::diagnostic_session_history_status_for_config(
-                    config,
-                    runtime_paths,
-                ),
-            );
-            failure_diagnostics::write_guest_failure_diagnostic(
-                runtime_paths.failure_diagnostic_file(),
-                &diagnostic,
-            );
-            wrote_failure_diagnostic = true;
-        }
-        exit_code = 1;
     }
 
     if exit_code == 0 {
@@ -613,7 +727,21 @@ async fn complete_execution(
     // pass runs from the top-level shutdown path after telemetry producers
     // stop, so it can safely catch checkpoint and `/complete` logs.
     let agent_type = config.framework.agent_type();
-    if should_create_success_checkpoint(exit_code) && http.has_api() {
+    if state.skip_success_checkpoint && exit_code == 0 && http.has_api() {
+        log_info!(
+            LOG_TAG,
+            "Pi completed successfully without CLI session checkpoint"
+        );
+        log_info!(LOG_TAG, "▷ Cleanup");
+        complete::report_success_for_run(
+            http,
+            &config.run_id,
+            &config.sandbox_id,
+            &config.sandbox_reuse_result,
+            state.last_event_sequence,
+        )
+        .await;
+    } else if should_create_success_checkpoint(exit_code) && http.has_api() {
         log_info!(LOG_TAG, "{agent_type} completed successfully");
 
         log_info!(LOG_TAG, "▷ Checkpoint");
@@ -724,6 +852,22 @@ async fn complete_execution(
         }
 
         log_info!(LOG_TAG, "▷ Cleanup");
+    }
+
+    if state
+        .failure_diagnostic
+        .as_ref()
+        .and_then(|diagnostic| diagnostic.cli_termination.as_ref())
+        .is_some_and(|termination| termination.reason == CliTerminationReason::UserCancellation)
+    {
+        complete::report_user_cancellation_for_run(
+            http,
+            &config.run_id,
+            &config.sandbox_id,
+            &config.sandbox_reuse_result,
+            state.last_event_sequence,
+        )
+        .await;
     }
 
     exit_code
@@ -930,7 +1074,6 @@ mod tests {
         cleanup_paths.extend([
             paths.checkpoint_error_file().to_string(),
             paths.failure_diagnostic_file().to_string(),
-            paths.event_error_flag().to_string(),
             paths.sandbox_ops_file().to_string(),
             paths.telemetry_system_log_pos_file().to_string(),
             paths.telemetry_metrics_pos_file().to_string(),
@@ -939,48 +1082,10 @@ mod tests {
         cleanup_paths
     }
 
-    struct EnvVarRestoreGuard {
-        saved: Vec<(&'static str, Option<std::ffi::OsString>)>,
-    }
-
-    impl EnvVarRestoreGuard {
-        fn capture(keys: impl IntoIterator<Item = &'static str>) -> Self {
-            let saved = keys
-                .into_iter()
-                .map(|key| (key, std::env::var_os(key)))
-                .collect();
-            Self { saved }
-        }
-    }
-
-    impl Drop for EnvVarRestoreGuard {
-        fn drop(&mut self) {
-            for (key, value) in &self.saved {
-                unsafe {
-                    match value {
-                        Some(value) => std::env::set_var(key, value),
-                        None => std::env::remove_var(key),
-                    }
-                }
-            }
-        }
-    }
-
     #[test]
-    fn framework_supports_active_input_for_claude_and_codex_app_server_only() {
-        assert!(framework_supports_active_input(
-            env::Framework::ClaudeCode,
-            false
-        ));
-        assert!(framework_supports_active_input(
-            env::Framework::ClaudeCode,
-            true
-        ));
-        assert!(!framework_supports_active_input(
-            env::Framework::Codex,
-            false
-        ));
-        assert!(framework_supports_active_input(env::Framework::Codex, true));
+    fn framework_supports_active_input_for_claude_and_codex() {
+        assert!(framework_supports_active_input(env::Framework::ClaudeCode));
+        assert!(framework_supports_active_input(env::Framework::Codex));
     }
 
     struct TestEnvGuard;
@@ -1037,12 +1142,10 @@ mod tests {
             guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::USE_MOCK_CLAUDE_ENV,
             guest_contracts::env::USE_MOCK_CODEX_ENV,
-            guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
             guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
             guest_contracts::env::MOCK_CODEX_PATH_ENV,
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::BOOTSTRAP_ENV,
-            "MOCK_CODEX_FIXTURE",
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
             unsafe {
@@ -1088,6 +1191,7 @@ mod tests {
             cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(0)),
             stderr_lines: Vec::new(),
             last_event_sequence: None,
+            event_delivery: None,
             claude_result: Some(cli::ClaudeResultSummary {
                 num_turns: Some(0),
                 status: cli::ClaudeResultStatus::Success,
@@ -1096,12 +1200,14 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
+            completion_disposition: cli::CliCompletionDisposition::Terminal,
         };
         let one_turn = cli::CliExecutionResult {
             exit_code: 0,
             cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(0)),
             stderr_lines: Vec::new(),
             last_event_sequence: None,
+            event_delivery: None,
             claude_result: Some(cli::ClaudeResultSummary {
                 num_turns: Some(1),
                 status: cli::ClaudeResultStatus::Success,
@@ -1110,12 +1216,14 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
+            completion_disposition: cli::CliCompletionDisposition::Terminal,
         };
         let failed_zero_turn = cli::CliExecutionResult {
             exit_code: 1,
             cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(1)),
             stderr_lines: Vec::new(),
             last_event_sequence: None,
+            event_delivery: None,
             claude_result: Some(cli::ClaudeResultSummary {
                 num_turns: Some(0),
                 status: cli::ClaudeResultStatus::Success,
@@ -1124,12 +1232,14 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
+            completion_disposition: cli::CliCompletionDisposition::Terminal,
         };
         let unknown_zero_turn = cli::CliExecutionResult {
             exit_code: 0,
             cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(0)),
             stderr_lines: Vec::new(),
             last_event_sequence: None,
+            event_delivery: None,
             claude_result: Some(cli::ClaudeResultSummary {
                 num_turns: Some(0),
                 status: cli::ClaudeResultStatus::Unknown,
@@ -1138,6 +1248,7 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
+            completion_disposition: cli::CliCompletionDisposition::Terminal,
         };
 
         assert!(is_claude_zero_turn_result(
@@ -1179,11 +1290,13 @@ mod tests {
                 cli_observed_exit: Some(CliObservedExitDiagnostic::from_signal(libc::SIGTERM)),
                 stderr_lines: Vec::new(),
                 last_event_sequence: None,
+                event_delivery: None,
                 claude_result: Some(claude_result),
                 post_result_cleanup_result: Some(cleanup_result),
                 failure_diagnostic: None,
                 control_error: None,
                 cli_termination: Some(termination),
+                completion_disposition: cli::CliCompletionDisposition::Terminal,
             }
         };
         let successful_cleanup = make_result(
@@ -1378,14 +1491,20 @@ mod tests {
                 let telemetry =
                     Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http);
 
-                stop_background_and_flush_final_telemetry(
-                    shutdown,
-                    None,
-                    metrics_handle,
-                    heartbeat_handle,
-                    telemetry,
+                tokio::time::timeout(
+                    Duration::from_secs(5),
+                    stop_background_and_flush_final_telemetry(
+                        shutdown,
+                        None,
+                        metrics_handle,
+                        heartbeat_handle,
+                        telemetry,
+                    ),
                 )
-                .await;
+                .await
+                .expect(
+                    "final telemetry producer shutdown and final upload completion should finish within 5 seconds",
+                );
 
                 telemetry_mock.assert_calls_async(1).await;
                 telemetry_mock.delete_async().await;
@@ -1432,16 +1551,6 @@ mod tests {
     }
 
     #[test]
-    fn complete_execution_writes_event_upload_failure_diagnostic() {
-        let _test_state_guard = lock_test_state();
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(complete_execution_writes_event_upload_failure_diagnostic_inner());
-    }
-
-    #[test]
     fn complete_execution_writes_checkpoint_failure_diagnostic() {
         let _test_state_guard = lock_test_state();
         tokio::runtime::Builder::new_current_thread()
@@ -1452,134 +1561,41 @@ mod tests {
     }
 
     #[test]
-    fn complete_execution_preserves_existing_failure_diagnostic_when_events_fail() {
+    fn complete_execution_reports_acknowledged_pi_without_checkpoint() {
         let _test_state_guard = lock_test_state();
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(
-                complete_execution_preserves_existing_failure_diagnostic_when_events_fail_inner(),
-            );
+            .block_on(complete_execution_reports_acknowledged_pi_without_checkpoint_inner());
     }
 
-    #[test]
-    fn complete_execution_uses_explicit_paths_after_process_env_changes() {
-        let _test_state_guard = lock_test_state();
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(complete_execution_uses_explicit_paths_after_process_env_changes_inner());
-    }
-
-    async fn complete_execution_uses_explicit_paths_after_process_env_changes_inner() {
-        let tmp = tempfile::tempdir().unwrap();
-        let explicit_paths = paths::GuestPaths::from_runtime_dir(tmp.path().join("captured-run"));
-        let stale_paths = paths::GuestPaths::from_runtime_dir(tmp.path().join("stale-run"));
-        let run_payload_dir = explicit_paths
-            .runtime_dir()
-            .join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
-        std::fs::create_dir_all(&run_payload_dir).unwrap();
-        let run_payload_file = run_payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
-        std::fs::write(
-            &run_payload_file,
-            serde_json::to_vec(&guest_contracts::env::RunPayload {
-                prompt: "captured prompt".to_string(),
-                ..guest_contracts::env::RunPayload::default()
-            })
-            .unwrap(),
-        )
-        .unwrap();
-        let config = env::GuestConfig::from_raw(env::GuestConfigRaw {
-            run_id: "captured-run".to_string(),
-            home: Some(
-                tmp.path()
-                    .join("captured-home")
-                    .to_string_lossy()
-                    .into_owned(),
-            ),
-            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
-            guest_runtime_dir: Some(explicit_paths.runtime_dir().to_path_buf()),
-            ..env::GuestConfigRaw::default()
-        })
-        .unwrap();
-        let http = HttpClient::for_config(&config).unwrap();
-        let masker = Arc::new(masker::SecretMasker::from_config(&config));
-        let runtime = GuestRuntime {
-            config,
-            paths: explicit_paths,
-            http,
-        };
-
-        let _env_guard = EnvVarRestoreGuard::capture([
-            "VM0_RUN_ID",
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-        ]);
-        unsafe {
-            std::env::set_var("VM0_RUN_ID", "stale-run");
-            std::env::set_var(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-                stale_paths.runtime_dir(),
-            );
-        }
-        paths::write_private(runtime.paths.event_error_flag(), "").unwrap();
-
-        let telemetry = Telemetry::spawn_for_paths(
-            runtime.config.run_id.clone(),
-            &runtime.paths,
-            masker,
-            runtime.http.clone(),
-        );
-        let exit_code = complete_execution(
-            0,
-            0,
-            Duration::ZERO,
-            CompletionState {
-                last_event_sequence: None,
-                failure_message: None,
-                failure_diagnostic: None,
-                skip_recovery_checkpoint_for_no_history: false,
-            },
-            &telemetry,
-            &runtime,
-        )
-        .await;
-        telemetry.shutdown().await;
-
-        assert_eq!(exit_code, 1);
-        assert_eq!(
-            std::fs::read_to_string(runtime.paths.checkpoint_error_file()).unwrap(),
-            "Some events failed to send, marking run as failed"
-        );
-        let diagnostic: FailureDiagnostic = serde_json::from_slice(
-            &std::fs::read(runtime.paths.failure_diagnostic_file()).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(diagnostic.failure_class, FailureClass::EventUploadFailed);
-        assert_eq!(diagnostic.cli_exit_code, Some(0));
-        assert!(
-            !std::path::Path::new(stale_paths.checkpoint_error_file()).exists(),
-            "completion should not write checkpoint errors through stale process env paths"
-        );
-        assert!(
-            !std::path::Path::new(stale_paths.failure_diagnostic_file()).exists(),
-            "completion should not write failure diagnostics through stale process env paths"
-        );
-    }
-
-    async fn complete_execution_writes_event_upload_failure_diagnostic_inner() {
+    async fn complete_execution_reports_acknowledged_pi_without_checkpoint_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
-        let _env_guard = unsafe { set_test_env(server, Some("/event-upload-failure")) };
+        let _env_guard = unsafe { set_test_env(server, Some("Pi handoff")) };
         let guest_paths = test_guest_paths();
-
-        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, true);
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, false);
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
-        paths::write_private(guest_paths.event_error_flag(), "").unwrap();
 
+        let checkpoint_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/checkpoints");
+            then.status(500);
+        });
+        let complete_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/complete")
+                .json_body(json!({
+                    "runId": "main-recovery-checkpoint",
+                    "exitCode": 0,
+                    "lastEventSequence": 9
+                }));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({ "success": true, "status": "completed" }));
+        });
         let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
             then.status(200)
@@ -1587,21 +1603,22 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let config = test_guest_config(server, Some("/event-upload-failure"));
+        let config = test_guest_config(server, Some("Pi handoff"));
         let masker = Arc::new(masker::SecretMasker::from_config(&config));
         let http = test_http_client(server);
         let telemetry =
             Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
-        let runtime = test_guest_runtime(config, http.clone());
+        let runtime = test_guest_runtime(config, http);
         let exit_code = complete_execution(
             0,
             0,
             Duration::ZERO,
             CompletionState {
-                last_event_sequence: None,
+                last_event_sequence: Some(9),
                 failure_message: None,
                 failure_diagnostic: None,
                 skip_recovery_checkpoint_for_no_history: false,
+                skip_success_checkpoint: true,
             },
             &telemetry,
             &runtime,
@@ -1609,20 +1626,9 @@ mod tests {
         .await;
         telemetry.shutdown().await;
 
-        assert_eq!(exit_code, 1);
-        assert_eq!(
-            std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap(),
-            "Some events failed to send, marking run as failed"
-        );
-        let diagnostic: FailureDiagnostic =
-            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
-                .unwrap();
-        assert_eq!(diagnostic.failure_class, FailureClass::EventUploadFailed);
-        assert_eq!(diagnostic.cli_exit_code, Some(0));
-        assert_eq!(
-            diagnostic.session_history_status,
-            SessionHistoryStatus::Missing
-        );
+        assert_eq!(exit_code, 0);
+        checkpoint_mock.assert_calls_async(0).await;
+        complete_mock.assert_calls_async(1).await;
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
@@ -1661,6 +1667,7 @@ mod tests {
                 failure_message: None,
                 failure_diagnostic: None,
                 skip_recovery_checkpoint_for_no_history: false,
+                skip_success_checkpoint: false,
             },
             &telemetry,
             &runtime,
@@ -1680,69 +1687,6 @@ mod tests {
             diagnostic.session_history_status,
             SessionHistoryStatus::Missing
         );
-        for path in cleanup_paths {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-
-    async fn complete_execution_preserves_existing_failure_diagnostic_when_events_fail_inner() {
-        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
-        server.reset_async().await;
-        let _env_guard = unsafe { set_test_env(server, Some("plain prompt")) };
-        let guest_paths = test_guest_paths();
-
-        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, true);
-        for path in &cleanup_paths {
-            let _ = std::fs::remove_file(path);
-        }
-        paths::write_private(guest_paths.event_error_flag(), "").unwrap();
-
-        let _telemetry_mock = server.mock(|when, then| {
-            when.method(POST).path("/api/webhooks/agent/telemetry");
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body(json!({}));
-        });
-
-        let config = test_guest_config(server, Some("plain prompt"));
-        let masker = Arc::new(masker::SecretMasker::from_config(&config));
-        let http = test_http_client(server);
-        let telemetry =
-            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
-        let runtime = test_guest_runtime(config, http.clone());
-        let failure_message = "CLI failed before all events uploaded";
-        let failure_diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_session_history_status(SessionHistoryStatus::Missing);
-        let exit_code = complete_execution(
-            1,
-            1,
-            Duration::ZERO,
-            CompletionState {
-                last_event_sequence: None,
-                failure_message: Some(failure_message),
-                failure_diagnostic: Some(failure_diagnostic.clone()),
-                skip_recovery_checkpoint_for_no_history: false,
-            },
-            &telemetry,
-            &runtime,
-        )
-        .await;
-        telemetry.shutdown().await;
-
-        assert_eq!(exit_code, 1);
-        assert_eq!(
-            std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap(),
-            failure_message
-        );
-        let diagnostic: FailureDiagnostic =
-            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
-                .unwrap();
-        assert_eq!(diagnostic, failure_diagnostic);
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
@@ -1799,6 +1743,7 @@ mod tests {
                 failure_message: Some(failure_message),
                 failure_diagnostic: Some(failure_diagnostic.clone()),
                 skip_recovery_checkpoint_for_no_history: true,
+                skip_success_checkpoint: false,
             },
             &telemetry,
             &runtime,
@@ -1900,6 +1845,7 @@ mod tests {
                 failure_message: Some(failure_message),
                 failure_diagnostic: Some(failure_diagnostic.clone()),
                 skip_recovery_checkpoint_for_no_history: false,
+                skip_success_checkpoint: false,
             },
             &telemetry,
             &runtime,

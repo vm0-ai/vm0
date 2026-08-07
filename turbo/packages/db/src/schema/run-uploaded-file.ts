@@ -13,7 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
-import { chatMessages } from "./chat-message";
+import { chatEvents } from "./chat-event";
 import { chatThreads } from "./chat-thread";
 import type {
   CanonicalAssetDeliveryError,
@@ -143,14 +143,14 @@ export const runUploadedFiles = pgTable(
   },
 );
 
-export const chatMessageAssetRefs = pgTable(
-  "chat_message_asset_refs",
+export const chatEventAssetRefs = pgTable(
+  "chat_event_asset_refs",
   {
-    chatMessageId: uuid("chat_message_id")
+    chatEventId: uuid("chat_event_id")
       .notNull()
       .references(
         () => {
-          return chatMessages.id;
+          return chatEvents.id;
         },
         { onDelete: "cascade" },
       ),
@@ -168,14 +168,14 @@ export const chatMessageAssetRefs = pgTable(
   (table) => {
     return [
       primaryKey({
-        name: "chat_message_asset_refs_pk",
-        columns: [table.chatMessageId, table.assetId],
+        name: "chat_event_asset_refs_pk",
+        columns: [table.chatEventId, table.assetId],
       }),
-      uniqueIndex("chat_message_asset_refs_message_position_unique").on(
-        table.chatMessageId,
+      uniqueIndex("chat_event_asset_refs_event_position_unique").on(
+        table.chatEventId,
         table.position,
       ),
-      index("chat_message_asset_refs_asset_idx").on(table.assetId),
+      index("chat_event_asset_refs_asset_idx").on(table.assetId),
     ];
   },
 );

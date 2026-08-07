@@ -239,7 +239,7 @@ function publicGrant(
 
 function publicConnector(connector: ConnectorCatalogArtifactConnector) {
   return {
-    connectorRef: connector.connectorRef,
+    slug: connector.slug,
     label: connector.label,
     description: connector.description,
     category: connector.category,
@@ -251,7 +251,6 @@ function publicConnector(connector: ConnectorCatalogArtifactConnector) {
         label: method.label,
         description: method.description,
         visible: method.visible,
-        featureSwitch: method.featureSwitch,
         grant: publicGrant(method),
       };
     }),
@@ -275,7 +274,7 @@ export function validateConnectorCatalogPublicProjection(
     assertPublicValueHasNoPrivateFields(
       publicConnector(connector),
       connectorCatalogSensitiveValues(connector),
-      `$.connectors[${connector.connectorRef}]`,
+      `$.connectors[${connector.slug}]`,
     );
   }
 }

@@ -3,10 +3,10 @@ import chalk from "chalk";
 import {
   connectZeroConnectorManualGrant,
   listZeroConnectorCatalogStatus,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
-  availableConnectorRefs,
+  availableConnectorSlugs,
   findConnectorStatusItem,
   resolveManualGrantAuthMethod,
 } from "./public-catalog";
@@ -55,7 +55,7 @@ function parseConnectorValues(rawValues: readonly string[] | undefined) {
 export const connectCommand = new Command()
   .name("connect")
   .description("Connect a connector with manual grant values")
-  .argument("<type>", "Connector type (e.g., zendesk)")
+  .argument("<slug>", "Connector slug (e.g., zendesk)")
   .option("--auth-method <method>", "Connector auth method to use")
   .option(
     "--value <name=value>",
@@ -65,17 +65,17 @@ export const connectCommand = new Command()
   )
   .option("--json", "Print the connector response as JSON")
   .action(
-    withErrorHandler(async (type: string, options: ConnectOptions) => {
+    withErrorHandler(async (connectorSlug: string, options: ConnectOptions) => {
       const values = parseConnectorValues(options.value);
       const catalog = await listZeroConnectorCatalogStatus();
       const connectorMetadata = findConnectorStatusItem(
         catalog.connectors,
-        type,
+        connectorSlug,
       );
       if (!connectorMetadata) {
-        throw new Error(`Unknown or unavailable connector: ${type}`, {
+        throw new Error(`Unknown or unavailable connector: ${connectorSlug}`, {
           cause: new Error(
-            `Available connectors: ${availableConnectorRefs(catalog.connectors)}`,
+            `Available connectors: ${availableConnectorSlugs(catalog.connectors)}`,
           ),
         });
       }
@@ -85,7 +85,7 @@ export const connectCommand = new Command()
         options.authMethod,
       );
       const connector = await connectZeroConnectorManualGrant(
-        connectorMetadata.connectorRef,
+        connectorMetadata.slug,
         authMethod.id,
         values,
       );
@@ -96,8 +96,8 @@ export const connectCommand = new Command()
       }
 
       console.log(chalk.green(`✓ ${connectorMetadata.label} connected`));
-      console.log(chalk.dim(`  Type: ${connector.type}`));
+      console.log(chalk.dim(`  Slug: ${connector.slug}`));
       console.log(chalk.dim(`  Auth Method: ${connector.authMethod}`));
-      console.log(chalk.dim(`  Run: zero connector status ${connector.type}`));
+      console.log(chalk.dim(`  Run: zero connector status ${connector.slug}`));
     }),
   );

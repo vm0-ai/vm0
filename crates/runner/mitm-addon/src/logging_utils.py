@@ -7,6 +7,7 @@ log entries, and extracting firewall metadata.
 import json
 import time
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from mitmproxy import ctx, http
@@ -20,7 +21,26 @@ _PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
 
 # Network log size fields are consumed as JavaScript numbers downstream.
 NETWORK_LOG_MAX_SAFE_SIZE = 9_007_199_254_740_991
-NETWORK_LOG_MAX_SAFE_SIZE_DIGITS = len(str(NETWORK_LOG_MAX_SAFE_SIZE))
+
+# Network rows limit the complete request URL; proxy diagnostics apply the same
+# number to the query-free value they retain.
+URL_LOG_MAX_CHARACTERS = 1_000_000
+HTTP_NETWORK_LOG_MAX_JSONL_BYTES = 1_000_000
+_TRUNCATED_URL = "[truncated]"
+
+
+@dataclass(frozen=True)
+class _ProxyLogUrlProjection:
+    value: str
+    original_char_count: int | None = None
+
+    def truncation_fields(self) -> dict[str, object]:
+        if self.original_char_count is None:
+            return {}
+        return {
+            "url_truncated": True,
+            "url_original_char_count": self.original_char_count,
+        }
 
 
 def elapsed_ms(start_time: float | None) -> int:
@@ -33,14 +53,22 @@ def _utc_log_timestamp() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def _encode_jsonl_entry(entry: dict, log_name: str) -> bytes | None:
+    """Best-effort JSONL encoding for proxy-hook logging paths."""
+    try:
+        return (json.dumps(entry) + "\n").encode()
+    except Exception as e:
+        ctx.log.warn(f"Failed to encode {log_name} log: {type(e).__name__}: {e}")
+
+    return None
+
+
 def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
     """Best-effort JSONL write for proxy-hook logging paths."""
     if not log_path:
         return
-    try:
-        line = (json.dumps(entry) + "\n").encode()
-    except Exception as e:
-        ctx.log.warn(f"Failed to encode {log_name} log: {type(e).__name__}: {e}")
+    line = _encode_jsonl_entry(entry, log_name)
+    if line is None:
         return
 
     jsonl_writer.write_jsonl_line(log_path, line, log_name)
@@ -89,15 +117,71 @@ def log_network_entry(log_path: str, entry: dict) -> None:
     _write_jsonl_entry(log_path, log_entry, "network")
 
 
+def _http_network_log_omission_entry(entry: dict, original_url_char_count: int) -> dict:
+    return {
+        **entry,
+        "url": _TRUNCATED_URL,
+        "url_truncated": True,
+        "url_original_char_count": original_url_char_count,
+    }
+
+
+def log_http_network_entry(log_path: str, entry: dict, raw_url: str) -> None:
+    """Write an HTTP network log without unbounded URL serialization work."""
+    if not log_path:
+        return
+
+    original_url_char_count = len(raw_url)
+    log_entry = {**entry, "timestamp": _utc_log_timestamp()}
+    if original_url_char_count > URL_LOG_MAX_CHARACTERS:
+        _write_jsonl_entry(
+            log_path,
+            _http_network_log_omission_entry(log_entry, original_url_char_count),
+            "network",
+        )
+        return
+
+    log_entry["url"] = network_log_sanitization.sanitize_request_url_for_network_log(raw_url)
+    line = _encode_jsonl_entry(log_entry, "network")
+    if line is None:
+        return
+
+    if len(line) > HTTP_NETWORK_LOG_MAX_JSONL_BYTES:
+        omission_line = _encode_jsonl_entry(
+            _http_network_log_omission_entry(log_entry, original_url_char_count),
+            "network",
+        )
+        if omission_line is not None and len(omission_line) <= HTTP_NETWORK_LOG_MAX_JSONL_BYTES:
+            line = omission_line
+
+    jsonl_writer.write_jsonl_line(log_path, line, "network")
+
+
+def project_url_for_proxy_log(raw_url: str) -> _ProxyLogUrlProjection:
+    """Project a request URL without unbounded retained-path processing."""
+    value = network_log_sanitization.sanitize_url_for_network_log_with_retained_limit(
+        raw_url,
+        URL_LOG_MAX_CHARACTERS,
+    )
+    if value is None:
+        return _ProxyLogUrlProjection(_TRUNCATED_URL, len(raw_url))
+    return _ProxyLogUrlProjection(value)
+
+
 def sanitize_proxy_log_extra_value(key: str, value: object) -> object:
     """Sanitize the narrow set of proxy-log extras owned by this module.
 
-    Only the exact ``url`` field is treated specially, and only when the
-    value is a string.  Every other field is returned unchanged; this helper
-    is not a general secret-redaction boundary for arbitrary proxy-log data.
+    Only the exact ``url`` field is treated specially.  Raw strings are
+    sanitized here; a projection produced by this module is
+    already safe and is unwrapped without repeated URL processing.  Every
+    other field is returned unchanged; this helper is not a general
+    secret-redaction boundary for arbitrary proxy-log data.
     """
-    if key == "url" and isinstance(value, str):
-        return network_log_sanitization.sanitize_url_for_network_log(value)
+    if key == "url":
+        if isinstance(value, _ProxyLogUrlProjection):
+            return value.value
+        if isinstance(value, str):
+            return network_log_sanitization.sanitize_url_for_network_log(value)
     return value
 
 
@@ -112,8 +196,9 @@ def log_proxy_entry(
 
     The logger owns the canonical ``timestamp``, ``level``, and ``message``
     fields; extras with those exact names are ignored and cannot override
-    them.  Among remaining extras, only an exact ``url`` string is sanitized
-    by ``sanitize_proxy_log_extra_value``.  All other extras are written as
+    them.  Among remaining extras, an exact raw string ``url`` is sanitized by
+    ``sanitize_proxy_log_extra_value``; a projection from this module is
+    unwrapped without repeated processing.  All other extras are written as
     provided, so callers must pass only values that are safe to persist and
     JSON-serializable.
 
@@ -175,6 +260,10 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Copy firewall and auth metadata from flow into a log entry."""
     # [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     meta = flow.metadata
+    connector_diagnostic_slug = _metadata_optional_str(
+        meta,
+        metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG,
+    )
     log_entry["firewall_base"] = flow_metadata.firewall_base(meta)
     log_entry["firewall_name"] = flow_metadata.firewall_name(meta)
     log_entry["firewall_permission"] = flow_metadata.firewall_permission(meta)
@@ -185,8 +274,8 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     for log_key, value in (
         ("firewall_params", _metadata_str_record(meta, metadata_keys.FIREWALL_PARAMS)),
         (
-            "connector_diagnostic_type",
-            _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE),
+            "connector_diagnostic_slug",
+            connector_diagnostic_slug,
         ),
         (
             "connector_diagnostic_reason",

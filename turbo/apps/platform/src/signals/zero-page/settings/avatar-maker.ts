@@ -14,19 +14,13 @@ export type Step =
   | "intensity";
 
 export const AVATAR_MAKER_STEPS = [
-  { key: "rotation", label: "Angle" },
-  { key: "skin", label: "Skin" },
-  { key: "hairStyle", label: "Hair" },
-  { key: "hairColor", label: "Color" },
-  { key: "expression", label: "Face" },
-  { key: "intensity", label: "Mood" },
+  "rotation",
+  "skin",
+  "hairStyle",
+  "hairColor",
+  "expression",
+  "intensity",
 ] as const;
-
-export const INTENSITY_LABELS = {
-  d: "Chill",
-  m: "Normal",
-  h: "Hyped",
-} as const;
 
 // ---------------------------------------------------------------------------
 // Dialog open state
@@ -57,9 +51,7 @@ export const avatarMakerStep$ = computed((get) => {
 
 export const avatarMakerStepIdx$ = computed((get) => {
   const step = get(internalStep$);
-  return AVATAR_MAKER_STEPS.findIndex((s) => {
-    return s.key === step;
-  });
+  return AVATAR_MAKER_STEPS.indexOf(step);
 });
 
 // ---------------------------------------------------------------------------
@@ -141,11 +133,9 @@ export const selectAvatarOption$ = command(
     await delay(350, { signal });
     set(internalJustPicked$, null);
     set(internalShowSparkles$, false);
-    const idx = AVATAR_MAKER_STEPS.findIndex((s) => {
-      return s.key === field;
-    });
+    const idx = AVATAR_MAKER_STEPS.indexOf(field);
     if (idx + 1 < AVATAR_MAKER_STEPS.length) {
-      set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!.key);
+      set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!);
     }
   },
 );
@@ -154,7 +144,7 @@ export const selectAvatarOption$ = command(
 export const goBackStep$ = command(({ get, set }) => {
   const idx = get(avatarMakerStepIdx$);
   if (idx > 0) {
-    set(internalStep$, AVATAR_MAKER_STEPS[idx - 1]!.key);
+    set(internalStep$, AVATAR_MAKER_STEPS[idx - 1]!);
   }
 });
 
@@ -162,7 +152,7 @@ export const goBackStep$ = command(({ get, set }) => {
 export const goForwardStep$ = command(({ get, set }) => {
   const idx = get(avatarMakerStepIdx$);
   if (idx + 1 < AVATAR_MAKER_STEPS.length) {
-    set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!.key);
+    set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!);
   }
 });
 

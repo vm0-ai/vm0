@@ -5,6 +5,7 @@ import {
   hasModelSelection,
   getModels,
   getDefaultModel,
+  getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getFrameworkForType,
   getVm0VisibleModels,
@@ -19,7 +20,6 @@ import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ModelPriceTier,
-  getVm0ModelPriceTierLabel,
   isModelSupportedByProvider,
   isCodexFastModeModel,
   isSupportedRunModel,
@@ -29,7 +29,6 @@ import {
   getSecretsForAuthMethod,
   isLimitedFree1RestrictedRunModel,
   modelProviderCredentialScopeSchema,
-  requestedRunModelSchema,
   supportedRunModelSchema,
   updateOrgModelPoliciesRequestSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -59,7 +58,7 @@ describe("model-first canonical catalog", () => {
     expect(isCodexFastModeModel("openai/gpt-5.6-sol")).toBe(true);
     expect(isCodexFastModeModel("gpt-5.6-terra")).toBe(true);
     expect(isCodexFastModeModel("gpt-5.6-luna")).toBe(true);
-    expect(isCodexFastModeModel("gpt-5.4")).toBe(false);
+    expect(isCodexFastModeModel("custom-model")).toBe(false);
     expect(isCodexFastModeModel(null)).toBe(false);
   });
 
@@ -98,7 +97,7 @@ describe("model-first canonical catalog", () => {
       "claude-opus-4-6",
       "claude-sonnet-5",
       "claude-sonnet-4-6",
-      "deepseek-v4-pro",
+      "deepseek-v4-flash",
       "kimi-k3",
       "kimi-k2.7-code",
       "MiniMax-M3",
@@ -110,19 +109,8 @@ describe("model-first canonical catalog", () => {
   });
 
   it("validates canonical models and credential scopes", () => {
-    expect(supportedRunModelSchema.safeParse("vm0-model").success).toBe(false);
-    expect(requestedRunModelSchema.parse("vm0-model")).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    );
-    expect(supportedRunModelSchema.safeParse("gpt-5.4").success).toBe(false);
-    expect(supportedRunModelSchema.safeParse("gpt-5.4-mini").success).toBe(
+    expect(supportedRunModelSchema.safeParse("custom-model").success).toBe(
       false,
-    );
-    expect(requestedRunModelSchema.parse("gpt-5.4")).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    );
-    expect(requestedRunModelSchema.parse("gpt-5.4-mini")).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     );
     expect(supportedRunModelSchema.safeParse("gpt-5.6-sol").success).toBe(true);
     expect(supportedRunModelSchema.safeParse("gpt-5.6-terra").success).toBe(
@@ -152,7 +140,7 @@ describe("model-first canonical catalog", () => {
       false,
     );
     expect(supportedRunModelSchema.safeParse("deepseek-v4-flash").success).toBe(
-      false,
+      true,
     );
     expect(supportedRunModelSchema.safeParse("MiniMax-M2.7").success).toBe(
       false,
@@ -170,94 +158,36 @@ describe("model-first canonical catalog", () => {
     ).toBe(false);
   });
 
-  it("replaces retired Auto policy requests with the default model", () => {
-    expect(
-      updateOrgModelPoliciesRequestSchema.parse({
-        policies: [
-          {
-            model: "vm0-model",
-            isDefault: true,
-            defaultProviderType: "vm0",
-            credentialScope: "org",
-            modelProviderId: null,
-          },
-        ],
-      }),
-    ).toEqual({
+  it("preserves an omitted surface id for active policy requests", () => {
+    const parsed = updateOrgModelPoliciesRequestSchema.parse({
       policies: [
         {
-          model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          model: "claude-sonnet-5",
           isDefault: true,
-          defaultProviderType: "vm0",
+          defaultProviderType: "vercel-ai-gateway",
           credentialScope: "org",
           modelProviderId: null,
         },
       ],
     });
-  });
 
-  it("deduplicates retired GPT policy requests onto Luna", () => {
-    expect(
-      updateOrgModelPoliciesRequestSchema.parse({
-        policies: [
-          {
-            model: "gpt-5.4",
-            isDefault: true,
-            defaultProviderType: "openrouter-codex",
-            credentialScope: "org",
-            modelProviderId: null,
-          },
-          {
-            model: "gpt-5.4-mini",
-            isDefault: false,
-            defaultProviderType: "vm0",
-            credentialScope: "org",
-            modelProviderId: null,
-          },
-          {
-            model: "gpt-5.5",
-            isDefault: false,
-            defaultProviderType: "vm0",
-            credentialScope: "org",
-            modelProviderId: null,
-          },
-        ],
-      }),
-    ).toEqual({
-      policies: [
-        {
-          model: "gpt-5.5",
-          isDefault: false,
-          defaultProviderType: "vm0",
-          credentialScope: "org",
-          modelProviderId: null,
-        },
-        {
-          model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-          isDefault: true,
-          defaultProviderType: "vm0",
-          credentialScope: "org",
-          modelProviderId: null,
-        },
-      ],
-    });
+    expect(parsed.policies).toHaveLength(1);
+    expect(parsed.policies[0]).not.toHaveProperty("modelProviderSurfaceId");
   });
 
   it("identifies models blocked on limited-free-1", () => {
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-sol")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("gpt-5.6-terra")).toBe(false);
-    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-terra")).toBe(
-      false,
-    );
+    expect(isLimitedFree1RestrictedRunModel("gpt-5.6-terra")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-terra")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-luna")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-luna")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("deepseek-v4-flash")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("deepseek/deepseek-v4-flash")).toBe(
+      false,
+    );
     expect(isLimitedFree1RestrictedRunModel("gpt-5.5")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.5")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("gpt-5.4")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.4")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("gpt-5.4-mini")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.4-mini")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("claude-fable-5")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-fable-5")).toBe(
       true,
@@ -270,9 +200,9 @@ describe("model-first canonical catalog", () => {
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-opus-4.8")).toBe(
       true,
     );
-    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-5")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-5")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-5")).toBe(
-      false,
+      true,
     );
     expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(true);
     expect(
@@ -281,9 +211,11 @@ describe("model-first canonical catalog", () => {
     expect(
       isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.5"),
     ).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("glm-5.2")).toBe(false);
-    expect(isLimitedFree1RestrictedRunModel("z-ai/glm-5.2")).toBe(false);
-    expect(isLimitedFree1RestrictedRunModel("MiniMax-M3")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("glm-5.2")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("z-ai/glm-5.2")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("MiniMax-M3")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("custom/model")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("   ")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel(null)).toBe(false);
   });
 
@@ -306,8 +238,6 @@ describe("model-first canonical catalog", () => {
     expect(getCanonicalModelDisplayName("glm-5.2")).toBe("GLM-5.2");
     expect(getCanonicalModelDisplayName("mimo-v2.5")).toBe("MiMo-V2.5");
     expect(getCanonicalModelDisplayName("hy3-preview")).toBe("Hy3 Preview");
-    expect(getCanonicalModelDisplayName("gpt-5.4")).toBe("gpt-5.4");
-    expect(getCanonicalModelDisplayName("gpt-5.4-mini")).toBe("gpt-5.4-mini");
     expect(getCanonicalModelDisplayName("custom/model")).toBe("custom/model");
   });
 
@@ -334,8 +264,6 @@ describe("model-first canonical catalog", () => {
     expect(isSupportedRunModel("hy3-preview")).toBe(true);
     expect(isSupportedRunModel("gpt-5.6-sol")).toBe(true);
     expect(isSupportedRunModel("kimi-k3")).toBe(true);
-    expect(isSupportedRunModel("gpt-5.4")).toBe(false);
-    expect(isSupportedRunModel("gpt-5.4-mini")).toBe(false);
     expect(isSupportedRunModel("openai/gpt-5.6-sol")).toBe(false);
     expect(normalizeRunModelId("deepseek/deepseek-v4-flash")).toBe(
       "deepseek/deepseek-v4-flash",
@@ -346,13 +274,10 @@ describe("model-first canonical catalog", () => {
     expect(normalizeRunModelId("minimax/minimax-m2.7")).toBe(
       "minimax/minimax-m2.7",
     );
-    expect(isSupportedRunModel("deepseek-v4-flash")).toBe(false);
+    expect(isSupportedRunModel("deepseek-v4-flash")).toBe(true);
   });
 
   it("returns compatible provider types for canonical models", () => {
-    expect(getProvidersForModel("vm0-model")).toEqual([]);
-    expect(getProvidersForModel("gpt-5.4")).toEqual([]);
-    expect(getProvidersForModel("gpt-5.4-mini")).toEqual([]);
     expect(getProvidersForModel("claude-fable-5")).toEqual([
       "vm0",
       "claude-code-oauth-token",
@@ -406,21 +331,28 @@ describe("model-first canonical catalog", () => {
       "vm0",
       "openai-api-key",
       "codex-oauth-token",
+      "openrouter-codex",
+      "vercel-ai-gateway-codex",
     ]);
     expect(getProvidersForModel("gpt-5.6-terra")).toEqual([
       "vm0",
       "openai-api-key",
       "codex-oauth-token",
+      "openrouter-codex",
+      "vercel-ai-gateway-codex",
     ]);
     expect(getProvidersForModel("gpt-5.6-luna")).toEqual([
       "vm0",
       "openai-api-key",
       "codex-oauth-token",
+      "openrouter-codex",
+      "vercel-ai-gateway-codex",
     ]);
     expect(getProvidersForModel("openai/gpt-5.6-sol")).toEqual([]);
-    expect(getProvidersForModel("deepseek/deepseek-v4-pro")).toContain(
-      "openrouter-api-key",
-    );
+    expect(getProvidersForModel("deepseek-v4-flash")).toEqual([
+      "vm0",
+      "deepseek",
+    ]);
     expect(getProvidersForModel("kimi-k3")).toEqual([
       "vm0",
       "moonshot-api-key",
@@ -473,11 +405,11 @@ describe("model-first canonical catalog", () => {
       true,
     );
     expect(isModelSupportedByProvider("gpt-5.6-sol", "openrouter-codex")).toBe(
-      false,
+      true,
     );
     expect(
       isModelSupportedByProvider("gpt-5.6-sol", "vercel-ai-gateway-codex"),
-    ).toBe(false);
+    ).toBe(true);
     expect(isModelSupportedByProvider("gpt-5.5", "openai-api-key")).toBe(true);
     expect(isModelSupportedByProvider("gpt-5.5", "anthropic-api-key")).toBe(
       false,
@@ -592,14 +524,12 @@ describe("model-first canonical catalog", () => {
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
       "claude-fable-5",
-      "claude-opus-5",
-      "claude-sonnet-5",
       "gpt-5.6-sol",
-      "gpt-5.6-terra",
       "gpt-5.6-luna",
+      "deepseek-v4-flash",
     ]);
-    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("gpt-5.6-luna");
-    expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("gpt-5.6-luna");
+    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("deepseek-v4-flash");
+    expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("deepseek-v4-flash");
     expect(getDefaultModel("vm0")).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(getDefaultOrgModelPolicySeed()).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
@@ -633,7 +563,7 @@ describe("model-first canonical catalog", () => {
         "claude-opus-4-7": "$$$",
         "claude-opus-4-6": "$$$",
         "claude-sonnet-5": "$$",
-        "deepseek-v4-pro": "$",
+        "deepseek-v4-flash": "$",
         "kimi-k3": "$$",
         "kimi-k2.7-code": "$",
         "glm-5.2": "$",
@@ -641,7 +571,6 @@ describe("model-first canonical catalog", () => {
         "hy3-preview": "$",
       }),
     );
-    expect(getVm0ModelPriceTier("vm0-model")).toBeUndefined();
     expect(getVm0ModelPriceTier("claude-fable-5")).toBe("$$$$");
     expect(getVm0ModelPriceTier("claude-opus-5")).toBe("$$$");
     expect(getVm0ModelPriceTier("gpt-5.6-sol")).toBe("$$$");
@@ -651,25 +580,13 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelPriceTier("claude-opus-4-7")).toBe("$$$");
     expect(getVm0ModelPriceTier("claude-opus-4-6")).toBe("$$$");
     expect(getVm0ModelPriceTier("claude-sonnet-5")).toBe("$$");
-    expect(getVm0ModelPriceTier("deepseek-v4-pro")).toBe("$");
+    expect(getVm0ModelPriceTier("deepseek-v4-flash")).toBe("$");
     expect(getVm0ModelPriceTier("kimi-k3")).toBe("$$");
     expect(getVm0ModelPriceTier("kimi-k2.7-code")).toBe("$");
     expect(getVm0ModelPriceTier("glm-5.2")).toBe("$");
     expect(getVm0ModelPriceTier("mimo-v2.5")).toBe("$");
     expect(getVm0ModelPriceTier("hy3-preview")).toBe("$");
-    expect(getVm0ModelPriceTier("gpt-5.4")).toBeUndefined();
-    expect(getVm0ModelPriceTier("gpt-5.4-mini")).toBeUndefined();
     expect(getVm0ModelPriceTier("custom/model")).toBeUndefined();
-    expect(getVm0ModelPriceTierLabel("$")).toBe(
-      "Economy tier for everyday simple tasks",
-    );
-    expect(getVm0ModelPriceTierLabel("$$")).toBe(
-      "Balanced cost and performance",
-    );
-    expect(getVm0ModelPriceTierLabel("$$$")).toBe("Frontier flagship model");
-    expect(getVm0ModelPriceTierLabel("$$$$")).toBe(
-      "Premium frontier model for the hardest tasks",
-    );
   });
 });
 
@@ -688,7 +605,7 @@ describe("getProviderBaseUrl", () => {
     ["openrouter-api-key", "https://openrouter.ai/api"],
     ["moonshot-api-key", "https://api.moonshot.ai/anthropic"],
     ["minimax-api-key", "https://api.minimax.io/anthropic"],
-    ["deepseek-api-key", "https://api.deepseek.com/anthropic"],
+    ["deepseek", "https://api.deepseek.com/"],
     ["zai-api-key", "https://api.z.ai/api/anthropic"],
     ["vercel-ai-gateway", "https://ai-gateway.vercel.sh"],
     ["openrouter-codex", "https://openrouter.ai/api/v1"],
@@ -713,7 +630,7 @@ describe("areProvidersCompatible", () => {
     "openrouter-api-key",
     "moonshot-api-key",
     "minimax-api-key",
-    "deepseek-api-key",
+    "deepseek",
     "zai-api-key",
     "vercel-ai-gateway",
   ];
@@ -742,9 +659,7 @@ describe("areProvidersCompatible", () => {
   });
 
   it("different third-party providers are incompatible", () => {
-    expect(areProvidersCompatible("moonshot-api-key", "deepseek-api-key")).toBe(
-      false,
-    );
+    expect(areProvidersCompatible("moonshot-api-key", "deepseek")).toBe(false);
     expect(
       areProvidersCompatible("openrouter-api-key", "vercel-ai-gateway"),
     ).toBe(false);
@@ -819,7 +734,6 @@ describe("model selection for Claude-compatible gateway providers", () => {
       "z-ai/glm-5.1",
       "xiaomi/mimo-v2.5",
       "tencent/hy3-preview",
-      "deepseek/deepseek-v4-pro",
     ]);
   });
 
@@ -843,7 +757,7 @@ describe("model selection for Claude-compatible gateway providers", () => {
     },
   );
 
-  it.each(["moonshot-api-key", "minimax-api-key", "deepseek-api-key"] as const)(
+  it.each(["moonshot-api-key", "minimax-api-key"] as const)(
     "%s disables Claude Code attachments",
     (type) => {
       const envBindings = getModelProviderEnvBindings(type);
@@ -868,7 +782,6 @@ describe("model selection for Claude-compatible gateway providers", () => {
 describe("getVm0VisibleModels", () => {
   it("returns all VM0 managed models", () => {
     const models = getVm0VisibleModels();
-    expect(models).not.toContain("vm0-model");
     expect(models).toContain("claude-fable-5");
     expect(models).toContain("claude-opus-5");
     expect(models).toContain("claude-opus-4-8");
@@ -879,18 +792,15 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("glm-5.1");
     expect(models).toContain("mimo-v2.5");
     expect(models).toContain("hy3-preview");
-    expect(models).toContain("deepseek-v4-pro");
+    expect(models).toContain("deepseek-v4-flash");
     expect(models).toContain("gpt-5.6-sol");
     expect(models).toContain("gpt-5.6-terra");
     expect(models).toContain("gpt-5.6-luna");
     expect(models).toContain("gpt-5.5");
-    expect(models).not.toContain("gpt-5.4");
-    expect(models).not.toContain("gpt-5.4-mini");
     expect(models).not.toContain("claude-haiku-4-5");
     expect(models).not.toContain("kimi-k2.6");
     expect(models).not.toContain("kimi-k2.5");
     expect(models).not.toContain("MiniMax-M2.7");
-    expect(models).not.toContain("deepseek-v4-flash");
   });
 });
 
@@ -901,7 +811,6 @@ describe("normalizeVm0ModelId", () => {
     ["anthropic/claude-opus-4.8", "claude-opus-4-8"],
     ["anthropic/claude-sonnet-5", "claude-sonnet-5"],
     ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
-    ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
     ["z-ai/glm-5.2", "glm-5.2"],
     ["z-ai/glm-5.1", "glm-5.1"],
     ["xiaomi/mimo-v2.5", "mimo-v2.5"],
@@ -943,8 +852,7 @@ describe("model image input support", () => {
     "z-ai/glm-5.1",
     "hy3-preview",
     "tencent/hy3-preview",
-    "deepseek-v4-pro",
-    "deepseek/deepseek-v4-pro",
+    "deepseek-v4-flash",
     "MiniMax-M2.1",
   ])("marks %s as not image-input capable", (model) => {
     expect(modelSupportsImageInput(model)).toBe(false);
@@ -964,17 +872,6 @@ describe("minimax-api-key provider", () => {
       "MiniMax-M2.1",
     ]);
     expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M3");
-  });
-
-  it("uses the original provider type with Claude Code", () => {
-    expect(modelProviderTypeSchema.safeParse("minimax-api-key").success).toBe(
-      true,
-    );
-    expect(modelProviderTypeSchema.safeParse("minimax-codex").success).toBe(
-      false,
-    );
-    expect(getFrameworkForType("minimax-api-key")).toBe("claude-code");
-    expect(getSecretNameForType("minimax-api-key")).toBe("MINIMAX_API_KEY");
   });
 });
 
@@ -1006,10 +903,71 @@ describe("removed poor agent backend models", () => {
       "anthropic/claude-haiku-4.5",
     );
   });
+});
 
-  it("uses DeepSeek Pro as the direct DeepSeek default", () => {
-    expect(getModels("deepseek-api-key")).toEqual(["deepseek-v4-pro"]);
-    expect(getDefaultModel("deepseek-api-key")).toBe("deepseek-v4-pro");
+describe("deepseek Responses provider", () => {
+  it("uses the Codex framework with the DeepSeek API key", () => {
+    expect(modelProviderTypeSchema.safeParse("deepseek").success).toBe(true);
+    expect(getSelectableProviderTypes()).toContain("deepseek");
+    expect(getFrameworkForType("deepseek")).toBe("codex");
+    expect(getSecretNameForType("deepseek")).toBe("DEEPSEEK_API_KEY");
+    expect(getModels("deepseek")).toEqual(["deepseek-v4-flash"]);
+    expect(getDefaultModel("deepseek")).toBe("deepseek-v4-flash");
+  });
+
+  it("configures the official DeepSeek Responses model catalog", () => {
+    expect(getModelProviderCodexRuntimeConfig("deepseek")).toMatchObject({
+      providerId: "deepseek",
+      name: "DeepSeek",
+      baseUrl: "https://api.deepseek.com/",
+      envKey: "OPENAI_API_KEY",
+      requiresOpenaiAuth: false,
+      wireApi: "responses",
+      supportsWebsockets: false,
+      modelCatalog: {
+        models: [
+          expect.objectContaining({
+            slug: "deepseek-v4-flash",
+            default_reasoning_level: "high",
+            context_window: 1_048_576,
+            minimal_client_version: "0.144.0",
+            experimental_supported_tools: [],
+            supports_search_tool: true,
+            default_service_tier: null,
+            supports_reasoning_summaries: true,
+            base_instructions: expect.stringContaining("You are Codex"),
+            model_messages: expect.objectContaining({
+              instructions_template: expect.stringContaining("You are Codex"),
+            }),
+          }),
+        ],
+      },
+    });
+  });
+
+  it("scopes the firewall to the native Responses endpoint", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS.deepseek;
+    expect(config.apis[0]!.base).toBe("https://api.deepseek.com/responses");
+    expect(config.apis[0]!.auth.headers).toEqual({
+      Authorization: "Bearer ${{ secrets.DEEPSEEK_API_KEY }}",
+    });
+  });
+
+  it("also covers the Pi standby chat-completions path, still scoped", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS.deepseek;
+    expect(
+      config.apis.map((api) => {
+        return api.base;
+      }),
+    ).toEqual([
+      "https://api.deepseek.com/responses",
+      "https://api.deepseek.com/chat/completions",
+    ]);
+    for (const api of config.apis) {
+      expect(api.auth.headers).toEqual({
+        Authorization: "Bearer ${{ secrets.DEEPSEEK_API_KEY }}",
+      });
+    }
   });
 });
 
@@ -1041,11 +999,22 @@ describe("openai-api-key codex provider", () => {
 
   it("firewall scopes to OpenAI Responses API", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["openai-api-key"];
-    expect(config.apis).toHaveLength(1);
     expect(config.apis[0]!.base).toBe("https://api.openai.com/v1/responses");
     expect(config.apis[0]!.auth.headers).toEqual({
       Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
     });
+  });
+
+  it("also covers the Pi standby chat-completions path, still scoped", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["openai-api-key"];
+    expect(
+      config.apis.map((api) => {
+        return api.base;
+      }),
+    ).toEqual([
+      "https://api.openai.com/v1/responses",
+      "https://api.openai.com/v1/chat/completions",
+    ]);
   });
 
   it("modelProviderTypeSchema accepts openai-api-key", () => {
@@ -1066,15 +1035,18 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
     ["openrouter-api-key", "https://openrouter.ai/api/v1/messages"],
     ["moonshot-api-key", "https://api.moonshot.ai/anthropic/v1/messages"],
     ["minimax-api-key", "https://api.minimax.io/anthropic/v1/messages"],
-    ["deepseek-api-key", "https://api.deepseek.com/anthropic/v1/messages"],
     ["zai-api-key", "https://api.z.ai/api/anthropic/v1/messages"],
     ["vercel-ai-gateway", "https://ai-gateway.vercel.sh/v1/messages"],
   ] as const)(
     "%s scopes firewall to /v1/messages path prefix",
     (type, expectedBase) => {
       const config = MODEL_PROVIDER_FIREWALL_CONFIGS[type];
-      expect(config.apis).toHaveLength(1);
+      // Pi-capable providers carry a second, equally scoped entry for the
+      // standby loop's chat-completions call; the Anthropic base stays first.
       expect(config.apis[0]!.base).toBe(expectedBase);
+      for (const api of config.apis) {
+        expect(api.base).toMatch(/\/(v1\/messages|chat\/completions)$/);
+      }
     },
   );
 
@@ -1089,9 +1061,11 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
       const envBindings = getModelProviderEnvBindings(type);
       const actualBase = MODEL_PROVIDER_FIREWALL_CONFIGS[type].apis[0]!.base;
       if (getFrameworkForType(type) === "codex") {
-        const expectedBase =
+        const providerBase =
           envBindings?.OPENAI_BASE_URL?.replace(/\/+$/, "") ??
           "https://api.openai.com/v1/responses";
+        const expectedBase =
+          type === "deepseek" ? `${providerBase}/responses` : providerBase;
         expect(actualBase).toBe(expectedBase);
         continue;
       }
@@ -1130,9 +1104,9 @@ describe("model provider firewall placeholders", () => {
       MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
     ],
     [
-      "deepseek-api-key",
+      "deepseek",
       "DEEPSEEK_API_KEY",
-      MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
     ],
     [
       "zai-api-key",
@@ -1387,7 +1361,7 @@ describe("getFirewallBaseUrl regression — existing providers unchanged", () =>
     ["openrouter-api-key", "https://openrouter.ai/api/v1/messages"],
     ["moonshot-api-key", "https://api.moonshot.ai/anthropic/v1/messages"],
     ["minimax-api-key", "https://api.minimax.io/anthropic/v1/messages"],
-    ["deepseek-api-key", "https://api.deepseek.com/anthropic/v1/messages"],
+    ["deepseek", "https://api.deepseek.com/responses"],
     ["zai-api-key", "https://api.z.ai/api/anthropic/v1/messages"],
     ["vercel-ai-gateway", "https://ai-gateway.vercel.sh/v1/messages"],
     ["openai-api-key", "https://api.openai.com/v1/responses"],
@@ -1423,11 +1397,15 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
   );
 
   it.each(["openrouter-codex", "vercel-ai-gateway-codex"] as const)(
-    "%s offers GPT models with gpt-5.5 default",
+    "%s offers current GPT models with gpt-5.6-luna default",
     (type) => {
-      expect(getModels(type)).toEqual(["openai/gpt-5.5"]);
-      expect(getModels(type)).not.toContain("openai/gpt-5.6-sol");
-      expect(getDefaultModel(type)).toBe("openai/gpt-5.5");
+      expect(getModels(type)).toEqual([
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-luna",
+        "openai/gpt-5.5",
+      ]);
+      expect(getDefaultModel(type)).toBe("openai/gpt-5.6-luna");
     },
   );
 
@@ -1441,12 +1419,6 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
     expect(getProviderRuntimeModel("openrouter-codex", "gpt-5.5")).toBe(
       "openai/gpt-5.5",
     );
-    expect(getProviderRuntimeModel("vercel-ai-gateway-codex", "gpt-5.4")).toBe(
-      "gpt-5.4",
-    );
-    expect(
-      getProviderRuntimeModel("vercel-ai-gateway-codex", "gpt-5.4-mini"),
-    ).toBe("gpt-5.4-mini");
   });
 
   it("share the secretName with their claude-code twin gateway", () => {

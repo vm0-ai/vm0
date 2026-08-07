@@ -143,6 +143,22 @@ describe("connector/providers/slack", () => {
       expect(result.email).toBe("test@example.com");
     });
 
+    it("preserves a missing Slack username as null", async () => {
+      const handler = http.get("https://slack.com/api/users.info", () => {
+        return HttpResponse.json({
+          ok: true,
+          user: {
+            id: "U-test",
+          },
+        });
+      });
+      server.use(handler);
+
+      const result = await fetchSlackUserInfo("U-test", "xoxp-token");
+
+      expect(result.username).toBeNull();
+    });
+
     it("throws when Slack returns ok=false", async () => {
       const handler = http.get("https://slack.com/api/users.info", () => {
         return HttpResponse.json({

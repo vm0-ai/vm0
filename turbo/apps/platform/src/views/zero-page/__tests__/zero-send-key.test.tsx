@@ -1,11 +1,38 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
+
+const SOFTWARE_KEYBOARD_HEIGHT_PX = 336;
+
+// A software keyboard shrinks the visual viewport while the layout viewport
+// keeps its height.
+function occludeVisualViewport(): void {
+  const original = Object.getOwnPropertyDescriptor(window, "visualViewport");
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    value: Object.assign(new EventTarget(), {
+      height: window.innerHeight - SOFTWARE_KEYBOARD_HEIGHT_PX,
+      offsetLeft: 0,
+      offsetTop: 0,
+      pageLeft: 0,
+      pageTop: 0,
+      scale: 1,
+      width: window.innerWidth,
+    }),
+  });
+  onTestFinished(() => {
+    if (original) {
+      Object.defineProperty(window, "visualViewport", original);
+      return;
+    }
+    Reflect.deleteProperty(window, "visualViewport");
+  });
+}
 
 async function openComposer(sendMode: "enter" | "cmd-enter") {
   context.mocks.data.userPreferences({ sendMode });
@@ -23,12 +50,26 @@ async function openComposer(sendMode: "enter" | "cmd-enter") {
   });
 }
 
+function composerEditor(): HTMLElement {
+  const editor = document.querySelector(
+    '.zero-composer [contenteditable="true"]',
+  );
+  if (!(editor instanceof HTMLElement)) {
+    throw new Error("Composer editor not found");
+  }
+  return editor;
+}
+
+function composerText(): string {
+  return composerEditor().textContent ?? "";
+}
+
 describe("zero send key", () => {
   it("sends with Enter mode while Shift+Enter keeps the draft editable", async () => {
     const user = userEvent.setup({ delay: null });
     const enterTextarea = await openComposer("enter");
 
-    await fill(enterTextarea, "Send with Enter");
+    await fillComposer(enterTextarea, "Send with Enter");
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
@@ -41,22 +82,22 @@ describe("zero send key", () => {
     const user = userEvent.setup({ delay: null });
     const textarea = await openComposer("enter");
 
-    await fill(textarea, "Keep this draft");
+    await fillComposer(textarea, "Keep this draft");
     await user.keyboard("{Shift>}{Enter}{/Shift}");
 
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-    expect(textarea.textContent ?? "").toContain("Keep this draft");
+    expect(composerText()).toContain("Keep this draft");
   });
 
   it("sends with Cmd+Enter mode while plain Enter keeps the draft", async () => {
     const user = userEvent.setup({ delay: null });
     const textarea = await openComposer("cmd-enter");
 
-    await fill(textarea, "Keep until command enter");
+    await fillComposer(textarea, "Keep until command enter");
     await user.keyboard("{Enter}");
 
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-    expect(textarea.textContent ?? "").toContain("Keep until command enter");
+    expect(composerText()).toContain("Keep until command enter");
 
     await user.keyboard("{Control>}{Enter}{/Control}");
 
@@ -69,11 +110,11 @@ describe("zero send key", () => {
   it("avoids accidental sends during IME composition", async () => {
     const textarea = await openComposer("enter");
 
-    await fill(textarea, "Composing text");
-    fireEvent.keyDown(textarea, { key: "Enter", keyCode: 229 });
+    await fillComposer(textarea, "Composing text");
+    fireEvent.keyDown(composerEditor(), { key: "Enter", keyCode: 229 });
 
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-    expect(textarea.textContent ?? "").toContain("Composing text");
+    expect(composerText()).toContain("Composing text");
   });
 
   it("keeps plain Enter as a newline but sends with modified Enter on touch devices", async () => {
@@ -82,11 +123,11 @@ describe("zero send key", () => {
       return query === "(pointer: coarse)";
     });
     const touchTextarea = await openComposer("enter");
-    await fill(touchTextarea, "Touch device draft");
+    await fillComposer(touchTextarea, "Touch device draft");
     await user.keyboard("{Enter}");
 
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-    expect(touchTextarea.textContent ?? "").toContain("Touch device draft");
+    expect(composerText()).toContain("Touch device draft");
 
     await user.keyboard("{Control>}{Enter}{/Control}");
 
@@ -102,15 +143,15 @@ describe("zero send key", () => {
     });
     const textarea = await openComposer("enter");
 
-    await fill(textarea, "Composing on touch device");
-    fireEvent.keyDown(textarea, {
+    await fillComposer(textarea, "Composing on touch device");
+    fireEvent.keyDown(composerEditor(), {
       key: "Enter",
       ctrlKey: true,
       keyCode: 229,
     });
 
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-    expect(textarea.textContent ?? "").toContain("Composing on touch device");
+    expect(composerText()).toContain("Composing on touch device");
   });
 
   it("sends with Enter on touch devices with a fine pointer", async () => {
@@ -120,11 +161,34 @@ describe("zero send key", () => {
     });
     const keyboardTextarea = await openComposer("enter");
 
-    await fill(keyboardTextarea, "Send from Magic Keyboard");
+    await fillComposer(keyboardTextarea, "Send from Magic Keyboard");
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(screen.getByText("Send from Magic Keyboard")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps plain Enter as a newline while the software keyboard is open", async () => {
+    const user = userEvent.setup({ delay: null });
+    // WebKit reports a fine pointer on iPhones, including standalone PWAs.
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(pointer: coarse)" || query === "(any-pointer: fine)";
+    });
+    occludeVisualViewport();
+    const softwareKeyboardTextarea = await openComposer("enter");
+
+    await fillComposer(softwareKeyboardTextarea, "Software keyboard draft");
+    await user.keyboard("{Enter}");
+
+    expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    expect(composerText()).toContain("Software keyboard draft");
+
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    await waitFor(() => {
+      expect(screen.getByText("Software keyboard draft")).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
   });
@@ -136,7 +200,7 @@ describe("zero send key", () => {
     });
     const keyboardTextarea = await openComposer("enter");
 
-    await fill(keyboardTextarea, "Send with modified Enter");
+    await fillComposer(keyboardTextarea, "Send with modified Enter");
     await user.keyboard("{Control>}{Enter}{/Control}");
 
     await waitFor(() => {

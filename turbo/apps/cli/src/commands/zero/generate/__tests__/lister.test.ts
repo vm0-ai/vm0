@@ -17,6 +17,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
   elevenlabs: "ElevenLabs",
   fal: "fal.ai",
   hume: "Hume",
+  joggai: "JoggAI",
   "luma-ai": "Luma AI",
   minimax: "MiniMax",
   openai: "OpenAI",
@@ -28,6 +29,7 @@ const CONNECTOR_GENERATION: Record<string, readonly string[]> = {
   elevenlabs: ["audio"],
   fal: ["image", "video"],
   hume: ["audio"],
+  joggai: ["video"],
   "luma-ai": ["image", "video"],
   minimax: ["audio"],
   openai: ["audio", "image", "text"],
@@ -36,14 +38,14 @@ const CONNECTOR_GENERATION: Record<string, readonly string[]> = {
 };
 
 function connector(
-  type: string,
-  externalUsername: string | null = `${type}-user`,
+  connectorSlug: string,
+  externalUsername: string | null = `${connectorSlug}-user`,
 ) {
   return {
     id: "00000000-0000-4000-8000-000000000001",
-    type,
+    slug: connectorSlug,
     authMethod: "api-token",
-    externalId: `${type}-external-id`,
+    externalId: `${connectorSlug}-external-id`,
     externalUsername,
     externalEmail: null,
     oauthScopes: null,
@@ -54,7 +56,7 @@ function connector(
 }
 
 function stubConnectors(connectors: Array<Record<string, unknown>>) {
-  return stubConnectorsWithConfiguredTypes(connectors, [
+  return stubConnectorsWithConfiguredSlugs(connectors, [
     "fal",
     "luma",
     "luma-ai",
@@ -64,19 +66,19 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
   ]);
 }
 
-function stubConnectorsWithConfiguredTypes(
+function stubConnectorsWithConfiguredSlugs(
   connectors: Array<Record<string, unknown>>,
-  configuredTypes: string[],
+  configuredConnectorSlugs: string[],
 ) {
-  const connectedByType = new Map(
+  const connectedBySlug = new Map(
     connectors.map((item) => {
-      const type = item.type as string;
+      const connectorSlug = item.slug as string;
       return [
-        type,
+        connectorSlug,
         catalogStatusItem({
-          connectorRef: type,
-          label: CONNECTOR_LABELS[type] ?? type,
-          generation: [...(CONNECTOR_GENERATION[type] ?? [])],
+          connectorSlug,
+          label: CONNECTOR_LABELS[connectorSlug] ?? connectorSlug,
+          generation: [...(CONNECTOR_GENERATION[connectorSlug] ?? [])],
           authMethods: [manualAuthMethod()],
           connection: {
             authMethod: item.authMethod as string,
@@ -92,15 +94,18 @@ function stubConnectorsWithConfiguredTypes(
       ] as const;
     }),
   );
-  const visibleTypes = new Set([...configuredTypes, ...connectedByType.keys()]);
+  const visibleConnectorSlugs = new Set([
+    ...configuredConnectorSlugs,
+    ...connectedBySlug.keys(),
+  ]);
   return stubConnectorCatalogStatus(
-    [...visibleTypes].map((type) => {
+    [...visibleConnectorSlugs].map((connectorSlug) => {
       return (
-        connectedByType.get(type) ??
+        connectedBySlug.get(connectorSlug) ??
         catalogStatusItem({
-          connectorRef: type,
-          label: CONNECTOR_LABELS[type] ?? type,
-          generation: [...(CONNECTOR_GENERATION[type] ?? [])],
+          connectorSlug,
+          label: CONNECTOR_LABELS[connectorSlug] ?? connectorSlug,
+          generation: [...(CONNECTOR_GENERATION[connectorSlug] ?? [])],
           authMethods: [manualAuthMethod()],
         })
       );
@@ -108,22 +113,24 @@ function stubConnectorsWithConfiguredTypes(
   );
 }
 
-function stubUserConnectors(enabledTypes: string[]) {
+function stubUserConnectors(enabledConnectorSlugs: string[]) {
   return http.get(
     `http://localhost:3000/api/zero/agents/${AGENT_ID}/user-connectors`,
     () => {
-      return HttpResponse.json({ enabledTypes });
+      return HttpResponse.json({
+        enabledConnectorSlugs: enabledConnectorSlugs,
+      });
     },
   );
 }
 
-function stubAvailableConnectors(types: string[]) {
+function stubAvailableConnectors(connectorSlugs: string[]) {
   return stubConnectorCatalogStatus(
-    types.map((type) => {
+    connectorSlugs.map((connectorSlug) => {
       return catalogStatusItem({
-        connectorRef: type,
-        label: CONNECTOR_LABELS[type] ?? type,
-        generation: [...(CONNECTOR_GENERATION[type] ?? [])],
+        connectorSlug,
+        label: CONNECTOR_LABELS[connectorSlug] ?? connectorSlug,
+        generation: [...(CONNECTOR_GENERATION[connectorSlug] ?? [])],
         authMethods: [manualAuthMethod()],
       });
     }),
@@ -131,18 +138,14 @@ function stubAvailableConnectors(types: string[]) {
 }
 
 function stubBillingStatus(
-  videoGenerationAllowed: boolean | undefined,
+  videoGenerationAllowed: boolean,
   tier = videoGenerationAllowed ? "pro" : "limited-free-1",
 ) {
   return http.get("http://localhost:3000/api/zero/billing/status", () => {
     return HttpResponse.json({
       tier,
-      ...(videoGenerationAllowed === undefined
-        ? {}
-        : {
-            canBuyCredits: videoGenerationAllowed,
-            videoGenerationAllowed,
-          }),
+      canBuyCredits: videoGenerationAllowed,
+      videoGenerationAllowed,
       credits: 0,
       onboardingPaymentPending: false,
       subscriptionStatus: null,
@@ -288,7 +291,7 @@ describe("zero generate lister", () => {
     server.use(
       stubConnectorCatalog([
         catalogItem({
-          connectorRef: "replicate",
+          connectorSlug: "replicate",
           label: "Replicate",
           generation: ["image"],
           authMethods: [manualAuthMethod()],
@@ -317,7 +320,7 @@ describe("zero generate lister", () => {
     server.use(
       stubConnectorCatalog([
         catalogItem({
-          connectorRef: "elevenlabs",
+          connectorSlug: "elevenlabs",
           label: "ElevenLabs",
           generation: ["audio"],
           authMethods: [manualAuthMethod()],
@@ -344,7 +347,7 @@ describe("zero generate lister", () => {
 
   it("suggests the built-in video command when no video connector is ready", async () => {
     server.use(
-      stubConnectorsWithConfiguredTypes([], ["fal", "luma-ai", "runway"]),
+      stubConnectorsWithConfiguredSlugs([], ["fal", "luma-ai", "runway"]),
       stubUserConnectors([]),
     );
 
@@ -357,7 +360,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in video generation");
     expect(text).toContain(
-      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
+      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
     );
     expect(text).toContain("Use: zero generate video --provider built-in -h");
     expect(text).toContain(
@@ -377,9 +380,38 @@ describe("zero generate lister", () => {
     );
   });
 
+  it("reflects built-in and connector choices for avatar video", async () => {
+    server.use(
+      stubConnectorsWithConfiguredSlugs(
+        [connector("joggai", "jogg-user")],
+        ["joggai"],
+      ),
+      stubUserConnectors(["joggai"]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "avatar-video"]);
+
+    const text = output();
+    expect(text).toContain(
+      "Talking-avatar video generation choices for current agent",
+    );
+    expect(text).toContain("joggai");
+    expect(text).toContain("JoggAI");
+    expect(text).toContain("@jogg-user");
+    expect(text).toContain("Built-in command:");
+    expect(text).toContain("Built-in JoggAI talking-avatar video generation");
+    expect(text).toContain("Models: joggai-talking-avatar");
+    expect(text).toContain(
+      "Use: zero generate avatar-video --provider built-in -h",
+    );
+    expect(text).toContain(
+      "Availability: Available on the current plan without connector setup.",
+    );
+  });
+
   it("marks built-in video models as plan-restricted before generation", async () => {
     server.use(
-      stubConnectorsWithConfiguredTypes([], ["fal", "luma-ai", "runway"]),
+      stubConnectorsWithConfiguredSlugs([], ["fal", "luma-ai", "runway"]),
       stubUserConnectors([]),
       stubBillingStatus(false),
     );
@@ -395,37 +427,9 @@ describe("zero generate lister", () => {
     );
   });
 
-  it("uses a restricted legacy tier when billing capability fields are omitted", async () => {
-    server.use(
-      stubConnectorsWithConfiguredTypes([], ["fal", "luma-ai", "runway"]),
-      stubUserConnectors([]),
-      stubBillingStatus(undefined, "limited-free-1"),
-    );
-
-    await generateCommand.parseAsync(["node", "cli", "video"]);
-
-    expect(output()).toContain(
-      "Availability: Requires a Pro, Team, or Custom workspace plan.",
-    );
-  });
-
-  it("uses an allowed legacy tier when billing capability fields are omitted", async () => {
-    server.use(
-      stubConnectorsWithConfiguredTypes([], ["fal", "luma-ai", "runway"]),
-      stubUserConnectors([]),
-      stubBillingStatus(undefined, "free"),
-    );
-
-    await generateCommand.parseAsync(["node", "cli", "video"]);
-
-    expect(output()).toContain(
-      "Availability: Available on the current plan without connector setup.",
-    );
-  });
-
   it("suggests the built-in presentation command", async () => {
     server.use(
-      stubConnectorsWithConfiguredTypes([], []),
+      stubConnectorsWithConfiguredSlugs([], []),
       stubUserConnectors([]),
     );
 
@@ -448,7 +452,7 @@ describe("zero generate lister", () => {
 
   it("suggests the built-in website command", async () => {
     server.use(
-      stubConnectorsWithConfiguredTypes([], []),
+      stubConnectorsWithConfiguredSlugs([], []),
       stubUserConnectors([]),
     );
 
@@ -493,7 +497,7 @@ describe("zero generate lister", () => {
     ],
   ])("suggests the built-in %s command", async (type, label, commandLabel) => {
     server.use(
-      stubConnectorsWithConfiguredTypes([], []),
+      stubConnectorsWithConfiguredSlugs([], []),
       stubUserConnectors([]),
     );
 
@@ -510,7 +514,7 @@ describe("zero generate lister", () => {
 
   it("suggests the built-in voice command when no voice connector is ready", async () => {
     server.use(
-      stubConnectorsWithConfiguredTypes(
+      stubConnectorsWithConfiguredSlugs(
         [],
         ["elevenlabs", "hume", "minimax", "openai"],
       ),
@@ -538,7 +542,7 @@ describe("zero generate lister", () => {
 
   it("also shows the built-in voice provider when a voice connector is ready", async () => {
     server.use(
-      stubConnectorsWithConfiguredTypes(
+      stubConnectorsWithConfiguredSlugs(
         [connector("openai", "openai-user")],
         ["elevenlabs", "hume", "minimax", "openai"],
       ),
@@ -561,7 +565,7 @@ describe("zero generate lister", () => {
 
   it("lists music as the public audio connector-backed subtype", async () => {
     server.use(
-      stubConnectorsWithConfiguredTypes(
+      stubConnectorsWithConfiguredSlugs(
         [connector("elevenlabs", "elevenlabs-user")],
         ["elevenlabs", "minimax"],
       ),

@@ -16,7 +16,7 @@ export const SUPPORTED_RUN_MODELS = [
   "claude-opus-4-6",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
-  "deepseek-v4-pro",
+  "deepseek-v4-flash",
   "kimi-k3",
   "kimi-k2.7-code",
   "MiniMax-M3",
@@ -49,7 +49,7 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
   "claude-opus-4-6": "$$$",
   "claude-sonnet-5": "$$",
   "claude-sonnet-4-6": "$$",
-  "deepseek-v4-pro": "$",
+  "deepseek-v4-flash": "$",
   "kimi-k3": "$$",
   "kimi-k2.7-code": "$",
   "MiniMax-M3": "$",
@@ -57,13 +57,4 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
   "glm-5.1": "$",
   "mimo-v2.5": "$",
   "hy3-preview": "$",
-});
-
-export const VM0_MODEL_PRICE_TIER_LABEL = Object.freeze<
-  Record<Vm0ModelPriceTier, string>
->({
-  $: "Economy tier for everyday simple tasks",
-  $$: "Balanced cost and performance",
-  $$$: "Frontier flagship model",
-  $$$$: "Premium frontier model for the hardest tasks",
 });

@@ -1,6 +1,6 @@
 {
-  "name": "@vm0/cli",
-  "version": "9.264.5",
+  "name": "@vm0/zero-cli",
+  "version": "9.279.4",
   "private": true,
   "description": "Zero command-line interface for vm0",
   "repository": {
@@ -20,16 +20,13 @@
   ],
   "scripts": {
     "build": "tsup",
-    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/cli\"; delete this.private; delete this.scripts; delete this.devDependencies; this.bin[\"zero\"]=\"zero.js\"; this.files=[\"*.js\",\"*.js.map\"]'",
+    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/zero-cli\"; delete this.scripts; delete this.devDependencies; this.bin[\"zero\"]=\"zero.js\"; this.files=[\"*.js\",\"*.js.map\"]'",
     "dev": "tsup --watch",
     "bench:startup": "pnpm build && ZERO_STARTUP_BENCH=1 vitest run src/__tests__/zero-startup.bench.test.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
-  },
-  "dependencies": {
-    "ably": "^2.21.0"
   },
   "devDependencies": {
     "@sentry/node": "^10.50.0",
@@ -42,7 +39,9 @@
     "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",
     "@vm0/eslint-config": "workspace:*",
+    "@vm0/pi-agent-runtime": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
+    "ably": "^2.21.0",
     "chalk": "^5.6.2",
     "commander": "^14.0.0",
     "eslint": "^9.34.0",
@@ -56,8 +55,9 @@
     "tar": "^7.5.7",
     "tsup": "^8.5.1",
     "typescript": "6.0.3",
-    "undici": "^8.5.0",
+    "undici": "^8.9.0",
     "vitest": "^4.1.10",
-    "yaml": "^2.3.4"
+    "yaml": "^2.3.4",
+    "zod": "4.3.6"
   }
 }

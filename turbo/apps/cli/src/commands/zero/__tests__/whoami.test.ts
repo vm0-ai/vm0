@@ -39,7 +39,7 @@ function mockUserPermissionGrantsHandler(
 function makePermissionGrant(overrides: Record<string, unknown> = {}) {
   return {
     agentId: "agent-123",
-    connectorRef: "slack",
+    connectorSlug: "slack",
     permission: "conversations:read",
     action: "allow",
     expiresAt: null,
@@ -51,11 +51,11 @@ function makePermissionGrant(overrides: Record<string, unknown> = {}) {
 
 const defaultPermissionDetails = [
   catalogPermissionDetail({
-    connectorRef: "github",
+    connectorSlug: "github",
     label: "GitHub",
   }),
   catalogPermissionDetail({
-    connectorRef: "slack",
+    connectorSlug: "slack",
     label: "Slack",
     permissions: [
       {
@@ -158,6 +158,81 @@ describe("zero whoami command", () => {
       ).toBe(true);
     });
 
+    it("should show the workspace name and tier", async () => {
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv(
+        "ZERO_TOKEN",
+        buildZeroToken({
+          userId: "user-1",
+          runId: "run-abc",
+          orgId: "org-xyz",
+          scope: "zero",
+          capabilities: ["agent:read"],
+          iat: 1000,
+          exp: 2000,
+        }),
+      );
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("Workspace:  Default Workspace");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Tier:       free");
+        }),
+      ).toBe(true);
+    });
+
+    it("should still print identity when the org lookup fails", async () => {
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv(
+        "ZERO_TOKEN",
+        buildZeroToken({
+          userId: "user-1",
+          runId: "run-abc",
+          orgId: "org-xyz",
+          scope: "zero",
+          capabilities: ["agent:read"],
+          iat: 1000,
+          exp: 2000,
+        }),
+      );
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      server.use(
+        http.get("http://localhost:3000/api/zero/org", () => {
+          return HttpResponse.json(
+            { error: { message: "Organization not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("Workspace:");
+        }),
+      ).toBe(false);
+      expect(
+        output.some((line) => {
+          return line.includes("agent-123");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Capabilities:");
+        }),
+      ).toBe(true);
+    });
+
     it("should show unavailable when ZERO_TOKEN is missing", async () => {
       vi.stubEnv("ZERO_AGENT_ID", "agent-no-token");
 
@@ -230,7 +305,7 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "github",
+                slug: "github",
                 authMethod: "oauth",
                 externalId: "12345",
                 externalUsername: "octocat",
@@ -242,7 +317,7 @@ describe("zero whoami command", () => {
               },
               {
                 id: "2",
-                type: "google",
+                slug: "google",
                 authMethod: "oauth",
                 externalId: "67890",
                 externalUsername: null,
@@ -253,7 +328,7 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["github", "google"],
+            configuredConnectorSlugs: ["github", "google"],
             connectorProvidedBindings: [],
           });
         }),
@@ -270,7 +345,10 @@ describe("zero whoami command", () => {
       expect(
         output.some((line) => {
           return (
-            line.includes("@octocat") && line.includes("(octocat@github.com)")
+            line.includes("github") &&
+            line.includes("@octocat") &&
+            line.includes("(octocat@github.com)") &&
+            !line.includes("legacy-github")
           );
         }),
       ).toBe(true);
@@ -301,7 +379,7 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "slack",
+                slug: "slack",
                 authMethod: "oauth",
                 externalId: "S123",
                 externalUsername: "john.doe",
@@ -312,7 +390,7 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["slack"],
+            configuredConnectorSlugs: ["slack"],
             connectorProvidedBindings: [],
           });
         }),
@@ -391,7 +469,7 @@ describe("zero whoami command", () => {
         http.get("http://localhost:3000/api/zero/connectors", () => {
           return HttpResponse.json({
             connectors: [],
-            configuredTypes: [],
+            configuredConnectorSlugs: [],
             connectorProvidedBindings: [],
           });
         }),
@@ -432,7 +510,7 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "github",
+                slug: "github",
                 authMethod: "oauth",
                 externalId: "12345",
                 externalUsername: "octocat",
@@ -443,7 +521,7 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["github"],
+            configuredConnectorSlugs: ["github"],
             connectorProvidedBindings: [],
           });
         }),
@@ -497,7 +575,7 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "slack",
+                slug: "slack",
                 authMethod: "oauth",
                 externalId: "S12345",
                 externalUsername: "john.doe",
@@ -508,7 +586,7 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["slack"],
+            configuredConnectorSlugs: ["slack"],
             connectorProvidedBindings: [],
           });
         }),
@@ -518,6 +596,7 @@ describe("zero whoami command", () => {
             action: "allow",
           }),
           makePermissionGrant({
+            connectorSlug: "slack",
             permission: "chat:write",
             action: "deny",
           }),
@@ -529,7 +608,7 @@ describe("zero whoami command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["slack"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["slack"] });
           },
         ),
       );
@@ -556,7 +635,7 @@ describe("zero whoami command", () => {
       ).toBe(true);
     });
 
-    it("should show permissions for a server-authored connector ref", async () => {
+    it("should show permissions for a server-authored connector slug", async () => {
       const token = buildZeroToken({
         userId: "user-1",
         runId: "run-abc",
@@ -571,7 +650,7 @@ describe("zero whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       const serverOnlyDetail = catalogPermissionDetail({
-        connectorRef: "server-only",
+        connectorSlug: "server-only",
         label: "Server Only",
         permissions: [
           { name: "records.read", description: "Read server records" },
@@ -591,7 +670,7 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "server-only",
+                slug: "server-only",
                 authMethod: "api-token",
                 externalId: "server-user",
                 externalUsername: "server-user",
@@ -602,13 +681,13 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["server-only"],
+            configuredConnectorSlugs: ["server-only"],
             connectorProvidedBindings: [],
           });
         }),
         mockUserPermissionGrantsHandler([
           makePermissionGrant({
-            connectorRef: "server-only",
+            connectorSlug: "server-only",
             permission: "records.read",
             action: "allow",
           }),
@@ -616,7 +695,9 @@ describe("zero whoami command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["server-only"] });
+            return HttpResponse.json({
+              enabledConnectorSlugs: ["server-only"],
+            });
           },
         ),
       );
@@ -656,7 +737,7 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "github",
+                slug: "github",
                 authMethod: "oauth",
                 externalId: "12345",
                 externalUsername: "octocat",
@@ -667,7 +748,7 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["github"],
+            configuredConnectorSlugs: ["github"],
             connectorProvidedBindings: [],
           });
         }),
@@ -675,7 +756,7 @@ describe("zero whoami command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
       );
@@ -715,7 +796,7 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "github",
+                slug: "github",
                 authMethod: "oauth",
                 externalId: "12345",
                 externalUsername: "octocat",
@@ -726,7 +807,7 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["github"],
+            configuredConnectorSlugs: ["github"],
             connectorProvidedBindings: [],
           });
         }),
@@ -742,7 +823,7 @@ describe("zero whoami command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
       );
@@ -793,7 +874,7 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "github",
+                slug: "github",
                 authMethod: "oauth",
                 externalId: "12345",
                 externalUsername: "octocat",
@@ -804,7 +885,7 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["github"],
+            configuredConnectorSlugs: ["github"],
             connectorProvidedBindings: [],
           });
         }),
@@ -812,7 +893,7 @@ describe("zero whoami command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         http.get(
@@ -866,7 +947,7 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "github",
+                slug: "github",
                 authMethod: "oauth",
                 externalId: "12345",
                 externalUsername: "octocat",
@@ -877,13 +958,13 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["github"],
+            configuredConnectorSlugs: ["github"],
             connectorProvidedBindings: [],
           });
         }),
         mockUserPermissionGrantsHandler([
           makePermissionGrant({
-            connectorRef: "github",
+            connectorSlug: "github",
             permission: "repo",
             action: "allow",
           }),
@@ -941,7 +1022,7 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "github",
+                slug: "github",
                 authMethod: "oauth",
                 externalId: "12345",
                 externalUsername: "octocat",
@@ -953,7 +1034,7 @@ describe("zero whoami command", () => {
               },
               {
                 id: "2",
-                type: "axiom",
+                slug: "axiom",
                 authMethod: "api-token",
                 externalId: null,
                 externalUsername: null,
@@ -964,7 +1045,7 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["github", "axiom"],
+            configuredConnectorSlugs: ["github", "axiom"],
             connectorProvidedBindings: [],
           });
         }),

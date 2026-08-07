@@ -1,6 +1,6 @@
 [package]
 name = "sandbox-mock"
-version = "0.8.56"
+version = "0.8.78"
 edition.workspace = true
 
 [dependencies]
@@ -9,6 +9,7 @@ guest-contracts.workspace = true
 sandbox = { workspace = true }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["sync", "time"] }
+tokio-util.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]

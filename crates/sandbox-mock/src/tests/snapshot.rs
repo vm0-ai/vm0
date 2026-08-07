@@ -51,6 +51,7 @@ async fn snapshot_provider_default_create_snapshot_commits_pending_publish() {
 
 struct FailingPendingSnapshotPublish {
     discarded: Arc<AtomicBool>,
+    discard_error: Option<&'static str>,
 }
 
 #[async_trait]
@@ -61,12 +62,16 @@ impl PendingSnapshotPublish for FailingPendingSnapshotPublish {
 
     async fn discard(&mut self) -> std::result::Result<(), SnapshotError> {
         self.discarded.store(true, Ordering::SeqCst);
-        Ok(())
+        match self.discard_error {
+            Some(message) => Err(SnapshotError::Teardown(message.into())),
+            None => Ok(()),
+        }
     }
 }
 
 struct FailingSnapshotProvider {
     discarded: Arc<AtomicBool>,
+    discard_error: Option<&'static str>,
 }
 
 #[async_trait]
@@ -77,6 +82,7 @@ impl SnapshotProvider for FailingSnapshotProvider {
     ) -> std::result::Result<Box<dyn PendingSnapshotPublish>, SnapshotError> {
         Ok(Box::new(FailingPendingSnapshotPublish {
             discarded: Arc::clone(&self.discarded),
+            discard_error: self.discard_error,
         }))
     }
 
@@ -97,6 +103,7 @@ async fn snapshot_provider_default_create_snapshot_discards_after_commit_failure
     let discarded = Arc::new(AtomicBool::new(false));
     let provider = FailingSnapshotProvider {
         discarded: Arc::clone(&discarded),
+        discard_error: None,
     };
     let output_dir = std::env::temp_dir().join(format!(
         "sandbox-mock-snapshot-failure-{}",
@@ -115,5 +122,32 @@ async fn snapshot_provider_default_create_snapshot_discards_after_commit_failure
     assert!(
         discarded.load(Ordering::SeqCst),
         "default create_snapshot should discard after commit failure"
+    );
+}
+
+#[tokio::test]
+async fn snapshot_provider_default_create_snapshot_preserves_commit_error_when_discard_fails() {
+    let discarded = Arc::new(AtomicBool::new(false));
+    let provider = FailingSnapshotProvider {
+        discarded: Arc::clone(&discarded),
+        discard_error: Some("discard failed"),
+    };
+    let output_dir = std::env::temp_dir().join(format!(
+        "sandbox-mock-snapshot-double-failure-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    let err = provider
+        .create_snapshot(test_snapshot_config(output_dir))
+        .await
+        .expect_err("commit should fail");
+
+    assert!(
+        matches!(err, SnapshotError::Teardown(ref message) if message == "commit failed"),
+        "discard failure must not mask the commit failure, got: {err:?}"
+    );
+    assert!(
+        discarded.load(Ordering::SeqCst),
+        "default create_snapshot should still discard after commit failure"
     );
 }

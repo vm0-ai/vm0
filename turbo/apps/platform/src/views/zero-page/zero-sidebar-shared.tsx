@@ -1,4 +1,5 @@
 import { useLastResolved } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { agents$ } from "../../signals/agent.ts";
 import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
 import { resolveAvatarUrl, resolveAvatarSvgConfig } from "./avatar-utils.ts";
@@ -10,11 +11,22 @@ import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
  * surfaces stay in sync without duplicating the logic.
  */
 export function useChatThreadsTitleLabels() {
+  const { t } = useTranslation();
   const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);
   const agentName = agentDisplayName ?? "Zero";
   return {
-    titleLabel: `Chats with ${agentName}`,
-    newChatAriaLabel: `New chat with ${agentName}`,
+    titleLabel: t(
+      ($) => {
+        return $.chat.sidebar.chatsWith;
+      },
+      { agentName },
+    ),
+    newChatAriaLabel: t(
+      ($) => {
+        return $.chat.sidebar.newChatWith;
+      },
+      { agentName },
+    ),
   };
 }
 
@@ -46,6 +58,11 @@ function useAgentAvatarState(id: string): AgentAvatarState {
 /**
  * Render an avatar from an avatarUrl string (preset, svg, or custom upload).
  * Does NOT look up the agent — use this when you already have the avatarUrl.
+ *
+ * Callers should pass shape and size but not a background fill: preset and
+ * uploaded avatars are transparent, so a fill shows through as a gray disc
+ * behind the face. WorkflowAgentAvatar is the one deliberate exception, where
+ * the avatar shares a bordered chip style with its initials fallback.
  */
 export function AvatarFromUrl({
   avatarUrl,
@@ -78,6 +95,8 @@ export function AvatarFromUrl({
       <img src={src} alt={alt} className={className} data-testid={testId} />
     );
   }
+  // Transparent placeholder, matching AgentAvatarImg: reserves the avatar's box
+  // so layout doesn't shift while the agent (or its avatarUrl) is still loading.
   return <span className={className} aria-hidden="true" data-testid={testId} />;
 }
 

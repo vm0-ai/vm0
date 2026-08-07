@@ -1,50 +1,31 @@
-import {
-  foldChatAutomationIntakePause,
-  foldPendingChatQueueEvents,
-  type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
   and,
   asc,
-  desc,
   eq,
-  gt,
-  inArray,
   isNull,
   lt,
   notExists,
   or,
+  sql,
+  type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 type ChatQueueReadDb = Pick<Db, "select">;
 type ChatQueueDistinctReadDb = Pick<Db, "select" | "selectDistinct">;
 
-const queueEventRevoker = alias(chatMessages, "queue_event_revoker");
-const automationPauseEvent = alias(chatMessages, "automation_pause_event");
-const laterAutomationPauseEvent = alias(
-  chatMessages,
-  "later_automation_pause_event",
-);
+const queueEventRevoker = alias(chatEvents, "queue_event_revoker");
 
 interface PendingChatQueueEvent {
   readonly id: string;
   readonly chatThreadId: string;
-  readonly eventType: "input.prompt" | "input.automation";
+  readonly eventType: "input.prompt" | "input.automation" | "input.goal";
   readonly createdAt: Date;
-}
-
-interface ChatAutomationIntakePause {
-  readonly pausedAt: Date;
-  readonly pauseReason: string | null;
 }
 
 function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
@@ -52,14 +33,58 @@ function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
     db
       .select({ id: queueEventRevoker.id })
       .from(queueEventRevoker)
-      .where(eq(queueEventRevoker.revokesEventId, chatMessages.id)),
+      .where(eq(queueEventRevoker.revokesEventId, chatEvents.id)),
   );
 }
 
+function pendingActiveInputPromptCondition(db: ChatQueueReadDb) {
+  return and(
+    chatEventTypeIn(["input.prompt"]),
+    isNull(chatEvents.runId),
+    sql`${chatEvents.contextType} IS DISTINCT FROM 'morning_brief'`,
+    unrevokedQueueEventCondition(db),
+  );
+}
+
+export function pendingActiveInputCondition(
+  db: ChatQueueReadDb,
+  runId: string,
+) {
+  return or(
+    pendingActiveInputPromptCondition(db),
+    and(
+      chatEventTypeIn(["input.budget"]),
+      isNull(chatEvents.runId),
+      eq(chatEvents.contextType, "agent_run"),
+      eq(chatEvents.contextId, runId),
+      unrevokedQueueEventCondition(db),
+    ),
+  );
+}
+
+export function pendingChatQueueEventCondition(db: ChatQueueReadDb) {
+  return and(
+    chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
+    isNull(chatEvents.runId),
+    unrevokedQueueEventCondition(db),
+  );
+}
+
+export function chatQueueEventPriority(): SQL {
+  return sql`CASE ${chatEvents.eventType}
+    WHEN 'input.prompt' THEN 0
+    WHEN 'input.goal' THEN 1
+    WHEN 'input.automation' THEN 2
+    ELSE 3
+  END`;
+}
+
 /**
- * Fold one thread's immutable input events into its pending queue. User input
- * keeps absolute priority over automation input, then each class is FIFO by
- * the original event timestamp and id.
+ * List one thread's pending queue in its authoritative database order. User
+ * input keeps absolute priority over goal continuation; goal continuation stays
+ * ahead of automation input. Each class is FIFO by the original event timestamp
+ * and id. Keep the sort in PostgreSQL so sub-millisecond timestamp precision
+ * matches the final queue-claim queries.
  */
 export async function listPendingChatQueueEvents(
   db: ChatQueueReadDb,
@@ -68,36 +93,30 @@ export async function listPendingChatQueueEvents(
 ): Promise<readonly PendingChatQueueEvent[]> {
   const rows = await db
     .select({
-      id: chatMessages.id,
-      chatThreadId: chatMessages.chatThreadId,
-      eventType: chatEventTypeSql().as("event_type"),
-      runId: chatMessages.runId,
-      createdAt: chatMessages.createdAt,
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      eventType: chatEvents.eventType,
+      createdAt: chatEvents.createdAt,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, chatThreadId),
-        chatEventTypeIn(["input.prompt", "input.automation"]),
-        isNull(chatMessages.runId),
-        createdBefore ? lt(chatMessages.createdAt, createdBefore) : undefined,
-        unrevokedQueueEventCondition(db),
+        eq(chatEvents.chatThreadId, chatThreadId),
+        pendingChatQueueEventCondition(db),
+        createdBefore ? lt(chatEvents.createdAt, createdBefore) : undefined,
       ),
     )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id));
+    .orderBy(
+      chatQueueEventPriority(),
+      asc(chatEvents.createdAt),
+      asc(chatEvents.id),
+    );
 
-  const folded = foldPendingChatQueueEvents(
-    rows.map((row) => {
-      return {
-        ...row,
-        createdAt: row.createdAt.toISOString(),
-      };
-    }),
-  );
-  return folded.flatMap((event) => {
+  return rows.flatMap((event) => {
     if (
       event.eventType !== "input.prompt" &&
-      event.eventType !== "input.automation"
+      event.eventType !== "input.automation" &&
+      event.eventType !== "input.goal"
     ) {
       return [];
     }
@@ -106,7 +125,7 @@ export async function listPendingChatQueueEvents(
         id: event.id,
         chatThreadId: event.chatThreadId,
         eventType: event.eventType,
-        createdAt: new Date(event.createdAt),
+        createdAt: event.createdAt,
       },
     ];
   });
@@ -121,26 +140,25 @@ export async function loadPendingChatQueueEvent(
 ): Promise<PendingChatQueueEvent | null> {
   const [event] = await db
     .select({
-      id: chatMessages.id,
-      chatThreadId: chatMessages.chatThreadId,
-      eventType: chatEventTypeSql().as("event_type"),
-      createdAt: chatMessages.createdAt,
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      eventType: chatEvents.eventType,
+      createdAt: chatEvents.createdAt,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.id, args.eventId),
-        eq(chatMessages.chatThreadId, args.chatThreadId),
-        chatEventTypeIn(["input.prompt", "input.automation"]),
-        isNull(chatMessages.runId),
-        unrevokedQueueEventCondition(db),
+        eq(chatEvents.id, args.eventId),
+        eq(chatEvents.chatThreadId, args.chatThreadId),
+        pendingChatQueueEventCondition(db),
       ),
     )
     .limit(1);
   if (
     !event ||
     (event.eventType !== "input.prompt" &&
-      event.eventType !== "input.automation")
+      event.eventType !== "input.automation" &&
+      event.eventType !== "input.goal")
   ) {
     return null;
   }
@@ -152,58 +170,17 @@ export async function hasPendingUserChatQueueEvent(
   chatThreadId: string,
 ): Promise<boolean> {
   const [event] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, chatThreadId),
+        eq(chatEvents.chatThreadId, chatThreadId),
+        pendingChatQueueEventCondition(db),
         chatEventTypeIn(["input.prompt"]),
-        isNull(chatMessages.runId),
-        unrevokedQueueEventCondition(db),
       ),
     )
     .limit(1);
   return event !== undefined;
-}
-
-/** Latest pause/resume leaf is the automation-intake circuit-breaker state. */
-export async function loadChatAutomationIntakePause(
-  db: ChatQueueReadDb,
-  chatThreadId: string,
-): Promise<ChatAutomationIntakePause | null> {
-  const rows = await db
-    .select({
-      eventType: chatEventTypeSql().as("event_type"),
-      createdAt: chatMessages.createdAt,
-      pauseReason: chatMessages.error,
-    })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, chatThreadId),
-        chatEventTypeIn([
-          "queue.automation_paused",
-          "queue.automation_resumed",
-        ]),
-      ),
-    )
-    .orderBy(desc(chatMessages.seqId))
-    .limit(1);
-  const state = foldChatAutomationIntakePause(
-    rows.map((row) => {
-      return {
-        eventType: row.eventType,
-        createdAt: row.createdAt.toISOString(),
-        pauseReason: row.pauseReason,
-      };
-    }),
-  );
-  return state
-    ? {
-        pausedAt: new Date(state.pausedAt),
-        pauseReason: state.pauseReason,
-      }
-    : null;
 }
 
 /** Shared row lock for every authoritative queue claim or revocation. */
@@ -219,44 +196,6 @@ export async function lockChatQueueThread(
   return thread !== undefined;
 }
 
-function noCurrentAutomationPauseCondition(db: ChatQueueReadDb) {
-  return notExists(
-    db
-      .select({ id: automationPauseEvent.id })
-      .from(automationPauseEvent)
-      .where(
-        and(
-          eq(automationPauseEvent.chatThreadId, chatMessages.chatThreadId),
-          eq(
-            automationPauseEvent.eventType,
-            "queue.automation_paused" satisfies ChatEventType,
-          ),
-          notExists(
-            db
-              .select({ id: laterAutomationPauseEvent.id })
-              .from(laterAutomationPauseEvent)
-              .where(
-                and(
-                  eq(
-                    laterAutomationPauseEvent.chatThreadId,
-                    automationPauseEvent.chatThreadId,
-                  ),
-                  inArray(laterAutomationPauseEvent.eventType, [
-                    "queue.automation_paused" satisfies ChatEventType,
-                    "queue.automation_resumed" satisfies ChatEventType,
-                  ]),
-                  gt(
-                    laterAutomationPauseEvent.seqId,
-                    automationPauseEvent.seqId,
-                  ),
-                ),
-              ),
-          ),
-        ),
-      ),
-  );
-}
-
 /** Threads with stale runnable event-backed queue work for the safety sweep. */
 export async function staleChatEventQueueThreadIds(
   db: ChatQueueDistinctReadDb,
@@ -266,24 +205,12 @@ export async function staleChatEventQueueThreadIds(
   },
 ): Promise<readonly string[]> {
   const rows = await db
-    .selectDistinct({ chatThreadId: chatMessages.chatThreadId })
-    .from(chatMessages)
+    .selectDistinct({ chatThreadId: chatEvents.chatThreadId })
+    .from(chatEvents)
     .where(
       and(
-        chatEventTypeIn(["input.prompt", "input.automation"]),
-        isNull(chatMessages.runId),
-        lt(chatMessages.createdAt, args.staleBefore),
-        unrevokedQueueEventCondition(db),
-        or(
-          eq(chatMessages.eventType, "input.prompt" satisfies ChatEventType),
-          and(
-            eq(
-              chatMessages.eventType,
-              "input.automation" satisfies ChatEventType,
-            ),
-            noCurrentAutomationPauseCondition(db),
-          ),
-        ),
+        pendingChatQueueEventCondition(db),
+        lt(chatEvents.createdAt, args.staleBefore),
       ),
     )
     .limit(args.limit);

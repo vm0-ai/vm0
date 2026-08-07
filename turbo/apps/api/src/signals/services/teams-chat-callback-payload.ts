@@ -29,5 +29,5 @@ export const teamsDeliveryTargetSchema = z.object({
 export type TeamsDeliveryTarget = z.infer<typeof teamsDeliveryTargetSchema>;
 
 export const teamsChatCallbackPayloadSchema = teamsDeliveryTargetSchema.extend({
-  chatMessageId: z.string().uuid(),
+  chatEventId: z.string().uuid(),
 });

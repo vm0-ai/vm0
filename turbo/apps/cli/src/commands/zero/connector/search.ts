@@ -1,10 +1,18 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroConnectorCatalogStatus } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
-import { resolveAgentContext } from "./agent-context";
-import { padEndAnsi, renderConnectedAsCell, stripAnsi } from "./connected-as";
-import { searchPublicConnectorCatalog } from "./public-catalog";
+import {
+  listZeroConnectorCatalogStatus,
+  listZeroCustomConnectors,
+} from "../../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { resolveConnectorDiscoveryAgentContext } from "./agent-context";
+import { padEndAnsi, stripAnsi } from "./connected-as";
+import {
+  connectorDiscoveryItems,
+  isConnectorDiscoveryAuthorized,
+  renderConnectorDiscoveryConnectedAsCell,
+} from "./discovery";
+import { searchConnectorCatalog } from "./public-catalog";
 
 const DEFAULT_LIMIT = 5;
 const EXACT_MATCH_THRESHOLD = 80;
@@ -21,7 +29,7 @@ function parseLimit(raw: string): number {
 export const searchCommand = new Command()
   .name("search")
   .description(
-    "Search connectors by type, label, category, generation type, or tag",
+    "Search connectors by slug, label, category, generation type, or tag",
   )
   .argument("<keyword>", "Search keyword (case-insensitive)")
   .option("--agent <id>", "Show per-agent authorization column")
@@ -39,12 +47,13 @@ export const searchCommand = new Command()
           throw new Error("Keyword cannot be empty.");
         }
 
-        const [{ connectors }, agentCtx] = await Promise.all([
+        const [{ connectors }, customConnectors, agentCtx] = await Promise.all([
           listZeroConnectorCatalogStatus(),
-          resolveAgentContext(options.agent),
+          listZeroCustomConnectors(),
+          resolveConnectorDiscoveryAgentContext(options.agent),
         ]);
-        const { results, total } = searchPublicConnectorCatalog(
-          connectors,
+        const { results, total } = searchConnectorCatalog(
+          connectorDiscoveryItems(connectors, customConnectors),
           trimmed,
           options.limit,
         );
@@ -62,17 +71,17 @@ export const searchCommand = new Command()
           console.log(`Too many results (top ${options.limit} of ${total}):`);
         }
 
-        const typeHeader = "TYPE";
+        const connectorSlugHeader = "SLUG";
         const connectedAsHeader = "CONNECTED AS";
 
         const connectedCells = results.map((r) => {
-          return renderConnectedAsCell(r.connector);
+          return renderConnectorDiscoveryConnectedAsCell(r.connector);
         });
 
-        const typeWidth = Math.max(
-          typeHeader.length,
+        const connectorSlugWidth = Math.max(
+          connectorSlugHeader.length,
           ...results.map((r) => {
-            return r.connector.connectorRef.length;
+            return r.connector.slug.length;
           }),
         );
         const connectedAsWidth = Math.max(
@@ -83,7 +92,7 @@ export const searchCommand = new Command()
         );
 
         const headerParts = [
-          typeHeader.padEnd(typeWidth),
+          connectorSlugHeader.padEnd(connectorSlugWidth),
           connectedAsHeader.padEnd(connectedAsWidth),
         ];
         if (agentCtx) {
@@ -94,12 +103,12 @@ export const searchCommand = new Command()
         for (let i = 0; i < results.length; i++) {
           const result = results[i]!;
           const parts = [
-            result.connector.connectorRef.padEnd(typeWidth),
+            result.connector.slug.padEnd(connectorSlugWidth),
             padEndAnsi(connectedCells[i]!, connectedAsWidth),
           ];
           if (agentCtx) {
             parts.push(
-              agentCtx.authorizedTypes.has(result.connector.connectorRef)
+              isConnectorDiscoveryAuthorized(result.connector, agentCtx)
                 ? chalk.green("✓")
                 : chalk.dim("-"),
             );

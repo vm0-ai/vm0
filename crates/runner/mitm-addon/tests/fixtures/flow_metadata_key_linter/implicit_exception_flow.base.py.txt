@@ -185,7 +185,7 @@ def later_with_item_failure_is_suppressible(flow, outer_manager):
     metadata = flow.metadata
     with outer_manager, manager_factory():
         metadata = {}
-    return metadata["connector_diagnostic_type"]
+    return metadata["connector_diagnostic_slug"]
 
 
 def truth_test_failure_under_with(flow, manager, condition):
@@ -465,7 +465,7 @@ def local_annotation_is_deferred(flow, manager):
     with manager:
         value: operation() = None
         metadata = {}
-    return metadata["connector_diagnostic_type"]
+    return metadata["connector_diagnostic_slug"]
 
 
 def nested_definition_annotation_is_deferred(flow, manager):
@@ -540,3 +540,34 @@ def true_exhaustive_match_guard_skips_later_cases(flow, manager, value):
                 operation()
         metadata = {}
     return metadata["firewall_name"]
+
+
+def formatted_value_failure_before_rebind(flow, manager, value):
+    metadata = flow.metadata
+    with manager:
+        f"{value}"
+        metadata = {}
+    return metadata["vm_run_id"]
+
+
+def conversion_failure_precedes_format_spec_rebind(flow, manager, value):
+    metadata = flow.metadata
+    with manager:
+        f"{value!r:{(metadata := {})}}"
+        metadata = {}
+    return metadata["firewall_name"]
+
+
+def format_spec_rebind_precedes_formatting_failure(flow, manager, value):
+    metadata = flow.metadata
+    with manager:
+        f"{value:{(metadata := {})}}"
+        metadata = {}
+    return metadata["original_url"]
+
+
+def formatted_value_failure_before_return(flow, manager, value):
+    metadata = flow.metadata
+    with manager:
+        return f"{value}"
+    return metadata["network_log_target"]

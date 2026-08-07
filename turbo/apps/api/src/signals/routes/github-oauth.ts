@@ -29,7 +29,7 @@ import {
   type ResolvedConnectorActionMethod,
 } from "../services/connector-action-resolver.service";
 import {
-  buildGithubOauthState,
+  buildGithubAppInstallUrl,
   buildGithubUserConnectAuthorizationUrl,
   createOrActivateGithubInstallation,
   findGithubInstallationByInstallationId,
@@ -54,11 +54,10 @@ import type { RouteEntry } from "../route-entry";
 import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
-} from "./oauth-web-origin";
+} from "../../lib/oauth-origin";
 
 const REDIRECT_STATUS = 307;
-const GITHUB_CONNECTOR_TYPE = "github";
-const GITHUB_APP_SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
+const GITHUB_CONNECTOR_SLUG = "github";
 const L = logger("GithubOAuthRoute");
 
 function redirectResponse(url: string): Response {
@@ -86,10 +85,6 @@ function appUrl(path: string): string {
   return `${env("APP_URL").replace(/\/$/u, "")}${path}`;
 }
 
-function githubAppSetupCallbackRedirectUri(origin: string): string {
-  return `${origin}${GITHUB_APP_SETUP_CALLBACK_PATH}`;
-}
-
 function githubUserOauthClient(
   method: ResolvedConnectorActionMethod,
 ): StaticConfidentialConnectorAuthClient | undefined {
@@ -113,7 +108,7 @@ async function resolveGithubOauthMethod(
   resolver: ConnectorActionResolver,
 ): Promise<ResolvedConnectorActionMethod | null> {
   const resolved = await resolver.resolveMethod({
-    connectorRef: GITHUB_CONNECTOR_TYPE,
+    connectorSlug: GITHUB_CONNECTOR_SLUG,
     authMethodId: getGithubOAuthAuthMethod(),
     expectedGrantKind: "auth-code",
   });
@@ -124,7 +119,7 @@ async function resolveGithubOauthMethodForNewAction(
   resolver: ConnectorActionResolver,
 ): Promise<ResolvedConnectorActionMethod | null> {
   const resolved = await resolver.resolveNewActionMethod({
-    connectorRef: GITHUB_CONNECTOR_TYPE,
+    connectorSlug: GITHUB_CONNECTOR_SLUG,
     authMethodId: getGithubOAuthAuthMethod(),
     expectedGrantKind: "auth-code",
   });
@@ -608,26 +603,17 @@ const installGithubOauth$ = command(
       }
     }
 
-    const state = await buildGithubOauthState({
+    const installUrl = await buildGithubAppInstallUrl({
+      appSlug,
       vm0UserId: query.vm0UserId,
       orgId: query.orgId,
       composeId: query.composeId,
+      origin,
       secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
     });
     signal.throwIfAborted();
 
-    const installUrl = new URL(
-      `https://github.com/apps/${appSlug}/installations/new`,
-    );
-    if (state) {
-      installUrl.searchParams.set("state", state);
-    }
-    installUrl.searchParams.set(
-      "redirect_uri",
-      githubAppSetupCallbackRedirectUri(origin),
-    );
-
-    return noStoreRedirect(installUrl.toString());
+    return noStoreRedirect(installUrl);
   },
 );
 
@@ -802,7 +788,7 @@ const callbackGithubUserOauth$ = command(
     const origin = getOAuthWebOrigin(request);
     const redirectUri = githubUserConnectCallbackRedirectUri(origin);
     const token = await exchangeConnectorAuthCodeWithMethod({
-      connectorRef: resolvedMethod.connectorRef,
+      connectorSlug: resolvedMethod.connectorSlug,
       authMethodId: resolvedMethod.authMethodId,
       method: resolvedMethod.method,
       authClient,

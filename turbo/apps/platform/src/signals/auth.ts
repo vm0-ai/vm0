@@ -447,20 +447,15 @@ export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
   const unsubscribe = clerk.addListener(
     onDomEventFn(async () => {
       const newOrgId = clerk.organization?.id ?? undefined;
-      if (newOrgId === prevOrgId) {
+      // On mobile, Clerk can transiently clear clerk.organization to
+      // undefined during a background token refresh before restoring it on
+      // the next event. Keep the previous concrete org so that restoration
+      // is recognized as unchanged rather than as an org switch.
+      if (!newOrgId || newOrgId === prevOrgId) {
         return;
       }
       prevOrgId = newOrgId;
       persistOrgId(newOrgId);
-      // On mobile, Clerk can transiently clear clerk.organization to
-      // undefined during a background token refresh before restoring it on
-      // the next event. Guard against that by only reloading when the
-      // session is landing on a concrete org (org_A→org_B or
-      // undefined→org_A). An org disappearing to undefined is treated as a
-      // transient state; the listener will fire again with the real org_id.
-      if (!newOrgId) {
-        return;
-      }
 
       await bestEffort(
         (async () => {
@@ -534,7 +529,6 @@ export const currentOrgInfo$ = computed(async (get) => {
   return {
     id: org.id,
     name: org.name,
-    slug: org.slug,
     imageUrl: org.imageUrl,
     hasImage: org.hasImage,
   };

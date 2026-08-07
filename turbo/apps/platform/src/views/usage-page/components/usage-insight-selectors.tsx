@@ -11,8 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 export function UsageInsightSelectors() {
+  const { t } = useTranslation();
   const range = useGet(range$);
   const setRange = useSet(setRange$);
 
@@ -25,17 +27,39 @@ export function UsageInsightSelectors() {
         }}
       >
         <SelectTrigger
-          aria-label="Date range"
-          className="h-8 w-[120px] text-xs"
+          aria-label={t(($) => {
+            return $.usage.range.ariaLabel;
+          })}
+          className="h-8 w-[140px] text-xs"
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="today">Today</SelectItem>
-          <SelectItem value="yesterday">Yesterday</SelectItem>
-          <SelectItem value="7d">Last 7 days</SelectItem>
-          <SelectItem value="28d">Last 28 days</SelectItem>
-          <SelectItem value="30d">Last 30 days</SelectItem>
+          <SelectItem value="today">
+            {t(($) => {
+              return $.usage.range.today;
+            })}
+          </SelectItem>
+          <SelectItem value="yesterday">
+            {t(($) => {
+              return $.usage.range.yesterday;
+            })}
+          </SelectItem>
+          <SelectItem value="7d">
+            {t(($) => {
+              return $.usage.range.last7Days;
+            })}
+          </SelectItem>
+          <SelectItem value="28d">
+            {t(($) => {
+              return $.usage.range.last28Days;
+            })}
+          </SelectItem>
+          <SelectItem value="30d">
+            {t(($) => {
+              return $.usage.range.last30Days;
+            })}
+          </SelectItem>
         </SelectContent>
       </Select>
     </div>

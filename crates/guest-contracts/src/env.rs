@@ -37,9 +37,8 @@ pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 
 /// Wire value for the runner's sandbox-reuse decision.
 ///
-/// `reused` means an idle VM was unparked. Other values name the branch that
-/// caused the runner to create a fresh sandbox instead, such as `poolMiss` or
-/// `noSessionId`.
+/// `reused` means an idle VM was unparked. Other values describe why reuse did
+/// not happen, such as `poolMiss` or `noReuseKey`.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
@@ -69,6 +68,14 @@ pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
 ///
 /// The runner emits an empty string when the timestamp is unavailable.
 pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
+
+/// Maximum agent execution duration in seconds.
+///
+/// The runner owns this fixed lifecycle budget. Guest-agent uses it to stop
+/// the CLI before the later sandbox supervisor deadline, leaving time for
+/// recovery checkpointing and final telemetry. It is intentionally not a
+/// local user-tuning key.
+pub const AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "VM0_AGENT_EXECUTION_TIMEOUT_SECS";
 
 /// Logical run-payload field name for sensitive values used by the guest-agent
 /// masker.
@@ -148,6 +155,15 @@ pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 /// Logical run-payload field name for API-owned Codex runtime metadata.
 pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
+/// Logical run-payload field name for the immutable Pi system prompt.
+pub const PI_SYSTEM_PROMPT_ENV: &str = "VM0_PI_SYSTEM_PROMPT";
+
+/// Logical run-payload field name for non-secret Pi model metadata.
+pub const PI_MODEL_CONFIG_ENV: &str = "VM0_PI_MODEL_CONFIG";
+
+/// Logical run-payload field name for the exact-version Pi Skill snapshot.
+pub const RUN_SKILL_SNAPSHOT_ENV: &str = "VM0_RUN_SKILL_SNAPSHOT";
+
 /// Runner-owned variable-length run payload sent through
 /// [`RUN_PAYLOAD_FILE_ENV`].
 ///
@@ -181,6 +197,15 @@ pub struct RunPayload {
     /// JSON object describing API-owned Codex provider/runtime metadata.
     #[serde(default)]
     pub codex_runtime_config: String,
+    /// Complete Pi system prompt rendered once by the API.
+    #[serde(default)]
+    pub pi_system_prompt: String,
+    /// JSON object describing non-secret Pi model metadata.
+    #[serde(default)]
+    pub pi_model_config: String,
+    /// JSON object describing the exact-version Pi Skill resource view.
+    #[serde(default)]
+    pub run_skill_snapshot: String,
 }
 
 /// Borrowed logical string field from [`RunPayload`].
@@ -194,7 +219,7 @@ pub struct RunPayloadField<'a> {
 
 impl RunPayload {
     /// Return all logical string fields carried by this run payload.
-    pub fn fields(&self) -> [RunPayloadField<'_>; 9] {
+    pub fn fields(&self) -> [RunPayloadField<'_>; 12] {
         let Self {
             prompt,
             append_system_prompt,
@@ -205,6 +230,9 @@ impl RunPayload {
             artifacts,
             feature_flags,
             codex_runtime_config,
+            pi_system_prompt,
+            pi_model_config,
+            run_skill_snapshot,
         } = self;
 
         [
@@ -243,6 +271,18 @@ impl RunPayload {
             RunPayloadField {
                 name: CODEX_RUNTIME_CONFIG_ENV,
                 value: codex_runtime_config,
+            },
+            RunPayloadField {
+                name: PI_SYSTEM_PROMPT_ENV,
+                value: pi_system_prompt,
+            },
+            RunPayloadField {
+                name: PI_MODEL_CONFIG_ENV,
+                value: pi_model_config,
+            },
+            RunPayloadField {
+                name: RUN_SKILL_SNAPSHOT_ENV,
+                value: run_skill_snapshot,
             },
         ]
     }
@@ -302,13 +342,6 @@ pub const USE_MOCK_CLAUDE_ENV: &str = "USE_MOCK_CLAUDE";
 /// prefix because the mock launcher contract uses this exact name. The
 /// guest-agent treats `true` or `1` as enabled.
 pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
-
-/// Experimental bootstrap switch for the Codex app-server backend.
-///
-/// The runner sets this only for local Codex active-input runs. Product/API
-/// provider paths do not set it; user-provided env cannot override it because
-/// the `VM0_` namespace is runner-owned.
-pub const CODEX_APP_SERVER_BACKEND_ENV: &str = "VM0_CODEX_APP_SERVER_BACKEND";
 
 /// Optional test/debug override for the mock Claude binary path.
 ///
@@ -410,6 +443,10 @@ mod tests {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "VM0_RUN_ID");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
+        assert_eq!(
+            AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            "VM0_AGENT_EXECUTION_TIMEOUT_SECS"
+        );
         assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
         assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
         assert_eq!(USER_ENV_FILENAME, "env.json");
@@ -429,7 +466,10 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
+            pi_system_prompt: "fixed Pi prompt".to_string(),
+            pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
+            run_skill_snapshot: r#"{"digest":"sha256:test"}"#.to_string(),
         };
 
         let json = serde_json::to_value(&payload).unwrap();
@@ -439,7 +479,10 @@ mod tests {
         assert_eq!(json["secretValues"], "secret");
         assert_eq!(json["disallowedTools"], "WebFetch");
         assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
-        assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"minimax"}"#);
+        assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"deepseek"}"#);
+        assert_eq!(json["piSystemPrompt"], "fixed Pi prompt");
+        assert_eq!(json["piModelConfig"], r#"{"provider":"deepseek"}"#);
+        assert_eq!(json["runSkillSnapshot"], r#"{"digest":"sha256:test"}"#);
     }
 
     #[test]
@@ -453,7 +496,10 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
+            pi_system_prompt: "fixed Pi prompt".to_string(),
+            pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
+            run_skill_snapshot: r#"{"digest":"sha256:test"}"#.to_string(),
         };
 
         let fields = payload.fields();
@@ -495,7 +541,19 @@ mod tests {
                 },
                 RunPayloadField {
                     name: CODEX_RUNTIME_CONFIG_ENV,
-                    value: r#"{"providerId":"minimax"}"#
+                    value: r#"{"providerId":"deepseek"}"#
+                },
+                RunPayloadField {
+                    name: PI_SYSTEM_PROMPT_ENV,
+                    value: "fixed Pi prompt"
+                },
+                RunPayloadField {
+                    name: PI_MODEL_CONFIG_ENV,
+                    value: r#"{"provider":"deepseek"}"#
+                },
+                RunPayloadField {
+                    name: RUN_SKILL_SNAPSHOT_ENV,
+                    value: r#"{"digest":"sha256:test"}"#
                 },
             ]
         );
@@ -522,7 +580,8 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
+            ..RunPayload::default()
         };
 
         assert_eq!(payload.first_nul_field(), None);

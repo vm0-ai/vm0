@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   chatThreadByIdContract,
@@ -15,6 +15,10 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
 import {
+  createMockWorkflowAutomation,
+  setMockWorkflowAutomations,
+} from "../../../mocks/handlers/workflow-automations-store.ts";
+import {
   click,
   detachedSetupPage,
   fill,
@@ -27,8 +31,27 @@ import {
   getChatThreadVirtualListScrollMargin,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { i18n } from "../../../i18n/index.ts";
+
+// The composer editor is mounted on first paint and mounted again once page
+// bootstrap settles, so an element captured too early is detached before a test
+// can drive it. Keyboard events on a detached editor are silently dropped.
+function mountedComposer(): HTMLElement {
+  const composer = document.querySelector(
+    '.zero-composer [contenteditable="true"]',
+  );
+  if (!(composer instanceof HTMLElement)) {
+    throw new Error("Composer editor is not mounted");
+  }
+  return composer;
+}
 
 const context = testContext();
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const RESEARCH_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
@@ -320,6 +343,7 @@ function mockSidebarThreadStory(
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
@@ -383,11 +407,13 @@ describe("zero sidebar", () => {
         id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
       });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
 
@@ -548,11 +574,13 @@ describe("zero sidebar", () => {
         id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-12T12:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
       });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
 
@@ -617,6 +645,7 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -682,6 +711,7 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -719,12 +749,7 @@ describe("zero sidebar", () => {
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (
-          query.sinceSeqId ||
-          query.beforeSeqId ||
-          query.sinceId ||
-          query.beforeId
-        ) {
+        if (query.sinceSeqId || query.beforeSeqId) {
           return respond(200, { events: [] });
         }
         return respond(200, {
@@ -743,7 +768,6 @@ describe("zero sidebar", () => {
                   },
                 ]
               : [],
-          hasHistoryBefore: false,
         });
       },
     );
@@ -1416,14 +1440,11 @@ describe("zero sidebar", () => {
         id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
       });
     });
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadUnifiedSearch]: false },
-    });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const sidebar = await waitFor(() => {
       return screen.getByRole("navigation", { name: "Sidebar" });
@@ -1435,7 +1456,7 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
 
     await fill(
-      within(dialog).getByPlaceholderText("Search agents..."),
+      within(dialog).getByPlaceholderText("Search agents and chats..."),
       "support",
     );
 
@@ -1446,10 +1467,13 @@ describe("zero sidebar", () => {
       expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
     });
 
-    await fill(within(dialog).getByPlaceholderText("Search agents..."), "ops");
+    await fill(
+      within(dialog).getByPlaceholderText("Search agents and chats..."),
+      "ops",
+    );
 
     await waitFor(() => {
-      expect(within(dialog).getByText("No agents found")).toBeInTheDocument();
+      expect(within(dialog).getByText("No results found")).toBeInTheDocument();
       expect(
         within(dialog).queryByText("Support Agent"),
       ).not.toBeInTheDocument();
@@ -1602,7 +1626,7 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
 
-  it("shows chat thread title results in the picker behind the unified search switch", async () => {
+  it("shows chat thread title results in the conversation picker", async () => {
     prepareAgentTeam();
     const defaultThread = createThread(EXISTING_THREAD_ID, "Incident notes");
     const researchThread = createThread(
@@ -1635,13 +1659,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
-      },
-    });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -1703,17 +1721,24 @@ describe("zero sidebar", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
-    composer.focus();
-    fireEvent.keyDown(composer, {
-      key: "A",
-      code: "KeyA",
-      keyCode: 65,
-      ctrlKey: true,
-      shiftKey: true,
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    await waitFor(() => {
+      if (screen.queryByRole("dialog", { name: "Talk to" })) {
+        return;
+      }
+      const composer = mountedComposer();
+      composer.focus();
+      fireEvent.keyDown(composer, {
+        key: "A",
+        code: "KeyA",
+        keyCode: 65,
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      throw new Error("Agent picker has not opened yet");
     });
 
-    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    const dialog = screen.getByRole("dialog", { name: "Talk to" });
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
@@ -1729,17 +1754,21 @@ describe("zero sidebar", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
-    composer.focus();
-    fireEvent.keyDown(composer, {
-      key: "}",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
+    await screen.findByPlaceholderText(PLACEHOLDER);
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
+      if (pathname() === `/agents/${RESEARCH_AGENT_ID}/chat`) {
+        return;
+      }
+      const composer = mountedComposer();
+      composer.focus();
+      fireEvent.keyDown(composer, {
+        key: "}",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      throw new Error("Pinned agent navigation has not happened yet");
     });
+    expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
   });
 
   it("moves to an unread unpinned agent shown in the sidebar", async () => {
@@ -1972,11 +2001,7 @@ describe("zero sidebar", () => {
   it("selects an agent from the picker with arrow keys and enter", async () => {
     prepareAgentTeam();
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadUnifiedSearch]: false },
-    });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -1989,7 +2014,9 @@ describe("zero sidebar", () => {
     });
 
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
-    const search = within(dialog).getByPlaceholderText("Search agents...");
+    const search = within(dialog).getByPlaceholderText(
+      "Search agents and chats...",
+    );
 
     await fill(search, "support");
 
@@ -2257,6 +2284,50 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("localizes agent navigation and the conversation dialog in Brazilian Portuguese", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Barra lateral",
+    });
+    expect(within(nav).getByText("Agentes")).toBeInTheDocument();
+
+    click(within(nav).getByLabelText("Abrir uma conversa"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Conversar com",
+    });
+    expect(within(dialog).getByLabelText("Fechar")).toBeInTheDocument();
+  });
+
+  it("localizes agent navigation in the three-column rail", async () => {
+    prepareDefaultAgent();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    expect(within(rail).getByText("Agentes")).toBeInTheDocument();
+  });
+
   it("uses CSS hover for the scrollbar and toggles the manage section", async () => {
     prepareDefaultAgent();
 
@@ -2339,7 +2410,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.Artifacts]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2404,5 +2474,219 @@ describe("zero sidebar", () => {
 
     expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
     expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+  });
+
+  it("localizes desktop and mobile shell navigation and shortcut help", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Localized conversation"),
+    ]);
+    setMockWorkflowAutomations([
+      createMockWorkflowAutomation({
+        chatThreadId: EXISTING_THREAD_ID,
+      }),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    expect(
+      within(rail).getByRole("navigation", { name: "Barra lateral" }),
+    ).toBeInTheDocument();
+    expect(within(rail).getByText("Agentes")).toBeInTheDocument();
+    expect(within(rail).getByText("Fluxos de trabalho")).toBeInTheDocument();
+    expect(within(rail).getByText("Conectores")).toBeInTheDocument();
+    expect(within(rail).getByText("Artefatos")).toBeInTheDocument();
+    expect(within(rail).getByText("Atividade")).toBeInTheDocument();
+    expect(
+      within(rail).getByLabelText("Onde Zero trabalha"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Abrir menu")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Abrir artefatos no celular"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Abrir automações no celular"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Recolher barra lateral")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Atalhos de teclado",
+    });
+    expect(
+      within(dialog).getByText("Atalhos disponíveis nesta página"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("Mostrar atalhos")).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("Fechar atalhos de teclado"),
+    ).toBeInTheDocument();
+  });
+
+  it("localizes desktop and mobile shell navigation in Japanese", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Localized conversation"),
+    ]);
+    setMockWorkflowAutomations([
+      createMockWorkflowAutomation({
+        chatThreadId: EXISTING_THREAD_ID,
+      }),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "ja-JP",
+      supportedLocales: ["en-US", "ja-JP"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    expect(
+      within(rail).getByRole("navigation", { name: "サイドバー" }),
+    ).toBeInTheDocument();
+    expect(within(rail).getByText("エージェント")).toBeInTheDocument();
+    expect(within(rail).getByText("ワークフロー")).toBeInTheDocument();
+    expect(within(rail).getByText("コネクター")).toBeInTheDocument();
+    expect(within(rail).getByText("アーティファクト")).toBeInTheDocument();
+    expect(within(rail).getByText("アクティビティ")).toBeInTheDocument();
+    expect(within(rail).getByLabelText("Zeroの連携先")).toBeInTheDocument();
+    expect(screen.getByLabelText("メニューを開く")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("モバイルでアーティファクトを開く"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("モバイルでオートメーションを開く"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("サイドバーを折りたたむ")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "キーボードショートカット",
+    });
+    expect(
+      within(dialog).getByText("このページで利用可能なショートカット"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("ショートカットを表示する"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("キーボードショートカットを閉じる"),
+    ).toBeInTheDocument();
+  });
+
+  it("localizes desktop and mobile shell navigation in Spanish", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Localized conversation"),
+    ]);
+    setMockWorkflowAutomations([
+      createMockWorkflowAutomation({
+        chatThreadId: EXISTING_THREAD_ID,
+      }),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "es-ES",
+      supportedLocales: ["en-US", "es-ES"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    expect(
+      within(rail).getByRole("navigation", { name: "Barra lateral" }),
+    ).toBeInTheDocument();
+    expect(within(rail).getByText("Agentes")).toBeInTheDocument();
+    expect(within(rail).getByText("Flujos de trabajo")).toBeInTheDocument();
+    expect(within(rail).getByText("Conectores")).toBeInTheDocument();
+    expect(within(rail).getByText("Artefactos")).toBeInTheDocument();
+    expect(within(rail).getByText("Actividad")).toBeInTheDocument();
+    expect(
+      within(rail).getByLabelText("Dónde trabaja Zero"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Abrir menú")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Abrir artefactos en móvil"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Abrir automatizaciones en móvil"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Contraer barra lateral")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Atajos de teclado",
+    });
+    expect(
+      within(dialog).getByText("Atajos disponibles en esta página"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Mostrar atajos de teclado"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("Cerrar atajos de teclado"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps localized navigation accessible while collapsing and expanding", async () => {
+    prepareDefaultAgent();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    });
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Barra lateral",
+    });
+    expect(within(nav).getByText("Gerenciar")).toBeInTheDocument();
+    expect(within(nav).getByText("Fluxos de trabalho")).toBeInTheDocument();
+    expect(within(nav).getByText("Logs de atividade")).toBeInTheDocument();
+
+    click(screen.getByLabelText("Recolher barra lateral"));
+
+    const expandButton = await screen.findByLabelText("Expandir barra lateral");
+    expect(
+      screen.getAllByRole("navigation", { name: "Barra lateral" }).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Agentes")).toBeInTheDocument();
+    expect(screen.getByLabelText("Logs de atividade")).toBeInTheDocument();
+
+    click(expandButton);
+    await screen.findByLabelText("Recolher barra lateral");
   });
 });

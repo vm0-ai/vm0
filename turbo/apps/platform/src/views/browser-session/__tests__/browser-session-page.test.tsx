@@ -1,35 +1,40 @@
 import { screen, waitFor } from "@testing-library/react";
+import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroBrowserContract,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
 
-const browserId = "c0000000-0000-4000-a000-000000000091";
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
+
+const threadId = "c0000000-0000-4000-a000-000000000091";
 const liveUrl = "https://live.browser-use.com/?wss=test-browser-page-token";
 
 function browserSession(
   overrides: Partial<ZeroBrowserSession> = {},
 ): ZeroBrowserSession {
   return {
-    id: browserId,
+    threadId,
     name: "booking",
     status: "active",
-    viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
+    viewerUrl: `https://app.vm0.ai/browsers/${threadId}`,
     liveUrl,
+    screenshotUrl: null,
     proxyCountryCode: null,
     timeoutMinutes: 240,
-    maxCredits: 500,
-    grossCredits: 0,
-    creditsCharged: 0,
     idleExpiresAt: "2026-07-24T10:10:00.000Z",
     suspendedAt: null,
     suspensionReason: null,
@@ -40,33 +45,147 @@ function browserSession(
 }
 
 describe("browser session page", () => {
-  it("loads the authenticated live viewer and keeps the browser leased while it is open", async () => {
-    let leaseRequests = 0;
-    context.mocks.api(zeroBrowserContract.get, ({ params, query, respond }) => {
-      expect(params.browserId).toBe(browserId);
-      expect(query.chatThreadId).toBeUndefined();
-      return respond(200, { browser: browserSession() });
+  it.each([
+    {
+      locale: "en-US",
+      title: "Browser not live",
+      start: "Start browser",
+    },
+    {
+      locale: "pt-BR",
+      title: "Navegador não está ao vivo",
+      start: "Iniciar navegador",
+    },
+  ] as const)(
+    "localizes a suspended browser in $locale",
+    async ({ locale, title, start }) => {
+      context.mocks.data.userPreferences({ locale });
+      context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+        return respond(200, {
+          browser: browserSession({
+            status: "suspended",
+            liveUrl: null,
+            suspendedAt: "2026-07-24T10:12:00.000Z",
+            suspensionReason: "idle",
+            idleExpiresAt: null,
+          }),
+        });
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/browsers/${threadId}`,
+      });
+
+      await expect(screen.findByText(title)).resolves.toBeInTheDocument();
+      const startButton = queryAllByRoleFast("button").find((candidate) => {
+        return candidate.textContent === start;
+      });
+      expect(startButton).toBeDefined();
+    },
+  );
+
+  it("shows browser not found for an invalid thread ID", async () => {
+    detachedSetupPage({
+      context,
+      path: "/browsers/not-a-thread-id",
     });
-    context.mocks.api(zeroBrowserContract.leaseById, ({ params, respond }) => {
-      expect(params.browserId).toBe(browserId);
-      leaseRequests += 1;
-      return respond(200, { browser: browserSession() });
+
+    await expect(
+      screen.findByText("Browser not found"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Browser not live")).not.toBeInTheDocument();
+  });
+
+  it("shows browser not found for a missing or inaccessible thread", async () => {
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "BROWSER_NOT_FOUND",
+          message: "Managed browser not found",
+        },
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      expect(params.id).toBe(threadId);
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Chat thread not found" },
+      });
     });
 
     detachedSetupPage({
       context,
-      path: `/browsers/${browserId}`,
+      path: `/browsers/${threadId}`,
+    });
+
+    await expect(
+      screen.findByText("Browser not found"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Browser not live")).not.toBeInTheDocument();
+  });
+
+  it("shows the stopped state when an accessible thread has no browser", async () => {
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "BROWSER_NOT_FOUND",
+          message: "Managed browser not found",
+        },
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      expect(params.id).toBe(threadId);
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending: false,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/browsers/${threadId}`,
+    });
+
+    await expect(
+      screen.findByText("Browser not live"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      document.querySelector("[data-browser-session-start]"),
+    ).not.toBeNull();
+    expect(screen.queryByText("Browser not found")).not.toBeInTheDocument();
+  });
+
+  it("loads the authenticated live viewer and keeps the browser leased while it is open", async () => {
+    let leaseRequests = 0;
+    context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
+      expect(params.threadId).toBe(threadId);
+      return respond(200, { browser: browserSession() });
+    });
+    context.mocks.api(
+      zeroBrowserContract.leaseByThread,
+      ({ params, respond }) => {
+        expect(params.threadId).toBe(threadId);
+        leaseRequests += 1;
+        return respond(200, { browser: browserSession() });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/browsers/${threadId}`,
     });
 
     const frame = await screen.findByTitle("Live browser: booking");
     expect(frame).toHaveAttribute("src", liveUrl);
     expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+    const panel = frame.closest("[data-browser-session-panel]");
+    expect(panel?.parentElement).toBe(document.querySelector("main"));
     await waitFor(() => {
       expect(leaseRequests).toBeGreaterThan(0);
     });
   });
 
-  it("offers a resume that restarts a reclaimed browser", async () => {
+  it("offers a start action that restarts a reclaimed browser", async () => {
     let getRequests = 0;
     context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
       getRequests += 1;
@@ -77,38 +196,40 @@ describe("browser session page", () => {
           suspendedAt: "2026-07-24T10:12:00.000Z",
           suspensionReason: "idle",
           idleExpiresAt: null,
-          grossCredits: 12,
-          creditsCharged: 12,
         }),
       });
     });
-    let resumeRequests = 0;
-    context.mocks.api(zeroBrowserContract.resumeById, ({ params, respond }) => {
-      expect(params.browserId).toBe(browserId);
-      resumeRequests += 1;
-      return respond(200, { browser: browserSession() });
+    let startRequests = 0;
+    context.mocks.api(zeroBrowserContract.open, ({ body, params, respond }) => {
+      expect(params.threadId).toBe(threadId);
+      expect(body.eventId).toBeTypeOf("string");
+      startRequests += 1;
+      return respond(200, {
+        browser: browserSession(),
+        lifecycleEventId: body.eventId,
+      });
     });
-    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: browserSession() });
     });
 
     detachedSetupPage({
       context,
-      path: `/browsers/${browserId}`,
+      path: `/browsers/${threadId}`,
     });
 
-    const resume = await waitFor(() => {
+    const start = await waitFor(() => {
       const button = queryAllByRoleFast("button").find((candidate) => {
-        return candidate.textContent === "Resume browser";
+        return candidate.textContent === "Start browser";
       });
       expect(button).toBeDefined();
       return button;
     });
     expect(getRequests).toBeGreaterThan(0);
-    resume?.click();
+    start?.click();
 
     const frame = await screen.findByTitle("Live browser: booking");
     expect(frame).toHaveAttribute("src", liveUrl);
-    expect(resumeRequests).toBe(1);
+    expect(startRequests).toBe(1);
   });
 });

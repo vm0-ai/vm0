@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
-import { connectorRefSchema } from "./connector-identity";
+import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -13,7 +13,7 @@ const connectorCheckUrlRequestSchema = z
     mode: z.literal("url"),
     method: z.string().min(1).max(16),
     url: z.string().min(1).max(8192),
-    connectorRef: connectorRefSchema.optional(),
+    connectorSlug: connectorSlugSchema.optional(),
     environmentName: boundedNameSchema.optional(),
   })
   .strict();
@@ -33,21 +33,17 @@ export const connectorCheckRequestSchema = z.discriminatedUnion("mode", [
 
 export type ConnectorCheckRequest = z.infer<typeof connectorCheckRequestSchema>;
 
-const connectorCheckIdentitySchema = z
-  .object({
-    connectorRef: connectorRefSchema,
-    label: z.string().min(1),
-    visibility: z.enum(["available", "unavailable"]),
-    credentialResolution: z.enum(["network-boundary", "none"]),
-  })
-  .strict();
+const connectorCheckIdentitySchema = z.object({
+  connectorSlug: connectorSlugSchema,
+  label: z.string().min(1),
+  visibility: z.enum(["available", "unavailable"]),
+  credentialResolution: z.enum(["network-boundary", "none"]),
+});
 
-const connectorCheckCandidateSchema = z
-  .object({
-    connectorRef: connectorRefSchema,
-    label: z.string().min(1),
-  })
-  .strict();
+const connectorCheckCandidateSchema = z.object({
+  connectorSlug: connectorSlugSchema,
+  label: z.string().min(1),
+});
 
 const connectorCheckNotScopedRunSchema = z
   .object({ status: z.literal("not-scoped") })

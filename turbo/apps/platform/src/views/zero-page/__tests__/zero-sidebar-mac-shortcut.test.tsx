@@ -126,6 +126,7 @@ function mockSidebarThreadStory(threads: readonly SidebarThread[]): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
 }

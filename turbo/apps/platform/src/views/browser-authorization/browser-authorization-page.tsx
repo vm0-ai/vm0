@@ -1,6 +1,7 @@
 import { IconCheck, IconLoader2, IconWorld } from "@tabler/icons-react";
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { Button } from "@vm0/ui/components/ui/button";
 
 import {
@@ -9,27 +10,32 @@ import {
 } from "../../signals/browser-authorization/browser-authorization.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { locale$ } from "../../signals/locale.ts";
 import { Vm0LogoLink } from "../zero-page/zero-directed-shared.tsx";
 
-function formatTime(value: string): string {
-  return new Date(value).toLocaleString(undefined, {
+function formatTime(value: string, locale: string): string {
+  return new Date(value).toLocaleString(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   });
 }
 
 function ErrorState() {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center px-4">
       <div className="flex w-[430px] max-w-full flex-col items-center gap-6 rounded-xl border border-border bg-background px-6 py-10 text-center">
         <Vm0LogoLink />
         <div className="flex flex-col gap-2">
           <h1 className="text-lg font-medium text-foreground">
-            Authorization link unavailable
+            {t(($) => {
+              return $.authorization.browser.unavailableTitle;
+            })}
           </h1>
           <p className="text-sm leading-5 text-muted-foreground">
-            This cloud browser authorization link is invalid, expired, or not
-            available for this workspace.
+            {t(($) => {
+              return $.authorization.browser.unavailableDescription;
+            })}
           </p>
         </div>
       </div>
@@ -38,6 +44,8 @@ function ErrorState() {
 }
 
 export function BrowserAuthorizationPage() {
+  const { t } = useTranslation();
+  const locale = useGet(locale$);
   const pageSignal = useGet(pageSignal$);
   const requestLoadable = useLoadable(browserAuthorizationRequest$);
   const [applyLoadable, applyAuthorization] = useLoadableSet(
@@ -73,11 +81,14 @@ export function BrowserAuthorizationPage() {
           </div>
           <div className="flex flex-col gap-2">
             <h1 className="text-lg font-medium text-foreground">
-              Enable cloud browser
+              {t(($) => {
+                return $.authorization.browser.title;
+              })}
             </h1>
             <p className="mx-auto max-w-md text-sm leading-5 text-muted-foreground">
-              Zero will use an isolated cloud browser profile for this chat
-              thread. Enabling it disconnects Computer Use for the thread.
+              {t(($) => {
+                return $.authorization.browser.description;
+              })}
             </p>
           </div>
         </div>
@@ -97,11 +108,22 @@ export function BrowserAuthorizationPage() {
           ) : (
             <IconWorld size={16} />
           )}
-          {enabled ? "Cloud browser enabled" : "Enable for this thread"}
+          {enabled
+            ? t(($) => {
+                return $.authorization.browser.enabled;
+              })
+            : t(($) => {
+                return $.authorization.browser.enable;
+              })}
         </Button>
 
         <div className="border-t border-border pt-5 text-xs text-muted-foreground">
-          Link expires {formatTime(request.expiresAt)}.
+          {t(
+            ($) => {
+              return $.authorization.browser.linkExpires;
+            },
+            { date: formatTime(request.expiresAt, locale) },
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 use super::{
     BinaryLoggingFixture, assert_default_zero_task_attribution,
-    assert_single_download_total_success,
+    assert_single_download_total_success, process,
 };
 use crate::support::{manifest_json, write_manifest};
 
@@ -28,16 +28,11 @@ fn binary_reads_manifest_from_stdin() {
 }
 
 #[test]
-fn binary_path_mode_ignores_extra_args_for_compatibility() {
-    let fixture = BinaryLoggingFixture::new("path-extra-arg").unwrap();
+fn binary_reads_manifest_from_path() {
+    let fixture = BinaryLoggingFixture::new("path-success").unwrap();
     let manifest_path = write_manifest(&fixture.dir, &[], None).unwrap();
 
-    let output = fixture
-        .command()
-        .arg(&manifest_path)
-        .arg("--ignored")
-        .output()
-        .unwrap();
+    let output = fixture.run_manifest_path(&manifest_path).unwrap();
 
     assert!(
         output.status.success(),
@@ -49,18 +44,33 @@ fn binary_path_mode_ignores_extra_args_for_compatibility() {
         content.contains("[INFO] [sandbox:download] Download completed"),
         "unexpected system log: {content:?}"
     );
+    let actions = fixture.action_types().unwrap();
+    assert_default_zero_task_attribution(&actions);
+    let ops = fixture.ops_entries().unwrap();
+    assert_single_download_total_success(&ops, true);
+}
+
+#[test]
+fn binary_path_mode_rejects_extra_args_before_telemetry() {
+    let fixture = BinaryLoggingFixture::new("path-extra-arg").unwrap();
+    let manifest_path = write_manifest(&fixture.dir, &[], None).unwrap();
+
+    let output = process::run(fixture.command().arg(&manifest_path).arg("--ignored")).unwrap();
+
+    assert!(!output.status.success());
+    let content = fixture.read_system_log().unwrap();
+    assert!(
+        content.contains("[ERROR] [sandbox:download] Usage: guest-download"),
+        "unexpected system log: {content:?}"
+    );
+    assert!(!fixture.logs.ops_log.exists());
 }
 
 #[test]
 fn binary_manifest_stdin_rejects_extra_args_before_telemetry() {
     let fixture = BinaryLoggingFixture::new("stdin-extra-arg").unwrap();
 
-    let output = fixture
-        .command()
-        .arg("--manifest-stdin")
-        .arg("--ignored")
-        .output()
-        .unwrap();
+    let output = process::run(fixture.command().arg("--manifest-stdin").arg("--ignored")).unwrap();
 
     assert!(!output.status.success());
     let content = fixture.read_system_log().unwrap();
@@ -118,7 +128,7 @@ fn binary_writes_system_log_on_manifest_read_failure() {
 fn binary_without_manifest_path_logs_usage() {
     let fixture = BinaryLoggingFixture::new("missing-arg").unwrap();
 
-    let output = fixture.command().output().unwrap();
+    let output = process::run(&mut fixture.command()).unwrap();
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);

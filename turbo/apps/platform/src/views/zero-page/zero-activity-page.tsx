@@ -14,8 +14,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
-import { TRIGGER_SOURCE_LABELS } from "../../signals/zero-page/log-types.ts";
-import { LogTable, STATUS_LABELS } from "./components/log-views/log-table.tsx";
+import { useTranslation } from "react-i18next";
+import { getTriggerSourceLabel } from "../../signals/zero-page/log-types.ts";
+import { LogTable } from "./components/log-views/log-table.tsx";
+import { getStatusFilterLabel } from "./components/log-views/status-badge.tsx";
 import { Pagination } from "../components/pagination.tsx";
 import {
   zeroActivityAgentFilter$,
@@ -38,6 +40,7 @@ import {
 import { Reason, detach } from "../../signals/utils.ts";
 
 export function ZeroActivityPage() {
+  const { t } = useTranslation();
   const dataLoadable = useLoadable(zeroActivityData$);
   const hasPrev = useGet(zeroActivityHasPrev$);
   const currentPage = useGet(zeroActivityCurrentPage$);
@@ -69,7 +72,12 @@ export function ZeroActivityPage() {
 
   // Agent filter options: only agents with activity records
   const agentOptions = [
-    { value: "all", label: "All agents" },
+    {
+      value: "all",
+      label: t(($) => {
+        return $.activity.list.filters.allAgents;
+      }),
+    },
     ...(availableAgentsLoadable.state === "hasData"
       ? availableAgentsLoadable.data.map((a) => {
           return {
@@ -81,24 +89,34 @@ export function ZeroActivityPage() {
   ];
 
   const statusOptions = [
-    { value: "all", label: "All status" },
+    {
+      value: "all",
+      label: t(($) => {
+        return $.activity.list.filters.allStatuses;
+      }),
+    },
     ...(availableStatusesLoadable.state === "hasData"
       ? availableStatusesLoadable.data.map((s) => {
           return {
             value: s,
-            label: STATUS_LABELS[s],
+            label: getStatusFilterLabel(s),
           };
         })
       : []),
   ];
 
   const sourceOptions = [
-    { value: "all", label: "All sources" },
+    {
+      value: "all",
+      label: t(($) => {
+        return $.activity.list.filters.allSources;
+      }),
+    },
     ...(availableSourcesLoadable.state === "hasData"
       ? availableSourcesLoadable.data.map((s) => {
           return {
             value: s,
-            label: TRIGGER_SOURCE_LABELS[s],
+            label: getTriggerSourceLabel(s),
           };
         })
       : []),
@@ -112,10 +130,14 @@ export function ZeroActivityPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <div className="hidden md:block">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
-                Activity
+                {t(($) => {
+                  return $.activity.list.title;
+                })}
               </h1>
               <p className="text-sm text-muted-foreground">
-                Logs and runs from your agents.
+                {t(($) => {
+                  return $.activity.list.description;
+                })}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -126,7 +148,9 @@ export function ZeroActivityPage() {
                 }}
               >
                 <SelectTrigger
-                  aria-label="Agent filter"
+                  aria-label={t(($) => {
+                    return $.activity.list.filters.agent;
+                  })}
                   className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
                 >
                   <IconUsers size={14} stroke={1.5} className="shrink-0" />
@@ -149,7 +173,9 @@ export function ZeroActivityPage() {
                 }}
               >
                 <SelectTrigger
-                  aria-label="Status filter"
+                  aria-label={t(($) => {
+                    return $.activity.list.filters.status;
+                  })}
                   className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
                 >
                   <IconCircleDot size={14} stroke={1.5} className="shrink-0" />
@@ -172,7 +198,9 @@ export function ZeroActivityPage() {
                 }}
               >
                 <SelectTrigger
-                  aria-label="Source filter"
+                  aria-label={t(($) => {
+                    return $.activity.list.filters.source;
+                  })}
                   className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
                 >
                   <IconPlugConnected
@@ -206,10 +234,14 @@ export function ZeroActivityPage() {
               className="zero-card flex flex-col items-center justify-center gap-2 py-16 text-center"
             >
               <p className="text-sm font-medium text-destructive">
-                Failed to load activity data
+                {t(($) => {
+                  return $.activity.list.errors.title;
+                })}
               </p>
               <p className="text-sm text-muted-foreground">
-                Something went wrong. Please try again later.
+                {t(($) => {
+                  return $.activity.list.errors.description;
+                })}
               </p>
             </div>
           ) : (

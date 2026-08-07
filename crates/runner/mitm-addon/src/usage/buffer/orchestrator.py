@@ -294,9 +294,15 @@ class UsageEventBuffer:
             if pending_flush is None:
                 return flushed_batch_count
 
+            started_at = time.monotonic()
             try:
-                admission_result = self._enqueue_pending_flush(pending_flush, trigger)
+                admission_result = self._enqueue_pending_flush(
+                    pending_flush,
+                    trigger,
+                    started_at=started_at,
+                )
             except _BatchEnqueueError as exc:
+                duration_ms = _elapsed_ms(started_at)
                 with self._lock:
                     retain_result = self._state.complete_admission(
                         pending_flush, exc.admission_result
@@ -309,10 +315,13 @@ class UsageEventBuffer:
                     trigger,
                     pending_flush,
                     retain_result,
+                    duration_ms,
+                    exc.original,
                     timer_to_start,
                 )
                 raise exc.original from exc
-            except Exception:
+            except Exception as exc:
+                duration_ms = _elapsed_ms(started_at)
                 with self._lock:
                     retain_result = self._state.fail_enqueue(pending_flush, flush_generation)
                     timer_to_start = self._prepare_failed_flush_retention_locked(
@@ -323,6 +332,8 @@ class UsageEventBuffer:
                     trigger,
                     pending_flush,
                     retain_result,
+                    duration_ms,
+                    exc,
                     timer_to_start,
                 )
                 raise
@@ -362,8 +373,22 @@ class UsageEventBuffer:
         trigger: UsageFlushTrigger,
         pending_flush: _PendingFlush,
         retain_result: _RetainBatchesResult,
+        duration_ms: int,
+        error: Exception,
         timer_to_start: _TimerHandle | None,
     ) -> None:
+        _apply_retained_batch_counts(
+            pending_flush.summaries,
+            retain_result.retained_batches,
+        )
+        _log_flush_summaries(
+            "failed",
+            trigger,
+            pending_flush.flush_sequence,
+            pending_flush.summaries,
+            duration_ms=duration_ms,
+            error_type=type(error).__name__,
+        )
         if retain_result.dropped_batches:
             _log_dropped_batches(
                 trigger,
@@ -382,47 +407,32 @@ class UsageEventBuffer:
         self,
         pending_flush: _PendingFlush,
         trigger: UsageFlushTrigger,
+        *,
+        started_at: float,
     ) -> _BatchAdmissionResult:
-        started_at = time.monotonic()
-        try:
-            _log_flush_summaries(
-                "started", trigger, pending_flush.flush_sequence, pending_flush.summaries
-            )
-            admission_result = _enqueue_batches(
-                pending_flush.batches,
-                (
-                    self._enqueue_webhook
-                    if self._enqueue_webhook is not None
-                    else enqueue_webhook_delivery
-                ),
-                lambda pending_batch: self._make_delivery_outcome_callback(
-                    pending_flush, pending_batch
-                ),
-            )
-            _apply_retained_batch_counts(pending_flush.summaries, admission_result.retained_batches)
-            _log_flush_summaries(
-                "enqueued",
-                trigger,
-                pending_flush.flush_sequence,
-                pending_flush.summaries,
-                duration_ms=_elapsed_ms(started_at),
-            )
-            return admission_result
-        except Exception as exc:
-            error_type = (
-                type(exc.original).__name__
-                if isinstance(exc, _BatchEnqueueError)
-                else type(exc).__name__
-            )
-            _log_flush_summaries(
-                "failed",
-                trigger,
-                pending_flush.flush_sequence,
-                pending_flush.summaries,
-                duration_ms=_elapsed_ms(started_at),
-                error_type=error_type,
-            )
-            raise
+        _log_flush_summaries(
+            "started", trigger, pending_flush.flush_sequence, pending_flush.summaries
+        )
+        admission_result = _enqueue_batches(
+            pending_flush.batches,
+            (
+                self._enqueue_webhook
+                if self._enqueue_webhook is not None
+                else enqueue_webhook_delivery
+            ),
+            lambda pending_batch: self._make_delivery_outcome_callback(
+                pending_flush, pending_batch
+            ),
+        )
+        _apply_retained_batch_counts(pending_flush.summaries, admission_result.retained_batches)
+        _log_flush_summaries(
+            "enqueued",
+            trigger,
+            pending_flush.flush_sequence,
+            pending_flush.summaries,
+            duration_ms=_elapsed_ms(started_at),
+        )
+        return admission_result
 
     def _make_delivery_outcome_callback(
         self,

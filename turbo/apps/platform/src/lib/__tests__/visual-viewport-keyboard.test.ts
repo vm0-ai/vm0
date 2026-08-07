@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { animationFrame, timeout } from "signal-timers";
 
-import { createDeferredPromise } from "../../signals/utils.ts";
+import { testContext } from "../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise, resetSignal } from "../../signals/utils.ts";
 import { setupVisualViewportKeyboardState } from "../visual-viewport-keyboard.ts";
 
 const VIEWPORT_SETTLE_WAIT_MS = 75;
+const context = testContext();
+const resetViewportSettleSignal$ = resetSignal();
 const originalMatchMediaDescriptor = Object.getOwnPropertyDescriptor(
   window,
   "matchMedia",
@@ -85,12 +89,19 @@ function focusComposer(inExistingThread: boolean): {
 }
 
 function waitForViewportSettle(): Promise<void> {
-  const settled = createDeferredPromise<void>(AbortSignal.any([]));
-  window.setTimeout(() => {
-    window.requestAnimationFrame(() => {
-      settled.resolve();
-    });
-  }, VIEWPORT_SETTLE_WAIT_MS);
+  const settled = createDeferredPromise<void>(context.signal);
+  timeout(
+    () => {
+      animationFrame(
+        () => {
+          settled.resolve();
+        },
+        { signal: context.signal },
+      );
+    },
+    VIEWPORT_SETTLE_WAIT_MS,
+    { signal: context.signal },
+  );
   return settled.promise;
 }
 
@@ -104,7 +115,9 @@ async function resizeAndSettle(
 }
 
 function startViewportKeyboardState(): () => void {
-  const cleanup = setupVisualViewportKeyboardState();
+  const cleanup = setupVisualViewportKeyboardState(context.signal, () => {
+    return context.store.set(resetViewportSettleSignal$, context.signal);
+  });
   onTestFinished(cleanup);
   return cleanup;
 }

@@ -1,4 +1,4 @@
-//! Queued-terminal active-input coverage for the experimental Codex app-server backend.
+//! Queued-terminal active-input coverage for Codex app-server execution.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
@@ -9,6 +9,7 @@ use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
 use std::time::Duration;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn codex_app_server_backend_closes_input_before_ingesting_queued_terminal()
@@ -38,9 +39,7 @@ async fn codex_app_server_backend_closes_input_before_ingesting_queued_terminal(
     );
     let payload = common::active_input_payload("follow-up before queued terminal")?;
     assert_eq!(
-        active_input
-            .controller()
-            .handle_control_payload("active-msg-before-queued-terminal", &payload),
+        active_input.controller().handle_control_payload(&payload),
         ActiveInputControlOutcome::Accepted
     );
 
@@ -67,10 +66,10 @@ async fn codex_app_server_backend_closes_input_before_ingesting_queued_terminal(
     assert_eq!(input_events[0]["kind"], "initial");
     assert_eq!(input_events[1]["kind"], "steered");
     assert_eq!(input_events[1]["text"], "follow-up before queued terminal");
-    assert_eq!(
-        input_events[1]["turn_request_client_user_message_id"],
-        "active-msg-before-queued-terminal"
-    );
+    let client_user_message_id = input_events[1]["turn_request_client_user_message_id"]
+        .as_str()
+        .expect("steered input should carry an internal UUID");
+    assert!(Uuid::parse_str(client_user_message_id).is_ok());
 
     Ok(())
 }

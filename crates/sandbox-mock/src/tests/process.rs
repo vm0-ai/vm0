@@ -263,6 +263,151 @@ async fn start_process_rejects_invalid_env_key() {
 }
 
 #[tokio::test]
+async fn start_process_lifecycle_gate_blocks_before_recording_or_cancellation() {
+    let gate = MockLifecycleGate::new();
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.set_start_process_lifecycle_gate(gate.clone());
+    let result_cancel = tokio_util::sync::CancellationToken::new();
+    overrides.cancel_after_next_start_process_result(result_cancel.clone());
+    let sandbox = Arc::new(MockSandbox::with_overrides("test", Arc::clone(&overrides)));
+
+    let blocked_start = {
+        let sandbox = Arc::clone(&sandbox);
+        tokio::spawn(async move {
+            sandbox
+                .start_process(&StartProcessRequest {
+                    cmd: "blocked-agent",
+                    timeout: Duration::from_secs(5),
+                    env: &[],
+                    sudo: false,
+                    output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                    control: ProcessControlMode::None,
+                })
+                .await
+        })
+    };
+
+    assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+    assert!(overrides.start_process_calls().is_empty());
+    assert!(!result_cancel.is_cancelled());
+
+    blocked_start.abort();
+    let blocked_start_error = match blocked_start.await {
+        Ok(_) => panic!("blocked start task should be cancelled"),
+        Err(error) => error,
+    };
+    assert!(blocked_start_error.is_cancelled());
+    overrides.clear_start_process_lifecycle_gate();
+
+    sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "next-agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        })
+        .await
+        .unwrap();
+    assert!(result_cancel.is_cancelled());
+    assert_eq!(overrides.start_process_calls().len(), 1);
+}
+
+#[tokio::test]
+async fn process_result_cancellations_are_success_only_and_fifo() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let first_start_cancel = tokio_util::sync::CancellationToken::new();
+    let second_start_cancel = tokio_util::sync::CancellationToken::new();
+    overrides.cancel_after_next_start_process_result(first_start_cancel.clone());
+    overrides.cancel_after_next_start_process_result(second_start_cancel.clone());
+    let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+
+    let invalid_start = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "invalid-agent",
+            timeout: Duration::from_secs(5),
+            env: &[("1BAD", "value")],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        })
+        .await;
+    assert!(invalid_start.is_err());
+    assert!(!first_start_cancel.is_cancelled());
+    assert!(!second_start_cancel.is_cancelled());
+
+    let first_handle = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "first-agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        })
+        .await
+        .unwrap();
+    assert!(first_start_cancel.is_cancelled());
+    assert!(!second_start_cancel.is_cancelled());
+
+    let second_handle = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "second-agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        })
+        .await
+        .unwrap();
+    assert!(second_start_cancel.is_cancelled());
+
+    let mut invalid_wait_handle = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "invalid-wait-agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        })
+        .await
+        .unwrap();
+    assert!(invalid_wait_handle.take_waiter().is_some());
+
+    let first_wait_cancel = tokio_util::sync::CancellationToken::new();
+    let second_wait_cancel = tokio_util::sync::CancellationToken::new();
+    overrides.cancel_after_next_wait_process_result(first_wait_cancel.clone());
+    overrides.cancel_after_next_wait_process_result(second_wait_cancel.clone());
+
+    assert!(
+        sandbox
+            .wait_process(invalid_wait_handle, Duration::from_secs(5))
+            .await
+            .is_err()
+    );
+    assert!(!first_wait_cancel.is_cancelled());
+    assert!(!second_wait_cancel.is_cancelled());
+
+    sandbox
+        .wait_process(first_handle, Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert!(first_wait_cancel.is_cancelled());
+    assert!(!second_wait_cancel.is_cancelled());
+
+    sandbox
+        .wait_process(second_handle, Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert!(second_wait_cancel.is_cancelled());
+    assert_eq!(overrides.start_process_calls().len(), 3);
+    assert_eq!(overrides.wait_process_calls().len(), 2);
+}
+
+#[tokio::test]
 async fn wait_process_rejects_consumed_guest_process_handle() {
     let runtime = MockSandboxRuntime::new();
     let factory = runtime.create_factory(test_factory_config()).await.unwrap();

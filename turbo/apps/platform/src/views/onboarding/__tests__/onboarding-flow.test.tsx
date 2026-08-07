@@ -22,7 +22,9 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { searchParams$ } from "../../../signals/route.ts";
+import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onboarding-state.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
+import { detachedNavigateTo$, searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
 
@@ -43,11 +45,23 @@ function mockOnboardingNeeded(): void {
   });
 }
 
+function usePortugueseLocale(): void {
+  document.documentElement.lang = "pt-BR";
+  context.mocks.data.userPreferences({ locale: "pt-BR" });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
 function mockGithubCatalogItem(
   icon: PublicConnectorCatalogStatusItem["icon"],
 ): void {
   const github: PublicConnectorCatalogStatusItem = {
-    connectorRef: "github",
+    slug: "github",
     label: "Catalog GitHub",
     description: "Connect Catalog GitHub to continue",
     icon,
@@ -163,6 +177,75 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
+  it("renders the workflow catalog and preview in Brazilian Portuguese", async () => {
+    usePortugueseLocale();
+    mockOnboardingNeeded();
+    detachedSetupPage({ context, path: "/onboarding" });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "O que você quer fazer primeiro",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(document.title).toBe("Bem-vindo ao VM0 | VM0");
+
+    click(
+      screen.getByRole("radio", {
+        name: /Automação de fluxo de trabalho/u,
+      }),
+    );
+    click(buttonByText("Continuar"));
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Em que você está trabalhando?",
+      }),
+    ).resolves.toBeInTheDocument();
+    click(buttonByText("Engenharia"));
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Fluxos de trabalho de Engenharia",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").some((candidate) => {
+        return candidate
+          .getAttribute("aria-label")
+          ?.startsWith("Mesclar PRs do GitHub automaticamente");
+      }),
+    ).toBeTruthy();
+
+    click(buttonByAriaLabel("Prévia dos detalhes do fluxo de trabalho"));
+    const preview = await screen.findByRole("dialog", {
+      name: "Mesclar PRs do GitHub automaticamente",
+    });
+    expect(within(preview).getByText("Como funciona")).toBeVisible();
+    expect(
+      within(preview).getByText("Zero revisa e aguarda o CI"),
+    ).toBeVisible();
+  });
+
+  it("renders localized onboarding template titles in Brazilian Portuguese", async () => {
+    usePortugueseLocale();
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/presentation-template?choice=presentation",
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Escolha um modelo de apresentação para começar",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Sunburst playroom")).toBeVisible();
+    expect(
+      buttonByAriaLabel("Selecionar modelo de apresentação Sunburst playroom"),
+    ).toBeInTheDocument();
+    expect(document.title).toBe("Escolha um modelo de apresentação | VM0");
+  });
+
   it("exposes the workspace switcher in the onboarding shell", async () => {
     mockOnboardingNeeded();
     detachedSetupPage({
@@ -302,7 +385,7 @@ describe("onboarding flow", () => {
     context.mocks.data.connectors([
       {
         id: "11111111-1111-4111-8111-111111111112",
-        type: "notion",
+        slug: "notion",
         authMethod: "oauth",
         externalId: "notion-user-1",
         externalUsername: "notion-user",
@@ -363,7 +446,7 @@ describe("onboarding flow", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ params, respond }) => {
-        expect(params.type).toBe("github");
+        expect(params.connectorSlug).toBe("github");
         return respond(200, {
           authorizationUrl: "https://oauth.test/github/authorize",
         });
@@ -390,7 +473,7 @@ describe("onboarding flow", () => {
     context.mocks.data.connectors([
       {
         id: "11111111-1111-4111-8111-111111111111",
-        type: "github",
+        slug: "github",
         authMethod: "oauth",
         externalId: "github-user-1",
         externalUsername: "octocat",
@@ -419,13 +502,13 @@ describe("onboarding flow", () => {
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("ahrefs");
+        expect(params.connectorSlug).toBe("ahrefs");
         expect(body.authMethod).toBe("api-token");
         expect(body.authorizeAgent).toBeTruthy();
         expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: "11111111-1111-4111-8111-111111111112",
-          type: "ahrefs",
+          slug: "ahrefs",
           authMethod: "api-token",
           externalId: null,
           externalUsername: null,
@@ -538,10 +621,18 @@ describe("onboarding flow", () => {
     });
   });
 
-  it("starts Pro checkout from the video run page", async () => {
+  it("restores a long video brief from short checkout return URLs", async () => {
     const template = firstItem(VIDEO_TEMPLATE_ITEMS);
     let successUrl: string | undefined;
     let cancelUrl: string | undefined;
+    let runPrompt: string | undefined;
+    let generationType: string | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        runPrompt = body.prompt;
+        generationType = body.generationTemplate?.type;
+      },
+    });
     context.mocks.api(
       zeroBillingCheckoutContract.create,
       ({ body, respond }) => {
@@ -552,6 +643,9 @@ describe("onboarding flow", () => {
         });
       },
     );
+    context.mocks.api(zeroBillingCheckoutContract.complete, ({ respond }) => {
+      return respond(200, { completed: true });
+    });
 
     await openMakePage();
     chooseMakeOption("Video production");
@@ -566,7 +660,7 @@ describe("onboarding flow", () => {
     await expect(
       screen.findByRole("heading", { name: "Customize your video" }),
     ).resolves.toBeInTheDocument();
-    const videoBrief = "A twenty-second launch film for a travel camera.";
+    const videoBrief = "A".repeat(6000);
     await fill(screen.getByLabelText("Custom video prompt"), videoBrief);
     const upgradeButton = await waitFor(() => {
       return buttonByText("Upgrade Pro to run");
@@ -585,15 +679,45 @@ describe("onboarding flow", () => {
     }
     const success = new URL(successUrl);
     const canceled = new URL(cancelUrl);
+    expect(successUrl.length).toBeLessThanOrEqual(5000);
+    expect(cancelUrl.length).toBeLessThanOrEqual(5000);
     expect(success.pathname).toBe("/onboarding/video-run");
     expect(success.searchParams.get("template")).toBe(template.id);
     expect(success.searchParams.get("onboarding_template")).toBe(template.slug);
+    expect(success.searchParams.has("prompt")).toBeFalsy();
+    expect(success.searchParams.has("onboarding_note")).toBeFalsy();
     expect(success.searchParams.get("onboarding_billing_session_id")).toBe(
       "{CHECKOUT_SESSION_ID}",
     );
     expect(canceled.pathname).toBe("/onboarding/video-run");
     expect(canceled.searchParams.get("onboarding_billing")).toBe("canceled");
-    expect(canceled.searchParams.get("onboarding_note")).toBe(videoBrief);
+    expect(canceled.searchParams.has("prompt")).toBeFalsy();
+    expect(canceled.searchParams.has("onboarding_note")).toBeFalsy();
+
+    mockOnboardingNeeded();
+    context.store.set(detachedNavigateTo$, ROUTES.onboardingVideoRun, {
+      searchParams: canceled.searchParams,
+    });
+    await expect(
+      screen.findByRole("heading", { name: "Customize your video" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Custom video prompt")).toHaveValue(
+      videoBrief,
+    );
+
+    success.searchParams.set(
+      "onboarding_billing_session_id",
+      "cs_test_onboarding_stored",
+    );
+    mockOnboardingNeeded();
+    context.store.set(detachedNavigateTo$, ROUTES.onboardingVideoRun, {
+      searchParams: success.searchParams,
+    });
+    await waitFor(() => {
+      expect(runPrompt).toContain(videoBrief);
+      expect(generationType).toBe("video");
+      expect(pathname()).toMatch(/^\/chats\//u);
+    });
   });
 
   it("resumes a video run after checkout and completes onboarding", async () => {
@@ -631,6 +755,29 @@ describe("onboarding flow", () => {
       expect(checkoutCompletionAttempts).toBe(2);
       expect(pathname()).toMatch(/^\/chats\//u);
     });
+  });
+
+  it("returns to video configuration when checkout storage is unavailable", async () => {
+    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+    mockOnboardingNeeded();
+    const params = new URLSearchParams({
+      choice: "video",
+      template: template.id,
+      onboarding_template: template.slug,
+      onboarding_billing: "pro",
+      onboarding_billing_session_id: "cs_test_missing_storage",
+      [ONBOARDING_CHECKOUT_STATE_PARAM]: "missing-state",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/onboarding/video-run?${params.toString()}`,
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Customize your video" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Custom video prompt")).toHaveValue("");
   });
 
   it("returns an invalid template deep link to its picker", async () => {

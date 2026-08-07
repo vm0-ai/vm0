@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
 import { HttpResponse, delay, http, passthrough } from "msw";
@@ -9,13 +8,13 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { connectors } from "@vm0/db/schema/connector";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
+import { connectors } from "@vm0/db/schema/connector";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -33,13 +32,13 @@ import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { z } from "zod";
-
 import { executeRawRows } from "../../../lib/db-raw-rows";
 import { mockEnv } from "../../../lib/env";
-import { setupApp, testContext } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
-import { nowDate } from "../../external/time";
+import { nowDate } from "../../../lib/time";
 import { appendChatThreadEvent } from "../../services/zero-chat-thread-event.service";
 import {
   connectorCatalogExecutableCapabilityState,
@@ -56,6 +55,18 @@ import { currentConnectorCatalogValidatorIdentity } from "../../services/connect
 import { seedUserModelProvider$ } from "./helpers/zero-model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/zero-org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroConnectorsRoutes } from "../zero-connectors";
+import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
+import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
+import { zeroOrgReadRoutes } from "../zero-org-read";
+import { zeroUserPreferencesRoutes } from "../zero-user-preferences";
+
+const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+  ...zeroMeModelProvidersListRoutes,
+  ...zeroMeModelProvidersUpsertRoutes,
+]);
 
 // HTTP-level benchmarks for side-effect-free GET routes that showed elevated
 // P90 in production traces. All cases share one seeded DB fixture and only issue
@@ -67,7 +78,7 @@ import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
 // iterations would otherwise see an unseeded DB, error silently in
 // tinybench, and produce empty samples without failing the suite.
 //
-// The fixture bulks up zero_runs / agent_runs / chat_messages and the
+// The fixture bulks up zero_runs / agent_runs / chat_events and the
 // user-visible GET data sets well past planner cross-over so Postgres uses the
 // same index-driven paths production hits. With tiny fixtures the planner picks
 // seq scans and the per-query overhead this bench needs to measure disappears.
@@ -90,17 +101,31 @@ const BENCH_CONNECTOR_CATALOG_KEY =
   `connectors/v${String(SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION)}/` +
   `releases/${BENCH_CONNECTOR_CATALOG_VERSION}/catalog.json`;
 
-const chatThreadClient = setupApp({ context })(chatThreadByIdContract);
-const chatThreadEventsClient = setupApp({ context })(chatThreadEventsContract);
-const connectorsClient = setupApp({ context })(zeroConnectorsMainContract);
-const userPreferencesClient = setupApp({ context })(
-  zeroUserPreferencesContract,
+const chatThreadClient = setupApp({ context, routes: zeroChatThreadRoutes })(
+  chatThreadByIdContract,
 );
-const billingStatusClient = setupApp({ context })(zeroBillingStatusContract);
-const orgClient = setupApp({ context })(zeroOrgContract);
-const personalModelProvidersClient = setupApp({ context })(
-  zeroPersonalModelProvidersMainContract,
+const chatThreadEventsClient = setupApp({
+  context,
+  routes: zeroChatThreadRoutes,
+})(chatThreadEventsContract);
+const connectorsClient = setupApp({ context, routes: zeroConnectorsRoutes })(
+  zeroConnectorsMainContract,
 );
+const userPreferencesClient = setupApp({
+  context,
+  routes: zeroUserPreferencesRoutes,
+})(zeroUserPreferencesContract);
+const billingStatusClient = setupApp({
+  context,
+  routes: zeroBillingStatusRoutes,
+})(zeroBillingStatusContract);
+const orgClient = setupApp({ context, routes: zeroOrgReadRoutes })(
+  zeroOrgContract,
+);
+const personalModelProvidersClient = setupApp({
+  context,
+  routes: zeroPersonalModelProvidersMainTestRoutes,
+})(zeroPersonalModelProvidersMainContract);
 
 interface BenchChatThreadFixture {
   readonly userId: string;
@@ -110,13 +135,13 @@ interface BenchChatThreadFixture {
 }
 
 function benchCatalogConnector(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly label: string;
   readonly iconKey: string;
   readonly secretName: string;
 }): ConnectorCatalogArtifactConnector {
   return {
-    connectorRef: args.connectorRef,
+    slug: args.connectorSlug,
     label: args.label,
     description: `${args.label} connector used by the API benchmark`,
     category: "benchmark",
@@ -128,7 +153,6 @@ function benchCatalogConnector(args: {
         label: "API token",
         description: null,
         visible: true,
-        featureSwitch: null,
         storage: {
           version: 1,
           secrets: [args.secretName],
@@ -181,21 +205,21 @@ const BENCH_CONNECTOR_CATALOG = {
   },
   connectors: [
     benchCatalogConnector({
-      connectorRef: "benchmark-github",
+      connectorSlug: "benchmark-github",
       label: "GitHub",
       iconKey:
         "views/zero-page/components/settings/icons/github-4a739019d805.svg",
       secretName: "GITHUB_TOKEN",
     }),
     benchCatalogConnector({
-      connectorRef: "benchmark-notion",
+      connectorSlug: "benchmark-notion",
       label: "Notion",
       iconKey:
         "views/zero-page/components/settings/icons/notion-beeb509915a9.svg",
       secretName: "NOTION_TOKEN",
     }),
     benchCatalogConnector({
-      connectorRef: "benchmark-slack",
+      connectorSlug: "benchmark-slack",
       label: "Slack",
       iconKey:
         "views/zero-page/components/settings/icons/slack-198390069136.svg",
@@ -513,7 +537,7 @@ async function seedBackgroundLoad(): Promise<void> {
       });
       zRunRows.push({
         id: runId,
-        triggerSource: "cli",
+        triggerSource: "test",
         chatThreadId: threadIds[t]!,
       });
     }
@@ -604,11 +628,12 @@ async function seedTargetThreadRuns(
     triggerSource: string;
     chatThreadId: string;
   }[] = [];
-  const messageRows: {
+  const eventRows: {
     chatThreadId: string;
     runId: string;
     eventType: "input.prompt" | "output.message";
-    content: string;
+    contextType?: "web";
+    content?: string;
     sequenceNumber: number;
     seqId: number;
     attachFiles?: string[];
@@ -629,7 +654,7 @@ async function seedTargetThreadRuns(
     });
     zRunRows.push({
       id: runId,
-      triggerSource: "cli",
+      triggerSource: "test",
       chatThreadId: fixture.threadId,
     });
     for (let m = 0; m < TARGET_MESSAGES_PER_RUN; m++) {
@@ -639,16 +664,20 @@ async function seedTargetThreadRuns(
           ? targetAttachmentId(i - latestAttachmentStart)
           : undefined;
       const content = markdownLorem(i, m);
-      messageRows.push({
+      eventRows.push({
         chatThreadId: fixture.threadId,
         runId,
         eventType: m === 0 ? "input.prompt" : "output.message",
-        content,
         sequenceNumber: m,
         seqId: i * TARGET_MESSAGES_PER_RUN + m + 1,
+        // Input events carry their text in user_message only; chat_events
+        // rejects a non-null content projection for them.
         ...(m === 0
-          ? { userMessage: benchUserMessage(content, attachmentId) }
-          : {}),
+          ? {
+              contextType: "web",
+              userMessage: benchUserMessage(content, attachmentId),
+            }
+          : { content }),
         ...(attachmentId ? { attachFiles: [attachmentId] } : {}),
         createdAt: new Date(now + i * 1000 + m),
       });
@@ -660,12 +689,12 @@ async function seedTargetThreadRuns(
   await chunkedInsert(zRunRows, (chunk) => {
     return db.insert(zeroRuns).values(chunk);
   });
-  await chunkedInsert(messageRows, (chunk) => {
-    return db.insert(chatMessages).values(chunk);
+  await chunkedInsert(eventRows, (chunk) => {
+    return db.insert(chatEvents).values(chunk);
   });
   await db
     .update(chatThreads)
-    .set({ lastChatMessageSeqId: messageRows.length })
+    .set({ lastChatEventSeqId: eventRows.length })
     .where(eq(chatThreads.id, fixture.threadId));
 }
 
@@ -715,7 +744,7 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "benchmark-github",
+      connectorSlug: "benchmark-github",
       authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-github",
@@ -724,7 +753,7 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "benchmark-slack",
+      connectorSlug: "benchmark-slack",
       authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-slack",
@@ -733,7 +762,7 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "benchmark-notion",
+      connectorSlug: "benchmark-notion",
       authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-notion",
@@ -773,7 +802,7 @@ async function logPlannerDiagnostic(
       zero_runs,
       agent_runs,
       chat_threads,
-      chat_messages,
+      chat_events,
       connectors,
       org_metadata,
       org_members_metadata,
@@ -829,21 +858,21 @@ const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
           `connector sanity check failed: status=${String(connectorSanity.status)} body=${JSON.stringify(connectorSanity.body)}`,
         );
       }
-      const listedConnectorRefs = new Set(
+      const listedConnectorSlugs = new Set(
         connectorSanity.body.connectors.map((connector) => {
-          return connector.type;
+          return connector.slug;
         }),
       );
-      const missingConnectorRefs = BENCH_CONNECTOR_CATALOG.connectors
+      const missingConnectorSlugs = BENCH_CONNECTOR_CATALOG.connectors
         .map((connector) => {
-          return connector.connectorRef;
+          return connector.slug;
         })
-        .filter((connectorRef) => {
-          return !listedConnectorRefs.has(connectorRef);
+        .filter((connectorSlug) => {
+          return !listedConnectorSlugs.has(connectorSlug);
         });
-      if (missingConnectorRefs.length > 0) {
+      if (missingConnectorSlugs.length > 0) {
         throw new Error(
-          `connector sanity check omitted seeded connectors: ${missingConnectorRefs.join(", ")}`,
+          `connector sanity check omitted seeded connectors: ${missingConnectorSlugs.join(", ")}`,
         );
       }
       return seeded;

@@ -7,6 +7,7 @@ use super::super::guest_state::{
     restore_guest_state, restore_guest_state_with_timezone, sync_guest_timezone,
 };
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_exec_error};
+use crate::error::RunnerError;
 use crate::ids::RunId;
 use crate::types::ExecutionContext;
 
@@ -30,6 +31,8 @@ async fn restore_guest_state_combines_clock_sync_and_reseed() {
     assert!(clock_sync_index < reseed_index);
     assert!(calls[0].cmd.contains("guest clock sync failed"));
     assert!(calls[0].cmd.contains("guest-reseed failed"));
+    assert!(calls[0].cmd.contains("/usr/share/zoneinfo/UTC"));
+    assert!(calls[0].cmd.contains("echo 'TZ=UTC' >> /etc/environment"));
     assert!(calls[0].sudo);
     let stdin_bytes = calls[0].stdin_bytes.as_ref().unwrap();
     assert_eq!(stdin_bytes.len(), 256);
@@ -72,7 +75,7 @@ async fn restore_guest_state_folds_timezone_sync_into_restore_exec() {
 }
 
 #[tokio::test]
-async fn restore_guest_state_with_explicit_timezone_folds_sync_into_restore_exec() {
+async fn restore_guest_state_with_explicit_timezone_requires_zone_in_restore_exec() {
     let sandbox = MockSandbox::new("test");
 
     restore_guest_state_with_timezone(&sandbox, "UTC")
@@ -85,11 +88,54 @@ async fn restore_guest_state_with_explicit_timezone_folds_sync_into_restore_exec
     assert!(command.contains("date -s \"@"));
     assert!(command.contains("guest-reseed"));
     assert!(
-        command.contains("if test -f /usr/share/zoneinfo/UTC; then { echo 'UTC' > /etc/timezone"),
+        command.contains(
+            "test -f /usr/share/zoneinfo/UTC || { echo \"guest timezone unavailable\" >&2; exit 1; }"
+        ),
         "unexpected command: {command}"
     );
     assert!(command.contains("echo 'TZ=UTC' >> /etc/environment"));
     assert!(command.contains("guest timezone sync failed"));
+    assert!(command.contains("exit \"$status\""));
+}
+
+#[tokio::test]
+async fn restore_guest_state_with_explicit_timezone_reports_unavailable_zone() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        1,
+        Vec::new(),
+        b"guest timezone unavailable".to_vec(),
+    )));
+
+    let result = restore_guest_state_with_timezone(&sandbox, "Mars/Olympus").await;
+
+    match result {
+        Err(RunnerError::Config(message)) => {
+            assert!(message.contains("guest timezone \"Mars/Olympus\" is unavailable"));
+            assert!(message.contains("/usr/share/zoneinfo/Mars/Olympus"));
+        }
+        other => panic!("expected unavailable-zone config error, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn restore_guest_state_with_explicit_timezone_fails_when_application_fails() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        2,
+        Vec::new(),
+        b"ln failed\nguest timezone sync failed".to_vec(),
+    )));
+
+    let result = restore_guest_state_with_timezone(&sandbox, "UTC").await;
+
+    match result {
+        Err(RunnerError::Internal(message)) => {
+            assert!(message.contains("guest state restore failed (exit code 2)"));
+            assert!(message.contains("guest timezone sync failed"));
+        }
+        other => panic!("expected guest restore failure, got: {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -100,7 +146,9 @@ async fn restore_guest_state_with_explicit_timezone_rejects_invalid_timezone_bef
 
     let message = result.unwrap_err().to_string();
     assert!(
-        message.contains("invalid timezone"),
+        message.contains("invalid timezone")
+            && message.contains("non-empty guest zoneinfo name")
+            && !message.contains("IANA"),
         "unexpected error: {message}"
     );
     assert!(sandbox.exec_calls().is_empty());

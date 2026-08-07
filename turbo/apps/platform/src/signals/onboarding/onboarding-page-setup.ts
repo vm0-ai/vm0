@@ -7,8 +7,9 @@ import {
 } from "@vm0/core";
 import {
   CUSTOM_WORKFLOW_ID,
-  findOnboardingWorkflow,
+  hasOnboardingWorkflow,
 } from "../../views/onboarding/onboarding-data.ts";
+import { i18n } from "../../i18n/index.ts";
 import { OnboardingMakePage } from "../../views/onboarding/onboarding-make-page.tsx";
 import { OnboardingWorkflowPickerPage } from "../../views/onboarding/onboarding-workflow-picker-page.tsx";
 import { OnboardingWorkflowRunPage } from "../../views/onboarding/onboarding-workflow-run-page.tsx";
@@ -35,6 +36,8 @@ import {
 import {
   hydrateOnboardingRoute$,
   onboardingDraft$,
+  ONBOARDING_CHECKOUT_STATE_PARAM,
+  readOnboardingCheckoutDraft,
   type OnboardingDraft,
   type OnboardingRouteStep,
 } from "./onboarding-state.ts";
@@ -42,7 +45,7 @@ import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 
 interface OnboardingPageConfig {
   readonly step: OnboardingRouteStep;
-  readonly title: string | ((brandName: BrandName) => string);
+  readonly title: (brandName: BrandName) => string;
   readonly Page: ComponentType;
   readonly fallbackPath?: RoutePath;
 }
@@ -55,6 +58,7 @@ const ONBOARDING_TRANSIENT_PARAMS = [
   "onboarding_billing_session_id",
   "onboarding_note",
   "onboarding_template",
+  ONBOARDING_CHECKOUT_STATE_PARAM,
   "redeemCode",
 ] as const;
 
@@ -73,7 +77,7 @@ function hasRequiredSelection(
   if (step === "workflow-run") {
     return (
       draft.workflowId === CUSTOM_WORKFLOW_ID ||
-      findOnboardingWorkflow(draft.workflowId) !== null
+      hasOnboardingWorkflow(draft.workflowId)
     );
   }
   if (step === "presentation-run") {
@@ -102,19 +106,23 @@ function createOnboardingPageSetup(
     const searchParams = get(searchParams$);
 
     if (config.step === "video-run") {
+      const checkoutDraft = readOnboardingCheckoutDraft(searchParams);
       const checkoutSessionId = searchParams.get(
         "onboarding_billing_session_id",
       );
-      const checkoutPrompt = searchParams.get("prompt")?.trim();
-      if (checkoutSessionId && checkoutPrompt) {
+      const checkoutPrompt =
+        searchParams.get("prompt") ?? checkoutDraft?.prompt ?? null;
+      if (checkoutSessionId && checkoutPrompt?.trim()) {
         await set(completeOnboardingCheckoutReturn$, checkoutSessionId, signal);
         await set(
           completeOnboarding$,
           searchParams.get("redeemCode")?.trim() || null,
           signal,
         );
+        const handoffParams = promptHandoffParams(searchParams);
+        handoffParams.set("prompt", checkoutPrompt);
         set(detachedNavigateTo$, ROUTES.prompt, {
-          searchParams: promptHandoffParams(searchParams),
+          searchParams: handoffParams,
           replace: true,
         });
         return;
@@ -144,10 +152,7 @@ function createOnboardingPageSetup(
       return;
     }
 
-    const title =
-      typeof config.title === "string"
-        ? config.title
-        : config.title(get(brandName$));
+    const title = config.title(get(brandName$));
     set(updatePage$, createElement(config.Page), "none");
     set(updateDocumentTitle$, title);
     await set(hideAppSkeleton$, signal);
@@ -157,20 +162,33 @@ function createOnboardingPageSetup(
 export const setupOnboardingMakePage$ = createOnboardingPageSetup({
   step: "make",
   title: (brandName) => {
-    return `Welcome to ${brandName}`;
+    return i18n.t(
+      ($) => {
+        return $.onboarding.documentTitles.make;
+      },
+      { brandName },
+    );
   },
   Page: OnboardingMakePage,
 });
 
 export const setupOnboardingWorkflowPickerPage$ = createOnboardingPageSetup({
   step: "workflow-picker",
-  title: "Choose a workflow",
+  title: () => {
+    return i18n.t(($) => {
+      return $.onboarding.documentTitles.chooseWorkflow;
+    });
+  },
   Page: OnboardingWorkflowPickerPage,
 });
 
 export const setupOnboardingWorkflowRunPage$ = createOnboardingPageSetup({
   step: "workflow-run",
-  title: "Run your first workflow",
+  title: () => {
+    return i18n.t(($) => {
+      return $.onboarding.documentTitles.runWorkflow;
+    });
+  },
   Page: OnboardingWorkflowRunPage,
   fallbackPath: ROUTES.onboardingWorkflowPicker,
 });
@@ -178,39 +196,63 @@ export const setupOnboardingWorkflowRunPage$ = createOnboardingPageSetup({
 export const setupOnboardingPresentationTemplatePage$ =
   createOnboardingPageSetup({
     step: "presentation-template",
-    title: "Choose a presentation template",
+    title: () => {
+      return i18n.t(($) => {
+        return $.onboarding.documentTitles.choosePresentation;
+      });
+    },
     Page: OnboardingPresentationTemplatePage,
   });
 
 export const setupOnboardingPresentationRunPage$ = createOnboardingPageSetup({
   step: "presentation-run",
-  title: "Create your first presentation",
+  title: () => {
+    return i18n.t(($) => {
+      return $.onboarding.documentTitles.runPresentation;
+    });
+  },
   Page: OnboardingPresentationRunPage,
   fallbackPath: ROUTES.onboardingPresentationTemplate,
 });
 
 export const setupOnboardingImageTemplatePage$ = createOnboardingPageSetup({
   step: "image-template",
-  title: "Choose an image style",
+  title: () => {
+    return i18n.t(($) => {
+      return $.onboarding.documentTitles.chooseImage;
+    });
+  },
   Page: OnboardingImageTemplatePage,
 });
 
 export const setupOnboardingImageRunPage$ = createOnboardingPageSetup({
   step: "image-run",
-  title: "Create your first image",
+  title: () => {
+    return i18n.t(($) => {
+      return $.onboarding.documentTitles.runImage;
+    });
+  },
   Page: OnboardingImageRunPage,
   fallbackPath: ROUTES.onboardingImageTemplate,
 });
 
 export const setupOnboardingVideoTemplatePage$ = createOnboardingPageSetup({
   step: "video-template",
-  title: "Choose a video style",
+  title: () => {
+    return i18n.t(($) => {
+      return $.onboarding.documentTitles.chooseVideo;
+    });
+  },
   Page: OnboardingVideoTemplatePage,
 });
 
 export const setupOnboardingVideoRunPage$ = createOnboardingPageSetup({
   step: "video-run",
-  title: "Create your first video",
+  title: () => {
+    return i18n.t(($) => {
+      return $.onboarding.documentTitles.runVideo;
+    });
+  },
   Page: OnboardingVideoRunPage,
   fallbackPath: ROUTES.onboardingVideoTemplate,
 });

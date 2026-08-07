@@ -1,6 +1,6 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
-import type { RoutePath } from "../types/route.ts";
+import type { RoutePath } from "./route-paths";
 import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
@@ -88,6 +88,7 @@ export const replacePathSilently$ = command(
 interface Route {
   path: string;
   setup: Command<Promise<void> | void, [AbortSignal]>;
+  analytics?: boolean;
 }
 
 const internalRouteConfig$ = state<Route[] | undefined>(undefined);
@@ -135,11 +136,15 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
     throw new Error("No route matches, pathname: " + get(pathname$));
   }
   L.debug("loading route", currentRoute.path);
-  recordAdAttribution(get(searchParams$));
+  if (currentRoute.analytics !== false) {
+    recordAdAttribution(get(searchParams$));
+  }
 
   await set(currentRoute.setup, routeSignal);
   signal.throwIfAborted();
-  capturePageView();
+  if (currentRoute.analytics !== false) {
+    capturePageView();
+  }
   // Record first-touch signup attribution as part of the route-load lifecycle.
   // Bind to the parent `signal`, not the per-route `routeSignal`: a superseding
   // route load aborts the previous `routeSignal` via resetRouteSignal$, and
@@ -147,7 +152,9 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
   // signal mirrors the `signal.throwIfAborted()` gate above, so supersession
   // completes cleanly. The command early-returns when there is nothing to
   // record, so this only performs network work on the first qualifying load.
-  await set(recordSignupAttribution$, signal);
+  if (currentRoute.analytics !== false) {
+    await set(recordSignupAttribution$, signal);
+  }
 });
 
 const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {
@@ -188,7 +195,15 @@ export const initRoutes$ = command(
 
 interface NavigateOptions {
   searchParams?: URLSearchParams;
+  hash?: string;
   replace?: boolean;
+}
+
+function routeHash(hash: string | undefined): string {
+  if (!hash) {
+    return "";
+  }
+  return hash.startsWith("#") ? hash : `#${hash}`;
 }
 
 const navigate$ = command(
@@ -199,7 +214,7 @@ const navigate$ = command(
     signal: AbortSignal,
   ) => {
     const searchStr = options.searchParams?.toString();
-    const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}`;
+    const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
     L.debug("navigating to", newPath);
     if (options.replace) {
       replaceState({}, "", newPath);
@@ -227,6 +242,7 @@ export const detachedNavigateTo$ = command(
     options?: {
       pathParams?: Parameters<typeof generateRouterPath>[1];
       searchParams?: URLSearchParams;
+      hash?: string;
       replace?: boolean;
     },
   ) => {
@@ -295,10 +311,13 @@ export const setupAuthPageWrapper = (
     const clerk = await get(clerk$);
     signal.throwIfAborted();
 
+    if (!clerk.loaded) {
+      return;
+    }
+
     if (!clerk.user) {
       const signInUrl = new URL(
-        resolveAppAuthUrl("/sign-in", { redirectUrl: location.href }),
-        location.origin,
+        clerk.buildSignInUrl({ redirectUrl: location.href }),
       );
       L.info("redirect unauthenticated user to app sign-in", {
         currentUrl: location.href,

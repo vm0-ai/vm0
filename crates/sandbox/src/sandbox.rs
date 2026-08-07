@@ -107,6 +107,31 @@ pub trait SandboxStartObserver: Send {
     fn record_stage(&mut self, stage: SandboxStartStage, duration: Duration, success: bool);
 }
 
+/// Fixed low-cardinality stages of the final reuse preparation and park path.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxFinalExecParkStage {
+    /// Fences normal operations, runs the final guest preparation, and reaches
+    /// the provider's safe pre-park boundary.
+    ReusePreparation,
+    /// Commits the provider-specific physical park after preparation succeeds.
+    PhysicalPark,
+}
+
+/// Receives optional final preparation and physical-park timing records.
+///
+/// Callbacks describe completed stages only and are informational: they never
+/// own lifecycle transitions, cleanup, or cancellation. A cancelled attempt
+/// can therefore omit the stage that was in progress. Implementations using
+/// the default observer-aware method report no stages.
+///
+/// An overriding implementation reports each applicable stage at most once.
+/// `PhysicalPark` is reported only after a successful `ReusePreparation`;
+/// either failed stage ends the sequence.
+pub trait SandboxFinalExecParkObserver: Send {
+    /// Records one completed final-exec/park stage.
+    fn record_stage(&mut self, stage: SandboxFinalExecParkStage, duration: Duration, success: bool);
+}
+
 /// A process-isolation environment that runs guest workloads for the runner.
 ///
 /// Implementations are created by a [`SandboxFactory`](crate::SandboxFactory)
@@ -164,6 +189,17 @@ pub trait Sandbox: Send + Sync + Any {
     /// Used for host diagnostics like OOM detection.
     fn host_process_pid(&self) -> Option<u32> {
         None
+    }
+
+    /// Bind the opaque full run identity used to guard remote run-scoped
+    /// controls for this sandbox assignment.
+    ///
+    /// Lifecycle owners must call this before a fresh sandbox starts serving
+    /// controls and while a reused sandbox is still parked, before unpark.
+    /// Providers without assignment-aware out-of-process controls may retain
+    /// this no-op implementation.
+    fn bind_run_control(&mut self, _run_id: &str) -> Result<()> {
+        Ok(())
     }
 
     // -- lifecycle --
@@ -274,6 +310,20 @@ pub trait Sandbox: Send + Sync + Any {
         })
     }
 
+    /// Run the final guest preparation and park while reporting provider stages.
+    ///
+    /// This has the same lifecycle and error contract as
+    /// [`final_exec_and_park`](Self::final_exec_and_park). The default method
+    /// preserves provider behavior and emits no callbacks.
+    async fn final_exec_and_park_with_observer(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+        _observer: &mut dyn SandboxFinalExecParkObserver,
+    ) -> Result<SandboxFinalExecParkOutcome> {
+        self.final_exec_and_park(request, diagnostic_label).await
+    }
+
     /// Transition the sandbox back to the active state.
     ///
     /// Must be called before any further work is dispatched via `exec` /
@@ -336,7 +386,17 @@ pub trait Sandbox: Send + Sync + Any {
     /// The guest path must be non-empty and must not contain NUL bytes.
     /// `max_bytes` must be positive and is subject to the backend read limit.
     ///
-    /// Missing files return `Ok(None)`. Other read failures return an error.
+    /// Returns `Ok(None)` when the backend's guest-filesystem check cannot
+    /// establish that the path resolves to a regular file. This includes
+    /// missing paths, paths to non-regular filesystem objects, broken
+    /// symlinks, and paths whose guest filesystem metadata cannot be
+    /// inspected. Symlinks that resolve to regular files are followed and
+    /// read.
+    ///
+    /// A read that races with a path transition can also return `Ok(None)` if
+    /// regular-file status can no longer be established. Invalid input,
+    /// guest-operation or capture failures, size-limit violations, and read
+    /// failures for a path still established as regular return an error.
     async fn read_file(&self, path: &str, max_bytes: u64) -> Result<Option<Vec<u8>>>;
 
     /// Stream a guest file to a host path and publish copied contents.

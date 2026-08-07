@@ -47,3 +47,11 @@ export const platformFeishuSecuritySettingsRedirectUrlImg =
   platformStaticAssetUrl(
     "views/zero-page/assets/feishu/security-settings-redirect-url-e7cf83ec76d4.png",
   );
+export const platformFeishuPermissionsScopesBatchImportMenuImg =
+  platformStaticAssetUrl(
+    "views/zero-page/assets/feishu/permissions-scopes-batch-import-menu-ade9686a2b72.png",
+  );
+export const platformFeishuPermissionsScopesBatchImportReviewImg =
+  platformStaticAssetUrl(
+    "views/zero-page/assets/feishu/permissions-scopes-batch-import-review-667a5136ad85.png",
+  );

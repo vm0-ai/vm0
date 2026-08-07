@@ -2,7 +2,7 @@ import { z } from "zod";
 import { initContract } from "./base";
 import {
   connectorAuthMethodIdSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
 } from "./connector-identity";
 
 const c = initContract();
@@ -42,7 +42,7 @@ export const cliAuthTestConnectorContract = c.router({
     path: "/api/cli/auth/test-connector",
     query: testEmailQuerySchema,
     body: z.object({
-      connectorName: z.string(),
+      connectorSlug: z.string(),
       authMethod: connectorAuthMethodIdSchema,
       accessToken: z.string(),
       refreshToken: z.string().min(1).optional(),
@@ -51,7 +51,7 @@ export const cliAuthTestConnectorContract = c.router({
     responses: {
       200: z.object({
         ok: z.literal(true),
-        connectorType: connectorRefSchema,
+        connectorSlug: connectorSlugSchema,
         orgId: z.string(),
       }),
       400: stringErrorResponseSchema,
@@ -68,13 +68,13 @@ export const cliAuthTestEnableConnectorContract = c.router({
     query: testEmailQuerySchema,
     body: z.object({
       composeId: z.string().uuid(),
-      connectorTypes: z.array(z.string()).min(1),
+      connectorSlugs: z.array(z.string()).min(1),
     }),
     responses: {
       200: z.object({
         ok: z.literal(true),
         composeId: z.string(),
-        connectorTypes: z.array(z.string()),
+        connectorSlugs: z.array(z.string()),
       }),
       400: stringErrorResponseSchema,
       404: notFoundTextSchema.or(stringErrorResponseSchema),

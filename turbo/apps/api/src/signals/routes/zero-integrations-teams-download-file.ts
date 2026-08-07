@@ -18,12 +18,15 @@ import {
   teamsFileTokenPayloadSchema,
   type TeamsFileTokenPayload,
 } from "../services/teams-file-token";
-import { teamsOrgCallbackPayloadSchema } from "../services/teams-org-callback-payload";
+import { teamsDeliveryTargetSchema } from "../services/teams-chat-callback-payload";
 import type { RouteEntry } from "../route-entry";
 import { safeUriComponentDecode } from "../utils";
 
 const c = initContract();
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+const teamsChatCallbackPayloadSchema = z.object({
+  teamsDelivery: teamsDeliveryTargetSchema.optional(),
+});
 
 const teamsDownloadFileContract = c.router({
   download: {
@@ -150,16 +153,16 @@ async function teamsFilePayloadForRun(args: {
     .where(
       and(
         eq(agentRunCallbacks.runId, args.runId),
-        eq(agentRunCallbacks.internalKind, "teams:org"),
+        eq(agentRunCallbacks.internalKind, "chat"),
       ),
     )
     .limit(1);
   if (!callback) {
     return null;
   }
-  const parsed = teamsOrgCallbackPayloadSchema.safeParse(callback.payload);
+  const parsed = teamsChatCallbackPayloadSchema.safeParse(callback.payload);
   const file = parsed.success
-    ? parsed.data.files?.find((candidate) => {
+    ? parsed.data.teamsDelivery?.files?.find((candidate) => {
         return candidate.fileId === args.fileId;
       })
     : undefined;

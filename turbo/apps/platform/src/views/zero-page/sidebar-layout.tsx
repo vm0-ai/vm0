@@ -5,9 +5,16 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { IconMenu2, IconPackage, IconUserPlus } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
+import {
+  IconMenu2,
+  IconPackage,
+  IconShare3,
+  IconUserPlus,
+} from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { AutomationMenuButton } from "./zero-chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
@@ -15,7 +22,7 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
+import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
@@ -41,6 +48,7 @@ import {
 } from "../pwa-install/install-banner.tsx";
 import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
 import { ChatShortcutHelpDialog } from "./chat-shortcut-help-dialog.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -64,6 +72,7 @@ function InviteButtonLeaf() {
   const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
   const openSettings = useSet(openSettingsDialogAt$);
   const pageSignal = useGet(pageSignal$);
+  const { t } = useTranslation();
   if (!isAdmin) {
     return null;
   }
@@ -76,15 +85,18 @@ function InviteButtonLeaf() {
       className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
     >
       <IconUserPlus size={14} stroke={1.5} />
-      Invite
+      {t(($) => {
+        return $.appShell.sidebar.mobile.invite;
+      })}
     </button>
   );
 }
 
-function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
   const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const openThreadArtifacts = useOpenThreadArtifacts(thread);
+  const { t } = useTranslation();
   const open = sidebarTarget?.type === "artifacts";
 
   return (
@@ -100,7 +112,9 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
           ? "bg-primary/10 text-primary"
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
       )}
-      aria-label="Open mobile artifacts"
+      aria-label={t(($) => {
+        return $.appShell.sidebar.mobile.openArtifacts;
+      })}
       aria-pressed={open}
     >
       <IconPackage size={16} stroke={1.5} />
@@ -123,6 +137,7 @@ function MobileArtifactsButtonLeaf() {
 function MobileAutomationButtonLeaf() {
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
+  const { t } = useTranslation();
   const thread = leftThread ?? rightThread;
 
   if (!thread) {
@@ -130,8 +145,95 @@ function MobileAutomationButtonLeaf() {
   }
 
   return (
-    <AutomationMenuButton thread={thread} ariaLabel="Open mobile automations" />
+    <AutomationMenuButton
+      thread={thread}
+      ariaLabel={t(($) => {
+        return $.appShell.sidebar.mobile.openAutomations;
+      })}
+    />
   );
+}
+
+function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const phase = useGet(thread.sharing.phase$);
+  const start = useSet(thread.sharing.start$);
+  const pageSignal = useGet(pageSignal$);
+  const enabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
+  if (!enabled || phase !== "idle") {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        detach(
+          start(pageSignal),
+          Reason.DomCallback,
+          "start shared thread selection",
+        );
+      }}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+      aria-label={t(($) => {
+        return $.chat.sharing.start;
+      })}
+    >
+      <IconShare3 size={16} stroke={1.5} />
+    </button>
+  );
+}
+
+function MobileShareButtonLeaf() {
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const thread = leftThread ?? rightThread;
+  return thread ? <MobileShareButtonInner thread={thread} /> : null;
+}
+
+function MobileSharingOverlayInner({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const phase = useGet(thread.sharing.phase$);
+  const selectedCount = useGet(thread.sharing.selectedCount$);
+  const close = useSet(thread.sharing.close$);
+  const pageSignal = useGet(pageSignal$);
+  if (phase === "idle") {
+    return null;
+  }
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-between bg-background px-4">
+      <span className="text-sm font-medium text-foreground">
+        {t(
+          ($) => {
+            return $.chat.sharing.selectedCount;
+          },
+          { count: selectedCount },
+        )}
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          detach(
+            close(pageSignal),
+            Reason.DomCallback,
+            "close shared thread selection",
+          );
+        }}
+      >
+        {t(($) => {
+          return $.chat.sharing.cancel;
+        })}
+      </Button>
+    </div>
+  );
+}
+
+function MobileSharingOverlayLeaf() {
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const thread = leftThread ?? rightThread;
+  return thread ? <MobileSharingOverlayInner thread={thread} /> : null;
 }
 
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
@@ -139,6 +241,7 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const showInviteFallback = inChatRoute && activeId !== "chat";
   return (
     <>
+      {inChatRoute && <MobileShareButtonLeaf />}
       {inChatRoute && <MobileAutomationButtonLeaf />}
       {inChatRoute && <MobileArtifactsButtonLeaf />}
       {showInviteFallback && <InviteButtonLeaf />}
@@ -148,6 +251,7 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
 
 function MobileTopBar() {
   const setExpanded = useSet(setSidebarExpanded$);
+  const { t } = useTranslation();
 
   const breadcrumbLoadable = useLastLoadable(mobileBreadcrumb$);
   const breadcrumb =
@@ -156,14 +260,17 @@ function MobileTopBar() {
   const activeId = useGet(activeRoute$);
 
   return (
-    <div className="md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
+    <div className="relative md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
+      <MobileSharingOverlayLeaf />
       <button
         type="button"
         onClick={() => {
           setExpanded(true);
         }}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-        aria-label="Open menu"
+        aria-label={t(($) => {
+          return $.appShell.sidebar.mobile.openMenu;
+        })}
       >
         <IconMenu2 size={18} stroke={1.8} />
       </button>
@@ -216,6 +323,7 @@ function SettingsDialogMount() {
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
+  const { t } = useTranslation();
 
   return (
     <div className="zero-app zero-viewport-shell flex w-full bg-background">
@@ -226,7 +334,9 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <div
         data-sidebar-expanded={expanded || undefined}
         className="zero-pwa-fixed-cover fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
-        aria-label="Sidebar overlay"
+        aria-label={t(($) => {
+          return $.appShell.sidebar.mobile.overlay;
+        })}
         onClick={() => {
           return setExpanded(false);
         }}

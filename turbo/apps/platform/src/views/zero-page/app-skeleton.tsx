@@ -2,11 +2,11 @@ import { useGet, useSet } from "ccstate-react";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import {
   appSkeletonVisibleEventRef$,
-  skeletonMessages$,
+  skeletonCopy$,
   skeletonAvatarConfig$,
 } from "../../signals/app-skeleton.ts";
 
-/** Static CSS — does not depend on message content. */
+/** Static CSS — does not depend on loading copy. */
 const skeletonCSS = `
 @keyframes sk-typing {
   from { width: 0; }
@@ -28,24 +28,27 @@ const skeletonCSS = `
 
 /**
  * Global loading screen shown during app bootstrap.
- * First cycle: a static message fades into a typewriter message.
- * Subsequent cycles: continuous typewriter — each new message types out
+ * First cycle: static copy fades into typewriter copy.
+ * Subsequent cycles: continuous typewriter — each new phrase types out
  * immediately after the previous one blinks for 3s.
  *
  * Cycling is started here and cancelled by hideAppSkeleton$ via resetSignal.
  */
 export function AppSkeleton({ visible = true }: { visible?: boolean }) {
   const skeletonConfig = useGet(skeletonAvatarConfig$);
-  const { staticMsg, typewriterMsg, isFirst, cycle } =
-    useGet(skeletonMessages$);
+  const { ariaLabel, staticCopy, typewriterCopy, isFirst, cycle } =
+    useGet(skeletonCopy$);
   const visibleEventRef = useSet(appSkeletonVisibleEventRef$);
-  const charCount = typewriterMsg.length;
+  const charCount = typewriterCopy.length;
 
   return (
     <div
       ref={visible ? visibleEventRef : undefined}
       data-testid="app-skeleton"
       aria-hidden={visible ? undefined : true}
+      aria-label={ariaLabel}
+      aria-live="polite"
+      role="status"
       className={`fixed inset-0 z-50 flex items-center justify-center bg-background ${
         visible
           ? "opacity-100"
@@ -65,7 +68,7 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
             className="invisible text-base font-medium whitespace-nowrap"
             aria-hidden="true"
           >
-            {typewriterMsg}
+            {typewriterCopy}
           </p>
           {/* Static message: only shown on first cycle */}
           {isFirst && (
@@ -75,7 +78,7 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
                 animation: "sk-hide-static 800ms forwards",
               }}
             >
-              {staticMsg}
+              {staticCopy}
             </p>
           )}
           {/* Typewriter: delayed 800ms on first cycle, immediate on subsequent */}
@@ -89,7 +92,7 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
                 : `sk-show-typewriter 0s forwards, sk-typing 1.5s steps(${charCount}) forwards, sk-blink 0.6s step-end infinite`,
             }}
           >
-            {typewriterMsg}
+            {typewriterCopy}
           </p>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { ZeroSlackConnectPage } from "../../views/zero-page/zero-slack-connect-page.tsx";
@@ -14,7 +15,12 @@ export const setupSlackConnectPage$ = command(
     }
 
     set(updatePage$, createElement(ZeroSlackConnectPage));
-    set(updateDocumentTitle$, "Connect Slack");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.connectors.providerConnect.slack.connectTitle;
+      }),
+    );
     await Promise.all([
       set(hideAppSkeleton$, signal),
       set(initSlackConnectPage$, signal),

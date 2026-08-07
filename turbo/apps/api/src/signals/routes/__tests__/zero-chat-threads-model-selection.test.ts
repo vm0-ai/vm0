@@ -8,13 +8,16 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
+import { zeroChatThreadModelSelectionRoutes } from "../zero-chat-threads-model-selection";
 
 const context = testContext();
 const store = createStore();
@@ -25,6 +28,7 @@ const api = createRunsApi(context);
 interface ChatThreadFixture {
   readonly userId: string;
   readonly orgId: string;
+  readonly agentId: string;
   readonly threadId: string;
 }
 
@@ -65,7 +69,12 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
     { orgId: actor.orgId, userId: actor.userId },
     context.signal,
   );
-  return { userId: actor.userId, orgId: actor.orgId, threadId: thread.id };
+  return {
+    userId: actor.userId,
+    orgId: actor.orgId,
+    agentId: agent.agentId,
+    threadId: thread.id,
+  };
 }
 
 function currentSecond(): number {
@@ -90,11 +99,15 @@ function zeroToken(args: {
 }
 
 function modelSelectionClient() {
-  return setupApp({ context })(chatThreadModelSelectionContract);
+  return setupApp({ context, routes: zeroChatThreadModelSelectionRoutes })(
+    chatThreadModelSelectionContract,
+  );
 }
 
 function metadataClient() {
-  return setupApp({ context })(chatThreadMetadataContract);
+  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+    chatThreadMetadataContract,
+  );
 }
 
 describe("POST /api/zero/chat-threads/:id/model-selection", () => {
@@ -127,6 +140,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
 
     expect(response.body).toStrictEqual({
       id: fixture.threadId,
+      agentId: fixture.agentId,
       title: "Launch plan",
       selectedModel: "claude-sonnet-5",
     });

@@ -19,10 +19,13 @@
 
 use std::path::{Path, PathBuf};
 
+pub use sandbox_fc::SnapshotOutputPaths as SnapshotPaths;
 use sha2::{Digest, Sha256};
 
 use crate::error::RunnerResult;
 use crate::ids::RunId;
+
+const WORKSPACE_IMAGE_CACHE_KEY_DOMAIN: &[u8] = b"workspace-image-cache:v1\0";
 
 /// Short hex digests for storage name and version components, used when
 /// building filesystem paths from untrusted manifest fields.
@@ -53,34 +56,34 @@ pub(crate) fn base_dir_lock_name(base_dir: &Path) -> String {
     format!("base-dir-{hash}.lock")
 }
 
-/// Versioned digest key for host-shared session workspace image baselines.
+/// Versioned digest key for host-shared reuse-key workspace image baselines.
 ///
-/// The raw CLI session id is untrusted and must not be embedded directly in
+/// The raw reuse key is untrusted and must not be embedded directly in
 /// host paths. The working-dir argument is intentionally ignored: workspace
 /// image cache identity is based on canonical workspace semantics. The key
 /// includes the cache scope, profile, drive layout version, and logical image
 /// size so incompatible workspace images never share a host entry.
 #[cfg(test)]
-pub(crate) fn session_workspace_cache_key(session_id: &str, working_dir: &str) -> String {
-    scoped_session_workspace_cache_key("", "vm0/default", session_id, working_dir, 5)
+pub(crate) fn workspace_image_cache_key(reuse_key: &str, working_dir: &str) -> String {
+    scoped_workspace_image_cache_key("", "vm0/default", reuse_key, working_dir, 5)
 }
 
-pub(crate) fn scoped_session_workspace_cache_key(
+pub(crate) fn scoped_workspace_image_cache_key(
     cache_scope: &str,
     profile_name: &str,
-    session_id: &str,
+    reuse_key: &str,
     _working_dir: &str,
     image_size_bytes: u64,
 ) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(b"session-workspace-cache:v3\0");
+    hasher.update(WORKSPACE_IMAGE_CACHE_KEY_DOMAIN);
     hasher.update(cache_scope.as_bytes());
     hasher.update(b"\0");
     hasher.update(profile_name.as_bytes());
     hasher.update(b"\0workspace-drive-v1\0");
     hasher.update(image_size_bytes.to_le_bytes());
     hasher.update(b"\0");
-    hasher.update(session_id.as_bytes());
+    hasher.update(reuse_key.as_bytes());
     hex::encode(hasher.finalize())
 }
 
@@ -171,25 +174,25 @@ impl RunnerPaths {
     }
 
     #[cfg(test)]
-    pub fn session_workspace_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
+    pub fn workspace_image_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
         self.workspace_image_cache_dir().join(cache_key)
     }
 
     #[cfg(test)]
-    pub fn session_workspace_cache_metadata(&self, cache_key: &str) -> PathBuf {
-        self.session_workspace_cache_entry_dir(cache_key)
+    pub fn workspace_image_cache_metadata(&self, cache_key: &str) -> PathBuf {
+        self.workspace_image_cache_entry_dir(cache_key)
             .join("metadata.json")
     }
 
     #[cfg(test)]
-    pub fn session_workspace_cache_current_image(&self, cache_key: &str) -> PathBuf {
-        self.session_workspace_cache_entry_dir(cache_key)
+    pub fn workspace_image_cache_current_image(&self, cache_key: &str) -> PathBuf {
+        self.workspace_image_cache_entry_dir(cache_key)
             .join("current.ext4")
     }
 
     #[cfg(test)]
-    pub fn session_workspace_cache_tmp_image(&self, cache_key: &str, run_id: RunId) -> PathBuf {
-        self.session_workspace_cache_entry_dir(cache_key)
+    pub fn workspace_image_cache_tmp_image(&self, cache_key: &str, run_id: RunId) -> PathBuf {
+        self.workspace_image_cache_entry_dir(cache_key)
             .join(format!("current.ext4.tmp.{run_id}"))
     }
 }
@@ -287,6 +290,11 @@ impl HomePaths {
     /// Callers should pass full unit names from `service::RunnerServiceUnit`.
     pub fn service_lock(&self, unit: &str) -> PathBuf {
         self.locks_dir().join(format!("service-{unit}.lock"))
+    }
+
+    /// Host-global lock for systemd manager reload coordination.
+    pub fn systemd_daemon_reload_lock(&self) -> PathBuf {
+        self.locks_dir().join("systemd-daemon-reload.lock")
     }
 
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
@@ -404,61 +412,13 @@ impl RootfsPaths {
 
     /// Derive snapshot paths nested under this rootfs.
     pub fn snapshot(&self, snapshot_hash: &str) -> SnapshotPaths {
-        SnapshotPaths {
-            dir: self.dir.join("snapshots").join(snapshot_hash),
-        }
+        SnapshotPaths::new(self.dir.join("snapshots").join(snapshot_hash))
     }
 
     /// Parent directory for all snapshots under this rootfs.
     #[cfg(test)]
     pub fn snapshots_dir(&self) -> PathBuf {
         self.dir.join("snapshots")
-    }
-}
-
-/// Paths for a snapshot build output, nested under a [`RootfsPaths`].
-///
-/// Layout: `<images_dir>/<rootfs_hash>/snapshots/<snapshot_hash>/{snapshot.bin,memory.bin,cow.img,cow.img.bitmap,.snapshot-complete}`
-///
-/// Constructed via [`RootfsPaths::snapshot`].
-pub struct SnapshotPaths {
-    dir: PathBuf,
-}
-
-impl SnapshotPaths {
-    pub fn dir(&self) -> &Path {
-        &self.dir
-    }
-
-    pub fn snapshot_bin(&self) -> PathBuf {
-        self.dir.join("snapshot.bin")
-    }
-
-    pub fn memory_bin(&self) -> PathBuf {
-        self.dir.join("memory.bin")
-    }
-
-    pub fn cow_img(&self) -> PathBuf {
-        self.dir.join("cow.img")
-    }
-
-    pub fn cow_bitmap(&self) -> PathBuf {
-        self.dir.join("cow.img.bitmap")
-    }
-
-    pub fn complete_marker(&self) -> PathBuf {
-        self.dir.join(".snapshot-complete")
-    }
-
-    /// All files that must exist for the snapshot to be considered complete.
-    pub fn expected_files(&self) -> [PathBuf; 5] {
-        [
-            self.snapshot_bin(),
-            self.memory_bin(),
-            self.cow_img(),
-            self.cow_bitmap(),
-            self.complete_marker(),
-        ]
     }
 }
 
@@ -646,6 +606,16 @@ mod tests {
     }
 
     #[test]
+    fn systemd_daemon_reload_lock_path() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+
+        assert_eq!(
+            home.systemd_daemon_reload_lock(),
+            PathBuf::from("/test/locks/systemd-daemon-reload.lock")
+        );
+    }
+
+    #[test]
     fn base_dir_lock_is_deterministic() {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let lock1 = home.base_dir_lock(Path::new("/data/runner-01"));
@@ -698,27 +668,6 @@ mod tests {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let sp = RootfsPaths::new(&home, "aaa").snapshot("bbb");
         assert_eq!(sp.dir(), Path::new("/test/images/aaa/snapshots/bbb"));
-        assert_eq!(
-            sp.snapshot_bin(),
-            PathBuf::from("/test/images/aaa/snapshots/bbb/snapshot.bin")
-        );
-        assert_eq!(
-            sp.memory_bin(),
-            PathBuf::from("/test/images/aaa/snapshots/bbb/memory.bin")
-        );
-        assert_eq!(
-            sp.cow_img(),
-            PathBuf::from("/test/images/aaa/snapshots/bbb/cow.img")
-        );
-        assert_eq!(
-            sp.cow_bitmap(),
-            PathBuf::from("/test/images/aaa/snapshots/bbb/cow.img.bitmap")
-        );
-        assert_eq!(
-            sp.complete_marker(),
-            PathBuf::from("/test/images/aaa/snapshots/bbb/.snapshot-complete")
-        );
-        assert_eq!(sp.expected_files().len(), 5);
     }
 
     #[test]

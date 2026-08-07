@@ -390,7 +390,7 @@ export const steamPlayerData$ = command(
       snapshot,
       orgId: args.orgId,
       userId: args.userId,
-      connectorRef: "steam",
+      connectorSlug: "steam",
     });
     signal.throwIfAborted();
     if (loaded.kind !== "ok" || loaded.connection.needsReconnect) {

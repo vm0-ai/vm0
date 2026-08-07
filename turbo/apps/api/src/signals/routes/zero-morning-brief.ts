@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
 
 import { badRequestMessage } from "../../lib/error";
-import { now } from "../external/time";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import type { RouteEntry } from "../route-entry";
@@ -13,7 +12,7 @@ const triggerMorningBriefInner$ = command(
     const auth = get(organizationAuthContext$);
     const result = await set(
       triggerMorningBriefNow$,
-      { orgId: auth.orgId, userId: auth.userId, apiStartTime: now() },
+      { orgId: auth.orgId, userId: auth.userId },
       signal,
     );
 
@@ -34,7 +33,11 @@ const triggerMorningBriefInner$ = command(
 
     return {
       status: 200 as const,
-      body: { runId: result.runId, briefDate: result.briefDate },
+      body: {
+        runId: result.runId,
+        briefDate: result.briefDate,
+        queued: result.queued,
+      },
     };
   },
 );

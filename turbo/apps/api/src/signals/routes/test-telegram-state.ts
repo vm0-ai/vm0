@@ -1,10 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-
 import { command, computed } from "ccstate";
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getProviderRuntimeModel,
   getVm0Vendor,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -18,29 +16,27 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-route";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-
 import { pgTextDecoder } from "../../lib/db-structured-result";
-import { optionalEnv } from "../../lib/env";
 import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
@@ -48,7 +44,8 @@ import { tapError } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
+import type { Tx } from "../../lib/db-types";
 
 const testTelegramStateQuery$ = queryOf(testTelegramStateContract.get);
 const deleteTestTelegramStateQuery$ = queryOf(testTelegramStateContract.delete);
@@ -65,7 +62,7 @@ const TELEGRAM_E2E_FIXTURES = {
   webhookSecret: "e2e-telegram-webhook-secret",
 } as const;
 
-type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type StarterGrantTx = Tx;
 
 interface SeedDefaultAgentInput {
   readonly orgId: string;
@@ -94,22 +91,6 @@ interface TelegramPostFixtureSeed {
   readonly telegramBotId: string;
   readonly webhookSecret: string;
   readonly name: string;
-}
-
-function resolveTelegramApiUrlForDiagnostics(): string | null {
-  const telegramApiUrl = optionalEnv("TELEGRAM_API_URL");
-  if (telegramApiUrl) {
-    return telegramApiUrl;
-  }
-
-  const mockFlag = optionalEnv("E2E_TELEGRAM_MOCK_ENABLED");
-  const mockEnabled = mockFlag === "1" || mockFlag === "true";
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (mockEnabled && vercelUrl) {
-    return `https://${vercelUrl}/api/test/telegram-mock/bot`;
-  }
-
-  return null;
 }
 
 async function loadInstallation(db: ReadonlyDb, botId: string) {
@@ -152,6 +133,7 @@ function loadRecentRuns(db: ReadonlyDb, orgId: string | undefined) {
       status: agentRuns.status,
       createdAt: agentRuns.createdAt,
       triggerSource: zeroRuns.triggerSource,
+      chatThreadId: zeroRuns.chatThreadId,
       userId: agentRuns.userId,
       error: agentRuns.error,
       promptPreview: sql`substring(${agentRuns.prompt}, 1, 200)`.mapWith(
@@ -279,34 +261,47 @@ function loadOfficialMessages(db: ReadonlyDb, orgId: string | undefined) {
     .orderBy(telegramMessages.createdAt);
 }
 
-function loadThreadSessions(db: ReadonlyDb, botId: string) {
-  return db
-    .select({
-      telegramUserLinkId: telegramThreadSessions.telegramUserLinkId,
-      chatId: telegramThreadSessions.chatId,
-      rootMessageId: telegramThreadSessions.rootMessageId,
-      agentSessionId: telegramThreadSessions.agentSessionId,
-    })
-    .from(telegramThreadSessions)
-    .innerJoin(
-      telegramUserLinks,
-      eq(telegramUserLinks.id, telegramThreadSessions.telegramUserLinkId),
-    )
-    .where(eq(telegramUserLinks.installationId, botId));
-}
-
-function loadMockCalls(db: ReadonlyDb) {
-  return db
-    .select({
-      method: e2eTelegramMockCallLog.method,
-      botToken: e2eTelegramMockCallLog.botToken,
-      chatId: e2eTelegramMockCallLog.chatId,
-      bodyJson: e2eTelegramMockCallLog.bodyJson,
-      createdAt: e2eTelegramMockCallLog.createdAt,
-    })
-    .from(e2eTelegramMockCallLog)
-    .orderBy(desc(e2eTelegramMockCallLog.createdAt))
-    .limit(50);
+async function loadChatThreadRoutes(db: ReadonlyDb, botId: string) {
+  const [customRoutes, officialRoutes] = await Promise.all([
+    db
+      .select({
+        telegramUserLinkId: telegramChatThreadRoutes.telegramUserLinkId,
+        telegramOfficialUserLinkId:
+          telegramChatThreadRoutes.telegramOfficialUserLinkId,
+        chatId: telegramChatThreadRoutes.chatId,
+        rootMessageId: telegramChatThreadRoutes.rootMessageId,
+        chatThreadId: telegramChatThreadRoutes.chatThreadId,
+      })
+      .from(telegramChatThreadRoutes)
+      .innerJoin(
+        telegramUserLinks,
+        eq(telegramUserLinks.id, telegramChatThreadRoutes.telegramUserLinkId),
+      )
+      .where(eq(telegramUserLinks.installationId, botId)),
+    db
+      .select({
+        telegramUserLinkId: telegramChatThreadRoutes.telegramUserLinkId,
+        telegramOfficialUserLinkId:
+          telegramChatThreadRoutes.telegramOfficialUserLinkId,
+        chatId: telegramChatThreadRoutes.chatId,
+        rootMessageId: telegramChatThreadRoutes.rootMessageId,
+        chatThreadId: telegramChatThreadRoutes.chatThreadId,
+      })
+      .from(telegramChatThreadRoutes)
+      .innerJoin(
+        telegramOfficialUserLinks,
+        eq(
+          telegramOfficialUserLinks.id,
+          telegramChatThreadRoutes.telegramOfficialUserLinkId,
+        ),
+      )
+      .innerJoin(
+        telegramInstallations,
+        eq(telegramInstallations.orgId, telegramOfficialUserLinks.orgId),
+      )
+      .where(eq(telegramInstallations.telegramBotId, botId)),
+  ]);
+  return [...customRoutes, ...officialRoutes];
 }
 
 function readString(value: unknown): string | null {
@@ -721,105 +716,30 @@ async function getRunForAction(
   const [run] = await db
     .select({
       sessionId: agentRuns.sessionId,
+      conversationId: agentSessions.conversationId,
       selectedModel: zeroRuns.selectedModel,
+      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadAgentSessionId: chatThreads.agentSessionId,
+      chatThreadAgentSessionRunId: chatThreads.agentSessionRunId,
     })
     .from(agentRuns)
     .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .leftJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .leftJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   signal.throwIfAborted();
   return actionOk({
     run: run
-      ? { session_id: run.sessionId, selected_model: run.selectedModel }
+      ? {
+          session_id: run.sessionId,
+          conversation_id: run.conversationId,
+          selected_model: run.selectedModel,
+          chat_thread_id: run.chatThreadId,
+          chat_thread_agent_session_id: run.chatThreadAgentSessionId,
+          chat_thread_agent_session_run_id: run.chatThreadAgentSessionRunId,
+        }
       : null,
-  });
-}
-
-async function seedThreadSessionForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const chatId = readActionString(body, "chat_id");
-  const rootMessageId = readActionString(body, "root_message_id");
-  const userLinkId = readActionOptionalString(body, "user_link_id");
-  const officialUserLinkId = readActionOptionalString(
-    body,
-    "official_user_link_id",
-  );
-  if (!chatId || !rootMessageId || (!userLinkId && !officialUserLinkId)) {
-    return actionBadRequest(
-      "chat_id, root_message_id, and one link id are required",
-    );
-  }
-
-  let agentSessionId = readActionOptionalString(body, "agent_session_id");
-  if (!agentSessionId) {
-    const required = requiredActionStrings(body, [
-      "org_id",
-      "user_id",
-      "compose_id",
-    ]);
-    if (!required) {
-      return actionBadRequest(
-        "org_id, user_id, and compose_id are required when agent_session_id is omitted",
-      );
-    }
-    const sessionId = await insertAgentSessionForAction(
-      db,
-      {
-        orgId: required.org_id!,
-        userId: required.user_id!,
-        composeId: required.compose_id!,
-      },
-      signal,
-    );
-    if (!sessionId) {
-      return actionBadRequest("failed to create agent session");
-    }
-    agentSessionId = sessionId;
-  }
-
-  await db.insert(telegramThreadSessions).values({
-    telegramUserLinkId: userLinkId,
-    telegramOfficialUserLinkId: officialUserLinkId,
-    chatId,
-    rootMessageId,
-    agentSessionId,
-  });
-  signal.throwIfAborted();
-  return actionOk({ agent_session_id: agentSessionId });
-}
-
-async function findThreadSessionForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const required = requiredActionStrings(body, [
-    "user_link_id",
-    "chat_id",
-    "root_message_id",
-  ]);
-  if (!required) {
-    return actionBadRequest(
-      "user_link_id, chat_id, and root_message_id are required",
-    );
-  }
-  const [row] = await db
-    .select({ agentSessionId: telegramThreadSessions.agentSessionId })
-    .from(telegramThreadSessions)
-    .where(
-      and(
-        eq(telegramThreadSessions.telegramUserLinkId, required.user_link_id!),
-        eq(telegramThreadSessions.chatId, required.chat_id!),
-        eq(telegramThreadSessions.rootMessageId, required.root_message_id!),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  return actionOk({
-    thread_session: row ? { agent_session_id: row.agentSessionId } : null,
   });
 }
 
@@ -833,20 +753,6 @@ async function deleteTelegramFixtureForAction(
   const telegramBotIds = readActionStringArray(body, "telegram_bot_ids");
 
   if (telegramBotIds.length > 0) {
-    const linkRows = await db
-      .select({ id: telegramUserLinks.id })
-      .from(telegramUserLinks)
-      .where(inArray(telegramUserLinks.installationId, telegramBotIds));
-    signal.throwIfAborted();
-    const linkIds = linkRows.map((row) => {
-      return row.id;
-    });
-    if (linkIds.length > 0) {
-      await db
-        .delete(telegramThreadSessions)
-        .where(inArray(telegramThreadSessions.telegramUserLinkId, linkIds));
-      signal.throwIfAborted();
-    }
     await db
       .delete(telegramMessages)
       .where(inArray(telegramMessages.installationId, telegramBotIds));
@@ -958,35 +864,26 @@ async function seedTelegramPostModelKeys(
   seed: TelegramPostFixtureSeed,
   signal: AbortSignal,
 ): Promise<void> {
-  await db.insert(vm0ApiKeys).values([
-    {
-      vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      model: getProviderRuntimeModel(
-        "vm0",
-        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      ),
-      apiKey: `vm0-key-default-${seed.composeId}`,
-      label: seed.composeId,
-    },
-    {
-      vendor: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKey: `vm0-key-anthropic-${seed.composeId}`,
-      label: seed.composeId,
-    },
-    {
-      vendor: "deepseek",
-      model: "deepseek-v4-pro",
-      apiKey: `vm0-key-deepseek-${seed.composeId}`,
-      label: seed.composeId,
-    },
-    {
-      vendor: "moonshot",
-      model: "kimi-k2.7-code",
-      apiKey: `vm0-key-moonshot-${seed.composeId}`,
-      label: seed.composeId,
-    },
-  ]);
+  await db
+    .insert(vm0ApiKeys)
+    .values([
+      {
+        vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+        apiKey: `vm0-key-default-${seed.composeId}`,
+        label: seed.composeId,
+      },
+      {
+        vendor: "anthropic",
+        apiKey: `vm0-key-anthropic-${seed.composeId}`,
+        label: seed.composeId,
+      },
+      {
+        vendor: "moonshot",
+        apiKey: `vm0-key-moonshot-${seed.composeId}`,
+        label: seed.composeId,
+      },
+    ])
+    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
   signal.throwIfAborted();
 }
 
@@ -1242,6 +1139,7 @@ async function getTelegramPostRunStateForAction(
       .select({
         id: zeroRuns.id,
         triggerSource: zeroRuns.triggerSource,
+        chatThreadId: zeroRuns.chatThreadId,
         modelProvider: zeroRuns.modelProvider,
         selectedModel: zeroRuns.selectedModel,
       })
@@ -1331,29 +1229,49 @@ async function getTelegramLinkIdForAction(
   return actionOk({ link_id: link?.id ?? null });
 }
 
-async function seedAgentSessionForAction(
+async function findChatThreadRouteForAction(
   db: Db,
   body: Record<string, unknown>,
   signal: AbortSignal,
 ) {
   const required = requiredActionStrings(body, [
-    "org_id",
-    "user_id",
-    "compose_id",
+    "user_link_id",
+    "chat_id",
+    "root_message_id",
   ]);
   if (!required) {
-    return actionBadRequest("org_id, user_id, and compose_id are required");
+    return actionBadRequest(
+      "user_link_id, chat_id, and root_message_id are required",
+    );
   }
-  const sessionId = await insertAgentSessionForAction(
-    db,
-    {
-      orgId: required.org_id!,
-      userId: required.user_id!,
-      composeId: required.compose_id!,
-    },
-    signal,
-  );
-  return actionOk({ agent_session_id: sessionId });
+  const [route] = await db
+    .select({
+      telegramUserLinkId: telegramChatThreadRoutes.telegramUserLinkId,
+      telegramOfficialUserLinkId:
+        telegramChatThreadRoutes.telegramOfficialUserLinkId,
+      chatId: telegramChatThreadRoutes.chatId,
+      rootMessageId: telegramChatThreadRoutes.rootMessageId,
+      chatThreadId: telegramChatThreadRoutes.chatThreadId,
+    })
+    .from(telegramChatThreadRoutes)
+    .where(
+      and(
+        body.owner_kind === "official"
+          ? eq(
+              telegramChatThreadRoutes.telegramOfficialUserLinkId,
+              required.user_link_id!,
+            )
+          : eq(
+              telegramChatThreadRoutes.telegramUserLinkId,
+              required.user_link_id!,
+            ),
+        eq(telegramChatThreadRoutes.chatId, required.chat_id!),
+        eq(telegramChatThreadRoutes.rootMessageId, required.root_message_id!),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({ route: route ?? null });
 }
 
 async function insertAgentSessionForAction(
@@ -1375,36 +1293,6 @@ async function insertAgentSessionForAction(
     .returning({ id: agentSessions.id });
   signal.throwIfAborted();
   return session?.id ?? null;
-}
-
-async function hasThreadSessionForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const required = requiredActionStrings(body, [
-    "user_link_id",
-    "chat_id",
-    "root_message_id",
-  ]);
-  if (!required) {
-    return actionBadRequest(
-      "user_link_id, chat_id, and root_message_id are required",
-    );
-  }
-  const [thread] = await db
-    .select({ id: telegramThreadSessions.id })
-    .from(telegramThreadSessions)
-    .where(
-      and(
-        eq(telegramThreadSessions.telegramUserLinkId, required.user_link_id!),
-        eq(telegramThreadSessions.chatId, required.chat_id!),
-        eq(telegramThreadSessions.rootMessageId, required.root_message_id!),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  return actionOk({ exists: thread !== undefined });
 }
 
 async function seedRunningRunForAction(
@@ -1540,7 +1428,7 @@ async function seedModelPoliciesForAction(
     },
     {
       orgId: required.org_id!,
-      model: "deepseek-v4-pro",
+      model: "deepseek-v4-flash",
       defaultProviderType: "vm0",
       credentialScope: "org",
       createdByUserId: required.user_id!,
@@ -1548,20 +1436,14 @@ async function seedModelPoliciesForAction(
     },
   ]);
   signal.throwIfAborted();
-  await db.insert(vm0ApiKeys).values([
-    {
+  await db
+    .insert(vm0ApiKeys)
+    .values({
       vendor: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKey: "vm0-key-claude-sonnet-4-6",
+      apiKey: "vm0-key-anthropic",
       label: required.compose_id!,
-    },
-    {
-      vendor: "anthropic",
-      model: "claude-opus-4-7",
-      apiKey: "vm0-key-claude-opus-4-7",
-      label: required.compose_id!,
-    },
-  ]);
+    })
+    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
   signal.throwIfAborted();
   await db
     .insert(orgMembersMetadata)
@@ -1919,7 +1801,7 @@ const getTestTelegramState$ = computed(async (get) => {
     messageCount,
     messages,
     officialMessages,
-    threadSessions,
+    routes,
   ] = await Promise.all([
     loadLinks(db, query.bot_id),
     loadRecentRuns(db, installation?.orgId),
@@ -1929,12 +1811,9 @@ const getTestTelegramState$ = computed(async (get) => {
     countMessages(db, query.bot_id),
     loadMessages(db, query.bot_id),
     loadOfficialMessages(db, installation?.orgId),
-    loadThreadSessions(db, query.bot_id),
+    loadChatThreadRoutes(db, query.bot_id),
   ]);
-  const [composeVersion, mockCalls] = await Promise.all([
-    loadComposeVersion(db, compose?.headVersionId),
-    loadMockCalls(db),
-  ]);
+  const composeVersion = await loadComposeVersion(db, compose?.headVersionId);
 
   return {
     status: 200 as const,
@@ -1954,11 +1833,9 @@ const getTestTelegramState$ = computed(async (get) => {
             ),
           }
         : null,
-      resolved_telegram_api_url: resolveTelegramApiUrlForDiagnostics(),
-      mock_calls: mockCalls,
       messages,
       official_messages: officialMessages,
-      thread_sessions: threadSessions,
+      routes,
     },
   };
 });
@@ -2152,9 +2029,6 @@ const telegramStateActionHandlers = {
   "delete-post-fixture": deleteTelegramPostFixtureForAction,
   "get-post-run-state": getTelegramPostRunStateForAction,
   "get-telegram-link-id": getTelegramLinkIdForAction,
-  "seed-agent-session": seedAgentSessionForAction,
-  "seed-thread-session": seedThreadSessionForAction,
-  "has-thread-session": hasThreadSessionForAction,
   "seed-running-run": seedRunningRunForAction,
   "seed-completed-run": seedCompletedRunForAction,
   "seed-model-policies": seedModelPoliciesForAction,
@@ -2164,7 +2038,7 @@ const telegramStateActionHandlers = {
   "update-run-callback": updateRunCallbackForAction,
   "update-run": updateRunForAction,
   "get-run": getRunForAction,
-  "find-thread-session": findThreadSessionForAction,
+  "find-chat-thread-route": findChatThreadRouteForAction,
   "delete-fixture": deleteTelegramFixtureForAction,
 } satisfies Record<
   TestTelegramStateActionBody["action"],

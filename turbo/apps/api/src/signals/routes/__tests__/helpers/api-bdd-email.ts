@@ -3,19 +3,22 @@ import { randomUUID } from "node:crypto";
 import { cronDrainEmailOutboxContract } from "@vm0/api-contracts/contracts/cron";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../../context/wait-until";
+import { cronDrainEmailOutboxRoutes } from "../../cron-drain-email-outbox";
+import { userExportRoutes } from "../../user-export";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 const CRON_AUTHORIZATION = "Bearer test-cron-secret";
+const EMAIL_ROUTES = Object.freeze([
+  ...cronDrainEmailOutboxRoutes,
+  ...userExportRoutes,
+]);
 
 function emailApp(context: TestContext) {
-  return setupApp({ context });
+  return setupApp({ context, routes: EMAIL_ROUTES });
 }
 
 function authenticate(context: TestContext, actor: ApiTestUser) {

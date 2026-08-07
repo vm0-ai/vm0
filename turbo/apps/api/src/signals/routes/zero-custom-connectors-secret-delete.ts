@@ -4,7 +4,7 @@ import { zeroCustomConnectorSecretContract } from "@vm0/api-contracts/contracts/
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
-import { deleteLegacyCustomConnectorSecret$ } from "../services/zero-custom-connector.service";
+import { disconnectCustomConnector$ } from "../services/zero-custom-connector.service";
 import type { RouteEntry } from "../route-entry";
 
 const deleteSecretInner$ = command(
@@ -14,7 +14,7 @@ const deleteSecretInner$ = command(
     signal.throwIfAborted();
 
     const result = await set(
-      deleteLegacyCustomConnectorSecret$,
+      disconnectCustomConnector$,
       {
         orgId: auth.orgId,
         userId: auth.userId,

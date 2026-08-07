@@ -7,10 +7,11 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import { Card, CardContent, cn, Input } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
+import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { currentAgentId$ } from "../../signals/agent.ts";
 import {
@@ -19,28 +20,40 @@ import {
   ideationSearchQuery$,
   setIdeationSearchQuery$,
 } from "../../signals/zero-page/zero-ideation.ts";
+import {
+  localizeIdeationCategories,
+  type IdeationCatalogCopy,
+} from "./zero-ideation-localization.ts";
+
 export function ZeroIdeationPage() {
+  const { t } = useTranslation("agents");
   const features = useLastResolved(featureSwitch$);
-  const connectorStatusLoadable = useLoadable(connectorCatalogStatusByRef$);
-  const lastConnectorStatusByRef = useLastResolved(
-    connectorCatalogStatusByRef$,
+  const connectorStatusLoadable = useLoadable(connectorCatalogStatusBySlug$);
+  const lastConnectorStatusBySlug = useLastResolved(
+    connectorCatalogStatusBySlug$,
   );
-  const connectorStatusByRef =
+  const connectorStatusBySlug =
     connectorStatusLoadable.state === "hasData"
       ? connectorStatusLoadable.data
       : connectorStatusLoadable.state === "loading"
-        ? lastConnectorStatusByRef
+        ? lastConnectorStatusBySlug
         : undefined;
-  const visibleConnectorRefs =
-    connectorStatusByRef !== undefined
-      ? new Set(connectorStatusByRef.keys())
+  const visibleConnectorSlugs =
+    connectorStatusBySlug !== undefined
+      ? new Set(connectorStatusBySlug.keys())
       : connectorStatusLoadable.state === "loading"
         ? undefined
         : new Set<string>();
-  const categories = getCategories({
-    features,
-    visibleConnectorRefs,
-  }).slice(0, 8);
+  const catalogCopy: IdeationCatalogCopy = t(
+    ($) => {
+      return $.ideation.catalog;
+    },
+    { returnObjects: true },
+  );
+  const categories = localizeIdeationCategories(
+    getCategories({ features, visibleConnectorSlugs }).slice(0, 8),
+    catalogCopy,
+  );
   const activeTab = useGet(ideationActiveTab$);
   const setActiveTab = useSet(setIdeationActiveTab$);
   const searchQuery = useGet(ideationSearchQuery$);
@@ -114,11 +127,15 @@ export function ZeroIdeationPage() {
           className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
         >
           <IconMessageCircle size={14} stroke={1.5} className="shrink-0" />
-          Chat
+          {t(($) => {
+            return $.ideation.chat;
+          })}
         </button>
         <span className="text-muted-foreground/40 select-none">/</span>
         <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
-          Ideas &amp; Use Cases
+          {t(($) => {
+            return $.ideation.title;
+          })}
         </span>
       </nav>
 
@@ -127,11 +144,14 @@ export function ZeroIdeationPage() {
           <div className="mx-auto w-full max-w-[900px]">
             <header className="bg-transparent pt-3 md:pt-6 pb-3">
               <h1 className="hidden md:block text-lg font-semibold tracking-tight text-foreground">
-                Ideas &amp; Use Cases
+                {t(($) => {
+                  return $.ideation.title;
+                })}
               </h1>
               <p className="hidden md:block mt-1 text-sm text-muted-foreground leading-relaxed">
-                Click any card to start a conversation. It could become an
-                on-demand task, a recurring workflow, or a subagent.
+                {t(($) => {
+                  return $.ideation.description;
+                })}
               </p>
             </header>
 
@@ -150,7 +170,9 @@ export function ZeroIdeationPage() {
                       return setActiveTab("all");
                     }}
                   >
-                    All
+                    {t(($) => {
+                      return $.ideation.all;
+                    })}
                   </button>
                   {categories.map((category) => {
                     return (
@@ -184,9 +206,13 @@ export function ZeroIdeationPage() {
                     onChange={(e) => {
                       return setSearchQuery(e.target.value);
                     }}
-                    placeholder="Search"
+                    placeholder={t(($) => {
+                      return $.ideation.search.placeholder;
+                    })}
                     className="pl-9"
-                    aria-label="Search use cases"
+                    aria-label={t(($) => {
+                      return $.ideation.search.accessibilityLabel;
+                    })}
                   />
                 </div>
               </div>
@@ -196,7 +222,9 @@ export function ZeroIdeationPage() {
               <div className="flex flex-col gap-6">
                 {visibleCategories.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No use cases match your search.
+                    {t(($) => {
+                      return $.ideation.search.empty;
+                    })}
                   </p>
                 ) : null}
                 {visibleCategories.map((category) => {
@@ -212,11 +240,11 @@ export function ZeroIdeationPage() {
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {category.cases.map((useCase) => {
                           const connectors =
-                            useCase.connectors?.flatMap((connectorRef) => {
+                            useCase.connectorSlugs?.flatMap((connectorSlug) => {
                               const connector =
-                                connectorStatusByRef?.get(connectorRef);
+                                connectorStatusBySlug?.get(connectorSlug);
                               return connector
-                                ? [{ connectorRef, icon: connector.icon }]
+                                ? [{ connectorSlug, icon: connector.icon }]
                                 : [];
                             }) ?? [];
                           return (
@@ -244,7 +272,7 @@ export function ZeroIdeationPage() {
                                     {connectors.map((connector) => {
                                       return (
                                         <span
-                                          key={connector.connectorRef}
+                                          key={connector.connectorSlug}
                                           className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
                                         >
                                           <ConnectorIcon

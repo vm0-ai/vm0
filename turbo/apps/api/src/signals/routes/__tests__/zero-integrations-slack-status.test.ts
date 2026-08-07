@@ -4,7 +4,8 @@ import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero
 import { createStore } from "ccstate";
 import { beforeEach } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import {
   deleteSlackIntegrationFixture$,
@@ -17,6 +18,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { zeroIntegrationsSlackRoutes } from "../zero-integrations-slack";
 
 const context = testContext();
 const store = createStore();
@@ -33,7 +35,9 @@ describe("GET /api/zero/integrations/slack", () => {
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(client.getStatus({ headers: {} }), [401]);
 
@@ -43,7 +47,9 @@ describe("GET /api/zero/integrations/slack", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -63,7 +69,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -87,7 +95,9 @@ describe("GET /api/zero/integrations/slack", () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -118,7 +128,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -144,7 +156,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -174,7 +188,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -199,7 +215,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId, "org:member");
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -229,7 +247,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -278,7 +298,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -308,7 +330,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -341,7 +365,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -370,7 +396,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId, "org:member");
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -395,7 +423,9 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(userId, orgId, "org:admin");
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({

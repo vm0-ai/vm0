@@ -14,7 +14,7 @@ const FEISHU_CONNECTOR_ICON_URL = "https://icons.example.test/lark.svg";
 
 function feishuConnectorStatus(): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: "lark",
+    slug: "lark",
     label: "Feishu",
     description: "Connect Feishu to VM0.",
     icon: {

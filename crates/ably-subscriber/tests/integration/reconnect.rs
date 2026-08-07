@@ -6,6 +6,7 @@ use ably_subscriber::{Event, TimingConfig, subscribe};
 use futures_util::{SinkExt, StreamExt};
 use httpmock::prelude::*;
 use std::time::Duration;
+use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 
 #[tokio::test]
@@ -362,7 +363,7 @@ async fn repeated_clean_close_reconnect_is_rate_limited() {
     });
 
     let mut timing = TimingConfig::default();
-    timing.min_reconnect_interval = Duration::from_secs(2);
+    timing.min_reconnect_interval = Duration::from_secs(1);
     let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
         .await
         .unwrap();
@@ -738,7 +739,7 @@ async fn retry_enters_suspended_after_connection_state_ttl() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let server_task = tokio::spawn(async move {
         // First connection: handshake then drop
         let conn = ws
             .accept_and_handshake_with_opts(
@@ -772,25 +773,30 @@ async fn retry_enters_suspended_after_connection_state_ttl() {
         matches!(event, Event::Disconnected { .. }),
         "expected Disconnected, got {event:?}"
     );
+    join_server_task(server_task, "mock server").await.unwrap();
 
     // ably-js does not exhaust reconnect attempts. Once the connection state
     // TTL expires, it moves to suspended retry and keeps trying fresh connects.
-    loop {
-        let event = expect_event(&mut sub, "suspended transition")
-            .await
-            .unwrap();
-        match event {
+    expect_event_matching_before(
+        async || sub.next().await,
+        Instant::now() + RECONNECT_EVENT_TIMEOUT,
+        "Disconnected reason containing connection state expired",
+        |event| match event {
             Event::Disconnected { reason }
                 if reason
                     .as_deref()
                     .is_some_and(|reason| reason.contains("connection state expired")) =>
             {
-                break;
+                Ok(true)
             }
-            Event::Disconnected { .. } => {}
-            other => panic!("expected Disconnected while retrying, got {other:?}"),
-        }
-    }
+            Event::Disconnected { .. } => Ok(false),
+            other => Err(format!(
+                "expected Disconnected while retrying, got {other:?}"
+            )),
+        },
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -817,19 +823,23 @@ async fn suspended_retry_reconnect_attach_uses_resume_without_serial() {
         drop(conn);
 
         let mut suspended_seen_rx = suspended_seen_rx;
-        loop {
-            tokio::select! {
-                biased;
-                result = &mut suspended_seen_rx => {
-                    result.unwrap();
-                    break;
-                }
-                accept_result = ws.listener.accept() => {
-                    let (tcp, _) = accept_result.unwrap();
-                    drop(tcp);
+        tokio::time::timeout(RECONNECT_EVENT_TIMEOUT, async {
+            loop {
+                tokio::select! {
+                    biased;
+                    result = &mut suspended_seen_rx => {
+                        result.unwrap();
+                        break;
+                    }
+                    accept_result = ws.listener.accept() => {
+                        let (tcp, _) = accept_result.unwrap();
+                        drop(tcp);
+                    }
                 }
             }
-        }
+        })
+        .await
+        .expect("timed out waiting for suspended transition signal");
 
         let mut conn2 = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
@@ -901,21 +911,33 @@ async fn suspended_retry_reconnect_attach_uses_resume_without_serial() {
 
     expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    loop {
-        let event = expect_event(&mut sub, "suspended retry transition")
-            .await
-            .unwrap();
-        match event {
+    let suspended_transition = expect_event_matching_before(
+        async || sub.next().await,
+        Instant::now() + RECONNECT_EVENT_TIMEOUT,
+        "Disconnected reason containing connection state expired",
+        |event| match event {
             Event::Disconnected { reason }
                 if reason
                     .as_deref()
                     .is_some_and(|reason| reason.contains("connection state expired")) =>
             {
-                suspended_seen_tx.send(()).unwrap();
-                break;
+                Ok(true)
             }
-            Event::Disconnected { .. } => {}
-            other => panic!("expected Disconnected while retrying, got {other:?}"),
+            Event::Disconnected { .. } => Ok(false),
+            other => Err(format!(
+                "expected Disconnected while retrying, got {other:?}"
+            )),
+        },
+    )
+    .await;
+    match suspended_transition {
+        Ok(_) => suspended_seen_tx.send(()).unwrap(),
+        Err(error) => {
+            sub.close();
+            if let Err(cleanup_error) = abort_server_task(server_task, "mock server").await {
+                panic!("{error}; cleanup failed: {cleanup_error}");
+            }
+            panic!("{error}");
         }
     }
 
@@ -1004,15 +1026,23 @@ async fn non_positive_ttl_keeps_default_resume_window() {
     let event = expect_event(&mut sub, "Disconnected").await.unwrap();
     assert!(matches!(event, Event::Disconnected { .. }));
 
-    loop {
-        let event = expect_event_with_timeout(&mut sub, RECONNECT_EVENT_TIMEOUT, "Connected")
-            .await
-            .unwrap();
-        match event {
-            Event::Connected => break,
-            Event::Disconnected { .. } => {}
-            other => panic!("expected Connected, got {other:?}"),
+    let connected = expect_event_matching_before(
+        async || sub.next().await,
+        Instant::now() + RECONNECT_EVENT_TIMEOUT,
+        "Connected",
+        |event| match event {
+            Event::Connected => Ok(true),
+            Event::Disconnected { .. } => Ok(false),
+            other => Err(format!("expected Connected, got {other:?}")),
+        },
+    )
+    .await;
+    if let Err(error) = connected {
+        sub.close();
+        if let Err(cleanup_error) = abort_server_task(server_task, "mock server").await {
+            panic!("{error}; cleanup failed: {cleanup_error}");
         }
+        panic!("{error}");
     }
 
     // Message after reconnect proves the subscription is still alive.

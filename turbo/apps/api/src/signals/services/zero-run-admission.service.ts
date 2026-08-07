@@ -8,11 +8,13 @@ import {
   pgInt8ToSafeIntegerDecoder,
 } from "../../lib/db-structured-result";
 import { insufficientCredits } from "../../lib/error";
+import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
   loadOrgPlanCapabilities,
   type OrgPlanCapabilities,
 } from "./org-plan-entitlement-read.service";
+import { getSpendableUsagePackCredits } from "./usage-pack-credit.service";
 import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 
 type CreditDb = Pick<Db, "$with" | "select" | "with">;
@@ -22,6 +24,7 @@ interface OrgCreditAvailability {
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
   readonly spendableCredits: number;
+  readonly usagePackCredits: number;
 }
 
 type OrgPlanRunAdmissionCapabilities = Pick<
@@ -32,7 +35,9 @@ type OrgPlanRunAdmissionCapabilities = Pick<
 export async function resolveOrgCreditAvailability(params: {
   readonly db: CreditDb;
   readonly orgId: string;
+  readonly userId: string;
 }): Promise<OrgCreditAvailability | null> {
+  const at = nowDate();
   const expired = params.db.$with("expired").as(
     params.db
       .select({
@@ -44,7 +49,7 @@ export async function resolveOrgCreditAvailability(params: {
       .where(
         and(
           eq(creditExpiresRecord.orgId, params.orgId),
-          lte(creditExpiresRecord.expiresAt, sql`now()`),
+          lte(creditExpiresRecord.expiresAt, at),
           gt(creditExpiresRecord.remaining, sql`0`),
         ),
       ),
@@ -71,17 +76,24 @@ export async function resolveOrgCreditAvailability(params: {
   if (!capabilities) {
     return null;
   }
+  const usagePackCredits = await getSpendableUsagePackCredits(params.db, {
+    orgId: params.orgId,
+    userId: params.userId,
+    at,
+  });
   return {
     status: capabilities.status,
     supportByok: capabilities.supportByok,
     restrictedVm0Models: capabilities.restrictedVm0Models,
     spendableCredits,
+    usagePackCredits,
   };
 }
 
 export async function checkOrgCreditsForRunAdmission(params: {
   readonly db: Db;
   readonly orgId: string;
+  readonly userId: string;
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel?: string | null;
 }): Promise<ReturnType<typeof insufficientCredits> | undefined> {
@@ -95,6 +107,7 @@ export async function checkOrgCreditsForRunAdmission(params: {
 export async function checkResolvedOrgCreditsForRunAdmission(params: {
   readonly db: Db;
   readonly orgId: string;
+  readonly userId: string;
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel?: string | null;
   readonly availability: OrgCreditAvailability | null;
@@ -116,7 +129,7 @@ export async function checkResolvedOrgCreditsForRunAdmission(params: {
     return undefined;
   }
 
-  if (availability.spendableCredits > 0) {
+  if (availability.usagePackCredits > 0 || availability.spendableCredits > 0) {
     return undefined;
   }
 

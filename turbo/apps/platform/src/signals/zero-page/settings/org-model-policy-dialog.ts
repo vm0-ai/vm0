@@ -13,7 +13,7 @@ import {
 } from "../../external/org-model-policies.ts";
 
 export type ModelPolicyDialogMode = "add" | "edit";
-export type ModelPolicyRouteKind = "built-in" | "api-key" | "oauth";
+export type ModelPolicyRouteKind = "built-in" | "api-key" | "gateway" | "oauth";
 
 interface ModelPolicyDialogState {
   open: boolean;
@@ -21,6 +21,7 @@ interface ModelPolicyDialogState {
   model: SupportedRunModel | null;
   routeKind: ModelPolicyRouteKind;
   providerType: ModelProviderType | null;
+  surfaceId: string | null;
 }
 
 const internalModelPolicyDialogState$ = state<ModelPolicyDialogState>({
@@ -29,6 +30,7 @@ const internalModelPolicyDialogState$ = state<ModelPolicyDialogState>({
   model: null,
   routeKind: "built-in",
   providerType: null,
+  surfaceId: null,
 });
 
 const internalModelPolicyApiKey$ = state<string>("");
@@ -68,6 +70,9 @@ function isOAuthMemberType(type: ModelProviderType): boolean {
 }
 
 function getPolicyRouteKind(policy: OrgModelPolicy): ModelPolicyRouteKind {
+  if (policy.modelProviderSurfaceId) {
+    return "gateway";
+  }
   if (policy.defaultProviderType === "vm0") {
     return "built-in";
   }
@@ -84,6 +89,7 @@ function toOrgModelPolicyUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
     defaultProviderType: policy.defaultProviderType,
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,
+    modelProviderSurfaceId: policy.modelProviderSurfaceId,
   };
 }
 
@@ -104,6 +110,7 @@ function applyProviderRouteToPolicies(
       defaultProviderType: provider.type,
       credentialScope: "org" as const,
       modelProviderId: provider.id,
+      modelProviderSurfaceId: null,
     };
   });
 
@@ -114,6 +121,7 @@ function applyProviderRouteToPolicies(
       defaultProviderType: provider.type,
       credentialScope: "org",
       modelProviderId: provider.id,
+      modelProviderSurfaceId: null,
     });
   }
 
@@ -132,6 +140,7 @@ export const openAddModelPolicyDialog$ = command(
       model,
       routeKind: "built-in",
       providerType: null,
+      surfaceId: null,
     });
     set(internalModelPolicyApiKey$, "");
     set(internalModelPolicyApiKeyTouched$, false);
@@ -149,6 +158,7 @@ export const openEditModelPolicyDialog$ = command(
       routeKind,
       providerType:
         routeKind === "built-in" ? null : policy.defaultProviderType,
+      surfaceId: policy.modelProviderSurfaceId ?? null,
     });
     set(internalModelPolicyApiKey$, "");
     set(internalModelPolicyApiKeyTouched$, false);
@@ -163,6 +173,7 @@ export const closeModelPolicyDialog$ = command(({ set }) => {
     model: null,
     routeKind: "built-in",
     providerType: null,
+    surfaceId: null,
   });
   set(internalModelPolicyApiKey$, "");
   set(internalModelPolicyApiKeyTouched$, false);
@@ -213,6 +224,7 @@ export const updateModelPolicyDialogModel$ = command(
         model,
         routeKind: "built-in" as const,
         providerType: null,
+        surfaceId: null,
       };
     });
     set(internalModelPolicyApiKey$, "");
@@ -227,10 +239,15 @@ export const updateModelPolicyDialogRoute$ = command(
     params: {
       routeKind: ModelPolicyRouteKind;
       providerType: ModelProviderType | null;
+      surfaceId?: string | null;
     },
   ) => {
     set(internalModelPolicyDialogState$, (prev) => {
-      return { ...prev, ...params };
+      return {
+        ...prev,
+        ...params,
+        surfaceId: params.surfaceId ?? null,
+      };
     });
     set(internalModelPolicyApiKey$, "");
     set(internalModelPolicyApiKeyTouched$, false);

@@ -1,9 +1,40 @@
-//! Compatibility mapping from Codex app-server notifications to Codex JSONL events.
+//! Compatibility policy for adapting Codex app-server notifications to Codex JSONL events.
+//!
+//! This module is the normalization boundary between the evolving app-server
+//! notification surface and the established JSONL shape consumed by guest-agent
+//! event ingestion. Notifications are not forwarded verbatim: supported
+//! lifecycle, plan, item, warning, and error notifications are validated and
+//! translated into the existing event and diagnostic conventions. Malformed
+//! required data on a supported notification returns an error so the backend
+//! fails the execution instead of emitting a partial event.
+//!
+//! Item and command delta/progress notifications do not emit events because
+//! completed-item snapshots provide the canonical output and emitting both would
+//! duplicate partial content. Other configured opt-out methods likewise do not
+//! emit, and unknown methods are ignored for forward compatibility.
+//!
+//! Item starts are deliberately asymmetric. Command execution starts become
+//! JSONL `item.started` events, while reasoning and agent-message starts are
+//! captured separately as first-output timing metadata. Other item starts are
+//! ignored. Completed items with known types receive strict, type-specific
+//! normalization. Unknown completed types use a bounded, shallow, and lossy
+//! projection: names become snake case, scalar values and scalar members of
+//! shallow collections are retained, deeper collections are dropped, and
+//! collections beyond fixed limits are omitted.
+//!
+//! Statuses, file-change patch kinds, and error fields are normalized into the
+//! legacy JSONL and failure-diagnostic shapes rather than preserving their raw
+//! app-server representation.
 
+use guest_contracts::epoch_milliseconds::is_plausible_epoch_milliseconds;
 use serde_json::{Map, Value, json};
 
 use super::codex_app_server::ServerNotification;
 
+/// Notification methods that emit no JSONL event and are requested as app-server opt-outs.
+///
+/// The backend advertises this set during initialization. If app-server still
+/// sends one of these notifications, the mapper ignores it.
 pub(super) const IGNORED_NOTIFICATION_METHODS: &[&str] = &[
     "command/exec/outputDelta",
     "process/outputDelta",
@@ -24,7 +55,6 @@ pub(super) const IGNORED_NOTIFICATION_METHODS: &[&str] = &[
 
 const MAX_GENERIC_COLLECTION_ITEMS: usize = 16;
 const MAX_GENERIC_OBJECT_FIELDS: usize = 24;
-const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum CodexOutputItemKind {
@@ -106,6 +136,28 @@ pub(super) enum CodexAppServerEventError {
     InvalidField { method: String, field: &'static str },
 }
 
+/// Extract a notification's thread id for early secondary-thread filtering.
+///
+/// This is a best-effort lookup performed before strict event mapping. Missing,
+/// empty, malformed, or unsupported thread-id locations return `None`; a later
+/// supported mapper can still reject the notification as malformed.
+pub(super) fn notification_thread_id(notification: &ServerNotification) -> Option<&str> {
+    let params = notification.params.as_ref()?;
+    let thread_id = match notification.method.as_str() {
+        "thread/started" => params.pointer("/thread/id"),
+        "turn/started" | "turn/completed" | "turn/plan/updated" | "item/started"
+        | "item/completed" | "error" | "warning" => params.get("threadId"),
+        _ => None,
+    }?;
+    thread_id.as_str().filter(|thread_id| !thread_id.is_empty())
+}
+
+/// Extract first-output timing metadata from a reasoning or agent-message start.
+///
+/// Non-`item/started` notifications and other valid started item kinds return
+/// `Ok(None)`. Selected starts require valid thread, turn, and epoch timestamp
+/// fields. The backend records this metadata separately because these starts do
+/// not become JSONL item events.
 pub(super) fn codex_output_item_start(
     notification: &ServerNotification,
 ) -> Result<Option<CodexOutputItemStart>, CodexAppServerEventError> {
@@ -128,7 +180,7 @@ pub(super) fn codex_output_item_start(
         .get("startedAtMs")
         .ok_or_else(|| missing_field(&notification.method, "startedAtMs"))?
         .as_u64()
-        .filter(|value| *value >= MIN_EPOCH_MS_TIMESTAMP)
+        .filter(|value| is_plausible_epoch_milliseconds(*value))
         .ok_or_else(|| invalid_field_for_method(&notification.method, "startedAtMs"))?;
 
     Ok(Some(CodexOutputItemStart {
@@ -141,8 +193,10 @@ pub(super) fn codex_output_item_start(
 
 /// Convert a Codex app-server notification into the existing Codex JSONL event shape.
 ///
-/// Unsupported notifications and app-server delta/progress notifications return `Ok(None)`.
-/// Supported notifications with malformed required fields return an error.
+/// `Ok(Some(_))` contains a normalized event. Deliberately non-emitting
+/// notifications, unknown methods, and started item kinds without a JSONL event
+/// return `Ok(None)`. Supported notifications with malformed required fields
+/// return an error.
 pub(super) fn notification_to_codex_event(
     notification: &ServerNotification,
 ) -> Result<Option<Value>, CodexAppServerEventError> {

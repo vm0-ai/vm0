@@ -1,10 +1,12 @@
 import { createHmac, randomUUID } from "node:crypto";
 
+import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockEnv } from "../../../lib/env";
 import { mockNow } from "../../../lib/time";
@@ -16,18 +18,24 @@ import {
   createWorkflowsBddApi,
   mockNotionConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
+import { chatEventAutomationPart } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+import { webhooksNotionRoutes } from "../webhooks-notion";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...testWorkflowAutomationExecutionRoutes,
+  ...webhooksNotionRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
-const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_PATH =
-  "/api/cron/execute-workflow-automations";
-
 const WORKFLOW_NAME = "notion-webhook-workflow";
-const CRON_SECRET = "test-cron-secret";
 const NOTION_WEBHOOK_TOKEN = "notion-webhook-verification-token";
 const NOTION_WORKSPACE_ID = "33333333-3333-4333-8333-333333333333";
 const NOTION_SUBSCRIPTION_ID = "44444444-4444-4444-8444-444444444444";
@@ -80,7 +88,16 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
+}
+
+function workflowAutomationExecutionClient() {
+  return setupApp({
+    context,
+    routes: testWorkflowAutomationExecutionRoutes,
+  })(testWorkflowAutomationExecutionContract);
 }
 
 async function enableNotionWorkflowAutomations(
@@ -147,15 +164,7 @@ function configureNotionChildPageMock(
     http.get(
       "https://api.notion.com/v1/pages/:pageId",
       ({ request, params }) => {
-        // Pending events left behind by earlier runs of this file may probe
-        // other page ids during the global cron sweep; only this test's page
-        // resolves.
-        if (params.pageId !== entities.childPageId) {
-          return HttpResponse.json(
-            { object: "error", status: 404, code: "object_not_found" },
-            { status: 404 },
-          );
-        }
+        expect(params.pageId).toBe(entities.childPageId);
         expect(request.headers.get("authorization")).toBe(
           "Bearer notion-access-token",
         );
@@ -325,17 +334,17 @@ async function postNotionWebhook(args: {
   readonly rawBody: string;
   readonly signature?: string;
 }): Promise<{ readonly status: number; readonly body: unknown }> {
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/notion",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(args.signature ? { "X-Notion-Signature": args.signature } : {}),
-      },
-      body: args.rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/webhooks/notion", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(args.signature ? { "X-Notion-Signature": args.signature } : {}),
     },
-  );
+    body: args.rawBody,
+  });
   return { status: response.status, body: await response.json() };
 }
 
@@ -361,15 +370,13 @@ async function verifyNotionWebhook(): Promise<void> {
   });
 }
 
-async function executeDueWorkflowAutomations(): Promise<{
-  readonly status: number;
-  readonly body: unknown;
-}> {
-  const response = await createApp({ signal: context.signal }).request(
-    CRON_EXECUTE_WORKFLOW_AUTOMATIONS_PATH,
-    { headers: { authorization: `Bearer ${CRON_SECRET}` } },
+async function executeDueWorkflowAutomations(automationId: string) {
+  return await accept(
+    workflowAutomationExecutionClient().execute({
+      body: { automation_id: automationId },
+    }),
+    [200],
   );
-  return { status: response.status, body: await response.json() };
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -382,7 +389,7 @@ function record(value: unknown, label: string): Record<string, unknown> {
 function notionEventContextFromPrompt(
   appendSystemPrompt: string,
 ): Record<string, unknown> {
-  const marker = "# Notion event\n";
+  const marker = "# This run's event\n";
   const markerIndex = appendSystemPrompt.indexOf(marker);
   expect(markerIndex).toBeGreaterThanOrEqual(0);
   const parsed: unknown = JSON.parse(
@@ -780,7 +787,6 @@ describe("POST /api/webhooks/notion", () => {
 
   it("executes due page content updated events with the latest page context", async () => {
     const runnerGroup = runsApi.configureRunnerGroup();
-    mockEnv("CRON_SECRET", CRON_SECRET);
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
     await enableNotionWorkflowAutomations(fixture);
@@ -849,13 +855,12 @@ describe("POST /api/webhooks/notion", () => {
     });
     mockNow(new Date("2026-07-06T12:20:00.000Z"));
 
-    // The sweep is global on the shared database, so only assert that this
-    // tick executed at least our due pending event.
-    const executed = await executeDueWorkflowAutomations();
-    expect(executed.status).toBe(200);
-    const executedBody = record(executed.body, "cron response");
-    expect(executedBody.success).toBeTruthy();
-    expect(executedBody.executed).toBeGreaterThanOrEqual(1);
+    const executed = await executeDueWorkflowAutomations(created.body.id);
+    expect(executed.body).toStrictEqual({
+      success: true,
+      executed: 1,
+      skipped: 0,
+    });
 
     // The run landed in the automation's bound chat thread with the friendly
     // Notion brief, linked to the created run.
@@ -863,13 +868,13 @@ describe("POST /api/webhooks/notion", () => {
     const workflowMessage = messages.find((message) => {
       return (
         message.eventType === "input.prompt" &&
-        message.content === `/${WORKFLOW_NAME}`
+        chatEventAutomationPart(message)?.workflowName === WORKFLOW_NAME
       );
     });
     if (!workflowMessage?.runId) {
       throw new Error("Expected a dispatched Notion workflow run message");
     }
-    expect(workflowMessage.workflowSnapshot?.triggerBrief).toBe(
+    expect(chatEventAutomationPart(workflowMessage)?.automationBrief).toBe(
       'Notion page content updated "Launch notes v2" in Launch notes v2',
     );
 

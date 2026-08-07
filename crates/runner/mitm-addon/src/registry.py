@@ -1,8 +1,6 @@
 """Proxy registry loading and VM lookup cache."""
 
 import json
-import os
-import stat
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +9,7 @@ from mitmproxy import ctx
 
 import matching
 import registry_firewalls
+import state_file
 from firewall_auth_cache import evict_all_cache_keys, evict_stale_cache_keys
 
 VmContext = tuple[
@@ -18,15 +17,8 @@ VmContext = tuple[
     matching.CompiledFirewallSet | None,
     matching.CompiledNetworkPolicies,
 ]
-type _RegistryFileKey = tuple[
-    str,
-    int,
-    int,
-    int,
-    int,
-]
+type _RegistryFileKey = state_file.StateFileIdentity
 MAX_REGISTRY_BYTES = 16 * 1024 * 1024
-_READ_CHUNK_BYTES = 1024 * 1024
 
 
 class _RegistryFormatError(ValueError):
@@ -47,6 +39,8 @@ class _RegistrySnapshot:
     invalid_vms: dict[str, InvalidVmEntry]
     compiled_firewalls: dict[str, matching.CompiledFirewallSet]
     compiled_network_policies: dict[str, matching.CompiledNetworkPolicies]
+    omitted_builtin_firewalls: dict[str, frozenset[str]]
+    omitted_custom_connector_ids: dict[str, frozenset[str]]
     builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
     loaded_key: _RegistryFileKey | None
 
@@ -63,7 +57,7 @@ RegistryState = _RegistrySnapshot | RegistryUnavailable
 
 
 def _empty_snapshot() -> _RegistrySnapshot:
-    return _RegistrySnapshot({}, {}, {}, {}, None, None)
+    return _RegistrySnapshot({}, {}, {}, {}, {}, {}, None, None)
 
 
 @dataclass
@@ -216,6 +210,8 @@ def _classify_registry_vms(
     dict,
     dict[str, InvalidVmEntry],
     dict[str, tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...]],
+    dict[str, frozenset[str]],
+    dict[str, frozenset[str]],
     registry_firewalls.BuiltinFirewallCatalogSnapshot | None,
 ]:
     new_registry: dict = {}
@@ -224,6 +220,8 @@ def _classify_registry_vms(
         str,
         tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...],
     ] = {}
+    omitted_builtin_firewalls: dict[str, frozenset[str]] = {}
+    omitted_custom_connector_ids: dict[str, frozenset[str]] = {}
     builtin_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None = None
     for client_ip, vm in raw_registry.items():
         if not isinstance(vm, dict):
@@ -271,6 +269,13 @@ def _classify_registry_vms(
             )
             continue
 
+        try:
+            explicit_omitted_builtins = _omitted_runtime_intents(vm, "omittedBuiltinFirewalls")
+            explicit_omitted_custom_ids = _omitted_runtime_intents(vm, "omittedCustomConnectorIds")
+        except ValueError as e:
+            invalid_vms[client_ip] = InvalidVmEntry("invalid_omitted_intents", str(e))
+            continue
+
         raw_firewalls = vm.get("firewalls")
         vm_uses_builtin_catalog_dependency = isinstance(raw_firewalls, list) and any(
             isinstance(entry, dict) and entry.get("kind") == "builtin" for entry in raw_firewalls
@@ -295,6 +300,15 @@ def _classify_registry_vms(
             vm["firewalls"] = resolved_firewalls.firewalls
             if resolved_firewalls.builtin_cache_keys is not None:
                 builtin_cache_keys_by_client_ip[client_ip] = resolved_firewalls.builtin_cache_keys
+            if resolved_firewalls.omitted_builtin_names:
+                explicit_omitted_builtins = (
+                    explicit_omitted_builtins | resolved_firewalls.omitted_builtin_names
+                )
+
+        if explicit_omitted_builtins:
+            omitted_builtin_firewalls[client_ip] = explicit_omitted_builtins
+        if explicit_omitted_custom_ids:
+            omitted_custom_connector_ids[client_ip] = explicit_omitted_custom_ids
 
         new_registry[client_ip] = vm
 
@@ -302,47 +316,25 @@ def _classify_registry_vms(
         new_registry,
         invalid_vms,
         builtin_cache_keys_by_client_ip,
+        omitted_builtin_firewalls,
+        omitted_custom_connector_ids,
         builtin_catalog_snapshot,
     )
 
 
-def _open_registry_for_read(path: Path) -> tuple[int, os.stat_result]:
-    flags = os.O_RDONLY
-    for flag_name in ("O_CLOEXEC", "O_NOFOLLOW", "O_NONBLOCK"):
-        flags |= getattr(os, flag_name, 0)
-    fd = os.open(path, flags)
-    try:
-        st = os.fstat(fd)
-    except OSError:
-        os.close(fd)
-        raise
-    if not stat.S_ISREG(st.st_mode):
-        os.close(fd)
-        raise OSError(f"proxy registry is not a regular file: {path}")
-    return fd, st
+def _omitted_runtime_intents(vm: dict, field_name: str) -> frozenset[str]:
+    raw_values = vm.get(field_name, [])
+    if not isinstance(raw_values, list) or any(
+        not isinstance(value, str) or value == "" for value in raw_values
+    ):
+        raise ValueError(f"proxy registry VM entry {field_name} must be a string list")
+    if len(set(raw_values)) != len(raw_values):
+        raise ValueError(f"proxy registry VM entry {field_name} must be unique")
+    return frozenset(raw_values)
 
 
-def _read_registry_bytes(fd: int, path: Path, st_size: int) -> bytes:
-    if st_size > MAX_REGISTRY_BYTES:
-        raise OSError(f"proxy registry {path} exceeds {MAX_REGISTRY_BYTES} bytes")
-
-    chunks: list[bytes] = []
-    total = 0
-    while total <= MAX_REGISTRY_BYTES:
-        to_read = min(_READ_CHUNK_BYTES, MAX_REGISTRY_BYTES + 1 - total)
-        chunk = os.read(fd, to_read)
-        if not chunk:
-            break
-        chunks.append(chunk)
-        total += len(chunk)
-
-    if total > MAX_REGISTRY_BYTES:
-        raise OSError(f"proxy registry {path} exceeds {MAX_REGISTRY_BYTES} bytes")
-    return b"".join(chunks)
-
-
-def _read_registry_vms(fd: int, path: Path, st_size: int) -> dict:
-    raw_registry = json.loads(_read_registry_bytes(fd, path, st_size).decode("utf-8"))
+def _read_registry_vms(raw_bytes: bytes) -> dict:
+    raw_registry = json.loads(raw_bytes.decode("utf-8"))
     if not isinstance(raw_registry, dict):
         raise _RegistryFormatError("proxy registry must be an object")
     raw_vms = raw_registry.get("vms", {})
@@ -383,7 +375,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
     builtin_catalog_cache_path = _builtin_firewall_catalog_cache_path()
 
     try:
-        fd, st = _open_registry_for_read(path)
+        opened_file = state_file.open_state_file(path, description="proxy registry")
     except OSError as e:
         message = str(e)
         if not state.stat_error_logged:
@@ -391,14 +383,8 @@ def load_registry_state(registry_path: str) -> RegistryState:
             ctx.log.warn(f"Failed to stat proxy registry: {message}")
         return _mark_unavailable(state, reason="stat_failed", message=message)
 
-    try:
-        key = (
-            path_key,
-            st.st_dev,
-            st.st_ino,
-            st.st_mtime_ns,
-            st.st_size,
-        )
+    with opened_file:
+        key = opened_file.identity
         loaded_catalog_snapshot = state.snapshot.builtin_firewall_catalog_snapshot
         if key == state.snapshot.loaded_key and (
             loaded_catalog_snapshot is None
@@ -417,7 +403,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
             )
 
         try:
-            raw_registry = _read_registry_vms(fd, path, st.st_size)
+            raw_registry = _read_registry_vms(opened_file.read_bytes(MAX_REGISTRY_BYTES))
         except OSError as e:
             message = str(e)
             state.failed_key = None
@@ -431,13 +417,13 @@ def load_registry_state(registry_path: str) -> RegistryState:
             state.read_error_key = None
             ctx.log.warn(f"Failed to parse proxy registry: {message}")
             return _mark_unavailable(state, reason="parse_failed", message=message)
-    finally:
-        os.close(fd)
 
     (
         new_registry,
         invalid_vms,
         builtin_cache_keys,
+        omitted_builtin_firewalls,
+        omitted_custom_connector_ids,
         builtin_catalog_snapshot,
     ) = _classify_registry_vms(
         raw_registry,
@@ -460,6 +446,8 @@ def load_registry_state(registry_path: str) -> RegistryState:
         invalid_vms,
         new_compiled_registry,
         new_compiled_policy_registry,
+        omitted_builtin_firewalls,
+        omitted_custom_connector_ids,
         builtin_catalog_snapshot,
         key,
     )

@@ -317,7 +317,11 @@ async def test_public_destination_upstream_change_during_auth_prevents_credentia
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert flow.request.headers.fields == original_headers
     assert flow.request.path == original_path
-    assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
+    binding_snapshot = upstream_destination_binding.binding_snapshot_for_tests()
+    if upstream_change == "completed":
+        assert flow.server_conn.id not in binding_snapshot
+    else:
+        assert flow.server_conn.id in binding_snapshot
 
 
 async def test_public_destination_policy_allow_classifies_public_runtime_destination_once(
@@ -1258,7 +1262,7 @@ async def test_public_destination_request_phase_blocks_unresolved_hostname_witho
     )
 
 
-async def test_public_destination_revalidates_cached_auth_base_classification(
+async def test_public_destination_reclassifies_buffered_auth_base_request(
     tmp_path, real_flow, mitm_ctx, headers
 ):
     reg_path = _write_public_destination_firewall_registry(
@@ -1275,7 +1279,7 @@ async def test_public_destination_revalidates_cached_auth_base_classification(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         assert mitm_addon.requestheaders(flow) is None
-        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
             1,
             mitm_addon.STREAM_BUFFER_LIMIT + 1,
@@ -1298,7 +1302,7 @@ async def test_public_destination_revalidates_cached_auth_base_classification(
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 
-async def test_public_destination_revalidates_cached_auth_base_hostname_classification(
+async def test_public_destination_reclassifies_buffered_auth_base_hostname_request(
     tmp_path, real_flow, mitm_ctx, headers
 ):
     reg_path = _write_public_destination_firewall_registry(
@@ -1315,7 +1319,7 @@ async def test_public_destination_revalidates_cached_auth_base_hostname_classifi
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         assert mitm_addon.requestheaders(flow) is None
-        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
             1,
             mitm_addon.STREAM_BUFFER_LIMIT + 1,

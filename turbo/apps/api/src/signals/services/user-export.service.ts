@@ -20,17 +20,16 @@ import {
 } from "@vm0/core/storage-names";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { blobs } from "@vm0/db/schema/blob";
-import { chatMessages } from "@vm0/db/schema/chat-message";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { conversations } from "@vm0/db/schema/conversation";
+import { blobs } from "@vm0/db/schema/blob";
+import { chatEvents } from "@vm0/db/schema/chat-event";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
-
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { extractFilesFromTarGz } from "../../lib/tar";
@@ -43,7 +42,7 @@ import {
   generatePresignedGetUrl,
   putS3Object,
 } from "../external/s3";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   createDeferredPromise,
   onRejection,
@@ -72,10 +71,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -751,19 +747,19 @@ async function collectConversationMessages(
   for (const thread of threads) {
     const rows = await runtime.db
       .select({
-        eventType: chatEventTypeSql().as("event_type"),
-        content: chatMessages.content,
-        userMessage: chatMessages.userMessage,
-        createdAt: chatMessages.createdAt,
+        eventType: chatEvents.eventType,
+        content: chatEvents.content,
+        userMessage: chatEvents.userMessage,
+        createdAt: chatEvents.createdAt,
       })
-      .from(chatMessages)
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.chatThreadId, thread.id),
+          eq(chatEvents.chatThreadId, thread.id),
           chatEventTypeIn(CHAT_EVENT_TYPES),
         ),
       )
-      .orderBy(asc(chatMessages.seqId));
+      .orderBy(asc(chatEvents.seqId));
     runtime.signal.throwIfAborted();
 
     const messages: ExportTextMessage[] = rows.flatMap((message) => {

@@ -495,10 +495,11 @@ mod tests {
 
         writer.write_all(b"first\n").await.unwrap();
 
-        producer
+        let outcome = producer
             .drain(drain_context(path), Duration::from_secs(1))
             .await;
 
+        assert_eq!(outcome, NetworkLogDrainOutcome::Acknowledged);
         assert_eq!(handled.lock().unwrap().as_slice(), ["first"]);
 
         cancel.cancel();
@@ -697,7 +698,12 @@ mod tests {
         cancel.cancel();
         let (_producer, drain_rx) = NetworkLogDrainProducer::channel("reader-test");
 
-        let exit = run_drainable_line_reader(PendingReader, cancel, drain_rx, |_| async {}).await;
+        let exit = timeout(
+            Duration::from_secs(1),
+            run_drainable_line_reader(PendingReader, cancel, drain_rx, |_| async {}),
+        )
+        .await
+        .expect("timed out waiting for drainable line reader cancellation");
 
         assert!(matches!(exit, DrainableLineReaderExit::Cancelled));
     }

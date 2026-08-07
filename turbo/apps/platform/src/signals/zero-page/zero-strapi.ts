@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
+import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 
@@ -63,7 +64,11 @@ export const createStrapiIntegration$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
-    toast.success("Strapi integration created");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.strapi.toasts.created;
+      }),
+    );
     return result.body;
   },
 );
@@ -99,9 +104,17 @@ export const checkStrapiIntegrationTest$ = command(
       return value + 1;
     });
     if (result.body.received) {
-      toast.success("Strapi test webhook received");
+      toast.success(
+        i18n.t(($) => {
+          return $.connectors.providerSettings.strapi.toasts.testReceived;
+        }),
+      );
     } else {
-      toast.info("No Strapi test webhook received yet");
+      toast.info(
+        i18n.t(($) => {
+          return $.connectors.providerSettings.strapi.toasts.noTestReceived;
+        }),
+      );
     }
     return result.body;
   },
@@ -124,7 +137,11 @@ export const removeStrapiIntegration$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
-    toast.success("Strapi integration removed");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.strapi.toasts.removed;
+      }),
+    );
   },
 );
 

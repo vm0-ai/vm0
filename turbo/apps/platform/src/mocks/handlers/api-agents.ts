@@ -2,6 +2,7 @@ import {
   zeroTeamContract,
   type TeamComposeItem,
 } from "@vm0/api-contracts/contracts/zero-team";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
@@ -19,7 +20,6 @@ import {
   chatThreadModelSelectionContract,
   chatThreadEventsContract,
   chatThreadArtifactsContract,
-  artifactsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
 import { mockApi } from "../msw-contract.ts";
@@ -59,7 +59,8 @@ const DEFAULT_COMPOSES_LIST: ComposeListItem[] = [
 ];
 
 let mockComposesList: ComposeListItem[] = [...DEFAULT_COMPOSES_LIST];
-const mockEnabledConnectorTypesByAgent = new Map<string, string[]>();
+const mockEnabledConnectorSlugsByAgent = new Map<string, string[]>();
+const mockEnabledCustomConnectorIdsByAgent = new Map<string, string[]>();
 
 export function setMockComposesList(composes: ComposeListItem[]): void {
   mockComposesList = composes;
@@ -70,25 +71,24 @@ export function resetMockComposesList(): void {
 }
 
 export function resetMockUserConnectors(): void {
-  mockEnabledConnectorTypesByAgent.clear();
+  mockEnabledConnectorSlugsByAgent.clear();
+  mockEnabledCustomConnectorIdsByAgent.clear();
 }
 
-function mockUserConnectorUpdateResponse(
+function mockConnectorUpdateResponse(
   current: readonly string[],
-  body: {
-    readonly enabledTypes: readonly string[];
-    readonly operation?: "replace" | "add" | "remove";
-  },
+  requested: readonly string[],
+  operation: "replace" | "add" | "remove" | undefined,
 ): string[] {
-  if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledTypes]));
+  if (operation === "add") {
+    return Array.from(new Set([...current, ...requested]));
   }
-  if (body.operation === "remove") {
-    return current.filter((type) => {
-      return !body.enabledTypes.includes(type);
+  if (operation === "remove") {
+    return current.filter((value) => {
+      return !requested.includes(value);
     });
   }
-  return [...body.enabledTypes];
+  return [...requested];
 }
 
 export const apiAgentsHandlers = [
@@ -104,22 +104,52 @@ export const apiAgentsHandlers = [
 
   // GET /api/zero/agents/:id/user-connectors
   mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    const enabledConnectorSlugs =
+      mockEnabledConnectorSlugsByAgent.get(params.id) ?? [];
     return respond(200, {
-      enabledTypes: mockEnabledConnectorTypesByAgent.get(params.id) ?? [],
+      enabledConnectorSlugs,
+    });
+  }),
+
+  // GET /api/zero/agents/:id/custom-connectors
+  mockApi(zeroAgentCustomConnectorsContract.get, ({ params, respond }) => {
+    return respond(200, {
+      enabledIds: mockEnabledCustomConnectorIdsByAgent.get(params.id) ?? [],
     });
   }),
 
   // PUT /api/zero/agents/:id/user-connectors
   mockApi(zeroUserConnectorsContract.update, ({ body, params, respond }) => {
-    const enabledTypes = mockUserConnectorUpdateResponse(
-      mockEnabledConnectorTypesByAgent.get(params.id) ?? [],
-      body,
+    const enabledConnectorSlugs = mockConnectorUpdateResponse(
+      mockEnabledConnectorSlugsByAgent.get(params.id) ?? [],
+      body.enabledConnectorSlugs,
+      body.operation,
     );
-    mockEnabledConnectorTypesByAgent.set(params.id, enabledTypes);
+    mockEnabledConnectorSlugsByAgent.set(params.id, enabledConnectorSlugs);
     return respond(200, {
-      enabledTypes,
+      enabledConnectorSlugs,
     });
   }),
+
+  // PUT /api/zero/agents/:id/custom-connectors
+  mockApi(
+    zeroAgentCustomConnectorsContract.update,
+    ({ body, params, respond }) => {
+      const requestedIds =
+        "enabledIds" in body
+          ? body.enabledIds
+          : body.grants.map((grant) => {
+              return grant.customConnectorId;
+            });
+      const enabledIds = mockConnectorUpdateResponse(
+        mockEnabledCustomConnectorIdsByAgent.get(params.id) ?? [],
+        requestedIds,
+        body.operation,
+      );
+      mockEnabledCustomConnectorIdsByAgent.set(params.id, enabledIds);
+      return respond(200, { enabledIds });
+    },
+  ),
 
   // GET /api/zero/agents/:id
   mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -147,7 +177,6 @@ export const apiAgentsHandlers = [
   // GET /api/zero/agents/:id/draft
   mockApi(zeroAgentDraftContract.get, ({ respond }) => {
     return respond(200, {
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -180,6 +209,11 @@ export const apiAgentsHandlers = [
     return respond(200, { threadIds: [] });
   }),
 
+  // GET /api/zero/chat-threads/unread-ids
+  mockApi(chatThreadsContract.unreadIds, ({ respond }) => {
+    return respond(200, { threadIds: [] });
+  }),
+
   // GET /api/zero/chat-thread-drafts
   mockApi(chatThreadsContract.drafts, ({ respond }) => {
     return respond(200, { draftThreadIds: [] });
@@ -191,6 +225,7 @@ export const apiAgentsHandlers = [
       id: body.clientThreadId ?? "b0000000-0000-4000-a000-000000000001",
       title: null,
       createdAt: "2026-03-10T00:00:00Z",
+      selectedModel: body.model ?? "claude-sonnet-4-6",
     });
   }),
 
@@ -204,22 +239,17 @@ export const apiAgentsHandlers = [
     return respond(200, { runs: [] });
   }),
 
-  // GET /api/zero/artifacts
-  mockApi(artifactsContract.list, ({ respond }) => {
-    return respond(200, { artifacts: [], truncated: false, nextCursor: null });
-  }),
-
   // GET /api/zero/chat-threads/:id (thread detail)
   mockApi(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
+      cancellationRecoveryPending: false,
     });
   }),
 
   // GET /api/zero/chat-threads/:id/draft
   mockApi(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });

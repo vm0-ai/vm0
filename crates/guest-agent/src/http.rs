@@ -8,12 +8,13 @@ use api_contracts::generated::constants::client::headers::{
     CLIENT_REQUEST_ID_HEADER, CLIENT_SESSION_ID_HEADER, CLIENT_TYPE_HEADER, CLIENT_VERSION_HEADER,
 };
 use api_contracts::generated::constants::client::types::CLIENT_TYPE_GUEST_AGENT;
+use api_contracts::generated::types::webhooks::agent::pi_transcript::Response as PiTranscriptResponse;
 use bytes::{Bytes, BytesMut};
 use guest_common::log_warn;
 use http_body::{Frame, SizeHint};
 use pin_project_lite::pin_project;
 use reqwest::header::CONTENT_TYPE;
-use reqwest::{Client, RequestBuilder, Response};
+use reqwest::{Client, RequestBuilder, Response, Url};
 use serde::Serialize;
 use serde_json::Value;
 use std::future::Future;
@@ -23,12 +24,57 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncSeekExt, ReadBuf};
+use tokio::time::Instant;
 use uuid::Uuid;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
+#[cfg(debug_assertions)]
+const TEST_DISABLE_HTTP_RETRY_DELAY_ENV: &str = "VM0_TEST_DISABLE_HTTP_RETRY_DELAY";
 const GUEST_AGENT_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Content-safe facts published before one event request is awaited.
+#[derive(Debug, Clone)]
+pub(crate) struct HttpAttemptStarted {
+    pub attempt: u32,
+    pub client_request_id: String,
+    pub started_at: Instant,
+}
+
+/// Content-safe facts published after one event request completes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HttpAttemptFinished {
+    pub attempt: u32,
+    pub client_request_id: String,
+    pub elapsed_ms: u64,
+    pub outcome: HttpAttemptOutcome,
+}
+
+/// Transport outcome for an observed event request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HttpAttemptOutcome {
+    Success,
+    Failure {
+        kind: HttpAttemptFailureKind,
+        http_status: Option<u16>,
+    },
+}
+
+/// Content-safe failure classification for an observed request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HttpAttemptFailureKind {
+    Timeout,
+    Connect,
+    HttpStatus,
+    Transport,
+}
+
+/// Synchronous observer for the event delivery request path.
+pub(crate) trait HttpAttemptObserver: Send + Sync {
+    fn attempt_started(&self, attempt: HttpAttemptStarted) -> Result<(), AgentError>;
+    fn attempt_finished(&self, attempt: HttpAttemptFinished) -> Result<(), AgentError>;
+}
 
 fn format_reqwest_error(error: reqwest::Error) -> String {
     error.without_url().to_string()
@@ -61,6 +107,7 @@ struct ApiUrls {
     checkpoint: String,
     complete: String,
     heartbeat: String,
+    pi_transcript: String,
     telemetry: String,
     checkpoint_prepare_history: String,
     storage_prepare: String,
@@ -141,7 +188,21 @@ impl HttpClient {
                 api: None,
             });
         };
-        Self::build(Some(api), DEFAULT_RETRY_DELAY)
+        let retry_delay = {
+            #[cfg(debug_assertions)]
+            {
+                if std::env::var_os(TEST_DISABLE_HTTP_RETRY_DELAY_ENV).is_some() {
+                    Duration::ZERO
+                } else {
+                    DEFAULT_RETRY_DELAY
+                }
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                DEFAULT_RETRY_DELAY
+            }
+        };
+        Self::build(Some(api), retry_delay)
     }
 
     pub fn has_api(&self) -> bool {
@@ -201,6 +262,10 @@ impl HttpClient {
         Ok(&self.api_config()?.urls.heartbeat)
     }
 
+    pub(crate) fn pi_transcript_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.pi_transcript)
+    }
+
     pub(crate) fn telemetry_url(&self) -> Result<&str, AgentError> {
         Ok(&self.api_config()?.urls.telemetry)
     }
@@ -253,10 +318,32 @@ impl ApiUrls {
             checkpoint: urls::checkpoint_url(base_url),
             complete: urls::complete_url(base_url),
             heartbeat: urls::heartbeat_url(base_url),
+            pi_transcript: urls::pi_transcript_url(base_url),
             telemetry: urls::telemetry_url(base_url),
             checkpoint_prepare_history: urls::checkpoint_prepare_history_url(base_url),
             storage_prepare: urls::storage_prepare_url(base_url),
             storage_commit: urls::storage_commit_url(base_url),
+        }
+    }
+}
+
+struct RetryRequest {
+    builder: RequestBuilder,
+    client_request_id: Option<String>,
+}
+
+impl RetryRequest {
+    fn unobserved(builder: RequestBuilder) -> Self {
+        Self {
+            builder,
+            client_request_id: None,
+        }
+    }
+
+    fn observed(builder: RequestBuilder, client_request_id: String) -> Self {
+        Self {
+            builder,
+            client_request_id: Some(client_request_id),
         }
     }
 }
@@ -268,18 +355,47 @@ async fn send_with_retry<BuildRequest, BuildRequestFuture, BuildClientError, Cli
     final_error: String,
     mut build_request: BuildRequest,
     mut build_client_error: BuildClientError,
+    observer: Option<&dyn HttpAttemptObserver>,
 ) -> Result<Response, AgentError>
 where
     BuildRequest: FnMut() -> BuildRequestFuture,
-    BuildRequestFuture: Future<Output = Result<RequestBuilder, AgentError>>,
+    BuildRequestFuture: Future<Output = Result<RetryRequest, AgentError>>,
     BuildClientError: FnMut(Response, u32, u32) -> ClientErrorFuture,
     ClientErrorFuture: Future<Output = AgentError>,
 {
     for attempt in 1..=max_attempts {
-        match build_request().await?.send().await {
-            Ok(resp) if resp.status().is_success() => return Ok(resp),
+        let request = build_request().await?;
+        let active_attempt =
+            request
+                .client_request_id
+                .map(|client_request_id| HttpAttemptStarted {
+                    attempt,
+                    client_request_id,
+                    started_at: Instant::now(),
+                });
+        if let Some(observer) = observer {
+            let started = active_attempt.as_ref().ok_or_else(|| {
+                AgentError::Execution(
+                    "observed HTTP request omitted its client request ID".to_string(),
+                )
+            })?;
+            observer.attempt_started(started.clone())?;
+        }
+        match request.builder.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                observe_attempt_finished(observer, active_attempt, HttpAttemptOutcome::Success)?;
+                return Ok(resp);
+            }
             Ok(resp) => {
                 let status = resp.status();
+                observe_attempt_finished(
+                    observer,
+                    active_attempt,
+                    HttpAttemptOutcome::Failure {
+                        kind: HttpAttemptFailureKind::HttpStatus,
+                        http_status: Some(status.as_u16()),
+                    },
+                )?;
                 // 4xx errors are deterministic except for rate limits.
                 if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
                     return Err(build_client_error(resp, attempt, max_attempts).await);
@@ -290,6 +406,21 @@ where
                 );
             }
             Err(error) => {
+                let failure_kind = if error.is_timeout() {
+                    HttpAttemptFailureKind::Timeout
+                } else if error.is_connect() {
+                    HttpAttemptFailureKind::Connect
+                } else {
+                    HttpAttemptFailureKind::Transport
+                };
+                observe_attempt_finished(
+                    observer,
+                    active_attempt,
+                    HttpAttemptOutcome::Failure {
+                        kind: failure_kind,
+                        http_status: None,
+                    },
+                )?;
                 let error = format_reqwest_error(error);
                 log_warn!(
                     LOG_TAG,
@@ -304,6 +435,25 @@ where
     }
 
     Err(AgentError::Http(final_error))
+}
+
+fn observe_attempt_finished(
+    observer: Option<&dyn HttpAttemptObserver>,
+    started: Option<HttpAttemptStarted>,
+    outcome: HttpAttemptOutcome,
+) -> Result<(), AgentError> {
+    let Some(observer) = observer else {
+        return Ok(());
+    };
+    let started = started.ok_or_else(|| {
+        AgentError::Execution("observed HTTP attempt lost its request context".to_string())
+    })?;
+    observer.attempt_finished(HttpAttemptFinished {
+        attempt: started.attempt,
+        client_request_id: started.client_request_id,
+        elapsed_ms: u64::try_from(started.started_at.elapsed().as_millis()).unwrap_or(u64::MAX),
+        outcome,
+    })
 }
 
 impl HttpClient {
@@ -323,15 +473,108 @@ impl HttpClient {
         self.post_json_bytes(url, body, max_attempts).await
     }
 
+    /// Read the canonical versioned Pi transcript for a standby handoff.
+    ///
+    /// The sandbox token remains inside guest-agent; the zero child receives
+    /// only the parsed response through its local JSONL protocol.
+    pub async fn get_pi_transcript(
+        &self,
+        run_id: &str,
+        max_attempts: u32,
+    ) -> Result<PiTranscriptResponse, AgentError> {
+        let client = self.inner()?;
+        let api = self.api_config()?;
+        let url = self.pi_transcript_url()?;
+        let mut transcript_url = Url::parse(url)
+            .map_err(|error| AgentError::Http(format!("invalid Pi transcript URL: {error}")))?;
+        transcript_url
+            .query_pairs_mut()
+            .append_pair("runId", run_id);
+        let response = send_with_retry(
+            "GET Pi transcript",
+            max_attempts,
+            self.retry_delay,
+            format!("GET Pi transcript failed after {max_attempts} attempts"),
+            || {
+                let request_id = Uuid::new_v4().to_string();
+                let mut request = client
+                    .get(transcript_url.clone())
+                    .header("Authorization", format!("Bearer {}", api.token))
+                    .header(CLIENT_VERSION_HEADER, GUEST_AGENT_CLIENT_VERSION)
+                    .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_GUEST_AGENT)
+                    .header(CLIENT_SESSION_ID_HEADER, api.client_session_id.as_str())
+                    .header(CLIENT_REQUEST_ID_HEADER, &request_id);
+                if !api.vercel_bypass.is_empty() {
+                    request =
+                        request.header("x-vercel-protection-bypass", &api.vercel_bypass);
+                }
+                std::future::ready(Ok(RetryRequest::observed(request, request_id)))
+            },
+            |response, attempt, max_attempts| async move {
+                let status = response.status();
+                log_warn!(
+                    LOG_TAG,
+                    "HTTP GET Pi transcript failed (attempt {attempt}/{max_attempts}): HTTP {status}",
+                );
+                AgentError::HttpStatus {
+                    status: status.as_u16(),
+                    message: format!("GET Pi transcript: HTTP {status}"),
+                }
+            },
+            None,
+        )
+        .await?;
+
+        response
+            .json::<PiTranscriptResponse>()
+            .await
+            .map_err(|error| AgentError::Http(format_reqwest_error(error)))
+    }
+
     pub(crate) async fn post_json_bytes(
         &self,
         url: &str,
         body: Bytes,
         max_attempts: u32,
     ) -> Result<Option<Value>, AgentError> {
+        let resp = self
+            .post_json_response(url, body, max_attempts, None)
+            .await?;
+
+        let text = resp
+            .text()
+            .await
+            .map_err(|error| AgentError::Http(format_reqwest_error(error)))?;
+        if text.is_empty() {
+            return Ok(None);
+        }
+        let val: Value =
+            serde_json::from_str(&text).map_err(|e| AgentError::Http(e.to_string()))?;
+        Ok(Some(val))
+    }
+
+    pub(crate) async fn post_event_bytes(
+        &self,
+        url: &str,
+        body: Bytes,
+        max_attempts: u32,
+        observer: Option<&dyn HttpAttemptObserver>,
+    ) -> Result<(), AgentError> {
+        self.post_json_response(url, body, max_attempts, observer)
+            .await?;
+        Ok(())
+    }
+
+    async fn post_json_response(
+        &self,
+        url: &str,
+        body: Bytes,
+        max_attempts: u32,
+        observer: Option<&dyn HttpAttemptObserver>,
+    ) -> Result<Response, AgentError> {
         let client = self.inner()?;
         let api = self.api_config()?;
-        let resp = send_with_retry(
+        send_with_retry(
             "POST",
             max_attempts,
             self.retry_delay,
@@ -352,9 +595,9 @@ impl HttpClient {
                     .header(CLIENT_VERSION_HEADER, GUEST_AGENT_CLIENT_VERSION)
                     .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_GUEST_AGENT)
                     .header(CLIENT_SESSION_ID_HEADER, api.client_session_id.as_str())
-                    .header(CLIENT_REQUEST_ID_HEADER, request_id);
+                    .header(CLIENT_REQUEST_ID_HEADER, &request_id);
 
-                std::future::ready(Ok(req))
+                std::future::ready(Ok(RetryRequest::observed(req, request_id)))
             },
             |resp, attempt, max_attempts| {
                 let url = url.to_owned();
@@ -388,19 +631,9 @@ impl HttpClient {
                     }
                 }
             },
+            observer,
         )
-        .await?;
-
-        let text = resp
-            .text()
-            .await
-            .map_err(|error| AgentError::Http(format_reqwest_error(error)))?;
-        if text.is_empty() {
-            return Ok(None);
-        }
-        let val: Value =
-            serde_json::from_str(&text).map_err(|e| AgentError::Http(e.to_string()))?;
-        Ok(Some(val))
+        .await
     }
 
     /// PUT raw bytes to a presigned S3 URL with retry.
@@ -424,11 +657,13 @@ impl HttpClient {
             format!("PUT presigned failed after {max_attempts} attempts"),
             move || {
                 let data = data.clone();
-                std::future::ready(Ok(client
-                    .put(url)
-                    .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
-                    .header("Content-Type", content_type)
-                    .body(data)))
+                std::future::ready(Ok(RetryRequest::unobserved(
+                    client
+                        .put(url)
+                        .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
+                        .header("Content-Type", content_type)
+                        .body(data),
+                )))
             },
             |resp, attempt, max_attempts| async move {
                 let status = resp.status();
@@ -438,6 +673,7 @@ impl HttpClient {
                 );
                 AgentError::Http(format!("PUT presigned: HTTP {status}"))
             },
+            None,
         )
         .await?;
 
@@ -574,11 +810,13 @@ impl HttpClient {
                     file.seek(std::io::SeekFrom::Start(0)).await?;
                     let body = reqwest::Body::wrap(SizedBody::new(file, file_len));
 
-                    Ok(client
-                        .put(url)
-                        .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
-                        .header("Content-Type", content_type)
-                        .body(body))
+                    Ok(RetryRequest::unobserved(
+                        client
+                            .put(url)
+                            .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
+                            .header("Content-Type", content_type)
+                            .body(body),
+                    ))
                 }
             },
             |resp, attempt, max_attempts| async move {
@@ -589,6 +827,7 @@ impl HttpClient {
                 );
                 AgentError::Http(format!("PUT presigned: HTTP {status}"))
             },
+            None,
         )
         .await?;
 

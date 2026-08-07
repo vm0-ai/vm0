@@ -15,13 +15,17 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { clearMockNow, mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-afterEach(() => {
+afterEach(async () => {
   clearMockNow();
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
 });
 
 function stalePersonalCodexProvider(): ModelProviderResponse {
@@ -104,12 +108,11 @@ function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
   };
 }
 
-function mockPersonalProvidersStory(): void {
+function mockPersonalProvidersStory(role: "admin" | "member" = "member"): void {
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
-    role: "member",
+    role,
   });
   context.mocks.data.personalModelProviders([stalePersonalCodexProvider()]);
   context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
@@ -158,11 +161,14 @@ function mockBillingCapabilities(modelCapabilities: {
   });
 }
 
-async function openModelSettings(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=model" });
+async function openModelSettings(heading = "Models"): Promise<void> {
+  detachedSetupPage({
+    context,
+    path: "/?settings=model",
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Models" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
   });
 }
 
@@ -210,6 +216,32 @@ function connectButtonInRow(row: HTMLElement, label: string): HTMLElement {
   return button;
 }
 
+function buttonByLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
+function buttonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
 function formatResetInTimeZone(resetAt: string, timeZone: string): string {
   return `resets ${new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -234,7 +266,6 @@ describe("personal model providers settings", () => {
   it("offers Pro upgrade when personal BYOK is unsupported", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -266,7 +297,6 @@ describe("personal model providers settings", () => {
   it("opens personal Claude Code login from model settings", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -312,7 +342,6 @@ describe("personal model providers settings", () => {
   it("connects personal Claude Code with an authorization code", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -377,7 +406,6 @@ describe("personal model providers settings", () => {
   it("keeps Claude Code validation inline and suppresses transport error toasts", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -459,7 +487,6 @@ describe("personal model providers settings", () => {
     mockNow(new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -511,10 +538,99 @@ describe("personal model providers settings", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("localizes subscription reset dates and relative times in Japanese", async () => {
+    const timeZone = "Asia/Tokyo";
+    mockBrowserTimeZone(timeZone);
+    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([
+      connectedPersonalClaudeCodeProvider(),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "ja-JP",
+      supportedLocales: ["en-US", "ja-JP"],
+    });
+
+    await openModelSettings("モデル");
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    expect(document.documentElement.lang).toBe("ja-JP");
+    expect(within(claudeCodeRow).getByText("5時間")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("88% 残り")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("4時間12分後")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("週")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("76% 残り")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("5日23時間後")).toBeInTheDocument();
+
+    const resetAt = "2030-01-01T05:00:00.000Z";
+    const absoluteReset = new Intl.DateTimeFormat("ja-JP", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone,
+      timeZoneName: "short",
+    }).format(new Date(resetAt));
+    expect(
+      within(claudeCodeRow).getByText(`${absoluteReset}にリセット`),
+    ).toBeInTheDocument();
+  });
+
+  it("localizes subscription reset dates and relative times in Spanish", async () => {
+    const timeZone = "Europe/Madrid";
+    mockBrowserTimeZone(timeZone);
+    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([
+      connectedPersonalClaudeCodeProvider(),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "es-ES",
+      supportedLocales: ["en-US", "es-ES"],
+    });
+
+    await openModelSettings("Modelos");
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    expect(document.documentElement.lang).toBe("es-ES");
+    expect(within(claudeCodeRow).getByText("5h")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("88% restante")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("en 4h 12m")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("Semana")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("76% restante")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("en 5d 23h")).toBeInTheDocument();
+
+    const resetAt = "2030-01-01T05:00:00.000Z";
+    const absoluteReset = new Intl.DateTimeFormat("es-ES", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone,
+      timeZoneName: "short",
+    }).format(new Date(resetAt));
+    expect(
+      within(claudeCodeRow).getByText(`se restablece el ${absoluteReset}`),
+    ).toBeInTheDocument();
+  });
+
   it("resets connected personal Codex usage from the row menu", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -567,7 +683,6 @@ describe("personal model providers settings", () => {
     mockBrowserTimeZone("America/New_York");
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -620,7 +735,6 @@ describe("personal model providers settings", () => {
   it("disconnects a connected personal Codex credential", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -646,5 +760,61 @@ describe("personal model providers settings", () => {
         }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("localizes personal model device authentication without changing provider data", async () => {
+    mockPersonalProvidersStory("admin");
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    await openModelSettings("Modelos");
+
+    click(screen.getByText("Adicionar modelo"));
+    const policyDialog = screen.getByRole("dialog", {
+      name: "Adicionar modelo",
+    });
+    click(within(policyDialog).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: "Claude Opus 4.7" }));
+    click(screen.getByRole("radio", { name: /Chave de API/u }));
+    expect(
+      within(policyDialog).getByText("Chave de API da Anthropic"),
+    ).toBeVisible();
+    expect(
+      within(policyDialog).getByPlaceholderText("Insira sua chave de API"),
+    ).toBeVisible();
+    click(buttonByText("Adicionar modelo", policyDialog));
+    expect(
+      within(policyDialog).getByText("A chave de API é obrigatória"),
+    ).toBeVisible();
+    click(buttonByLabel("Fechar", policyDialog));
+
+    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+    expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeVisible();
+    expect(within(codexRow).getByText("Atenção")).toBeVisible();
+
+    click(within(codexRow).getByLabelText("Mais opções"));
+    click(await screen.findByText("Substituir"));
+
+    const personalCode = (
+      await screen.findAllByTestId("codex-device-auth-code")
+    ).find((candidate) => {
+      return candidate.textContent === "PERS-1234";
+    });
+    if (!(personalCode instanceof HTMLElement)) {
+      throw new Error("Personal Codex device code not found");
+    }
+    const personalDialog = dialogContaining(personalCode);
+    expect(
+      within(personalDialog).getByText("Reconectar o Codex"),
+    ).toBeInTheDocument();
+    expect(
+      within(personalDialog).getByText(
+        /mantenha esta caixa de diálogo aberta enquanto o VM0 conclui a conexão/u,
+      ),
+    ).toBeVisible();
   });
 });

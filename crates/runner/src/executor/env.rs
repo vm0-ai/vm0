@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
+use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::Sandbox;
 
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
-use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
-use super::{RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
+use super::{JOB_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
 use crate::types::{CodexRuntimeConfig, ExecutionContext, SandboxReuseResult};
 
@@ -193,6 +194,10 @@ fn validate_codex_runtime_config_field(config: &CodexRuntimeConfig) -> Result<()
     ] {
         validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, value)?;
     }
+    for (name, value) in config.http_headers.iter().flatten() {
+        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, name)?;
+        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, value)?;
+    }
     if let Some(model_catalog) = &config.model_catalog
         && json_value_contains_nul_string(model_catalog)
     {
@@ -248,7 +253,7 @@ pub(crate) fn validate_resume_session_id(context: &ExecutionContext) -> Result<(
             .map(|_| ())
             .ok_or_else(|| "invalid codex session_id".to_string()),
         EffectiveCliFramework::ClaudeCode => {
-            if is_valid_session_id(&session.cli_agent_session_id) {
+            if is_valid_cli_agent_session_id(&session.cli_agent_session_id) {
                 Ok(())
             } else {
                 Err("invalid session_id".to_string())
@@ -356,14 +361,7 @@ pub(super) fn build_env_json_with_host_env(
     reuse_result: SandboxReuseResult,
     host_env: &HostEnv,
 ) -> RunnerResult<HashMap<String, String>> {
-    build_env_json_with_host_env_for_run(
-        context,
-        api_url,
-        sandbox_id,
-        reuse_result,
-        false,
-        host_env,
-    )
+    build_env_json_with_host_env_for_run(context, api_url, sandbox_id, reuse_result, host_env)
 }
 
 /// Build the guest-agent bootstrap environment.
@@ -375,17 +373,9 @@ pub(super) fn build_env_json_for_run(
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
-    has_active_input_source: bool,
 ) -> RunnerResult<HashMap<String, String>> {
     let host_env = HostEnv::from_process();
-    build_env_json_with_host_env_for_run(
-        context,
-        api_url,
-        sandbox_id,
-        reuse_result,
-        has_active_input_source,
-        &host_env,
-    )
+    build_env_json_with_host_env_for_run(context, api_url, sandbox_id, reuse_result, &host_env)
 }
 
 pub(super) fn build_env_json_with_host_env_for_run(
@@ -393,7 +383,6 @@ pub(super) fn build_env_json_with_host_env_for_run(
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
-    has_active_input_source: bool,
     host_env: &HostEnv,
 ) -> RunnerResult<HashMap<String, String>> {
     let mut env = HashMap::new();
@@ -418,6 +407,10 @@ pub(super) fn build_env_json_with_host_env_for_run(
     env.insert(
         guest_contracts::env::SANDBOX_REUSE_RESULT_ENV.into(),
         reuse_result.as_wire().into(),
+    );
+    env.insert(
+        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
+        JOB_TIMEOUT.as_secs().to_string(),
     );
     insert_guest_agent_tuning_env(&mut env, context);
     env.insert(
@@ -461,9 +454,7 @@ pub(super) fn build_env_json_with_host_env_for_run(
 
     match effective_cli_framework(&context.cli_agent_type) {
         EffectiveCliFramework::ClaudeCode => insert_claude_code_env(&mut env, context, host_env),
-        EffectiveCliFramework::Codex => {
-            insert_codex_env(&mut env, context, host_env, has_active_input_source);
-        }
+        EffectiveCliFramework::Codex => insert_codex_env(&mut env, context, host_env),
     }
 
     Ok(env)
@@ -479,6 +470,9 @@ pub(super) fn build_run_payload_for_run(
         artifacts: serialize_artifacts_payload(context)?,
         feature_flags: serialize_feature_flags_payload(context)?,
         codex_runtime_config: serialize_codex_runtime_config_payload(context)?,
+        pi_system_prompt: context.pi_system_prompt.clone().unwrap_or_default(),
+        pi_model_config: serialize_pi_model_config_payload(context)?,
+        run_skill_snapshot: serialize_run_skill_snapshot_payload(context)?,
         ..guest_contracts::env::RunPayload::default()
     };
 
@@ -568,6 +562,22 @@ fn serialize_codex_runtime_config_payload(context: &ExecutionContext) -> RunnerR
     };
     serde_json::to_string(config)
         .map_err(|e| RunnerError::Internal(format!("serialize Codex runtime config: {e}")))
+}
+
+fn serialize_pi_model_config_payload(context: &ExecutionContext) -> RunnerResult<String> {
+    let Some(config) = &context.pi_model_config else {
+        return Ok(String::new());
+    };
+    serde_json::to_string(config)
+        .map_err(|e| RunnerError::Internal(format!("serialize Pi model config: {e}")))
+}
+
+fn serialize_run_skill_snapshot_payload(context: &ExecutionContext) -> RunnerResult<String> {
+    let Some(snapshot) = &context.run_skill_snapshot else {
+        return Ok(String::new());
+    };
+    serde_json::to_string(snapshot)
+        .map_err(|e| RunnerError::Internal(format!("serialize run Skill snapshot: {e}")))
 }
 
 fn validate_run_payload_for_guest(
@@ -681,15 +691,7 @@ pub(super) fn insert_codex_env(
     env: &mut HashMap<String, String>,
     context: &ExecutionContext,
     host_env: &HostEnv,
-    has_active_input_source: bool,
 ) {
-    if has_active_input_source {
-        env.insert(
-            guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV.into(),
-            "1".into(),
-        );
-    }
-
     // Pass USE_MOCK_CODEX from host environment for testing unless preview
     // evaluation explicitly asks for the real agent runtime.
     if let Some(val) = &host_env.use_mock_codex

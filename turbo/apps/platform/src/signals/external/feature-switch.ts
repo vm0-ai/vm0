@@ -58,22 +58,30 @@ export const featureSwitch$ = computed((get) => {
   return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
 });
 
-export const chatThreadSidebarAutoOpenEnabled$ = computed((get): boolean => {
+export const imageRecognitionAvailable$ = computed((): boolean => {
+  return true;
+});
+
+export const avatarTemplatesEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.JoggAiBuiltIn] ?? false;
+});
+
+export const videoTemplateOptionsEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.VideoTemplateOptions] ?? false;
+});
+
+export const artifactSidebarInlineOpenEnabled$ = computed((get): boolean => {
   return (
-    get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarAutoOpen] ?? false
+    get(featureSwitch$)[FeatureSwitchKey.ArtifactSidebarInlineOpen] ?? false
   );
+});
+
+export const cjkFriendlyMarkdownEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.CjkFriendlyMarkdown] ?? false;
 });
 
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
-});
-
-export const composerUploadPopoverEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
-});
-
-export const zeroBrowserEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.ZeroBrowser] ?? false;
 });
 
 export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
@@ -107,10 +115,6 @@ export const reloadFeatureSwitch$ = command(
       result.body.switches,
       result.body.effectiveSwitches,
     );
-    if (result.body.supportsStructuredInlineTemplates !== true) {
-      combined[FeatureSwitchKey.StructuredPromptInlineTemplates] = false;
-    }
-
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
   },
 );

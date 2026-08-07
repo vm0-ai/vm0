@@ -1,24 +1,30 @@
 use super::messages::{
+    agent_message_item_started_notification, assistant_item_completed_notification,
     initialize_response, large_server_notification, large_warning_notification,
     reasoning_item_started_notification, server_notification, server_notification_with_index,
     server_request, thread_response, thread_started_notification, turn,
-    turn_completed_notification, turn_started_notification, warning_notification, write_error,
-    write_json_line, write_split_json_line_prefix, write_success,
-    write_turn_completion_notifications, write_turn_notifications,
+    turn_completed_notification, turn_failed_notification, turn_started_notification,
+    warning_notification, write_error, write_json_line, write_split_json_line_prefix,
+    write_success, write_turn_completion_notifications, write_turn_notifications,
 };
 use super::persistence::{InputEventContext, persist_input_events};
 use super::scenario::Scenario;
 use super::{AppServerState, INVALID_REQUEST, PendingResponse, ServerAction, spawn_stderr_holder};
 use serde_json::{Value, json};
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::thread;
 use uuid::Uuid;
 
+const HANG_ON_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
+const HANG_ON_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
 const OVERSIZED_STDOUT_BYTES: usize = 65 * 1024 * 1024;
 const EVENT_DELIVERY_FLOOD_COUNT: usize = 640;
 const EVENT_DELIVERY_LARGE_EVENT_COUNT: usize = 10;
 const EVENT_DELIVERY_LARGE_EVENT_BYTES: usize = 2 * 1024 * 1024;
+const SECONDARY_THREAD_ID: &str = "00000000-0000-4000-8000-000000000def";
+const SECONDARY_ITEM_STARTED_AT_MS: u64 = 1_700_000_000_000;
 
 impl AppServerState {
     pub(super) fn handle_initialize<W: Write>(
@@ -145,7 +151,7 @@ impl AppServerState {
                 )?;
                 write_success(output, id, result)?;
             }
-            Scenario::RuntimeTurnComplete => {
+            Scenario::RuntimeTurnComplete | Scenario::SecondaryThreadNotifications => {
                 write_json_line(output, &thread_started_notification(&thread_id))?;
                 write_success(output, id, result)?;
             }
@@ -219,6 +225,12 @@ impl AppServerState {
             return Ok(ServerAction::Stop);
         }
         if self.scenario == Scenario::HangOnTurnStart {
+            let home = std::env::var_os("HOME")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+            std::fs::write(
+                PathBuf::from(home).join(HANG_ON_TURN_START_READY_FILE),
+                HANG_ON_TURN_START_READY_EVENT,
+            )?;
             loop {
                 thread::park();
             }
@@ -271,6 +283,7 @@ impl AppServerState {
             },
             &inputs,
         )?;
+        let response_text = mock_response_text(inputs.iter().map(String::as_str));
         write_success(output, id, json!({ "turn": turn(&turn_id) }))?;
         if self.scenario == Scenario::UnexpectedThreadOutputItemStarted {
             write_json_line(
@@ -303,6 +316,10 @@ impl AppServerState {
             )?;
             return Ok(ServerAction::Stop);
         }
+        if self.scenario == Scenario::SecondaryThreadNotifications {
+            write_secondary_thread_notifications(output, &thread_id, &turn_id, &response_text)?;
+            return Ok(ServerAction::Continue);
+        }
         if self.scenario.writes_turn_started_before_steer() {
             if let Some(current_thread) = &mut self.current_thread
                 && self.scenario == Scenario::RuntimeTurnStartedBeforeSteer
@@ -315,7 +332,11 @@ impl AppServerState {
             self.scenario,
             Scenario::RuntimeTurnComplete | Scenario::RuntimeTurnCompleteWithoutThreadStarted
         ) {
-            write_turn_notifications(output, &thread_id, &turn_id)?;
+            write_turn_notifications(output, &thread_id, &turn_id, &response_text)?;
+        }
+        if self.scenario == Scenario::RuntimeTurnFailed {
+            write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
+            write_json_line(output, &turn_failed_notification(&thread_id, &turn_id))?;
         }
         if self.scenario == Scenario::RuntimeEventFlood {
             write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
@@ -416,15 +437,31 @@ impl AppServerState {
             },
             &inputs,
         )?;
+        let response_text = mock_response_text(
+            self.initial_inputs
+                .iter()
+                .chain(&self.steered_inputs)
+                .map(String::as_str),
+        );
         if self.scenario == Scenario::RuntimeTurnCompleteBeforeSteerResponse {
-            write_turn_completion_notifications(output, &thread_id, &active_turn_id)?;
+            write_turn_completion_notifications(
+                output,
+                &thread_id,
+                &active_turn_id,
+                &response_text,
+            )?;
         }
         write_success(output, id, json!({ "turnId": active_turn_id }))?;
         if self.scenario == Scenario::RuntimeTurnCompleteAfterSteer {
-            write_turn_notifications(output, &thread_id, &active_turn_id)?;
+            write_turn_notifications(output, &thread_id, &active_turn_id, &response_text)?;
         }
         if self.scenario == Scenario::RuntimeTurnStartedBeforeSteer {
-            write_turn_completion_notifications(output, &thread_id, &active_turn_id)?;
+            write_turn_completion_notifications(
+                output,
+                &thread_id,
+                &active_turn_id,
+                &response_text,
+            )?;
         }
         Ok(ServerAction::Continue)
     }
@@ -477,6 +514,52 @@ impl AppServerState {
         write_success(output, id, json!({ "completed": true }))?;
         Ok(ServerAction::Continue)
     }
+}
+
+fn write_secondary_thread_notifications<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+    response_text: &str,
+) -> io::Result<()> {
+    write_json_line(output, &thread_started_notification(SECONDARY_THREAD_ID))?;
+    write_json_line(output, &warning_notification(thread_id, 0))?;
+    write_json_line(
+        output,
+        &turn_started_notification(SECONDARY_THREAD_ID, turn_id),
+    )?;
+    write_json_line(
+        output,
+        &agent_message_item_started_notification(
+            SECONDARY_THREAD_ID,
+            turn_id,
+            "secondary-agent-message-item",
+            SECONDARY_ITEM_STARTED_AT_MS,
+        ),
+    )?;
+    write_json_line(
+        output,
+        &assistant_item_completed_notification(thread_id, turn_id, response_text),
+    )?;
+    write_json_line(output, &warning_notification(SECONDARY_THREAD_ID, 1))?;
+    write_json_line(
+        output,
+        &assistant_item_completed_notification(
+            SECONDARY_THREAD_ID,
+            turn_id,
+            "guest-mock-codex secondary app-server response",
+        ),
+    )?;
+    write_json_line(
+        output,
+        &turn_completed_notification(SECONDARY_THREAD_ID, turn_id),
+    )?;
+    write_json_line(output, &turn_completed_notification(thread_id, turn_id))
+}
+
+fn mock_response_text<'a>(inputs: impl IntoIterator<Item = &'a str>) -> String {
+    let prompt = inputs.into_iter().collect::<Vec<_>>().join(" ");
+    format!("guest-mock-codex app-server response: {prompt}")
 }
 
 fn validate_initialize_params(params: &Value) -> Result<(), &'static str> {

@@ -38,7 +38,16 @@ export type ArtifactRef = {
   readonly url: string;
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
+  readonly shareAvailable?: boolean;
 };
+
+export type ArtifactFileRef = {
+  readonly file: File;
+  readonly url: string;
+  readonly shareAvailable?: boolean;
+};
+
+export type ArtifactRefInput = string | ArtifactFileRef;
 
 export type ThreadSidebarArtifactSource =
   | { readonly kind: "catalog"; readonly artifactId: string }
@@ -48,7 +57,7 @@ export type ThreadSidebarTarget =
   | { readonly type: "artifacts" }
   | { readonly type: "artifact"; readonly source: ThreadSidebarArtifactSource }
   | { readonly type: "email-draft"; readonly mailDraftId: string }
-  | { readonly type: "browser"; readonly browserSessionId: string }
+  | { readonly type: "browser" }
   | { readonly type: "automations" };
 
 export interface ThreadSidebarSignals {
@@ -57,11 +66,10 @@ export interface ThreadSidebarSignals {
   readonly close$: Command<void, []>;
   /**
    * Whether the current sidebar session should animate into the split layout.
-   * The first local-message auto-open captures `false`; later opens capture
-   * `true` after that initial decision completes.
+   * The first IndexedDB-driven auto-open captures `false`; later opens capture
+   * `true` after the initial cache read completes.
    */
   readonly animateEntry$: Computed<boolean>;
-  readonly initialAutoOpenDecisionCompleted$: Computed<Promise<void>>;
   readonly enableEntryAnimations$: Command<void, []>;
   readonly editingAutomationId$: Computed<string | null>;
   readonly setEditingAutomationId$: Command<void, [string | null]>;
@@ -101,25 +109,22 @@ export function createThreadSidebarSignals(
   const internalFullscreen$ = state(false);
   const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
-  const initialAutoOpenDecision = Promise.withResolvers<void>();
   const resetSession$ = resetSignal();
 
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
   });
-  const selectedArtifactText$ = computed(
-    async (get, { signal }): Promise<string> => {
-      const detail = await get(artifactCatalog.selectedArtifactDetail$);
-      if (!detail) {
-        throw new Error("Selected artifact is unavailable");
-      }
-      const preview = artifactDetailPreview(detail);
-      if (!isTextPreviewKind(preview.kind)) {
-        throw new Error("Selected artifact is not a text preview");
-      }
-      return fetchPreviewText(preview.url, signal);
-    },
-  );
+  const selectedArtifactText$ = computed(async (get): Promise<string> => {
+    const detail = await get(artifactCatalog.selectedArtifactDetail$);
+    if (!detail) {
+      throw new Error("Selected artifact is unavailable");
+    }
+    const preview = artifactDetailPreview(detail);
+    if (!isTextPreviewKind(preview.kind)) {
+      throw new Error("Selected artifact is not a text preview");
+    }
+    return fetchPreviewText(preview.url);
+  });
 
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);
@@ -172,12 +177,8 @@ export function createThreadSidebarSignals(
     animateEntry$: computed((get) => {
       return get(internalAnimateEntry$);
     }),
-    initialAutoOpenDecisionCompleted$: computed(() => {
-      return initialAutoOpenDecision.promise;
-    }),
     enableEntryAnimations$: command(({ set }) => {
       set(internalEntryAnimationsEnabled$, true);
-      initialAutoOpenDecision.resolve(undefined);
     }),
     editingAutomationId$: computed((get) => {
       return get(internalEditingAutomationId$);

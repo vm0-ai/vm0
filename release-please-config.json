@@ -18,9 +18,6 @@
         "turbo/packages/core": {
             "release-type": "node"
         },
-        "turbo/apps/cli": {
-            "release-type": "node"
-        },
         "turbo/apps/api": {
             "release-type": "node"
         },
@@ -43,6 +40,10 @@
             "skip-changelog": true
         },
         "turbo/packages/db": {
+            "release-type": "node",
+            "skip-changelog": true
+        },
+        "turbo/packages/pi-agent-runtime": {
             "release-type": "node",
             "skip-changelog": true
         },

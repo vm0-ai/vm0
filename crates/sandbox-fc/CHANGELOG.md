@@ -1,5 +1,179 @@
 # Changelog
 
+## [0.37.195](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.194...sandbox-fc-v0.37.195) (2026-08-07)
+
+
+### Performance Improvements
+
+* **rust:** eliminate exec-control payload copies ([#25608](https://github.com/vm0-ai/vm0/issues/25608)) ([3f71e3b](https://github.com/vm0-ai/vm0/commit/3f71e3b491c2fb66e3c964494565aa9a9bcd4166))
+
+## [0.37.194](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.193...sandbox-fc-v0.37.194) (2026-08-07)
+
+## [0.37.193](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.192...sandbox-fc-v0.37.193) (2026-08-07)
+
+## [0.37.192](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.191...sandbox-fc-v0.37.192) (2026-08-06)
+
+## [0.37.191](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.190...sandbox-fc-v0.37.191) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** centralize firecracker snapshot validation ([#25469](https://github.com/vm0-ai/vm0/issues/25469)) ([2ff4c4e](https://github.com/vm0-ai/vm0/commit/2ff4c4ecbc54f1eb2d7a65664122e489b3afc362))
+
+## [0.37.190](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.189...sandbox-fc-v0.37.190) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** remove resolved dns diagnostics ([#25426](https://github.com/vm0-ai/vm0/issues/25426)) ([a301c42](https://github.com/vm0-ai/vm0/commit/a301c42affa3da95dc3cec1b0c456acf16af2a5c))
+
+## [0.37.189](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.188...sandbox-fc-v0.37.189) (2026-08-06)
+
+## [0.37.188](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.187...sandbox-fc-v0.37.188) (2026-08-06)
+
+
+### Refactoring
+
+* **sandbox-fc:** retire balloon settle summary ([#25380](https://github.com/vm0-ai/vm0/issues/25380)) ([ec2b177](https://github.com/vm0-ai/vm0/commit/ec2b177f7908e4bf61a9eab9c7217257578b3872))
+
+## [0.37.187](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.186...sandbox-fc-v0.37.187) (2026-08-06)
+
+## [0.37.186](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.185...sandbox-fc-v0.37.186) (2026-08-05)
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize snapshot spawn construction ([#25268](https://github.com/vm0-ai/vm0/issues/25268)) ([98a37c5](https://github.com/vm0-ai/vm0/commit/98a37c5f4127d46527e0a2d79be0d462ebedcbcd))
+
+## [0.37.185](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.184...sandbox-fc-v0.37.185) (2026-08-05)
+
+
+### Documentation
+
+* **sandbox:** document remote exec timeout normalization ([#25214](https://github.com/vm0-ai/vm0/issues/25214)) ([6138e94](https://github.com/vm0-ai/vm0/commit/6138e94533b3a0d23ccb7fb040b9ff6621c0db29))
+
+## [0.37.184](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.183...sandbox-fc-v0.37.184) (2026-08-05)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** wait for progressing balloon reclaim ([#25194](https://github.com/vm0-ai/vm0/issues/25194)) ([c53cdcf](https://github.com/vm0-ai/vm0/commit/c53cdcf63d4fbc028407eea94399e95f53de23e3))
+
+## [0.37.183](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.182...sandbox-fc-v0.37.183) (2026-08-05)
+
+## [0.37.182](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.181...sandbox-fc-v0.37.182) (2026-08-05)
+
+
+### Refactoring
+
+* **rust:** use rustix for child exit pidfds ([#25122](https://github.com/vm0-ai/vm0/issues/25122)) ([85100f1](https://github.com/vm0-ai/vm0/commit/85100f174664559002a35778a73a3b4d9ec722ad))
+
+## [0.37.181](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.180...sandbox-fc-v0.37.181) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** keep info logs out of axiom ([#25114](https://github.com/vm0-ai/vm0/issues/25114)) ([3c6d123](https://github.com/vm0-ai/vm0/commit/3c6d1235847d344b7e1a9bc8ee885b68d1fd8d5b))
+
+## [0.37.180](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.179...sandbox-fc-v0.37.180) (2026-08-04)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** stabilize root veth mac identity ([#25071](https://github.com/vm0-ai/vm0/issues/25071)) ([47af501](https://github.com/vm0-ai/vm0/commit/47af501b4e6ab409596fc07f5230b69b732ba06f))
+
+
+### Performance Improvements
+
+* **sandbox-fc:** reduce balloon settle detection latency ([#25069](https://github.com/vm0-ai/vm0/issues/25069)) ([16893fa](https://github.com/vm0-ai/vm0/commit/16893fa7ffa416a8859a112119a8082229da2d88))
+
+## [0.37.179](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.178...sandbox-fc-v0.37.179) (2026-08-04)
+
+## [0.37.178](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.177...sandbox-fc-v0.37.178) (2026-08-04)
+
+## [0.37.177](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.176...sandbox-fc-v0.37.177) (2026-08-04)
+
+
+### Documentation
+
+* **sandbox-fc:** document partial cow checkout ownership ([#24977](https://github.com/vm0-ai/vm0/issues/24977)) ([7e22b79](https://github.com/vm0-ai/vm0/commit/7e22b79434813887928463e5d586c24a92d347b7))
+
+
+### Performance Improvements
+
+* measure pre-park successor handoff ([#24938](https://github.com/vm0-ai/vm0/issues/24938)) ([6e7c0aa](https://github.com/vm0-ai/vm0/commit/6e7c0aa73c51d7916efaa354f6ce1ba32b83090f))
+* **sandbox-fc:** stream raw exec responses ([#24940](https://github.com/vm0-ai/vm0/issues/24940)) ([0d032fb](https://github.com/vm0-ai/vm0/commit/0d032fb3a2b22d78b32206e3b48577c97629a7d6))
+
+## [0.37.176](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.175...sandbox-fc-v0.37.176) (2026-08-04)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** verify conntrack reset outcomes ([#24933](https://github.com/vm0-ai/vm0/issues/24933)) ([d1f7711](https://github.com/vm0-ai/vm0/commit/d1f77112c4b11024fe1e8164a3f00141b6d288b4))
+
+
+### Refactoring
+
+* **runner:** centralize guest dns probe signature ([#24936](https://github.com/vm0-ai/vm0/issues/24936)) ([6fbb873](https://github.com/vm0-ai/vm0/commit/6fbb87342944fc9292ae4c6dfa99d7302caf8acc))
+
+## [0.37.175](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.174...sandbox-fc-v0.37.175) (2026-08-04)
+
+
+### Bug Fixes
+
+* **runner:** guard run controls across sandbox reuse ([#24849](https://github.com/vm0-ai/vm0/issues/24849)) ([bb1d90c](https://github.com/vm0-ai/vm0/commit/bb1d90c15df373b43a8653dcd85f9a47e3fb6042))
+
+## [0.37.174](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.173...sandbox-fc-v0.37.174) (2026-08-03)
+
+
+### Bug Fixes
+
+* **runner:** localize guest dns loss across veth ([#24791](https://github.com/vm0-ai/vm0/issues/24791)) ([32ff5f5](https://github.com/vm0-ai/vm0/commit/32ff5f5d305669d91d9459a7f4b8c359444201b7))
+* **sandbox-fc:** surface namespace creation failures ([#24810](https://github.com/vm0-ai/vm0/issues/24810)) ([41a8207](https://github.com/vm0-ai/vm0/commit/41a8207b30858d63e7e85e98ede595a6af4ce243))
+
+## [0.37.173](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.172...sandbox-fc-v0.37.173) (2026-08-03)
+
+## [0.37.172](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.171...sandbox-fc-v0.37.172) (2026-08-03)
+
+## [0.37.171](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.170...sandbox-fc-v0.37.171) (2026-08-03)
+
+## [0.37.170](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.169...sandbox-fc-v0.37.170) (2026-08-02)
+
+## [0.37.169](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.168...sandbox-fc-v0.37.169) (2026-08-02)
+
+## [0.37.168](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.167...sandbox-fc-v0.37.168) (2026-08-01)
+
+## [0.37.167](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.166...sandbox-fc-v0.37.167) (2026-07-31)
+
+
+### Refactoring
+
+* **sandbox-fc:** extract network pool firewall ([#24326](https://github.com/vm0-ai/vm0/issues/24326)) ([161af9d](https://github.com/vm0-ai/vm0/commit/161af9d52ddcec3ced28d36cf3d15ea43930fb17))
+
+## [0.37.166](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.165...sandbox-fc-v0.37.166) (2026-07-31)
+
+## [0.37.165](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.164...sandbox-fc-v0.37.165) (2026-07-31)
+
+## [0.37.164](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.163...sandbox-fc-v0.37.164) (2026-07-30)
+
+## [0.37.163](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.162...sandbox-fc-v0.37.163) (2026-07-30)
+
+## [0.37.162](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.161...sandbox-fc-v0.37.162) (2026-07-30)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** support cross-filesystem workspace seed moves ([#23876](https://github.com/vm0-ai/vm0/issues/23876)) ([9230b4d](https://github.com/vm0-ai/vm0/commit/9230b4dd9d7b834eb3d36a6dbec150c40060fbc4))
+
+## [0.37.161](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.160...sandbox-fc-v0.37.161) (2026-07-29)
+
+## [0.37.160](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.159...sandbox-fc-v0.37.160) (2026-07-29)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** parallelize leaked sandbox cleanup ([#23689](https://github.com/vm0-ai/vm0/issues/23689)) ([f3b2b5c](https://github.com/vm0-ai/vm0/commit/f3b2b5cd0c677da566abb7cc7a3499ea3776c817))
+
 ## [0.37.159](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.158...sandbox-fc-v0.37.159) (2026-07-29)
 
 

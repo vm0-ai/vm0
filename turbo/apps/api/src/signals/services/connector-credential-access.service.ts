@@ -1,7 +1,6 @@
 import {
   connectorAuthMethodOwnedSecretNames,
   connectorAuthMethodOwnedVariableNames,
-  connectorAuthMethodRuntimeMetadata,
 } from "@vm0/connectors/connector-auth-method";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
@@ -34,7 +33,7 @@ import {
 export interface ConnectorCredentialAccess {
   readonly authMethodId: string;
   readonly connectorId: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly orgId: string;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly storageVersion: number;
@@ -49,7 +48,7 @@ type ConnectorCredentialAccessResult =
 interface ConnectorCredentialStoredIdentity {
   readonly authMethodId: string;
   readonly connectorId: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly orgId: string;
   readonly storageVersion: number;
   readonly userId: string;
@@ -83,7 +82,7 @@ export function resolveConnectorCredentialAccess(args: {
 }): ConnectorCredentialAccessResult {
   const runtimeMethod = getConnectorRuntimeMethod({
     snapshot: args.snapshot,
-    connectorRef: args.stored.connectorRef,
+    connectorSlug: args.stored.connectorSlug,
     authMethodId: args.stored.authMethodId,
     requireExecutable: true,
   });
@@ -103,7 +102,7 @@ export function resolveConnectorCredentialAccess(args: {
     access: {
       authMethodId: args.stored.authMethodId,
       connectorId: args.stored.connectorId,
-      connectorRef: args.stored.connectorRef,
+      connectorSlug: args.stored.connectorSlug,
       orgId: args.stored.orgId,
       runtimeMethod,
       storageVersion: runtimeMethod.method.storage.version,
@@ -145,7 +144,7 @@ function connectorIdentityExists(
           eq(credentialAccessConnector.id, access.connectorId),
           eq(credentialAccessConnector.orgId, access.orgId),
           eq(credentialAccessConnector.userId, access.userId),
-          eq(credentialAccessConnector.type, access.connectorRef),
+          eq(credentialAccessConnector.connectorSlug, access.connectorSlug),
           eq(credentialAccessConnector.authMethod, access.authMethodId),
           eq(credentialAccessConnector.storageVersion, access.storageVersion),
           connectorStateRevision === undefined
@@ -224,40 +223,4 @@ export function connectorCredentialVariableReadCondition(args: {
     ];
   });
   return conditions.length === 0 ? isNull(variables.id) : or(...conditions);
-}
-
-export function connectorCredentialStoredSecretDisplayInfo(args: {
-  readonly access: ConnectorCredentialAccess;
-  readonly name: string;
-  readonly snapshot: ConnectorRuntimeSnapshot;
-}): {
-  readonly environmentNames: readonly string[];
-  readonly label: string;
-} | null {
-  if (
-    !connectorAuthMethodOwnedSecretNames(
-      args.access.runtimeMethod.method,
-    ).includes(args.name)
-  ) {
-    return null;
-  }
-  const connector = args.snapshot.connectors.get(args.access.connectorRef);
-  if (connector === undefined) {
-    return null;
-  }
-  const environmentNames = [
-    ...new Set(
-      connectorAuthMethodRuntimeMetadata(
-        args.access.runtimeMethod.method,
-      ).runtimeBindings.flatMap((binding) => {
-        return binding.source.kind === "connector-secret" &&
-          binding.source.name === args.name
-          ? [binding.envName]
-          : [];
-      }),
-    ),
-  ];
-  return environmentNames.length === 0
-    ? null
-    : { environmentNames, label: connector.catalogConnector.label };
 }

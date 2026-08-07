@@ -2,12 +2,15 @@ import type {
   FeedbackNotePart,
   GenerationTemplateRequest,
   UserMessageDocument,
+  UserMessageInputDocument,
+  UserMessageInputPart,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   isChatUserMessageEventType,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
+import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 
 interface UserMessageProjection {
   readonly agentPrompt: string;
@@ -23,6 +26,105 @@ interface UserMessageFile {
   readonly contentType: string;
 }
 
+type UserMessageNonContentPart = Extract<
+  UserMessageInputPart,
+  { readonly type: "source" | "automation" | "goal" | "morning_brief" }
+>;
+
+export interface ChatAgentRunSourceAnnotation {
+  readonly runId: string;
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly titleSnapshot: string;
+}
+
+function chatAgentRunSourceHref(
+  source: Pick<ChatAgentRunSourceAnnotation, "runId" | "threadId">,
+): string {
+  return `/chats/${source.threadId}#run-${source.runId}`;
+}
+
+/**
+ * Recover the provenance a send route wrote into the persisted document. The
+ * annotation is the only place a claimed queue item still carries its source
+ * run, because the queue head is read back as a document, not as a send body.
+ */
+export function agentRunSourceAnnotation(
+  document: UserMessageDocument,
+): ChatAgentRunSourceAnnotation | null {
+  for (const part of document.parts) {
+    if (part.type === "source" && part.kind === "agent") {
+      return {
+        runId: part.runId,
+        threadId: part.threadId,
+        agentId: part.agentId,
+        titleSnapshot: part.titleSnapshot,
+      };
+    }
+  }
+  return null;
+}
+
+export function hasAgentRunSourceAnnotation(
+  document: UserMessageDocument,
+): boolean {
+  return agentRunSourceAnnotation(document) !== null;
+}
+
+/** Replace client-owned annotations with authoritative agent-run provenance. */
+export function withAgentRunSourceAnnotation(
+  document: UserMessageInputDocument,
+  source: ChatAgentRunSourceAnnotation,
+): UserMessageInputDocument;
+export function withAgentRunSourceAnnotation(
+  document: UserMessageDocument,
+  source: ChatAgentRunSourceAnnotation,
+): UserMessageDocument;
+export function withAgentRunSourceAnnotation(
+  document: UserMessageDocument,
+  source: ChatAgentRunSourceAnnotation,
+): UserMessageDocument {
+  const contentParts = document.parts.filter((part) => {
+    return (
+      part.type !== "source" &&
+      part.type !== "automation" &&
+      part.type !== "goal" &&
+      part.type !== "morning_brief"
+    );
+  });
+  return {
+    version: 1,
+    parts: [
+      ...contentParts,
+      {
+        type: "source",
+        kind: "agent",
+        runId: source.runId,
+        threadId: source.threadId,
+        agentId: source.agentId,
+        titleSnapshot: source.titleSnapshot,
+        href: chatAgentRunSourceHref(source),
+      },
+    ],
+  };
+}
+
+/** Replace any prior run-model annotation with the model persisted for the run. */
+export function withRunModelAnnotation(
+  document: UserMessageDocument,
+  selectedModel: string,
+): UserMessageDocument {
+  return {
+    version: 1,
+    parts: [
+      ...document.parts.filter((part) => {
+        return part.type !== "model";
+      }),
+      { type: "model", selectedModel },
+    ],
+  };
+}
+
 export function requiredUserMessageForEvent(
   eventType: ChatEventType,
   document: UserMessageDocument | null,
@@ -36,11 +138,12 @@ export function requiredUserMessageForEvent(
   return document;
 }
 
-export function maybeCreateUserMessageDocument(args: {
+function maybeCreateUserMessageDocument(args: {
   readonly text: string | null;
   readonly files?: readonly UserMessageFile[];
-}): UserMessageDocument | null {
-  const parts: UserMessagePart[] = (args.files ?? []).map((file) => {
+  readonly nonContentPart?: UserMessageNonContentPart;
+}): UserMessageInputDocument | null {
+  const parts: UserMessageInputPart[] = (args.files ?? []).map((file) => {
     return {
       type: "file",
       fileId: file.id,
@@ -51,16 +154,20 @@ export function maybeCreateUserMessageDocument(args: {
   if (args.text !== null && args.text.length > 0) {
     parts.push({ type: "text", text: args.text });
   }
+  if (args.nonContentPart) {
+    parts.push(args.nonContentPart);
+  }
   return parts.length > 0 ? { version: 1, parts } : null;
 }
 
 export function createUserMessageDocument(args: {
   readonly text: string | null;
   readonly files?: readonly UserMessageFile[];
-}): UserMessageDocument {
+  readonly nonContentPart?: UserMessageNonContentPart;
+}): UserMessageInputDocument {
   const document = maybeCreateUserMessageDocument(args);
   if (!document) {
-    throw new Error("User message must contain text or files");
+    throw new Error("User message must contain at least one part");
   }
   return document;
 }
@@ -70,11 +177,16 @@ function serializeChatThreadMention(threadId: string, title: string): string {
   return `[${escapedTitle}](/chats/${threadId})`;
 }
 
+function serializeAgentMention(agentId: string, name: string): string {
+  const escapedName = name.replace(/[\\[\]]/g, String.raw`\$&`);
+  return `[${escapedName}](/agents/${agentId}/chat)`;
+}
+
 function serializeFeedbackNote(
   parts: readonly FeedbackNotePart[],
   serializeTemplate: (
     part: Extract<FeedbackNotePart, { type: "template" }>,
-  ) => string = generationTemplatePrompt,
+  ) => string,
 ): string {
   return parts
     .map((part) => {
@@ -83,6 +195,9 @@ function serializeFeedbackNote(
       }
       if (part.type === "chat_thread") {
         return serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      }
+      if (part.type === "agent") {
+        return serializeAgentMention(part.agentId, part.nameSnapshot);
       }
       return serializeTemplate(part);
     })
@@ -97,11 +212,17 @@ function webFilePrompt(part: {
   return `[Web file] ${part.filenameSnapshot} (${part.contentType})\n   [ID] ${part.fileId}`;
 }
 
-function generationTemplatePrompt(part: {
-  readonly titleSnapshot: string;
-  readonly template: GenerationTemplateRequest;
-}): string {
-  return `Select ${part.titleSnapshot} ${part.template.type} template`;
+function generationTemplateTypeLabel(
+  template: GenerationTemplateRequest,
+): string {
+  if (
+    template.type === "video" &&
+    parseAvatarTemplateStylePresetId(template.selection.stylePresetId) !==
+      undefined
+  ) {
+    return "avatar";
+  }
+  return template.type;
 }
 
 function inlineGenerationTemplatePrompt(
@@ -111,12 +232,12 @@ function inlineGenerationTemplatePrompt(
   },
   referenceNumber: number,
 ): string {
-  return `[Template #${referenceNumber}: ${part.titleSnapshot} (${part.template.type})]`;
+  return `[Template #${referenceNumber}: ${part.titleSnapshot} (${generationTemplateTypeLabel(part.template)})]`;
 }
 
 function formatFeedbackParts(
   parts: readonly Extract<UserMessagePart, { type: "feedback" }>[],
-  serializeTemplate?: (
+  serializeTemplate: (
     part: Extract<FeedbackNotePart, { type: "template" }>,
   ) => string,
 ): string {
@@ -181,7 +302,6 @@ function formatFeedbackParts(
  */
 export function projectUserMessage(
   document: UserMessageDocument,
-  options: { readonly inlineTemplates?: boolean } = {},
 ): UserMessageProjection {
   const promptBlocks: string[] = [];
   const displayBlocks: string[] = [];
@@ -216,7 +336,7 @@ export function projectUserMessage(
     }
     const formatted = formatFeedbackParts(
       feedbackParts,
-      options.inlineTemplates === true ? registerInlineTemplate : undefined,
+      registerInlineTemplate,
     );
     promptBlocks.push(formatted);
     displayBlocks.push(formatted);
@@ -247,22 +367,29 @@ export function projectUserMessage(
       hasTextContent = true;
       continue;
     }
+    if (part.type === "agent") {
+      inlinePrompt += serializeAgentMention(part.agentId, part.nameSnapshot);
+      inlineDisplayText += `[Agent: ${part.nameSnapshot}]`;
+      hasTextContent = true;
+      continue;
+    }
     if (part.type === "file") {
       flushInlinePrompt();
       promptBlocks.push(webFilePrompt(part));
       displayBlocks.push(`[File: ${part.filenameSnapshot}]`);
       continue;
     }
-    if (options.inlineTemplates === true) {
-      inlinePrompt += registerInlineTemplate(part);
-      inlineDisplayText += `[Template: ${part.titleSnapshot}]`;
+    if (
+      part.type === "source" ||
+      part.type === "automation" ||
+      part.type === "goal" ||
+      part.type === "morning_brief" ||
+      part.type === "model"
+    ) {
       continue;
     }
-    flushInlinePrompt();
-    promptBlocks.push(generationTemplatePrompt(part));
-    displayBlocks.push(`[Template: ${part.titleSnapshot}]`);
-    generationTemplate ??= part.template;
-    generationTemplates.push(part.template);
+    inlinePrompt += registerInlineTemplate(part);
+    inlineDisplayText += `[Template: ${part.titleSnapshot}]`;
   }
   flushFeedback();
   flushInlinePrompt();
@@ -274,4 +401,58 @@ export function projectUserMessage(
     generationTemplates,
     hasTextContent,
   };
+}
+
+/**
+ * Project a user message into static public text. User-visible snapshots are
+ * retained while internal IDs, source links, and mail identifiers are omitted.
+ */
+export function projectUserMessageForPublicShare(
+  document: UserMessageDocument,
+): string {
+  const sanitizedDocument: UserMessageDocument = {
+    version: 1,
+    parts: document.parts.map((part): UserMessagePart => {
+      if (part.type !== "feedback") {
+        return part;
+      }
+      return {
+        type: "feedback",
+        quote: part.quote,
+        note: part.note.map((notePart): FeedbackNotePart => {
+          if (notePart.type === "text") {
+            return notePart;
+          }
+          if (notePart.type === "chat_thread") {
+            return {
+              type: "text",
+              text: `[Chat thread: ${notePart.titleSnapshot}]`,
+            };
+          }
+          if (notePart.type === "agent") {
+            return {
+              type: "text",
+              text: `[Agent: ${notePart.nameSnapshot}]`,
+            };
+          }
+          return {
+            type: "text",
+            text: `[Template: ${notePart.titleSnapshot}]`,
+          };
+        }),
+      };
+    }),
+  };
+  const displayText = projectUserMessage(sanitizedDocument).displayText.trim();
+  if (displayText.length > 0) {
+    return displayText;
+  }
+  const automation = document.parts.find((part) => {
+    return part.type === "automation";
+  });
+  if (!automation || automation.type !== "automation") {
+    return "";
+  }
+  const brief = automation.automationBrief?.trim();
+  return brief && brief.length > 0 ? brief : automation.workflowName.trim();
 }

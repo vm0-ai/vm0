@@ -13,7 +13,7 @@ import {
   getOAuthApiOrigin,
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
-} from "./oauth-web-origin";
+} from "../../lib/oauth-origin";
 
 export { getOAuthWebOrigin as getConnectorOAuthOrigin };
 
@@ -34,7 +34,7 @@ function resolveCallbackOrigin(
 export function getConnectorOAuthCallbackUrlForMethod(args: {
   readonly request: Request;
   readonly method: ConnectorAuthMethodRuntimeConfig;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly callbackTarget: "app" | undefined;
 }): string {
   if (args.method.grant.kind !== "auth-code") {
@@ -45,15 +45,15 @@ export function getConnectorOAuthCallbackUrlForMethod(args: {
   );
   if (
     args.callbackTarget === "app" &&
-    isConnectorAppOauthCallbackEnabled(args.connectorRef)
+    isConnectorAppOauthCallbackEnabled(args.connectorSlug)
   ) {
     return new URL(
-      `/connectors/${encodeURIComponent(args.connectorRef)}/callback`,
+      `/connectors/${encodeURIComponent(args.connectorSlug)}/callback`,
       env("APP_URL"),
     ).toString();
   }
   return new URL(
-    `/api/connectors/${encodeURIComponent(args.connectorRef)}/callback`,
+    `/api/connectors/${encodeURIComponent(args.connectorSlug)}/callback`,
     resolveCallbackOrigin(args.request, callbackOrigin),
   ).toString();
 }

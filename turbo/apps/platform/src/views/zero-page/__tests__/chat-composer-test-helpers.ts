@@ -3,11 +3,10 @@ import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   type PresentationTemplateItem,
 } from "@vm0/core";
 import {
@@ -33,7 +32,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
-import { composerOverflowConnectorRefs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
+import { composerOverflowConnectorSlugs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
   normalizeMockChatEvents,
@@ -68,19 +67,19 @@ export const {
 export function applyUserConnectorUpdate(
   current: readonly string[],
   body: {
-    readonly enabledTypes: readonly string[];
+    readonly enabledConnectorSlugs: readonly string[];
     readonly operation?: "replace" | "add" | "remove";
   },
 ): string[] {
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledTypes]));
+    return Array.from(new Set([...current, ...body.enabledConnectorSlugs]));
   }
   if (body.operation === "remove") {
-    return current.filter((type) => {
-      return !body.enabledTypes.includes(type);
+    return current.filter((connectorSlug) => {
+      return !body.enabledConnectorSlugs.includes(connectorSlug);
     });
   }
-  return [...body.enabledTypes];
+  return [...body.enabledConnectorSlugs];
 }
 
 const NOW = "2026-05-08T00:00:00.000Z";
@@ -385,6 +384,7 @@ export function mockThread(options?: {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -420,17 +420,11 @@ export function mockThread(options?: {
     });
   });
   context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (
-      query.sinceSeqId ||
-      query.beforeSeqId ||
-      query.sinceId ||
-      query.beforeId
-    ) {
-      return respond(200, { events: [], hasHistoryBefore: false });
+    if (query.sinceSeqId || query.beforeSeqId) {
+      return respond(200, { events: [] });
     }
     return respond(200, {
       events: normalizeMockChatEvents(options?.messages ?? []),
-      hasHistoryBefore: false,
     });
   });
 }
@@ -469,7 +463,7 @@ export function mockComposerThreadSnapshot(
 export function mockActiveTemplateThread(): void {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
-    chatMessages: [
+    chatEvents: [
       {
         id: "msg-template-active-user",
         role: "user",
@@ -491,7 +485,7 @@ export function mockActiveTemplateThread(): void {
 
 export function mockConnectors(
   connectors: {
-    type: ConnectorRef;
+    connectorSlug: ConnectorSlug;
     authMethod?: ConnectorAuthMethodId;
     externalUsername?: string;
     oauthScopes?: string[];
@@ -501,7 +495,7 @@ export function mockConnectors(
     connectors.map((connector): ConnectorResponse => {
       return {
         id: crypto.randomUUID(),
-        type: connector.type,
+        slug: connector.connectorSlug,
         authMethod: connector.authMethod ?? "oauth",
         externalId: null,
         externalUsername: connector.externalUsername ?? null,
@@ -519,24 +513,27 @@ export function mockConnectors(
 
 export function mockManyConnectedConnectors(): void {
   mockConnectors([
-    { type: "github", externalUsername: "octocat" },
-    { type: "slack", externalUsername: "launch-team" },
-    ...composerOverflowConnectorRefs.map((type) => {
-      return { type };
+    { connectorSlug: "github", externalUsername: "octocat" },
+    { connectorSlug: "slack", externalUsername: "launch-team" },
+    ...composerOverflowConnectorSlugs.map((connectorSlug) => {
+      return { connectorSlug };
     }),
   ]);
 }
 
 export function mockAgentConnectorAuthorizations(
-  initialTypes: readonly string[],
+  initialConnectorSlugs: readonly string[],
 ): void {
-  let enabledTypes: string[] = [...initialTypes];
+  let enabledConnectorSlugs: string[] = [...initialConnectorSlugs];
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledTypes });
+    return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
   });
   context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
-    enabledTypes = applyUserConnectorUpdate(enabledTypes, body);
-    return respond(200, { enabledTypes });
+    enabledConnectorSlugs = applyUserConnectorUpdate(
+      enabledConnectorSlugs,
+      body,
+    );
+    return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
   });
 }
 
@@ -644,42 +641,40 @@ export async function expectComposerModel(label: string): Promise<void> {
   await expect(findComposerModel(label)).resolves.toBeInTheDocument();
 }
 
-export async function openTemplatePicker(
+// `fill` clears the composer with select-all before pasting, which would also
+// delete inline template nodes. Appending at the caret keeps templates that
+// were already inserted into the composer document.
+export async function appendAndSend(
   user: ReturnType<typeof userEvent.setup>,
-  template: PresentationTemplateItem = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!,
+  text: string,
+  editor?: HTMLElement,
 ): Promise<void> {
-  click(
-    await waitFor(() => {
-      return screen.getByLabelText("Template");
-    }),
-  );
-  await waitFor(() => {
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-  });
-  expect(screen.queryByLabelText("Search connectors")).toBeNull();
-  await waitFor(() => {
-    expect(screen.getByText(template.title)).toBeInTheDocument();
-  });
+  if (editor) {
+    await user.click(editor);
+  }
+  await user.keyboard(text);
+  await user.keyboard("{Enter}");
+}
 
-  click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+export function composerInlineTemplates(): HTMLElement[] {
+  return Array.from(
+    document.querySelectorAll("[data-composer-inline-template]"),
+  ).filter((element): element is HTMLElement => {
+    return element instanceof HTMLElement;
+  });
+}
+
+// Selecting a template inserts an inline node into the composer document, so
+// the permanent signal is the node itself rather than a picker selection.
+export async function expectInlineTemplateInComposer(
+  title: string,
+): Promise<void> {
   await waitFor(() => {
     expect(
-      screen.getByTestId(`${template.title} detail HTML preview`),
-    ).toBeInTheDocument();
-  });
-  expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  expect(screen.getByLabelText("Select style Gold Luxe")).toBeInTheDocument();
-
-  await user.click(screen.getByLabelText(`Select template ${template.title}`));
-  await waitFor(() => {
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Template")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+      composerInlineTemplates().map((node) => {
+        return node.textContent;
+      }),
+    ).toContain(title);
   });
 }
 
@@ -700,11 +695,8 @@ export async function selectTemplate(
 
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Template")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
   });
+  await expectInlineTemplateInComposer(template.title);
 }
 
 export async function selectIllustrationTemplate(
@@ -725,11 +717,8 @@ export async function selectIllustrationTemplate(
 
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Template")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
   });
+  await expectInlineTemplateInComposer(template.title);
 }
 
 export function chatClipboardHtml(payload: {
@@ -745,15 +734,6 @@ export function chatClipboardHtml(payload: {
   return `<div data-vm0-chat-message="${encodeURIComponent(
     JSON.stringify(payload),
   )}"></div>`;
-}
-
-export function oversizedFile(name: string, type: string): File {
-  const file = new File(["oversized"], name, { type });
-  Object.defineProperty(file, "size", {
-    configurable: true,
-    value: 1024 * 1024 * 1024 + 1,
-  });
-  return file;
 }
 
 export function composerElementFrom(textarea: HTMLElement): HTMLElement {
@@ -776,18 +756,6 @@ export async function findComposerEditor(): Promise<HTMLElement> {
     }
     return editor;
   });
-}
-
-export async function expectTemplateAttachedToComposer(
-  removeAriaLabel: string,
-): Promise<void> {
-  const editor = await findComposerEditor();
-  const removeButton = screen.getByLabelText(removeAriaLabel);
-  const attachment = removeButton.closest(
-    "[data-composer-template-attachment]",
-  );
-  expect(attachment).toBeInTheDocument();
-  expect(editor).toContainElement(attachment as HTMLElement);
 }
 
 export function placeCaretAfterText(root: HTMLElement, text: string): void {

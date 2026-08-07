@@ -68,7 +68,7 @@ export const zeroArtifactCatalogRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
+        requiredCapability: "chat-event:read",
       },
       listArtifactCatalogInner$,
     ),
@@ -79,7 +79,7 @@ export const zeroArtifactCatalogRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
+        requiredCapability: "chat-event:read",
       },
       getArtifactCatalogEntryInner$,
     ),

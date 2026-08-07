@@ -1,14 +1,9 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
-
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::idle_pool::ParkingGate;
+use crate::lifecycle::{LifecycleController, RunnerMode, SoftDrainOutcome};
 use crate::run_cancellation::RunCancellationRegistry;
-use crate::status::RunnerMode;
 
 /// Pre-registered signal streams.
 ///
@@ -54,145 +49,6 @@ impl EarlySignals {
             sigusr1,
             sigusr2,
         })
-    }
-}
-
-/// Ordered lifecycle transition handle shared between signal handlers, tests,
-/// and the main run loop's internal Draining -> Stopping transition.
-///
-/// Parking state is updated before publishing the externally visible mode so a
-/// task that observes `Running` can also rely on parking already being open.
-#[derive(Clone)]
-pub(crate) struct LifecycleController {
-    mode_tx: tokio::sync::watch::Sender<RunnerMode>,
-    parking_gate: ParkingGate,
-    startup_ready: Arc<AtomicBool>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DrainSignalOutcome {
-    EnteredDraining,
-    AlreadyDraining,
-    Ignored(RunnerMode),
-}
-
-impl LifecycleController {
-    pub(crate) fn new(
-        mode_tx: tokio::sync::watch::Sender<RunnerMode>,
-        parking_gate: ParkingGate,
-    ) -> Self {
-        let startup_ready = *mode_tx.borrow() != RunnerMode::Starting;
-        Self {
-            mode_tx,
-            parking_gate,
-            startup_ready: Arc::new(AtomicBool::new(startup_ready)),
-        }
-    }
-
-    pub(crate) fn current_mode(&self) -> RunnerMode {
-        *self.mode_tx.borrow()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn mode_tx(&self) -> &tokio::sync::watch::Sender<RunnerMode> {
-        &self.mode_tx
-    }
-
-    fn enter_soft_drain(&self) -> DrainSignalOutcome {
-        let gate = self.parking_gate.clone();
-        let mut outcome = DrainSignalOutcome::Ignored(self.current_mode());
-        let _ = self.mode_tx.send_if_modified(|mode| match *mode {
-            RunnerMode::Starting | RunnerMode::Running => {
-                let original_mode = *mode;
-                if gate.soft_drain() {
-                    *mode = RunnerMode::Draining;
-                    outcome = DrainSignalOutcome::EnteredDraining;
-                    true
-                } else {
-                    outcome = DrainSignalOutcome::Ignored(original_mode);
-                    false
-                }
-            }
-            RunnerMode::Draining => {
-                outcome = DrainSignalOutcome::AlreadyDraining;
-                false
-            }
-            mode => {
-                outcome = DrainSignalOutcome::Ignored(mode);
-                false
-            }
-        });
-        outcome
-    }
-
-    pub(crate) fn resume_from_soft_drain(&self) -> bool {
-        if !self.startup_ready.load(Ordering::SeqCst) {
-            return false;
-        }
-        let gate = self.parking_gate.clone();
-        let mut transitioned = false;
-        let _ = self.mode_tx.send_if_modified(|mode| {
-            if *mode == RunnerMode::Draining && gate.open_after_soft_drain() {
-                *mode = RunnerMode::Running;
-                transitioned = true;
-                true
-            } else {
-                false
-            }
-        });
-        transitioned
-    }
-
-    pub(crate) fn mark_startup_ready(&self) -> RunnerMode {
-        self.startup_ready.store(true, Ordering::SeqCst);
-        let mut current = self.current_mode();
-        let _ = self.mode_tx.send_if_modified(|mode| {
-            current = *mode;
-            if *mode == RunnerMode::Starting {
-                *mode = RunnerMode::Running;
-                current = RunnerMode::Running;
-                true
-            } else {
-                false
-            }
-        });
-        current
-    }
-
-    pub(crate) fn hard_stop(&self) -> bool {
-        let gate = self.parking_gate.clone();
-        let mut transitioned = false;
-        let _ = self.mode_tx.send_if_modified(|mode| {
-            if *mode != RunnerMode::Stopping {
-                gate.close();
-                *mode = RunnerMode::Stopping;
-                transitioned = true;
-                true
-            } else {
-                false
-            }
-        });
-        transitioned
-    }
-
-    pub(crate) fn stop_after_natural_drain(&self) -> bool {
-        let gate = self.parking_gate.clone();
-        let mut transitioned = false;
-        let _ = self.mode_tx.send_if_modified(|mode| {
-            if *mode == RunnerMode::Draining {
-                gate.close();
-                *mode = RunnerMode::Stopping;
-                transitioned = true;
-                true
-            } else {
-                false
-            }
-        });
-        transitioned
-    }
-
-    pub(crate) fn close_parking(&self) {
-        self.parking_gate.close();
     }
 }
 
@@ -333,13 +189,13 @@ pub(super) async fn recv_handler_task(
 
 pub(super) fn handle_drain_signal(lifecycle: &LifecycleController) {
     match lifecycle.enter_soft_drain() {
-        DrainSignalOutcome::EnteredDraining => {
+        SoftDrainOutcome::EnteredDraining => {
             info!("received SIGUSR1, entering Draining (soft drain)");
         }
-        DrainSignalOutcome::AlreadyDraining => {
+        SoftDrainOutcome::AlreadyDraining => {
             info!("received SIGUSR1 while already Draining");
         }
-        DrainSignalOutcome::Ignored(mode) => {
+        SoftDrainOutcome::Ignored(mode) => {
             warn!(mode = ?mode, "SIGUSR1 ignored — soft drain is no longer actionable");
         }
     }
@@ -375,7 +231,7 @@ pub(super) async fn handle_stopping_signal(
     let count = handles.len();
     for (run_id, handle) in handles {
         info!(run_id = %run_id, "cancelling active job for hard shutdown");
-        handle.cancel().await;
+        handle.request_hard_cancellation().await;
     }
     info!(active_jobs = count, "dispatched per-job cancellations");
     cancel.cancel();
@@ -388,52 +244,154 @@ mod tests {
 
     use super::*;
     use crate::ids::RunId;
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
 
-    /// Regression test for issue #10416: SIGUSR1 arriving between
-    /// `EarlySignals::register()` and `SignalController::spawn` must still
-    /// drive the mode transition. Previously the handler was registered
-    /// inside the spawned task, so signals delivered during the startup
-    /// window hit the default Term disposition and killed the process.
-    ///
-    /// Timing: raising SIGUSR1 before `spawn()` is deterministic in program
-    /// order, and the outer `timeout(2s)` absorbs the
-    /// `kernel → sigaction → pipe → driver → watch → recv` propagation
-    /// regardless of scheduling — no artificial sleep is needed.
-    ///
-    /// This test raises SIGUSR1 process-wide. It is safe only because no
-    /// other test subscribes to SIGUSR1 — all other tests use
-    /// `SignalSource::Override` and never call `signal()`. If another
-    /// signal-raising test is added, serialize them (e.g. with a
-    /// `Mutex` shared via `OnceLock`) to avoid cross-talk.
+    const EARLY_SIGNAL_CHILD_ENV: &str = "VM0_RUNNER_EARLY_SIGNAL_TEST";
+    const EARLY_SIGTERM_CHILD: &str =
+        "cmd::start::signals::tests::early_sigterm_buffered_before_spawn_child";
+    const EARLY_SIGINT_CHILD: &str =
+        "cmd::start::signals::tests::early_sigint_buffered_before_spawn_child";
+    const EARLY_SIGUSR1_CHILD: &str =
+        "cmd::start::signals::tests::early_sigusr1_buffered_before_spawn_child";
+    const EARLY_SIGUSR2_CHILD: &str =
+        "cmd::start::signals::tests::early_sigusr2_buffered_before_spawn_child";
+
+    #[derive(Clone, Copy)]
+    enum EarlySignalScenario {
+        Terminate,
+        Interrupt,
+        Drain,
+        Resume,
+    }
+
+    impl EarlySignalScenario {
+        fn signal(self) -> nix::sys::signal::Signal {
+            match self {
+                Self::Terminate => nix::sys::signal::Signal::SIGTERM,
+                Self::Interrupt => nix::sys::signal::Signal::SIGINT,
+                Self::Drain => nix::sys::signal::Signal::SIGUSR1,
+                Self::Resume => nix::sys::signal::Signal::SIGUSR2,
+            }
+        }
+
+        fn expected_mode(self) -> RunnerMode {
+            match self {
+                Self::Terminate | Self::Interrupt => RunnerMode::Stopping,
+                Self::Drain => RunnerMode::Draining,
+                Self::Resume => RunnerMode::Running,
+            }
+        }
+    }
+
+    /// Regression coverage for issues #10416 and #25211: every lifecycle
+    /// signal raised after registration but before the consumer starts must
+    /// reach its controller branch. Each signal runs in a separate child
+    /// because a missing registration restores its terminating disposition.
     #[tokio::test]
-    async fn signal_buffered_before_spawn_is_delivered() {
+    async fn early_lifecycle_signals_buffer_before_spawn() {
+        for (child_test, scenario) in [
+            (EARLY_SIGTERM_CHILD, "sigterm"),
+            (EARLY_SIGINT_CHILD, "sigint"),
+            (EARLY_SIGUSR1_CHILD, "sigusr1"),
+            (EARLY_SIGUSR2_CHILD, "sigusr2"),
+        ] {
+            run_ignored_child_test(
+                child_test,
+                (EARLY_SIGNAL_CHILD_ENV, scenario),
+                &[],
+                Duration::from_secs(5),
+            )
+            .await;
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "spawned by early_lifecycle_signals_buffer_before_spawn"]
+    async fn early_sigterm_buffered_before_spawn_child() {
+        if !ignored_child_test_env_guard_enabled((EARLY_SIGNAL_CHILD_ENV, "sigterm")) {
+            return;
+        }
+        assert_early_signal_buffered(EarlySignalScenario::Terminate).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "spawned by early_lifecycle_signals_buffer_before_spawn"]
+    async fn early_sigint_buffered_before_spawn_child() {
+        if !ignored_child_test_env_guard_enabled((EARLY_SIGNAL_CHILD_ENV, "sigint")) {
+            return;
+        }
+        assert_early_signal_buffered(EarlySignalScenario::Interrupt).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "spawned by early_lifecycle_signals_buffer_before_spawn"]
+    async fn early_sigusr1_buffered_before_spawn_child() {
+        if !ignored_child_test_env_guard_enabled((EARLY_SIGNAL_CHILD_ENV, "sigusr1")) {
+            return;
+        }
+        assert_early_signal_buffered(EarlySignalScenario::Drain).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "spawned by early_lifecycle_signals_buffer_before_spawn"]
+    async fn early_sigusr2_buffered_before_spawn_child() {
+        if !ignored_child_test_env_guard_enabled((EARLY_SIGNAL_CHILD_ENV, "sigusr2")) {
+            return;
+        }
+        assert_early_signal_buffered(EarlySignalScenario::Resume).await;
+    }
+
+    async fn assert_early_signal_buffered(scenario: EarlySignalScenario) {
         let signals = EarlySignals::register().expect("register");
 
-        nix::sys::signal::raise(nix::sys::signal::Signal::SIGUSR1).expect("raise");
+        nix::sys::signal::raise(scenario.signal()).expect("raise lifecycle signal");
 
+        let cancel = CancellationToken::new();
         let controller = SignalController::spawn(
-            CancellationToken::new(),
+            cancel.clone(),
             RunCancellationRegistry::new(),
             signals,
             ParkingGate::new_open(),
         );
         let mut mode_rx = controller.mode_rx;
 
-        tokio::time::timeout(Duration::from_secs(2), mode_rx.changed())
-            .await
-            .expect("buffered SIGUSR1 should drive mode within 2s")
-            .expect("mode channel closed");
-        assert_eq!(*mode_rx.borrow(), RunnerMode::Draining);
-
-        // Abort so the task releases its Signal stream subscriptions
-        // and does not linger to consume signals raised by later tests.
-        if let Some(handler_task) = controller.handler_task {
-            let result = handler_task
-                .abort_and_wait()
-                .await
-                .expect_err("signal handler should be cancelled");
-            assert!(result.is_cancelled());
+        if matches!(scenario, EarlySignalScenario::Resume) {
+            assert_eq!(
+                controller.lifecycle.enter_soft_drain(),
+                SoftDrainOutcome::EnteredDraining
+            );
+            assert_eq!(
+                controller.lifecycle.mark_startup_ready(),
+                RunnerMode::Draining
+            );
+            assert_eq!(*mode_rx.borrow_and_update(), RunnerMode::Draining);
         }
+
+        match scenario {
+            EarlySignalScenario::Terminate | EarlySignalScenario::Interrupt => {
+                tokio::time::timeout(Duration::from_secs(2), cancel.cancelled())
+                    .await
+                    .expect("buffered stopping signal should cancel within 2s");
+            }
+            EarlySignalScenario::Drain | EarlySignalScenario::Resume => {
+                tokio::time::timeout(Duration::from_secs(2), mode_rx.changed())
+                    .await
+                    .expect("buffered lifecycle signal should change mode within 2s")
+                    .expect("mode channel closed");
+            }
+        }
+        assert_eq!(*mode_rx.borrow(), scenario.expected_mode());
+
+        let handler_task = controller
+            .handler_task
+            .expect("real signal controller should own a handler task");
+        let result = handler_task
+            .abort_and_wait()
+            .await
+            .expect_err("signal handler should be cancelled");
+        assert!(result.is_cancelled());
     }
 
     #[tokio::test]
@@ -492,141 +450,6 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), dropped.notified())
             .await
             .expect("dropping signal handler task should abort the task");
-    }
-
-    /// `enter_soft_drain` state guard: SIGUSR1 transitions from Starting or
-    /// Running; repeated SIGUSR1 in Draining is an idempotent no-op, while
-    /// teardown modes stay ignored.
-    #[test]
-    fn drain_signal_state_guards() {
-        use crate::idle_pool::ParkingState;
-
-        // Starting -> Draining (startup drain intent must not be lost).
-        let gate = ParkingGate::new_open();
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Starting);
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        assert_eq!(
-            lifecycle.enter_soft_drain(),
-            DrainSignalOutcome::EnteredDraining
-        );
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Draining);
-        assert_eq!(gate.state(), ParkingState::SoftDraining);
-
-        // Running → Draining (sanity: the steady-state legal transition).
-        let gate = ParkingGate::new_open();
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Running);
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        assert_eq!(
-            lifecycle.enter_soft_drain(),
-            DrainSignalOutcome::EnteredDraining
-        );
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Draining);
-        assert_eq!(gate.state(), ParkingState::SoftDraining);
-
-        // Draining → idempotent no-op (no warning-worthy self-transition).
-        let gate = ParkingGate::new_open();
-        gate.soft_drain();
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Draining);
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        assert_eq!(
-            lifecycle.enter_soft_drain(),
-            DrainSignalOutcome::AlreadyDraining
-        );
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Draining);
-        assert_eq!(gate.state(), ParkingState::SoftDraining);
-
-        // Stopping → ignored (cannot reverse teardown).
-        let gate = ParkingGate::new_open();
-        gate.close();
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Stopping);
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        assert_eq!(
-            lifecycle.enter_soft_drain(),
-            DrainSignalOutcome::Ignored(RunnerMode::Stopping)
-        );
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Stopping);
-        assert_eq!(gate.state(), ParkingState::Closed);
-
-        // Stopped → ignored (runner has exited its loop).
-        let gate = ParkingGate::new_open();
-        gate.close();
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Stopped);
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        assert_eq!(
-            lifecycle.enter_soft_drain(),
-            DrainSignalOutcome::Ignored(RunnerMode::Stopped)
-        );
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Stopped);
-        assert_eq!(gate.state(), ParkingState::Closed);
-    }
-
-    /// `handle_resume_signal` state guard: SIGUSR2 is honored only from
-    /// Draining after startup is ready. The integration test
-    /// `resume_after_stopping_is_ignored` covers the Stopping case; this pins
-    /// the full matrix as a unit test.
-    #[test]
-    fn resume_signal_state_guards() {
-        use crate::idle_pool::ParkingState;
-
-        // Draining → Running (sanity: the one legal transition).
-        let gate = ParkingGate::new_open();
-        gate.soft_drain();
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Draining);
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        handle_resume_signal(&lifecycle);
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Running);
-        assert_eq!(gate.state(), ParkingState::Open);
-
-        // Draining entered during startup cannot resume until startup is ready.
-        let gate = ParkingGate::new_open();
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Starting);
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        assert_eq!(
-            lifecycle.enter_soft_drain(),
-            DrainSignalOutcome::EnteredDraining
-        );
-        handle_resume_signal(&lifecycle);
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Draining);
-        assert_eq!(gate.state(), ParkingState::SoftDraining);
-
-        assert_eq!(lifecycle.mark_startup_ready(), RunnerMode::Draining);
-        handle_resume_signal(&lifecycle);
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Running);
-        assert_eq!(gate.state(), ParkingState::Open);
-
-        // Starting → ignored (nothing to resume from).
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Starting);
-        let gate = ParkingGate::new_open();
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        handle_resume_signal(&lifecycle);
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Starting);
-        assert_eq!(gate.state(), ParkingState::Open);
-
-        // Running → ignored (nothing to resume from).
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Running);
-        let gate = ParkingGate::new_open();
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        handle_resume_signal(&lifecycle);
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Running);
-        assert_eq!(gate.state(), ParkingState::Open);
-
-        // Stopping → ignored (too late).
-        let gate = ParkingGate::new_open();
-        gate.close();
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Stopping);
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        handle_resume_signal(&lifecycle);
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Stopping);
-        assert_eq!(gate.state(), ParkingState::Closed);
-
-        // Stopped → ignored.
-        let gate = ParkingGate::new_open();
-        gate.close();
-        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Stopped);
-        let lifecycle = LifecycleController::new(tx, gate.clone());
-        handle_resume_signal(&lifecycle);
-        assert_eq!(lifecycle.current_mode(), RunnerMode::Stopped);
-        assert_eq!(gate.state(), ParkingState::Closed);
     }
 
     /// `handle_stopping_signal` idempotency: a repeat invocation takes the

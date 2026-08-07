@@ -4,11 +4,13 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowAutomationsContract,
   zeroWorkflowVisibilityContract,
+  type ChatRunFinishedEventConfig,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
   type GoogleCalendarEventCancelledEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarEventUpdatedEventConfig,
+  type GoogleFormsResponseSubmittedEventCreateConfig,
   type GoogleMeetTranscriptGeneratedEventConfig,
   type GithubDeploymentStatusCreatedEventConfig,
   type GithubIssueCommentCreatedEventConfig,
@@ -19,9 +21,9 @@ import {
   type NotionChildPageCreatedEventCreateConfig,
   type NotionDatabaseItemCreatedEventCreateConfig,
   type NotionPageContentUpdatedEventCreateConfig,
+  type StripeInvoiceBillingReason,
   type StrapiEntryPublishedEventConfig,
   type ZeroWorkflowDetailResponse,
-  type ZeroWorkflowConnectorReadinessResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowSummary,
@@ -34,6 +36,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
+import { locale$ } from "../locale.ts";
 import {
   detachedNavigateTo$,
   pathParams$,
@@ -52,6 +55,7 @@ import {
   reloadWorkflowData$,
   workflowReloadVersion$,
 } from "./workflow-reload.ts";
+import type { PlatformWorkflowConnectorReadinessResponse } from "../connector-domain.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
@@ -88,6 +92,7 @@ function defaultWorkflowCopyForm(): WorkflowCopyFormState {
   };
 }
 export type WorkflowAutomationCreateDialog =
+  | "chat-run-finished"
   | "interval"
   | "scheduled"
   | "once"
@@ -102,10 +107,12 @@ export type WorkflowAutomationCreateDialog =
   | "google-calendar-created"
   | "google-calendar-updated"
   | "google-calendar-cancelled"
+  | "google-forms"
   | "google-meet-transcript-generated"
   | "notion-child-page"
   | "notion-database-item"
   | "notion-page-content-updated"
+  | "stripe-invoice-paid"
   | "strapi-entry-published"
   | "webhook"
   | null;
@@ -114,6 +121,7 @@ type WorkflowAutomationCategoryKey =
   | "schedule"
   | "email"
   | "calendar"
+  | "forms"
   | "notion"
   | "integrations";
 type WorkflowWebhookAutomationSummary = Extract<
@@ -273,7 +281,7 @@ type WorkflowConnectorReadinessState =
       readonly workflowId: string;
       readonly requestId: string;
       readonly status: "success";
-      readonly response: ZeroWorkflowConnectorReadinessResponse;
+      readonly response: PlatformWorkflowConnectorReadinessResponse;
     };
 
 const internalWorkflowConnectorReadiness$ =
@@ -726,6 +734,7 @@ export const currentAgentVisibleWorkflows$ = computed(
 export const allVisibleWorkflows$ = computed(
   async (get): Promise<readonly ZeroWorkflowSummary[]> => {
     get(workflowReloadVersion$);
+    const locale = get(locale$);
     const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
     const result = await accept(client.list({ query: {} }), [200]);
     return [...result.body].sort((a, b) => {
@@ -734,7 +743,7 @@ export const allVisibleWorkflows$ = computed(
       }
       const aTitle = a.displayName ?? a.name;
       const bTitle = b.displayName ?? b.name;
-      return aTitle.localeCompare(bTitle);
+      return aTitle.localeCompare(bTitle, locale);
     });
   },
 );
@@ -742,6 +751,7 @@ export const allVisibleWorkflows$ = computed(
 export const allWorkflowAutomationEntries$ = computed(
   async (get): Promise<readonly WorkflowAutomationEntry[]> => {
     get(workflowReloadVersion$);
+    const locale = get(locale$);
     const automationClient = get(zeroClient$)(zeroWorkflowAutomationsContract);
     const automationResult = await accept(
       automationClient.listWorkspace(),
@@ -761,7 +771,7 @@ export const allWorkflowAutomationEntries$ = computed(
       }
       const aTitle = a.workflow.displayName ?? a.workflow.name;
       const bTitle = b.workflow.displayName ?? b.workflow.name;
-      return aTitle.localeCompare(bTitle);
+      return aTitle.localeCompare(bTitle, locale);
     });
   },
 );
@@ -1169,6 +1179,68 @@ export const createWorkflowGoogleCalendarEventAutomation$ = command(
   },
 );
 
+export const createWorkflowGoogleFormsResponseSubmittedAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GoogleFormsResponseSubmittedEventCreateConfig;
+    },
+    signal: AbortSignal,
+  ): Promise<string | undefined> => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const result = await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+      signal,
+    );
+    signal.throwIfAborted();
+    if (
+      result.body.kind !== "event" ||
+      result.body.eventType !== "google-forms-response-submitted"
+    ) {
+      throw new Error("Expected Google Forms workflow automation summary");
+    }
+    set(reloadWorkflows$);
+    return result.body.warning;
+  },
+);
+
+export const createWorkflowChatRunFinishedAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: ChatRunFinishedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "chat-run-finished",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const createWorkflowGoogleMeetTranscriptGeneratedAutomation$ = command(
   async (
     { get, set },
@@ -1302,6 +1374,41 @@ export const createWorkflowStrapiEntryPublishedAutomation$ = command(
         fetchOptions: { signal },
       }),
       [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowStripeInvoicePaidAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly billingReasons: readonly StripeInvoiceBillingReason[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "stripe-invoice-paid",
+          eventConfig: {
+            provider: "stripe",
+            event: "invoice_paid",
+            ...(input.billingReasons.length > 0
+              ? { billingReasons: [...input.billingReasons] }
+              : {}),
+          },
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+      signal,
+      { showErrorToast: false },
     );
     signal.throwIfAborted();
     set(reloadWorkflows$);

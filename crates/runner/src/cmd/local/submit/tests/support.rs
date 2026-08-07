@@ -1,9 +1,15 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::time::Duration;
 
-use super::super::{SubmitArgs, SubmitQueueEntry};
+use super::super::{SubmitArgs, SubmitQueueEntry, run_submit_with_home};
 use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
+use crate::paths::HomePaths;
+
+const TEST_SUBMIT_RENDEZVOUS_TIMEOUT: Duration = Duration::from_secs(5);
+const TEST_SUBMIT_QUEUE_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 pub(super) fn submit_queue_entry(group_dir: &Path, job_id: RunId) -> SubmitQueueEntry {
     SubmitQueueEntry::for_job(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap()
@@ -20,7 +26,7 @@ pub(super) fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
-pub(super) async fn wait_for_job_and_write_result(
+async fn wait_for_job_and_write_result(
     group_dir: std::path::PathBuf,
     profile: String,
     exit_code: i32,
@@ -48,15 +54,88 @@ pub(super) async fn wait_for_job_and_write_result(
             }
         }
 
-        tokio::task::yield_now().await;
+        tokio::time::sleep(TEST_SUBMIT_QUEUE_POLL_INTERVAL).await;
     }
 }
 
-pub(super) async fn wait_for_job_and_write_success(
-    group_dir: std::path::PathBuf,
-    profile: String,
-) -> JobRequest {
-    wait_for_job_and_write_result(group_dir, profile, 0, None).await
+fn observed_queue_entries(group_dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut directories = vec![group_dir.to_owned()];
+    let mut entries = Vec::new();
+    while let Some(directory) = directories.pop() {
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                directories.push(path.clone());
+            }
+            entries.push(path.strip_prefix(group_dir).unwrap().to_owned());
+        }
+    }
+    entries.sort();
+    Ok(entries)
+}
+
+async fn run_submit_and_write_result_with_timeout(
+    args: SubmitArgs,
+    home: HomePaths,
+    profile: &str,
+    exit_code: i32,
+    error: Option<String>,
+    timeout: Duration,
+) -> Result<(ExitCode, JobRequest), String> {
+    let group = args.group.clone();
+    let group_dir = home.groups_dir().join(&group);
+    let watched_group_dir = group_dir.clone();
+    let profile = profile.to_owned();
+    let watched_profile = profile.clone();
+    let rendezvous = async move {
+        tokio::try_join!(run_submit_with_home(args, home), async move {
+            Ok::<JobRequest, crate::error::RunnerError>(
+                wait_for_job_and_write_result(watched_group_dir, watched_profile, exit_code, error)
+                    .await,
+            )
+        })
+    };
+
+    match tokio::time::timeout(timeout, rendezvous).await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(error)) => Err(format!(
+            "local submit failed during test rendezvous (group: {group}, profile: {profile}): {error}"
+        )),
+        Err(_) => Err(format!(
+            "local submit test rendezvous timed out after {timeout:?} (group: {group}, profile: {profile}, observed queue entries: {:?})",
+            observed_queue_entries(&group_dir)
+        )),
+    }
+}
+
+pub(super) async fn run_submit_and_write_result(
+    args: SubmitArgs,
+    home: HomePaths,
+    exit_code: i32,
+    error: Option<String>,
+) -> Result<(ExitCode, JobRequest), String> {
+    let profile = args
+        .profile
+        .as_deref()
+        .unwrap_or(crate::profile::DEFAULT_PROFILE)
+        .to_owned();
+    run_submit_and_write_result_with_timeout(
+        args,
+        home,
+        &profile,
+        exit_code,
+        error,
+        TEST_SUBMIT_RENDEZVOUS_TIMEOUT,
+    )
+    .await
+}
+
+pub(super) async fn run_submit_and_write_success(
+    args: SubmitArgs,
+    home: HomePaths,
+) -> Result<(ExitCode, JobRequest), String> {
+    run_submit_and_write_result(args, home, 0, None).await
 }
 
 pub(super) fn submit_args_for_test() -> SubmitArgs {
@@ -65,6 +144,7 @@ pub(super) fn submit_args_for_test() -> SubmitArgs {
         prompt: "hello".into(),
         cli_agent_type: "claude-code".into(),
         profile: None,
+        chat_thread_id: None,
         session_id: None,
         feature_flags: vec![],
         env: vec![],
@@ -72,4 +152,55 @@ pub(super) fn submit_args_for_test() -> SubmitArgs {
         timeout: 1,
         active_inputs: vec![],
     }
+}
+
+#[tokio::test]
+async fn submit_rendezvous_timeout_reports_queue_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().to_path_buf());
+    let mut args = submit_args_for_test();
+    args.timeout = super::super::MAX_LOCAL_SUBMIT_TIMEOUT_SECS;
+
+    let result =
+        run_submit_and_write_result_with_timeout(args, home, "vm0/large", 0, None, Duration::ZERO)
+            .await;
+    let error = match result {
+        Ok(_) => panic!("expected local submit test rendezvous to time out"),
+        Err(error) => error,
+    };
+
+    assert!(error.contains("group: test/group"), "got: {error}");
+    assert!(error.contains("profile: vm0/large"), "got: {error}");
+    assert!(error.contains("jobs/vm0/default"), "got: {error}");
+    assert!(error.contains(".job"), "got: {error}");
+}
+
+#[tokio::test]
+async fn submit_rendezvous_surfaces_submit_error_before_deadline() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().to_path_buf());
+    let mut args = submit_args_for_test();
+    args.feature_flags = vec!["missing-equals".to_owned()];
+    args.timeout = super::super::MAX_LOCAL_SUBMIT_TIMEOUT_SECS;
+
+    let result = run_submit_and_write_result_with_timeout(
+        args,
+        home,
+        crate::profile::DEFAULT_PROFILE,
+        0,
+        None,
+        Duration::ZERO,
+    )
+    .await;
+    let error = match result {
+        Ok(_) => panic!("expected local submit validation to fail"),
+        Err(error) => error,
+    };
+
+    assert!(
+        error.contains("local submit failed during test rendezvous"),
+        "got: {error}"
+    );
+    assert!(error.contains("expected key=value"), "got: {error}");
+    assert!(!error.contains("timed out"), "got: {error}");
 }

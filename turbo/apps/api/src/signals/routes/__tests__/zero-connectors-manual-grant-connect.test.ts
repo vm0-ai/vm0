@@ -2,14 +2,15 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroConnectorManualGrantContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { afterEach } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import {
   readConnectorCredentialStorageState,
@@ -17,6 +18,13 @@ import {
   seedOwnedConnectorSecret,
 } from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroConnectorsRoutes } from "../zero-connectors";
+import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroConnectorsRoutes,
+  ...zeroFeatureSwitchesRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -26,7 +34,7 @@ interface AuthenticatedFixture {
   readonly userId: string;
 }
 
-const CONNECTOR_TYPES_TO_CLEAN_UP = [
+const CONNECTOR_SLUGS_TO_CLEAN_UP = [
   "openai",
   "zendesk",
   "insforge",
@@ -42,7 +50,9 @@ function authHeaders() {
 }
 
 function featureSwitchesClient() {
-  return setupApp({ context })(zeroFeatureSwitchesContract);
+  return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+    zeroFeatureSwitchesContract,
+  );
 }
 
 function seedAuthenticatedFixture(): AuthenticatedFixture {
@@ -80,12 +90,14 @@ async function deleteFeatureSwitches(
 
 async function deleteConnector(
   fixture: AuthenticatedFixture,
-  type: (typeof CONNECTOR_TYPES_TO_CLEAN_UP)[number],
+  connectorSlug: (typeof CONNECTOR_SLUGS_TO_CLEAN_UP)[number],
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorsByTypeContract).delete({
-      params: { type },
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    ).delete({
+      params: { connectorSlug },
       headers: authHeaders(),
     }),
     [204, 404],
@@ -94,26 +106,28 @@ async function deleteConnector(
 
 async function cleanupFixture(fixture: AuthenticatedFixture): Promise<void> {
   await deleteFeatureSwitches(fixture);
-  for (const type of CONNECTOR_TYPES_TO_CLEAN_UP) {
-    await deleteConnector(fixture, type);
+  for (const connectorSlug of CONNECTOR_SLUGS_TO_CLEAN_UP) {
+    await deleteConnector(fixture, connectorSlug);
   }
 }
 
 async function readConnector(
   fixture: AuthenticatedFixture,
-  type: (typeof CONNECTOR_TYPES_TO_CLEAN_UP)[number],
+  connectorSlug: (typeof CONNECTOR_SLUGS_TO_CLEAN_UP)[number],
 ) {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return await accept(
-    setupApp({ context })(zeroConnectorsByTypeContract).get({
-      params: { type },
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    ).get({
+      params: { connectorSlug },
       headers: authHeaders(),
     }),
     [200],
   );
 }
 
-describe("POST /api/zero/connectors/:type/manual-grant", () => {
+describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
   const fixtures: AuthenticatedFixture[] = [];
 
   afterEach(async () => {
@@ -132,10 +146,12 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
   }
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
         headers: {},
       }),
@@ -148,10 +164,12 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -163,7 +181,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("rejects requests without a selected auth method", async () => {
     await seedFixture();
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     const response = await app.request(
       "/api/zero/connectors/openai/manual-grant",
@@ -182,13 +200,15 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("accepts server-authored identity syntax before catalog rejection", async () => {
     await seedFixture();
-    const connectorRef = "server-authored-connector";
+    const connectorSlug = "server-authored-connector";
     const authMethod = "server-authored-method";
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: connectorRef },
+        params: { connectorSlug },
         body: { authMethod, values: { apiKey: "secret" } },
         headers: authHeaders(),
       }),
@@ -196,23 +216,25 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
 
     expect(response.body.error).toStrictEqual({
-      message: `${connectorRef} connector is not supported`,
+      message: `${connectorSlug} connector is not supported`,
       code: "BAD_REQUEST",
     });
     const list = await accept(
-      setupApp({ context })(zeroConnectorsMainContract).list({
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsMainContract,
+      ).list({
         headers: authHeaders(),
       }),
       [200],
     );
     expect(list.body.connectors).not.toContainEqual(
-      expect.objectContaining({ type: connectorRef }),
+      expect.objectContaining({ slug: connectorSlug }),
     );
   });
 
   it("rejects invalid server-authored identity syntax at the contract", async () => {
     await seedFixture();
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     const response = await app.request(
       "/api/zero/connectors/invalid_ref/manual-grant",
@@ -231,11 +253,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("connects a first-time manual grant connector with connector-owned state", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: {
           authMethod: "api-token",
           values: { apiKey: " sk-test\n" },
@@ -246,7 +270,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "openai",
+      slug: "openai",
       authMethod: "api-token",
     });
     expect(typeof response.body.id).toBe("string");
@@ -254,7 +278,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     expect(response.body.updatedAt).not.toBe("1970-01-01T00:00:00.000Z");
     const stored = await readConnector(fixture, "openai");
     expect(stored.body).toMatchObject({
-      type: "openai",
+      slug: "openai",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -262,11 +286,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("connects Zendesk manual grant fields through the API", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "zendesk" },
+        params: { connectorSlug: "zendesk" },
         body: {
           authMethod: "api-token",
           values: {
@@ -281,7 +307,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "zendesk",
+      slug: "zendesk",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -291,7 +317,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const storageState = await readConnectorCredentialStorageState(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      connectorRef: "zendesk",
+      connectorSlug: "zendesk",
       secretNames: ["ZENDESK_API_TOKEN"],
       variableNames: ["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"],
     });
@@ -316,8 +342,10 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
   it("deletes connector-owned secret and variable state on disconnect", async () => {
     const fixture = await seedFixture();
     await accept(
-      setupApp({ context })(zeroConnectorManualGrantContract).connect({
-        params: { type: "zendesk" },
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorManualGrantContract,
+      ).connect({
+        params: { connectorSlug: "zendesk" },
         body: {
           authMethod: "api-token",
           values: {
@@ -336,7 +364,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const storageState = await readConnectorCredentialStorageState(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      connectorRef: "zendesk",
+      connectorSlug: "zendesk",
       secretNames: ["ZENDESK_API_TOKEN"],
       variableNames: ["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"],
     });
@@ -345,12 +373,12 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     expect(storageState.variables).toStrictEqual([]);
   });
 
-  it("preserves a foreign-owned credential when reconnecting an existing connector", async () => {
+  it("stores colliding secret names under their owning connectors", async () => {
     const fixture = await seedFixture();
     const ownerId = await seedOwnedConnectorSecret(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      connectorRef: "github",
+      connectorSlug: "github",
       authMethod: "oauth",
       storageVersion: 1,
       name: "OPENAI_TOKEN",
@@ -360,40 +388,50 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     await seedConnectorStorageRow(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      connectorRef: "openai",
+      connectorSlug: "openai",
       authMethod: "api-token",
       storageVersion: 1,
     });
 
-    const response = await createApp({ signal: context.signal }).request(
-      "/api/zero/connectors/openai/manual-grant",
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer clerk-session",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+    const response = await accept(
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorManualGrantContract,
+      ).connect({
+        params: { connectorSlug: "openai" },
+        headers: authHeaders(),
+        body: {
           authMethod: "api-token",
           values: { apiKey: "replacement" },
-        }),
-      },
+        },
+      }),
+      [200],
     );
-    expect(response.status).toBe(500);
 
     const storageState = await readConnectorCredentialStorageState(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      connectorRef: "openai",
+      connectorSlug: "openai",
       secretNames: ["OPENAI_TOKEN"],
     });
-    expect(storageState.secrets?.[0]).toStrictEqual({
-      name: "OPENAI_TOKEN",
-      connector_id: ownerId,
-      encrypted_value: "owner-value",
-      description: "owner description",
+    expect(storageState.connector).toStrictEqual({
+      id: response.body.id,
+      storage_version: 1,
     });
-    expect(storageState.connector?.storage_version).toBe(1);
+    expect(storageState.secrets).toHaveLength(2);
+    expect(storageState.secrets).toStrictEqual(
+      expect.arrayContaining([
+        {
+          name: "OPENAI_TOKEN",
+          connector_id: ownerId,
+          encrypted_value: "owner-value",
+          description: "owner description",
+        },
+        expect.objectContaining({
+          name: "OPENAI_TOKEN",
+          connector_id: response.body.id,
+        }),
+      ]),
+    );
 
     await deleteConnector(fixture, "openai");
     const stateAfterDelete = await readConnectorCredentialStorageState(
@@ -401,7 +439,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        connectorRef: "github",
+        connectorSlug: "github",
         secretNames: ["OPENAI_TOKEN"],
       },
     );
@@ -415,11 +453,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("normalizes a full URL host field for manual grant connectors", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "insforge" },
+        params: { connectorSlug: "insforge" },
         body: {
           authMethod: "api-token",
           values: {
@@ -433,7 +473,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "insforge",
+      slug: "insforge",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -443,11 +483,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("connects Lark app credentials through the API", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "lark" },
+        params: { connectorSlug: "lark" },
         body: {
           authMethod: "api-token",
           values: {
@@ -461,7 +503,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "lark",
+      slug: "lark",
       authMethod: "api-token",
       connectionStatus: "connected",
       reconnectReason: null,
@@ -473,10 +515,12 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("reconnects Lark manual grant state through the API", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
     await accept(
       client.connect({
-        params: { type: "lark" },
+        params: { connectorSlug: "lark" },
         body: {
           authMethod: "api-token",
           values: {
@@ -491,7 +535,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     await accept(
       client.connect({
-        params: { type: "lark" },
+        params: { connectorSlug: "lark" },
         body: {
           authMethod: "api-token",
           values: {
@@ -518,10 +562,12 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     await updateFeatureSwitches(fixture, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
     await accept(
       client.connect({
-        params: { type: "test-oauth" },
+        params: { connectorSlug: "test-oauth" },
         body: {
           authMethod: "api-token",
           values: {
@@ -537,7 +583,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     await accept(
       client.connect({
-        params: { type: "test-oauth" },
+        params: { connectorSlug: "test-oauth" },
         body: {
           authMethod: "api-token",
           values: {
@@ -557,10 +603,12 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("replaces GitLab manual grant when optional fields are omitted", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
     await accept(
       client.connect({
-        params: { type: "gitlab" },
+        params: { connectorSlug: "gitlab" },
         body: {
           authMethod: "api-token",
           values: {
@@ -575,7 +623,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     await accept(
       client.connect({
-        params: { type: "gitlab" },
+        params: { connectorSlug: "gitlab" },
         body: {
           authMethod: "api-token",
           values: { accessToken: "new-token" },
@@ -587,7 +635,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const stored = await readConnector(fixture, "gitlab");
     expect(stored.body).toMatchObject({
-      type: "gitlab",
+      slug: "gitlab",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -595,11 +643,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("rejects private field names and identifies the public field id", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: {
           authMethod: "api-token",
           values: { OPENAI_TOKEN: "sk-private" },
@@ -616,11 +666,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("rejects unknown public fields without echoing submitted values", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: {
           authMethod: "api-token",
           values: {
@@ -642,11 +694,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("rejects missing required fields", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: { authMethod: "api-token", values: {} },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -659,11 +713,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("rejects required fields that sanitize to empty without private field names", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: { authMethod: "api-token", values: { apiKey: " \n\t " } },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -676,11 +732,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("rejects connectors that do not support manual grant auth", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "github" },
+        params: { connectorSlug: "github" },
         body: { authMethod: "api-token", values: {} },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -694,11 +752,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("rejects selected auth methods without manual grants", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "stripe" },
+        params: { connectorSlug: "stripe" },
         body: { authMethod: "oauth", values: { apiKey: "sk_test_key" } },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -712,11 +772,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("allows feature-gated manual grant auth outside discovery", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "bentoml" },
+        params: { connectorSlug: "bentoml" },
         body: {
           authMethod: "api-token",
           values: {
@@ -730,7 +792,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "bentoml",
+      slug: "bentoml",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -738,11 +800,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("rejects authored-hidden manual grant auth", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "cloudflare" },
+        params: { connectorSlug: "cloudflare" },
         body: { authMethod: "api-token", values: {} },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -758,11 +822,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
   it("publishes one connector change event on successful replacement", async () => {
     await seedFixture();
     context.mocks.ably.publish.mockClear();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -772,7 +838,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "connector:changed",
-      { connectorRef: "openai" },
+      { connectorSlug: "openai" },
     );
   });
 
@@ -781,11 +847,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     await updateFeatureSwitches(fixture, {
       [FeatureSwitchKey.BentomlConnector]: true,
     });
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
-        params: { type: "bentoml" },
+        params: { connectorSlug: "bentoml" },
         body: {
           authMethod: "api-token",
           values: {
@@ -799,7 +867,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "bentoml",
+      slug: "bentoml",
       authMethod: "api-token",
     });
   });

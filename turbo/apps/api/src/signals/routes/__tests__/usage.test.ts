@@ -4,12 +4,15 @@ import { cronAggregateUsageContract } from "@vm0/api-contracts/contracts/cron";
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { cronAggregateUsageRoutes } from "../cron-aggregate-usage";
+import { usageRoutes } from "../usage";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -40,11 +43,13 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(usageContract);
+  return setupApp({ context, routes: usageRoutes })(usageContract);
 }
 
 function aggregateUsageClient() {
-  return setupApp({ context })(cronAggregateUsageContract);
+  return setupApp({ context, routes: cronAggregateUsageRoutes })(
+    cronAggregateUsageContract,
+  );
 }
 
 async function entitledUsageActor(): Promise<UsageActor> {

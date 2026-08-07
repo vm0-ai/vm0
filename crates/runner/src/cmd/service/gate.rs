@@ -24,11 +24,13 @@ pub(super) fn runner_base_dir(unit: &RunnerServiceUnit) -> Option<PathBuf> {
 /// Parsed snapshot of the runner's status.json.
 pub(super) struct RunnerStatusSnapshot {
     /// Mode string sourced verbatim from status.json. Valid values are the
-    /// lowercase serialization of [`crate::status::RunnerMode`]: `"starting"`,
+    /// lowercase serialization of [`crate::lifecycle::RunnerMode`]: `"starting"`,
     /// `"running"`, `"draining"`, `"stopping"`, `"stopped"`. Unknown values
     /// (e.g. from a newer runner writing a future variant) are preserved and
     /// routed to the normal refuse branch by [`decide_gate`].
     pub(super) mode: String,
+    /// Stable identity of the runner process that wrote this snapshot.
+    pub(super) started_at: chrono::DateTime<chrono::Utc>,
     /// UUIDs of runs currently in flight.
     run_ids: Vec<RunId>,
     /// How long the runner process itself has been up, derived from the
@@ -90,7 +92,7 @@ enum GateDecision {
 /// 3. Otherwise refuse; `draining=true` when `mode == "draining"` so the
 ///    error message suggests waiting rather than re-running `drain`.
 ///
-/// Mode strings mirror [`crate::status::RunnerMode`] (serde lowercase).
+/// Mode strings mirror [`crate::lifecycle::RunnerMode`] (serde lowercase).
 fn decide_gate(status: &RunnerStatusSnapshot) -> GateDecision {
     if matches!(status.mode.as_str(), "stopped" | "stopping") {
         return GateDecision::Bypass;
@@ -134,12 +136,12 @@ pub(super) async fn read_runner_status(
             error,
         }
     })?;
+    let started_at = started.with_timezone(&chrono::Utc);
     let now = chrono::Utc::now();
-    let uptime = (now - started.with_timezone(&chrono::Utc))
-        .to_std()
-        .unwrap_or_default();
+    let uptime = (now - started_at).to_std().unwrap_or_default();
     Ok(RunnerStatusSnapshot {
         mode: file.mode,
+        started_at,
         run_ids: file.active_runs.into_iter().map(|run| run.run_id).collect(),
         uptime,
     })
@@ -406,7 +408,7 @@ mod tests {
                 }
             ],
             "idle_vms": [
-                {"session_id":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}
+                {"reuse_key":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}
             ],
             "proxy_port": 8080,
             "dns_port": 5300,
@@ -479,6 +481,9 @@ mod tests {
     fn snapshot(mode: &str, run_count: usize) -> RunnerStatusSnapshot {
         RunnerStatusSnapshot {
             mode: mode.to_string(),
+            started_at: chrono::DateTime::parse_from_rfc3339("2026-04-13T00:00:00.000Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
             run_ids: (0..run_count).map(|_| RunId::nil()).collect(),
             uptime: std::time::Duration::from_secs(600),
         }

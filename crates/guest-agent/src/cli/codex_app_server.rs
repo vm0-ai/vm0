@@ -104,9 +104,7 @@ impl CodexAppServerConfig {
     /// Add an extra child environment value.
     ///
     /// Extra values are applied before the final `CODEX_HOME` value, so callers
-    /// cannot override the per-run Codex home through this method. Spawn also
-    /// removes `MOCK_CODEX_FIXTURE` because app-server tests use their own
-    /// scenario variable.
+    /// cannot override the per-run Codex home through this method.
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extra_env.push((key.into(), value.into()));
         self
@@ -343,7 +341,6 @@ impl CodexAppServerClient {
             "CODEX_HOME".to_string(),
             config.codex_home.to_string_lossy().into_owned(),
         ));
-        child_env_values.retain(|(key, _)| key != "MOCK_CODEX_FIXTURE");
         let child_env_values = child_env::normalize_values(child_env_values);
         let args = app_server_args(&config.config_overrides);
         let binary = config.binary.to_string_lossy();
@@ -364,8 +361,6 @@ impl CodexAppServerClient {
         if let Some(current_dir) = config.current_dir {
             cmd.current_dir(current_dir);
         }
-        cmd.env_remove("MOCK_CODEX_FIXTURE");
-
         let mut child = cmd.spawn().map_err(CodexAppServerError::Spawn)?;
         let stdin = child.stdin.take().ok_or_else(|| {
             CodexAppServerError::Protocol("app-server stdin was not piped".to_string())
@@ -1200,16 +1195,16 @@ mod tests {
     #[test]
     fn app_server_args_put_root_config_overrides_before_subcommand() {
         let args = app_server_args(&[
-            r#"model_provider="minimax""#.to_string(),
-            r#"model_providers.minimax.supports_websockets=false"#.to_string(),
+            r#"model_provider="deepseek""#.to_string(),
+            r#"model_providers.deepseek.supports_websockets=false"#.to_string(),
             r#"web_search="disabled""#.to_string(),
         ]);
 
         let expected = [
             "-c",
-            r#"model_provider="minimax""#,
+            r#"model_provider="deepseek""#,
             "-c",
-            r#"model_providers.minimax.supports_websockets=false"#,
+            r#"model_providers.deepseek.supports_websockets=false"#,
             "-c",
             r#"web_search="disabled""#,
             "app-server",

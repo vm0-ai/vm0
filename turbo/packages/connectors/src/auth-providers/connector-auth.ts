@@ -43,9 +43,9 @@ import {
   type ConnectorAuthProviderAuthMethodId,
   type ConnectorAuthProviderAuthMethodIdByAccessKind,
   type ConnectorAuthProviderAuthMethodIdByGrantKind,
-  type ConnectorAuthProviderConnectorRef,
-  type ConnectorAuthProviderConnectorRefByAccessKind,
-  type ConnectorAuthProviderConnectorRefByGrantKind,
+  type ConnectorAuthProviderConnectorSlug,
+  type ConnectorAuthProviderConnectorSlugByAccessKind,
+  type ConnectorAuthProviderConnectorSlugByGrantKind,
   type ConnectorAuthProviderClientContract,
   type ConnectorAuthProviderMethodContract,
 } from "./provider-capabilities";
@@ -203,7 +203,7 @@ type RuntimeAuthProviderEntry = {
 };
 
 type RuntimeAuthProviderRegistration = {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly entry: RuntimeAuthProviderEntry;
 };
@@ -238,7 +238,7 @@ export const CONNECTOR_GENERIC_AUTH_CAPABILITY_VERSIONS = {
 } as const;
 
 export interface ConnectorAuthProviderRegistrationCapability {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly handlers: ConnectorAuthProviderRegistryCapability;
   readonly contract: ConnectorAuthProviderMethodContract;
@@ -373,7 +373,7 @@ function connectorAuthProviderRegistrationCapability(
   contract: ConnectorAuthProviderMethodContract,
 ): ConnectorAuthProviderRegistrationCapability {
   return {
-    connectorRef: registration.connectorRef,
+    connectorSlug: registration.connectorSlug,
     authMethodId: registration.authMethodId,
     handlers: connectorAuthProviderRegistryCapability(registration.entry),
     contract,
@@ -388,18 +388,18 @@ type MutableConnectorAuthProviderRegistryCapabilities = Record<
 >;
 
 function connectorAuthProviderRegistryEntry<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
   entry: RuntimeAuthProviderEntry,
 ): RuntimeAuthProviderRegistration {
-  return { connectorRef, authMethodId, entry };
+  return { connectorSlug, authMethodId, entry };
 }
 
 function assertConnectorAuthProviderHandlerKind(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly lifecycle: "grant" | "access" | "revoke";
   readonly expected: string | undefined;
@@ -407,7 +407,7 @@ function assertConnectorAuthProviderHandlerKind(args: {
 }): void {
   if (args.expected !== args.actual) {
     throw new Error(
-      `Auth provider ${args.lifecycle} handler mismatch for ${args.connectorRef}:${args.authMethodId}`,
+      `Auth provider ${args.lifecycle} handler mismatch for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
 }
@@ -425,14 +425,14 @@ function assertConnectorAuthProviderEntryMatchesContract(
       ? contract.grant.kind
       : undefined;
   assertConnectorAuthProviderHandlerKind({
-    connectorRef: registration.connectorRef,
+    connectorSlug: registration.connectorSlug,
     authMethodId: registration.authMethodId,
     lifecycle: "grant",
     expected: expectedGrant,
     actual: handlers.grant,
   });
   assertConnectorAuthProviderHandlerKind({
-    connectorRef: registration.connectorRef,
+    connectorSlug: registration.connectorSlug,
     authMethodId: registration.authMethodId,
     lifecycle: "access",
     expected:
@@ -440,7 +440,7 @@ function assertConnectorAuthProviderEntryMatchesContract(
     actual: handlers.access,
   });
   assertConnectorAuthProviderHandlerKind({
-    connectorRef: registration.connectorRef,
+    connectorSlug: registration.connectorSlug,
     authMethodId: registration.authMethodId,
     lifecycle: "revoke",
     expected:
@@ -455,12 +455,12 @@ function buildRuntimeProviderRegistry(
   const contracts = new Map<string, ConnectorAuthProviderMethodContract>();
   for (const registration of CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS) {
     const key = connectorAuthProviderRegistrationKey(
-      registration.connectorRef,
+      registration.connectorSlug,
       registration.authMethodId,
     );
     if (contracts.has(key)) {
       throw new Error(
-        `Duplicate auth provider contract for ${registration.connectorRef}:${registration.authMethodId}`,
+        `Duplicate auth provider contract for ${registration.connectorSlug}:${registration.authMethodId}`,
       );
     }
     contracts.set(key, registration.contract);
@@ -469,18 +469,18 @@ function buildRuntimeProviderRegistry(
   const registry = new Map<string, PreparedRuntimeAuthProviderRegistration>();
   for (const registration of registrations) {
     const key = connectorAuthProviderRegistrationKey(
-      registration.connectorRef,
+      registration.connectorSlug,
       registration.authMethodId,
     );
     if (registry.has(key)) {
       throw new Error(
-        `Duplicate auth provider registration for ${registration.connectorRef}:${registration.authMethodId}`,
+        `Duplicate auth provider registration for ${registration.connectorSlug}:${registration.authMethodId}`,
       );
     }
     const contract = contracts.get(key);
     if (contract === undefined) {
       throw new Error(
-        `Missing auth provider contract for ${registration.connectorRef}:${registration.authMethodId}`,
+        `Missing auth provider contract for ${registration.connectorSlug}:${registration.authMethodId}`,
       );
     }
     assertConnectorAuthProviderEntryMatchesContract(registration, contract);
@@ -506,110 +506,110 @@ function buildRuntimeProviderRegistry(
 }
 
 function connectorAuthProviderRegistrationKey(
-  connectorRef: string,
+  connectorSlug: string,
   authMethodId: string,
 ): string {
-  return `${connectorRef}\0${authMethodId}`;
+  return `${connectorSlug}\0${authMethodId}`;
 }
 
 function getRuntimeAuthProviderRegistration(
-  connectorRef: string,
+  connectorSlug: string,
   authMethodId: string,
 ): PreparedRuntimeAuthProviderRegistration {
   const registration = CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY.get(
-    connectorAuthProviderRegistrationKey(connectorRef, authMethodId),
+    connectorAuthProviderRegistrationKey(connectorSlug, authMethodId),
   );
   if (registration === undefined) {
     throw new Error(
-      `Missing auth provider registration for ${connectorRef}:${authMethodId}`,
+      `Missing auth provider registration for ${connectorSlug}:${authMethodId}`,
     );
   }
   return registration;
 }
 
 function authCodeProviderEntry<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"auth-code">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"auth-code">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "auth-code"
   >,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
-  provider: AuthCodeConnectorAuthProvider<ConnectorRef, AuthMethodId>,
+  provider: AuthCodeConnectorAuthProvider<ConnectorSlug, AuthMethodId>,
 ): RuntimeAuthProviderRegistration {
-  return connectorAuthProviderRegistryEntry(connectorRef, authMethodId, {
+  return connectorAuthProviderRegistryEntry(connectorSlug, authMethodId, {
     grant: provider.grant,
   });
 }
 
 function authCodeRefreshProviderEntry<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"auth-code"> &
-      ConnectorAuthProviderConnectorRefByAccessKind<"refresh-token">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"auth-code"> &
+      ConnectorAuthProviderConnectorSlugByAccessKind<"refresh-token">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "auth-code"
   > &
     ConnectorAuthProviderAuthMethodIdByAccessKind<
-      ConnectorRef,
+      ConnectorSlug,
       "refresh-token"
     >,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
-  provider: AuthCodeConnectorAuthProvider<ConnectorRef, AuthMethodId> & {
-    readonly access: RefreshTokenAccessProvider<ConnectorRef, AuthMethodId>;
+  provider: AuthCodeConnectorAuthProvider<ConnectorSlug, AuthMethodId> & {
+    readonly access: RefreshTokenAccessProvider<ConnectorSlug, AuthMethodId>;
   },
 ): RuntimeAuthProviderRegistration {
-  return connectorAuthProviderRegistryEntry(connectorRef, authMethodId, {
+  return connectorAuthProviderRegistryEntry(connectorSlug, authMethodId, {
     grant: provider.grant,
     access: provider.access,
   });
 }
 
 function authCodeTokenRevokeProviderEntry<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"auth-code">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"auth-code">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "auth-code"
   >,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
-  provider: AuthCodeConnectorAuthProvider<ConnectorRef, AuthMethodId> & {
-    readonly revoke: TokenRevokeProvider<ConnectorRef, AuthMethodId>;
+  provider: AuthCodeConnectorAuthProvider<ConnectorSlug, AuthMethodId> & {
+    readonly revoke: TokenRevokeProvider<ConnectorSlug, AuthMethodId>;
   },
 ): RuntimeAuthProviderRegistration {
-  return connectorAuthProviderRegistryEntry(connectorRef, authMethodId, {
+  return connectorAuthProviderRegistryEntry(connectorSlug, authMethodId, {
     grant: provider.grant,
     revoke: provider.revoke,
   });
 }
 
 function authCodeRefreshTokenRevokeProviderEntry<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"auth-code"> &
-      ConnectorAuthProviderConnectorRefByAccessKind<"refresh-token">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"auth-code"> &
+      ConnectorAuthProviderConnectorSlugByAccessKind<"refresh-token">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "auth-code"
   > &
     ConnectorAuthProviderAuthMethodIdByAccessKind<
-      ConnectorRef,
+      ConnectorSlug,
       "refresh-token"
     >,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
-  provider: AuthCodeConnectorAuthProvider<ConnectorRef, AuthMethodId> & {
-    readonly access: RefreshTokenAccessProvider<ConnectorRef, AuthMethodId>;
-    readonly revoke: TokenRevokeProvider<ConnectorRef, AuthMethodId>;
+  provider: AuthCodeConnectorAuthProvider<ConnectorSlug, AuthMethodId> & {
+    readonly access: RefreshTokenAccessProvider<ConnectorSlug, AuthMethodId>;
+    readonly revoke: TokenRevokeProvider<ConnectorSlug, AuthMethodId>;
   },
 ): RuntimeAuthProviderRegistration {
-  return connectorAuthProviderRegistryEntry(connectorRef, authMethodId, {
+  return connectorAuthProviderRegistryEntry(connectorSlug, authMethodId, {
     grant: provider.grant,
     access: provider.access,
     revoke: provider.revoke,
@@ -617,110 +617,110 @@ function authCodeRefreshTokenRevokeProviderEntry<
 }
 
 function deviceAuthProviderEntry<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"device-auth">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"device-auth">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "device-auth"
   >,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
-  provider: DeviceAuthConnectorAuthProvider<ConnectorRef, AuthMethodId>,
+  provider: DeviceAuthConnectorAuthProvider<ConnectorSlug, AuthMethodId>,
 ): RuntimeAuthProviderRegistration {
-  return connectorAuthProviderRegistryEntry(connectorRef, authMethodId, {
+  return connectorAuthProviderRegistryEntry(connectorSlug, authMethodId, {
     grant: provider.grant,
   });
 }
 
 function openIdAuthProviderEntry<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"openid-auth">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"openid-auth">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "openid-auth"
   >,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
-  provider: OpenIdAuthConnectorAuthProvider<ConnectorRef, AuthMethodId>,
+  provider: OpenIdAuthConnectorAuthProvider<ConnectorSlug, AuthMethodId>,
 ): RuntimeAuthProviderRegistration {
-  return connectorAuthProviderRegistryEntry(connectorRef, authMethodId, {
+  return connectorAuthProviderRegistryEntry(connectorSlug, authMethodId, {
     grant: provider.grant,
   });
 }
 
 function deviceAuthRefreshProviderEntry<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"device-auth"> &
-      ConnectorAuthProviderConnectorRefByAccessKind<"refresh-token">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"device-auth"> &
+      ConnectorAuthProviderConnectorSlugByAccessKind<"refresh-token">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "device-auth"
   > &
     ConnectorAuthProviderAuthMethodIdByAccessKind<
-      ConnectorRef,
+      ConnectorSlug,
       "refresh-token"
     >,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
-  provider: DeviceAuthConnectorAuthProvider<ConnectorRef, AuthMethodId> & {
-    readonly access: RefreshTokenAccessProvider<ConnectorRef, AuthMethodId>;
+  provider: DeviceAuthConnectorAuthProvider<ConnectorSlug, AuthMethodId> & {
+    readonly access: RefreshTokenAccessProvider<ConnectorSlug, AuthMethodId>;
   },
 ): RuntimeAuthProviderRegistration {
-  return connectorAuthProviderRegistryEntry(connectorRef, authMethodId, {
+  return connectorAuthProviderRegistryEntry(connectorSlug, authMethodId, {
     grant: provider.grant,
     access: provider.access,
   });
 }
 
 function externalCodeRefreshProviderEntry<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"external-code"> &
-      ConnectorAuthProviderConnectorRefByAccessKind<"refresh-token">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"external-code"> &
+      ConnectorAuthProviderConnectorSlugByAccessKind<"refresh-token">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "external-code"
   > &
     ConnectorAuthProviderAuthMethodIdByAccessKind<
-      ConnectorRef,
+      ConnectorSlug,
       "refresh-token"
     >,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
-  provider: ExternalCodeConnectorAuthProvider<ConnectorRef, AuthMethodId> & {
-    readonly access: RefreshTokenAccessProvider<ConnectorRef, AuthMethodId>;
+  provider: ExternalCodeConnectorAuthProvider<ConnectorSlug, AuthMethodId> & {
+    readonly access: RefreshTokenAccessProvider<ConnectorSlug, AuthMethodId>;
   },
 ): RuntimeAuthProviderRegistration {
-  return connectorAuthProviderRegistryEntry(connectorRef, authMethodId, {
+  return connectorAuthProviderRegistryEntry(connectorSlug, authMethodId, {
     grant: provider.grant,
     access: provider.access,
   });
 }
 
 function externalCodeRefreshTokenRevokeProviderEntry<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"external-code"> &
-      ConnectorAuthProviderConnectorRefByAccessKind<"refresh-token">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"external-code"> &
+      ConnectorAuthProviderConnectorSlugByAccessKind<"refresh-token">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "external-code"
   > &
     ConnectorAuthProviderAuthMethodIdByAccessKind<
-      ConnectorRef,
+      ConnectorSlug,
       "refresh-token"
     >,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
-  provider: ExternalCodeConnectorAuthProvider<ConnectorRef, AuthMethodId> & {
-    readonly access: RefreshTokenAccessProvider<ConnectorRef, AuthMethodId>;
-    readonly revoke: TokenRevokeProvider<ConnectorRef, AuthMethodId>;
+  provider: ExternalCodeConnectorAuthProvider<ConnectorSlug, AuthMethodId> & {
+    readonly access: RefreshTokenAccessProvider<ConnectorSlug, AuthMethodId>;
+    readonly revoke: TokenRevokeProvider<ConnectorSlug, AuthMethodId>;
   },
 ): RuntimeAuthProviderRegistration {
-  return connectorAuthProviderRegistryEntry(connectorRef, authMethodId, {
+  return connectorAuthProviderRegistryEntry(connectorSlug, authMethodId, {
     grant: provider.grant,
     access: provider.access,
     revoke: provider.revoke,
@@ -728,26 +728,26 @@ function externalCodeRefreshTokenRevokeProviderEntry<
 }
 
 function refreshProviderEntry<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByAccessKind<"refresh-token">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByAccessKind<"refresh-token">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByAccessKind<
-    ConnectorRef,
+    ConnectorSlug,
     "refresh-token"
   >,
 >(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethodId: AuthMethodId,
   provider: {
-    readonly access: RefreshTokenAccessProvider<ConnectorRef, AuthMethodId>;
+    readonly access: RefreshTokenAccessProvider<ConnectorSlug, AuthMethodId>;
   },
 ): RuntimeAuthProviderRegistration {
-  return connectorAuthProviderRegistryEntry(connectorRef, authMethodId, {
+  return connectorAuthProviderRegistryEntry(connectorSlug, authMethodId, {
     access: provider.access,
   });
 }
 
 export interface ConnectorAuthProviderMethodSelection {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly method: ConnectorAuthMethodRuntimeConfig;
 }
@@ -761,7 +761,7 @@ function assertConnectorAuthProviderMethodContract(
     JSON.stringify(registration.capability.contract)
   ) {
     throw new Error(
-      `Auth provider contract mismatch for ${selection.connectorRef}:${selection.authMethodId}`,
+      `Auth provider contract mismatch for ${selection.connectorSlug}:${selection.authMethodId}`,
     );
   }
 }
@@ -770,7 +770,7 @@ function connectorAuthProviderRegistrationFor(
   selection: ConnectorAuthProviderMethodSelection,
 ): PreparedRuntimeAuthProviderRegistration {
   const registration = getRuntimeAuthProviderRegistration(
-    selection.connectorRef,
+    selection.connectorSlug,
     selection.authMethodId,
   );
   assertConnectorAuthProviderMethodContract(selection, registration);
@@ -784,7 +784,7 @@ function connectorAuthCodeGrantProviderFor(
   const { grant } = registration.entry;
   if (grant?.kind !== "auth-code") {
     throw new Error(
-      `Missing auth-code grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
+      `Missing auth-code grant provider for ${selection.connectorSlug}:${selection.authMethodId}`,
     );
   }
   return grant;
@@ -797,7 +797,7 @@ function connectorDeviceAuthGrantProviderFor(
   const { grant } = registration.entry;
   if (grant?.kind !== "device-auth") {
     throw new Error(
-      `Missing device-auth grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
+      `Missing device-auth grant provider for ${selection.connectorSlug}:${selection.authMethodId}`,
     );
   }
   return grant;
@@ -810,7 +810,7 @@ function connectorOpenIdAuthGrantProviderFor(
   const { grant } = registration.entry;
   if (grant?.kind !== "openid-auth") {
     throw new Error(
-      `Missing openid-auth grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
+      `Missing openid-auth grant provider for ${selection.connectorSlug}:${selection.authMethodId}`,
     );
   }
   return grant;
@@ -823,7 +823,7 @@ function connectorExternalCodeGrantProviderFor(
   const { grant } = registration.entry;
   if (grant?.kind !== "external-code") {
     throw new Error(
-      `Missing external-code grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
+      `Missing external-code grant provider for ${selection.connectorSlug}:${selection.authMethodId}`,
     );
   }
   return grant;
@@ -836,7 +836,7 @@ function connectorRefreshTokenAccessProviderFor(
   const { access } = registration.entry;
   if (access?.kind !== "refresh-token") {
     throw new Error(
-      `Missing refresh-token access provider for ${selection.connectorRef}:${selection.authMethodId}`,
+      `Missing refresh-token access provider for ${selection.connectorSlug}:${selection.authMethodId}`,
     );
   }
   return access;
@@ -849,7 +849,7 @@ function connectorTokenRevokeProviderFor(
   const { revoke } = registration.entry;
   if (revoke?.kind !== "token-revoke") {
     throw new Error(
-      `Missing token-revoke provider for ${selection.connectorRef}:${selection.authMethodId}`,
+      `Missing token-revoke provider for ${selection.connectorSlug}:${selection.authMethodId}`,
     );
   }
   return revoke;
@@ -871,7 +871,7 @@ function assertConnectorAuthClientMatchesMethod(args: {
   const client = args.selection.method.client;
   if (client === undefined) {
     throw new Error(
-      `Missing auth client configuration for ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+      `Missing auth client configuration for ${args.selection.connectorSlug}:${args.selection.authMethodId}`,
     );
   }
   if (
@@ -879,7 +879,7 @@ function assertConnectorAuthClientMatchesMethod(args: {
     client.clientType !== args.authClient.clientType
   ) {
     throw new Error(
-      `Auth client does not match ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+      `Auth client does not match ${args.selection.connectorSlug}:${args.selection.authMethodId}`,
     );
   }
   if (
@@ -889,7 +889,7 @@ function assertConnectorAuthClientMatchesMethod(args: {
       client.clientId !== args.authClient.clientId)
   ) {
     throw new Error(
-      `Auth client does not match ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+      `Auth client does not match ${args.selection.connectorSlug}:${args.selection.authMethodId}`,
     );
   }
   if (
@@ -901,7 +901,7 @@ function assertConnectorAuthClientMatchesMethod(args: {
       client.clientSecret !== args.authClient.clientSecret)
   ) {
     throw new Error(
-      `Auth client does not match ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+      `Auth client does not match ${args.selection.connectorSlug}:${args.selection.authMethodId}`,
     );
   }
 }
@@ -916,7 +916,7 @@ function assertDeclaredProviderOutputs(args: {
   for (const outputName of Object.keys(args.outputs)) {
     if (!declaredOutputs.has(outputName)) {
       throw new Error(
-        `${args.selection.connectorRef} connector auth method ${args.selection.authMethodId} returned undeclared ${args.operation} output ${outputName}`,
+        `${args.selection.connectorSlug} connector auth method ${args.selection.authMethodId} returned undeclared ${args.operation} output ${outputName}`,
       );
     }
   }
@@ -932,14 +932,14 @@ function assertDeclaredProviderInputs(args: {
   for (const inputName of Object.keys(args.inputs)) {
     if (!declaredInputs.has(inputName)) {
       throw new Error(
-        `${args.selection.connectorRef} connector auth method ${args.selection.authMethodId} received undeclared ${args.operation} input ${inputName}`,
+        `${args.selection.connectorSlug} connector auth method ${args.selection.authMethodId} received undeclared ${args.operation} input ${inputName}`,
       );
     }
   }
   for (const inputName of declaredInputs) {
     if (!Object.hasOwn(args.inputs, inputName)) {
       throw new Error(
-        `${args.selection.connectorRef} connector auth method ${args.selection.authMethodId} is missing ${args.operation} input ${inputName}`,
+        `${args.selection.connectorSlug} connector auth method ${args.selection.authMethodId} is missing ${args.operation} input ${inputName}`,
       );
     }
   }
@@ -1076,10 +1076,10 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY = buildRuntimeProviderRegistry(
 export function getConnectorAuthProviderRegistryCapabilities(): ConnectorAuthProviderRegistryCapabilities {
   const capabilities: MutableConnectorAuthProviderRegistryCapabilities = {};
   for (const registration of CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES) {
-    const methodCapabilities = capabilities[registration.connectorRef] ?? {};
+    const methodCapabilities = capabilities[registration.connectorSlug] ?? {};
     methodCapabilities[registration.authMethodId] =
       connectorAuthProviderRegistryCapability(registration.entry);
-    capabilities[registration.connectorRef] = methodCapabilities;
+    capabilities[registration.connectorSlug] = methodCapabilities;
   }
   return capabilities;
 }
@@ -1088,13 +1088,13 @@ export function getConnectorAuthProviderRegistrationCapabilities(): readonly Con
   return CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES.map((registration) => {
     return structuredClone(
       getRuntimeAuthProviderRegistration(
-        registration.connectorRef,
+        registration.connectorSlug,
         registration.authMethodId,
       ).capability,
     );
   }).sort((left, right) => {
     return (
-      compareCapabilityStrings(left.connectorRef, right.connectorRef) ||
+      compareCapabilityStrings(left.connectorSlug, right.connectorSlug) ||
       compareCapabilityStrings(left.authMethodId, right.authMethodId)
     );
   });
@@ -1181,7 +1181,7 @@ function assertGrantOutputs(args: {
     grant.kind !== "device-auth"
   ) {
     throw new Error(
-      `Provider-backed grant required for ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+      `Provider-backed grant required for ${args.selection.connectorSlug}:${args.selection.authMethodId}`,
     );
   }
   assertDeclaredProviderOutputs({
@@ -1199,14 +1199,14 @@ function assertOptionalConnectorAuthClientMatchesMethod(args: {
   if (args.selection.method.client === undefined) {
     if (args.authClient !== undefined) {
       throw new Error(
-        `Unexpected auth client for ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+        `Unexpected auth client for ${args.selection.connectorSlug}:${args.selection.authMethodId}`,
       );
     }
     return;
   }
   if (args.authClient === undefined) {
     throw new Error(
-      `Missing auth client for ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+      `Missing auth client for ${args.selection.connectorSlug}:${args.selection.authMethodId}`,
     );
   }
   assertConnectorAuthClientMatchesMethod({
@@ -1225,7 +1225,7 @@ export async function buildConnectorAuthCodeAuthorizationUrlWithMethod(
   const provider = connectorAuthCodeGrantProviderFor(args);
   if (args.method.grant.kind !== "auth-code") {
     throw new Error(
-      `Auth-code grant required for ${args.connectorRef}:${args.authMethodId}`,
+      `Auth-code grant required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
   assertConnectorAuthClientMatchesMethod({
@@ -1253,7 +1253,7 @@ export async function buildConnectorOpenIdAuthAuthorizationUrlWithMethod(
   const provider = connectorOpenIdAuthGrantProviderFor(args);
   if (args.method.grant.kind !== "openid-auth") {
     throw new Error(
-      `OpenID grant required for ${args.connectorRef}:${args.authMethodId}`,
+      `OpenID grant required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
   return await invokeRuntimeProvider<
@@ -1280,7 +1280,7 @@ export async function exchangeConnectorAuthCodeWithMethod(
   const provider = connectorAuthCodeGrantProviderFor(args);
   if (args.method.grant.kind !== "auth-code") {
     throw new Error(
-      `Auth-code grant required for ${args.connectorRef}:${args.authMethodId}`,
+      `Auth-code grant required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
   assertConnectorAuthClientMatchesMethod({
@@ -1314,7 +1314,7 @@ export async function verifyConnectorOpenIdAuthCallbackWithMethod(
   const provider = connectorOpenIdAuthGrantProviderFor(args);
   if (args.method.grant.kind !== "openid-auth") {
     throw new Error(
-      `OpenID grant required for ${args.connectorRef}:${args.authMethodId}`,
+      `OpenID grant required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
   const result = await invokeRuntimeProvider<
@@ -1339,7 +1339,7 @@ export async function startConnectorExternalCodeAuthorizationWithMethod(
   const provider = connectorExternalCodeGrantProviderFor(args);
   if (args.method.grant.kind !== "external-code") {
     throw new Error(
-      `External-code grant required for ${args.connectorRef}:${args.authMethodId}`,
+      `External-code grant required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
   assertConnectorAuthClientMatchesMethod({
@@ -1366,7 +1366,7 @@ export async function completeConnectorExternalCodeAuthorizationWithMethod(
   const provider = connectorExternalCodeGrantProviderFor(args);
   if (args.method.grant.kind !== "external-code") {
     throw new Error(
-      `External-code grant required for ${args.connectorRef}:${args.authMethodId}`,
+      `External-code grant required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
   assertConnectorAuthClientMatchesMethod({
@@ -1396,7 +1396,7 @@ export async function startConnectorDeviceAuthorizationWithMethod(
   const provider = connectorDeviceAuthGrantProviderFor(args);
   if (args.method.grant.kind !== "device-auth") {
     throw new Error(
-      `Device-auth grant required for ${args.connectorRef}:${args.authMethodId}`,
+      `Device-auth grant required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
   assertConnectorAuthClientMatchesMethod({
@@ -1404,7 +1404,7 @@ export async function startConnectorDeviceAuthorizationWithMethod(
     authClient: args.authClient,
   });
   const startOptionsResult = parseConnectorDeviceAuthStartOptionsConfig({
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     authMethodId: args.authMethodId,
     startOptions: args.method.grant.startOptions,
     options: args.options,
@@ -1432,7 +1432,7 @@ export async function pollConnectorDeviceAuthorizationWithMethod(
   const provider = connectorDeviceAuthGrantProviderFor(args);
   if (args.method.grant.kind !== "device-auth") {
     throw new Error(
-      `Device-auth grant required for ${args.connectorRef}:${args.authMethodId}`,
+      `Device-auth grant required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
   assertConnectorAuthClientMatchesMethod({
@@ -1464,7 +1464,7 @@ export async function refreshConnectorAuthProviderAccessTokenWithMethod(
   const accessMetadata = connectorAuthMethodAccessMetadata(args.method);
   if (accessMetadata.kind !== "refresh-token") {
     throw new Error(
-      `Refresh-token access required for ${args.connectorRef}:${args.authMethodId}`,
+      `Refresh-token access required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
   assertOptionalConnectorAuthClientMatchesMethod({

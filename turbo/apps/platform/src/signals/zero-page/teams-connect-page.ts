@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { i18n } from "../../i18n/index.ts";
 import { ZeroTeamsConnectPage } from "../../views/zero-page/zero-teams-connect-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -24,7 +25,12 @@ export const setupTeamsConnectPage$ = command(
     }
 
     set(updatePage$, createElement(ZeroTeamsConnectPage));
-    set(updateDocumentTitle$, "Connect Microsoft Teams");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.connectors.providerConnect.teams.connectTitle;
+      }),
+    );
 
     await Promise.all([
       set(hideAppSkeleton$, signal),

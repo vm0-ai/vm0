@@ -1,23 +1,17 @@
 import { randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
-import {
-  createBddApi,
-  expectApiError,
-  type ApiTestUser,
-} from "./helpers/api-bdd";
+import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createMapsBillingApi } from "./helpers/api-bdd-maps-billing";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /*
 FILE-01 host APIs plus BILL-02/CHAIN-BILLING-MEDIA maps billing. Replaces the
@@ -47,44 +41,6 @@ const GOOGLE_PLACES_SEARCH_TEXT_URL =
 const GOOGLE_PLACE_DETAILS_URL =
   "https://places.googleapis.com/v1/places/ChIJtest";
 const OPENSTREETMAP_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
-async function setHostedArtifactVersions(
-  actor: ApiTestUser,
-  enabled: boolean,
-): Promise<void> {
-  if (!actor.orgId) {
-    throw new Error("Expected hosted artifact actor to have an org");
-  }
-  await updateFeatureSwitchesForUser(
-    context,
-    { userId: actor.userId, orgId: actor.orgId },
-    { [FeatureSwitchKey.HostedArtifactVersions]: enabled },
-  );
-}
-
-function expectPublicSlugSegment(value: string): void {
-  expect(value).toMatch(/^[a-f0-9]{8}$/);
-}
-
-function expectHostedSitePublicSlug(
-  value: string,
-  site: string,
-  slugSuffix?: string,
-): void {
-  const prefix = `${site}-`;
-  expect(value.startsWith(prefix)).toBeTruthy();
-  const rest = value.slice(prefix.length);
-  if (slugSuffix === undefined) {
-    const segments = rest.split("-");
-    expect(segments).toHaveLength(2);
-    expectPublicSlugSegment(segments[0] ?? "");
-    expectPublicSlugSegment(segments[1] ?? "");
-    return;
-  }
-
-  const suffix = `-${slugSuffix}`;
-  expect(rest.endsWith(suffix)).toBeTruthy();
-  expectPublicSlugSegment(rest.slice(0, -suffix.length));
-}
 
 function geocodeOkHandler(requests: URL[]) {
   return http.get(GOOGLE_GEOCODING_URL, ({ request }) => {
@@ -109,7 +65,6 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     if (!actor.orgId) {
       throw new Error("Expected versioned host actor to have an org");
     }
-    await setHostedArtifactVersions(actor, true);
     const capture = api.captureHostedSitesS3();
     await upsertOrgPlanEntitlementFixture({ orgId: actor.orgId });
 
@@ -257,94 +212,13 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     ]);
   });
 
-  it("keeps an adopted site versioned after the feature switch is disabled [HOST-A]", async () => {
-    const bdd = createBddApi(context);
-    const api = createHostMapsBddApi(context);
-    const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("Expected versioned host actor to have an org");
-    }
-    await setHostedArtifactVersions(actor, true);
-    await upsertOrgPlanEntitlementFixture({ orgId: actor.orgId });
-    const capture = api.captureHostedSitesS3();
-    const site = `bdd-sticky-versioned-${randomUUID().slice(0, 8)}`;
-    const body = {
-      site,
-      artifactKind: "hosted-site" as const,
-      spaFallback: false,
-      files: [hostedTextFile("/index.html", "<main>version one</main>")],
-    };
-
-    const first = await api.prepareHostedSite(actor, body);
-    await api.completeHostedSite(actor, first.deploymentId);
-    await setHostedArtifactVersions(actor, false);
-
-    const second = await api.prepareHostedSite(actor, body);
-    expect(second).toMatchObject({
-      siteId: first.siteId,
-      publicSlug: first.publicSlug,
-      deploymentVersion: 2,
-      aliasUrl: first.aliasUrl,
-    });
-    expect(second.artifactUrl).not.toBe(first.artifactUrl);
-    const completedSecond = await api.completeHostedSite(
-      actor,
-      second.deploymentId,
-    );
-    expect(completedSecond).toMatchObject({
-      deploymentVersion: 2,
-      isActive: true,
-      activeDeploymentVersion: 2,
-    });
-
-    const third = await api.prepareHostedSite(actor, {
-      ...body,
-      files: [
-        hostedTextFile(
-          "/index.html",
-          "<!doctype html><main>version three</main>",
-        ),
-      ],
-    });
-    const completedThird = await api.completeHostedSite(
-      actor,
-      third.deploymentId,
-    );
-    expect(completedThird).toMatchObject({
-      siteId: first.siteId,
-      publicSlug: first.publicSlug,
-      deploymentVersion: 3,
-      aliasUrl: first.aliasUrl,
-      isActive: true,
-      activeDeploymentVersion: 3,
-    });
-
-    const versionPrefix = `sites/orgs/${actor.orgId}/${site}/versions`;
-    expect(
-      capture.puts.map((put) => {
-        return put.key;
-      }),
-    ).toStrictEqual(
-      expect.arrayContaining([
-        `${versionPrefix}/1/manifest.json`,
-        `${versionPrefix}/2/manifest.json`,
-        `${versionPrefix}/3/manifest.json`,
-      ]),
-    );
-    expect(
-      capture.puts.filter((put) => {
-        return put.key === `sites/${first.publicSlug}/active.json`;
-      }),
-    ).toHaveLength(3);
-  });
-
   it("adds a four-character hash only when the simple alias is already occupied [HOST-A]", async () => {
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
     api.captureHostedSitesS3();
 
-    const legacyActor = bdd.user();
-    const occupied = await api.prepareHostedSite(legacyActor, {
+    const aliasOwner = bdd.user();
+    const occupied = await api.prepareHostedSite(aliasOwner, {
       site: `bdd-alias-owner-${randomUUID().slice(0, 8)}`,
       slugSuffix: "fixed",
       artifactKind: "hosted-site",
@@ -356,7 +230,6 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     if (!actor.orgId) {
       throw new Error("Expected collision actor to have an org");
     }
-    await setHostedArtifactVersions(actor, true);
     const capture = api.captureHostedSitesS3();
     await upsertOrgPlanEntitlementFixture({ orgId: actor.orgId });
     const versioned = await api.prepareHostedSite(actor, {
@@ -377,22 +250,17 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
         return put.key;
       }),
     ).toContain(
-      `sites/orgs/${actor.orgId}/${occupied.publicSlug}/versions/1/manifest.json`,
+      `sites/orgs/${actor.orgId}/${versioned.publicSlug}/versions/1/manifest.json`,
     );
-
-    const disabledHistory = await api.requestHostedSiteDeployments(
-      legacyActor,
-      occupied.publicSlug,
-      [403],
-    );
-    expectApiError(disabledHistory.body);
-    expect(disabledHistory.body.error.code).toBe("FORBIDDEN");
   });
 
-  it("allocates random public slugs, serves owner file metadata, and gates suspended orgs [HOST-A]", async () => {
+  it("reuses stable public slugs, serves owner file metadata, and gates suspended orgs [HOST-A]", async () => {
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected hosted site actor to have an org");
+    }
     // First test in the file: install the S3 boundary explicitly before any
     // host call (mock defaults only arrive in afterEach resets).
     const capture = api.captureHostedSitesS3();
@@ -415,10 +283,12 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const first = await api.prepareHostedSite(actor, body);
     const second = await api.prepareHostedSite(actor, body);
 
-    expectHostedSitePublicSlug(first.publicSlug, site);
-    expectHostedSitePublicSlug(second.publicSlug, site);
-    expect(second.publicSlug).not.toBe(first.publicSlug);
-    expect(second.url).not.toBe(first.url);
+    expect(first.publicSlug).toBe(site);
+    expect(second.publicSlug).toBe(site);
+    expect(first.deploymentVersion).toBe(1);
+    expect(second.deploymentVersion).toBe(2);
+    expect(second.url).toBe(first.url);
+    expect(second.artifactUrl).not.toBe(first.artifactUrl);
     expect(second.siteId).toBe(first.siteId);
     expect(
       first.uploads.map((upload) => {
@@ -434,7 +304,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
       }),
     );
 
-    const missingKey = `sites/${first.publicSlug}/deployments/${first.deploymentId}/assets/app.js`;
+    const missingKey = `sites/orgs/${actor.orgId}/${site}/versions/1/assets/app.js`;
     capture.missingKeys.add(missingKey);
     const notUploaded = await api.requestCompleteHostedSite(
       actor,
@@ -448,11 +318,16 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     capture.missingKeys.delete(missingKey);
 
     const completed = await api.completeHostedSite(actor, second.deploymentId);
-    expect(completed).toStrictEqual({
+    expect(completed).toMatchObject({
       siteId: first.siteId,
       deploymentId: second.deploymentId,
       publicSlug: second.publicSlug,
       url: second.url,
+      deploymentVersion: 2,
+      artifactUrl: second.artifactUrl,
+      aliasUrl: second.url,
+      isActive: true,
+      activeDeploymentVersion: 2,
       status: "ready",
     });
 
@@ -988,7 +863,8 @@ describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () =>
       spaFallback: false,
       files: [hostedTextFile("/index.html", "<main>run artifact</main>")],
     });
-    expectHostedSitePublicSlug(prepared.publicSlug, site, "run-01");
+    expect(prepared.publicSlug).toBe(site);
+    expect(prepared.deploymentVersion).toBe(1);
 
     const completed = await api.completeHostedSite(
       bearer,

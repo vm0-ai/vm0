@@ -8,15 +8,23 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import apiPackage from "../../../../package.json";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { healthAuthProbeContract } from "../health-auth-probe";
+import {
+  healthAuthProbeContract,
+  healthAuthProbeRoutes,
+} from "../health-auth-probe";
 import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { buildInfoRoutes } from "../build-info";
+import { healthRoutes } from "../health";
+import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+import { zeroReportErrorRoutes } from "../zero-report-error";
 
 /*
 helper gap: HOOK-01 signed callbacks still need API-visible builders for
@@ -30,23 +38,29 @@ const api = createBddApi(context);
 const routeMocks = createZeroRouteMocks(context);
 
 function healthClient() {
-  return setupApp({ context })(healthContract);
+  return setupApp({ context, routes: healthRoutes })(healthContract);
 }
 
 function buildInfoClient() {
-  return setupApp({ context })(buildInfoContract);
+  return setupApp({ context, routes: buildInfoRoutes })(buildInfoContract);
 }
 
 function healthAuthClient() {
-  return setupApp({ context })(healthAuthProbeContract);
+  return setupApp({ context, routes: healthAuthProbeRoutes })(
+    healthAuthProbeContract,
+  );
 }
 
 function featureSwitchesClient() {
-  return setupApp({ context })(zeroFeatureSwitchesContract);
+  return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+    zeroFeatureSwitchesContract,
+  );
 }
 
 function reportErrorClient() {
-  return setupApp({ context })(zeroReportErrorContract);
+  return setupApp({ context, routes: zeroReportErrorRoutes })(
+    zeroReportErrorContract,
+  );
 }
 
 function headersFor(actor: ApiTestUser | null): {
@@ -143,19 +157,12 @@ describe("OPS-01: feature switches and report-error routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.Dummy]: false,
-            [FeatureSwitchKey.ComposerUploadPopover]: true,
           },
         },
       }),
       [200],
     );
     expect(enabled.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
-    expect(
-      enabled.body.switches[FeatureSwitchKey.ComposerUploadPopover],
-    ).toBeUndefined();
-    expect(
-      enabled.body.effectiveSwitches[FeatureSwitchKey.ComposerUploadPopover],
-    ).toBeFalsy();
 
     const merged = await accept(
       featureSwitchesClient().update({
@@ -202,7 +209,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
         headers: headersFor(owner),
         body: {
           switches: {
-            [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
+            [FeatureSwitchKey.ChatErrorRecovery]: true,
             [FeatureSwitchKey.Dummy]: false,
           },
         },
@@ -210,7 +217,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      ownerUpdate.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
+      ownerUpdate.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeTruthy();
     expect(ownerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
 
@@ -219,7 +226,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      peerRead.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
+      peerRead.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeTruthy();
     expect(peerRead.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
@@ -228,22 +235,21 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      outsiderRead.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
+      outsiderRead.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeUndefined();
-
     const peerUpdate = await accept(
       featureSwitchesClient().update({
         headers: headersFor(peer),
         body: {
           switches: {
-            [FeatureSwitchKey.ChatThreadUnifiedSearch]: false,
+            [FeatureSwitchKey.ChatErrorRecovery]: false,
           },
         },
       }),
       [200],
     );
     expect(
-      peerUpdate.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
+      peerUpdate.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeFalsy();
     expect(peerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
@@ -253,7 +259,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
     );
     expect(
       ownerReadAfterPeerUpdate.body.switches[
-        FeatureSwitchKey.ChatThreadUnifiedSearch
+        FeatureSwitchKey.ChatErrorRecovery
       ],
     ).toBeFalsy();
     expect(
@@ -271,9 +277,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      peerReadAfterDelete.body.switches[
-        FeatureSwitchKey.ChatThreadUnifiedSearch
-      ],
+      peerReadAfterDelete.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeUndefined();
     expect(
       peerReadAfterDelete.body.switches[FeatureSwitchKey.Dummy],

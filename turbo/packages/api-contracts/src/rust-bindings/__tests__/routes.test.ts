@@ -15,10 +15,34 @@ const expectedBindings = [
     rustConstName: "CLAIM",
   },
   {
+    method: "GET",
+    path: "/api/runners/runs/:runId/active-inputs",
+    rustModulePath: ["runners", "runs", "by_run_id", "active_inputs"],
+    rustConstName: "LIST",
+  },
+  {
+    method: "POST",
+    path: "/api/runners/runs/:runId/active-inputs/claim",
+    rustModulePath: ["runners", "runs", "by_run_id", "active_inputs", "claim"],
+    rustConstName: "CLAIM",
+  },
+  {
     method: "POST",
     path: "/api/runners/runs/:runId/network-policy-refresh",
     rustModulePath: ["runners", "runs", "by_run_id", "network_policy_refresh"],
     rustConstName: "REFRESH",
+  },
+  {
+    method: "POST",
+    path: "/api/runners/runs/:runId/connector-runtime/sync",
+    rustModulePath: [
+      "runners",
+      "runs",
+      "by_run_id",
+      "connector_runtime",
+      "sync",
+    ],
+    rustConstName: "SYNC",
   },
   {
     method: "POST",
@@ -67,6 +91,12 @@ const expectedBindings = [
     path: "/api/webhooks/agent/heartbeat",
     rustModulePath: ["webhooks", "agent", "heartbeat"],
     rustConstName: "SEND",
+  },
+  {
+    method: "GET",
+    path: "/api/webhooks/agent/pi-transcript",
+    rustModulePath: ["webhooks", "agent", "pi_transcript"],
+    rustConstName: "READ",
   },
   {
     method: "POST",

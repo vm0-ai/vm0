@@ -9,7 +9,6 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
-import type { OrgListResponse } from "@vm0/api-contracts/contracts/org-list";
 import {
   orgRoleSchema,
   type OrgMessageResponse,
@@ -21,26 +20,29 @@ import type { User } from "@clerk/backend";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { clerk$ } from "../external/clerk";
+import {
+  listAllOrganizationMemberships,
+  listAllPendingOrganizationInvitations,
+} from "../external/clerk-organization-lists";
 import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { now, nowDate } from "../../lib/time";
 import { settle } from "../utils";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 
 const clerkOrgIdentitySchema = z.object({
-  slug: z.string().nullable().optional(),
   name: z.string().nullable().optional(),
   createdBy: z.string().nullable().optional(),
 });
 
 interface OrgIdentity {
-  readonly slug: string;
   readonly name: string;
   readonly createdBy: string | null;
 }
 
 const CACHE_TTL_MS = 60_000;
 const USER_PROFILE_CACHE_TTL_MS = 15 * 60 * 1000;
+const CLERK_USER_LIST_BATCH_SIZE = 100;
 
 const forbiddenAccess = Object.freeze({
   status: 403 as const,
@@ -74,12 +76,10 @@ const orgDeleteForbidden = Object.freeze({
 
 type OrgUpdateErrorResponse =
   | ReturnType<typeof badRequestMessage>
-  | ReturnType<typeof conflict>
   | ReturnType<typeof notFound>
   | typeof forbiddenAccess;
 
 type OrgDeleteErrorResponse =
-  | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof notFound>
   | typeof orgDeleteForbidden;
 
@@ -96,9 +96,7 @@ type UpdateZeroOrgMemberRoleErrorResponse =
 interface UpdateZeroOrgArgs {
   readonly orgId: string;
   readonly userId: string;
-  readonly slug?: string;
-  readonly name?: string;
-  readonly force?: boolean;
+  readonly name: string;
 }
 
 interface LeaveZeroOrgArgs {
@@ -110,7 +108,6 @@ interface LeaveZeroOrgArgs {
 interface DeleteZeroOrgArgs {
   readonly orgId: string;
   readonly callerRole: OrgRole | undefined;
-  readonly slug: string;
 }
 
 interface RemoveZeroOrgMemberArgs {
@@ -128,22 +125,6 @@ interface UpdateZeroOrgMemberRoleArgs {
   readonly newRole: OrgRole;
 }
 
-interface ClerkUpdate {
-  slug?: string;
-  name?: string;
-}
-
-function isReservedSlug(slug: string): boolean {
-  return (
-    slug.startsWith("vm0") ||
-    slug === "system" ||
-    slug === "admin" ||
-    slug === "api" ||
-    slug === "app" ||
-    slug === "www"
-  );
-}
-
 function isClerkNotFound(error: unknown): boolean {
   if (typeof error !== "object" || error === null) {
     return false;
@@ -155,30 +136,26 @@ function isClerkNotFound(error: unknown): boolean {
   );
 }
 
-async function getOrgIdentityForDelete(args: {
+/**
+ * Deleting an org only needs to know that the org still exists; a fresh cache
+ * row is pointless for something we are about to remove.
+ */
+async function orgExistsForDelete(args: {
   readonly db: ReadonlyDb;
-  readonly writeDb: Db;
   readonly client: ReturnType<typeof clerk$.read>;
   readonly orgId: string;
-}): Promise<OrgIdentity | null> {
+}): Promise<boolean> {
   const [cached] = await args.db
-    .select({
-      slug: orgCache.slug,
-      name: orgCache.name,
-      createdBy: orgCache.createdBy,
-      cachedAt: orgCache.cachedAt,
-    })
+    .select({ cachedAt: orgCache.cachedAt })
     .from(orgCache)
     .where(eq(orgCache.orgId, args.orgId))
     .limit(1);
 
-  const now = nowDate();
-  if (cached && now.getTime() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    return {
-      slug: cached.slug,
-      name: cached.name,
-      createdBy: cached.createdBy,
-    };
+  if (
+    cached &&
+    nowDate().getTime() - cached.cachedAt.getTime() < CACHE_TTL_MS
+  ) {
+    return true;
   }
 
   const clerkOrgSettled = await settle(
@@ -186,41 +163,12 @@ async function getOrgIdentityForDelete(args: {
   );
   if (!clerkOrgSettled.ok) {
     if (isClerkNotFound(clerkOrgSettled.error)) {
-      return null;
+      return false;
     }
     throw clerkOrgSettled.error;
   }
-  const clerkOrg = clerkOrgSettled.value;
 
-  const parsed = clerkOrgIdentitySchema.parse(clerkOrg);
-  if (!parsed.slug) {
-    throw new Error(`Clerk organization ${args.orgId} has no slug`);
-  }
-
-  await args.writeDb
-    .insert(orgCache)
-    .values({
-      orgId: args.orgId,
-      slug: parsed.slug,
-      name: parsed.name ?? "",
-      createdBy: parsed.createdBy ?? null,
-      cachedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: orgCache.orgId,
-      set: {
-        slug: parsed.slug,
-        name: parsed.name ?? "",
-        createdBy: parsed.createdBy ?? null,
-        cachedAt: now,
-      },
-    });
-
-  return {
-    slug: parsed.slug,
-    name: parsed.name ?? "",
-    createdBy: parsed.createdBy ?? null,
-  };
+  return true;
 }
 
 interface ZeroOrgDetailArgs {
@@ -240,7 +188,6 @@ export const zeroOrgDetail$ = command(
     const [cached, meta, membership] = await Promise.all([
       db
         .select({
-          slug: orgCache.slug,
           name: orgCache.name,
           createdBy: orgCache.createdBy,
         })
@@ -284,12 +231,7 @@ export const zeroOrgDetail$ = command(
       const clerkOrg = clerkOrgSettled.value;
 
       const parsed = clerkOrgIdentitySchema.parse(clerkOrg);
-      if (!parsed.slug) {
-        throw new Error(`Clerk organization ${args.orgId} has no slug`);
-      }
-
       identity = {
-        slug: parsed.slug,
         name: parsed.name ?? "",
         createdBy: parsed.createdBy ?? null,
       };
@@ -300,7 +242,6 @@ export const zeroOrgDetail$ = command(
         .insert(orgCache)
         .values({
           orgId: args.orgId,
-          slug: identity.slug,
           name: identity.name,
           createdBy: identity.createdBy,
           cachedAt: now,
@@ -308,7 +249,6 @@ export const zeroOrgDetail$ = command(
         .onConflictDoUpdate({
           target: orgCache.orgId,
           set: {
-            slug: identity.slug,
             name: identity.name,
             createdBy: identity.createdBy,
             cachedAt: now,
@@ -329,7 +269,6 @@ export const zeroOrgDetail$ = command(
 
     return {
       id: args.orgId,
-      slug: identity.slug,
       name: identity.name,
       tier: meta[0]?.tier ?? "pro-suspend",
       role,
@@ -491,46 +430,15 @@ export const updateZeroOrg$ = command(
       return forbiddenAccess;
     }
 
-    const clerkUpdate: ClerkUpdate = {};
+    const client = get(clerk$);
+    await client.organizations.updateOrganization(args.orgId, {
+      name: args.name,
+    });
+    signal.throwIfAborted();
 
-    if (args.slug) {
-      if (!args.force) {
-        return badRequestMessage(
-          "Changing org slug may break existing references. Use --force to confirm.",
-        );
-      }
-
-      if (isReservedSlug(args.slug)) {
-        return badRequestMessage("Org slug is reserved");
-      }
-
-      const [existing] = await db
-        .select({ orgId: orgCache.orgId })
-        .from(orgCache)
-        .where(eq(orgCache.slug, args.slug))
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (existing && existing.orgId !== args.orgId) {
-        return conflict(`Org "${args.slug}" already exists`);
-      }
-
-      clerkUpdate.slug = args.slug;
-    }
-
-    if (args.name) {
-      clerkUpdate.name = args.name;
-    }
-
-    if (clerkUpdate.slug || clerkUpdate.name) {
-      const client = get(clerk$);
-      await client.organizations.updateOrganization(args.orgId, clerkUpdate);
-      signal.throwIfAborted();
-
-      const writeDb = set(writeDb$);
-      await writeDb.delete(orgCache).where(eq(orgCache.orgId, args.orgId));
-      signal.throwIfAborted();
-    }
+    const writeDb = set(writeDb$);
+    await writeDb.delete(orgCache).where(eq(orgCache.orgId, args.orgId));
+    signal.throwIfAborted();
 
     const org = await set(
       zeroOrgDetail$,
@@ -540,9 +448,7 @@ export const updateZeroOrg$ = command(
     signal.throwIfAborted();
 
     if (!org) {
-      return notFound(
-        "No org configured. Set your org with: zero org set <slug>",
-      );
+      return notFound("Organization not found");
     }
 
     return org;
@@ -562,20 +468,15 @@ export const deleteZeroOrg$ = command(
     const db = get(db$);
     const writeDb = set(writeDb$);
     const client = get(clerk$);
-    const identity = await getOrgIdentityForDelete({
+    const exists = await orgExistsForDelete({
       db,
-      writeDb,
       client,
       orgId: args.orgId,
     });
     signal.throwIfAborted();
 
-    if (!identity) {
+    if (!exists) {
       return notFound("Resource not found");
-    }
-
-    if (args.slug !== identity.slug) {
-      return badRequestMessage("Organization name does not match");
     }
 
     const memberships =
@@ -644,26 +545,6 @@ export const deleteZeroOrg$ = command(
     return { message: "Organization deleted" };
   },
 );
-
-export function zeroOrgList(
-  userId: string,
-): Computed<Promise<OrgListResponse>> {
-  return computed(async (get): Promise<OrgListResponse> => {
-    const client = get(clerk$);
-    const memberships = await client.users.getOrganizationMembershipList({
-      userId,
-    });
-    return {
-      orgs: memberships.data.map((membership) => {
-        return {
-          slug: membership.organization.slug,
-          role: mapClerkOrgRole(membership.role),
-        };
-      }),
-      active: undefined,
-    };
-  });
-}
 
 interface OrgMembersListArgs {
   readonly orgId: string;
@@ -739,38 +620,48 @@ async function fetchUserProfileMap(
     return map;
   }
 
-  const users = await client.users.getUserList({ userId: [...missingUserIds] });
   const refreshedAt = nowDate();
-  for (const user of users.data) {
-    const email = userPrimaryEmail(user);
-    const name =
-      [user.firstName, user.lastName].filter(Boolean).join(" ") || null;
-    const imageUrl = user.imageUrl || null;
-    map.set(user.id, {
-      email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      imageUrl: imageUrl ?? "",
+  const userIdsToFetch = [...missingUserIds];
+  for (
+    let offset = 0;
+    offset < userIdsToFetch.length;
+    offset += CLERK_USER_LIST_BATCH_SIZE
+  ) {
+    const users = await client.users.getUserList({
+      userId: userIdsToFetch.slice(offset, offset + CLERK_USER_LIST_BATCH_SIZE),
+      limit: CLERK_USER_LIST_BATCH_SIZE,
     });
-    if (email) {
-      await db
-        .insert(userCache)
-        .values({
-          userId: user.id,
-          email,
-          name,
-          imageUrl,
-          cachedAt: refreshedAt,
-        })
-        .onConflictDoUpdate({
-          target: userCache.userId,
-          set: {
+    for (const user of users.data) {
+      const email = userPrimaryEmail(user);
+      const name =
+        [user.firstName, user.lastName].filter(Boolean).join(" ") || null;
+      const imageUrl = user.imageUrl || null;
+      map.set(user.id, {
+        email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        imageUrl: imageUrl ?? "",
+      });
+      if (email) {
+        await db
+          .insert(userCache)
+          .values({
+            userId: user.id,
             email,
             name,
             imageUrl,
             cachedAt: refreshedAt,
-          },
-        });
+          })
+          .onConflictDoUpdate({
+            target: userCache.userId,
+            set: {
+              email,
+              name,
+              imageUrl,
+              cachedAt: refreshedAt,
+            },
+          });
+      }
     }
   }
   return map;
@@ -785,16 +676,11 @@ export function zeroOrgMembersList(
 
     const [org, memberships, invitations] = await Promise.all([
       client.organizations.getOrganization({ organizationId: args.orgId }),
-      client.organizations.getOrganizationMembershipList({
-        organizationId: args.orgId,
-      }),
-      client.organizations.getOrganizationInvitationList({
-        organizationId: args.orgId,
-        status: ["pending"],
-      }),
+      listAllOrganizationMemberships(client.organizations, args.orgId),
+      listAllPendingOrganizationInvitations(client.organizations, args.orgId),
     ]);
 
-    const membersWithUserIds = memberships.data.map((membership) => {
+    const membersWithUserIds = memberships.map((membership) => {
       return {
         membership,
         userId: requiredClerkMembershipUserId(
@@ -827,7 +713,7 @@ export function zeroOrgMembersList(
 
     const pendingInvitations =
       args.callerRole === "admin"
-        ? invitations.data.map((inv) => {
+        ? invitations.map((inv) => {
             return {
               id: inv.id,
               email: inv.emailAddress,
@@ -866,7 +752,7 @@ export function zeroOrgMembersList(
     }
 
     return {
-      slug: org.slug ?? args.orgId,
+      name: org.name,
       role: args.callerRole,
       members: memberList,
       pendingInvitations,

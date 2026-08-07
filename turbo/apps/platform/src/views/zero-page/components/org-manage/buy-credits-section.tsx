@@ -1,5 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { Button, Input } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
@@ -13,6 +14,7 @@ import {
   type BuyCreditsSelection,
   type CreditCheckoutSelection,
 } from "../../../../signals/zero-page/billing.ts";
+import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 
 const CREDITS_PER_DOLLAR = 1000;
 const PRESETS = [10, 20, 50] as const;
@@ -24,19 +26,6 @@ type Preset = (typeof PRESETS)[number];
 const settingsCardBorder = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
-
-function formatUsd(dollars: number): string {
-  return dollars.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function formatCredits(dollars: number): string {
-  return `${(dollars * CREDITS_PER_DOLLAR).toLocaleString("en-US")} credits`;
-}
 
 const tileBaseClass =
   "flex flex-col rounded-xl bg-background px-4 py-3 text-left transition-colors";
@@ -56,6 +45,8 @@ function PresetTile({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const { t } = useTranslation();
+  const credits = dollars * CREDITS_PER_DOLLAR;
   return (
     <button
       type="button"
@@ -63,9 +54,16 @@ function PresetTile({
       aria-pressed={selected}
       className={`${tileBaseClass} ${tileBorderClass(selected)}`}
     >
-      <span className="text-sm font-semibold text-foreground">${dollars}</span>
+      <span className="text-sm font-semibold text-foreground">
+        {formatUsd(dollars, 0)}
+      </span>
       <span className="mt-1 text-[13px] text-muted-foreground">
-        {formatCredits(dollars)}
+        {t(
+          ($) => {
+            return $.usage.units.credit;
+          },
+          { count: credits, value: formatLocalizedNumber(credits) },
+        )}
       </span>
     </button>
   );
@@ -82,6 +80,7 @@ function CustomTile({
   onSelect: () => void;
   onChange: (next: string) => void;
 }) {
+  const { t } = useTranslation();
   if (!selected) {
     return (
       <button
@@ -90,9 +89,15 @@ function CustomTile({
         aria-pressed={false}
         className={`${tileBaseClass} ${tileBorderClass(false)}`}
       >
-        <span className="text-sm font-semibold text-foreground">Custom</span>
+        <span className="text-sm font-semibold text-foreground">
+          {t(($) => {
+            return $.billing.credits.custom;
+          })}
+        </span>
         <span className="mt-1 text-[13px] text-muted-foreground">
-          Any amount
+          {t(($) => {
+            return $.billing.credits.anyAmount;
+          })}
         </span>
       </button>
     );
@@ -115,11 +120,27 @@ function CustomTile({
           }}
           placeholder="100"
           className="h-6 w-full border-0 bg-transparent p-0 text-sm font-semibold shadow-none focus-visible:ring-0"
-          aria-label="Custom dollar amount"
+          aria-label={t(($) => {
+            return $.billing.credits.customAmountAria;
+          })}
         />
       </div>
       <span className="mt-1 text-[13px] text-muted-foreground">
-        {value === "" ? "Any amount" : formatCredits(Number(value))}
+        {value === ""
+          ? t(($) => {
+              return $.billing.credits.anyAmount;
+            })
+          : t(
+              ($) => {
+                return $.usage.units.credit;
+              },
+              {
+                count: Number(value) * CREDITS_PER_DOLLAR,
+                value: formatLocalizedNumber(
+                  Number(value) * CREDITS_PER_DOLLAR,
+                ),
+              },
+            )}
       </span>
     </div>
   );
@@ -179,6 +200,7 @@ function resolveBuyDollars(
 }
 
 export function BuyCreditsSection() {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCreditCheckout$);
   const selection = useGet(buyCreditsSelection$);
@@ -190,17 +212,32 @@ export function BuyCreditsSection() {
   const buyDollars = resolveBuyDollars(selection, customDollars);
   const buyInvalid = buyDollars === null;
   const buyLabel = redirecting
-    ? "Redirecting..."
+    ? t(($) => {
+        return $.billing.common.redirecting;
+      })
     : buyDollars === null
-      ? "Quick buy"
-      : `Quick buy ${formatUsd(buyDollars)}`;
+      ? t(($) => {
+          return $.billing.credits.quickBuy;
+        })
+      : t(
+          ($) => {
+            return $.billing.credits.quickBuyAmount;
+          },
+          { amount: formatUsd(buyDollars) },
+        );
 
   const handleBuy = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (buyDollars === null) {
       toast.error(
-        `Enter between $${MIN_CUSTOM_USD} and $${MAX_CUSTOM_USD.toLocaleString(
-          "en-US",
-        )}`,
+        t(
+          ($) => {
+            return $.billing.credits.amountRangeError;
+          },
+          {
+            minimum: formatUsd(MIN_CUSTOM_USD, 0),
+            maximum: formatUsd(MAX_CUSTOM_USD, 0),
+          },
+        ),
       );
       return;
     }
@@ -213,16 +250,31 @@ export function BuyCreditsSection() {
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium text-foreground">Buy credits</h3>
+      <h3 className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.billing.credits.title;
+        })}
+      </h3>
       <div
         className="overflow-hidden rounded-xl bg-card"
         style={settingsCardBorder}
       >
         <div className="flex flex-col gap-3 px-5 py-4">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">Amount</p>
+            <p className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.billing.credits.amount;
+              })}
+            </p>
             <p className="mt-0.5 text-[13px] text-muted-foreground">
-              Credits never expire. 1 USD = 1,000 credits.
+              {t(
+                ($) => {
+                  return $.billing.credits.exchangeRate;
+                },
+                {
+                  credits: formatLocalizedNumber(CREDITS_PER_DOLLAR),
+                },
+              )}
             </p>
           </div>
           <TileGrid

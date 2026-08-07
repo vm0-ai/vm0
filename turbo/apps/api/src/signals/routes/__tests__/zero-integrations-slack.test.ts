@@ -9,11 +9,11 @@ import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero
 import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { ROUTES } from "../../route";
 import { SlackFileFetchError } from "../../external/slack-file-fetcher";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
@@ -27,6 +27,7 @@ import {
   seedSlackOrgInstallation$,
   type SlackIntegrationFixture,
 } from "./helpers/zero-integrations-slack";
+import { zeroIntegrationsSlackRoutes } from "../zero-integrations-slack";
 
 const context = testContext();
 const store = createStore();
@@ -97,7 +98,6 @@ async function seedSlackFixture(
     seed_default_agent: true,
     default_agent_name: "slack-bot",
     default_agent_display_name: "Slack Bot",
-    org_slug: "test-org-slug",
     org_name: "Test Org",
   });
 
@@ -155,7 +155,9 @@ describe("GET /api/zero/integrations/slack", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -169,7 +171,6 @@ describe("GET /api/zero/integrations/slack", () => {
     expect(response.body.isInstalled).toBeTruthy();
     expect(response.body.workspaceName).toBe("Test Workspace");
     expect(response.body.defaultAgentName).toBe("Slack Bot");
-    expect(response.body.agentOrgSlug).toBe("test-org-slug");
     // Admin + connected: scope fields should be present (botScopes null → mismatch)
     expect(response.body).toHaveProperty("scopeMismatch");
     expect(response.body).toHaveProperty("reinstallUrl");
@@ -190,7 +191,9 @@ describe("GET /api/zero/integrations/slack", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -222,7 +225,9 @@ describe("GET /api/zero/integrations/slack", () => {
       },
     });
 
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -243,7 +248,6 @@ describe("GET /api/zero/integrations/slack", () => {
     // Not connected: workspace/environment fields should NOT be present
     expect(response.body).not.toHaveProperty("workspaceName");
     expect(response.body).not.toHaveProperty("defaultAgentName");
-    expect(response.body).not.toHaveProperty("agentOrgSlug");
     expect(response.body).not.toHaveProperty("environment");
   });
 
@@ -303,7 +307,9 @@ describe("GET /api/zero/integrations/slack", () => {
 
       mockAdminAuth();
 
-      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+      const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+        zeroIntegrationsSlackContract,
+      );
 
       const response = await accept(
         client.getStatus({
@@ -326,7 +332,9 @@ describe("GET /api/zero/integrations/slack", () => {
 
       mockAdminAuth();
 
-      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+      const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+        zeroIntegrationsSlackContract,
+      );
 
       const response = await accept(
         client.getStatus({
@@ -355,7 +363,9 @@ describe("GET /api/zero/integrations/slack", () => {
 
       mockAdminAuth();
 
-      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+      const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+        zeroIntegrationsSlackContract,
+      );
 
       const response = await accept(
         client.getStatus({
@@ -444,7 +454,9 @@ describe("DELETE /api/zero/integrations/slack", () => {
   }
 
   it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({ headers: {}, query: {} }),
@@ -457,7 +469,9 @@ describe("DELETE /api/zero/integrations/slack", () => {
   it("returns 404 when the user has no Slack connection", async () => {
     const seeded = await seedDeleteContext({ withConnection: false });
     mocks.clerk.session(seeded.userId, seeded.orgId);
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({
@@ -483,7 +497,9 @@ describe("DELETE /api/zero/integrations/slack", () => {
       context.signal,
     );
     mocks.clerk.session(seeded.userId, seeded.orgId);
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({
@@ -590,7 +606,9 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
   it("returns 403 when a non-admin tries to uninstall", async () => {
     const seeded = await seedUninstallContext();
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:member");
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({
@@ -607,7 +625,9 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
   it("returns 404 when no installation exists", async () => {
     const seeded = await seedUninstallContext({ withInstallation: false });
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({
@@ -633,7 +653,9 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
       context.signal,
     );
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+    const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      zeroIntegrationsSlackContract,
+    );
 
     const response = await accept(
       client.disconnect({
@@ -739,7 +761,10 @@ function requestDownloadFile(
   query: string,
   authorization?: string,
 ): Promise<Response> {
-  const app = createApp({ signal: context.signal, routes: ROUTES });
+  const app = createApp({
+    signal: context.signal,
+    routes: zeroIntegrationsSlackRoutes,
+  });
   const headers: Record<string, string> = authorization
     ? { authorization }
     : {};

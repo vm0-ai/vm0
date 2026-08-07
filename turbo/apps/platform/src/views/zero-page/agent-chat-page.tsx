@@ -1,18 +1,12 @@
-import {
-  useGet,
-  useSet,
-  useLoadable,
-  useLastResolved,
-  useLastLoadable,
-} from "ccstate-react";
+import { useGet, useSet, useLoadable, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
   Button,
   Tooltip,
@@ -33,96 +27,189 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
-import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
-import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
-import {
-  replaceWorkflowPromptDraftTarget$,
-  setReplaceWorkflowPromptDraftTarget$,
-} from "../../signals/chat-page/workflow-prompt-action.ts";
+import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
-  chatPageComposerConnectors,
-  chatPageWorkflowComposer$,
-  chatPageModelSelection$,
-  chatPageSelectedModelOauthAvailable$,
-  configureChatPageSelectedModel$,
-  setChatPageInput$,
-  setChatPageModelSelection$,
-  updateCodexFastModeDefaultForSelection$,
-  resetChatPageModelSelection$,
   chatPageTaglineIndex$,
   suggestedPrompts$,
   unfilteredSuggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
-import { talkDraft$ } from "../../signals/zero-page/chat-draft.ts";
-import {
-  newThreadGenerationTemplate$,
-  newThreadComputerAccess$,
-  resetNewThreadComputerAccess$,
-  setNewThreadGenerationTemplate$,
-  setNewThreadCloudBrowserEnabled$,
-  setNewThreadComputerUseHostId$,
-} from "../../signals/zero-page/zero-chat-composer.ts";
-import {
-  computerUseHosts$,
-  selectedComputerUseHostId as resolveSelectedComputerUseHostId,
-  subscribeComputerUseHostsChangedRef$,
-  visibleComputerUseHosts,
-  ZERO_DESKTOP_DOWNLOAD_URL,
-} from "../../signals/zero-page/computer-use-hosts.ts";
+import { agentChatComposerSignals$ } from "../../signals/zero-page/agent-composer-signals.ts";
+import { subscribeComputerUseHostsChangedRef$ } from "../../signals/zero-page/computer-use-hosts.ts";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
-import { sendNewThread$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import {
   typewriterDisplayed$,
   typewriterRef$,
 } from "../../signals/view-component-state.ts";
-import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
-import { queueCurrentAgentDraftSync$ } from "../../signals/zero-page/agent-draft.ts";
-import type { EditorDocumentSnapshot } from "../../signals/zero-page/user-message-document-codec.ts";
-import { zeroBrowserEnabled$ } from "../../signals/external/feature-switch.ts";
+import {
+  localizeIdeationUseCase,
+  type IdeationCatalogCopy,
+} from "./zero-ideation-localization.ts";
 
-function getTagline(
-  agentName: string,
+function localizedAnonymousTaglines(t: TFunction<"common">): string[] {
+  return [
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.welcomeBack;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.whatsTheMove;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.goodToSeeYou;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.whatsOnYourMind;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.readyToRoll;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.buildSomething;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.whatAreWeWorkingOn;
+    }),
+  ];
+}
+
+function localizedUserTaglines(
+  t: TFunction<"common">,
+  agentName: string | null,
+  userName: string,
+): string[] {
+  return [
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.welcomeBack;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.whatsTheMove;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.goodToSeeYou;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.whatsOnYourMind;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.letsRoll;
+      },
+      {
+        agentName: agentName ?? "Zero",
+        userName,
+      },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.anotherWin;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.readyToBuild;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.enteredChat;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.goodToSeeYou;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.savedYourSeat;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.makeTodayCount;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.coffeeReady;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.knewYouWouldCome;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.whatsCooking;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.newIdeas;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.rightOnTime;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.whatAreWeWorkingOn;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.theUsual;
+      },
+      { userName },
+    ),
+  ];
+}
+
+function useTagline(
+  agentName: string | null | undefined,
   userName: string | null,
   index: number,
 ): string {
+  const { t } = useTranslation();
+  if (agentName === undefined) {
+    return "";
+  }
   const taglines = userName
-    ? [
-        `Welcome back, ${userName}.`,
-        `${userName}, what's the move?`,
-        `Good to see you, ${userName}.`,
-        `What's on your mind, ${userName}?`,
-        `${userName} + ${agentName}. Let's roll.`,
-        `Another day, another win, ${userName}.`,
-        `Hey ${userName}, ready to build?`,
-        `${userName} has entered the chat.`,
-        `Good to see you, ${userName}.`,
-        `${userName}! I saved your seat.`,
-        `${userName}, let's make today count.`,
-        `Coffee's ready, ${userName}. Let's go.`,
-        `${userName}, I had a feeling you'd come.`,
-        `What's cooking, ${userName}?`,
-        `${userName}. New day, new ideas.`,
-        `Ah, ${userName}. Right on time.`,
-        `${userName}, what are we working on?`,
-        `The usual, ${userName}?`,
-      ]
-    : [
-        `Welcome back.`,
-        `What's the move?`,
-        `Good to see you.`,
-        `What's on your mind?`,
-        `Ready to roll.`,
-        `Let's build something.`,
-        `What are we working on?`,
-      ];
+    ? localizedUserTaglines(t, agentName, userName)
+    : localizedAnonymousTaglines(t);
   return taglines[index % taglines.length];
 }
 
@@ -158,6 +245,7 @@ function TypewriterText({
 }
 
 function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
+  const { t } = useTranslation();
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
@@ -176,12 +264,15 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
       data-testid="invite-button"
     >
       <IconUserPlus size={14} stroke={1.5} />
-      Invite people
+      {t(($) => {
+        return $.chat.agentPage.invitePeople;
+      })}
     </Button>
   );
 }
 
 function PinPill() {
+  const { t } = useTranslation("agents");
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const pinnedStatus = useLastResolved(currentChatAgentPinned$);
   const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
@@ -208,13 +299,19 @@ function PinPill() {
             onClick={handlePin}
             disabled={pinSaving}
             className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Pin to sidebar"
+            aria-label={t(($) => {
+              return $.sidebar.pin;
+            })}
           >
             <IconPin size={12} stroke={2} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          <p className="text-xs">Pin to sidebar</p>
+          <p className="text-xs">
+            {t(($) => {
+              return $.sidebar.pin;
+            })}
+          </p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -222,6 +319,8 @@ function PinPill() {
 }
 
 function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
+  const { t } = useTranslation("agents");
+
   return (
     <div className="relative shrink-0">
       {agentId ? (
@@ -233,7 +332,9 @@ function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
                 options={{
                   pathParams: { agentId },
                 }}
-                aria-label="View agent profile"
+                aria-label={t(($) => {
+                  return $.detail.viewProfile;
+                })}
                 className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
               >
                 <AgentAvatarImg
@@ -244,7 +345,11 @@ function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p className="text-xs">View agent profile</p>
+              <p className="text-xs">
+                {t(($) => {
+                  return $.detail.viewProfile;
+                })}
+              </p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -266,24 +371,24 @@ interface SuggestedPrompt {
   title: string;
   description: string;
   prompt: string;
-  connectors?: readonly string[];
+  connectorSlugs?: readonly ConnectorSlug[];
 }
 
 function SuggestedPromptButton({
   item,
-  connectorStatusByRef,
+  connectorStatusBySlug,
   onSelectPrompt,
 }: {
   item: SuggestedPrompt;
-  connectorStatusByRef:
-    | ReadonlyMap<string, PublicConnectorCatalogStatusItem>
+  connectorStatusBySlug:
+    | ReadonlyMap<string, PlatformConnectorCatalogStatusItem>
     | undefined;
   onSelectPrompt: (prompt: string) => void;
 }) {
   const connectors =
-    item.connectors?.flatMap((connectorRef) => {
-      const connector = connectorStatusByRef?.get(connectorRef);
-      return connector ? [{ connectorRef, icon: connector.icon }] : [];
+    item.connectorSlugs?.flatMap((connectorSlug) => {
+      const connector = connectorStatusBySlug?.get(connectorSlug);
+      return connector ? [{ connectorSlug, icon: connector.icon }] : [];
     }) ?? [];
   return (
     <button
@@ -307,7 +412,7 @@ function SuggestedPromptButton({
           {connectors.map((connector) => {
             return (
               <span
-                key={connector.connectorRef}
+                key={connector.connectorSlug}
                 className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
               >
                 <ConnectorIcon icon={connector.icon} size={14} />
@@ -321,6 +426,7 @@ function SuggestedPromptButton({
 }
 
 function IdeasUseCasesButton() {
+  const { t } = useTranslation("agents");
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const navigate = useSet(detachedNavigateTo$);
 
@@ -345,13 +451,21 @@ function IdeasUseCasesButton() {
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
       />
       <p className="text-sm font-semibold text-foreground pr-5">
-        Ideas &amp; use cases
+        {t(($) => {
+          return $.ideation.entry.title;
+        })}
       </p>
       <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-        Browse use cases across all connectors
+        {t(($) => {
+          return $.ideation.entry.description;
+        })}
       </p>
       <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm font-medium text-primary">
-        <span>View all</span>
+        <span>
+          {t(($) => {
+            return $.ideation.entry.viewAll;
+          })}
+        </span>
         <IconArrowUpRight size={14} stroke={2} />
       </div>
     </button>
@@ -363,7 +477,8 @@ function SuggestedPromptsGrid({
 }: {
   onSelectPrompt: (prompt: string) => void;
 }) {
-  const connectorStatusByRef = useLastResolved(connectorCatalogStatusByRef$);
+  const { t } = useTranslation("agents");
+  const connectorStatusBySlug = useLastResolved(connectorCatalogStatusBySlug$);
   const unfilteredSuggestedPrompts =
     useLastResolved(unfilteredSuggestedPrompts$) ?? [];
   const suggestedPromptsLoadable = useLoadable(suggestedPrompts$);
@@ -374,14 +489,23 @@ function SuggestedPromptsGrid({
       : suggestedPromptsLoadable.state === "loading"
         ? (lastSuggestedPrompts ?? unfilteredSuggestedPrompts)
         : [];
+  const catalogCopy: IdeationCatalogCopy = t(
+    ($) => {
+      return $.ideation.catalog;
+    },
+    { returnObjects: true },
+  );
+  const localizedSuggestedPrompts = suggestedPrompts.map((item) => {
+    return localizeIdeationUseCase(item, catalogCopy);
+  });
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
-      {suggestedPrompts.map((item) => {
+      {localizedSuggestedPrompts.map((item) => {
         return (
           <SuggestedPromptButton
             key={item.title}
             item={item}
-            connectorStatusByRef={connectorStatusByRef}
+            connectorStatusBySlug={connectorStatusBySlug}
             onSelectPrompt={onSelectPrompt}
           />
         );
@@ -391,282 +515,33 @@ function SuggestedPromptsGrid({
   );
 }
 
-function useAgentChatComposerModel(pageSignal: AbortSignal) {
-  const modelSelectionLoadable = useLastLoadable(chatPageModelSelection$);
-  const modelSelection =
-    modelSelectionLoadable.state === "hasData"
-      ? modelSelectionLoadable.data
-      : null;
-  const setModelSelection = useSet(setChatPageModelSelection$);
-  const updateUserModelPreference = useSet(updateUserModelPreference$);
-  const updateCodexFastModeDefault = useSet(
-    updateCodexFastModeDefaultForSelection$,
-  );
-  const selectedModelOauthAvailable =
-    useLastResolved(chatPageSelectedModelOauthAvailable$) ?? true;
-  const configureSelectedModel = useSet(configureChatPageSelectedModel$);
-
-  const handleModelSelectionChange = (
-    selection: typeof modelSelection,
-  ): void => {
-    setModelSelection(selection);
-    const selectedModel = selection?.selectedModel;
-    if (isSupportedRunModel(selectedModel)) {
-      detach(
-        updateUserModelPreference({ selectedModel }, pageSignal),
-        Reason.DomCallback,
-      );
-    }
-    detach(
-      updateCodexFastModeDefault(selection, pageSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  const modelPicker = {
-    value: modelSelection,
-    onChange: handleModelSelectionChange,
-  };
-  const submitBlockerProps =
-    modelSelection && !selectedModelOauthAvailable
-      ? {
-          message:
-            "The selected model is not available. Configure it before sending.",
-          actionLabel: "Model Configure",
-          onAction: () => {
-            detach(configureSelectedModel(pageSignal), Reason.DomCallback);
-          },
-        }
-      : undefined;
-  const modelPickerLoading = modelSelectionLoadable.state === "loading";
-
-  return {
-    modelPicker,
-    modelPickerLoading,
-    submitBlockerProps,
-  };
-}
-
-function useNewThreadComputerUse() {
-  const computerUseHostsLoadable = useLastLoadable(computerUseHosts$);
-  const lastResolvedComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
-  const computerUseHosts =
-    computerUseHostsLoadable.state === "hasData"
-      ? computerUseHostsLoadable.data
-      : lastResolvedComputerUseHosts;
-  const computerAccess = useGet(newThreadComputerAccess$);
-  const cloudBrowserAvailable = useGet(zeroBrowserEnabled$);
-  const cloudBrowserEnabled = computerAccess.kind === "cloudBrowser";
-  const selectedComputerUseHostId = resolveSelectedComputerUseHostId(
-    computerUseHosts,
-    computerAccess.kind === "computerUse" ? computerAccess.hostId : null,
-  );
-  const visibleHosts = visibleComputerUseHosts(
-    computerUseHosts,
-    selectedComputerUseHostId,
-  );
-  const setComputerUseHostId = useSet(setNewThreadComputerUseHostId$);
-  const setCloudBrowserEnabled = useSet(setNewThreadCloudBrowserEnabled$);
-  const resetComputerAccess = useSet(resetNewThreadComputerAccess$);
-
-  return {
-    selectedComputerUseHostId,
-    cloudBrowserEnabled,
-    clearComputerAccess: resetComputerAccess,
-    computerUse: {
-      hosts: visibleHosts,
-      loading:
-        computerUseHostsLoadable.state === "loading" &&
-        computerUseHosts.length === 0,
-      selectedHostId: selectedComputerUseHostId,
-      onChange: setComputerUseHostId,
-      cloudBrowserAvailable,
-      cloudBrowserEnabled,
-      onCloudBrowserChange: setCloudBrowserEnabled,
-      downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-    },
-  };
-}
-
-function useAgentChatDraftSync(pageSignal: AbortSignal) {
-  const queueDraftSync = useSet(queueCurrentAgentDraftSync$);
-
-  return () => {
-    detach(queueDraftSync(pageSignal), Reason.DomCallback);
-  };
-}
-
-function useAgentChatSendMessage({
-  currentChatAgentId,
-  selectedComputerUseHostId,
-  cloudBrowserEnabled,
-  clearComputerAccess,
-  setGenerationTemplate,
-  resetModelSelection,
-}: {
-  currentChatAgentId: string | null | undefined;
-  selectedComputerUseHostId: string | null | undefined;
-  cloudBrowserEnabled: boolean;
-  clearComputerAccess: () => void;
-  setGenerationTemplate: (value: GenerationTemplateRequest | undefined) => void;
-  resetModelSelection: () => void;
-}): {
-  onSend: (
-    message: string,
-    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
-    editorDocument: EditorDocumentSnapshot,
-  ) => void;
-  submissionLoading: boolean;
-} {
-  const [sendLoadable, sendNewThread] = useLoadableSet(sendNewThread$);
-  const rootSignal = useGet(rootSignal$);
-
-  return {
-    onSend: (message, selectedGenerationTemplate, editorDocument) => {
-      if (!currentChatAgentId) {
-        return;
-      }
-
-      detach(
-        (async () => {
-          const sent = await sendNewThread(
-            {
-              agentId: currentChatAgentId,
-              prompt: message,
-              generationTemplate: selectedGenerationTemplate,
-              editorDocument,
-              ...(selectedComputerUseHostId
-                ? { computerUseHostId: selectedComputerUseHostId }
-                : {}),
-              ...(cloudBrowserEnabled ? { cloudBrowserEnabled: true } : {}),
-            },
-            rootSignal,
-          );
-          if (sent) {
-            setGenerationTemplate(undefined);
-            clearComputerAccess();
-            resetModelSelection();
-          }
-        })(),
-        Reason.DomCallback,
-      );
-    },
-    submissionLoading: sendLoadable.state === "loading",
-  };
-}
-
-function useAgentChatComposerWorkflowPrompt({
-  readInput,
-  setInput,
-  queueDraftSync,
-}: {
-  readInput: () => string;
-  setInput: (value: string) => void;
-  queueDraftSync: () => void;
-}): {
-  onCreateWorkflowPrompt: (() => void) | undefined;
-  replaceDraftDialogOpen: boolean;
-  onConfirmReplaceDraft: () => void;
-  onReplaceDialogOpenChange: (open: boolean) => void;
-} {
-  const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
-  const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
-  const workflowPromptDraftTarget = "composer:new-thread";
-  const replaceDraftDialogOpen =
-    replaceDraftTarget === workflowPromptDraftTarget;
-
-  const applyWorkflowPrompt = () => {
-    setInput(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
-    queueDraftSync();
-  };
-
-  const handleCreateWorkflowPrompt = () => {
-    if (readInput().trim().length > 0) {
-      setReplaceDraftTarget(workflowPromptDraftTarget);
-      return;
-    }
-    applyWorkflowPrompt();
-  };
-
-  const handleConfirmReplaceDraft = () => {
-    setReplaceDraftTarget(null);
-    applyWorkflowPrompt();
-  };
-
-  const handleReplaceDialogOpenChange = (open: boolean) => {
-    setReplaceDraftTarget(open ? workflowPromptDraftTarget : null);
-  };
-
-  return {
-    onCreateWorkflowPrompt: handleCreateWorkflowPrompt,
-    replaceDraftDialogOpen,
-    onConfirmReplaceDraft: handleConfirmReplaceDraft,
-    onReplaceDialogOpenChange: handleReplaceDialogOpenChange,
-  };
-}
-
 export function AgentChatPage() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const currentChatAgentDisplayName = useLastResolved(
     currentChatAgentDisplayName$,
   );
 
-  const generationTemplate = useGet(newThreadGenerationTemplate$);
-  const setGenerationTemplate = useSet(setNewThreadGenerationTemplate$);
-  const {
-    selectedComputerUseHostId,
-    cloudBrowserEnabled,
-    clearComputerAccess,
-    computerUse,
-  } = useNewThreadComputerUse();
   const pageSignal = useGet(pageSignal$);
   const subscribeComputerUseHostsChangedRef = useSet(
     subscribeComputerUseHostsChangedRef$,
   );
-  const { modelPicker, modelPickerLoading, submitBlockerProps } =
-    useAgentChatComposerModel(pageSignal);
-  const resetModelSelection = useSet(resetChatPageModelSelection$);
-  const { onSend: handleSendMessage, submissionLoading } =
-    useAgentChatSendMessage({
-      currentChatAgentId,
-      selectedComputerUseHostId,
-      cloudBrowserEnabled,
-      clearComputerAccess,
-      setGenerationTemplate,
-      resetModelSelection,
-    });
-
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
 
-  const draft = useGet(talkDraft$);
-  const composer = useGet(chatPageWorkflowComposer$);
-  const readInput = useSet(draft.readInput$);
-  const setInput = useSet(setChatPageInput$);
-  const queueAgentDraftSync = useAgentChatDraftSync(pageSignal);
-  const workflowPrompt = useAgentChatComposerWorkflowPrompt({
-    readInput,
-    setInput,
-    queueDraftSync: queueAgentDraftSync,
-  });
+  const composerSignals = useGet(agentChatComposerSignals$);
+  const setInput = useSet(composerSignals.draft.setDraftInput$);
+  const saveDraft = useSet(composerSignals.draft.save$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
-  const tagline =
-    currentChatAgentDisplayName !== undefined
-      ? getTagline(
-          currentChatAgentDisplayName ?? "Zero",
-          userFirstName,
-          taglineIndex,
-        )
-      : "";
+  const tagline = useTagline(
+    currentChatAgentDisplayName,
+    userFirstName,
+    taglineIndex,
+  );
 
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   const handleInputChange = (value: string) => {
     setInput(value);
-    queueAgentDraftSync();
-  };
-
-  const handleDraftChange = () => {
-    queueAgentDraftSync();
+    detach(saveDraft(pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -693,31 +568,7 @@ export function AgentChatPage() {
             </div>
           </div>
 
-          <ZeroChatComposer
-            className="w-full"
-            composer={composer}
-            composerConnectors={chatPageComposerConnectors}
-            draft={draft}
-            onSend={handleSendMessage}
-            onDraftChange={handleDraftChange}
-            submissionLoading={submissionLoading}
-            displayName={currentChatAgentDisplayName ?? ""}
-            autoFocus
-            modelPicker={modelPicker}
-            templatePicker={{
-              value: generationTemplate,
-              onChange: setGenerationTemplate,
-            }}
-            onCreateWorkflowPrompt={workflowPrompt.onCreateWorkflowPrompt}
-            computerUse={computerUse}
-            modelPickerLoading={modelPickerLoading}
-            submitBlocker={submitBlockerProps}
-          />
-          <ReplaceComposerDraftDialog
-            open={workflowPrompt.replaceDraftDialogOpen}
-            onOpenChange={workflowPrompt.onReplaceDialogOpenChange}
-            onConfirm={workflowPrompt.onConfirmReplaceDraft}
-          />
+          <ZeroChatComposer signals={composerSignals} />
 
           <SuggestedPromptsGrid onSelectPrompt={handleInputChange} />
         </div>

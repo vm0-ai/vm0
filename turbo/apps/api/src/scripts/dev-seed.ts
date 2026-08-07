@@ -117,12 +117,60 @@ const GPT_5_6_SOL_PRICING: readonly UsagePricingRow[] = [
   ["tokens.output", usd(30), 1_000_000],
 ];
 
-const GPT_5_6_LUNA_PRICING: readonly UsagePricingRow[] = [
-  ["tokens.input", usd(1), 1_000_000],
-  ["tokens.cache_read", usd(0.1), 1_000_000],
-  ["tokens.cache_creation", usd(1.25), 1_000_000],
-  ["tokens.output", usd(6), 1_000_000],
+const GPT_5_6_TERRA_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(2), 1_000_000],
+  ["tokens.cache_read", usd(0.2), 1_000_000],
+  ["tokens.cache_creation", usd(2.5), 1_000_000],
+  ["tokens.output", usd(12), 1_000_000],
 ];
+
+const GPT_5_6_LUNA_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(0.2), 1_000_000],
+  ["tokens.cache_read", usd(0.02), 1_000_000],
+  ["tokens.cache_creation", usd(0.25), 1_000_000],
+  ["tokens.output", usd(1.2), 1_000_000],
+];
+
+// OpenRouter MiMo-V2.5 base pricing retrieved 2026-08-05 from:
+// https://openrouter.ai/xiaomi/mimo-v2.5
+const MIMO_V2_5_MODEL_PRICING = usageGroup("model", "mimo-v2.5", [
+  ["tokens.input", usd(0.14), 1_000_000],
+  ["tokens.output", usd(0.28), 1_000_000],
+  ["tokens.cache_read", usd(0.0028), 1_000_000],
+  ["tokens.cache_creation", 0, 1_000_000],
+]);
+
+const GPT_5_5_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(5), 1_000_000],
+  ["tokens.cache_read", usd(0.5), 1_000_000],
+  ["tokens.output", usd(30), 1_000_000],
+];
+
+const MINIMAX_M3_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(0.3), 1_000_000],
+  ["tokens.cache_read", usd(0.06), 1_000_000],
+  ["tokens.cache_creation", 0, 1_000_000],
+  ["tokens.output", usd(1.2), 1_000_000],
+];
+
+function withLongContextPricing(
+  rows: readonly UsagePricingRow[],
+  inputFamilyMultiplier: number,
+  outputMultiplier: number,
+): readonly UsagePricingRow[] {
+  return [
+    ...rows,
+    ...rows.map(([category, unitPrice, unitSize]) => {
+      const multiplier =
+        category === "tokens.output" ? outputMultiplier : inputFamilyMultiplier;
+      return [
+        `${category}.long_context`,
+        unitPrice * multiplier,
+        unitSize,
+      ] as const;
+    }),
+  ];
+}
 
 function buildSeedSkillValues(
   names: readonly string[],
@@ -379,48 +427,50 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.26), 1_000_000],
     ["tokens.cache_creation", usd(1.4), 1_000_000],
   ]),
-  ...usageGroup("model", "mimo-v2.5", [
-    ["tokens.input", usd(0.14), 1_000_000],
-    ["tokens.output", usd(0.28), 1_000_000],
-    ["tokens.cache_read", usd(0.0028), 1_000_000],
-    ["tokens.cache_creation", 0, 1_000_000],
-  ]),
+  ...MIMO_V2_5_MODEL_PRICING,
   ...usageGroup("model", "hy3-preview", [
     ["tokens.input", usd(0.063), 1_000_000],
     ["tokens.output", usd(0.21), 1_000_000],
     ["tokens.cache_read", usd(0.021), 1_000_000],
     ["tokens.cache_creation", 0, 1_000_000],
   ]),
-  ...usageGroup("model", "MiniMax-M3", [
-    ["tokens.input", usd(0.6), 1_000_000],
-    ["tokens.output", usd(2.4), 1_000_000],
-    ["tokens.cache_read", usd(0.12), 1_000_000],
+  // MiniMax API pricing retrieved 2026-07-31 from:
+  // https://platform.minimax.io/subscribe/token-plan?tab=api-enterprise
+  ...usageGroup(
+    "model",
+    "MiniMax-M3",
+    withLongContextPricing(MINIMAX_M3_PRICING, 2, 2),
+  ),
+  // DeepSeek API pricing retrieved 2026-07-31 from:
+  // https://api-docs.deepseek.com/quick_start/pricing/
+  ...usageGroup("model", "deepseek-v4-flash", [
+    ["tokens.input", usd(0.14), 1_000_000],
+    ["tokens.output", usd(0.28), 1_000_000],
+    ["tokens.cache_read", usd(0.0028), 1_000_000],
     ["tokens.cache_creation", 0, 1_000_000],
   ]),
-  ...usageGroup("model", "deepseek-v4-pro", [
-    ["tokens.input", usd(1.74), 1_000_000],
-    ["tokens.output", usd(3.48), 1_000_000],
-    ["tokens.cache_read", usd(0.145), 1_000_000],
-    ["tokens.cache_creation", 0, 1_000_000],
-  ]),
-  // OpenAI API pricing retrieved 2026-05-06 from:
-  // https://openai.com/api/pricing/
+  // OpenAI API pricing retrieved 2026-07-31 from:
   // https://developers.openai.com/api/docs/pricing
-  // GPT-5.6 preview pricing retrieved 2026-07-09 from:
-  // https://openai.com/index/previewing-gpt-5-6-sol/
-  ...usageGroup("model", "gpt-5.6-sol", GPT_5_6_SOL_PRICING),
-  ...usageGroup("model", "gpt-5.6-terra", [
-    ["tokens.input", usd(2.5), 1_000_000],
-    ["tokens.cache_read", usd(0.25), 1_000_000],
-    ["tokens.cache_creation", usd(3.125), 1_000_000],
-    ["tokens.output", usd(15), 1_000_000],
-  ]),
-  ...usageGroup("model", "gpt-5.6-luna", GPT_5_6_LUNA_PRICING),
-  ...usageGroup("model", "gpt-5.5", [
-    ["tokens.input", usd(5), 1_000_000],
-    ["tokens.cache_read", usd(0.5), 1_000_000],
-    ["tokens.output", usd(30), 1_000_000],
-  ]),
+  ...usageGroup(
+    "model",
+    "gpt-5.6-sol",
+    withLongContextPricing(GPT_5_6_SOL_PRICING, 2, 1.5),
+  ),
+  ...usageGroup(
+    "model",
+    "gpt-5.6-terra",
+    withLongContextPricing(GPT_5_6_TERRA_PRICING, 2, 1.5),
+  ),
+  ...usageGroup(
+    "model",
+    "gpt-5.6-luna",
+    withLongContextPricing(GPT_5_6_LUNA_PRICING, 2, 1.5),
+  ),
+  ...usageGroup(
+    "model",
+    "gpt-5.5",
+    withLongContextPricing(GPT_5_5_PRICING, 2, 1.5),
+  ),
   // OpenRouter-backed edit helpers. Pricing retrieved 2026-07-10 from:
   // https://developers.openai.com/api/docs/models/gpt-4.1-mini
   // https://ai.google.dev/gemini-api/docs/pricing
@@ -433,6 +483,32 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.input", usd(1.5), 1_000_000],
     ["tokens.cache_read", usd(0.15), 1_000_000],
     ["tokens.output", usd(9), 1_000_000],
+  ]),
+
+  // Local development pricing for managed image tasks, billed under
+  // task-scoped kinds at the backing model's token rates.
+  ...MIMO_V2_5_MODEL_PRICING.map(({ category, unitPrice, unitSize }) => {
+    return {
+      kind: "image-recognition",
+      provider: "xiaomi/mimo-v2.5",
+      category,
+      unitPrice,
+      unitSize,
+    };
+  }),
+  ...usageGroup("image-recognition", "google/gemini-3.5-flash", [
+    ["tokens.input", usd(1.5), 1_000_000],
+    ["tokens.cache_read", usd(0.15), 1_000_000],
+    ["tokens.output", usd(9), 1_000_000],
+  ]),
+  // OpenRouter Qwen2.5 7B pricing retrieved 2026-08-06 from:
+  // https://openrouter.ai/qwen/qwen-2.5-7b-instruct
+  // Current providers do not discount cached input, so cache reads use the
+  // regular input-token rate.
+  ...usageGroup("translation", "qwen/qwen-2.5-7b-instruct", [
+    ["tokens.input", usd(0.1), 1_000_000],
+    ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.output", usd(0.2), 1_000_000],
   ]),
 
   // X connector — https://docs.x.com/x-api/getting-started/pricing
@@ -490,12 +566,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // 2026-07-23. The $0.020 retail price covers the $0.005 tool invocation,
   // gpt-5-mini model tokens, and operating margin.
   ...usageGroup("people-search", "perplexity", [["request", usd(0.02), 1]]),
-
-  // Browser Use reports final browser and proxy spend as USD decimals. Bill
-  // the combined provider cost with the standard managed-service 20% markup.
-  ...usageGroup("browser", "browser-use", [
-    ["provider_cost_usd_micros", usd(1.2), 1_000_000],
-  ]),
 
   // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
   // $30/1M output tokens × 1290 tokens per 1024×1024 image = $0.0387/image.
@@ -579,6 +649,21 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_video_tokens.audio", usd(2.4), 1_000_000],
     ["output_video_tokens.silent", usd(1.2), 1_000_000],
   ]),
+  // MiniMax H3 official PAYG rates with the 2x built-in markup.
+  ...usageGroup("video", "MiniMax-H3", [
+    ["output_video_seconds.768p", usd(0.16), 1],
+    ["output_video_seconds.2k", usd(0.26), 1],
+    ["input_video_seconds.768p", usd(0.16), 1],
+    ["input_video_seconds.2k", usd(0.26), 1],
+    ["input_image.additional", usd(0.08), 1],
+  ]),
+  // JoggAI Professional API cost: $399 / 800 credits, with one provider
+  // credit consumed per started two minutes of talking-avatar output. Apply
+  // the standard 20% vm0 markup.
+  // https://www.jogg.ai/api-pricing/
+  ...usageGroup("video", "joggai-talking-avatar", [
+    ["output_video_joggai_credits", usd((399 / 800) * 1.2), 1],
+  ]),
 
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
   // $0.015/minute raw provider cost = 15 credits/minute.
@@ -609,26 +694,21 @@ type LineWriter = (message: string) => void;
 
 /**
  * Build vm0_api_keys entries from environment variables.
- * Vendor-to-model mapping is derived from VM0_MODEL_TO_PROVIDER so new models
- * are automatically picked up. Rows use upstream API model ids when configured
- * because VM0 Managed key lookup first matches vendor plus runtime model.
+ * Vendors are derived from VM0_MODEL_TO_PROVIDER so new providers are
+ * automatically picked up.
  */
 export function buildVm0ApiKeys(
   readEnv: OptionalEnvReader = optionalEnv,
   logLine: LineWriter = writeLine,
 ): (typeof vm0ApiKeys.$inferInsert)[] {
-  // Group runtime models by vendor from the canonical mapping.
-  const vendorModels = new Map<string, string[]>();
-  for (const [model, { apiModel, vendor }] of Object.entries(
-    VM0_MODEL_TO_PROVIDER,
-  )) {
-    const models = vendorModels.get(vendor) ?? [];
-    models.push(apiModel ?? model);
-    vendorModels.set(vendor, models);
-  }
+  const vendors = new Set(
+    Object.values(VM0_MODEL_TO_PROVIDER).map(({ vendor }) => {
+      return vendor;
+    }),
+  );
 
   const keys: (typeof vm0ApiKeys.$inferInsert)[] = [];
-  for (const [vendor, models] of vendorModels) {
+  for (const vendor of vendors) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {
@@ -641,9 +721,7 @@ export function buildVm0ApiKeys(
       logLine(`Skipping ${vendor}: ${envVars.join(" or ")} is not configured`);
       continue;
     }
-    for (const model of models) {
-      keys.push({ vendor, model, apiKey, label: "dev-seed" });
-    }
+    keys.push({ vendor, apiKey, label: "dev-seed" });
   }
   return keys;
 }
@@ -680,7 +758,7 @@ async function devSeed() {
     }
   });
   for (const k of apiKeys) {
-    writeLine(`Seeded vm0 API key entry: ${k.vendor}/${k.model}`);
+    writeLine(`Seeded vm0 API key entry: ${k.vendor}`);
   }
   writeLine(`Seeded ${apiKeys.length} vm0 API key entries`);
 

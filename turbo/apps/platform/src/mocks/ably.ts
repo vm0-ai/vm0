@@ -3,6 +3,8 @@
 // In the long term, this file should also stop using .cache and .zyn.
 // confirmed by ethan@vm0.ai
 // oxlint-disable promise/prefer-await-to-then
+import { createDeferredPromise } from "../signals/utils.ts";
+
 /**
  * Mock ably module for tests.
  *
@@ -46,6 +48,13 @@ let hasConnected = false;
 let failedStateChange: FailedStateChange | null = null;
 let connectionClosed = false;
 let nextSubscribeError: Error | null = null;
+const subscribeErrors = new Map<
+  string,
+  {
+    readonly error: Error;
+    readonly observed: ReturnType<typeof createDeferredPromise<void>>;
+  }
+>();
 
 /**
  * Fire all callbacks subscribed to `topic`. Call this from test helpers
@@ -95,6 +104,7 @@ export function resetAblySubscriptions(): void {
   failedStateChange = null;
   connectionClosed = false;
   nextSubscribeError = null;
+  subscribeErrors.clear();
   connectedListeners.clear();
 }
 
@@ -138,8 +148,20 @@ export function rejectNextAblySubscribe(message: string): void {
   nextSubscribeError = new Error(message);
 }
 
+export function rejectAblySubscribe(
+  topic: string,
+  message: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const observed = createDeferredPromise<void>(signal);
+  subscribeErrors.set(topic, { error: new Error(message), observed });
+  return observed.promise;
+}
+
 function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
-  const deferred = Promise.withResolvers<AuthCallbackToken>();
+  const deferred = createDeferredPromise<AuthCallbackToken>(
+    AbortSignal.any([]),
+  );
   cb({}, (error, token) => {
     if (error) {
       const message =
@@ -173,6 +195,14 @@ const fakeChannel = {
     await Promise.resolve();
     if (connectionClosed) {
       throw new Error("Connection closed");
+    }
+    if (typeof topicOrCallback === "string") {
+      const failure = subscribeErrors.get(topicOrCallback);
+      if (failure) {
+        subscribeErrors.delete(topicOrCallback);
+        failure.observed.resolve();
+        throw failure.error;
+      }
     }
     if (nextSubscribeError) {
       const error = nextSubscribeError;

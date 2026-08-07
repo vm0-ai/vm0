@@ -61,7 +61,7 @@ fn capture_batch(
 }
 
 #[tokio::test]
-async fn ordinary_cli_drains_healthy_backlog_in_bounded_fifo_batches()
+async fn claude_code_drains_healthy_backlog_in_bounded_fifo_batches()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock_cli = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;

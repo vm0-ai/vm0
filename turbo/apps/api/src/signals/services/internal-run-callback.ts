@@ -1,15 +1,13 @@
 export const internalRunCallbackKinds = [
-  "agent",
-  "agentphone",
+  "agentphone:chat",
   "chat",
-  "github:issues",
+  "github:chat",
   "morning-brief:email",
   "slack:chat",
   "feishu:chat",
   "teams:chat",
+  "telegram:chat",
   "feishu:org",
-  "teams:org",
-  "telegram",
   "workflow-automation:cron",
   "workflow-automation:loop",
 ] as const;
@@ -39,17 +37,15 @@ function isInternalRunCallbackKind(
   value: string | null,
 ): value is InternalRunCallbackKind {
   switch (value) {
-    case "agent":
-    case "agentphone":
+    case "agentphone:chat":
     case "chat":
-    case "github:issues":
+    case "github:chat":
     case "morning-brief:email":
     case "slack:chat":
     case "feishu:chat":
     case "teams:chat":
+    case "telegram:chat":
     case "feishu:org":
-    case "teams:org":
-    case "telegram":
     case "workflow-automation:cron":
     case "workflow-automation:loop": {
       return true;

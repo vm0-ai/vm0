@@ -7,20 +7,21 @@ import {
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
+import type { ComposerAgentSuggestion } from "../../signals/zero-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
-import {
-  ChatThreadSuggestionMenu,
-  scrollChatThreadSuggestionIntoView,
-} from "./chat-thread-suggestion.tsx";
+import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
+import { ComposerMentionSuggestionMenu } from "./chat-thread-suggestion.tsx";
 import {
   buildComposerSlashWorkflows,
   findWorkflowQueryMatches,
+  type ComposerSlashWorkflow,
+} from "../../signals/zero-page/workflow-composer-domain";
+import {
   scrollSlashWorkflowIntoView,
   SlashWorkflowMenu,
-  type ComposerSlashWorkflow,
 } from "./slash-workflow.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
@@ -81,6 +82,12 @@ interface ComposerSuggestionRange {
   readonly end: number;
 }
 
+function resolvedAgentId(
+  agent: ZeroAgentResponse | undefined,
+): string | undefined {
+  return agent?.agentId;
+}
+
 interface ComposerSuggestionCaretVirtualRef {
   current: {
     readonly contextElement: HTMLElement;
@@ -128,19 +135,26 @@ function ComposerSuggestionCaretAnchor({
 
 function workflowComposerPlaceholder(sending: boolean | undefined): string {
   return sending
-    ? "Type your next message…"
-    : "Ask me to automate workflows, manage tasks...";
+    ? i18n.t(($) => {
+        return $.workflows.composer.nextMessage;
+      })
+    : i18n.t(($) => {
+        return $.workflows.composer.placeholder;
+      });
 }
 
 function WorkflowComposerPlaceholder({
   composer,
   sending,
 }: {
-  composer: WorkflowComposerSignals;
+  composer: ComposerSignals;
   sending: boolean | undefined;
 }) {
-  const hasInput = useGet(composer.hasInput$);
-  const hasTemplateAttachment = useGet(composer.hasTemplateAttachment$);
+  useTranslation();
+  const hasInput = useGet(composer.editor.hasInput$);
+  const hasTemplateAttachment = useGet(
+    composer.template.hasTemplateAttachment$,
+  );
   if (hasInput) {
     return null;
   }
@@ -157,17 +171,15 @@ function WorkflowComposerPlaceholder({
 }
 
 interface TiptapWorkflowComposerProps {
-  readonly composer: WorkflowComposerSignals;
+  readonly signals: ComposerSignals;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
-  readonly autoFocus: boolean | undefined;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
-  readonly singleLineOnMobile: boolean;
 }
 
 interface ComposerKeyDownContext {
-  readonly composer: WorkflowComposerSignals;
+  readonly composer: ComposerSignals;
   readonly suggestionCount: number;
   readonly selectedSuggestionIndex: number;
   readonly showSuggestionMenu: boolean;
@@ -206,16 +218,16 @@ function handleComposerKeyDownCapture(
     !event.altKey
   ) {
     event.preventDefault();
-    context.composer.editor.commands.splitBlock();
+    context.composer.editor.editor.commands.splitBlock();
     return true;
   }
   const lineNavigationPos = resolveMacControlLineNavigation(
-    context.composer.editor,
+    context.composer.editor.editor,
     event,
   );
   if (lineNavigationPos !== null) {
     event.preventDefault();
-    context.composer.editor.commands.setTextSelection(lineNavigationPos);
+    context.composer.editor.editor.commands.setTextSelection(lineNavigationPos);
     return true;
   }
   if (!context.showSuggestionMenu) {
@@ -264,9 +276,11 @@ interface ComposerSuggestionMenuState {
   readonly workflowQuery: string;
   readonly workflowsLoading: boolean;
   readonly showWorkflows: boolean;
+  readonly agents: readonly ComposerAgentSuggestion[];
   readonly chatThreads: readonly ComposerChatThreadSuggestion[];
-  readonly showChatThreads: boolean;
+  readonly showMentions: boolean;
   readonly selectWorkflow: (workflow: ComposerSlashWorkflow) => void;
+  readonly selectAgent: (agent: ComposerAgentSuggestion) => void;
   readonly selectChatThread: (chatThread: ComposerChatThreadSuggestion) => void;
   readonly handleKeyDown: (event: KeyboardEvent) => boolean;
 }
@@ -275,56 +289,64 @@ function useComposerSuggestionMenu({
   composer,
   onKeyDown,
 }: {
-  readonly composer: WorkflowComposerSignals;
+  readonly composer: ComposerSignals;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
 }): ComposerSuggestionMenuState {
-  const slashRange = useGet(composer.activeSlashRange$);
-  const chatThreadRange = useGet(composer.activeChatThreadSuggestionRange$);
-  const chatThreadResult = useLastResolved(composer.chatThreadSuggestions$);
-  const skillSubstringSearchEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ComposerSkillSubstringSearch] ??
-    false;
-  const selectedIndex = useGet(composer.selectedSuggestionIndex$);
-  const setSelectedIndex = useSet(composer.setSelectedSuggestionIndex$);
-  const close = useSet(composer.closeSuggestionMenu$);
-  const insertWorkflow = useSet(composer.insertWorkflow$);
-  const insertChatThread = useSet(composer.insertChatThread$);
-  const currentAgentId = useLastResolved(composer.agentId$);
-  const workflowsLoadable = useLastLoadable(composer.workflows$);
+  const slashRange = useGet(composer.suggestion.activeSlashRange$);
+  const chatThreadRange = useGet(
+    composer.suggestion.activeChatThreadSuggestionRange$,
+  );
+  const chatThreadResult = useLastResolved(
+    composer.suggestion.chatThreadSuggestions$,
+  );
+  const selectedIndex = useGet(composer.suggestion.selectedSuggestionIndex$);
+  const setSelectedIndex = useSet(
+    composer.suggestion.setSelectedSuggestionIndex$,
+  );
+  const close = useSet(composer.suggestion.closeSuggestionMenu$);
+  const insertWorkflow = useSet(composer.workflow.insertWorkflow$);
+  const insertAgent = useSet(composer.suggestion.insertAgent$);
+  const insertChatThread = useSet(composer.suggestion.insertChatThread$);
+  const currentAgentId = resolvedAgentId(useLastResolved(composer.agent$));
+  const workflowsLoadable = useLastLoadable(composer.workflow.workflows$);
   const workflows = buildComposerSlashWorkflows({
     agentId: currentAgentId,
     workflows:
       workflowsLoadable.state === "hasData" ? workflowsLoadable.data : [],
   });
   const workflowSuggestions = slashRange
-    ? findWorkflowQueryMatches(
-        workflows,
-        slashRange.query,
-        skillSubstringSearchEnabled,
-      )
+    ? findWorkflowQueryMatches(workflows, slashRange.query)
     : [];
   const showWorkflows = slashRange !== null;
-  const chatThreads =
+  const mentionResult =
     chatThreadRange &&
     chatThreadResult &&
     chatThreadResult.agentId === currentAgentId &&
     chatThreadResult.query === chatThreadRange.query
-      ? chatThreadResult.chatThreads
-      : [];
-  const showChatThreads =
-    slashRange === null && chatThreadRange !== null && chatThreads.length > 0;
-  const open = showWorkflows || showChatThreads;
+      ? chatThreadResult
+      : null;
+  const agents = mentionResult?.agents ?? [];
+  const chatThreads = mentionResult?.chatThreads ?? [];
+  const showMentions =
+    slashRange === null &&
+    chatThreadRange !== null &&
+    agents.length + chatThreads.length > 0;
+  const open = showWorkflows || showMentions;
   const range = showWorkflows
     ? slashRange
-    : showChatThreads
+    : showMentions
       ? chatThreadRange
       : null;
   const suggestionCount = showWorkflows
     ? workflowSuggestions.length
-    : chatThreads.length;
+    : agents.length + chatThreads.length;
 
   function selectWorkflow(workflow: ComposerSlashWorkflow): void {
     insertWorkflow(workflow);
+  }
+
+  function selectAgent(agent: ComposerAgentSuggestion): void {
+    insertAgent(agent);
   }
 
   function selectChatThread(chatThread: ComposerChatThreadSuggestion): void {
@@ -339,7 +361,12 @@ function useComposerSuggestionMenu({
       }
       return;
     }
-    const chatThread = chatThreads[index];
+    const agent = agents[index];
+    if (agent) {
+      selectAgent(agent);
+      return;
+    }
+    const chatThread = chatThreads[index - agents.length];
     if (chatThread) {
       selectChatThread(chatThread);
     }
@@ -348,9 +375,7 @@ function useComposerSuggestionMenu({
   function scrollSuggestionIntoView(index: number): void {
     if (showWorkflows) {
       scrollSlashWorkflowIntoView(workflowSuggestions[index]);
-      return;
     }
-    scrollChatThreadSuggestionIntoView(chatThreads[index]);
   }
 
   function handleKeyDown(event: KeyboardEvent): boolean {
@@ -376,35 +401,34 @@ function useComposerSuggestionMenu({
     workflowQuery: slashRange?.query ?? "",
     workflowsLoading: workflowsLoadable.state === "loading",
     showWorkflows,
+    agents,
     chatThreads,
-    showChatThreads,
+    showMentions,
     selectWorkflow,
+    selectAgent,
     selectChatThread,
     handleKeyDown,
   };
 }
 
 export function TiptapWorkflowComposer({
-  composer,
+  signals,
   onDraftChange,
   sending,
-  autoFocus,
   onKeyDown,
   onPaste,
-  singleLineOnMobile,
 }: TiptapWorkflowComposerProps) {
+  const composer = signals;
+  const singleLineOnMobile = composer.editor.singleLineOnMobile;
   const suggestionMenu = useComposerSuggestionMenu({
     composer,
     onKeyDown,
   });
-  const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
-  const hasTemplateAttachment = useGet(composer.hasTemplateAttachment$);
-  const containerRefSignal = singleLineOnMobile
-    ? composer.setCompactContainerRef$
-    : autoFocus
-      ? composer.setAutoFocusContainerRef$
-      : composer.setContainerRef$;
-  const setContainerRef = useSet(containerRefSignal);
+  const insertPromptMarkdown = useSet(composer.editor.insertPromptMarkdown$);
+  const hasTemplateAttachment = useGet(
+    composer.template.hasTemplateAttachment$,
+  );
+  const setContainerRef = useSet(composer.editor.setContainerRef$);
 
   function handlePaste(
     event: ClipboardEvent,
@@ -445,7 +469,7 @@ export function TiptapWorkflowComposer({
       }}
     >
       <ComposerSuggestionCaretAnchor
-        editor={composer.editor}
+        editor={composer.editor.editor}
         range={suggestionMenu.range}
       />
       <div className="relative">
@@ -456,10 +480,10 @@ export function TiptapWorkflowComposer({
           className={
             hasTemplateAttachment
               ? singleLineOnMobile
-                ? "min-h-[82px] md:min-h-[134px] [&_.ProseMirror]:min-h-[82px] md:[&_.ProseMirror]:min-h-[134px]"
+                ? "min-h-[106px] md:min-h-[134px] [&_.ProseMirror]:min-h-[106px] md:[&_.ProseMirror]:min-h-[134px]"
                 : "min-h-[134px] [&_.ProseMirror]:min-h-[134px]"
               : singleLineOnMobile
-                ? "min-h-[44px] md:min-h-[96px]"
+                ? "min-h-[68px] md:min-h-[96px]"
                 : "min-h-[96px]"
           }
           ref={setContainerRef}
@@ -480,7 +504,7 @@ export function TiptapWorkflowComposer({
           onPasteCapture={(event) => {
             const handled = handlePaste(
               event.nativeEvent,
-              composer.editor.view.dom,
+              composer.editor.editor.view.dom,
             );
             if (handled) {
               event.stopPropagation();
@@ -498,11 +522,13 @@ export function TiptapWorkflowComposer({
           onSelect={suggestionMenu.selectWorkflow}
         />
       )}
-      {suggestionMenu.showChatThreads && (
-        <ChatThreadSuggestionMenu
+      {suggestionMenu.showMentions && (
+        <ComposerMentionSuggestionMenu
+          agents={suggestionMenu.agents}
           chatThreads={suggestionMenu.chatThreads}
           selectedIndex={suggestionMenu.selectedIndex}
-          onSelect={suggestionMenu.selectChatThread}
+          onSelectAgent={suggestionMenu.selectAgent}
+          onSelectChatThread={suggestionMenu.selectChatThread}
         />
       )}
     </Popover>

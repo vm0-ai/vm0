@@ -4,7 +4,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { connectorCatalogDiagnosticsSchema } from "./connector-catalog-diagnostics";
 import {
   connectorAuthMethodIdSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
 } from "./connector-identity";
 import { connectorReconnectReasonSchema } from "./connector-schemas";
 import { apiErrorSchema } from "./errors";
@@ -58,7 +58,7 @@ const publicConnectorCatalogCategoryMetadataSchema = z.object({
 });
 
 const publicConnectorCatalogItemSchema = z.object({
-  connectorRef: connectorRefSchema,
+  slug: connectorSlugSchema,
   label: z.string(),
   description: z.string(),
   icon: publicConnectorCatalogIconSchema,
@@ -161,7 +161,7 @@ const publicConnectorCatalogDefaultPolicySchema = z.object({
 });
 
 const publicConnectorCatalogPermissionDetailSchema = z.object({
-  connectorRef: connectorRefSchema,
+  connectorSlug: connectorSlugSchema,
   label: z.string(),
   icon: publicConnectorCatalogIconSchema,
   permissionCount: z.number().int().nonnegative(),
@@ -175,7 +175,7 @@ const publicConnectorCatalogPermissionDetailResponseSchema = z.object({
 });
 
 const connectorCatalogPathParamsSchema = z.object({
-  connectorRef: connectorRefSchema,
+  connectorSlug: connectorSlugSchema,
 });
 
 export type PublicConnectorCatalogAuthMethodSummary = z.infer<
@@ -275,7 +275,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/connector-catalog/:connectorRef",
+    path: "/api/zero/connector-catalog/:connectorSlug",
     headers: authHeadersSchema,
     pathParams: connectorCatalogPathParamsSchema,
     responses: {
@@ -290,7 +290,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   permissions: {
     method: "GET",
-    path: "/api/zero/connector-catalog/:connectorRef/permissions",
+    path: "/api/zero/connector-catalog/:connectorSlug/permissions",
     headers: authHeadersSchema,
     pathParams: connectorCatalogPathParamsSchema,
     responses: {

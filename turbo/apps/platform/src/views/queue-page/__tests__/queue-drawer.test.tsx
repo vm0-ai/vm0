@@ -85,12 +85,7 @@ function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
 
 function mockQueuedThread(): void {
   context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (
-      query.sinceSeqId !== undefined ||
-      query.beforeSeqId !== undefined ||
-      query.sinceId !== undefined ||
-      query.beforeId !== undefined
-    ) {
+    if (query.sinceSeqId !== undefined || query.beforeSeqId !== undefined) {
       return respond(200, { events: [] });
     }
 
@@ -100,7 +95,7 @@ function mockQueuedThread(): void {
           id: "msg-previous-user",
           threadId: THREAD_ID,
           eventType: "input.prompt" as const,
-          content: "Previous prompt",
+          content: null,
           userMessage: {
             version: 1,
             parts: [{ type: "text", text: "Previous prompt" }],
@@ -135,6 +130,7 @@ function mockQueuedThread(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
 }
@@ -249,10 +245,10 @@ describe("queue drawer", () => {
 
   it("lets Team admins buy additional concurrency when the queue is full", async () => {
     let checkoutQuantity: number | null = null;
+    let checkoutSuccessUrl: string | null = null;
     mockConcurrencyCapability(true);
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -269,6 +265,7 @@ describe("queue drawer", () => {
       zeroBillingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         checkoutQuantity = body.quantity;
+        checkoutSuccessUrl = body.successUrl;
         return respond(200, {
           url: `https://checkout.stripe.com/test?concurrency=${body.quantity}`,
         });
@@ -302,12 +299,17 @@ describe("queue drawer", () => {
         "https://checkout.stripe.com/test?concurrency=2",
       );
     });
+    if (!checkoutSuccessUrl) {
+      throw new Error("Concurrency checkout success URL was not captured");
+    }
+    const successUrl = new URL(checkoutSuccessUrl);
+    expect(successUrl.pathname).toBe("/");
+    expect(successUrl.searchParams.get("concurrency")).toBe("purchased");
   });
 
   it("hides additional concurrency checkout when the plan capability is disabled", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -337,7 +339,6 @@ describe("queue drawer", () => {
   it("hides billing actions from non-admins", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -363,7 +364,6 @@ describe("queue drawer", () => {
   it("hides additional concurrency checkout from non-admins", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });

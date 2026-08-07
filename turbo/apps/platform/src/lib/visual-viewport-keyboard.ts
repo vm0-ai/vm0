@@ -1,3 +1,6 @@
+import { delay } from "signal-timers";
+import { detach, Reason } from "../signals/utils.ts";
+
 const KEYBOARD_SHRINK_RATIO = 0.15;
 const MIN_KEYBOARD_SHRINK_PX = 120;
 const LAYOUT_VIEWPORT_CHANGE_TOLERANCE_PX = 8;
@@ -8,6 +11,8 @@ const CHAT_COMPOSER_SELECTOR = "[data-chat-composer] .zero-composer";
 const KEYBOARD_SCROLL_RESERVE_PROPERTY = "--zero-keyboard-scroll-reserve";
 const COMPOSER_KEYBOARD_GAP_PX = 16;
 const STANDALONE_DISPLAY_MODE_QUERY = "(display-mode: standalone)";
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
+const FINE_POINTER_QUERY = "(any-pointer: fine)";
 
 const TEXT_ENTRY_SELECTOR = `textarea, select, ${CONTENTEDITABLE_SELECTOR}`;
 
@@ -79,6 +84,54 @@ function viewportHasKeyboardOcclusion(
   // the previous session, otherwise the next software-keyboard reveal is
   // mistaken for the same session.
   return occludedHeight > keyboardThreshold;
+}
+
+/**
+ * Reports whether a software keyboard currently occludes the visual viewport.
+ *
+ * WebKit reports `any-pointer: fine` and `any-hover: hover` on iPhones, so
+ * pointer media queries cannot tell a trackpad-and-keyboard tablet apart from
+ * a phone. A shrunk visual viewport over an unchanged layout viewport is the
+ * device's own evidence that the on-screen keyboard produced the keystroke.
+ */
+function softwareKeyboardOccludesViewport(): boolean {
+  const viewport = window.visualViewport;
+  if (!viewport) {
+    return false;
+  }
+  return viewportHasKeyboardOcclusion(
+    readLayoutViewportHeight(viewport),
+    viewport,
+  );
+}
+
+function isIOSDevice(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+/**
+ * Reports whether text entry should use mobile-safe interaction behavior.
+ *
+ * A fine pointer normally means a hardware keyboard is available, while the
+ * visual viewport detects an active software keyboard. WebKit reports a fine
+ * pointer on iOS even without one, so iOS also needs an explicit fallback.
+ */
+export function isMobileTextInputDevice(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return (
+    window.matchMedia(COARSE_POINTER_QUERY).matches &&
+    (!window.matchMedia(FINE_POINTER_QUERY).matches ||
+      isIOSDevice() ||
+      softwareKeyboardOccludesViewport())
+  );
 }
 
 function setKeyboardOpen(keyboardOcclusion: number): void {
@@ -176,7 +229,11 @@ function updateKeyboardViewportState(
   setKeyboardOpen(readKeyboardOcclusion(state.baselineHeight, viewport));
 }
 
-export function setupVisualViewportKeyboardState(): () => void {
+export function setupVisualViewportKeyboardState(
+  signal: AbortSignal,
+  resetSettledSignal: () => AbortSignal,
+): () => void {
+  signal.throwIfAborted();
   const viewport = window.visualViewport;
 
   if (!viewport) {
@@ -193,13 +250,23 @@ export function setupVisualViewportKeyboardState(): () => void {
   };
   let scheduledFrameId: number | null = null;
   let revealFrameId: number | null = null;
-  let settledTimerId: number | null = null;
+  let settledTimerSignal: AbortSignal | null = null;
 
   const cancelSettledUpdate = () => {
-    if (settledTimerId !== null) {
-      window.clearTimeout(settledTimerId);
-      settledTimerId = null;
+    if (settledTimerSignal) {
+      resetSettledSignal();
+      settledTimerSignal = null;
     }
+  };
+
+  const commitSettledUpdate = async (settledSignal: AbortSignal) => {
+    await delay(VIEWPORT_SETTLE_DELAY_MS, { signal: settledSignal });
+    settledSignal.throwIfAborted();
+    if (settledTimerSignal !== settledSignal) {
+      return;
+    }
+    settledTimerSignal = null;
+    update(true);
   };
 
   const update = (commitOpening: boolean) => {
@@ -238,10 +305,13 @@ export function setupVisualViewportKeyboardState(): () => void {
     // The short trailing read also prevents the first stale resize sample from
     // moving the page before the native focus pan has settled.
     cancelSettledUpdate();
-    settledTimerId = window.setTimeout(() => {
-      settledTimerId = null;
-      update(true);
-    }, VIEWPORT_SETTLE_DELAY_MS);
+    const settledSignal = resetSettledSignal();
+    settledTimerSignal = settledSignal;
+    detach(
+      commitSettledUpdate(settledSignal),
+      Reason.DomCallback,
+      "visual viewport settle",
+    );
   };
 
   const scheduleBaselineReset = () => {
@@ -269,7 +339,13 @@ export function setupVisualViewportKeyboardState(): () => void {
   document.addEventListener("focusout", scheduleUpdate);
   update(false);
 
-  return () => {
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) {
+      return;
+    }
+    cleanedUp = true;
+    signal.removeEventListener("abort", cleanup);
     viewport.removeEventListener("resize", scheduleUpdate);
     viewport.removeEventListener("scroll", scheduleUpdate);
     window.removeEventListener("orientationchange", scheduleBaselineReset);
@@ -284,4 +360,6 @@ export function setupVisualViewportKeyboardState(): () => void {
     cancelSettledUpdate();
     setKeyboardClosed();
   };
+  signal.addEventListener("abort", cleanup, { once: true });
+  return cleanup;
 }

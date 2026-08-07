@@ -58,4 +58,24 @@ describe("app skeleton", () => {
 
     expect(document.getElementById("app-bootstrap-skeleton")).toBeNull();
   });
+
+  it("renders the loading state in the workspace locale", async () => {
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/_/skeleton",
+    });
+
+    const skeletons = await screen.findAllByRole("status", {
+      name: "Carregando seu espaço de trabalho",
+    });
+    expect(skeletons.length).toBeGreaterThan(0);
+    expect(skeletons[0]).toHaveTextContent(
+      /Aquecendo os neurônios|Preparando algumas ideias|Preparando tudo|Quase lá|Carregando seu espaço de trabalho|Ajustando os instrumentos|Ligando os pontos|Reunindo a equipe/u,
+    );
+  });
 });

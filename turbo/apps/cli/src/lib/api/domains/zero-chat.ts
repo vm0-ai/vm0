@@ -1,5 +1,9 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
+  type ChatEvent,
+  type ChatEventSendBody,
+  chatEventsContract,
+  chatThreadEventsContract,
   chatThreadsContract,
   type ChatThreadEvent,
   chatThreadMetadataContract,
@@ -10,6 +14,7 @@ import {
   type ChatThreadSnapshotProjection,
   type ChatSearchResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export interface ZeroChatThreadSnapshot {
@@ -18,9 +23,27 @@ export interface ZeroChatThreadSnapshot {
   readonly latestSeqId: number | null;
 }
 
-export type ZeroChatThreadEvent = Omit<ChatThreadEvent, "seqId"> & {
-  readonly seqId?: number;
-};
+export type ZeroChatThreadEvent = ChatThreadEvent;
+
+function requireSupportedModel(model: string) {
+  if (!isSupportedRunModel(model)) {
+    throw new Error(`Unsupported chat model: ${model}`);
+  }
+  return model;
+}
+
+interface ZeroChatThreadCreateResult {
+  readonly threadId: string;
+  readonly title: string | null;
+  readonly selectedModel: string | null;
+}
+
+interface ZeroChatEventSendResult {
+  readonly runId: string | null;
+  readonly threadId: string;
+  readonly status?: string;
+  readonly createdAt?: string;
+}
 
 type ZeroChatThreadEventsResult =
   | {
@@ -62,9 +85,7 @@ export async function getZeroChatThreadSnapshot(): Promise<ZeroChatThreadSnapsho
     return {
       chatThreads: result.body.chatThreads,
       latestEventId: result.body.latestEventId,
-      // CLI releases can reach an API that has not promoted sequence cursors
-      // yet, so preserve the UUID cursor until the new field is present.
-      latestSeqId: result.body.latestSeqId ?? null,
+      latestSeqId: result.body.latestSeqId,
     };
   }
   handleError(result, "Failed to get chat thread snapshot");
@@ -72,15 +93,14 @@ export async function getZeroChatThreadSnapshot(): Promise<ZeroChatThreadSnapsho
 
 export async function listZeroChatThreadEvents(options: {
   sinceSeqId?: number;
-  sinceEventId?: string;
 }): Promise<ZeroChatThreadEventsResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadsContract, config);
   const result = await client.events({
-    query: {
-      ...(options.sinceSeqId ? { sinceSeqId: options.sinceSeqId } : {}),
-      ...(options.sinceEventId ? { sinceEventId: options.sinceEventId } : {}),
-    },
+    query:
+      options.sinceSeqId === undefined
+        ? {}
+        : { sinceSeqId: options.sinceSeqId },
   });
   if (result.status === 200) {
     return {
@@ -93,6 +113,32 @@ export async function listZeroChatThreadEvents(options: {
     return { kind: "expired" };
   }
   handleError(result, "Failed to list chat thread events");
+}
+
+export async function createZeroChatThread(options: {
+  agentId: string;
+  title: string;
+  model?: string;
+}): Promise<ZeroChatThreadCreateResult> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadsContract, config);
+  const result = await client.create({
+    body: {
+      agentId: options.agentId,
+      title: options.title,
+      ...(options.model === undefined
+        ? {}
+        : { model: requireSupportedModel(options.model) }),
+    },
+  });
+  if (result.status === 201) {
+    return {
+      threadId: result.body.id,
+      title: result.body.title,
+      selectedModel: result.body.selectedModel,
+    };
+  }
+  handleError(result, "Failed to create chat thread");
 }
 
 export async function renameZeroChatThread(options: {
@@ -125,20 +171,61 @@ export async function getZeroChatThread(options: {
   handleError(result, "Failed to get chat thread");
 }
 
+export async function getZeroChatThreadAgentId(options: {
+  threadId: string;
+}): Promise<string> {
+  const thread = await getZeroChatThread(options);
+  return thread.agentId;
+}
+
+export async function sendZeroChatEvent(
+  body: ChatEventSendBody,
+): Promise<ZeroChatEventSendResult> {
+  const config = await getClientConfig();
+  const client = initClient(chatEventsContract, config);
+  const result = await client.send({ body });
+  if (result.status === 201) {
+    return result.body;
+  }
+  handleError(result, "Failed to send chat event");
+}
+
+export async function listZeroChatEvents(options: {
+  threadId: string;
+  beforeSeqId?: number;
+  limit?: number;
+}): Promise<readonly ChatEvent[]> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadEventsContract, config);
+  const result = await client.list({
+    params: { threadId: options.threadId },
+    query: {
+      beforeSeqId: options.beforeSeqId,
+      limit: options.limit,
+    },
+  });
+  if (result.status === 200) {
+    return result.body.events;
+  }
+  handleError(result, "Failed to list chat events");
+}
+
 export async function updateZeroChatThreadModelSelection(options: {
   threadId: string;
   model: string | null;
 }): Promise<{ threadId: string; selectedModel: string | null }> {
   const config = await getClientConfig();
   const client = initClient(chatThreadModelSelectionContract, config);
+  const model =
+    options.model === null ? null : requireSupportedModel(options.model);
   const result = await client.update({
     params: { id: options.threadId },
-    body: { model: options.model },
+    body: { model },
   });
   if (result.status === 204) {
     return {
       threadId: options.threadId,
-      selectedModel: options.model,
+      selectedModel: model,
     };
   }
   handleError(result, "Failed to update chat thread model");

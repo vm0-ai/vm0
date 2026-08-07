@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getProviderRuntimeModel,
   getVm0Vendor,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -16,18 +15,26 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { e2eTeamsMockCallLog } from "@vm0/db/schema/e2e-teams-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
 import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
-import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -37,7 +44,8 @@ import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
+import type { Tx } from "../../lib/db-types";
 
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_TENANT_NAME = "E2E Test Tenant";
@@ -51,7 +59,7 @@ const STARTER_GRANT_SOURCE = "starter_grant";
 const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
 const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
 
-type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type StarterGrantTx = Tx;
 
 function isoString(value: Date): string {
   return value.toISOString();
@@ -66,30 +74,6 @@ function contentKeys(value: unknown): string[] {
     return Object.keys(value);
   }
   return [];
-}
-
-function e2eTeamsMockEnabled(): boolean {
-  const flag = optionalEnv("E2E_TEAMS_MOCK_ENABLED");
-  return flag === "1" || flag === "true";
-}
-
-function resolvedTeamsMockBaseUrl(): string | null {
-  const baseUrl = optionalEnv("TEAMS_MOCK_BASE_URL");
-  if (baseUrl) {
-    return baseUrl.replace(/\/+$/u, "");
-  }
-
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (e2eTeamsMockEnabled() && vercelUrl) {
-    return `https://${vercelUrl}/api/test/teams-mock`;
-  }
-
-  const apiBackendUrl = optionalEnv("VM0_API_BACKEND_URL");
-  if (e2eTeamsMockEnabled() && apiBackendUrl) {
-    return `${apiBackendUrl.replace(/\/+$/u, "")}/api/test/teams-mock`;
-  }
-
-  return null;
 }
 
 interface UpsertTeamsInstallationInput {
@@ -288,35 +272,26 @@ async function seedDefaultAgent(
 
 async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
   await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, composeId));
-  await db.insert(vm0ApiKeys).values(vm0ManagedKeyRows(composeId));
+  await db
+    .insert(vm0ApiKeys)
+    .values(vm0ManagedKeyRows(composeId))
+    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
 }
 
 function vm0ManagedKeyRows(composeId: string) {
   return [
     {
       vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      model: getProviderRuntimeModel(
-        "vm0",
-        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      ),
       apiKey: `vm0-key-default-${composeId}`,
       label: composeId,
     },
     {
       vendor: "anthropic",
-      model: "claude-sonnet-4-6",
       apiKey: `vm0-key-anthropic-${composeId}`,
       label: composeId,
     },
     {
-      vendor: "deepseek",
-      model: "deepseek-v4-pro",
-      apiKey: `vm0-key-deepseek-${composeId}`,
-      label: composeId,
-    },
-    {
       vendor: "moonshot",
-      model: "kimi-k2.7-code",
       apiKey: `vm0-key-moonshot-${composeId}`,
       label: composeId,
     },
@@ -546,6 +521,24 @@ function teamsConnections(db: ReadonlyDb, tenantId: string) {
     .where(eq(teamsOrgConnections.teamsTenantId, tenantId));
 }
 
+function teamsRoutes(db: ReadonlyDb, connectionIds: readonly string[]) {
+  if (connectionIds.length === 0) {
+    return [];
+  }
+  return db
+    .select({
+      id: teamsChatThreadRoutes.id,
+      connectionId: teamsChatThreadRoutes.connectionId,
+      conversationId: teamsChatThreadRoutes.conversationId,
+      threadId: teamsChatThreadRoutes.threadId,
+      userId: teamsChatThreadRoutes.userId,
+      chatThreadId: teamsChatThreadRoutes.chatThreadId,
+      createdAt: teamsChatThreadRoutes.createdAt,
+    })
+    .from(teamsChatThreadRoutes)
+    .where(inArray(teamsChatThreadRoutes.connectionId, [...connectionIds]));
+}
+
 function recentTeamsRuns(db: ReadonlyDb, orgId: string | null | undefined) {
   if (!orgId) {
     return [];
@@ -556,6 +549,7 @@ function recentTeamsRuns(db: ReadonlyDb, orgId: string | null | undefined) {
       status: agentRuns.status,
       createdAt: agentRuns.createdAt,
       triggerSource: zeroRuns.triggerSource,
+      chatThreadId: zeroRuns.chatThreadId,
       userId: agentRuns.userId,
       error: agentRuns.error,
       promptPreview: sql`substring(${agentRuns.prompt}, 1, 200)`.mapWith(
@@ -594,7 +588,13 @@ function recentTeamsCallbacks(
     .where(
       and(
         eq(agentRuns.orgId, orgId),
-        eq(agentRunCallbacks.internalKind, "teams:org"),
+        or(
+          eq(agentRunCallbacks.internalKind, "teams:chat"),
+          and(
+            eq(agentRunCallbacks.internalKind, "chat"),
+            isNotNull(sql`${agentRunCallbacks.payload}->'teamsDelivery'`),
+          ),
+        ),
       ),
     )
     .orderBy(desc(agentRunCallbacks.createdAt))
@@ -674,37 +674,6 @@ async function defaultComposeVersionFor(
   return row ?? null;
 }
 
-function recentMockCalls(db: ReadonlyDb, tenantId: string | undefined) {
-  const query = db
-    .select({
-      method: e2eTeamsMockCallLog.method,
-      tenantId: e2eTeamsMockCallLog.tenantId,
-      conversationId: e2eTeamsMockCallLog.conversationId,
-      activityId: e2eTeamsMockCallLog.activityId,
-      bodyJson: e2eTeamsMockCallLog.bodyJson,
-      createdAt: e2eTeamsMockCallLog.createdAt,
-    })
-    .from(e2eTeamsMockCallLog)
-    .orderBy(desc(e2eTeamsMockCallLog.createdAt))
-    .limit(50);
-  if (!tenantId) {
-    return query;
-  }
-  return db
-    .select({
-      method: e2eTeamsMockCallLog.method,
-      tenantId: e2eTeamsMockCallLog.tenantId,
-      conversationId: e2eTeamsMockCallLog.conversationId,
-      activityId: e2eTeamsMockCallLog.activityId,
-      bodyJson: e2eTeamsMockCallLog.bodyJson,
-      createdAt: e2eTeamsMockCallLog.createdAt,
-    })
-    .from(e2eTeamsMockCallLog)
-    .where(eq(e2eTeamsMockCallLog.tenantId, tenantId))
-    .orderBy(desc(e2eTeamsMockCallLog.createdAt))
-    .limit(50);
-}
-
 const getTeamsState$ = computed(async (get) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -726,6 +695,12 @@ const getTeamsState$ = computed(async (get) => {
   const connections = query.tenant_id
     ? await teamsConnections(db, query.tenant_id)
     : [];
+  const routes = await teamsRoutes(
+    db,
+    connections.map((connection) => {
+      return connection.id;
+    }),
+  );
   const stateOrgId = query.org_id ?? installationRow?.orgId;
   const recentRuns = await recentTeamsRuns(db, stateOrgId);
   const orgMeta = await orgMetaFor(db, stateOrgId);
@@ -735,7 +710,6 @@ const getTeamsState$ = computed(async (get) => {
     db,
     compose?.headVersionId,
   );
-  const mockCalls = await recentMockCalls(db, query.tenant_id);
   const callbacks = await recentTeamsCallbacks(db, stateOrgId);
 
   return {
@@ -749,6 +723,9 @@ const getTeamsState$ = computed(async (get) => {
         : null,
       connections: connections.map((connection) => {
         return { ...connection, createdAt: isoString(connection.createdAt) };
+      }),
+      routes: routes.map((route) => {
+        return { ...route, createdAt: isoString(route.createdAt) };
       }),
       recent_runs: recentRuns.map((run) => {
         return { ...run, createdAt: isoString(run.createdAt) };
@@ -770,10 +747,6 @@ const getTeamsState$ = computed(async (get) => {
             content_keys: contentKeys(composeVersion.content),
           }
         : null,
-      resolved_teams_mock_base_url: resolvedTeamsMockBaseUrl(),
-      mock_calls: mockCalls.map((call) => {
-        return { ...call, createdAt: isoString(call.createdAt) };
-      }),
     },
   };
 });
@@ -1022,10 +995,6 @@ async function deleteTeamsTenantsForState(
   await db
     .delete(teamsOrgInstallations)
     .where(inArray(teamsOrgInstallations.teamsTenantId, tenantIds));
-  signal.throwIfAborted();
-  await db
-    .delete(e2eTeamsMockCallLog)
-    .where(inArray(e2eTeamsMockCallLog.tenantId, tenantIds));
   signal.throwIfAborted();
 }
 

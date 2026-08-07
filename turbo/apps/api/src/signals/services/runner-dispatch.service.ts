@@ -1,13 +1,15 @@
 import { publishRunnerJobNotification } from "../external/realtime";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import {
-  runnerSessionAffinityLookupError,
-  runnerSessionAffinityProtection,
-  runnerSessionAffinityTelemetryResource,
-} from "./runner-session-affinity";
+  runnerPreferenceDecisionTelemetryDimensions,
+  runnerPreferenceDeliveryFields,
+  runnerReuseKeyTelemetryKind,
+  runnerReusePreferenceLookupErrorDecision,
+  resolveRunnerReusePreference,
+} from "./runner-reuse-preference";
 import { tapError } from "../utils";
 
 const L = logger("RunnerDispatch");
@@ -18,6 +20,7 @@ export async function notifyRunnerJob(
     readonly runnerGroup: string;
     readonly runId: string;
     readonly profile: string;
+    readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationRunId: string | undefined;
     readonly createdAt: Date;
@@ -25,22 +28,22 @@ export async function notifyRunnerJob(
 ): Promise<boolean> {
   const notificationEnteredAt = now();
   const currentDate = new Date(notificationEnteredAt);
-  let affinityLookupSucceeded = true;
-  const affinity =
+  let preferenceLookupSucceeded = true;
+  const runnerPreferenceDecision =
     (await tapError(
-      runnerSessionAffinityProtection({
+      resolveRunnerReusePreference({
         db,
         runnerGroup: args.runnerGroup,
         profile: args.profile,
-        cliAgentSessionId: args.cliAgentSessionId,
+        reuseKey: args.reuseKey,
         historyGenerationRunId: args.historyGenerationRunId,
         createdAt: args.createdAt,
         currentDate,
       }),
       (error) => {
-        affinityLookupSucceeded = false;
+        preferenceLookupSucceeded = false;
         L.warn(
-          "Failed to resolve runner session affinity for job notification",
+          "Failed to resolve runner reuse preference for job notification",
           {
             runId: args.runId,
             runnerGroup: args.runnerGroup,
@@ -49,34 +52,37 @@ export async function notifyRunnerJob(
           },
         );
       },
-    )) ?? runnerSessionAffinityLookupError();
-  const affinityFinishedAt = now();
+    )) ?? runnerReusePreferenceLookupErrorDecision();
+  const runnerPreferenceFields = runnerPreferenceDeliveryFields(
+    runnerPreferenceDecision,
+  );
+  const preferenceFinishedAt = now();
   const publishStartedAt = now();
   const published = await publishRunnerJobNotification(
     args.runnerGroup,
     args.runId,
     args.profile,
     {
+      reuseKey: args.reuseKey,
       cliAgentSessionId: args.cliAgentSessionId,
-      historyGenerationAffinityProtectedUntil:
-        affinity.historyGenerationProtectedUntil?.toISOString() ?? null,
-      affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
-      sessionAffinityResource: affinity.resource,
       historyGenerationRunId: args.historyGenerationRunId,
+      ...runnerPreferenceFields,
     },
   );
   const publishFinishedAt = now();
 
-  const dimensions = {
+  const dimensions: Record<string, string> = {
     runner_group: args.runnerGroup,
     profile: args.profile,
     notification_target: "broadcast",
-    session_affinity: affinity.status,
-    session_affinity_resource: runnerSessionAffinityTelemetryResource(affinity),
-    history_generation_affinity: affinity.historyGenerationStatus,
+    reuse_key_kind: runnerReuseKeyTelemetryKind(args.reuseKey),
+    ...runnerPreferenceDecisionTelemetryDimensions(runnerPreferenceDecision),
   };
-  // Queue-relative actions are cumulative boundaries. Affinity and publish
-  // durations are nested children and must not be added to those boundaries.
+  if (args.historyGenerationRunId) {
+    dimensions.history_generation_run_id = args.historyGenerationRunId;
+  }
+  // Queue-relative actions are cumulative boundaries. Preference lookup and
+  // publish durations are nested children and must not be added to them.
   recordSandboxOperations([
     {
       sandboxType: "runner",
@@ -89,8 +95,8 @@ export async function notifyRunnerJob(
     {
       sandboxType: "runner",
       actionType: "runner_notification_affinity_lookup",
-      durationMs: Math.max(0, affinityFinishedAt - notificationEnteredAt),
-      success: affinityLookupSucceeded,
+      durationMs: Math.max(0, preferenceFinishedAt - notificationEnteredAt),
+      success: preferenceLookupSucceeded,
       runId: args.runId,
       dimensions,
     },

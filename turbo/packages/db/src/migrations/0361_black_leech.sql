@@ -1,1 +1,0 @@
-ALTER TABLE "zero_agents" ADD COLUMN "visibility" varchar(16) DEFAULT 'public' NOT NULL;

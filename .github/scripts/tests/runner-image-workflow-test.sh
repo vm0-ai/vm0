@@ -14,6 +14,20 @@ command -v yq >/dev/null || fail "yq is required"
 workflow_json=$(yq -o=json '.' "$WORKFLOW")
 
 jq -e '
+  .jobs.prepare.outputs["playwright-runner-consumer-needed"] ==
+    "${{ steps.needed.outputs.playwright-runner-consumer-needed }}" and
+  any(.jobs.prepare.steps[];
+    .id == "playwright" and
+    (.run | contains(".github/scripts/runner-image-context.sh playwright-consumer"))
+  ) and
+  any(.jobs.prepare.steps[];
+    .id == "needed" and
+    .env.PLAYWRIGHT_RUNNER_CONSUMER_NEEDED ==
+      "${{ steps.playwright.outputs.playwright-runner-consumer-needed }}"
+  )
+' <<<"$workflow_json" >/dev/null || fail "Playwright dedicated-runner demand must reach runner image selection"
+
+jq -e '
   .jobs["cancel-superseded"].name == "Cancel superseded merge-group CI" and
   .jobs["cancel-superseded"].if == "github.event_name == '\''merge_group'\''" and
   .jobs["cancel-superseded"].permissions.actions == "write" and
@@ -73,7 +87,7 @@ jq -e '
   ) and
   ((.jobs.compile.steps | map(.uses // .name) | index("Configure git safe directory")) <
     (.jobs.compile.steps | map(.uses // .name) | index("Build runner binary"))) and
-  any(.jobs.compile.steps[]; .uses == "mozilla-actions/sccache-action@v0.0.10") and
+  any(.jobs.compile.steps[]; .uses == "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba") and
   any(.jobs.compile.steps[]; .uses == "Swatinem/rust-cache@v2") and
   any(.jobs.compile.steps[]; .run == ".github/scripts/runner-binary-build/build.sh build") and
   any(.jobs.compile.steps[];
@@ -86,7 +100,7 @@ jq -e '
 
 jq -e '
   ([.jobs | to_entries[] |
-    select(any(.value.steps[]?; .uses == "mozilla-actions/sccache-action@v0.0.10")) |
+    select(any(.value.steps[]?; .uses == "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba")) |
     .key] == ["compile"]) and
   ([.jobs | to_entries[] |
     select(any(.value.steps[]?; .uses == "Swatinem/rust-cache@v2")) |

@@ -70,6 +70,27 @@ async fn execute_inner_happy_path() {
 }
 
 #[tokio::test]
+async fn execute_inner_binds_run_control_before_sandbox_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let context = minimal_context();
+    let run_id = context.run_id.to_string();
+
+    let (exit_code, error_msg) =
+        run_new_sandbox_status(&factory, &context, &config, &default_params())
+            .await
+            .unwrap();
+
+    assert_eq!(exit_code, 0);
+    assert!(error_msg.is_none());
+    assert_eq!(overrides.run_control_bind_calls(), vec![run_id.clone()]);
+    assert_eq!(overrides.start_run_control_ids(), vec![Some(run_id)]);
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
 async fn execute_inner_carries_early_codex_catalog_prefetch_into_agent_run() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -858,6 +879,14 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     ctx.user_timezone = Some("Asia/Shanghai".into());
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_USER_ENV".into(), "visible-to-cli".into()),
+        (
+            "ZERO_APP_URL".into(),
+            "https://app.runner-env.example.test/path".into(),
+        ),
+        (
+            "VM0_APP_URL".into(),
+            "https://filtered.runner-env.example.test".into(),
+        ),
         ("BASH_ENV".into(), "/tmp/user-bash-env".into()),
         ("NODE_OPTIONS".into(), "--require /tmp/user-node.js".into()),
         ("VM0_API_TOKEN".into(), "stolen-token".into()),
@@ -904,7 +933,14 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             "{key} should be passed through the run payload file"
         );
     }
-    for key in ["CUSTOM_USER_ENV", "BASH_ENV", "NODE_OPTIONS", "TZ"] {
+    for key in [
+        "CUSTOM_USER_ENV",
+        "ZERO_APP_URL",
+        "VM0_APP_URL",
+        "BASH_ENV",
+        "NODE_OPTIONS",
+        "TZ",
+    ] {
         assert!(
             !start_env.contains_key(key),
             "{key} should not be passed to guest-agent bootstrap"
@@ -932,12 +968,17 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let user_env: HashMap<String, String> =
         serde_json::from_slice(&user_env_write.content).unwrap();
     assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
+    assert_eq!(
+        user_env.get("ZERO_APP_URL").unwrap(),
+        "https://app.runner-env.example.test/path"
+    );
     assert_eq!(user_env.get("BASH_ENV").unwrap(), "/tmp/user-bash-env");
     assert_eq!(
         user_env.get("NODE_OPTIONS").unwrap(),
         "--require /tmp/user-node.js"
     );
     assert_eq!(user_env.get("TZ").unwrap(), "Asia/Shanghai");
+    assert!(!user_env.contains_key("VM0_APP_URL"));
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
     assert!(!user_env.contains_key(USER_ENV_FILE_ENV_KEY));
     assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));
@@ -1202,7 +1243,7 @@ async fn execute_job_wraps_execute_inner() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1227,7 +1268,7 @@ async fn execute_job_create_failure_returns_exit_1() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1255,7 +1296,7 @@ async fn execute_job_model_provider_env_validation_failure_returns_run_failure()
         ctx,
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1289,7 +1330,7 @@ async fn execute_job_claude_tool_validation_failure_skips_sandbox_create() {
         ctx,
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1325,7 +1366,7 @@ async fn execute_job_codex_ignores_claude_tool_validation() {
         ctx,
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1350,7 +1391,7 @@ async fn execute_job_nonzero_exit_still_returns_sandbox() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1358,9 +1399,10 @@ async fn execute_job_nonzero_exit_still_returns_sandbox() {
     )
     .await;
 
-    // Sandbox should be alive regardless of exit code (caller decides fate)
+    // The executor returns sandbox ownership even though finalization must
+    // destroy it after a non-zero exit.
     assert!(
         outcome.sandbox.is_some(),
-        "sandbox must be returned for caller to stop+destroy or park"
+        "sandbox must be returned for caller finalization"
     );
 }

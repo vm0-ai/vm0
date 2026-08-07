@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
@@ -18,8 +18,7 @@ use super::super::env::{
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
     api_artifact, api_storage, build_env_for_test, build_env_for_test_result,
-    build_env_for_test_with_active_input, build_env_for_test_with_host_env, context_with_env,
-    minimal_context, sandbox_write_file_error,
+    build_env_for_test_with_host_env, context_with_env, minimal_context, sandbox_write_file_error,
 };
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::{
@@ -28,7 +27,10 @@ use crate::host_env::{
 };
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
-use crate::types::{CodexRuntimeConfig, ExecutionContext, ResumeSession, SandboxReuseResult};
+use crate::types::{
+    CodexRuntimeConfig, ExecutionContext, PiModelConfig, ResumeSession, RunSkillSnapshot,
+    RunSkillSnapshotEntry, SandboxReuseResult,
+};
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
     let sandbox_id = SandboxId::new_v4().to_string();
@@ -42,10 +44,12 @@ fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
 
 fn codex_runtime_config_for_test(model_catalog: Option<serde_json::Value>) -> CodexRuntimeConfig {
     CodexRuntimeConfig {
-        provider_id: "minimax".into(),
-        name: "MiniMax".into(),
-        base_url: "https://api.minimax.io/v1".into(),
+        provider_id: "deepseek".into(),
+        name: "DeepSeek".into(),
+        base_url: "https://api.deepseek.com/".into(),
         env_key: "OPENAI_API_KEY".into(),
+        http_headers: None,
+        requires_openai_auth: None,
         wire_api: "responses".into(),
         supports_websockets: false,
         model_catalog,
@@ -377,6 +381,11 @@ fn build_env_json_required_keys() {
     assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
     assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
+        env.get(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV)
+            .unwrap(),
+        "7200"
+    );
+    assert_eq!(
         env.get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
@@ -400,7 +409,7 @@ fn build_env_json_sandbox_reuse_result_wire_format() {
     let sid = SandboxId::new_v4().to_string();
     for (variant, expected) in [
         (SandboxReuseResult::Reused, "reused"),
-        (SandboxReuseResult::NoSessionId, "noSessionId"),
+        (SandboxReuseResult::NoReuseKey, "noReuseKey"),
         (SandboxReuseResult::PoolMiss, "poolMiss"),
         (SandboxReuseResult::ProfileMismatch, "profileMismatch"),
         (
@@ -484,47 +493,10 @@ fn build_env_json_codex_gets_only_codex_framework_env() {
 
     assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
     assert_eq!(env.get("USE_MOCK_CODEX").unwrap(), "1");
-    assert!(!env.contains_key(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV));
     assert!(!env.contains_key("USE_MOCK_CLAUDE"));
     assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
     assert!(!env.contains_key("VM0_TOOLS"));
     assert!(!env.contains_key("VM0_SETTINGS"));
-}
-
-#[test]
-fn build_env_json_codex_without_active_input_does_not_enable_app_server_backend() {
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "codex".into();
-
-    let env = build_env_for_test(&ctx, "http://localhost");
-
-    assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
-    assert!(!env.contains_key(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV));
-}
-
-#[test]
-fn build_env_json_codex_with_active_input_enables_app_server_backend() {
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "codex".into();
-
-    let env = build_env_for_test_with_active_input(&ctx, "http://localhost");
-
-    assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
-    assert_eq!(
-        env.get(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV)
-            .unwrap(),
-        "1"
-    );
-}
-
-#[test]
-fn build_env_json_claude_with_active_input_does_not_enable_codex_app_server_backend() {
-    let ctx = minimal_context();
-
-    let env = build_env_for_test_with_active_input(&ctx, "http://localhost");
-
-    assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "claude-code");
-    assert!(!env.contains_key(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV));
 }
 
 #[test]
@@ -579,10 +551,6 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         (
             guest_contracts::env::FEATURE_FLAGS_ENV.into(),
             r#"{"bad":true}"#.into(),
-        ),
-        (
-            guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV.into(),
-            "1".into(),
         ),
         ("VM0_FUTURE_RUNNER_KEY".into(), "future".into()),
         (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
@@ -651,7 +619,6 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         guest_contracts::env::WORKING_DIR_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
-        guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
         "VM0_FUTURE_RUNNER_KEY",
         RUNNER_CONCURRENCY_FACTOR_ENV,
         RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
@@ -1197,19 +1164,33 @@ fn build_run_payload_for_run_rejects_prompt_nul() {
 #[test]
 fn build_run_payload_for_run_serializes_codex_runtime_config() {
     let mut ctx = minimal_context();
-    ctx.codex_runtime_config = Some(codex_runtime_config_for_test(Some(json!({
-        "models": [{ "slug": "MiniMax-M3" }],
-    }))));
+    let mut config = codex_runtime_config_for_test(Some(json!({
+        "models": [{ "slug": "deepseek-v4-flash" }],
+    })));
+    config.http_headers = Some(BTreeMap::from([(
+        "x-api-key".to_string(),
+        "__VM0_OPENAI_API_KEY_PLACEHOLDER__".to_string(),
+    )]));
+    config.requires_openai_auth = Some(false);
+    ctx.codex_runtime_config = Some(config);
 
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let value: serde_json::Value = serde_json::from_str(&payload.codex_runtime_config).unwrap();
 
-    assert_eq!(value["providerId"], "minimax");
-    assert_eq!(value["baseUrl"], "https://api.minimax.io/v1");
+    assert_eq!(value["providerId"], "deepseek");
+    assert_eq!(value["baseUrl"], "https://api.deepseek.com/");
     assert_eq!(value["envKey"], "OPENAI_API_KEY");
+    assert_eq!(
+        value["httpHeaders"]["x-api-key"],
+        "__VM0_OPENAI_API_KEY_PLACEHOLDER__"
+    );
+    assert_eq!(value["requiresOpenaiAuth"], false);
     assert_eq!(value["wireApi"], "responses");
     assert_eq!(value["supportsWebsockets"], false);
-    assert_eq!(value["modelCatalog"]["models"][0]["slug"], "MiniMax-M3");
+    assert_eq!(
+        value["modelCatalog"]["models"][0]["slug"],
+        "deepseek-v4-flash"
+    );
 }
 
 #[test]
@@ -1219,6 +1200,43 @@ fn build_run_payload_for_run_omits_absent_codex_runtime_config() {
     let payload = build_run_payload_for_run(&ctx).unwrap();
 
     assert!(payload.codex_runtime_config.is_empty());
+}
+
+#[test]
+fn build_run_payload_for_run_preserves_pi_resources() {
+    let mut ctx = minimal_context();
+    ctx.pi_system_prompt = Some("fixed Pi prompt".to_string());
+    ctx.pi_model_config = Some(PiModelConfig {
+        provider: "deepseek".to_string(),
+        base_url: "https://api.deepseek.com/".to_string(),
+        model: "deepseek-v4-flash".to_string(),
+        api_key_env: "OPENAI_API_KEY".to_string(),
+    });
+    ctx.run_skill_snapshot = Some(RunSkillSnapshot {
+        schema_version: 1,
+        policy_version: 1,
+        root: "/home/user/.pi/agent/skills".to_string(),
+        digest: format!("sha256:{}", "a".repeat(64)),
+        entries: vec![RunSkillSnapshotEntry {
+            logical_dir: "/home/user/.pi/agent/skills/demo".to_string(),
+            skill_file: "/home/user/.pi/agent/skills/demo/SKILL.md".to_string(),
+            org_id: "org-1".to_string(),
+            user_id: "user-1".to_string(),
+            storage_name: "skill-demo".to_string(),
+            storage_id: "storage-1".to_string(),
+            version_id: "version-1".to_string(),
+        }],
+    });
+
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+
+    assert_eq!(payload.pi_system_prompt, "fixed Pi prompt");
+    let model: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
+    assert_eq!(model["provider"], "deepseek");
+    assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");
+    let snapshot: serde_json::Value = serde_json::from_str(&payload.run_skill_snapshot).unwrap();
+    assert_eq!(snapshot["digest"], format!("sha256:{}", "a".repeat(64)));
+    assert_eq!(snapshot["entries"][0]["versionId"], "version-1");
 }
 
 #[test]
@@ -1239,7 +1257,7 @@ fn execution_context_validation_rejects_codex_runtime_config_nul() {
 
 #[test]
 fn execution_context_validation_rejects_codex_runtime_config_catalog_nul() {
-    let secret = "MiniMax\0M3";
+    let secret = "DeepSeek\0Flash";
     let mut ctx = minimal_context();
     ctx.codex_runtime_config = Some(codex_runtime_config_for_test(Some(json!({
         "models": [{ "slug": secret }],
@@ -1418,7 +1436,7 @@ fn execution_context_deserializes_with_firewalls() {
     let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
     let svcs = ctx.firewalls.unwrap();
     assert_eq!(svcs.len(), 1);
-    let crate::types::FirewallEntry::Inline { firewall } = &svcs[0] else {
+    let crate::types::FirewallEntry::Inline { firewall, .. } = &svcs[0] else {
         panic!("expected inline firewall entry");
     };
     assert_eq!(firewall.name, "github");

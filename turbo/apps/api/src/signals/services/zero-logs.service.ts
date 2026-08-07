@@ -22,7 +22,6 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { conversations } from "@vm0/db/schema/conversation";
-import { alias } from "drizzle-orm/pg-core";
 import {
   and,
   count,
@@ -44,8 +43,6 @@ import { now } from "../../lib/time";
 import { runContextCliAgentType } from "./run-context-framework.service";
 
 type ServiceDb = Pick<Db, "select" | "selectDistinct">;
-
-const triggerAgentAlias = alias(zeroAgents, "trigger_agent");
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const AXIOM_RUN_ID_FILTER_CHUNK_SIZE = 500;
@@ -197,7 +194,6 @@ export function zeroLogsList(
           composeName: agentComposes.name,
           composeContent: agentComposeVersions.content,
           displayName: zeroAgents.displayName,
-          triggerAgentName: triggerAgentAlias.displayName,
           cliAgentSessionId: conversations.cliAgentSessionId,
         })
         .from(agentRuns)
@@ -212,10 +208,6 @@ export function zeroLogsList(
           eq(agentSessions.agentComposeId, agentComposes.id),
         )
         .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
-        .leftJoin(
-          triggerAgentAlias,
-          eq(zeroRuns.triggerAgentId, triggerAgentAlias.id),
-        )
         .leftJoin(conversations, eq(agentRuns.id, conversations.runId))
         .where(whereClause)
         .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
@@ -242,8 +234,7 @@ export function zeroLogsList(
           agentId: run.agentId ?? null,
           displayName: run.displayName ?? null,
           framework: extractFramework(run.composeContent),
-          triggerSource: normalizeTriggerSource(run.triggerSource ?? "cli"),
-          triggerAgentName: run.triggerAgentName ?? null,
+          triggerSource: normalizeTriggerSource(run.triggerSource),
           status: run.status as LogStatus,
           prompt: run.prompt,
           createdAt: run.createdAt.toISOString(),
@@ -397,7 +388,6 @@ export function zeroLogDetail(
         agentId: zeroAgents.id,
         agentDisplayName: zeroAgents.displayName,
         triggerSource: zeroRuns.triggerSource,
-        triggerAgentName: triggerAgentAlias.displayName,
         modelProvider: zeroRuns.modelProvider,
         selectedModel: zeroRuns.selectedModel,
       })
@@ -409,10 +399,6 @@ export function zeroLogDetail(
       )
       .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
       .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
-      .leftJoin(
-        triggerAgentAlias,
-        eq(zeroRuns.triggerAgentId, triggerAgentAlias.id),
-      )
       .where(
         and(
           eq(agentRuns.id, params.runId),
@@ -432,7 +418,6 @@ export function zeroLogDetail(
       agentId,
       agentDisplayName,
       triggerSource,
-      triggerAgentName,
       modelProvider,
       selectedModel,
     } = result;
@@ -451,8 +436,7 @@ export function zeroLogDetail(
       framework,
       modelProvider: modelProvider ?? null,
       selectedModel: selectedModel ?? null,
-      triggerSource: normalizeTriggerSource(triggerSource ?? "cli"),
-      triggerAgentName: triggerAgentName ?? null,
+      triggerSource: normalizeTriggerSource(triggerSource),
       status: run.status as LogStatus,
       prompt: run.prompt,
       appendSystemPrompt: run.appendSystemPrompt ?? null,

@@ -75,7 +75,7 @@ impl LocalCancelScanner {
         for marker in cancel_markers {
             let run_id = marker.run_id;
             if let Some(handle) = tokens.get(&run_id) {
-                if handle.cancel().await {
+                if handle.request_hard_cancellation().await {
                     info!(run_id = %run_id, "local: cancel file detected, cancelling job");
                 }
                 let should_delete = owned_claims.contains(&run_id)
@@ -267,12 +267,15 @@ mod tests {
         let run_id = RunId::new_v4();
         let registration = insert_cancel_registration(&tokens, run_id).await;
         let job_token = registration.token();
+        let signals = registration.handle().signals();
         write_job(dir.path(), run_id);
         write_cancel(dir.path(), run_id);
 
         scanner(dir.path(), tokens).scan_cancel_files().await;
 
         assert!(job_token.is_cancelled(), "cancel token should be triggered");
+        assert!(signals.hard().is_cancelled());
+        assert!(!signals.cooperative_user().is_cancelled());
     }
 
     #[tokio::test]

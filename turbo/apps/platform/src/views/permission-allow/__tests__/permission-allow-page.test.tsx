@@ -24,15 +24,15 @@ function catalogPermissionDetail(
   overrides: Partial<PublicConnectorCatalogPermissionDetail> &
     Pick<
       PublicConnectorCatalogPermissionDetail,
-      "connectorRef" | "label" | "permissions"
+      "connectorSlug" | "label" | "permissions"
     >,
 ): PublicConnectorCatalogPermissionDetail {
-  const { connectorRef, label, permissions, icon, ...rest } = overrides;
+  const { connectorSlug, label, permissions, icon, ...rest } = overrides;
   return {
-    connectorRef,
+    connectorSlug,
     label,
     icon: icon ?? {
-      url: `https://icons.example.test/${connectorRef}.svg`,
+      url: `https://icons.example.test/${connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     permissionCount: permissions.length,
@@ -52,7 +52,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=approve`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=approve`,
       user: {
         id: "test-user-123",
         fullName: "Dana Analyst",
@@ -92,10 +92,10 @@ describe("permission allow page", () => {
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ params, respond }) => {
-        expect(params.connectorRef).toBe("slack");
+        expect(params.connectorSlug).toBe("slack");
         return respond(200, {
           permissions: catalogPermissionDetail({
-            connectorRef: "slack",
+            connectorSlug: "slack",
             label: "Catalog Slack",
             icon: {
               url: "https://icons.example.test/permission-slack.svg",
@@ -122,7 +122,7 @@ describe("permission allow page", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorSlug: body.connectorSlug,
             permission: appliedGrant.permission,
             action: appliedGrant.action,
             expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
@@ -142,7 +142,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
       user: {
         id: "test-user-123",
         fullName: "Dana Analyst",
@@ -180,7 +180,7 @@ describe("permission allow page", () => {
     expect(screen.getByText(/Expires in (1 day|24 hours)/)).toBeInTheDocument();
     expect(capturedBody).toMatchObject({
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       mode: "patch",
       grants: [
         {
@@ -224,7 +224,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=hidden-connector&permission=hidden.permission&action=allow`,
+      path: `/agents/${agentId}/permissions?connectorSlug=hidden-connector&permission=hidden.permission&action=allow`,
       user: {
         id: "test-user-123",
         fullName: "Dana Analyst",
@@ -240,12 +240,12 @@ describe("permission allow page", () => {
     expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
   });
 
-  it("lets a user deny a connector permission without an expiry choice", async () => {
+  it("lets a user deny a connector permission from a legacy ref URL", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000002";
     let grants: UserPermissionGrantResponse[] = [
       {
         agentId,
-        connectorRef: "slack",
+        connectorSlug: "slack",
         permission: "admin.analytics:read",
         action: "allow",
         expiresAt: null,
@@ -280,7 +280,7 @@ describe("permission allow page", () => {
         expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
-          connectorRef: body.connectorRef,
+          connectorSlug: body.connectorSlug,
           permission: appliedGrant.permission,
           action: appliedGrant.action,
           expiresAt: null,
@@ -347,7 +347,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "allow",
           expiresAt: isoFromNowMs(7 * 24 * 60 * 60 * 1000),
@@ -359,7 +359,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Taylor Reviewer",
@@ -399,7 +399,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "allow",
           expiresAt: isoFromNowMs(-60 * 1000),
@@ -411,7 +411,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Taylor Reviewer",
@@ -449,7 +449,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "allow",
           expiresAt: "",
@@ -461,7 +461,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Taylor Reviewer",
@@ -498,10 +498,10 @@ describe("permission allow page", () => {
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ params, respond }) => {
-        expect(params.connectorRef).toBe("slack");
+        expect(params.connectorSlug).toBe("slack");
         return respond(200, {
           permissions: catalogPermissionDetail({
-            connectorRef: "slack",
+            connectorSlug: "slack",
             label: "Catalog Slack",
             permissions: [
               {
@@ -521,7 +521,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "allow",
           expiresAt: isoFromNowMs(-60 * 1000),
@@ -533,7 +533,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Taylor Reviewer",
@@ -568,7 +568,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "deny",
           expiresAt: null,
@@ -580,7 +580,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=deny`,
       user: {
         id: "test-user-123",
         fullName: "Jordan Reviewer",
@@ -630,7 +630,7 @@ describe("permission allow page", () => {
         expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
-          connectorRef: body.connectorRef,
+          connectorSlug: body.connectorSlug,
           permission: appliedGrant.permission,
           action: appliedGrant.action,
           expiresAt: isoFromNowMs(60 * 60 * 1000),
@@ -644,7 +644,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=cloudflare&permission=__unknown__&action=allow&expiresIn=1h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=cloudflare&permission=__unknown__&action=allow&expiresIn=1h`,
       user: {
         id: "test-user-123",
         fullName: "Casey Reviewer",
@@ -671,7 +671,7 @@ describe("permission allow page", () => {
     expect(grants).toMatchObject([
       {
         agentId,
-        connectorRef: "cloudflare",
+        connectorSlug: "cloudflare",
         permission: UNKNOWN_PERMISSION_GRANT,
         action: "allow",
       },
@@ -698,7 +698,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "cloudflare",
+          connectorSlug: "cloudflare",
           permission: UNKNOWN_PERMISSION_GRANT,
           action: "allow",
           expiresAt: null,
@@ -710,7 +710,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=cloudflare&permission=__unknown__&action=allow&expiresIn=always`,
+      path: `/agents/${agentId}/permissions?connectorSlug=cloudflare&permission=__unknown__&action=allow&expiresIn=always`,
       user: {
         id: "test-user-123",
         fullName: "Riley Reviewer",
@@ -754,7 +754,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Avery Reviewer",
@@ -800,7 +800,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Quinn Reviewer",

@@ -1,6 +1,10 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import {
+  chatThreadByIdContract,
+  chatThreadDraftContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pathname } from "../../../signals/location.ts";
@@ -27,6 +31,46 @@ import {
   placeCaretAfterText,
   workflowSummary,
 } from "./chat-composer-test-helpers.ts";
+
+// The composer editor is mounted on first paint and mounted again once page
+// bootstrap settles, so an element captured too early is detached by the time a
+// test asserts on it. Read whichever editor is currently mounted.
+function mountedComposer(): HTMLElement {
+  const editor = document.querySelector(
+    '.zero-composer [contenteditable="true"]',
+  );
+  if (!(editor instanceof HTMLElement)) {
+    throw new Error("Composer editor is not mounted");
+  }
+  return editor;
+}
+
+function mountedComposerText(): string {
+  return mountedComposer().textContent ?? "";
+}
+
+function suggestionAgent({
+  id,
+  displayName,
+  avatarUrl = null,
+  visibility = "public",
+}: {
+  readonly id: string;
+  readonly displayName: string;
+  readonly avatarUrl?: string | null;
+  readonly visibility?: "public" | "private";
+}): TeamComposeItem {
+  return {
+    id,
+    displayName,
+    description: null,
+    sound: null,
+    avatarUrl,
+    visibility,
+    headVersionId: id,
+    updatedAt: "2024-01-01T00:00:00Z",
+  };
+}
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
@@ -61,10 +105,10 @@ describe("chat composer models", () => {
 
     const editor = await findComposerEditor();
     expect(editor).toHaveClass("min-h-[96px]");
-    expect(editor).not.toHaveClass("min-h-[44px]");
+    expect(editor).not.toHaveClass("min-h-[68px]");
   });
 
-  it("uses the mobile single-line height in chat thread composers", async () => {
+  it("uses the mobile two-line height in chat thread composers", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     mockThread();
@@ -75,7 +119,7 @@ describe("chat composer models", () => {
     });
 
     const editor = await findComposerEditor();
-    expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
+    expect(editor).toHaveClass("min-h-[68px]", "md:min-h-[96px]");
   });
 
   it("keeps the agent chat slash composer at three-line height", async () => {
@@ -92,10 +136,10 @@ describe("chat composer models", () => {
 
     const editor = await findComposerEditor();
     expect(editor).toHaveClass("min-h-[96px]");
-    expect(editor).not.toHaveClass("min-h-[44px]");
+    expect(editor).not.toHaveClass("min-h-[68px]");
   });
 
-  it("uses the mobile single-line height in chat thread slash composers", async () => {
+  it("uses the mobile two-line height in chat thread slash composers", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     mockThread();
@@ -109,7 +153,7 @@ describe("chat composer models", () => {
     });
 
     const editor = await findComposerEditor();
-    expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
+    expect(editor).toHaveClass("min-h-[68px]", "md:min-h-[96px]");
   });
 
   it("positions the slash workflow menu from the caret inside the viewport safe area", async () => {
@@ -234,9 +278,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerSkillSubstringSearch]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -277,7 +318,7 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(editor.textContent).toContain("/sales-research");
+      expect(mountedComposerText()).toContain("/sales-research");
     });
     // The colored token is a real inline decoration in the same layer as the
     // text (no overlay), so it stays aligned when the composer scrolls.
@@ -289,45 +330,7 @@ describe("chat composer models", () => {
     expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
-  it("keeps slash skill substring matching behind the feature switch", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
-      return respond(200, [
-        workflowSummary({
-          name: "sales-research",
-          displayName: "Sales Research",
-          description: "Find account context before outreach",
-          agentId: AGENT_ID,
-        }),
-        workflowSummary({
-          name: "research-assistant",
-          displayName: "Research Assistant",
-          description: "Research a topic from the beginning",
-          agentId: AGENT_ID,
-        }),
-      ]);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerSkillSubstringSearch]: false,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("/ReSeArCh");
-
-    const slashWorkflowMenu = await screen.findByTestId("slash-workflow-menu");
-    expect(slashWorkflowMenu).toHaveTextContent("/research-assistant");
-    expect(slashWorkflowMenu).not.toHaveTextContent("/sales-research");
-  });
-
-  it("prioritizes prefix matches in slash skill substring search", async () => {
+  it("matches slash skills by substring while prioritizing prefixes", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
@@ -363,9 +366,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerSkillSubstringSearch]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -387,7 +387,7 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(editor.textContent).toContain("/release-production");
+      expect(mountedComposerText()).toContain("/release-production");
     });
   });
 
@@ -415,17 +415,32 @@ describe("chat composer models", () => {
     await user.click(editor);
     await user.keyboard("https://www.vm0.ai/en/use-cases/pr-review");
 
-    expect(editor).toHaveTextContent(
+    expect(mountedComposerText()).toContain(
       "https://www.vm0.ai/en/use-cases/pr-review",
     );
     expect(editor.querySelector("span.text-primary")).not.toBeInTheDocument();
   });
 
-  it("inserts a current-agent chat thread mention chip from @ suggestions", async () => {
+  it("suggests threads from every agent with aligned agent avatars", async () => {
+    const currentAgentAvatarUrl =
+      "https://example.com/current-agent-avatar.png";
+    const otherAgentAvatarUrl = "https://example.com/other-agent-avatar.png";
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     mockThread();
+    context.mocks.data.team([
+      suggestionAgent({
+        id: AGENT_ID,
+        displayName: "Scout",
+        avatarUrl: currentAgentAvatarUrl,
+      }),
+      suggestionAgent({
+        id: OTHER_AGENT_ID,
+        displayName: "Reviewer",
+        avatarUrl: otherAgentAvatarUrl,
+      }),
+    ]);
     mockComposerThreadSnapshot([
       { id: THREAD_ID, agentId: AGENT_ID, title: "My thread" },
       {
@@ -433,7 +448,6 @@ describe("chat composer models", () => {
         agentId: AGENT_ID,
         title: "Project Alpha",
       },
-      { id: UNTITLED_THREAD_ID, agentId: AGENT_ID, title: null },
       {
         id: OTHER_AGENT_THREAD_ID,
         agentId: OTHER_AGENT_ID,
@@ -448,22 +462,216 @@ describe("chat composer models", () => {
 
     const editor = await findComposerEditor();
     await user.click(editor);
-    await user.keyboard("Review @ALPHA");
+    await user.keyboard("Review @alpha");
 
     const menu = await screen.findByTestId("chat-thread-suggestion-menu");
-    expect(within(menu).getByText("Project Alpha")).toBeInTheDocument();
-    expect(within(menu).queryByText("Other Alpha")).not.toBeInTheDocument();
-    expect(within(menu).queryByText("New chat")).not.toBeInTheDocument();
+    const threadButtons = queryAllByRoleFast("button", menu);
+    const currentAgentThread = threadButtons.find((button) => {
+      return button.textContent === "Project Alpha";
+    });
+    const otherAgentThread = threadButtons.find((button) => {
+      return button.textContent === "Other Alpha";
+    });
+    if (!currentAgentThread || !otherAgentThread) {
+      throw new Error("Expected matching chat thread suggestions");
+    }
+    const currentAgentThreadAvatar = currentAgentThread.querySelector("img");
+    const otherAgentThreadAvatar = otherAgentThread.querySelector("img");
+    expect(currentAgentThread).toHaveClass("gap-2");
+    expect(otherAgentThread).toHaveClass("gap-2");
+    expect(currentAgentThreadAvatar).toHaveAttribute(
+      "src",
+      currentAgentAvatarUrl,
+    );
+    expect(currentAgentThreadAvatar).toHaveClass("h-5", "w-5");
+    expect(otherAgentThreadAvatar).toHaveAttribute("src", otherAgentAvatarUrl);
+    expect(otherAgentThreadAvatar).toHaveClass("h-5", "w-5");
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    expect(currentAgentThreadAvatar).not.toHaveClass("bg-muted");
+    expect(otherAgentThreadAvatar).not.toHaveClass("bg-muted");
 
-    await user.keyboard("{Enter}next");
+    await user.click(otherAgentThread);
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent("Review Project Alpha next");
+      expect(mountedComposerText()).toContain("Review Other Alpha");
     });
-    const chip = editor.querySelector(
-      `span[data-chat-thread-mention="${SUGGESTED_THREAD_ID}"]`,
+    expect(
+      editor.querySelector(
+        `span[data-chat-thread-mention="${OTHER_AGENT_THREAD_ID}"]`,
+      ),
+    ).toHaveTextContent("Other Alpha");
+  });
+
+  it("suggests agents above chat threads and inserts an agent item", async () => {
+    const alphaAgentId = "a1000000-0000-4000-a000-000000000001";
+    const betaAgentId = "a1000000-0000-4000-a000-000000000002";
+    const gammaAgentId = "a1000000-0000-4000-a000-000000000003";
+    const zetaAgentId = "a1000000-0000-4000-a000-000000000004";
+    const privateAgentId = "a1000000-0000-4000-a000-000000000005";
+    const zetaAvatarUrl = "https://example.com/zeta-avatar.png";
+    const draftPatches: Record<string, unknown>[] = [];
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    context.mocks.data.team([
+      suggestionAgent({ id: AGENT_ID, displayName: "Scout" }),
+      suggestionAgent({
+        id: alphaAgentId,
+        displayName: "Alpha Agent",
+        avatarUrl: "preset:0",
+      }),
+      suggestionAgent({
+        id: privateAgentId,
+        displayName: "Private Agent",
+        visibility: "private",
+      }),
+      suggestionAgent({
+        id: betaAgentId,
+        displayName: "Beta Agent",
+        avatarUrl: "preset:1",
+      }),
+      suggestionAgent({
+        id: gammaAgentId,
+        displayName: "Gamma Agent",
+        avatarUrl: "preset:2",
+      }),
+      suggestionAgent({
+        id: zetaAgentId,
+        displayName: "Zeta Agent",
+        avatarUrl: zetaAvatarUrl,
+      }),
+    ]);
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: null },
+      {
+        id: SUGGESTED_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Project Alpha",
+      },
+    ]);
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("@");
+
+    const menu = await screen.findByTestId("chat-thread-suggestion-menu");
+    expect(
+      queryAllByRoleFast("button", menu).map((button) => {
+        return button.textContent;
+      }),
+    ).toStrictEqual([
+      "Alpha Agent",
+      "Private Agent",
+      "Beta Agent",
+      "Project Alpha",
+    ]);
+    expect(within(menu).queryByText("Scout")).not.toBeInTheDocument();
+    expect(within(menu).queryByText("Gamma Agent")).not.toBeInTheDocument();
+    expect(within(menu).queryByText("Zeta Agent")).not.toBeInTheDocument();
+
+    await user.keyboard("private");
+    await waitFor(() => {
+      const filteredMenu = screen.getByTestId("chat-thread-suggestion-menu");
+      expect(
+        within(filteredMenu).getByText("Private Agent"),
+      ).toBeInTheDocument();
+      expect(
+        within(filteredMenu).queryByText("Project Alpha"),
+      ).not.toBeInTheDocument();
+    });
+    await user.keyboard("{Backspace>7/}zeta");
+    await waitFor(() => {
+      const filteredMenu = screen.getByTestId("chat-thread-suggestion-menu");
+      expect(within(filteredMenu).getByText("Zeta Agent")).toBeInTheDocument();
+      expect(
+        within(filteredMenu).queryByText("Project Alpha"),
+      ).not.toBeInTheDocument();
+    });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    const zetaAgentAvatar = screen
+      .getByTestId("chat-thread-suggestion-menu")
+      .querySelector("img");
+    expect(zetaAgentAvatar).toHaveAttribute("src", zetaAvatarUrl);
+    expect(zetaAgentAvatar).not.toHaveClass("bg-muted");
+    await user.keyboard("{Enter}");
+
+    const item = editor.querySelector(
+      `span[data-agent-mention="${zetaAgentId}"]`,
     );
-    expect(chip).toHaveTextContent("Project Alpha");
+    expect(item).toHaveTextContent("Zeta Agent");
+    expect(item?.querySelector("img")).toHaveAttribute("src", zetaAvatarUrl);
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual(
+        expect.objectContaining({
+          draftUserMessage: expect.objectContaining({
+            version: 1,
+            parts: expect.arrayContaining([
+              {
+                type: "agent",
+                agentId: zetaAgentId,
+                nameSnapshot: "Zeta Agent",
+              },
+            ]),
+          }),
+        }),
+      );
+    });
+  });
+
+  it("restores a persisted agent item with its current avatar", async () => {
+    const mentionedAgentId = "a1000000-0000-4000-a000-000000000006";
+    const mentionedAgentAvatarUrl =
+      "https://example.com/restored-agent-avatar.png";
+    const mention = `[Restored Agent](/agents/${mentionedAgentId}/chat)`;
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    context.mocks.data.team([
+      suggestionAgent({ id: AGENT_ID, displayName: "Scout" }),
+      suggestionAgent({
+        id: mentionedAgentId,
+        displayName: "Restored Agent",
+        avatarUrl: mentionedAgentAvatarUrl,
+      }),
+    ]);
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: mention }],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const editor = await findComposerEditor();
+    await waitFor(() => {
+      const item = editor.querySelector(
+        `span[data-agent-mention="${mentionedAgentId}"]`,
+      );
+      expect(item).toHaveTextContent("Restored Agent");
+      expect(item?.querySelector("img")).toHaveAttribute(
+        "src",
+        mentionedAgentAvatarUrl,
+      );
+    });
   });
 
   it("hides @ suggestions when no titled thread matches", async () => {
@@ -555,7 +763,7 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent("/new-chat-workflow");
+      expect(mountedComposerText()).toContain("/new-chat-workflow");
     });
     const highlightedWorkflow = screen
       .getAllByText("/new-chat-workflow")
@@ -788,8 +996,8 @@ describe("chat composer models", () => {
         screen.queryByTestId("slash-workflow-menu"),
       ).not.toBeInTheDocument();
     });
-    expect(editor).toHaveTextContent("/sales");
-    expect(editor).toHaveFocus();
+    expect(mountedComposerText()).toContain("/sales");
+    expect(mountedComposer()).toHaveFocus();
   });
 
   it("does not suggest workflows that are not attached to the current agent", async () => {
@@ -824,7 +1032,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.queryByText("deep-dive")).not.toBeInTheDocument();
     });
-    expect(editor.textContent).toContain("/");
+    expect(mountedComposerText()).toContain("/");
   });
 
   it("links to the workflows page from the slash workflow menu footer", async () => {
@@ -923,28 +1131,41 @@ describe("chat composer models", () => {
         path: `/agents/${AGENT_ID}/chat`,
       });
 
-      const editor = await findComposerEditor();
-      await user.click(editor);
-      await user.keyboard("first line{Shift>}{Enter}{/Shift}second line");
+      await findComposerEditor();
+      // Select-all before typing so a retry against a freshly mounted editor
+      // replaces the draft instead of appending to it.
+      await waitFor(async () => {
+        const composer = mountedComposer();
+        await user.click(composer);
+        await user.keyboard("{Control>}a{/Control}");
+        await user.keyboard("first line{Shift>}{Enter}{/Shift}second line");
+        if (
+          !mountedComposer().innerHTML.includes(
+            "<p>first line</p><p>second line</p>",
+          )
+        ) {
+          throw new Error("Composer did not accept the typed lines");
+        }
+      });
       await user.keyboard("{Control>}a{/Control}X");
 
       await waitFor(() => {
-        expect(editor.innerHTML).toContain(
+        expect(mountedComposer().innerHTML).toContain(
           "<p>first line</p><p>Xsecond line</p>",
         );
-        expect(editor.innerHTML).not.toContain("<br>");
+        expect(mountedComposer().innerHTML).not.toContain("<br>");
       });
 
-      placeCaretAfterText(editor, "Xsecond line");
+      placeCaretAfterText(mountedComposer(), "Xsecond line");
       await user.keyboard("{Shift>}{Enter}{/Shift}third line");
-      placeCaretAfterText(editor, "Xsecond line");
+      placeCaretAfterText(mountedComposer(), "Xsecond line");
       await user.keyboard("{Control>}e{/Control}Y");
 
       await waitFor(() => {
-        expect(editor.innerHTML).toContain(
+        expect(mountedComposer().innerHTML).toContain(
           "<p>first line</p><p>Xsecond lineY</p><p>third line</p>",
         );
-        expect(editor.innerHTML).not.toContain("<br>");
+        expect(mountedComposer().innerHTML).not.toContain("<br>");
       });
     } finally {
       restoreUserAgent();

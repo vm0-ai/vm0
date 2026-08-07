@@ -189,6 +189,13 @@ pub(crate) async fn read_process_stat_checked(pid: u32) -> ProcessStatRead {
     classify_process_stat_read(tokio::fs::read(&path).await)
 }
 
+/// Blocking variant for callers that already run a complete procfs traversal
+/// on a blocking thread.
+pub(crate) fn read_process_stat_checked_blocking(pid: u32) -> ProcessStatRead {
+    let path = format!("/proc/{pid}/stat");
+    classify_process_stat_read(std::fs::read(&path))
+}
+
 /// Read `/proc/{pid}/stat` and extract process facts.
 pub(crate) async fn read_process_stat(pid: u32) -> Option<ProcessStat> {
     match read_process_stat_checked(pid).await {

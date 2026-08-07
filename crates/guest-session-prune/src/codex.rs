@@ -1,15 +1,13 @@
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 
+pub use guest_contracts::session_history::CODEX_COMPACT_GENERATION_MAX_BYTES;
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use super::{
     BoundedRecord, READ_BUFFER_BYTES, SelectionLimits, read_bounded_record, strip_jsonl_line_ending,
 };
-
-/// Maximum decoded size of an accepted Codex compact generation.
-pub const CODEX_COMPACT_GENERATION_MAX_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Maximum size of one Codex JSONL record inspected by the selector.
 pub const CODEX_JSONL_RECORD_MAX_BYTES: usize = 16 * 1024 * 1024;
@@ -234,11 +232,55 @@ impl CandidateState {
 /// source is never modified. Files at or below 64 MiB are left unchanged. For
 /// larger files, selection reads only the canonical first record and the final
 /// bounded window that can still produce an accepted candidate.
+///
+/// # Selection contract
+///
+/// An eligible candidate contains the exact canonical first metadata record,
+/// followed by the exact raw records from the native turn containing the newest
+/// `compacted` record through the EOF observed during selection. The compacting
+/// turn and every retained later turn must preserve a real user-message
+/// boundary, compatible turn context, and a native delimiter. Either a matching
+/// turn completion or the next turn start can delimit a turn.
+///
+/// Every newer `compacted` record supersedes the preceding candidate. If the
+/// newest boundary is invalid, selection fails closed instead of falling back
+/// to an older generation. Retained rollbacks, unsupported rollout or
+/// response-item shapes, inconsistent turn relationships, and changes to the
+/// observed EOF or source length likewise make the source
+/// [`CodexHistorySelection::Ineligible`].
+///
+/// `Ineligible` is an expected eligibility or compatibility outcome that lets
+/// the caller use its ordinary checkpoint path. The selector only chooses an
+/// in-memory candidate: staging, checkpoint commit, and live-file reconciliation
+/// remain the caller's responsibility.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] when an underlying file metadata, seek, or read
+/// operation fails.
 pub fn select_codex_compact_generation(
     source: &mut File,
     expected_thread_id: &str,
 ) -> io::Result<CodexHistorySelection> {
     select_with_limits_and_hook(source, expected_thread_id, PRODUCTION_LIMITS, || {})
+}
+
+/// Select a Codex compact generation with a bounded integration-test window.
+#[doc(hidden)]
+pub fn select_codex_compact_generation_with_candidate_limit_for_test(
+    source: &mut File,
+    expected_thread_id: &str,
+    candidate_max_bytes: u64,
+) -> io::Result<CodexHistorySelection> {
+    select_with_limits_and_hook(
+        source,
+        expected_thread_id,
+        SelectionLimits {
+            candidate_max_bytes,
+            ..PRODUCTION_LIMITS
+        },
+        || {},
+    )
 }
 
 fn select_with_limits_and_hook(
@@ -1339,3 +1381,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod property_tests;

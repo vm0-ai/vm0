@@ -7,9 +7,9 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   or,
-  sql,
   type SQL,
 } from "drizzle-orm";
 import {
@@ -46,7 +46,6 @@ import {
   computerUseHosts,
 } from "@vm0/db/schema/computer-use-host";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -58,6 +57,7 @@ import {
 } from "../external/realtime";
 import { downloadS3Buffer, putS3Object } from "../external/s3";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import type { Tx } from "../../lib/db-types";
 
 const COMPUTER_USE_HOST_CLOSED_AFTER_MS = 90 * 1000;
 const COMPUTER_USE_RUNNING_COMMAND_DEFAULT_TIMEOUT_MS = 120 * 1000;
@@ -102,7 +102,7 @@ const DEFAULT_COMPUTER_USE_AUTOMATION_PERMISSIONS = {
   },
 } as const;
 
-type ComputerUseTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type ComputerUseTx = Tx;
 type ComputerUseHostRow = typeof computerUseHosts.$inferSelect;
 type ComputerUseCommandRow = typeof computerUseCommands.$inferSelect;
 
@@ -313,10 +313,6 @@ async function clearComputerUseHostThreadBindings(params: {
       createdAt: now,
     });
   }
-  await params.tx
-    .update(teamsOrgThreadSessions)
-    .set({ computerUseHostId: null, updatedAt: now })
-    .where(eq(teamsOrgThreadSessions.computerUseHostId, params.hostId));
   return threads.length > 0;
 }
 
@@ -1165,7 +1161,10 @@ export const startComputerUseHost$ = command(
                 computerUseHosts.userId,
                 computerUseHosts.installationId,
               ],
-              targetWhere: sql`installation_id IS NOT NULL AND revoked_at IS NULL`,
+              targetWhere: and(
+                isNotNull(computerUseHosts.installationId),
+                isNull(computerUseHosts.revokedAt),
+              ),
               set: {
                 displayName,
                 tokenHash,

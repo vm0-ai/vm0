@@ -18,7 +18,7 @@ import {
 } from "./connector-credential-runtime.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
-const X_CONNECTOR_TYPE = "x";
+const X_CONNECTOR_SLUG = "x";
 const X_ACCESS_TOKEN_ENVIRONMENT_NAME = "X_TOKEN";
 const X_TOKEN_REFRESH_SKEW_MS = 60_000;
 const DEFAULT_X_ACCESS_TOKEN_EXPIRES_IN_MS = 2 * 60 * 60 * 1000;
@@ -392,7 +392,7 @@ export const shareImageToX$ = command(
       snapshot,
       orgId: args.orgId,
       userId: args.userId,
-      connectorRef: X_CONNECTOR_TYPE,
+      connectorSlug: X_CONNECTOR_SLUG,
     });
     signal.throwIfAborted();
 

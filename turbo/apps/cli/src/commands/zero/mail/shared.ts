@@ -1,6 +1,6 @@
 import type { ZeroMailProvider } from "@vm0/api-contracts/contracts/zero-mail";
 
-export const MAIL_CONNECTOR_REF = {
+export const MAIL_CONNECTOR_SLUG_BY_PROVIDER = {
   gmail: "gmail",
   outlook: "outlook-mail",
 } as const;

@@ -9,6 +9,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { i18n } from "../../i18n/index.ts";
 
 const reload$ = state(0);
 const internalDialogOpen$ = state(false);
@@ -16,7 +17,6 @@ const internalDialogExisting$ = state(false);
 const internalDialogInstallationId$ = state<string | null>(null);
 const internalUninstallInstallationId$ = state<string | null>(null);
 const internalSetupStep$ = state<FeishuSetupStep>("create");
-const internalGuideImageIndex$ = state(0);
 const internalSetupForm$ = state<FeishuSetupInput>({
   appId: "",
   appSecret: "",
@@ -28,8 +28,9 @@ const FEISHU_SETUP_STEP_ORDER = [
   "create",
   "credentials",
   "tokens",
-  "events",
   "redirect",
+  "permissions",
+  "events",
   "publish",
 ] as const satisfies readonly FeishuSetupStep[];
 
@@ -115,7 +116,11 @@ export const disconnectFeishuOrg$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
-    toast.success("Disconnected from Feishu");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.feishuDisconnected;
+      }),
+    );
   },
 );
 
@@ -132,6 +137,7 @@ export type FeishuSetupStep =
   | "credentials"
   | "tokens"
   | "redirect"
+  | "permissions"
   | "events"
   | "publish";
 
@@ -141,10 +147,6 @@ export const feishuDialogOpen$ = computed((get) => {
 
 export const feishuSetupStep$ = computed((get) => {
   return get(internalSetupStep$);
-});
-
-export const feishuGuideImageIndex$ = computed((get) => {
-  return get(internalGuideImageIndex$);
 });
 
 export const feishuDialogExisting$ = computed((get) => {
@@ -176,7 +178,6 @@ export const openFeishuDialog$ = command(
     set(internalDialogExisting$, installationId !== undefined);
     set(internalDialogInstallationId$, installationId ?? null);
     set(internalSetupStep$, step);
-    set(internalGuideImageIndex$, 0);
     set(internalSetupForm$, {
       ...formDefaults,
       appSecret: "",
@@ -191,7 +192,6 @@ export const closeFeishuDialog$ = command(({ set }) => {
   set(internalDialogExisting$, false);
   set(internalDialogInstallationId$, null);
   set(internalSetupStep$, "create");
-  set(internalGuideImageIndex$, 0);
   set(internalSetupForm$, (previous) => {
     return {
       ...previous,
@@ -207,7 +207,6 @@ export const advanceFeishuSetupStep$ = command(({ set }) => {
     const index = FEISHU_SETUP_STEP_ORDER.indexOf(step);
     return FEISHU_SETUP_STEP_ORDER[index + 1] ?? step;
   });
-  set(internalGuideImageIndex$, 0);
 });
 
 export const goBackFeishuSetupStep$ = command(({ set }) => {
@@ -215,22 +214,7 @@ export const goBackFeishuSetupStep$ = command(({ set }) => {
     const index = FEISHU_SETUP_STEP_ORDER.indexOf(step);
     return index > 0 ? (FEISHU_SETUP_STEP_ORDER[index - 1] ?? step) : step;
   });
-  set(internalGuideImageIndex$, 0);
 });
-
-export const setFeishuGuideImageIndex$ = command(
-  ({ set }, imageIndex: number) => {
-    set(internalGuideImageIndex$, imageIndex);
-  },
-);
-
-export const moveFeishuGuideImage$ = command(
-  ({ set }, offset: number, imageCount: number) => {
-    set(internalGuideImageIndex$, (imageIndex) => {
-      return (imageIndex + offset + imageCount) % imageCount;
-    });
-  },
-);
 
 export const updateFeishuSetupForm$ = command(
   ({ set }, update: Partial<FeishuSetupInput>) => {
@@ -324,7 +308,11 @@ export const completeFeishuInstallationSetup$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
-    toast.success("Feishu bot installed successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.feishuBotInstalled;
+      }),
+    );
   },
 );
 
@@ -342,7 +330,11 @@ export const uninstallFeishuInstallation$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
-    toast.success("Feishu bot uninstalled");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.feishuBotUninstalled;
+      }),
+    );
   },
 );
 
@@ -364,7 +356,11 @@ export const showFeishuSettingsResult$ = command(() => {
   if (error) {
     toast.error(error);
   } else if (params.get("status") === "connected") {
-    toast.success("Feishu connected successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.feishuConnected;
+      }),
+    );
   } else {
     return;
   }
@@ -397,7 +393,11 @@ export const startFeishuSettingsRealtime$ = command(
           );
         })
       ) {
-        toast.success("Feishu connected successfully");
+        toast.success(
+          i18n.t(($) => {
+            return $.connectors.providerSettings.toasts.feishuConnected;
+          }),
+        );
       }
       return false;
     });

@@ -27,8 +27,10 @@ export type { ArtifactThumbnail } from "@vm0/db/jsonb-contracts/artifact";
  *
  * `logical_key` is stable across repeated projections of the same product:
  * `file:<url>` for stored files and `site:<hosted_site_id>` for hosted
- * products. Projection metadata records which `run_uploaded_files` row most
- * recently won that logical key without changing the catalog sort position.
+ * products. Shared-thread snapshots use a compatibility `file` row whose
+ * logical key is `shared-thread:<shared_thread_id>`.
+ * Projection metadata records which `run_uploaded_files` row most recently
+ * won a file-backed logical key without changing the catalog sort position.
  */
 export const ARTIFACT_KINDS = [
   "file",
@@ -53,7 +55,7 @@ export const artifacts = pgTable(
     kind: varchar("kind", { length: 32 }).$type<ArtifactKind>().notNull(),
     entityId: uuid("entity_id").notNull(),
     logicalKey: text("logical_key").notNull(),
-    projectionFileId: uuid("projection_file_id").notNull(),
+    projectionFileId: uuid("projection_file_id"),
     projectionCreatedAt: timestamp("projection_created_at").notNull(),
     title: text("title").notNull(),
     thumbnail: jsonb("thumbnail").$type<ArtifactThumbnail>(),

@@ -5,7 +5,10 @@ import {
   timestamp,
   uniqueIndex,
   index,
+  foreignKey,
 } from "drizzle-orm/pg-core";
+
+import { orgCustomConnectors } from "./org-custom-connector";
 
 /**
  * Per-user secret for an org custom connector.
@@ -33,6 +36,11 @@ export const orgCustomConnectorSecrets = pgTable(
         table.connectorId,
         table.userId,
       ),
+      foreignKey({
+        name: "fk_org_custom_connector_secrets_connector",
+        columns: [table.connectorId, table.orgId],
+        foreignColumns: [orgCustomConnectors.id, orgCustomConnectors.orgId],
+      }).onDelete("cascade"),
     ];
   },
 );

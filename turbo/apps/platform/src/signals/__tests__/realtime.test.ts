@@ -15,7 +15,7 @@ import {
   setAblyMessageLoop$,
   setAblyPayloadLoop$,
 } from "../realtime.ts";
-import { createRemoteChatThreadDataSource } from "../chat-page/remote-chat-thread-data-source.ts";
+import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -467,16 +467,16 @@ describe("realtime signals", () => {
     await waitFor(() => {
       expect(catchUps).toBe(1);
     });
-    context.mocks.ably.trigger(topic, { connectorRef: "gmail" });
+    context.mocks.ably.trigger(topic, { connectorSlug: "gmail" });
     await waitFor(() => {
-      expect(payloads).toStrictEqual([{ connectorRef: "gmail" }]);
+      expect(payloads).toStrictEqual([{ connectorSlug: "gmail" }]);
     });
 
     context.mocks.ably.triggerReconnect();
     await waitFor(() => {
       expect(catchUps).toBe(2);
     });
-    expect(payloads).toStrictEqual([{ connectorRef: "gmail" }]);
+    expect(payloads).toStrictEqual([{ connectorSlug: "gmail" }]);
 
     subscriber.abort(abortError("test done"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
@@ -701,20 +701,18 @@ describe("realtime signals", () => {
   it("propagates ready catch-up failures without aborting subscriptions", async () => {
     mockSignedInUser();
     const threadId = "test-thread-ready-catchup-failure";
-    const dataSource = createRemoteChatThreadDataSource(threadId);
-
     await context.store.set(setupRealtime$, context.signal);
 
     await expect(
       context.store.set(
-        dataSource.subscribeRealtime$,
+        subscribeChatThreadRealtime$,
         {
           threadId,
           handlers: {
+            onThreadDetailChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
             onWorkflowsChanged$: keepAliveLoop$,
-            onWorkflowQueueChanged$: keepAliveLoop$,
             onSubscribed$: failReadyCatchup$,
           },
         },

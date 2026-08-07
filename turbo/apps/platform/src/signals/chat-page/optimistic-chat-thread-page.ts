@@ -6,7 +6,7 @@ import {
   type AttachFile,
   type GenerationTemplateRequest,
   type ChatPromptEvent,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
 import type { UserModelPreferenceResponse } from "@vm0/api-contracts/contracts/zero-user-model-preference";
@@ -17,17 +17,17 @@ import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
-import { talkDraft$ } from "../zero-page/chat-draft.ts";
+import { talkDraft$, type DraftSignals } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
 import {
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
 import {
-  appendOptimisticChatMessage$,
-  createOptimisticChatMessageEntry,
-  type OptimisticChatMessageInput,
-} from "./optimistic-chat-messages.ts";
+  appendOptimisticChatEvent$,
+  createOptimisticChatEventEntry,
+  type OptimisticChatEventInput,
+} from "./optimistic-chat-events.ts";
 import { sendChatEvent } from "./chat-event-api.ts";
 import {
   applyCodexFastModeDefault,
@@ -36,7 +36,10 @@ import {
 } from "../zero-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  featureSwitch$,
+  imageRecognitionAvailable$,
+} from "../external/feature-switch.ts";
 import { codexFastModeLocalDefault$ } from "../zero-page/codex-fast-local-default.ts";
 import { logger } from "../log.ts";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
@@ -46,6 +49,7 @@ import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
 import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { i18n } from "../../i18n/index.ts";
 import {
   textToMessageDocument,
   type EditorDocumentSnapshot,
@@ -63,6 +67,7 @@ export const newChatThreadDisabled$ = computed(() => {
 
 interface SendNewThreadMessageRequest {
   agentId: string;
+  draft?: DraftSignals;
   prompt: string;
   generationTemplate: GenerationTemplateRequest | undefined;
   generationTemplateTitleSnapshot?: string;
@@ -87,7 +92,7 @@ interface PreparedNewThreadPayload {
 function userMessageForNewThread(
   request: SendNewThreadMessageRequest,
   prepared: PreparedNewThreadPayload,
-): UserMessageDocument {
+): UserMessageInputDocument {
   const generationTemplate = request.generationTemplate;
   if (
     generationTemplate &&
@@ -117,7 +122,7 @@ function userMessageForNewThread(
   return userMessage;
 }
 
-function createNewThreadOptimisticMessageEntry({
+function createNewThreadOptimisticEventEntry({
   threadId,
   clientEventId,
   prepared,
@@ -128,16 +133,16 @@ function createNewThreadOptimisticMessageEntry({
   clientEventId: string;
   prepared: PreparedNewThreadPayload;
   generationTemplate: GenerationTemplateRequest | undefined;
-  userMessage: UserMessageDocument;
-}): OptimisticChatMessageInput {
+  userMessage: UserMessageInputDocument;
+}): OptimisticChatEventInput {
   return {
     threadId,
     optimisticUserMessageAssociation: "run",
-    message: {
+    event: {
       id: clientEventId,
       threadId,
       eventType: "input.prompt",
-      content: prepared.prompt,
+      content: null,
       attachFiles: prepared.attachments,
       generationTemplate,
       userMessage,
@@ -167,7 +172,7 @@ function newThreadSendBody({
   codexFastModeEnabled: boolean;
   realAgentInPreviewEnabled: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
-  userMessage: UserMessageDocument;
+  userMessage: UserMessageInputDocument;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
 }) {
@@ -251,7 +256,11 @@ const resolveCurrentNewThreadModelSelection$ = command(
     ) {
       return resolved;
     }
-    toast.error("The selected model is not available");
+    toast.error(
+      i18n.t(($) => {
+        return $.chat.composer.selectedModelUnavailableToast;
+      }),
+    );
     return null;
   },
 );
@@ -484,7 +493,7 @@ const sendNewThreadMessage$ = command(
     const { agentId, prompt } = request;
     const generationTemplate = request.generationTemplate;
     const { computerUseHostId, cloudBrowserEnabled } = request;
-    const draft = get(talkDraft$);
+    const draft = request.draft ?? get(talkDraft$);
     const resolvedModelSelection = await set(
       resolveCurrentNewThreadModelSelection$,
       signal,
@@ -499,6 +508,7 @@ const sendNewThreadMessage$ = command(
       {
         excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
           resolvedModelSelection.selectedModel,
+          get(imageRecognitionAvailable$),
         ),
       },
       signal,
@@ -512,9 +522,9 @@ const sendNewThreadMessage$ = command(
     const clientEventId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
     set(
-      appendOptimisticChatMessage$,
-      createOptimisticChatMessageEntry(
-        createNewThreadOptimisticMessageEntry({
+      appendOptimisticChatEvent$,
+      createOptimisticChatEventEntry(
+        createNewThreadOptimisticEventEntry({
           threadId,
           clientEventId,
           prepared,

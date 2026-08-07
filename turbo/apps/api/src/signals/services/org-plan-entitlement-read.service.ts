@@ -1,12 +1,8 @@
-import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
-import { ORG_PLAN_ENTITLEMENT_TIER_VALUES } from "./org-plan-entitlement-tier-values";
 
 type ReadDb = Pick<Db, "select">;
 
@@ -59,61 +55,35 @@ function runtimeStatusForEntitlement(
   }
 }
 
-function capabilitiesForTier(tierValue: string): OrgPlanCapabilities {
-  const tier = orgTierSchema.parse(tierValue);
-  return {
-    status: tier === "pro-suspend" ? "suspended" : "active",
-    ...ORG_PLAN_ENTITLEMENT_TIER_VALUES[tier],
-  };
-}
-
-export function orgPlanEntitlementReadsEnabled(orgId: string): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.OrgPlanEntitlementReads, { orgId });
-}
-
 export async function loadOrgPlanCapabilities(
   db: ReadDb,
   orgId: string,
   options?: { readonly forUpdate?: boolean },
 ): Promise<OrgPlanCapabilities | null> {
-  if (orgPlanEntitlementReadsEnabled(orgId)) {
-    const query = db
-      .select(CAPABILITY_SELECTION)
-      .from(orgPlanEntitlements)
-      .where(eq(orgPlanEntitlements.orgId, orgId))
-      .limit(1);
-    const [capabilities] = options?.forUpdate
-      ? await query.for("update")
-      : await query;
-    if (!capabilities) {
-      const orgQuery = db
-        .select({ orgId: orgMetadata.orgId })
-        .from(orgMetadata)
-        .where(eq(orgMetadata.orgId, orgId))
-        .limit(1);
-      const [org] = options?.forUpdate
-        ? await orgQuery.for("update")
-        : await orgQuery;
-      if (!org) {
-        return null;
-      }
-      throw new Error(`Missing org plan entitlement for ${orgId}`);
-    }
-    return {
-      ...capabilities,
-      status: runtimeStatusForEntitlement(capabilities.status),
-    };
-  }
-
   const query = db
-    .select({ tier: orgMetadata.tier })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
+    .select(CAPABILITY_SELECTION)
+    .from(orgPlanEntitlements)
+    .where(eq(orgPlanEntitlements.orgId, orgId))
     .limit(1);
-  const [org] = options?.forUpdate ? await query.for("update") : await query;
-  if (!org) {
-    return null;
+  const [capabilities] = options?.forUpdate
+    ? await query.for("update")
+    : await query;
+  if (!capabilities) {
+    const orgQuery = db
+      .select({ orgId: orgMetadata.orgId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId))
+      .limit(1);
+    const [org] = options?.forUpdate
+      ? await orgQuery.for("update")
+      : await orgQuery;
+    if (!org) {
+      return null;
+    }
+    throw new Error(`Missing org plan entitlement for ${orgId}`);
   }
-
-  return capabilitiesForTier(org.tier);
+  return {
+    ...capabilities,
+    status: runtimeStatusForEntitlement(capabilities.status),
+  };
 }

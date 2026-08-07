@@ -2,10 +2,11 @@
 
 This module owns the classification result consumed by both `requestheaders()`
 and `request()`. The header hook may classify as a probe before mitmproxy has
-buffered the request body. When that header-phase decision must be reused by
-the request hook, it caches the classification on the current flow. When the
-header hook only probed to decide whether it can handle the request early, it
-restores the metadata touched by that probe path before falling through.
+buffered the request body. It caches the classification only when header-phase
+authorization is complete and mitmproxy may start upstream streaming before the
+request hook. Body-admission paths keep their admission state separately so the
+request hook classifies them against current registry state before upstream
+dispatch.
 
 The request hook consumes a cached classification when present, otherwise it
 performs a fresh classification. Cached classifications are scoped to a single
@@ -217,9 +218,10 @@ RequestClassification = (
 def cache_classification(flow: http.HTTPFlow, classification: RequestClassification) -> None:
     """Cache a header-phase classification for request-phase reuse.
 
-    Callers should cache only when the request hook must continue from the same
-    classification decision, such as request streaming or header-phase auth
-    setup. Terminal and early-response paths must pop the cached value.
+    Callers must cache only after header-phase authorization is complete and
+    mitmproxy may start upstream streaming before the request hook. Reserving
+    buffered body admission alone does not authorize reuse. Terminal and
+    early-response paths must pop the cached value.
     """
 
     flow.metadata[REQUEST_CLASSIFICATION_METADATA_KEY] = classification
@@ -422,6 +424,24 @@ def _classify_request(
         return BrowserAllow(vm_info=vm_info)
 
     is_asterisk_form = flow.request.path == "*"
+    intent = connector_intent.from_flow(flow)
+    omitted_builtin_firewalls = registry_state.omitted_builtin_firewalls.get(
+        client_ip,
+        frozenset(),
+    )
+    omitted_custom_connector_ids = registry_state.omitted_custom_connector_ids.get(
+        client_ip,
+        frozenset(),
+    )
+    if intent.status == "present" and intent.value in (
+        omitted_builtin_firewalls | omitted_custom_connector_ids
+    ):
+        return Allow(
+            vm_info=vm_info,
+            builtin_firewall_catalog_snapshot=(registry_state.builtin_firewall_catalog_snapshot),
+            is_asterisk_form=is_asterisk_form,
+        )
+
     compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
     compiled_network_policies = registry_state.compiled_network_policies[client_ip]
     if compiled_firewalls:
@@ -430,7 +450,7 @@ def _classify_request(
             flow.request.method,
             compiled_firewalls,
             compiled_network_policies,
-            connector_intent.from_flow(flow),
+            intent,
             is_asterisk_form=is_asterisk_form,
         )
         if isinstance(result, matching.FirewallAmbiguous):
@@ -792,7 +812,7 @@ def _public_destination_connected_runtime_hosts(
     )
     return (
         _public_destination_runtime_host_classification(
-            connected_endpoint[0] if connected_endpoint is not None else None,
+            connected_endpoint.address[0] if connected_endpoint is not None else None,
             classifications,
         ),
     )

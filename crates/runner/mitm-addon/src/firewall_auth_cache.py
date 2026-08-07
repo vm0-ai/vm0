@@ -1,4 +1,4 @@
-"""Firewall auth cache state and force-refresh lifecycle."""
+"""Firewall auth cache, fetch admission, and force-refresh lifecycle."""
 
 import asyncio
 import math
@@ -15,6 +15,10 @@ from firewall_auth_client import (
 
 class InvalidBillableAuthExpiryError(Exception):
     """Raised when billable firewall auth succeeds with an invalid cache expiry."""
+
+
+class FirewallAuthFetchSaturatedError(Exception):
+    """Raised when firewall auth fetch admission is saturated."""
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,10 @@ class FirewallAuthStateSnapshotForTests:
 
 
 _auth_state: dict[FirewallAuthCacheKey, _FirewallAuthState] = {}
+MAX_CONCURRENT_FIREWALL_AUTH_FETCHES = 4
+MAX_ADMITTED_FIREWALL_AUTH_FETCHES = 16
+_admitted_firewall_auth_fetches = 0
+_firewall_auth_fetch_semaphore: asyncio.Semaphore | None = None
 
 # Cooldown window for re-marking a force-refresh. Caps amplification at
 # 30 refreshes/hour/key under a persistent non-token 401 loop — safely
@@ -80,6 +88,10 @@ def _get_auth_state(cache_key: FirewallAuthCacheKey) -> _FirewallAuthState:
 
 def request_force_refresh(cache_key: FirewallAuthCacheKey) -> None:
     """Request a forced token refresh on the next /firewall/auth fetch.
+
+    No-op if registry lifecycle handling has already evicted the key. Response
+    hooks may update auth state owned by an active run, but must not recreate
+    ownership for a completed flow.
 
     No-op if a force-refresh marker was consumed within
     ``_FORCE_REFRESH_COOLDOWN_SECS``. The cooldown starts when the marker is
@@ -104,7 +116,9 @@ def request_force_refresh(cache_key: FirewallAuthCacheKey) -> None:
       Absolute webhook ``expiresAt`` checks remain wall-clock based elsewhere
       in this module.
     """
-    state = _get_auth_state(cache_key)
+    state = _auth_state.get(cache_key)
+    if state is None:
+        return
     now = time.monotonic()
     last_force_refresh_monotonic_at = state.last_force_refresh_monotonic_at
     if (
@@ -135,7 +149,43 @@ def evict_all_cache_keys() -> None:
 
 def reset_cache_for_tests() -> None:
     """Reset auth cache module state between tests."""
+    global _admitted_firewall_auth_fetches
+    global _firewall_auth_fetch_semaphore
+
     _auth_state.clear()
+    _admitted_firewall_auth_fetches = 0
+    _firewall_auth_fetch_semaphore = None
+
+
+def admitted_firewall_auth_fetches_for_tests() -> int:
+    """Return the current admitted distinct fetch count for tests."""
+    return _admitted_firewall_auth_fetches
+
+
+def _reserve_firewall_auth_fetch() -> None:
+    global _admitted_firewall_auth_fetches
+
+    if _admitted_firewall_auth_fetches >= MAX_ADMITTED_FIREWALL_AUTH_FETCHES:
+        raise FirewallAuthFetchSaturatedError("firewall auth fetch admission is full")
+    _admitted_firewall_auth_fetches += 1
+
+
+def _release_firewall_auth_fetch() -> None:
+    global _admitted_firewall_auth_fetches
+
+    _admitted_firewall_auth_fetches -= 1
+
+
+def _get_firewall_auth_fetch_semaphore() -> asyncio.Semaphore:
+    global _firewall_auth_fetch_semaphore
+
+    semaphore = _firewall_auth_fetch_semaphore
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(
+            MAX_CONCURRENT_FIREWALL_AUTH_FETCHES,
+        )
+        _firewall_auth_fetch_semaphore = semaphore
+    return semaphore
 
 
 def seed_cached_headers_for_tests(
@@ -270,10 +320,11 @@ async def _fetch_and_cache_firewall_headers(
 ) -> dict:
     """Own one shared fetch through completion and update its cache state."""
     try:
-        result = await fetch_firewall_headers(
-            request,
-            force_refresh=force_refresh,
-        )
+        async with _get_firewall_auth_fetch_semaphore():
+            result = await fetch_firewall_headers(
+                request,
+                force_refresh=force_refresh,
+            )
         if request.firewall_billable and not _has_valid_expiry(result.expires_at):
             raise InvalidBillableAuthExpiryError(
                 "Billable firewall auth response did not include a valid cache expiry"
@@ -298,6 +349,7 @@ async def _fetch_and_cache_firewall_headers(
         )
     finally:
         state.in_flight = None
+        _release_firewall_auth_fetch()
 
 
 async def get_firewall_headers(
@@ -327,6 +379,8 @@ async def get_firewall_headers(
         fetch_task = state.in_flight
         created_fetch = fetch_task is None
         if fetch_task is None:
+            _reserve_firewall_auth_fetch()
+
             # Consume the marker before creating the task so only this shared
             # operation can trigger the refresh. Recording before the fetch
             # preserves the intentional failed-refresh cooldown semantics.

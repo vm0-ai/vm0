@@ -9,6 +9,7 @@ import {
   IconArrowLeft,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { searchParams$ } from "../../signals/route.ts";
@@ -22,13 +23,16 @@ import {
 type PageStatus = SlackConnectStatus | "checking" | "error";
 
 function BackLink() {
+  const { t } = useTranslation();
   return (
     <Link
       pathname="/works"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
       <IconArrowLeft size={14} />
-      Back to settings
+      {t(($) => {
+        return $.connectors.providerConnect.common.backToSettings;
+      })}
     </Link>
   );
 }
@@ -45,7 +49,71 @@ export function ZeroSlackConnectPage() {
   );
 }
 
+function ErrorState({ message }: { message: string }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <IconAlertCircle size={40} className="text-destructive" />
+      <div className="text-center space-y-1.5">
+        <h2 className="text-base font-semibold text-foreground">
+          {t(($) => {
+            return $.connectors.providerConnect.common.connectionFailed;
+          })}
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {message}
+        </p>
+      </div>
+      <BackLink />
+    </>
+  );
+}
+
+function CheckingState() {
+  const { t } = useTranslation();
+  return (
+    <>
+      <IconLoader2 size={40} className="text-muted-foreground animate-spin" />
+      <div className="text-center space-y-1.5">
+        <h2 className="text-base font-semibold text-foreground">
+          {t(($) => {
+            return $.connectors.providerConnect.common.checkingTitle;
+          })}
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {t(($) => {
+            return $.connectors.providerConnect.common.verifying;
+          })}
+        </p>
+      </div>
+    </>
+  );
+}
+
+function InvalidState() {
+  const { t } = useTranslation();
+  return (
+    <>
+      <IconAlertCircle size={40} className="text-muted-foreground/40" />
+      <div className="text-center space-y-1.5">
+        <h2 className="text-base font-semibold text-foreground">
+          {t(($) => {
+            return $.connectors.providerConnect.common.invalidLink;
+          })}
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {t(($) => {
+            return $.connectors.providerConnect.slack.invalidDescription;
+          })}
+        </p>
+      </div>
+      <BackLink />
+    </>
+  );
+}
+
 function PageContent() {
+  const { t } = useTranslation();
   const params = useGet(searchParams$);
   const workspaceId = params.get("w");
   const slackUserId = params.get("u");
@@ -71,20 +139,7 @@ function PageContent() {
 
   // Error state
   if (status === "error") {
-    return (
-      <>
-        <IconAlertCircle size={40} className="text-destructive" />
-        <div className="text-center space-y-1.5">
-          <h2 className="text-base font-semibold text-foreground">
-            Connection Failed
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {effectiveError}
-          </p>
-        </div>
-        <BackLink />
-      </>
-    );
+    return <ErrorState message={effectiveError} />;
   }
 
   // Success state
@@ -94,12 +149,22 @@ function PageContent() {
         <IconCircleCheck size={40} className="text-emerald-500" />
         <div className="text-center space-y-1.5">
           <h2 className="text-base font-semibold text-foreground">
-            Connected to Slack!
+            {t(($) => {
+              return $.connectors.providerConnect.slack.successTitle;
+            })}
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            {workspaceName ? `You're connected to ${workspaceName}. ` : ""}
-            Mention <strong>@Zero</strong> in any channel or send a DM to start
-            chatting.
+            {workspaceName
+              ? t(
+                  ($) => {
+                    return $.connectors.providerConnect.slack
+                      .successDescriptionWorkspace;
+                  },
+                  { workspace: workspaceName },
+                )
+              : t(($) => {
+                  return $.connectors.providerConnect.slack.successDescription;
+                })}
           </p>
         </div>
         <div className="flex flex-col gap-3 w-full">
@@ -111,7 +176,9 @@ function PageContent() {
             }}
           >
             <IconBrandSlack size={16} />
-            Open Slack
+            {t(($) => {
+              return $.connectors.providerConnect.slack.open;
+            })}
           </Button>
           <div className="flex justify-center">
             <BackLink />
@@ -123,19 +190,7 @@ function PageContent() {
 
   // Loading — checking login / connection status
   if (status === "checking") {
-    return (
-      <>
-        <IconLoader2 size={40} className="text-muted-foreground animate-spin" />
-        <div className="text-center space-y-1.5">
-          <h2 className="text-base font-semibold text-foreground">
-            Checking account status…
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Please wait while we verify your connection.
-          </p>
-        </div>
-      </>
-    );
+    return <CheckingState />;
   }
 
   // Connect confirmation (from Slack link with w + u params)
@@ -145,11 +200,14 @@ function PageContent() {
         <IconBrandSlack size={40} className="text-foreground" />
         <div className="text-center space-y-1.5">
           <h2 className="text-base font-semibold text-foreground">
-            Connect to Slack
+            {t(($) => {
+              return $.connectors.providerConnect.slack.connectTitle;
+            })}
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Link your account to this Slack workspace so you can interact with
-            your agent directly from Slack.
+            {t(($) => {
+              return $.connectors.providerConnect.slack.connectDescription;
+            })}
           </p>
         </div>
         <Button
@@ -161,7 +219,13 @@ function PageContent() {
           {connectLoading ? (
             <IconLoader2 size={16} className="animate-spin mr-2" />
           ) : null}
-          {connectLoading ? "Connecting..." : "Connect"}
+          {connectLoading
+            ? t(($) => {
+                return $.connectors.actions.connecting;
+              })
+            : t(($) => {
+                return $.connectors.actions.connect;
+              })}
         </Button>
         <BackLink />
       </>
@@ -169,18 +233,5 @@ function PageContent() {
   }
 
   // No params — invalid access
-  return (
-    <>
-      <IconAlertCircle size={40} className="text-muted-foreground/40" />
-      <div className="text-center space-y-1.5">
-        <h2 className="text-base font-semibold text-foreground">
-          Invalid Link
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          This page is meant to be opened from a Slack connect link.
-        </p>
-      </div>
-      <BackLink />
-    </>
-  );
+  return <InvalidState />;
 }

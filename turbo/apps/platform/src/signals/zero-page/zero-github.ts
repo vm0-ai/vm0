@@ -8,6 +8,8 @@ import {
 import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { i18n } from "../../i18n/index.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 
 interface GithubIntegrationMissingData extends GithubInstallationNotFoundResponse {
   readonly isInstalled: false;
@@ -18,7 +20,7 @@ interface GithubIntegrationMissingData extends GithubInstallationNotFoundRespons
   readonly connectUrl: string;
 }
 
-type GithubIntegrationData =
+export type GithubIntegrationData =
   | (GithubInstallationResponse & { readonly isInstalled: true })
   | GithubIntegrationMissingData;
 
@@ -57,6 +59,27 @@ export const reloadGithubIntegration$ = command(({ set }) => {
   });
 });
 
+const refreshGithubIntegrationFromChange$ = command(
+  ({ set }, signal: AbortSignal): boolean => {
+    signal.throwIfAborted();
+    set(reloadGithubIntegration$);
+    return false;
+  },
+);
+
+export const watchGithubIntegration$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    await set(
+      setAblyLoop$,
+      {
+        topic: "github:changed",
+        loopCommand$: refreshGithubIntegrationFromChange$,
+      },
+      signal,
+    );
+  },
+);
+
 function isStandaloneMode(): boolean {
   return window.matchMedia?.("(display-mode: standalone)").matches ?? false;
 }
@@ -67,7 +90,11 @@ function openGithubOAuthWindow(): Pick<Window, "closed" | "location"> {
   const authWindow = window.open("about:blank", "_blank", popupFeatures);
 
   if (!authWindow && !standalone) {
-    throw new Error("Failed to open authorization window");
+    throw new Error(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.errors.githubAuthorizationWindow;
+      }),
+    );
   }
 
   if (authWindow) {

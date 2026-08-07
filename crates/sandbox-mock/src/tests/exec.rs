@@ -21,6 +21,36 @@ async fn sandbox_default_exec_succeeds() {
 }
 
 #[tokio::test]
+async fn sandbox_exec_lifecycle_gate_blocks_after_recording_call() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let gate = MockLifecycleGate::new();
+    overrides.set_exec_lifecycle_gate(gate.clone());
+    let sandbox = MockSandbox::with_overrides("gated-exec", Arc::clone(&overrides));
+    let exec = tokio::spawn(async move {
+        sandbox
+            .exec(&ExecRequest {
+                cmd: "echo gated",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                expected_exit_codes: &[],
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
+            })
+            .await
+    });
+
+    gate.wait_entered(1, Duration::from_secs(5)).await.unwrap();
+    assert_eq!(overrides.exec_calls().len(), 1);
+    assert!(!exec.is_finished());
+    gate.release_one();
+    assert_eq!(
+        exec.await.unwrap().unwrap().termination,
+        ExecTermination::Exited { exit_code: 0 }
+    );
+}
+
+#[tokio::test]
 async fn sandbox_exec_rejects_invalid_env_key_without_recording_call() {
     let sandbox = MockSandbox::new("test-1");
     let result = sandbox

@@ -1,1 +1,0 @@
-ALTER TABLE "run_uploaded_files" ADD COLUMN "preview_image_url" text;

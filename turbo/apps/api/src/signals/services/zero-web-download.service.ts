@@ -1,9 +1,8 @@
 import { computed, type Computed } from "ccstate";
 
 import { env } from "../../lib/env";
-import { buildArtifactPrefix } from "../../lib/file-url";
-import { inferMimetype } from "../../lib/mimetype";
-import { downloadS3Buffer, listS3Objects } from "../external/s3";
+import { downloadS3Buffer } from "../external/s3";
+import { resolvedArtifactObject } from "./artifact-storage.service";
 
 interface DownloadFileResult {
   readonly buffer: Buffer;
@@ -24,18 +23,17 @@ export function zeroWebDownloadFile(
     if (!bucket) {
       return null;
     }
-    const prefix = buildArtifactPrefix(userId, fileId);
-    const objects = await get(listS3Objects(bucket, prefix));
-
-    if (objects.length === 0) {
+    const object = await get(resolvedArtifactObject(userId, fileId));
+    if (!object) {
       return null;
     }
 
-    const s3Object = objects[0]!;
-    const filename = s3Object.key.split("/").pop() ?? fileId;
-    const contentType = inferMimetype(filename);
-    const buffer = await get(downloadS3Buffer(bucket, s3Object.key));
+    const buffer = await get(downloadS3Buffer(bucket, object.key));
 
-    return { buffer, contentType, filename };
+    return {
+      buffer,
+      contentType: object.contentType,
+      filename: object.filename,
+    };
   });
 }

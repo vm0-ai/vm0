@@ -6,16 +6,9 @@
 	}
 }
 
-# Public dev tunnel ingress. Retain the legacy Auto route temporarily for runs
-# claimed by pre-retirement API deployments.
+# Public dev tunnel ingress.
 :3043 {
-	handle /api/internal/vm0-model/v1/* {
-		reverse_proxy localhost:3042
-	}
-
-	handle {
-		reverse_proxy localhost:3001
-	}
+	reverse_proxy localhost:3001
 }
 
 # Main domain redirect to www

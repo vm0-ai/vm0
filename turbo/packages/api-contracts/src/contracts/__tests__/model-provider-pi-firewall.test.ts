@@ -1,0 +1,90 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  MODEL_PROVIDER_FIREWALL_CONFIGS,
+  getModelProviderPiChatCompletionsUrl,
+} from "../model-provider-firewalls";
+
+/**
+ * The sandbox never holds a real model credential. It runs with the firewall
+ * placeholder and the mitm proxy substitutes the secret at egress, but only for
+ * the base URLs a provider's firewall lists, and base matching is a prefix
+ * match. So if the Pi standby loop's chat-completions URL falls outside every
+ * listed base, the placeholder is forwarded verbatim and the provider answers
+ * 401. That is exactly what a live handoff hit before this coverage existed.
+ */
+const PI_CAPABLE_PROVIDERS = [
+  "deepseek",
+  "openai-api-key",
+  "moonshot-api-key",
+  "codex-oauth-token",
+] as const;
+type PiCapableProvider = (typeof PI_CAPABLE_PROVIDERS)[number];
+
+/**
+ * Actual request URL the Pi runtime calls. Most providers hit the
+ * chat-completions URL directly; the Codex subscription runtime appends
+ * `/codex/responses` to its base URL.
+ */
+function piRequestUrl(provider: PiCapableProvider): string | undefined {
+  const url = getModelProviderPiChatCompletionsUrl(provider);
+  if (url === undefined) {
+    return undefined;
+  }
+  return provider === "codex-oauth-token" ? `${url}/codex/responses` : url;
+}
+
+function firewallAuthBases(provider: string): readonly string[] {
+  const configs: Record<
+    string,
+    {
+      apis: readonly {
+        base: string;
+        auth?: { headers?: Record<string, string> };
+      }[];
+    }
+  > = MODEL_PROVIDER_FIREWALL_CONFIGS;
+  return (configs[provider]?.apis ?? [])
+    .map((api) => {
+      return api;
+    })
+    .filter((api) => {
+      return Object.keys(api.auth?.headers ?? {}).length > 0;
+    })
+    .map((api) => {
+      return api.base;
+    });
+}
+
+describe("model provider firewall covers the Pi standby request", () => {
+  it.each(PI_CAPABLE_PROVIDERS)("covers %s", (provider) => {
+    const requestUrl = piRequestUrl(provider);
+    expect(requestUrl).toBeDefined();
+
+    const bases = firewallAuthBases(provider);
+    const covered = bases.some((base) => {
+      return requestUrl?.startsWith(base.replace(/\/+$/, ""));
+    });
+
+    expect(
+      covered,
+      `${provider}: Pi calls ${requestUrl}, firewall bases are ${bases.join(", ")}`,
+    ).toBe(true);
+  });
+
+  it("keeps credential injection scoped to inference paths", () => {
+    for (const provider of PI_CAPABLE_PROVIDERS) {
+      for (const base of firewallAuthBases(provider)) {
+        expect(base).toMatch(
+          /\/(chat\/completions|responses|v1\/messages|codex)$/,
+        );
+      }
+    }
+  });
+
+  it("exposes no Pi endpoint for providers the Pi loop cannot drive", () => {
+    expect(getModelProviderPiChatCompletionsUrl("anthropic-api-key")).toBe(
+      undefined,
+    );
+  });
+});

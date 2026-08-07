@@ -1,4 +1,4 @@
-//! Active-input child-exit coverage for the experimental Codex app-server backend.
+//! Active-input child-exit coverage for Codex app-server execution.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
@@ -37,9 +37,7 @@ async fn codex_app_server_backend_fails_visible_when_child_exits_during_steer()
     );
     let payload = common::active_input_payload("child-exit follow-up prompt")?;
     assert_eq!(
-        active_input
-            .controller()
-            .handle_control_payload("active-msg-child-exit", &payload),
+        active_input.controller().handle_control_payload(&payload),
         ActiveInputControlOutcome::Accepted
     );
 

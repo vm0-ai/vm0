@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const DOCUSIGN_TOKEN_URL = "https://account-d.docusign.com/oauth/token";
@@ -235,7 +236,7 @@ async function fetchDocuSignUserInfo(
     .parse(await response.json());
 
   return {
-    id: data.sub ?? "",
+    id: requireConnectorGrantUserId(data.sub, "DocuSign"),
     username: data.name ?? null,
     email: data.email ?? null,
   };

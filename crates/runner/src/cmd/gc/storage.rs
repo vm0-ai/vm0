@@ -10,8 +10,8 @@ use crate::paths::HomePaths;
 
 use super::GC_MIN_AGE;
 use super::filesystem::{
-    GcDirStatus, dir_stats, gc_entry_is_real_dir, gc_path_dir_status, next_entry_warn_or_stop,
-    read_dir_or_missing,
+    GcDirStatus, collect_dir_stats, dir_stats, gc_entry_is_real_dir, gc_path_dir_status,
+    next_entry_warn_or_stop, read_dir_or_missing,
 };
 use super::lock_file::{LockProbe, probe_lock};
 use super::report::{GcReport, human_bytes};
@@ -26,14 +26,30 @@ const STORAGE_CACHE_MAX_ENTRIES: u64 = 5_000;
 
 /// Eligible `<version>` directory discovered during the scan phase.
 ///
-/// The scan-time size and mtime are advisory: deletion reacquires the
-/// per-version lock and revalidates both before removing the directory.
+/// The scan-time size is reused only when deletion reacquires the per-version
+/// lock and finds the same directory identity and mtime.
 struct StorageCandidate {
     path: PathBuf,
     name: String,
     version: String,
     size: u64,
     mtime: SystemTime,
+    identity: Option<StorageDirectoryIdentity>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct StorageDirectoryIdentity {
+    device: u64,
+    inode: u64,
+}
+
+impl From<&std::fs::Metadata> for StorageDirectoryIdentity {
+    fn from(metadata: &std::fs::Metadata) -> Self {
+        Self {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+        }
+    }
 }
 
 struct StorageEvictionResult {
@@ -197,7 +213,13 @@ async fn gc_storage_cache_with_limits_report(
                 }
             };
 
-            let (size, mtime) = dir_stats(&version_path).await;
+            let stats = collect_dir_stats(&version_path).await;
+            let size = stats.size;
+            let mtime = stats.mtime;
+            let identity = stats
+                .root_metadata
+                .as_ref()
+                .map(StorageDirectoryIdentity::from);
             let age = now.duration_since(mtime).unwrap_or_default();
             total_size = total_size.saturating_add(size);
             drop(lock);
@@ -215,6 +237,7 @@ async fn gc_storage_cache_with_limits_report(
                 version,
                 size,
                 mtime,
+                identity,
             });
         }
     }
@@ -292,8 +315,8 @@ async fn evict_storage_candidate(
         }
     };
 
-    match gc_path_dir_status(&candidate.path).await {
-        Ok(GcDirStatus::RealDir(_)) => {}
+    let metadata = match gc_path_dir_status(&candidate.path).await {
+        Ok(GcDirStatus::RealDir(metadata)) => metadata,
         Ok(GcDirStatus::NotDirectory) => {
             info!(
                 "storages/{}/{}: no longer a directory, skipping",
@@ -326,9 +349,16 @@ async fn evict_storage_candidate(
                 evicted: false,
             };
         }
-    }
+    };
 
-    let (size, mtime) = dir_stats(&candidate.path).await;
+    let current_mtime = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+    let current_identity = StorageDirectoryIdentity::from(&metadata);
+    let (size, mtime) =
+        if candidate.identity == Some(current_identity) && candidate.mtime == current_mtime {
+            (candidate.size, current_mtime)
+        } else {
+            dir_stats(&candidate.path).await
+        };
     let age = now.duration_since(mtime).unwrap_or_default();
     if age < GC_MIN_AGE {
         info!(

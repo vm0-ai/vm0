@@ -13,25 +13,32 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
-import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
 import { githubOauthContract } from "@vm0/api-contracts/contracts/github-oauth";
 import {
   integrationsGithubContract,
   type GithubInstallationResponse,
 } from "@vm0/api-contracts/contracts/integrations-github";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorProposalContract,
   zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
+  type CustomConnectorPermissionBundleResponse,
   type CustomConnectorResponse,
-  type PatchCustomConnectorBody,
+  type CustomConnectorValueInput,
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
+  type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
@@ -40,7 +47,7 @@ import {
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
   zeroConnectorScopeDiffContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
   type ConnectorSearchResponse,
@@ -49,11 +56,8 @@ import { http, HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
 import { z } from "zod";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
@@ -61,6 +65,46 @@ import { server } from "../../../../mocks/server";
 import { createDeferredPromise } from "../../../utils";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { connectorsSlugCallbackRoutes } from "../../connectors-slug-callback";
+import { githubOauthRoutes } from "../../github-oauth";
+import { integrationsGithubRoutes } from "../../integrations-github";
+import { zeroAgentsRoutes } from "../../zero-agents";
+import { zeroConnectorsRoutes } from "../../zero-connectors";
+import { zeroConnectorsExternalCodeRoutes } from "../../zero-connectors-external-code";
+import { zeroConnectorsOauthDeviceAuthRoutes } from "../../zero-connectors-oauth-device-auth";
+import { zeroCustomConnectorsRoutes } from "../../zero-custom-connectors";
+import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-delete";
+import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
+import { zeroCustomConnectorOAuth2Routes } from "../../zero-custom-connectors-oauth2";
+import { zeroCustomConnectorProposalRoutes } from "../../zero-custom-connectors-proposal";
+import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connectors-secret-delete";
+import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
+import { zeroCustomConnectorsUpdateRoutes } from "../../zero-custom-connectors-update";
+import { zeroCustomConnectorsValuesSetRoutes } from "../../zero-custom-connectors-values-set";
+import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+
+const zeroCustomConnectorByIdTestRoutes = Object.freeze([
+  ...zeroCustomConnectorsDeleteRoutes,
+  ...zeroCustomConnectorsGetRoutes,
+  ...zeroCustomConnectorsUpdateRoutes,
+]);
+
+const zeroCustomConnectorSecretTestRoutes = Object.freeze([
+  ...zeroCustomConnectorSecretDeleteRoutes,
+  ...zeroCustomConnectorsSecretSetRoutes,
+]);
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...connectorsSlugCallbackRoutes,
+  ...githubOauthRoutes,
+  ...integrationsGithubRoutes,
+  ...zeroAgentsRoutes,
+  ...zeroConnectorsExternalCodeRoutes,
+  ...zeroConnectorsOauthDeviceAuthRoutes,
+  ...zeroConnectorsRoutes,
+  ...zeroCustomConnectorsRoutes,
+  ...zeroFeatureSwitchesRoutes,
+]);
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -89,6 +133,8 @@ const SLOCK_DEVICE_CODE_URL = "https://api.slock.ai/api/auth/device/authorize";
 const SLOCK_TOKEN_URL = "https://api.slock.ai/api/auth/device/token";
 const SLOCK_USERINFO_URL = "https://api.slock.ai/api/auth/me";
 const SLOCK_SERVERS_URL = "https://api.slock.ai/api/servers";
+const STRIPE_OAUTH_TOKEN_URL = "https://connect.stripe.com/oauth/token";
+const STRIPE_ACCOUNT_URL = "https://api.stripe.com/v1/account";
 const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
 const STRIPE_CLI_BROWSER_URL =
   "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI";
@@ -100,6 +146,10 @@ const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_OAUTH_USER_INFO_URL = "https://slack.com/api/users.info";
 const GITHUB_APP_INSTALLATIONS_URL = "https://api.github.com/app/installations";
 const GITHUB_APP_SLUG = "bdd-github-app";
+const CUSTOM_CONNECTOR_OAUTH2_AUTHORIZATION_URL =
+  "https://custom-oauth.example.test/authorize";
+const CUSTOM_CONNECTOR_OAUTH2_TOKEN_URL =
+  "https://custom-oauth.example.test/token";
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor ? { authorization: "Bearer clerk-session" } : {};
@@ -115,6 +165,61 @@ function expectStatus<
   if (response.status !== status) {
     throw new Error(`Expected status ${status}, got ${response.status}`);
   }
+}
+
+interface CustomConnectorOAuth2ProviderRecorder {
+  readonly authorizationUrl: string;
+  readonly tokenUrl: string;
+  readonly tokenBodies: URLSearchParams[];
+  readonly authorizationHeaders: (string | null)[];
+}
+
+interface CustomConnectorOAuth2ProviderOptions {
+  readonly initialExpiresIn?: number;
+  readonly refreshResponse?: (attempt: number) => Response | Promise<Response>;
+}
+
+export function mockCustomConnectorOAuth2Provider(
+  context: TestContext,
+  options: CustomConnectorOAuth2ProviderOptions = {},
+): CustomConnectorOAuth2ProviderRecorder {
+  context.mocks.dns.lookupOverrides.set("custom-oauth.example.test", [
+    { address: "93.184.216.34", family: 4 },
+  ]);
+  const tokenBodies: URLSearchParams[] = [];
+  const authorizationHeaders: (string | null)[] = [];
+  let refreshAttempts = 0;
+  server.use(
+    http.post(CUSTOM_CONNECTOR_OAUTH2_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      tokenBodies.push(body);
+      authorizationHeaders.push(request.headers.get("authorization"));
+      if (body.get("grant_type") === "refresh_token") {
+        refreshAttempts += 1;
+        if (options.refreshResponse) {
+          return await options.refreshResponse(refreshAttempts);
+        }
+        return HttpResponse.json({
+          access_token: "custom-oauth-refreshed-access-token",
+          token_type: "Bearer",
+          expires_in: 3600,
+        });
+      }
+      return HttpResponse.json({
+        access_token: "custom-oauth-initial-access-token",
+        refresh_token: "custom-oauth-refresh-token",
+        id_token: "custom-oauth-id-token",
+        token_type: "Bearer",
+        expires_in: options.initialExpiresIn ?? 0,
+      });
+    }),
+  );
+  return {
+    authorizationUrl: CUSTOM_CONNECTOR_OAUTH2_AUTHORIZATION_URL,
+    tokenUrl: CUSTOM_CONNECTOR_OAUTH2_TOKEN_URL,
+    tokenBodies,
+    authorizationHeaders,
+  };
 }
 
 export function mockGitHubConnectorOAuth(): void {
@@ -139,6 +244,52 @@ export function mockGitHubConnectorOAuth(): void {
       });
     }),
   );
+}
+
+interface StripeConnectorOAuthOptions {
+  readonly accountId?: string;
+  readonly livemode?: boolean;
+  readonly accessToken?: string;
+  readonly refreshToken?: string;
+}
+
+interface StripeConnectorOAuthRecorder {
+  readonly tokenBodies: URLSearchParams[];
+  readonly accountAuthorizationHeaders: (string | null)[];
+}
+
+export function mockStripeConnectorOAuth(
+  options: StripeConnectorOAuthOptions = {},
+): StripeConnectorOAuthRecorder {
+  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockOptionalEnv("STRIPE_OAUTH_CLIENT_ID", "stripe-client-id");
+  mockOptionalEnv("STRIPE_SECRET_KEY", "stripe-client-secret");
+
+  const tokenBodies: URLSearchParams[] = [];
+  const accountAuthorizationHeaders: (string | null)[] = [];
+  const accessToken = options.accessToken ?? "stripe-live-access-token";
+  const accountId = options.accountId ?? "acct_live_workflow";
+  server.use(
+    http.post(STRIPE_OAUTH_TOKEN_URL, async ({ request }) => {
+      tokenBodies.push(new URLSearchParams(await request.text()));
+      return HttpResponse.json({
+        access_token: accessToken,
+        livemode: options.livemode ?? true,
+        refresh_token: options.refreshToken ?? "stripe-refresh-token",
+        stripe_user_id: accountId,
+        scope: "read_write",
+      });
+    }),
+    http.get(STRIPE_ACCOUNT_URL, ({ request }) => {
+      accountAuthorizationHeaders.push(request.headers.get("authorization"));
+      return HttpResponse.json({
+        id: accountId,
+        business_profile: { name: "BDD Stripe Account" },
+        email: "stripe-workflow@example.test",
+      });
+    }),
+  );
+  return { tokenBodies, accountAuthorizationHeaders };
 }
 
 interface DatadogOAuthProviderRecorder {
@@ -269,8 +420,8 @@ export function mockSlackConnectorOAuth(): void {
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
-const GMAIL_PROFILE_URL =
-  "https://www.googleapis.com/gmail/v1/users/me/profile";
+const GOOGLE_OPENID_USERINFO_URL =
+  "https://openidconnect.googleapis.com/v1/userinfo";
 
 interface GoogleDriveConnectorOAuthOptions {
   /**
@@ -330,6 +481,7 @@ export function mockGoogleDriveConnectorOAuth(
 interface GmailConnectorOAuthOptions {
   readonly accessToken?: string;
   readonly refreshToken?: string;
+  readonly subject?: string;
   readonly email?: string;
 }
 
@@ -361,13 +513,48 @@ export function mockGmailConnectorOAuth(
         scope: "https://www.googleapis.com/auth/gmail.modify",
       });
     }),
-    http.get(GMAIL_PROFILE_URL, () => {
+    http.get(GOOGLE_OPENID_USERINFO_URL, () => {
       const email = options.email ?? "bdd-gmail@example.test";
       return HttpResponse.json({
-        emailAddress: email,
-        messagesTotal: 10,
-        threadsTotal: 3,
-        historyId: "100",
+        sub: options.subject ?? "bdd-gmail-user-id",
+        email,
+        name: "BDD Gmail User",
+      });
+    }),
+  );
+}
+
+export function mockGoogleFormsConnectorOAuth(): void {
+  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
+
+  server.use(
+    http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      if (body.get("grant_type") !== "authorization_code") {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: "Refresh is not granted by this fixture",
+          },
+          { status: 400 },
+        );
+      }
+      return HttpResponse.json({
+        access_token: "google-forms-access-token",
+        refresh_token: "google-forms-refresh-token",
+        expires_in: 3600,
+        token_type: "Bearer",
+        scope:
+          "https://www.googleapis.com/auth/forms.body.readonly https://www.googleapis.com/auth/forms.responses.readonly",
+      });
+    }),
+    http.get(GOOGLE_USERINFO_URL, () => {
+      return HttpResponse.json({
+        id: "bdd-google-forms-user-id",
+        email: "bdd-google-forms@example.test",
+        name: "BDD Google Forms User",
       });
     }),
   );
@@ -480,16 +667,19 @@ export async function requestOauthCallbackRaw(
   context: TestContext,
   args: {
     readonly origin: string;
-    readonly type: string;
+    readonly connectorSlug: string;
     readonly query: Readonly<Record<string, string>>;
     readonly headers?: Readonly<Record<string, string>>;
   },
 ): Promise<Response> {
-  const url = new URL(`/api/connectors/${args.type}/callback`, args.origin);
+  const url = new URL(
+    `/api/connectors/${args.connectorSlug}/callback`,
+    args.origin,
+  );
   for (const [name, value] of Object.entries(args.query)) {
     url.searchParams.set(name, value);
   }
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   return await app.request(url.toString(), { headers: args.headers });
 }
 
@@ -1059,7 +1249,9 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroConnectorsMainContract);
+      const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsMainContract,
+      );
       return await accept(
         client.list({ headers: authenticate(actor) }),
         statuses,
@@ -1077,7 +1269,9 @@ export function createConnectorBddApi(context: TestContext) {
       keyword: string | undefined,
       statuses: readonly (200 | 401 | 403)[],
     ) {
-      const client = setupApp({ context })(zeroConnectorsSearchContract);
+      const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsSearchContract,
+      );
       return await accept(
         client.search({ query: { keyword }, headers: authenticate(actor) }),
         statuses,
@@ -1093,48 +1287,64 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async requestReadConnectorByType(
+    async requestReadConnectorBySlug(
       actor: ApiTestUser | null,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroConnectorsByTypeContract);
+      const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      );
       return await accept(
-        client.get({ params: { type }, headers: authenticate(actor) }),
+        client.get({
+          params: { connectorSlug },
+          headers: authenticate(actor),
+        }),
         statuses,
       );
     },
 
-    async readConnectorByType(
+    async readConnectorBySlug(
       actor: ApiTestUser,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
     ): Promise<ConnectorResponse> {
-      const response = await api.requestReadConnectorByType(actor, type, [200]);
+      const response = await api.requestReadConnectorBySlug(
+        actor,
+        connectorSlug,
+        [200],
+      );
       expectStatus(response, 200);
       return response.body;
     },
 
-    async deleteConnectorByType(
+    async deleteConnectorBySlug(
       actor: ApiTestUser,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       statuses: readonly (204 | 401 | 404)[] = [204],
     ): Promise<void> {
-      const client = setupApp({ context })(zeroConnectorsByTypeContract);
+      const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      );
       await accept(
-        client.delete({ params: { type }, headers: authenticate(actor) }),
+        client.delete({
+          params: { connectorSlug },
+          headers: authenticate(actor),
+        }),
         statuses,
       );
     },
 
     async requestScopeDiff(
       actor: ApiTestUser | null,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroConnectorScopeDiffContract);
+      const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorScopeDiffContract,
+      );
       return await accept(
         client.getScopeDiff({
-          params: { type },
+          params: { connectorSlug },
           headers: authenticate(actor),
         }),
         statuses,
@@ -1143,16 +1353,16 @@ export function createConnectorBddApi(context: TestContext) {
 
     async readScopeDiff(
       actor: ApiTestUser,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
     ): Promise<ScopeDiffResponse> {
-      const response = await api.requestScopeDiff(actor, type, [200]);
+      const response = await api.requestScopeDiff(actor, connectorSlug, [200]);
       expectStatus(response, 200);
       return response.body;
     },
 
     async requestManualGrant(
       actor: ApiTestUser | null,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       values: Readonly<Record<string, string>>,
       options: {
@@ -1161,10 +1371,12 @@ export function createConnectorBddApi(context: TestContext) {
         readonly authorizeAgent?: true;
       },
     ) {
-      const client = setupApp({ context })(zeroConnectorManualGrantContract);
+      const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorManualGrantContract,
+      );
       return await accept(
         client.connect({
-          params: { type },
+          params: { connectorSlug },
           headers: authenticate(actor),
           body: {
             authMethod,
@@ -1179,14 +1391,14 @@ export function createConnectorBddApi(context: TestContext) {
 
     async connectManualGrant(
       actor: ApiTestUser,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       values: Readonly<Record<string, string>>,
       agentId?: string,
     ): Promise<ConnectorResponse> {
       const response = await api.requestManualGrant(
         actor,
-        type,
+        connectorSlug,
         authMethod,
         values,
         { statuses: [200], agentId, authorizeAgent: true },
@@ -1197,7 +1409,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestOauthStart(
       actor: ApiTestUser | null,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       options: {
         readonly statuses: readonly (200 | 400 | 401 | 403 | 500)[];
@@ -1206,10 +1418,12 @@ export function createConnectorBddApi(context: TestContext) {
         readonly callbackTarget?: "app";
       },
     ) {
-      const client = setupApp({ context })(zeroConnectorOauthStartContract);
+      const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorOauthStartContract,
+      );
       return await accept(
         client.start({
-          params: { type },
+          params: { connectorSlug },
           headers: authenticate(actor),
           body: {
             authMethod,
@@ -1226,32 +1440,50 @@ export function createConnectorBddApi(context: TestContext) {
 
     async startOauth(
       actor: ApiTestUser,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       agentId?: string,
     ): Promise<ConnectorOauthStartResponse> {
-      const response = await api.requestOauthStart(actor, type, authMethod, {
-        statuses: [200],
-        agentId,
-        authorizeAgent: true,
-      });
+      const response = await api.requestOauthStart(
+        actor,
+        connectorSlug,
+        authMethod,
+        {
+          statuses: [200],
+          agentId,
+          authorizeAgent: true,
+        },
+      );
       expectStatus(response, 200);
       return response.body;
     },
 
-    async completeOauthCallback(type: string, query: CallbackQuery) {
-      const client = setupApp({ context })(connectorsTypeCallbackContract);
+    async completeOauthCallback(connectorSlug: string, query: CallbackQuery) {
+      const client = setupApp({
+        context,
+        routes: connectorsSlugCallbackRoutes,
+      })(connectorsSlugCallbackContract);
       return await accept(
-        client.callback({ params: { type }, query, headers: {} }),
+        client.callback({
+          params: { connectorSlug },
+          query,
+          headers: {},
+        }),
         [307],
       );
     },
 
-    async completeOauthCallbackResult(type: string, query: CallbackQuery) {
-      const client = setupApp({ context })(connectorsTypeCallbackContract);
+    async completeOauthCallbackResult(
+      connectorSlug: string,
+      query: CallbackQuery,
+    ) {
+      const client = setupApp({
+        context,
+        routes: connectorsSlugCallbackRoutes,
+      })(connectorsSlugCallbackContract);
       const response = await accept(
         client.callback({
-          params: { type },
+          params: { connectorSlug },
           query: { ...query, responseMode: "json" },
           headers: {},
         }),
@@ -1286,7 +1518,9 @@ export function createConnectorBddApi(context: TestContext) {
         },
       );
 
-      const client = setupApp({ context })(githubOauthContract);
+      const client = setupApp({ context, routes: githubOauthRoutes })(
+        githubOauthContract,
+      );
       const install = await accept(
         client.install({
           query: {
@@ -1335,7 +1569,9 @@ export function createConnectorBddApi(context: TestContext) {
     async readGithubIntegration(
       actor: ApiTestUser,
     ): Promise<GithubInstallationResponse> {
-      const client = setupApp({ context })(integrationsGithubContract);
+      const client = setupApp({ context, routes: integrationsGithubRoutes })(
+        integrationsGithubContract,
+      );
       const response = await accept(
         client.getInstallation({ headers: authenticate(actor) }),
         [200],
@@ -1346,17 +1582,18 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestDeviceAuthStart(
       actor: ApiTestUser | null,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       options: Readonly<Record<string, string>> | undefined,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(
-        zeroConnectorOauthDeviceAuthSessionContract,
-      );
+      const client = setupApp({
+        context,
+        routes: zeroConnectorsOauthDeviceAuthRoutes,
+      })(zeroConnectorOauthDeviceAuthSessionContract);
       return await accept(
         client.create({
-          params: { type },
+          params: { connectorSlug },
           headers: authenticate(actor),
           body: { authMethod, options },
         }),
@@ -1366,13 +1603,13 @@ export function createConnectorBddApi(context: TestContext) {
 
     async startDeviceAuth(
       actor: ApiTestUser,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       options?: Readonly<Record<string, string>>,
     ): Promise<ConnectorOauthDeviceAuthSessionStartResponse> {
       const response = await api.requestDeviceAuthStart(
         actor,
-        type,
+        connectorSlug,
         authMethod,
         options,
         [200],
@@ -1383,17 +1620,18 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestDeviceAuthPoll(
       actor: ApiTestUser | null,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       sessionId: string,
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
-      const client = setupApp({ context })(
-        zeroConnectorOauthDeviceAuthSessionContract,
-      );
+      const client = setupApp({
+        context,
+        routes: zeroConnectorsOauthDeviceAuthRoutes,
+      })(zeroConnectorOauthDeviceAuthSessionContract);
       return await accept(
         client.poll({
-          params: { type, sessionId },
+          params: { connectorSlug, sessionId },
           headers: authenticate(actor),
           body: { sessionToken },
         }),
@@ -1403,13 +1641,13 @@ export function createConnectorBddApi(context: TestContext) {
 
     async pollDeviceAuth(
       actor: ApiTestUser,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       sessionId: string,
       sessionToken: string,
     ): Promise<ConnectorOauthDeviceAuthSessionPollResponse> {
       const response = await api.requestDeviceAuthPoll(
         actor,
-        type,
+        connectorSlug,
         sessionId,
         sessionToken,
         [200],
@@ -1420,16 +1658,17 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestExternalCodeStart(
       actor: ApiTestUser | null,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(
-        zeroConnectorExternalCodeSessionContract,
-      );
+      const client = setupApp({
+        context,
+        routes: zeroConnectorsExternalCodeRoutes,
+      })(zeroConnectorExternalCodeSessionContract);
       return await accept(
         client.create({
-          params: { type },
+          params: { connectorSlug },
           headers: authenticate(actor),
           body: { authMethod },
         }),
@@ -1439,7 +1678,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestExternalCodeComplete(
       actor: ApiTestUser | null,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       args: {
         readonly sessionId: string;
         readonly sessionToken: string;
@@ -1447,12 +1686,13 @@ export function createConnectorBddApi(context: TestContext) {
       },
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
-      const client = setupApp({ context })(
-        zeroConnectorExternalCodeSessionContract,
-      );
+      const client = setupApp({
+        context,
+        routes: zeroConnectorsExternalCodeRoutes,
+      })(zeroConnectorExternalCodeSessionContract);
       return await accept(
         client.complete({
-          params: { type, sessionId: args.sessionId },
+          params: { connectorSlug, sessionId: args.sessionId },
           headers: authenticate(actor),
           body: { sessionToken: args.sessionToken, code: args.code },
         }),
@@ -1462,12 +1702,12 @@ export function createConnectorBddApi(context: TestContext) {
 
     async startExternalCode(
       actor: ApiTestUser,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
     ): Promise<ConnectorExternalCodeSessionStartResponse> {
       const response = await api.requestExternalCodeStart(
         actor,
-        type,
+        connectorSlug,
         authMethod,
         [200],
       );
@@ -1477,7 +1717,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async completeExternalCode(
       actor: ApiTestUser,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       args: {
         readonly sessionId: string;
         readonly sessionToken: string;
@@ -1486,7 +1726,7 @@ export function createConnectorBddApi(context: TestContext) {
     ): Promise<ConnectorExternalCodeSessionCompleteResponse> {
       const response = await api.requestExternalCodeComplete(
         actor,
-        type,
+        connectorSlug,
         args,
         [200],
       );
@@ -1498,7 +1738,9 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       switches: Readonly<Record<string, boolean>>,
     ): Promise<Readonly<Record<string, boolean>>> {
-      const client = setupApp({ context })(zeroFeatureSwitchesContract);
+      const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+        zeroFeatureSwitchesContract,
+      );
       const response = await accept(
         client.update({
           headers: authenticate(actor),
@@ -1510,7 +1752,9 @@ export function createConnectorBddApi(context: TestContext) {
     },
 
     async deleteFeatureSwitches(actor: ApiTestUser): Promise<void> {
-      const client = setupApp({ context })(zeroFeatureSwitchesContract);
+      const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+        zeroFeatureSwitchesContract,
+      );
       await accept(client.delete({ headers: authenticate(actor) }), [200]);
     },
 
@@ -1519,7 +1763,9 @@ export function createConnectorBddApi(context: TestContext) {
       body: CreateCustomConnectorBody,
       statuses: readonly (201 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroCustomConnectorsContract);
+      const client = setupApp({ context, routes: zeroCustomConnectorsRoutes })(
+        zeroCustomConnectorsContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
@@ -1543,7 +1789,9 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroCustomConnectorsContract);
+      const client = setupApp({ context, routes: zeroCustomConnectorsRoutes })(
+        zeroCustomConnectorsContract,
+      );
       return await accept(
         client.list({ headers: authenticate(actor) }),
         statuses,
@@ -1558,15 +1806,49 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body.connectors;
     },
 
-    async requestPatchCustomConnector(
+    async requestCustomConnectorPermissions(
       actor: ApiTestUser | null,
       connectorId: string,
-      body: PatchCustomConnectorBody,
+      statuses: readonly (200 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorByIdTestRoutes,
+      })(zeroCustomConnectorByIdContract);
+      return await accept(
+        client.permissions({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+        }),
+        statuses,
+      );
+    },
+
+    async readCustomConnectorPermissions(
+      actor: ApiTestUser,
+      connectorId: string,
+    ): Promise<CustomConnectorPermissionBundleResponse> {
+      const response = await api.requestCustomConnectorPermissions(
+        actor,
+        connectorId,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
+    async requestUpdateCustomConnector(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      body: UpdateCustomConnectorBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorByIdTestRoutes,
+      })(zeroCustomConnectorByIdContract);
       return await accept(
-        client.patch({
+        client.update({
           params: { id: connectorId },
           headers: authenticate(actor),
           body,
@@ -1575,12 +1857,12 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
-    async patchCustomConnector(
+    async updateCustomConnector(
       actor: ApiTestUser,
       connectorId: string,
-      body: PatchCustomConnectorBody,
+      body: UpdateCustomConnectorBody,
     ): Promise<CustomConnectorResponse> {
-      const response = await api.requestPatchCustomConnector(
+      const response = await api.requestUpdateCustomConnector(
         actor,
         connectorId,
         body,
@@ -1595,7 +1877,10 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       statuses: readonly (204 | 401 | 403 | 404 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorByIdTestRoutes,
+      })(zeroCustomConnectorByIdContract);
       return await accept(
         client.delete({
           params: { id: connectorId },
@@ -1618,7 +1903,10 @@ export function createConnectorBddApi(context: TestContext) {
       body: SaveCustomConnectorProposalBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroCustomConnectorProposalContract);
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorProposalRoutes,
+      })(zeroCustomConnectorProposalContract);
       return await accept(
         client.save({ headers: authenticate(actor), body }),
         statuses,
@@ -1644,7 +1932,10 @@ export function createConnectorBddApi(context: TestContext) {
       value: string,
       statuses: readonly (204 | 400 | 401 | 404 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroCustomConnectorSecretContract);
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorSecretTestRoutes,
+      })(zeroCustomConnectorSecretContract);
       return await accept(
         client.set({
           params: { id: connectorId },
@@ -1669,12 +1960,50 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
+    async requestSetCustomConnectorValues(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      values: readonly CustomConnectorValueInput[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorsValuesSetRoutes,
+      })(zeroCustomConnectorValuesContract);
+      return await accept(
+        client.set({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body: { values: [...values] },
+        }),
+        statuses,
+      );
+    },
+
+    async setCustomConnectorValues(
+      actor: ApiTestUser,
+      connectorId: string,
+      values: readonly CustomConnectorValueInput[],
+    ): Promise<CustomConnectorResponse> {
+      const response = await api.requestSetCustomConnectorValues(
+        actor,
+        connectorId,
+        values,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
     async requestDeleteCustomConnectorSecret(
       actor: ApiTestUser | null,
       connectorId: string,
       statuses: readonly (204 | 401 | 404 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroCustomConnectorSecretContract);
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorSecretTestRoutes,
+      })(zeroCustomConnectorSecretContract);
       return await accept(
         client.delete({
           params: { id: connectorId },
@@ -1696,12 +2025,70 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
+    async requestStartCustomConnectorOAuth2(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      agentId?: string,
+    ) {
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorOAuth2Routes,
+      })(zeroCustomConnectorOAuth2Contract);
+      return await accept(
+        client.start({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body: agentId ? { agentId } : {},
+        }),
+        statuses,
+      );
+    },
+
+    async startCustomConnectorOAuth2(
+      actor: ApiTestUser,
+      connectorId: string,
+      agentId?: string,
+    ): Promise<string> {
+      const response = await api.requestStartCustomConnectorOAuth2(
+        actor,
+        connectorId,
+        [200],
+        agentId,
+      );
+      expectStatus(response, 200);
+      return response.body.authorizationUrl;
+    },
+
+    async completeCustomConnectorOAuth2Callback(query: CallbackQuery) {
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorOAuth2Routes,
+      })(zeroCustomConnectorOAuth2Contract);
+      return await accept(client.callback({ query }), [307]);
+    },
+
+    async completeCustomConnectorOAuth2CallbackResult(query: CallbackQuery) {
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorOAuth2Routes,
+      })(zeroCustomConnectorOAuth2Contract);
+      const response = await accept(
+        client.callback({ query: { ...query, responseMode: "json" } }),
+        [200],
+      );
+      expectStatus(response, 200);
+      return response;
+    },
+
     async requestAgentCustomConnectors(
       actor: ApiTestUser | null,
       agentId: string,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
+      const client = setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentCustomConnectorsContract,
+      );
       return await accept(
         client.get({ params: { id: agentId }, headers: authenticate(actor) }),
         statuses,
@@ -1721,6 +2108,19 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body.enabledIds;
     },
 
+    async readAgentCustomConnectorGrants(
+      actor: ApiTestUser,
+      agentId: string,
+    ): Promise<readonly AgentCustomConnectorGrant[]> {
+      const response = await api.requestAgentCustomConnectors(
+        actor,
+        agentId,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body.grants ?? [];
+    },
+
     async requestUpdateAgentCustomConnectors(
       actor: ApiTestUser | null,
       agentId: string,
@@ -1728,7 +2128,9 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
       operation?: "replace" | "add" | "remove",
     ) {
-      const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
+      const client = setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentCustomConnectorsContract,
+      );
       const body =
         operation === undefined
           ? { enabledIds: [...enabledIds] }
@@ -1758,6 +2160,30 @@ export function createConnectorBddApi(context: TestContext) {
       );
       expectStatus(response, 200);
       return response.body.enabledIds;
+    },
+
+    async requestUpdateAgentCustomConnectorGrants(
+      actor: ApiTestUser | null,
+      agentId: string,
+      grants: readonly AgentCustomConnectorGrant[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+      operation?: "replace" | "add" | "remove",
+    ) {
+      const client = setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentCustomConnectorsContract,
+      );
+      const body =
+        operation === undefined
+          ? { grants: [...grants] }
+          : { grants: [...grants], operation };
+      return await accept(
+        client.update({
+          params: { id: agentId },
+          headers: authenticate(actor),
+          body,
+        }),
+        statuses,
+      );
     },
   };
 

@@ -2,22 +2,16 @@ import { command } from "ccstate";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { and, eq, isNull, notInArray, or } from "drizzle-orm";
-
+import { and, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
 import { env, optionalEnv } from "../../lib/env";
 import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { settle, tapError } from "../utils";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
-import {
-  handleAgentPhoneInternalCallback$,
-  handleAgentPhoneInternalCallbackWithoutCcstate,
-} from "./internal-agentphone-run-callback.service";
 import {
   handleChatInternalCallback$,
   handleChatInternalCallbackWithoutCcstate,
@@ -27,21 +21,9 @@ import {
   handleMorningBriefEmailInternalCallback$,
 } from "./internal-morning-brief-run-callback.service";
 import {
-  handleGithubIssuesInternalCallback$,
-  handleGithubIssuesInternalCallbackWithoutCcstate,
-} from "./internal-github-issues-run-callback.service";
-import {
   handleFeishuOrgInternalCallback$,
   handleFeishuOrgInternalCallbackWithoutCcstate,
 } from "./internal-feishu-org-run-callback.service";
-import {
-  handleTeamsOrgInternalCallback$,
-  handleTeamsOrgInternalCallbackWithoutCcstate,
-} from "./internal-teams-org-run-callback.service";
-import {
-  handleTelegramInternalCallback$,
-  handleTelegramInternalCallbackWithoutCcstate,
-} from "./internal-telegram-run-callback.service";
 import {
   internalRunCallbackKindForRecord,
   type InternalRunCallbackDispatchResult,
@@ -55,6 +37,17 @@ import {
 import { continueGoalIfIdle$ } from "./zero-goal-continuation.service";
 
 const L = logger("AgentRunCallback");
+
+const INLINE_ONLY_INTEGRATION_DELIVERY_CALLBACK_KINDS = [
+  "slack:chat",
+  "feishu:chat",
+  "teams:chat",
+  "telegram:chat",
+  "github:chat",
+  "slack:org",
+] as const;
+const DELETED_THREAD_INLINE_CALLBACK_ERROR =
+  "Chat thread was deleted before inline callback delivery";
 
 interface CallbackRecord {
   readonly id: string;
@@ -78,6 +71,7 @@ interface DispatchRunCallbacksInput {
   readonly status: TerminalCallbackStatus;
   readonly result?: Record<string, unknown>;
   readonly error?: string;
+  readonly redriveChatCallbackId?: string;
 }
 
 interface DispatchSingleCallbackInput {
@@ -129,16 +123,11 @@ const dispatchInternalCallback$ = command(
     signal: AbortSignal,
   ): Promise<InternalRunCallbackDispatchResult> => {
     switch (input.kind) {
-      case "agent": {
-        await set(handleAgentInternalCallback$, input.envelope, signal);
-        return { success: true };
-      }
-      case "agentphone": {
-        return await set(
-          handleAgentPhoneInternalCallback$,
-          input.envelope,
-          signal,
-        );
+      case "agentphone:chat": {
+        return {
+          success: false,
+          error: "AgentPhone chat delivery callbacks are inline-only",
+        };
       }
       case "chat": {
         return await set(
@@ -160,12 +149,11 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
-      case "github:issues": {
-        return await set(
-          handleGithubIssuesInternalCallback$,
-          input.envelope,
-          signal,
-        );
+      case "github:chat": {
+        return {
+          success: false,
+          error: "GitHub chat delivery callbacks are inline-only",
+        };
       }
       case "morning-brief:email": {
         return await set(
@@ -199,19 +187,11 @@ const dispatchInternalCallback$ = command(
           error: "Teams chat delivery callbacks are inline-only",
         };
       }
-      case "teams:org": {
-        return await set(
-          handleTeamsOrgInternalCallback$,
-          input.envelope,
-          signal,
-        );
-      }
-      case "telegram": {
-        return await set(
-          handleTelegramInternalCallback$,
-          input.envelope,
-          signal,
-        );
+      case "telegram:chat": {
+        return {
+          success: false,
+          error: "Telegram chat delivery callbacks are inline-only",
+        };
       }
       case "workflow-automation:cron":
       case "workflow-automation:loop": {
@@ -334,10 +314,7 @@ async function dispatchRunCallbacks(
         or(
           isNull(agentRunCallbacks.internalKind),
           notInArray(agentRunCallbacks.internalKind, [
-            "slack:chat",
-            "feishu:chat",
-            "teams:chat",
-            "slack:org",
+            ...INLINE_ONLY_INTEGRATION_DELIVERY_CALLBACK_KINDS,
           ]),
         ),
       ),
@@ -367,13 +344,34 @@ export async function dispatchFailedRunCallbacks(
   await dispatchRunCallbacks(db, runId, "failed", undefined, error);
 }
 
+export async function failPendingInlineOnlyDeliveryCallbacksForDeletedThread(
+  db: Db,
+  runId: string,
+): Promise<void> {
+  await db
+    .update(agentRunCallbacks)
+    .set({
+      status: "failed",
+      lastError: DELETED_THREAD_INLINE_CALLBACK_ERROR,
+    })
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, runId),
+        eq(agentRunCallbacks.status, "pending"),
+        inArray(agentRunCallbacks.internalKind, [
+          ...INLINE_ONLY_INTEGRATION_DELIVERY_CALLBACK_KINDS,
+        ]),
+      ),
+    );
+}
+
 export const dispatchRunCallbacks$ = command(
   async (
     { set },
     input: DispatchRunCallbacksInput,
     signal: AbortSignal,
   ): Promise<DispatchResult[]> => {
-    const { db, runId, status, result, error } = input;
+    const { db, runId, status, result, error, redriveChatCallbackId } = input;
     const [run] = await db
       .select({
         orgId: agentRuns.orgId,
@@ -404,17 +402,22 @@ export const dispatchRunCallbacks$ = command(
       .where(
         and(
           eq(agentRunCallbacks.runId, runId),
-          or(
-            eq(agentRunCallbacks.status, "pending"),
-            eq(agentRunCallbacks.status, "failed"),
-          ),
+          redriveChatCallbackId === undefined
+            ? undefined
+            : and(
+                eq(agentRunCallbacks.id, redriveChatCallbackId),
+                eq(agentRunCallbacks.internalKind, "chat"),
+              ),
+          redriveChatCallbackId === undefined
+            ? or(
+                eq(agentRunCallbacks.status, "pending"),
+                eq(agentRunCallbacks.status, "failed"),
+              )
+            : undefined,
           or(
             isNull(agentRunCallbacks.internalKind),
             notInArray(agentRunCallbacks.internalKind, [
-              "slack:chat",
-              "feishu:chat",
-              "teams:chat",
-              "slack:org",
+              ...INLINE_ONLY_INTEGRATION_DELIVERY_CALLBACK_KINDS,
             ]),
           ),
         ),
@@ -450,21 +453,23 @@ export const dispatchRunCallbacks$ = command(
       signal.throwIfAborted();
       results.push(dispatchResult);
     }
-    await tapError(
-      set(
-        continueGoalIfIdle$,
-        {
-          db,
-          runId,
-          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+    if (redriveChatCallbackId === undefined) {
+      await tapError(
+        set(
+          continueGoalIfIdle$,
+          {
+            db,
+            runId,
+            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Goal continuation dispatch failed", { runId, error });
         },
-        signal,
-      ),
-      (error) => {
-        L.error("Goal continuation dispatch failed", { runId, error });
-      },
-    );
-    signal.throwIfAborted();
+      );
+      signal.throwIfAborted();
+    }
     return results;
   },
 );
@@ -536,14 +541,11 @@ async function dispatchInternalCallbackWithoutCcstate(
   kind: InternalRunCallbackKind,
 ): Promise<InternalRunCallbackDispatchResult> {
   switch (kind) {
-    case "agent": {
-      return { success: true };
-    }
-    case "agentphone": {
-      return await handleAgentPhoneInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
+    case "agentphone:chat": {
+      return {
+        success: false,
+        error: "AgentPhone chat delivery callbacks are inline-only",
+      };
     }
     case "chat": {
       return await handleChatInternalCallbackWithoutCcstate(
@@ -551,11 +553,11 @@ async function dispatchInternalCallbackWithoutCcstate(
         callbackEnvelope(input),
       );
     }
-    case "github:issues": {
-      return await handleGithubIssuesInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
+    case "github:chat": {
+      return {
+        success: false,
+        error: "GitHub chat delivery callbacks are inline-only",
+      };
     }
     case "morning-brief:email": {
       return await handleMorningBriefEmailInternalCallback(
@@ -587,17 +589,11 @@ async function dispatchInternalCallbackWithoutCcstate(
         error: "Teams chat delivery callbacks are inline-only",
       };
     }
-    case "teams:org": {
-      return await handleTeamsOrgInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
-    }
-    case "telegram": {
-      return await handleTelegramInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
+    case "telegram:chat": {
+      return {
+        success: false,
+        error: "Telegram chat delivery callbacks are inline-only",
+      };
     }
     case "workflow-automation:cron":
     case "workflow-automation:loop": {

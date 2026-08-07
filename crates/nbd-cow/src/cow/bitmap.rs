@@ -1,5 +1,5 @@
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use bitvec::prelude::*;
@@ -11,9 +11,9 @@ const _: () = assert!(
     std::mem::size_of::<usize>() == 8,
     "nbd-cow requires a 64-bit target"
 );
-const BITMAP_WRITE_CHUNK_BYTES: usize = 64 * 1024;
-const _: () = assert!(BITMAP_WRITE_CHUNK_BYTES.is_multiple_of(8));
-const BITMAP_WORDS_PER_WRITE_CHUNK: usize = BITMAP_WRITE_CHUNK_BYTES / 8;
+const BITMAP_CHUNK_BYTES: usize = 64 * 1024;
+const _: () = assert!(BITMAP_CHUNK_BYTES.is_multiple_of(8));
+const BITMAP_WORDS_PER_CHUNK: usize = BITMAP_CHUNK_BYTES / 8;
 
 /// Save the dirty bitmap to a file.
 ///
@@ -77,7 +77,7 @@ fn write_bitmap_words<W: Write>(writer: &mut W, raw: &[usize]) -> std::io::Resul
         return Ok(());
     }
 
-    let words_per_chunk = raw.len().min(BITMAP_WORDS_PER_WRITE_CHUNK);
+    let words_per_chunk = raw.len().min(BITMAP_WORDS_PER_CHUNK);
     let mut chunk = Vec::with_capacity(words_per_chunk * 8);
 
     for words in raw.chunks(words_per_chunk) {
@@ -96,16 +96,15 @@ fn write_bitmap_words<W: Write>(writer: &mut W, raw: &[usize]) -> std::io::Resul
 /// Returns an error if the block count doesn't match `expected_blocks`
 /// or if the file is truncated.
 pub(super) fn load_bitmap(path: &Path, expected_blocks: usize) -> Result<BitVec> {
-    let file = File::open(path)?;
+    let mut file = File::open(path)?;
     let file_len = file.metadata()?.len();
     if file_len < 8 {
         return Err(NbdCowError::Io(std::io::Error::other(
             "bitmap file too short for header",
         )));
     }
-    let mut reader = BufReader::new(file);
     let mut header = [0u8; 8];
-    reader.read_exact(&mut header)?;
+    file.read_exact(&mut header)?;
     let num_blocks = u64::from_le_bytes(header) as usize;
     if num_blocks != expected_blocks {
         return Err(NbdCowError::Io(std::io::Error::other(format!(
@@ -126,10 +125,26 @@ pub(super) fn load_bitmap(path: &Path, expected_blocks: usize) -> Result<BitVec>
             "bitmap word allocation failed: {e}"
         )))
     })?;
-    for _ in 0..expected_words {
-        let mut word_bytes = [0u8; 8];
-        reader.read_exact(&mut word_bytes)?;
-        words.push(u64::from_le_bytes(word_bytes) as usize);
+
+    let chunk_len = expected_data_len.min(BITMAP_CHUNK_BYTES);
+    let mut chunk = Vec::new();
+    chunk.try_reserve_exact(chunk_len).map_err(|e| {
+        NbdCowError::Io(std::io::Error::other(format!(
+            "bitmap read buffer allocation failed: {e}"
+        )))
+    })?;
+    chunk.resize(chunk_len, 0);
+
+    for start in (0..expected_words).step_by(BITMAP_WORDS_PER_CHUNK) {
+        let words_in_chunk = (expected_words - start).min(BITMAP_WORDS_PER_CHUNK);
+        let bytes_in_chunk = words_in_chunk * 8;
+        chunk.truncate(bytes_in_chunk);
+        file.read_exact(&mut chunk)?;
+        words.extend(chunk.chunks_exact(8).map(|word_bytes| {
+            let mut word = [0u8; 8];
+            word.copy_from_slice(word_bytes);
+            u64::from_le_bytes(word) as usize
+        }));
     }
     let mut bv = BitVec::from_vec(words);
     bv.truncate(num_blocks);

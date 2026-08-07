@@ -15,10 +15,16 @@ import {
   CLIENT_VERSION_HEADER,
 } from "../contracts/client-headers";
 import {
+  ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
-  NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
+  CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+  NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
+  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
@@ -27,6 +33,10 @@ import {
   SESSION_HISTORY_ENCODING_ZSTD,
   SESSION_HISTORY_GZIP_MIN_BYTES,
 } from "../contracts/runners";
+import {
+  STORAGE_MANIFEST_MAX_FILES,
+  STORAGE_MANIFEST_MAX_PATH_BYTES,
+} from "../contracts/storages";
 
 export type RustConstantValue =
   | {
@@ -83,6 +93,7 @@ const modelProviderEnvPlaceholderModule = [
 const clientHeadersModule = ["client", "headers"] as const;
 const clientTypesModule = ["client", "types"] as const;
 const runnerPathsModule = ["runners", "paths"] as const;
+const storagesModule = ["storages"] as const;
 
 export const rustConstantRootDoc = [
   "Generated Rust constants for `@vm0/api-contracts`.",
@@ -144,6 +155,12 @@ export const rustConstantModuleDocs = [
     rustModulePath: runnerPathsModule,
     rustDoc: [
       "Runner and guest filesystem path constants shared across Rust and TypeScript.",
+    ],
+  },
+  {
+    rustModulePath: storagesModule,
+    rustDoc: [
+      "Storage manifest contract constants shared by TypeScript and Rust.",
     ],
   },
 ] satisfies readonly RustConstantModuleDoc[];
@@ -254,11 +271,46 @@ export const rustConstantBindings = [
   },
   {
     rustModulePath: ["runners"],
-    rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",
-    value: rustU64(NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
+    rustConstName: "ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES",
+    value: rustU64(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES),
     rustDoc: [
-      "Maximum connector refs accepted by the runner network policy refresh endpoint.",
+      "Maximum serialized active-input control payload accepted by runner and guest process control.",
+      "The API validates the materialized prompt against this shared limit before committing claimed chat events.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX",
+    value: rustU64(NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX),
+    rustDoc: [
+      "Maximum connector slugs accepted by the runner network policy refresh endpoint.",
       "Rust runners use this shared contract value to split refresh requests before calling the API.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CONNECTOR_RUNTIME_SYNC_TARGETS_MAX",
+    value: rustU64(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX),
+    rustDoc: [
+      "Maximum connector runtime targets accepted by the sync endpoint.",
+      "Rust runners use this shared contract value to split target batches before calling the API.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE",
+    value: rustString(CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE),
+    rustDoc: [
+      "API error code returned when connector runtime synchronization targets a terminal run.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE",
+    value: rustString(NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE),
+    rustDoc: [
+      "API error code returned when network policy refresh targets a terminal run.",
+      "Rust runners use this shared contract value to distinguish terminal sync from ambiguous refresh failures.",
     ],
   },
   {
@@ -268,6 +320,24 @@ export const rustConstantBindings = [
     rustDoc: [
       "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
       "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "RUNNER_CANCELLATION_RECOVERY_GRACE_MS",
+    value: rustU64(RUNNER_CANCELLATION_RECOVERY_GRACE_MS),
+    rustDoc: [
+      "Maximum cooperative user-cancellation recovery window enforced by runners.",
+      "The API stale barrier remains longer than this runner-owned deadline so delivery latency cannot release a healthy recovery early.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CANCELLATION_RECOVERY_STALE_AFTER_MS",
+    value: rustU64(CANCELLATION_RECOVERY_STALE_AFTER_MS),
+    rustDoc: [
+      "Maximum API admission hold after public user cancellation when recovery completion is lost.",
+      "The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.",
     ],
   },
   {
@@ -351,6 +421,24 @@ export const rustConstantBindings = [
     rustDoc: [
       "Canonical working directory path expected inside runner guests.",
       "Rust and TypeScript components use this shared contract value when building runner commands and paths.",
+    ],
+  },
+  {
+    rustModulePath: storagesModule,
+    rustConstName: "STORAGE_MANIFEST_MAX_FILES",
+    value: rustU64(STORAGE_MANIFEST_MAX_FILES),
+    rustDoc: [
+      "Maximum file entries accepted in a storage manifest.",
+      "Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.",
+    ],
+  },
+  {
+    rustModulePath: storagesModule,
+    rustConstName: "STORAGE_MANIFEST_MAX_PATH_BYTES",
+    value: rustU64(STORAGE_MANIFEST_MAX_PATH_BYTES),
+    rustDoc: [
+      "Maximum cumulative UTF-8 path bytes accepted in a storage manifest.",
+      "Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.",
     ],
   },
   ...codexOauthPlaceholderNames.map((name) => {

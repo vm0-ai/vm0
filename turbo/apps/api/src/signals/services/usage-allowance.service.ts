@@ -18,9 +18,8 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 
@@ -297,7 +296,7 @@ async function refreshUsageAllowanceEntitlementFromStripe(
   };
 }
 
-export async function lockUsageAllowanceOrg(
+async function lockUsageAllowanceOrg(
   tx: UsageAllowanceStore,
   orgId: string,
 ): Promise<void> {
@@ -621,7 +620,7 @@ async function resolveUsageAllowanceAvailabilityInTransaction(
   return await resolveUsageAllowanceAvailabilityForLockedOrg(tx, orgId);
 }
 
-export async function resolveUsageAllowanceAvailabilityForLockedOrg(
+async function resolveUsageAllowanceAvailabilityForLockedOrg(
   tx: UsageAllowanceStore,
   orgId: string,
 ): Promise<UsageAllowanceAvailability | null> {

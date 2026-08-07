@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
 
 import { accept } from "../../lib/accept.ts";
+import { i18n } from "../../i18n/index.ts";
 import { FeishuOAuthCallbackPage } from "../../views/zero-page/feishu-oauth-callback-page.tsx";
 import { zeroClient$ } from "../api-client.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -21,7 +22,12 @@ export const setupFeishuOAuthCallbackPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const searchParams = get(searchParams$);
     set(updatePage$, createElement(FeishuOAuthCallbackPage));
-    set(updateDocumentTitle$, "Connect Feishu");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.connectors.providerConnect.feishu.connectTitle;
+      }),
+    );
     await set(hideAppSkeleton$, signal);
 
     const client = get(zeroClient$)(zeroFeishuOauthContract, {

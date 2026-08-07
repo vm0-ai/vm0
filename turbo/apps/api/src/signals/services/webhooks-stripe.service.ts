@@ -22,6 +22,7 @@ import { getCampaign } from "./one-time-products";
 import {
   checkoutTierConflictMessage,
   checkoutWouldReplaceWithSameOrLowerTier,
+  knownPlanPriceItem,
   type SubscriptionCheckoutTier,
   tierForKnownPriceId,
   tierFromPriceId,
@@ -49,6 +50,14 @@ import {
   upsertOrgPlanEntitlement,
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
+import type { Tx } from "../../lib/db-types";
+import {
+  handleUsagePackCheckoutCompleted,
+  handleUsagePackInvoicePaid,
+  handleUsagePackSubscriptionCreated,
+  handleUsagePackSubscriptionDeleted,
+  handleUsagePackSubscriptionUpdated,
+} from "./usage-pack-subscription.service";
 
 const L = logger("WebhookStripe");
 
@@ -58,7 +67,7 @@ type BillingDowngradeCheckoutTargetTier =
   | "pro";
 const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
 
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WriteTx = Tx;
 type UsageAllowanceSubscriptionUpdateStore = Pick<Db, "select" | "update">;
 type ClerkClient = ReturnType<typeof clerk$.read>;
 type ClerkClientProvider = () => ClerkClient;
@@ -90,6 +99,8 @@ interface InvoiceInput {
   readonly lines: {
     readonly data: readonly {
       readonly id?: string;
+      readonly amount?: number | null;
+      readonly subtotal?: number | null;
       readonly quantity?: number | null;
       readonly price?: { readonly id: string } | null;
       readonly pricing?: {
@@ -97,9 +108,22 @@ interface InvoiceInput {
           readonly price?: string | { readonly id: string } | null;
         } | null;
       } | null;
+      readonly proration?: boolean;
       readonly period: { readonly start?: number; readonly end: number };
       readonly parent: {
         readonly type: "subscription_item_details" | "invoice_item_details";
+        readonly subscription_item_details?: {
+          readonly proration: boolean;
+          readonly proration_details?: {
+            readonly credited_items?: unknown;
+          } | null;
+        } | null;
+        readonly invoice_item_details?: {
+          readonly proration: boolean;
+          readonly proration_details?: {
+            readonly credited_items?: unknown;
+          } | null;
+        } | null;
       } | null;
     }[];
   };
@@ -126,6 +150,7 @@ interface SubscriptionInput {
     readonly data: readonly {
       readonly price: { readonly id: string };
       readonly quantity?: number | null;
+      readonly current_period_start?: number | null;
       readonly current_period_end?: number | null;
     }[];
   };
@@ -258,6 +283,50 @@ function concurrencySubscriptionSlots(
 ): number | null {
   const quantity = concurrencySubscriptionItem(subscription)?.quantity;
   return typeof quantity === "number" && quantity > 0 ? quantity : null;
+}
+
+interface ConcurrencySubscriptionState {
+  readonly stripePriceId: string;
+  readonly slots: number;
+  readonly subscriptionStatus: string;
+  readonly currentPeriodEnd: Date | null;
+  readonly cancelAtPeriodEnd: boolean;
+}
+
+function concurrencySubscriptionState(
+  subscription: SubscriptionInput,
+): ConcurrencySubscriptionState | null {
+  const item = concurrencySubscriptionItem(subscription);
+  const slots = concurrencySubscriptionSlots(subscription);
+  if (!item || !slots) {
+    return null;
+  }
+
+  return {
+    stripePriceId: item.price.id,
+    slots,
+    subscriptionStatus: subscription.status,
+    currentPeriodEnd: concurrencySubscriptionPeriodEnd(subscription),
+    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+  };
+}
+
+async function retrieveConcurrencySubscriptionState(
+  subscriptionId: string,
+): Promise<ConcurrencySubscriptionState | null> {
+  const subscription =
+    await getStripeClient().subscriptions.retrieve(subscriptionId);
+  return concurrencySubscriptionState(subscription);
+}
+
+async function lockConcurrencySubscriptionState(
+  tx: WriteTx,
+  subscriptionId: string,
+): Promise<void> {
+  const lockKey = `stripe_concurrency_subscription:${subscriptionId}`;
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+  );
 }
 
 function subscriptionCancelAt(subscription: SubscriptionInput): Date | null {
@@ -2201,67 +2270,64 @@ function concurrencyInvoiceEntitlementValue(args: {
   };
 }
 
-function concurrencyInvoiceSubscriptionState(
-  values: readonly ConcurrencyInvoiceEntitlementValue[],
-): {
-  readonly stripePriceId: string;
-  readonly slots: number;
-  readonly currentPeriodEnd: Date;
-} | null {
-  const firstValue = values[0];
-  if (!firstValue) {
-    return null;
-  }
-
-  return {
-    stripePriceId: firstValue.stripePriceId,
-    slots: values.reduce((sum, value) => {
-      return sum + value.slots;
-    }, 0),
-    currentPeriodEnd: values.reduce((latest, value) => {
-      return value.expiresAt > latest ? value.expiresAt : latest;
-    }, firstValue.expiresAt),
-  };
-}
-
-async function upsertConcurrencySubscriptionFromInvoice(
+async function upsertConcurrencySubscriptionState(
   tx: WriteTx,
   args: {
     readonly orgId: string;
     readonly subscriptionId: string;
-    readonly values: readonly ConcurrencyInvoiceEntitlementValue[];
+    readonly state: ConcurrencySubscriptionState;
   },
 ): Promise<void> {
-  const state = concurrencyInvoiceSubscriptionState(args.values);
-  if (!state) {
-    return;
-  }
-
   const updatedAt = nowDate();
   await tx
     .insert(orgConcurrencySubscriptions)
     .values({
       orgId: args.orgId,
       stripeSubscriptionId: args.subscriptionId,
-      stripePriceId: state.stripePriceId,
-      slots: state.slots,
-      subscriptionStatus: "active",
-      currentPeriodEnd: state.currentPeriodEnd,
-      cancelAtPeriodEnd: false,
+      stripePriceId: args.state.stripePriceId,
+      slots: args.state.slots,
+      subscriptionStatus: args.state.subscriptionStatus,
+      currentPeriodEnd: args.state.currentPeriodEnd,
+      cancelAtPeriodEnd: args.state.cancelAtPeriodEnd,
       updatedAt,
     })
     .onConflictDoUpdate({
       target: orgConcurrencySubscriptions.stripeSubscriptionId,
       set: {
         orgId: args.orgId,
-        stripePriceId: state.stripePriceId,
-        slots: state.slots,
-        subscriptionStatus: "active",
-        currentPeriodEnd: state.currentPeriodEnd,
-        cancelAtPeriodEnd: false,
+        stripePriceId: args.state.stripePriceId,
+        slots: args.state.slots,
+        subscriptionStatus: args.state.subscriptionStatus,
+        currentPeriodEnd: args.state.currentPeriodEnd,
+        cancelAtPeriodEnd: args.state.cancelAtPeriodEnd,
         updatedAt,
       },
     });
+}
+
+function concurrencyInvoiceSubscriptionState(
+  values: readonly ConcurrencyInvoiceEntitlementValue[],
+): ConcurrencySubscriptionState | null {
+  const activeValues = values.filter((value) => {
+    return value.expiresAt > nowDate();
+  });
+  const currentValues = activeValues.length > 0 ? activeValues : values;
+  const firstValue = currentValues[0];
+  if (!firstValue) {
+    return null;
+  }
+
+  return {
+    stripePriceId: firstValue.stripePriceId,
+    slots: currentValues.reduce((sum, value) => {
+      return sum + value.slots;
+    }, 0),
+    subscriptionStatus: "active",
+    currentPeriodEnd: currentValues.reduce((latest, value) => {
+      return value.expiresAt > latest ? value.expiresAt : latest;
+    }, firstValue.expiresAt),
+    cancelAtPeriodEnd: false,
+  };
 }
 
 async function handleConcurrencyInvoicePaid(
@@ -2321,32 +2387,56 @@ async function handleConcurrencyInvoicePaid(
       orgId: org.orgId,
       subscriptionId,
     });
+  }
+
+  const persisted = await db.transaction(async (tx) => {
+    await lockConcurrencySubscriptionState(tx, subscriptionId);
+    const [existing] = await tx
+      .select({
+        subscriptionId: orgConcurrencySubscriptions.stripeSubscriptionId,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
+      )
+      .limit(1);
+    const state = existing
+      ? await retrieveConcurrencySubscriptionState(subscriptionId)
+      : concurrencyInvoiceSubscriptionState(values);
+    if (!state) {
+      return null;
+    }
+    const insertedRows =
+      values.length === 0
+        ? []
+        : await tx
+            .insert(orgConcurrencyEntitlements)
+            .values(values)
+            .onConflictDoNothing()
+            .returning({ id: orgConcurrencyEntitlements.id });
+    await upsertConcurrencySubscriptionState(tx, {
+      orgId: org.orgId,
+      subscriptionId,
+      state,
+    });
+    return { insertedLines: insertedRows.length, state };
+  });
+
+  if (!persisted) {
+    L.warn("concurrency invoice.paid subscription has no concurrency item", {
+      invoiceId: invoice.id,
+      orgId: org.orgId,
+      subscriptionId,
+    });
     return { handled: true, drainOrgId: org.orgId };
   }
 
-  const inserted = await db.transaction(async (tx) => {
-    const insertedRows = await tx
-      .insert(orgConcurrencyEntitlements)
-      .values(values)
-      .onConflictDoNothing()
-      .returning({ slots: orgConcurrencyEntitlements.slots });
-    await upsertConcurrencySubscriptionFromInvoice(tx, {
-      orgId: org.orgId,
-      subscriptionId,
-      values,
-    });
-    return insertedRows;
-  });
-
-  const slots = inserted.reduce((sum, row) => {
-    return sum + row.slots;
-  }, 0);
   L.debug("concurrency invoice.paid processed", {
     invoiceId: invoice.id,
     orgId: org.orgId,
     subscriptionId,
-    insertedLines: inserted.length,
-    slots,
+    insertedLines: persisted.insertedLines,
+    slots: persisted.state.slots,
   });
 
   return { handled: true, drainOrgId: org.orgId };
@@ -2377,7 +2467,9 @@ async function bindSubscriptionToCustomerOrg(
     return [];
   }
 
-  const priceId = args.subscription.items.data[0]?.price?.id;
+  const priceId =
+    knownPlanPriceItem(args.subscription.items.data)?.price.id ??
+    args.subscription.items.data[0]?.price.id;
   if (!priceId) {
     L.warn("subscription has no price ID", {
       subscriptionId: args.subscription.id,
@@ -2460,7 +2552,7 @@ function replacedProSubscriptionId(args: {
 }
 
 function tierFromSubscription(subscription: Stripe.Subscription) {
-  const priceId = subscription.items.data[0]?.price?.id;
+  const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
   if (!priceId) {
     return null;
   }
@@ -2716,12 +2808,29 @@ function invoiceHasConcurrencyPurpose(invoice: InvoiceInput): boolean {
   );
 }
 
+function invoiceLineCreditsPreviousItems(line: InvoiceLineInput): boolean {
+  const subscriptionCreditedItems =
+    line.parent?.subscription_item_details?.proration_details?.credited_items;
+  const invoiceCreditedItems =
+    line.parent?.invoice_item_details?.proration_details?.credited_items;
+  return (
+    (subscriptionCreditedItems !== undefined &&
+      subscriptionCreditedItems !== null) ||
+    (invoiceCreditedItems !== undefined && invoiceCreditedItems !== null)
+  );
+}
+
 function concurrencyInvoiceLines(
   invoice: InvoiceInput,
 ): readonly { readonly line: InvoiceLineInput; readonly index: number }[] {
   return invoice.lines.data.flatMap((line, index) => {
     const priceId = invoiceLinePriceId(line);
-    return priceId && isConcurrencyPriceId(priceId) ? [{ line, index }] : [];
+    return priceId &&
+      isConcurrencyPriceId(priceId) &&
+      !invoiceLineCreditsPreviousItems(line) &&
+      (line.amount === undefined || line.amount === null || line.amount >= 0)
+      ? [{ line, index }]
+      : [];
   });
 }
 
@@ -2761,7 +2870,7 @@ async function subscriptionInvoiceDetails(
 ): Promise<SubscriptionInvoiceDetails | null> {
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(args.subscriptionId);
-  const priceId = subscription.items.data[0]?.price?.id;
+  const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
   if (!priceId) {
     L.warn("subscription has no price ID for credit grant", {
       subscriptionId: args.subscriptionId,
@@ -3093,15 +3202,28 @@ async function handleCheckoutCompleted(
 
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const usagePackOutcome = await handleUsagePackCheckoutCompleted(
+    db,
+    session,
+    subscription,
+  );
   const orgIds = await bindSubscriptionToCustomerOrg(db, {
     customerId,
-    subscription,
+    subscription: usagePackOutcome.subscription ?? subscription,
     source: "checkout.session.completed",
   });
-  return { drainOrgId: null, orgIds };
+  return {
+    drainOrgId: null,
+    orgIds: [
+      ...new Set([
+        ...orgIds,
+        ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+      ]),
+    ],
+  };
 }
 
-async function handleSubscriptionCreated(
+async function handleSubscriptionCreatedLegacy(
   db: Db,
   getClerk: ClerkClientProvider,
   subscription: SubscriptionInput,
@@ -3122,11 +3244,38 @@ async function handleSubscriptionCreated(
   });
 }
 
+async function handleSubscriptionCreated(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  subscription: SubscriptionInput,
+): Promise<readonly string[]> {
+  const usagePackOutcome = await handleUsagePackSubscriptionCreated(
+    db,
+    subscription,
+  );
+  const orgIds = await handleSubscriptionCreatedLegacy(
+    db,
+    getClerk,
+    usagePackOutcome.subscription ?? subscription,
+  );
+  return [
+    ...new Set([
+      ...orgIds,
+      ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+    ]),
+  ];
+}
+
 async function handleInvoicePaid(
   db: Db,
   getClerk: ClerkClientProvider,
   invoice: InvoiceInput,
 ): Promise<string | null> {
+  const usagePackResult = await handleUsagePackInvoicePaid(db, invoice);
+  if (usagePackResult.handled) {
+    return usagePackResult.orgId;
+  }
+
   const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);
   if (autoRechargeResult.handled) {
     return autoRechargeResult.drainOrgId;
@@ -3212,28 +3361,53 @@ async function handleConcurrencySubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
 ): Promise<readonly string[]> {
-  const item = concurrencySubscriptionItem(subscription);
-  const currentPeriodEnd = concurrencySubscriptionPeriodEnd(subscription);
-  const slots = concurrencySubscriptionSlots(subscription);
-  const updates = {
-    subscriptionStatus: subscription.status,
-    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
-    updatedAt: nowDate(),
-    ...(item ? { stripePriceId: item.price.id } : {}),
-    ...(currentPeriodEnd ? { currentPeriodEnd } : {}),
-    ...(slots ? { slots } : {}),
-  };
+  return await db.transaction(async (tx) => {
+    await lockConcurrencySubscriptionState(tx, subscription.id);
+    const [existing] = await tx
+      .select({
+        orgId: orgConcurrencySubscriptions.orgId,
+        slots: orgConcurrencySubscriptions.slots,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+      )
+      .limit(1);
+    if (!existing) {
+      return [];
+    }
 
-  const rows = await db
-    .update(orgConcurrencySubscriptions)
-    .set(updates)
-    .where(
-      eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
-    )
-    .returning({ orgId: orgConcurrencySubscriptions.orgId });
+    const eventState = concurrencySubscriptionState(subscription);
+    const state =
+      eventState?.slots === existing.slots
+        ? eventState
+        : await retrieveConcurrencySubscriptionState(subscription.id);
+    if (!state) {
+      L.warn("updated subscription has no concurrency item", {
+        subscriptionId: subscription.id,
+        orgId: existing.orgId,
+      });
+      return [];
+    }
 
-  return rows.map((row) => {
-    return row.orgId;
+    const rows = await tx
+      .update(orgConcurrencySubscriptions)
+      .set({
+        stripePriceId: state.stripePriceId,
+        slots: state.slots,
+        subscriptionStatus: state.subscriptionStatus,
+        currentPeriodEnd: state.currentPeriodEnd,
+        cancelAtPeriodEnd: state.cancelAtPeriodEnd,
+        updatedAt: nowDate(),
+      })
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+      )
+      .returning({ orgId: orgConcurrencySubscriptions.orgId });
+
+    return rows.map((row) => {
+      return row.orgId;
+    });
   });
 }
 
@@ -3451,7 +3625,7 @@ async function handleUsageAllowanceSubscriptionUpdated(
   });
 }
 
-async function handleSubscriptionUpdated(
+async function handleSubscriptionUpdatedLegacy(
   db: Db,
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
@@ -3547,6 +3721,28 @@ async function handleSubscriptionUpdated(
   });
 }
 
+async function handleSubscriptionUpdated(
+  db: Db,
+  subscription: SubscriptionInput,
+  previousAttributes: SubscriptionPreviousAttributes | undefined,
+): Promise<readonly string[]> {
+  const usagePackOutcome = await handleUsagePackSubscriptionUpdated(
+    db,
+    subscription,
+  );
+  const orgIds = await handleSubscriptionUpdatedLegacy(
+    db,
+    usagePackOutcome.subscription ?? subscription,
+    previousAttributes,
+  );
+  return [
+    ...new Set([
+      ...orgIds,
+      ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+    ]),
+  ];
+}
+
 async function handleSubscriptionScheduleReleased(
   db: Db,
   schedule: SubscriptionScheduleInput,
@@ -3604,7 +3800,7 @@ async function handleSubscriptionScheduleEnded(
   });
 }
 
-async function handleSubscriptionDeleted(
+async function handleSubscriptionDeletedLegacy(
   db: Db,
   subscription: SubscriptionDeletedInput,
 ): Promise<readonly string[]> {
@@ -3725,6 +3921,23 @@ async function handleSubscriptionDeleted(
   return rows.map((row) => {
     return row.orgId;
   });
+}
+
+async function handleSubscriptionDeleted(
+  db: Db,
+  subscription: SubscriptionDeletedInput,
+): Promise<readonly string[]> {
+  const usagePackOutcome = await handleUsagePackSubscriptionDeleted(
+    db,
+    subscription,
+  );
+  const orgIds = await handleSubscriptionDeletedLegacy(db, subscription);
+  return [
+    ...new Set([
+      ...orgIds,
+      ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+    ]),
+  ];
 }
 
 export const handleStripeWebhookEvent$ = command(

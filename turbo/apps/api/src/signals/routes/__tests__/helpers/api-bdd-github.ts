@@ -1,22 +1,14 @@
 import { Buffer } from "node:buffer";
 import { generateKeyPairSync, randomInt } from "node:crypto";
 
-import {
-  composesByIdContract,
-  composesMainContract,
-  agentComposeApiContentSchema,
-} from "@vm0/api-contracts/contracts/composes";
+import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
 import {
   integrationsGithubContract,
   type GithubConnectUserBody,
   type GithubInstallationResponse,
 } from "@vm0/api-contracts/contracts/integrations-github";
-import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorsBySlugContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import {
-  zeroSecretsContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { z } from "zod";
@@ -25,14 +17,25 @@ import { createApp } from "../../../../app-factory";
 import { mockOptionalEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
 import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+  createAgentComposeFixture,
+  readAgentComposeByIdFixture,
+} from "../../../../test-fixtures/agent-composes";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser } from "./api-bdd";
 import { mockClerkMembership } from "./api-bdd-clerk";
 import { createZeroRouteMocks } from "./zero-route-test";
-export { mockClerkMembership } from "./api-bdd-clerk";
+import { integrationsGithubRoutes } from "../../integrations-github";
+import { githubOauthRoutes } from "../../github-oauth";
+import { zeroConnectorsRoutes } from "../../zero-connectors";
+import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...githubOauthRoutes,
+  ...integrationsGithubRoutes,
+  ...zeroConnectorsRoutes,
+  ...zeroFeatureSwitchesRoutes,
+]);
 
 const GITHUB_APP_SLUG = "vm0-test";
 const GITHUB_APP_CLIENT_ID = "github-app-client-id";
@@ -268,7 +271,9 @@ export function createGithubBddApi(context: TestContext) {
   }
 
   function githubClient() {
-    return setupApp({ context })(integrationsGithubContract);
+    return setupApp({ context, routes: integrationsGithubRoutes })(
+      integrationsGithubContract,
+    );
   }
 
   async function rawRequest(
@@ -280,7 +285,7 @@ export function createGithubBddApi(context: TestContext) {
       readonly body?: string;
     },
   ): Promise<RawRouteResponse> {
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(
       `${init.origin ?? DEFAULT_TEST_ORIGIN}${path}`,
       {
@@ -403,11 +408,13 @@ export function createGithubBddApi(context: TestContext) {
     },
 
     async readGithubConnector(actor: ApiTestUser) {
-      const client = setupApp({ context })(zeroConnectorsByTypeContract);
+      const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      );
       const response = await accept(
         client.get({
           headers: authenticate(actor),
-          params: { type: "github" },
+          params: { connectorSlug: "github" },
         }),
         [200],
       );
@@ -415,7 +422,9 @@ export function createGithubBddApi(context: TestContext) {
     },
 
     async enableAuditLink(actor: ApiTestUser): Promise<void> {
-      const client = setupApp({ context })(zeroFeatureSwitchesContract);
+      const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+        zeroFeatureSwitchesContract,
+      );
       await accept(
         client.update({
           headers: authenticate(actor),
@@ -429,9 +438,15 @@ export function createGithubBddApi(context: TestContext) {
       actor: ApiTestUser,
       content: ComposeContent,
     ): Promise<{ readonly composeId: string; readonly name: string }> {
-      const client = setupApp({ context })(composesMainContract);
+      if (!actor.orgId) {
+        throw new Error("Compose fixtures require an org-scoped actor");
+      }
       const response = await accept(
-        client.create({ headers: authenticate(actor), body: { content } }),
+        createAgentComposeFixture({
+          actor: { userId: actor.userId, orgId: actor.orgId },
+          content,
+          signal: context.signal,
+        }),
         [200, 201],
       );
       return { composeId: response.body.composeId, name: response.body.name };
@@ -441,31 +456,17 @@ export function createGithubBddApi(context: TestContext) {
       actor: ApiTestUser,
       composeId: string,
     ): Promise<string> {
-      const client = setupApp({ context })(composesByIdContract);
+      if (!actor.orgId) {
+        throw new Error("Compose fixtures require an org-scoped actor");
+      }
       const response = await accept(
-        client.getById({
-          headers: authenticate(actor),
-          params: { id: composeId },
+        readAgentComposeByIdFixture({
+          actor: { userId: actor.userId, orgId: actor.orgId },
+          composeId,
         }),
         [200],
       );
       return response.body.name;
-    },
-
-    async setSecret(actor: ApiTestUser, name: string, value: string) {
-      const client = setupApp({ context })(zeroSecretsContract);
-      await accept(
-        client.set({ headers: authenticate(actor), body: { name, value } }),
-        [200, 201],
-      );
-    },
-
-    async setVariable(actor: ApiTestUser, name: string, value: string) {
-      const client = setupApp({ context })(zeroVariablesContract);
-      await accept(
-        client.set({ headers: authenticate(actor), body: { name, value } }),
-        [200, 201],
-      );
     },
 
     /**

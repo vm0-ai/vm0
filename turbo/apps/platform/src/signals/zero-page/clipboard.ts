@@ -2,6 +2,8 @@ import {
   userMessageDocumentSchema,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { i18n } from "../../i18n/index.ts";
+import { SUPPORTED_LOCALES } from "../../i18n/resources.ts";
 import { jsonParseOr, settle, throwIfAbort, withCleanup } from "../utils.ts";
 
 const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
@@ -85,6 +87,27 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function attachmentHeading(): string {
+  return i18n.t(($) => {
+    return $.chat.attachments.title;
+  });
+}
+
+function supportedAttachmentHeadings(): readonly string[] {
+  return Array.from(
+    new Set(
+      SUPPORTED_LOCALES.map((lng) => {
+        return i18n.t(
+          ($) => {
+            return $.chat.attachments.title;
+          },
+          { lng },
+        );
+      }),
+    ),
+  );
+}
+
 function formatPlainText(payload: ChatClipboardPayload): string {
   if (payload.attachments.length === 0) {
     return payload.text;
@@ -94,19 +117,22 @@ function formatPlainText(payload: ChatClipboardPayload): string {
       return `- ${attachment.filename}: ${attachment.url}`;
     })
     .join("\n");
-  return [payload.text.trim(), `Attachments:\n${attachments}`]
+  return [payload.text.trim(), `${attachmentHeading()}:\n${attachments}`]
     .filter(Boolean)
     .join("\n\n");
 }
 
 function textFromPlainClipboardFallback(plainText: string): string {
-  const attachmentsMarker = "\n\nAttachments:\n";
-  const markerIndex = plainText.indexOf(attachmentsMarker);
-  if (markerIndex !== -1) {
-    return plainText.slice(0, markerIndex).trim();
-  }
-  if (plainText.startsWith("Attachments:\n")) {
-    return "";
+  for (const heading of supportedAttachmentHeadings()) {
+    const standaloneMarker = `${heading}:\n`;
+    const attachmentsMarker = `\n\n${standaloneMarker}`;
+    const markerIndex = plainText.indexOf(attachmentsMarker);
+    if (markerIndex !== -1) {
+      return plainText.slice(0, markerIndex).trim();
+    }
+    if (plainText.startsWith(standaloneMarker)) {
+      return "";
+    }
   }
   return plainText.trim();
 }
@@ -124,7 +150,7 @@ function formatMessageHtml(payload: ChatClipboardPayload): string {
     })
     .join("");
   const attachmentsHtml = attachmentLinksHtml
-    ? `<div>Attachments:</div>${attachmentLinksHtml}`
+    ? `<div>${escapeHtml(attachmentHeading())}:</div>${attachmentLinksHtml}`
     : "";
   return `<div ${CHAT_MESSAGE_CLIPBOARD_ATTR}="${encoded}">${textHtml}${attachmentsHtml}</div>`;
 }

@@ -97,17 +97,66 @@ describe("release-please API deployment graph", () => {
       workflow,
       "promote-api-production",
     );
+    const promoteApiProductionHeader = promoteApiProductionJob.slice(
+      0,
+      promoteApiProductionJob.indexOf("    steps:\n"),
+    );
 
-    expect(promoteApiProductionJob).toContain("migrate-production");
+    expect(workflow).not.toContain("\n  migrate-production:\n");
     expect(promoteApiProductionJob).toContain("always() &&");
     expect(promoteApiProductionJob).toContain(
       "needs.release-please.outputs.releases_created == 'true'",
     );
     expect(promoteApiProductionJob).not.toContain("api_deploy_required");
-    expect(promoteApiProductionJob).not.toContain("api_release_created");
+    expect(promoteApiProductionHeader).not.toContain("api_release_created");
   });
 
-  it("promotes App after migrations without waiting for API promotion", () => {
+  it("prepares API promotion before release migrations", () => {
+    const workflow = readText(".github/workflows/release-please.yml");
+    const promoteApiProductionJob = workflowJobBlock(
+      workflow,
+      "promote-api-production",
+    );
+    const migrationStep = promoteApiProductionJob.indexOf(
+      "- name: Run Production Migrations",
+    );
+    const deploymentToolchainStep = promoteApiProductionJob.indexOf(
+      "- name: Initialize API deployment toolchain",
+    );
+    const promotionStep = promoteApiProductionJob.indexOf(
+      "- name: Promote API Deployment",
+    );
+
+    expect(promoteApiProductionJob).toContain(
+      "needs.release-please.outputs.api_release_created == 'true'",
+    );
+    expect(
+      promoteApiProductionJob.match(/\.\/\.github\/actions\/toolchain-init/g),
+    ).toHaveLength(1);
+    expect(
+      promoteApiProductionJob.match(/\.\/\.github\/actions\/vercel-setup/g),
+    ).toHaveLength(1);
+    expect(deploymentToolchainStep).toBeGreaterThan(-1);
+    expect(migrationStep).toBeGreaterThan(-1);
+    expect(migrationStep).toBeGreaterThan(deploymentToolchainStep);
+    expect(promotionStep).toBeGreaterThan(migrationStep);
+    expect(promoteApiProductionJob).toContain('skip-setup: "true"');
+  });
+
+  it("keeps Vercel setup enabled for other promotion callers", () => {
+    const action = readText(".github/actions/vercel-promote/action.yml");
+    const skipSetupInputStart = action.indexOf("  skip-setup:\n");
+    const outputsStart = action.indexOf("\noutputs:\n");
+
+    expect(skipSetupInputStart).toBeGreaterThan(-1);
+    expect(outputsStart).toBeGreaterThan(skipSetupInputStart);
+    expect(action.slice(skipSetupInputStart, outputsStart)).toContain(
+      'default: "false"',
+    );
+    expect(action).toContain(`if: \${{ inputs.skip-setup != 'true' }}`);
+  });
+
+  it("promotes App after the API production lifecycle", () => {
     const workflow = readText(".github/workflows/release-please.yml");
     const promoteAppProductionJob = workflowJobBlock(
       workflow,
@@ -115,11 +164,10 @@ describe("release-please API deployment graph", () => {
     );
 
     expect(promoteAppProductionJob).toContain(
-      "needs: [release-please, builds-complete, migrate-production]",
+      "needs: [release-please, builds-complete, promote-api-production]",
     );
     expect(promoteAppProductionJob).toContain(
-      "needs.migrate-production.result == 'success'",
+      "needs.promote-api-production.result == 'success'",
     );
-    expect(promoteAppProductionJob).not.toContain("promote-api-production");
   });
 });

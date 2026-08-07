@@ -3,9 +3,12 @@ use std::path::{Path, PathBuf};
 
 use sandbox::ProcessOutputReceiver;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-use super::super::{STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER};
+use super::super::{
+    STDOUT_STREAM_INCOMPLETE_MARKER, STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER,
+};
 use crate::ids::RunId;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -13,11 +16,12 @@ pub(in crate::executor) struct AgentStdoutStreamDiagnostics {
     pub(in crate::executor) bytes_written: u64,
     pub(in crate::executor) chunk_truncated: bool,
     pub(in crate::executor) stream_overflowed: bool,
+    pub(in crate::executor) stream_incomplete: bool,
 }
 
 impl AgentStdoutStreamDiagnostics {
     pub(in crate::executor) fn is_empty(self) -> bool {
-        !self.chunk_truncated && !self.stream_overflowed
+        !self.chunk_truncated && !self.stream_overflowed && !self.stream_incomplete
     }
 }
 
@@ -35,12 +39,14 @@ pub(in crate::executor) enum StdoutDrainError {
 pub(in crate::executor) struct StdoutDrainReport {
     pub(in crate::executor) bytes_written: u64,
     pub(in crate::executor) chunk_truncated: bool,
+    pub(in crate::executor) stream_incomplete: bool,
 }
 
 /// Drain stdout chunks from the process receiver and write them to a host file.
 pub(in crate::executor) async fn drain_stdout_to_file(
     mut rx: ProcessOutputReceiver,
     path: PathBuf,
+    stop: CancellationToken,
 ) -> Result<StdoutDrainReport, StdoutDrainError> {
     let file = crate::log_file::open_append(&path, false).map(tokio::fs::File::from_std);
     let mut file = match file {
@@ -50,7 +56,23 @@ pub(in crate::executor) async fn drain_stdout_to_file(
         }
     };
     let mut report = StdoutDrainReport::default();
-    while let Some(chunk) = rx.recv().await {
+    loop {
+        let chunk = if report.stream_incomplete {
+            rx.recv().await
+        } else {
+            tokio::select! {
+                biased;
+                () = stop.cancelled() => {
+                    rx.close();
+                    report.stream_incomplete = true;
+                    continue;
+                }
+                chunk = rx.recv() => chunk,
+            }
+        };
+        let Some(chunk) = chunk else {
+            break;
+        };
         report.bytes_written = report
             .bytes_written
             .saturating_add(u64::try_from(chunk.bytes.len()).unwrap_or(u64::MAX));
@@ -113,6 +135,9 @@ pub(in crate::executor) async fn append_stdout_stream_diagnostics(
     }
     if diagnostics.stream_overflowed {
         file.write_all(STDOUT_STREAM_OVERFLOW_MARKER).await?;
+    }
+    if diagnostics.stream_incomplete {
+        file.write_all(STDOUT_STREAM_INCOMPLETE_MARKER).await?;
     }
     file.flush().await
 }

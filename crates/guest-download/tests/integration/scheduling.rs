@@ -10,17 +10,21 @@
 //! deterministic scheduler pressure. Bounded waits are assertion deadlines and
 //! failure detectors; they are not sleeps used to make scheduling happen.
 
-use crate::support::{create_tar_gz, run_guest_download, write_manifest};
+use crate::binary_logging::BinaryLoggingFixture;
+use crate::support::{create_tar_gz, write_manifest};
 use httpmock::prelude::*;
 use httpmock::{HttpMockRequest, HttpMockResponse, Mock};
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::process::{Child, ExitStatus};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 const REQUEST_START_TIMEOUT: Duration = Duration::from_secs(5);
 const BLOCKED_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const NEGATIVE_START_TIMEOUT: Duration = Duration::from_millis(300);
+const COMPLETION_TIMEOUT: Duration = Duration::from_secs(5);
+const CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
+const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 fn gzip_response(body: Vec<u8>) -> HttpMockResponse {
     HttpMockResponse::builder()
@@ -43,54 +47,112 @@ fn path_to_string(path: &Path) -> std::io::Result<String> {
     })
 }
 
-// Records the peak number of active mock archive responders so tests can
-// assert the scheduler's global concurrency cap from observed HTTP behavior.
+// Records request starts and responder concurrency for scheduler assertions
+// and completion-timeout diagnostics.
 #[derive(Clone)]
-struct ActiveRequestCounter {
-    active: Arc<AtomicUsize>,
-    max_active: Arc<AtomicUsize>,
+struct RequestObservations {
+    state: Arc<Mutex<RequestObservationState>>,
 }
 
 struct ActiveRequestGuard {
-    active: Arc<AtomicUsize>,
+    state: Arc<Mutex<RequestObservationState>>,
+}
+
+struct RequestObservationState {
+    started: Vec<String>,
+    active: usize,
+    max_active: usize,
+}
+
+#[derive(Debug)]
+struct RequestSnapshot {
+    started: Vec<String>,
+    active: usize,
+    max_active: usize,
+}
+
+impl RequestSnapshot {
+    fn describe(&self) -> String {
+        format!(
+            "started={:?}, active={}, max_active={}",
+            self.started, self.active, self.max_active
+        )
+    }
 }
 
 impl Drop for ActiveRequestGuard {
     fn drop(&mut self) {
-        self.active.fetch_sub(1, Ordering::SeqCst);
+        let mut state = match self.state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        state.active -= 1;
     }
 }
 
-impl ActiveRequestCounter {
+impl RequestObservations {
     fn new() -> Self {
         Self {
-            active: Arc::new(AtomicUsize::new(0)),
-            max_active: Arc::new(AtomicUsize::new(0)),
+            state: Arc::new(Mutex::new(RequestObservationState {
+                started: Vec::new(),
+                active: 0,
+                max_active: 0,
+            })),
         }
     }
 
-    fn track(&self) -> ActiveRequestGuard {
-        let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
-        let mut observed = self.max_active.load(Ordering::SeqCst);
-        while current > observed {
-            match self.max_active.compare_exchange(
-                observed,
-                current,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ) {
-                Ok(_) => break,
-                Err(actual) => observed = actual,
-            }
-        }
+    fn track(&self, request_name: &str) -> ActiveRequestGuard {
+        let mut state = self.lock_state();
+        state.started.push(request_name.to_owned());
+        state.active += 1;
+        state.max_active = state.max_active.max(state.active);
+        drop(state);
 
         ActiveRequestGuard {
-            active: Arc::clone(&self.active),
+            state: Arc::clone(&self.state),
         }
     }
 
     fn max_active(&self) -> usize {
-        self.max_active.load(Ordering::SeqCst)
+        self.lock_state().max_active
+    }
+
+    fn active(&self) -> usize {
+        self.lock_state().active
+    }
+
+    fn snapshot(&self) -> RequestSnapshot {
+        let state = self.lock_state();
+        RequestSnapshot {
+            started: state.started.clone(),
+            active: state.active,
+            max_active: state.max_active,
+        }
+    }
+
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, RequestObservationState> {
+        match self.state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn wait_until_idle(&self, timeout: Duration) -> Result<(), String> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let active = self.active();
+            if active == 0 {
+                return Ok(());
+            }
+
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(format!(
+                    "{active} mock archive responders remained active after {timeout:?}"
+                ));
+            }
+            std::thread::sleep(remaining.min(CHILD_WAIT_POLL_INTERVAL));
+        }
     }
 }
 
@@ -213,6 +275,13 @@ impl ReleaseGate {
         self.inner.released.notify_all();
     }
 
+    fn close(&self) {
+        let mut state = self.lock_state();
+        state.closed = true;
+        drop(state);
+        self.inner.released.notify_all();
+    }
+
     fn lock_state(&self) -> std::sync::MutexGuard<'_, ReleaseState> {
         match self.inner.state.lock() {
             Ok(state) => state,
@@ -223,10 +292,7 @@ impl ReleaseGate {
 
 impl Drop for ReleaseGate {
     fn drop(&mut self) {
-        let mut state = self.lock_state();
-        state.closed = true;
-        drop(state);
-        self.inner.released.notify_all();
+        self.close();
     }
 }
 
@@ -272,12 +338,13 @@ fn serve_archive<'server>(
     path: &'static str,
     body: Vec<u8>,
     on_start: impl Fn() -> Result<(), String> + Send + Sync + 'static,
-    active_requests: Option<ActiveRequestCounter>,
+    request_name: String,
+    observations: RequestObservations,
 ) -> Mock<'server> {
     server.mock(move |when, then| {
         when.method(GET).path(path);
         then.respond_with(move |_req: &HttpMockRequest| {
-            let _active_guard = active_requests.as_ref().map(ActiveRequestCounter::track);
+            let _active_guard = observations.track(&request_name);
             if let Err(error) = on_start() {
                 return error_response(409, error);
             }
@@ -293,12 +360,12 @@ fn serve_blocked_archive<'server>(
     on_start: impl Fn() -> Result<(), String> + Send + Sync + 'static,
     release: ReleaseWaiter,
     request_name: String,
-    active_requests: Option<ActiveRequestCounter>,
+    observations: RequestObservations,
 ) -> Mock<'server> {
     server.mock(move |when, then| {
         when.method(GET).path(path);
         then.respond_with(move |_req: &HttpMockRequest| {
-            let _active_guard = active_requests.as_ref().map(ActiveRequestCounter::track);
+            let _active_guard = observations.track(&request_name);
             if let Err(error) = on_start() {
                 return error_response(409, error);
             }
@@ -319,7 +386,7 @@ fn create_numbered_storages(
     dir: &tempfile::TempDir,
     event_tx: &mpsc::Sender<String>,
     mut blocked_request: impl FnMut(usize) -> Option<ReleaseWaiter>,
-    active_requests: Option<ActiveRequestCounter>,
+    observations: RequestObservations,
 ) -> std::io::Result<NumberedStorages> {
     let mut servers = Vec::new();
     let mut storages = Vec::new();
@@ -331,7 +398,8 @@ fn create_numbered_storages(
         let body = create_tar_gz(&[(&filename, content.as_bytes())])?;
         let event_tx = event_tx.clone();
         let event = format!("start-{i}");
-        let active_requests = active_requests.clone();
+        let observations = observations.clone();
+        let request_name = format!("request {i}");
 
         if let Some(release) = blocked_request(i) {
             serve_blocked_archive(
@@ -344,8 +412,8 @@ fn create_numbered_storages(
                         .map_err(|e| format!("failed to send {event}: {e}"))
                 },
                 release,
-                format!("request {i}"),
-                active_requests,
+                request_name,
+                observations,
             );
         } else {
             serve_archive(
@@ -357,7 +425,8 @@ fn create_numbered_storages(
                         .send(event.clone())
                         .map_err(|e| format!("failed to send {event}: {e}"))
                 },
-                active_requests,
+                request_name,
+                observations,
             );
         }
 
@@ -372,19 +441,178 @@ fn create_numbered_storages(
     })
 }
 
+struct GuestDownloadExecution {
+    child: Child,
+    _runtime: BinaryLoggingFixture,
+}
+
+impl GuestDownloadExecution {
+    fn wait_for_completion(
+        mut self,
+        scenario: &str,
+        timeout: Duration,
+        release_gate: &ReleaseGate,
+        observations: &RequestObservations,
+    ) -> Result<(), String> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(status)) if status.success() => return Ok(()),
+                Ok(Some(status)) => {
+                    return Err(format!(
+                        "{scenario} guest-download exited with {status}; {}",
+                        observations.snapshot().describe()
+                    ));
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    let snapshot = observations.snapshot();
+                    let cleanup = self.terminate_and_cleanup(release_gate, observations);
+                    return Err(format!(
+                        "{scenario} failed to observe guest-download completion: {error}; {}; \
+                         cleanup: {cleanup}",
+                        snapshot.describe()
+                    ));
+                }
+            }
+
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            std::thread::sleep(remaining.min(CHILD_WAIT_POLL_INTERVAL));
+        }
+
+        let snapshot = observations.snapshot();
+        let cleanup = self.terminate_and_cleanup(release_gate, observations);
+        Err(format!(
+            "{scenario} guest-download timed out after {timeout:?}; {}; cleanup: {cleanup}",
+            snapshot.describe()
+        ))
+    }
+
+    fn terminate_and_cleanup(
+        self,
+        release_gate: &ReleaseGate,
+        observations: &RequestObservations,
+    ) -> String {
+        let Self {
+            mut child,
+            _runtime,
+        } = self;
+        let kill = match child.kill() {
+            Ok(()) => "signal sent".to_owned(),
+            Err(error) => format!("failed: {error}"),
+        };
+        release_gate.close();
+        let reap = match reap_child_with_timeout(child, CLEANUP_TIMEOUT) {
+            Ok(status) => format!("completed with {status}"),
+            Err(error) => format!("failed: {error}"),
+        };
+        let responders = match observations.wait_until_idle(CLEANUP_TIMEOUT) {
+            Ok(()) => "idle".to_owned(),
+            Err(error) => format!("failed: {error}"),
+        };
+
+        format!("kill={kill}, reap={reap}, responders={responders}")
+    }
+}
+
+fn reap_child_with_timeout(mut child: Child, timeout: Duration) -> Result<ExitStatus, String> {
+    let (status_tx, status_rx) = mpsc::channel();
+    let reaper = std::thread::spawn(move || {
+        let _ = status_tx.send(child.wait());
+    });
+
+    match status_rx.recv_timeout(timeout) {
+        Ok(status) => {
+            reaper
+                .join()
+                .map_err(|_| "child reaper panicked".to_owned())?;
+            status.map_err(|error| format!("wait failed: {error}"))
+        }
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            drop(reaper);
+            Err(format!("child was not reaped within {timeout:?}"))
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            drop(reaper);
+            Err("child reaper exited without a status".to_owned())
+        }
+    }
+}
+
 fn spawn_guest_download(
+    scenario: &str,
     dir: &tempfile::TempDir,
     storages: &[(String, String)],
-) -> std::io::Result<std::thread::JoinHandle<bool>> {
+) -> std::io::Result<GuestDownloadExecution> {
     let storage_refs: Vec<(&str, Option<&str>)> = storages
         .iter()
         .map(|(mount, url)| (mount.as_str(), Some(url.as_str())))
         .collect();
     let manifest = write_manifest(dir, &storage_refs, None)?;
     let manifest_path = path_to_string(&manifest)?;
-    Ok(std::thread::spawn(move || {
-        run_guest_download(&manifest_path)
-    }))
+    let runtime = BinaryLoggingFixture::new(scenario)?;
+    let child = runtime.command().arg(manifest_path).spawn()?;
+    Ok(GuestDownloadExecution {
+        child,
+        _runtime: runtime,
+    })
+}
+
+#[test]
+fn completion_timeout_terminates_child_and_releases_responder() {
+    let server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let mount = dir.path().join("blocked");
+    let body = create_tar_gz(&[("state.json", b"blocked")]).unwrap();
+    let (started_tx, started_rx) = mpsc::channel();
+    let release = ReleaseGate::new();
+    let observations = RequestObservations::new();
+    let blocked_mock = serve_blocked_archive(
+        &server,
+        "/blocked.tar.gz",
+        body,
+        move || {
+            started_tx
+                .send(())
+                .map_err(|e| format!("failed to send blocked start event: {e}"))
+        },
+        release.waiter(),
+        "blocked request".to_owned(),
+        observations.clone(),
+    );
+    let storages = vec![(
+        path_to_string(&mount).unwrap(),
+        server.url("/blocked.tar.gz"),
+    )];
+    let execution = spawn_guest_download(
+        stringify!(completion_timeout_terminates_child_and_releases_responder),
+        &dir,
+        &storages,
+    )
+    .unwrap();
+
+    let started = started_rx.recv_timeout(REQUEST_START_TIMEOUT);
+    let completion = execution.wait_for_completion(
+        stringify!(completion_timeout_terminates_child_and_releases_responder),
+        Duration::ZERO,
+        &release,
+        &observations,
+    );
+
+    started.unwrap();
+    let error = completion.unwrap_err();
+    assert!(error.contains(
+        "completion_timeout_terminates_child_and_releases_responder guest-download timed out"
+    ));
+    assert!(error.contains("started=[\"blocked request\"], active=1, max_active=1"));
+    assert!(error.contains("kill=signal sent"));
+    assert!(error.contains("reap=completed with"));
+    assert!(error.contains("responders=idle"));
+    assert_eq!(observations.active(), 0);
+    blocked_mock.assert();
 }
 
 #[test]
@@ -392,15 +620,20 @@ fn queued_independent_download_starts_when_slot_frees() {
     let dir = tempfile::tempdir().unwrap();
     let (event_tx, event_rx) = mpsc::channel();
     let slow_release = ReleaseGate::new();
-    let active_requests = ActiveRequestCounter::new();
+    let observations = RequestObservations::new();
     let numbered = create_numbered_storages(
         &dir,
         &event_tx,
         |i| (i == 0).then(|| slow_release.waiter()),
-        Some(active_requests.clone()),
+        observations.clone(),
     )
     .unwrap();
-    let handle = spawn_guest_download(&dir, &numbered.storages).unwrap();
+    let execution = spawn_guest_download(
+        stringify!(queued_independent_download_starts_when_slot_frees),
+        &dir,
+        &numbered.storages,
+    )
+    .unwrap();
 
     let mut seen_events = Vec::new();
     let slow_started = wait_for_event(
@@ -416,13 +649,18 @@ fn queued_independent_download_starts_when_slot_frees() {
         REQUEST_START_TIMEOUT,
     );
     slow_release.release_one();
-    let result = handle.join().unwrap();
+    let completion = execution.wait_for_completion(
+        stringify!(queued_independent_download_starts_when_slot_frees),
+        COMPLETION_TIMEOUT,
+        &slow_release,
+        &observations,
+    );
 
     slow_started.unwrap();
     queued_started.unwrap();
-    assert!(result);
+    completion.unwrap();
     assert!(
-        active_requests.max_active() <= 4,
+        observations.max_active() <= 4,
         "observed more than 4 active downloads"
     );
 
@@ -438,21 +676,37 @@ fn download_concurrency_cap_limits_initial_starts() {
     let dir = tempfile::tempdir().unwrap();
     let (event_tx, event_rx) = mpsc::channel();
     let release = ReleaseGate::new();
-    let numbered =
-        create_numbered_storages(&dir, &event_tx, |_| Some(release.waiter()), None).unwrap();
-    let handle = spawn_guest_download(&dir, &numbered.storages).unwrap();
+    let observations = RequestObservations::new();
+    let numbered = create_numbered_storages(
+        &dir,
+        &event_tx,
+        |_| Some(release.waiter()),
+        observations.clone(),
+    )
+    .unwrap();
+    let execution = spawn_guest_download(
+        stringify!(download_concurrency_cap_limits_initial_starts),
+        &dir,
+        &numbered.storages,
+    )
+    .unwrap();
 
     let initial_starts = wait_for_events(&event_rx, 4, REQUEST_START_TIMEOUT);
     let fifth_before_release = event_rx.recv_timeout(NEGATIVE_START_TIMEOUT);
     release.release_many(5);
-    let result = handle.join().unwrap();
+    let completion = execution.wait_for_completion(
+        stringify!(download_concurrency_cap_limits_initial_starts),
+        COMPLETION_TIMEOUT,
+        &release,
+        &observations,
+    );
 
     assert_eq!(initial_starts.unwrap().len(), 4);
     assert!(matches!(
         fifth_before_release,
         Err(mpsc::RecvTimeoutError::Timeout)
     ));
-    assert!(result);
+    completion.unwrap();
 }
 
 #[test]
@@ -471,6 +725,7 @@ fn queued_conflict_does_not_block_later_independent_download() {
     let (child_started_tx, child_started_rx) = mpsc::channel();
     let (independent_started_tx, independent_started_rx) = mpsc::channel();
     let parent_release = ReleaseGate::new();
+    let observations = RequestObservations::new();
 
     serve_blocked_archive(
         &parent_server,
@@ -483,7 +738,7 @@ fn queued_conflict_does_not_block_later_independent_download() {
         },
         parent_release.waiter(),
         "parent request".to_owned(),
-        None,
+        observations.clone(),
     );
     serve_archive(
         &child_server,
@@ -494,7 +749,8 @@ fn queued_conflict_does_not_block_later_independent_download() {
                 .send(())
                 .map_err(|e| format!("failed to send child start event: {e}"))
         },
-        None,
+        "child request".to_owned(),
+        observations.clone(),
     );
     serve_archive(
         &independent_server,
@@ -505,7 +761,8 @@ fn queued_conflict_does_not_block_later_independent_download() {
                 .send(())
                 .map_err(|e| format!("failed to send independent start event: {e}"))
         },
-        None,
+        "independent request".to_owned(),
+        observations.clone(),
     );
 
     let url_parent = parent_server.url("/parent.tar.gz");
@@ -519,7 +776,12 @@ fn queued_conflict_does_not_block_later_independent_download() {
             url_independent,
         ),
     ];
-    let handle = spawn_guest_download(&dir, &storages).unwrap();
+    let execution = spawn_guest_download(
+        stringify!(queued_conflict_does_not_block_later_independent_download),
+        &dir,
+        &storages,
+    )
+    .unwrap();
 
     let parent_started = parent_started_rx.recv_timeout(REQUEST_START_TIMEOUT);
     let independent_started = independent_started_rx.recv_timeout(REQUEST_START_TIMEOUT);
@@ -531,7 +793,12 @@ fn queued_conflict_does_not_block_later_independent_download() {
         } else {
             Ok(())
         };
-    let result = handle.join().unwrap();
+    let completion = execution.wait_for_completion(
+        stringify!(queued_conflict_does_not_block_later_independent_download),
+        COMPLETION_TIMEOUT,
+        &parent_release,
+        &observations,
+    );
 
     parent_started.unwrap();
     independent_started.unwrap();
@@ -540,7 +807,7 @@ fn queued_conflict_does_not_block_later_independent_download() {
         Err(mpsc::RecvTimeoutError::Timeout)
     ));
     child_after_release.unwrap();
-    assert!(result);
+    completion.unwrap();
     assert_eq!(
         std::fs::read_to_string(parent_mount.join("config.json")).unwrap(),
         "parent config"
@@ -571,6 +838,7 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
     let (parent_started_tx, parent_started_rx) = mpsc::channel();
     let (child_started_tx, child_started_rx) = mpsc::channel();
     let parent_release = ReleaseGate::new();
+    let observations = RequestObservations::new();
 
     let m_parent = serve_blocked_archive(
         &parent_server,
@@ -583,7 +851,7 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
         },
         parent_release.waiter(),
         "parent request".to_owned(),
-        None,
+        observations.clone(),
     );
     let m_child = serve_archive(
         &child_server,
@@ -594,7 +862,8 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
                 .send(())
                 .map_err(|e| format!("failed to send child start event: {e}"))
         },
-        None,
+        "child request".to_owned(),
+        observations.clone(),
     );
 
     let url_parent = parent_server.url("/parent.tar.gz");
@@ -603,7 +872,12 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
         (parent_mount.to_str().unwrap().to_owned(), url_parent),
         (child_mount.to_str().unwrap().to_owned(), url_child),
     ];
-    let handle = spawn_guest_download(&dir, &storages).unwrap();
+    let execution = spawn_guest_download(
+        stringify!(parent_child_mount_paths_are_serialized_for_overlapping_archives),
+        &dir,
+        &storages,
+    )
+    .unwrap();
 
     let parent_started = parent_started_rx.recv_timeout(REQUEST_START_TIMEOUT);
     let child_before_release = child_started_rx.recv_timeout(NEGATIVE_START_TIMEOUT);
@@ -614,7 +888,12 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
         } else {
             Ok(())
         };
-    let result = handle.join().unwrap();
+    let completion = execution.wait_for_completion(
+        stringify!(parent_child_mount_paths_are_serialized_for_overlapping_archives),
+        COMPLETION_TIMEOUT,
+        &parent_release,
+        &observations,
+    );
 
     parent_started.unwrap();
     assert!(matches!(
@@ -622,7 +901,7 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
         Err(mpsc::RecvTimeoutError::Timeout)
     ));
     child_after_release.unwrap();
-    assert!(result);
+    completion.unwrap();
     m_parent.assert();
     m_child.assert();
     assert_eq!(
@@ -632,5 +911,128 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
     assert_eq!(
         std::fs::read_to_string(child_mount.join("skill.json")).unwrap(),
         "child skill"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_aliased_mount_paths_are_serialized_without_blocking_independent_download() {
+    let physical_server = MockServer::start();
+    let alias_server = MockServer::start();
+    let independent_server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let physical_mount = dir.path().join("physical");
+    let alias_mount = dir.path().join("alias");
+    let independent_mount = dir.path().join("independent");
+    std::fs::create_dir_all(&physical_mount).unwrap();
+    std::os::unix::fs::symlink(&physical_mount, &alias_mount).unwrap();
+
+    let physical_tar = create_tar_gz(&[("state.json", b"physical")]).unwrap();
+    let alias_tar = create_tar_gz(&[("state.json", b"alias")]).unwrap();
+    let independent_tar = create_tar_gz(&[("data.txt", b"independent")]).unwrap();
+    let (physical_started_tx, physical_started_rx) = mpsc::channel();
+    let (alias_started_tx, alias_started_rx) = mpsc::channel();
+    let (independent_started_tx, independent_started_rx) = mpsc::channel();
+    let physical_release = ReleaseGate::new();
+    let observations = RequestObservations::new();
+
+    let physical_mock = serve_blocked_archive(
+        &physical_server,
+        "/physical.tar.gz",
+        physical_tar,
+        move || {
+            physical_started_tx
+                .send(())
+                .map_err(|e| format!("failed to send physical start event: {e}"))
+        },
+        physical_release.waiter(),
+        "physical request".to_owned(),
+        observations.clone(),
+    );
+    let alias_mock = serve_archive(
+        &alias_server,
+        "/alias.tar.gz",
+        alias_tar,
+        move || {
+            alias_started_tx
+                .send(())
+                .map_err(|e| format!("failed to send alias start event: {e}"))
+        },
+        "alias request".to_owned(),
+        observations.clone(),
+    );
+    let independent_mock = serve_archive(
+        &independent_server,
+        "/independent.tar.gz",
+        independent_tar,
+        move || {
+            independent_started_tx
+                .send(())
+                .map_err(|e| format!("failed to send independent start event: {e}"))
+        },
+        "independent request".to_owned(),
+        observations.clone(),
+    );
+
+    let storages = vec![
+        (
+            path_to_string(&physical_mount).unwrap(),
+            physical_server.url("/physical.tar.gz"),
+        ),
+        (
+            path_to_string(&alias_mount).unwrap(),
+            alias_server.url("/alias.tar.gz"),
+        ),
+        (
+            path_to_string(&independent_mount).unwrap(),
+            independent_server.url("/independent.tar.gz"),
+        ),
+    ];
+    let execution = spawn_guest_download(
+        stringify!(
+            symlink_aliased_mount_paths_are_serialized_without_blocking_independent_download
+        ),
+        &dir,
+        &storages,
+    )
+    .unwrap();
+
+    let physical_started = physical_started_rx.recv_timeout(REQUEST_START_TIMEOUT);
+    let independent_started = independent_started_rx.recv_timeout(REQUEST_START_TIMEOUT);
+    let alias_before_release = alias_started_rx.recv_timeout(NEGATIVE_START_TIMEOUT);
+    physical_release.release_one();
+    let alias_after_release =
+        if matches!(alias_before_release, Err(mpsc::RecvTimeoutError::Timeout)) {
+            alias_started_rx.recv_timeout(REQUEST_START_TIMEOUT)
+        } else {
+            Ok(())
+        };
+    let completion = execution.wait_for_completion(
+        stringify!(
+            symlink_aliased_mount_paths_are_serialized_without_blocking_independent_download
+        ),
+        COMPLETION_TIMEOUT,
+        &physical_release,
+        &observations,
+    );
+
+    physical_started.unwrap();
+    independent_started.unwrap();
+    assert!(matches!(
+        alias_before_release,
+        Err(mpsc::RecvTimeoutError::Timeout)
+    ));
+    alias_after_release.unwrap();
+    completion.unwrap();
+    physical_mock.assert();
+    alias_mock.assert();
+    independent_mock.assert();
+    assert_eq!(
+        std::fs::read_to_string(physical_mount.join("state.json")).unwrap(),
+        "alias"
+    );
+    assert_eq!(
+        std::fs::read_to_string(independent_mount.join("data.txt")).unwrap(),
+        "independent"
     );
 }

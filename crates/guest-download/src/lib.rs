@@ -4,6 +4,27 @@
 //! - Parallel downloads using std::thread (max 4 concurrent)
 //! - Streaming extraction (no temp files)
 //! - Retry logic with 3 attempts
+//!
+//! ## Manifest application and failure semantics
+//!
+//! [`run`] and [`run_manifest_bytes`] apply valid manifests directly to the
+//! filesystem without a transaction. Manifest-requested stale-path and
+//! instruction-file cleanups are attempted before target preparation and
+//! downloads, and a later failure does not restore their changes.
+//!
+//! Downloads whose targets do not overlap may run concurrently. A failed task
+//! does not cancel its siblings, so a `false` result can coexist with targets
+//! successfully materialized by other tasks. Archive attempts extract in place
+//! and retries reuse the same target, so a failed task may also leave changes
+//! written by an earlier entry or attempt.
+//!
+//! On preparation or aggregate download failure, the crate attempts to remove
+//! staged sources used to normalize instruction storage. That targeted cleanup
+//! does not roll back ordinary storage or artifact targets, empty artifact
+//! directories already prepared, or earlier cleanup effects. Cleanup and
+//! instruction normalization are best-effort operations, so the result
+//! reports required target preparation and downloads rather than
+//! transaction-wide success for every filesystem change.
 
 mod archive;
 mod cleanup;
@@ -13,6 +34,7 @@ mod instructions;
 mod manifest;
 mod plan;
 mod source;
+mod telemetry;
 
 use guest_common::{log_error, log_info, telemetry::record_sandbox_op};
 use guest_contracts::storage_manifest::Manifest;
@@ -23,8 +45,13 @@ use std::time::Instant;
 
 const LOG_TAG: &str = "sandbox:download";
 
-/// Run the download process for the given manifest file.
-/// Returns `true` if all downloads succeeded, `false` otherwise.
+/// Apply the manifest read from `manifest_path`.
+///
+/// Returns `true` when the manifest can be read and parsed and all required
+/// target preparations and downloads succeed. Returns `false` otherwise. A
+/// read or parse failure occurs before manifest application; once application
+/// starts, `false` does not roll back completed filesystem changes. See the
+/// manifest application section in the [`crate`] documentation for details.
 pub fn run(manifest_path: &str) -> bool {
     let manifest = match manifest::load(manifest_path) {
         Ok(manifest) => manifest,
@@ -41,8 +68,13 @@ pub fn run(manifest_path: &str) -> bool {
     run_manifest(manifest)
 }
 
-/// Run the download process for a manifest supplied as JSON bytes.
-/// Returns `true` if all downloads succeeded, `false` otherwise.
+/// Apply a manifest supplied as JSON bytes.
+///
+/// Returns `true` when the manifest parses and all required target preparations
+/// and downloads succeed. Returns `false` otherwise. A parse failure occurs
+/// before manifest application; once application starts, `false` does not roll
+/// back completed filesystem changes. See the manifest application section in
+/// the [`crate`] documentation for details.
 pub fn run_manifest_bytes(manifest_json: &[u8]) -> bool {
     let manifest = match manifest::parse(manifest_json) {
         Ok(manifest) => manifest,
@@ -75,17 +107,16 @@ fn run_manifest(manifest: Manifest) -> bool {
         instructions::cleanup_instruction_files(&instruction_cleanups);
     }
 
-    // Pre-create all target directories before downloads. This keeps directory
-    // creation independent from scheduler order; overlapping mount paths are
-    // serialized by the download scheduler during extraction.
-    for task in &download_tasks {
-        let mount_path = task.mount_path();
-        if let Err(e) = fs::create_dir_all(mount_path) {
-            log_error!(LOG_TAG, "Failed to create directory {}: {e}", mount_path);
+    // Resolve all logical and physical target identities before downloads.
+    // The scheduler uses both identities to serialize overlapping extraction.
+    let download_tasks = match download::prepare_download_tasks(download_tasks) {
+        Ok(download_tasks) => download_tasks,
+        Err(e) => {
+            log_error!(LOG_TAG, "{e}");
             instructions::cleanup_staged_instruction_sources(&instruction_files);
             return false;
         }
-    }
+    };
     if !prepare_empty_artifacts(&empty_artifacts) {
         instructions::cleanup_staged_instruction_sources(&instruction_files);
         return false;

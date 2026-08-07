@@ -64,7 +64,7 @@ sudo "$BIN_DIR/runner" service start \
   --config "$RUNNER_DIR/runner.yaml" \
   --local
 
-PROMPT='This is a CI smoke test for Codex active input. The initial prompt token is codex-initial-8m6. Before your final answer, run shell command `sleep 1` so two follow-up user messages can arrive, each containing one token. After the command and after reading both follow-up messages, reply with exactly RESULT=codex-initial-8m6+FIRST+SECOND, replacing FIRST and SECOND with the exact text of the first and second follow-up messages. If either follow-up message is missing, reply exactly RESULT=missing. Do not include any other text.'
+PROMPT='Run `sleep 1`, then read both follow-up messages. Reply only RESULT=codex-initial-8m6+FIRST+SECOND, replacing FIRST and SECOND with their exact text in order. If either is missing, reply only RESULT=missing.'
 EXPECTED_RESULT='RESULT=codex-initial-8m6+codex-active-one-2p9+codex-active-two-6v1'
 
 echo "--- Submitting Codex active-input smoke job ---"
@@ -95,7 +95,7 @@ print_failure_context() {
   print_service_logs
 }
 
-if sudo grep -q 'Using mock-codex for testing' "$STREAM_LOG"; then
+if sudo grep -F -q 'Using mock-codex' "$STREAM_LOG"; then
   print_failure_context
   fail "real Codex active-input smoke used mock Codex"
 fi

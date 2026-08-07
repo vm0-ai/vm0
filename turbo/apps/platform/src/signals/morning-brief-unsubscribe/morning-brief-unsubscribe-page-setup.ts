@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { emailMorningBriefUnsubscribeContract } from "@vm0/api-contracts/contracts/email-morning-brief-unsubscribe";
 import { MorningBriefUnsubscribePage } from "../../views/morning-brief-unsubscribe-page/morning-brief-unsubscribe-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -24,7 +25,12 @@ export const setupMorningBriefUnsubscribePage$ = command(
     // module-level status state outlives the page setup.
     set(setMorningBriefUnsubscribeStatus$, null);
     set(updatePage$, createElement(MorningBriefUnsubscribePage));
-    set(updateDocumentTitle$, "Morning Brief");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.lifecycle.morningBriefUnsubscribe.documentTitle;
+      }),
+    );
 
     const token = get(searchParams$).get("token");
     if (!token) {

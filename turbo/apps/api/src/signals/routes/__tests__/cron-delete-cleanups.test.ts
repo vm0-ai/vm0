@@ -15,7 +15,8 @@ import {
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import {
@@ -25,6 +26,8 @@ import {
   testCronDeleteCleanupsStateResponseSchema,
   testCronDeleteCleanupsStateRoutes,
 } from "../test-cron-delete-cleanups-state";
+import { cronConnectorOauthStateCleanupRoutes } from "../cron-connector-oauth-state-cleanup";
+import { cronTelegramCleanupRoutes } from "../cron-telegram-cleanup";
 
 const context = testContext();
 const CRON_SECRET = "test-delete-cleanups-secret";
@@ -96,7 +99,9 @@ function cronHeaders() {
 
 async function cleanupConnectorOauthStates() {
   return await accept(
-    setupApp({ context })(cronConnectorOauthStateCleanupContract).cleanup({
+    setupApp({ context, routes: cronConnectorOauthStateCleanupRoutes })(
+      cronConnectorOauthStateCleanupContract,
+    ).cleanup({
       headers: cronHeaders(),
     }),
     [200],
@@ -105,7 +110,9 @@ async function cleanupConnectorOauthStates() {
 
 async function cleanupTelegramMessages() {
   return await accept(
-    setupApp({ context })(cronTelegramCleanupContract).cleanup({
+    setupApp({ context, routes: cronTelegramCleanupRoutes })(
+      cronTelegramCleanupContract,
+    ).cleanup({
       headers: cronHeaders(),
     }),
     [200],

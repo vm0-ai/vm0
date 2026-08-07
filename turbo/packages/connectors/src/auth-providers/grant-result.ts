@@ -1,6 +1,6 @@
 import type {
   ConnectorAuthProviderAuthMethodId,
-  ConnectorAuthProviderConnectorRef,
+  ConnectorAuthProviderConnectorSlug,
   ConnectorAuthProviderGrantOutputValuesFor,
 } from "./provider-capabilities";
 
@@ -8,6 +8,16 @@ export interface ConnectorAuthProviderGrantUserInfo {
   readonly id: string;
   readonly username: string | null;
   readonly email: string | null;
+}
+
+export function requireConnectorGrantUserId(
+  id: string | null | undefined,
+  providerName: string,
+): string {
+  if (!id) {
+    throw new Error(`No user id in ${providerName} user info response`);
+  }
+  return id;
 }
 
 export type ConnectorAuthProviderGrantOutputValues = Readonly<
@@ -27,8 +37,8 @@ export interface ConnectorAuthProviderGrantResult<
 }
 
 export type ConnectorAuthProviderGrantResultForMethod<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > = ConnectorAuthProviderGrantResult<
-  ConnectorAuthProviderGrantOutputValuesFor<ConnectorRef, AuthMethodId>
+  ConnectorAuthProviderGrantOutputValuesFor<ConnectorSlug, AuthMethodId>
 >;

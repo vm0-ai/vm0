@@ -4,7 +4,7 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use tokio::fs;
 
 use super::super::fs::{allocated_bytes, local_timestamp};
-use super::super::lifecycle::cap_workspace_held_session_states;
+use super::super::lifecycle::cap_held_workspace_states;
 use super::super::metadata::{
     WorkspaceCacheMetadata, WorkspaceCacheState, WorkspaceImageFileIdentity, WorkspaceTrust,
 };
@@ -13,34 +13,47 @@ use super::super::path_safety::{
     normalize_safe_guest_working_dir,
 };
 use super::super::{
-    CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, SessionWorkspaceCache, WORKSPACE_DRIVE_LAYOUT,
-    WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity,
+    CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceCacheCheckoutResult,
+    WorkspaceCacheTerminalStatus, WorkspaceImageCache, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest,
 };
 use super::support::{
     TEST_PROFILE_NAME, local_cache, timestamp_for_index, write_current_cache_entry_for_profile,
 };
 use crate::ids::RunId;
-use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key, session_workspace_cache_key};
+use crate::paths::{RunnerPaths, scoped_workspace_image_cache_key, workspace_image_cache_key};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
-    HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
-    MAX_WORKSPACE_CACHES_PER_SESSION, WORKSPACE_AFFINITY_VERSION,
-    WorkspaceCacheState as HeldWorkspaceCacheState,
+    HeldWorkspaceState, MAX_HELD_WORKSPACE_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
+    MAX_WORKSPACE_CACHES_PER_REUSE_KEY, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability,
 };
+
+#[test]
+fn cache_key_has_stable_current_format() {
+    assert_eq!(
+        scoped_workspace_image_cache_key(
+            "vm0/test",
+            "vm0/default",
+            "thread:thread-1",
+            "/workspace",
+            5,
+        ),
+        "fb89abd2f9a7b7784f27cdd974db105a35cc86a135a6a499e42904ba61e30bc7"
+    );
+}
 
 #[test]
 fn cache_key_separates_profile_and_image_size() {
     let base =
-        scoped_session_workspace_cache_key("vm0/test", "vm0/default", "sess-1", "/workspace", 5);
+        scoped_workspace_image_cache_key("vm0/test", "vm0/default", "sess-1", "/workspace", 5);
 
     assert_ne!(
         base,
-        scoped_session_workspace_cache_key("vm0/test", "vm0/browser", "sess-1", "/workspace", 5,)
+        scoped_workspace_image_cache_key("vm0/test", "vm0/browser", "sess-1", "/workspace", 5,)
     );
     assert_ne!(
         base,
-        scoped_session_workspace_cache_key("vm0/test", "vm0/default", "sess-1", "/workspace", 6,)
+        scoped_workspace_image_cache_key("vm0/test", "vm0/default", "sess-1", "/workspace", 6,)
     );
 }
 
@@ -99,85 +112,81 @@ fn workspace_scoped_fingerprints_do_not_match_prefix_traps() {
 }
 
 #[test]
-fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
-    let mut states: Vec<HeldSessionState> = (0..=MAX_HELD_SESSION_STATES)
-        .map(|index| HeldSessionState {
-            session_id: format!("sess-{index:04}"),
+fn cap_held_workspace_states_dedupes_and_keeps_newest() {
+    let mut states: Vec<HeldWorkspaceState> = (0..=MAX_HELD_WORKSPACE_STATES)
+        .map(|index| HeldWorkspaceState {
+            reuse_key: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
-            reusable_sandbox: None,
-            workspace_caches: vec![HeldWorkspaceCacheState {
+            workspace_caches: vec![WorkspaceCacheCapability {
                 profile: TEST_PROFILE_NAME.to_owned(),
-                workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
             }],
         })
         .collect();
-    states.push(HeldSessionState {
-        session_id: "sess-0001".into(),
-        last_completed_at: timestamp_for_index(MAX_HELD_SESSION_STATES + 1),
-        reusable_sandbox: None,
-        workspace_caches: vec![HeldWorkspaceCacheState {
+    states.push(HeldWorkspaceState {
+        reuse_key: "sess-0001".into(),
+        last_completed_at: timestamp_for_index(MAX_HELD_WORKSPACE_STATES + 1),
+        workspace_caches: vec![WorkspaceCacheCapability {
             profile: TEST_PROFILE_NAME.to_owned(),
-            workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+            workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
         }],
     });
 
-    let capped = cap_workspace_held_session_states(states);
+    let capped = cap_held_workspace_states(states);
 
-    assert_eq!(capped.len(), MAX_HELD_SESSION_STATES);
+    assert_eq!(capped.len(), MAX_HELD_WORKSPACE_STATES);
     assert!(
-        !capped.iter().any(|state| state.session_id == "sess-0000"),
+        !capped.iter().any(|state| state.reuse_key == "sess-0000"),
         "oldest advertised cache state should be dropped"
     );
     assert!(capped.iter().any(|state| {
-        state.session_id == "sess-0001"
-            && state.last_completed_at == timestamp_for_index(MAX_HELD_SESSION_STATES + 1)
+        state.reuse_key == "sess-0001"
+            && state.last_completed_at == timestamp_for_index(MAX_HELD_WORKSPACE_STATES + 1)
     }));
     assert!(
         capped
             .iter()
-            .any(|state| state.session_id == format!("sess-{MAX_HELD_SESSION_STATES:04}"))
+            .any(|state| state.reuse_key == format!("sess-{MAX_HELD_WORKSPACE_STATES:04}"))
     );
 }
 
 #[test]
-fn cap_workspace_held_session_states_bounds_nested_resources() {
-    let per_session = (0..=MAX_WORKSPACE_CACHES_PER_SESSION)
-        .map(|index| HeldSessionState {
-            session_id: "sess-multi".into(),
+fn cap_held_workspace_states_bounds_nested_resources() {
+    let per_reuse_key = (0..=MAX_WORKSPACE_CACHES_PER_REUSE_KEY)
+        .map(|index| HeldWorkspaceState {
+            reuse_key: "sess-multi".into(),
             last_completed_at: timestamp_for_index(index),
-            reusable_sandbox: None,
-            workspace_caches: vec![HeldWorkspaceCacheState {
+            workspace_caches: vec![WorkspaceCacheCapability {
                 profile: format!("vm0/profile-{index:02}"),
-                workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
             }],
         })
         .collect();
 
-    let capped = cap_workspace_held_session_states(per_session);
+    let capped = cap_held_workspace_states(per_reuse_key);
 
     assert_eq!(capped.len(), 1);
     assert_eq!(
         capped[0].workspace_caches.len(),
-        MAX_WORKSPACE_CACHES_PER_SESSION
+        MAX_WORKSPACE_CACHES_PER_REUSE_KEY
     );
     assert_eq!(capped[0].workspace_caches[0].profile, "vm0/profile-00");
     assert_eq!(capped[0].last_completed_at, timestamp_for_index(8));
 
     let global = (0..=MAX_WORKSPACE_CACHES_PER_HEARTBEAT / 8)
-        .map(|index| HeldSessionState {
-            session_id: format!("sess-{index:04}"),
+        .map(|index| HeldWorkspaceState {
+            reuse_key: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
-            reusable_sandbox: None,
             workspace_caches: (0..8)
-                .map(|profile| HeldWorkspaceCacheState {
+                .map(|profile| WorkspaceCacheCapability {
                     profile: format!("vm0/profile-{profile}"),
-                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
                 })
                 .collect(),
         })
         .collect();
 
-    let capped = cap_workspace_held_session_states(global);
+    let capped = cap_held_workspace_states(global);
 
     assert_eq!(
         capped
@@ -187,25 +196,25 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
         MAX_WORKSPACE_CACHES_PER_HEARTBEAT
     );
     assert!(
-        !capped.iter().any(|state| state.session_id == "sess-0000"),
-        "oldest session should be dropped at the global workspace cap"
+        !capped.iter().any(|state| state.reuse_key == "sess-0000"),
+        "oldest reuse key should be dropped at the global workspace cap"
     );
 }
 
 #[tokio::test]
-async fn held_session_states_for_profiles_filters_and_aggregates_current_identities() {
+async fn held_workspace_states_for_profiles_filters_and_aggregates_current_identities() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     fs::create_dir_all(paths.base_dir()).await.unwrap();
-    let cache = SessionWorkspaceCache::new(paths);
+    let cache = WorkspaceImageCache::new(paths);
     let run_id = RunId::new_v4();
-    let session_id = "sess-multi-profile";
-    let image_size = format!("image-{session_id}").len() as u64;
+    let reuse_key = "thread:multi-profile";
+    let image_size = format!("image-{reuse_key}").len() as u64;
     write_current_cache_entry_for_profile(
         &cache,
         run_id,
         "vm0/default",
-        session_id,
+        reuse_key,
         CANONICAL_WORKING_DIR,
         "2026-05-01T00:00:01.000Z",
         "2026-05-01T00:00:01.000Z",
@@ -215,7 +224,7 @@ async fn held_session_states_for_profiles_filters_and_aggregates_current_identit
         &cache,
         run_id,
         "vm0/large",
-        session_id,
+        reuse_key,
         CANONICAL_WORKING_DIR,
         "2026-05-01T00:00:02.000Z",
         "2026-05-01T00:00:02.000Z",
@@ -225,7 +234,7 @@ async fn held_session_states_for_profiles_filters_and_aggregates_current_identit
         &cache,
         run_id,
         "vm0/noncanonical",
-        session_id,
+        reuse_key,
         "/workspace",
         "2026-05-01T00:00:03.000Z",
         "2026-05-01T00:00:03.000Z",
@@ -237,36 +246,37 @@ async fn held_session_states_for_profiles_filters_and_aggregates_current_identit
         ("vm0/large", image_size),
         ("vm0/noncanonical", image_size),
     ]);
-    let states = cache.held_session_states_for_profiles(&configured).await;
+    let states = cache.held_workspace_states_for_profiles(&configured).await;
 
     assert_eq!(
         states,
-        vec![HeldSessionState {
-            session_id: session_id.into(),
+        vec![HeldWorkspaceState {
+            reuse_key: reuse_key.into(),
             last_completed_at: "2026-05-01T00:00:02.000Z".into(),
-            reusable_sandbox: None,
             workspace_caches: vec![
-                HeldWorkspaceCacheState {
+                WorkspaceCacheCapability {
                     profile: "vm0/default".into(),
-                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
                 },
-                HeldWorkspaceCacheState {
+                WorkspaceCacheCapability {
                     profile: "vm0/large".into(),
-                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
                 },
             ],
         }]
     );
 
     let default_only = BTreeMap::from([("vm0/default", image_size)]);
-    let states = cache.held_session_states_for_profiles(&default_only).await;
+    let states = cache
+        .held_workspace_states_for_profiles(&default_only)
+        .await;
     assert_eq!(states[0].workspace_caches.len(), 1);
     assert_eq!(states[0].workspace_caches[0].profile, "vm0/default");
 
     let wrong_size = BTreeMap::from([("vm0/default", image_size + 1)]);
     assert!(
         cache
-            .held_session_states_for_profiles(&wrong_size)
+            .held_workspace_states_for_profiles(&wrong_size)
             .await
             .is_empty()
     );
@@ -295,7 +305,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-    let cache = SessionWorkspaceCache::new(paths);
+    let cache = WorkspaceImageCache::new(paths);
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
@@ -303,7 +313,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
-                cli_agent_session_id: Some("sess-1"),
+                reuse_key: Some("sess-1"),
                 working_dir: "/",
                 image_size_bytes: 1024,
             },
@@ -317,13 +327,13 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
     );
     assert!(lease.workspace_drive_config().is_none());
 
-    let no_session_lease = cache
+    let no_reuse_key_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
-                cli_agent_session_id: None,
+                reuse_key: None,
                 working_dir: "/",
                 image_size_bytes: 1024,
             },
@@ -332,10 +342,10 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
         .await;
 
     assert_eq!(
-        no_session_lease.result(),
+        no_reuse_key_lease.result(),
         WorkspaceCacheCheckoutResult::InvalidWorkingDir
     );
-    assert!(no_session_lease.workspace_drive_config().is_none());
+    assert!(no_reuse_key_lease.workspace_drive_config().is_none());
 
     let snapshot_restore_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
@@ -343,7 +353,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
-                cli_agent_session_id: Some("sess-1"),
+                reuse_key: Some("sess-1"),
                 working_dir: "/",
                 image_size_bytes: 1024,
             },
@@ -360,7 +370,6 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
         !snapshot_restore_lease
             .promote(
                 RunId::new_v4(),
-                Some("sess-1"),
                 WorkspaceCacheTerminalStatus::Success,
                 local_timestamp(),
                 &StorageFingerprints::default(),
@@ -383,7 +392,7 @@ async fn prepare_normalizes_working_dir_for_cache_identity() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
-                cli_agent_session_id: Some("sess-1"),
+                reuse_key: Some("sess-1"),
                 working_dir: "/workspace//repo/",
                 image_size_bytes: 1024,
             },
@@ -397,10 +406,10 @@ async fn prepare_normalizes_working_dir_for_cache_identity() {
 }
 
 #[tokio::test]
-async fn held_session_states_rejects_metadata_under_wrong_cache_key() {
+async fn held_workspace_states_reject_metadata_under_wrong_cache_key() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().to_path_buf());
-    let cache = SessionWorkspaceCache::new(paths.clone());
+    let cache = WorkspaceImageCache::new(paths.clone());
     let run_id = RunId::new_v4();
     let key = cache.scoped_cache_key(
         TEST_PROFILE_NAME,
@@ -408,10 +417,10 @@ async fn held_session_states_rejects_metadata_under_wrong_cache_key() {
         "/workspace",
         b"old image".len() as u64,
     );
-    fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
         .await
         .unwrap();
-    let current = paths.session_workspace_cache_current_image(&key);
+    let current = paths.workspace_image_cache_current_image(&key);
     fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -420,10 +429,9 @@ async fn held_session_states_rejects_metadata_under_wrong_cache_key() {
             run_id,
             WorkspaceCacheMetadata {
                 format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "sess-other".into(),
+                reuse_key: "sess-other".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -441,22 +449,22 @@ async fn held_session_states_rejects_metadata_under_wrong_cache_key() {
         .unwrap();
 
     assert!(
-        cache.held_session_states().await.is_empty(),
-        "metadata must not be advertised from a cache key derived from another session"
+        cache.held_workspace_states().await.is_empty(),
+        "metadata must not be advertised from a cache key derived from another reuse key"
     );
 }
 
 #[tokio::test]
-async fn held_session_states_rejects_unsafe_working_dir_metadata() {
+async fn held_workspace_states_reject_unsafe_working_dir_metadata() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().to_path_buf());
-    let cache = SessionWorkspaceCache::new(paths.clone());
+    let cache = WorkspaceImageCache::new(paths.clone());
     let run_id = RunId::new_v4();
-    let key = session_workspace_cache_key("sess-1", "/");
-    fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+    let key = workspace_image_cache_key("sess-1", "/");
+    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
         .await
         .unwrap();
-    let current = paths.session_workspace_cache_current_image(&key);
+    let current = paths.workspace_image_cache_current_image(&key);
     fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -465,10 +473,9 @@ async fn held_session_states_rejects_unsafe_working_dir_metadata() {
             run_id,
             WorkspaceCacheMetadata {
                 format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "sess-1".into(),
+                reuse_key: "sess-1".into(),
                 working_dir: "/".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -486,7 +493,7 @@ async fn held_session_states_rejects_unsafe_working_dir_metadata() {
         .unwrap();
 
     assert!(
-        cache.held_session_states().await.is_empty(),
-        "unsafe working dirs must not be advertised for affinity",
+        cache.held_workspace_states().await.is_empty(),
+        "unsafe working dirs must not be advertised as reusable workspace caches",
     );
 }

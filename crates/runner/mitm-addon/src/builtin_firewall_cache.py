@@ -11,30 +11,20 @@ from typing import Literal, NamedTuple
 from mitmproxy import ctx
 
 import builtin_host_policy
+import connector_template_syntax
 import matching
+import state_file
 from path_security import has_unsafe_path, has_unsafe_url_path
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 MAX_BUILTIN_FIREWALL_CATALOG_BYTES = 16 * 1024 * 1024
-_READ_CHUNK_BYTES = 1024 * 1024
 _CACHE_SCHEMA_VERSION = 1
 _SHA256_HEX_LENGTH = 64
 _RESERVED_PERMISSION_NAMES = frozenset(("all", "__unknown__"))
 _UNTRUSTED_WRITE_BITS = stat.S_IWGRP | stat.S_IWOTH
 
 
-class CatalogFileKey(NamedTuple):
-    """Filesystem identity used to validate catalog cache dependencies.
-
-    Tuple order is `absolute_path`, `st_dev`, `st_ino`, `st_mtime_ns`, then
-    `st_size`. All stat fields in one key come from the same stat result.
-    """
-
-    absolute_path: str
-    st_dev: int
-    st_ino: int
-    st_mtime_ns: int
-    st_size: int
+CatalogFileKey = state_file.StateFileIdentity
 
 
 class CatalogIdentity(NamedTuple):
@@ -200,7 +190,11 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
     state = _state_for_path(path_key)
 
     try:
-        fd, st = _open_cache_for_read(path)
+        opened_file = state_file.open_state_file(
+            path,
+            description="builtin firewall catalog cache",
+            validate_stat=_validate_cache_file_stat,
+        )
     except OSError as exc:
         state.reset(path_key)
         return BuiltinFirewallCatalogSnapshot(
@@ -210,14 +204,8 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
             unavailable_reason=_open_error_unavailable_reason(exc),
         )
 
-    try:
-        key = CatalogFileKey(
-            absolute_path=path_key,
-            st_dev=st.st_dev,
-            st_ino=st.st_ino,
-            st_mtime_ns=st.st_mtime_ns,
-            st_size=st.st_size,
-        )
+    with opened_file:
+        key = opened_file.identity
         if key == state.loaded_key:
             return BuiltinFirewallCatalogSnapshot(key, state.catalog, cache_path=path_key)
         if key == state.failed_key:
@@ -228,7 +216,10 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
                 unavailable_reason=state.failed_reason or "cache_invalid",
             )
         try:
-            catalog = _read_catalog(fd, path, st.st_size, key)
+            catalog = _read_catalog(
+                opened_file.read_bytes(MAX_BUILTIN_FIREWALL_CATALOG_BYTES),
+                key,
+            )
         except (BuiltinFirewallCatalogCacheError, OSError, ValueError, RecursionError) as exc:
             state.failed_key = key
             state.failed_reason = "cache_invalid"
@@ -241,8 +232,6 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
                 cache_path=path_key,
                 unavailable_reason=state.failed_reason,
             )
-    finally:
-        os.close(fd)
 
     state.loaded_key = key
     state.failed_key = None
@@ -254,6 +243,8 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
 def _open_error_unavailable_reason(exc: OSError) -> CatalogUnavailableReason:
     if isinstance(exc, _CatalogCacheOpenError):
         return exc.reason
+    if isinstance(exc, state_file.StateFileNotRegularError):
+        return "cache_not_regular"
     if isinstance(exc, FileNotFoundError):
         return "cache_file_missing"
     if isinstance(exc, PermissionError):
@@ -261,29 +252,12 @@ def _open_error_unavailable_reason(exc: OSError) -> CatalogUnavailableReason:
     return "cache_unavailable"
 
 
-def _open_cache_for_read(path: Path) -> tuple[int, os.stat_result]:
-    flags = os.O_RDONLY
-    for flag_name in ("O_CLOEXEC", "O_NOFOLLOW", "O_NONBLOCK"):
-        flags |= getattr(os, flag_name, 0)
-    fd = os.open(path, flags)
-    try:
-        st = os.fstat(fd)
-    except OSError:
-        os.close(fd)
-        raise
-    if not stat.S_ISREG(st.st_mode):
-        os.close(fd)
-        raise _CatalogCacheOpenError(
-            "cache_not_regular",
-            f"builtin firewall catalog cache is not a regular file: {path}",
-        )
+def _validate_cache_file_stat(path: Path, st: os.stat_result) -> None:
     if not _cache_file_stat_is_trusted(st):
-        os.close(fd)
         raise _CatalogCacheOpenError(
             "cache_untrusted",
             f"builtin firewall catalog cache is not trusted: {path}",
         )
-    return fd, st
 
 
 def _cache_file_stat_is_trusted(st: os.stat_result) -> bool:
@@ -294,38 +268,11 @@ def _cache_file_stat_is_trusted(st: os.stat_result) -> bool:
     )
 
 
-def _read_cache_bytes(fd: int, path: Path, st_size: int) -> bytes:
-    if st_size > MAX_BUILTIN_FIREWALL_CATALOG_BYTES:
-        raise OSError(
-            f"builtin firewall catalog cache {path} exceeds "
-            f"{MAX_BUILTIN_FIREWALL_CATALOG_BYTES} bytes"
-        )
-
-    chunks: list[bytes] = []
-    total = 0
-    while total <= MAX_BUILTIN_FIREWALL_CATALOG_BYTES:
-        to_read = min(_READ_CHUNK_BYTES, MAX_BUILTIN_FIREWALL_CATALOG_BYTES + 1 - total)
-        chunk = os.read(fd, to_read)
-        if not chunk:
-            break
-        chunks.append(chunk)
-        total += len(chunk)
-
-    if total > MAX_BUILTIN_FIREWALL_CATALOG_BYTES:
-        raise OSError(
-            f"builtin firewall catalog cache {path} exceeds "
-            f"{MAX_BUILTIN_FIREWALL_CATALOG_BYTES} bytes"
-        )
-    return b"".join(chunks)
-
-
 def _read_catalog(
-    fd: int,
-    path: Path,
-    st_size: int,
+    raw_bytes: bytes,
     key: CatalogFileKey,
 ) -> BuiltinFirewallCatalog:
-    raw = json.loads(_read_cache_bytes(fd, path, st_size).decode("utf-8"))
+    raw = json.loads(raw_bytes.decode("utf-8"))
     if not isinstance(raw, dict):
         raise BuiltinFirewallCatalogCacheError("catalog cache must be an object")
 
@@ -514,35 +461,20 @@ def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str |
             raise BuiltinFirewallCatalogCacheError(
                 f'catalog cache firewall "{firewall_name}" api base template is unterminated'
             )
-        _validate_base_url_var_reference(firewall_name, raw_base[content_start:end])
+        template_end = end + len("}}")
+        template = raw_base[start:template_end]
+        reference = next(connector_template_syntax.iter_simple_references(template), None)
+        if reference is None or reference.start != 0 or reference.end != len(template):
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" api base template variable is invalid'
+            )
+        if reference.namespace != "vars":
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" api base template must use vars'
+            )
         result.append(raw_base[search_start:start])
         result.append("template")
-        search_start = end + len("}}")
-
-
-def _validate_base_url_var_reference(firewall_name: str, content: str) -> None:
-    stripped = content.strip()
-    if not stripped.startswith("vars."):
-        raise BuiltinFirewallCatalogCacheError(
-            f'catalog cache firewall "{firewall_name}" api base template must use vars'
-        )
-    name = stripped[len("vars.") :]
-    if not name or not _is_ascii_identifier_start(name[0]):
-        raise BuiltinFirewallCatalogCacheError(
-            f'catalog cache firewall "{firewall_name}" api base template variable is invalid'
-        )
-    if not all(_is_ascii_identifier_continue(char) for char in name):
-        raise BuiltinFirewallCatalogCacheError(
-            f'catalog cache firewall "{firewall_name}" api base template variable is invalid'
-        )
-
-
-def _is_ascii_identifier_start(char: str) -> bool:
-    return ("A" <= char <= "Z") or ("a" <= char <= "z") or char == "_"
-
-
-def _is_ascii_identifier_continue(char: str) -> bool:
-    return _is_ascii_identifier_start(char) or ("0" <= char <= "9")
+        search_start = template_end
 
 
 def _warn(message: str) -> None:

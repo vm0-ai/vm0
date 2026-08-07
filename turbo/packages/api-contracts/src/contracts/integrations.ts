@@ -4,6 +4,10 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+const directUploadResponseShape = {
+  uploadHeaders: z.record(z.string(), z.string()),
+};
+
 /**
  * Integration Slack message contract
  * POST /api/zero/integrations/slack/message
@@ -210,6 +214,7 @@ const feishuUploadInitResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  ...directUploadResponseShape,
 });
 
 export type FeishuUploadInitResponse = z.infer<
@@ -613,6 +618,7 @@ const canonicalSlackUploadInitResponseSchema = z.object({
   assetId: z.string().uuid(),
   operationId: z.string().uuid(),
   uploadUrl: z.string().url().optional(),
+  uploadHeaders: z.record(z.string(), z.string()).optional(),
   url: z.string().url(),
 });
 
@@ -719,6 +725,7 @@ const telegramUploadInitResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  ...directUploadResponseShape,
 });
 
 export type TelegramUploadInitResponse = z.infer<
@@ -765,6 +772,7 @@ const teamsUploadInitResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  ...directUploadResponseShape,
 });
 
 export type TeamsUploadInitResponse = z.infer<
@@ -916,6 +924,7 @@ const githubUploadInitResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  ...directUploadResponseShape,
 });
 
 export type GithubUploadInitResponse = z.infer<
@@ -1024,6 +1033,7 @@ const phoneUploadInitResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  ...directUploadResponseShape,
 });
 
 export type PhoneUploadInitResponse = z.infer<

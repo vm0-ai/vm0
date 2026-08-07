@@ -11,13 +11,9 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import {
-  browserProfiles,
-  browserSessionInstances,
-  browserSessions,
-} from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
+import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import {
   orgUsageAllowanceEntitlements,
@@ -56,7 +52,7 @@ import {
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const actionBody$ = bodyResultOf(testUsageInsightStateContract.action);
 
@@ -112,7 +108,6 @@ type UsageInsightRunAction = UsageInsightAction<
 type UsageInsightEventWriteAction = UsageInsightAction<
   | "insert-model-usage-event-for-run"
   | "insert-usage-event"
-  | "set-browser-usage-hold"
   | "attach-usage-allowance"
   | "read-allowance-window-state"
   | "read-usage-event-state"
@@ -124,6 +119,7 @@ type UsageInsightEventMaterializationAction = UsageInsightAction<
   | "set-usage-event-created-at"
   | "materialize-hourly-usage"
   | "read-usage-storage-counts"
+  | "read-insights-daily-permissions"
 >;
 
 type UsageInsightCleanupAction = UsageInsightAction<"delete-usage-data">;
@@ -178,24 +174,6 @@ async function deleteUsageInsightFixtureUsageData(
   fixture: UsageInsightFixture,
   signal: AbortSignal,
 ): Promise<void> {
-  await db
-    .delete(browserSessions)
-    .where(
-      and(
-        eq(browserSessions.orgId, fixture.orgId),
-        eq(browserSessions.userId, fixture.userId),
-      ),
-    );
-  signal.throwIfAborted();
-  await db
-    .delete(browserProfiles)
-    .where(
-      and(
-        eq(browserProfiles.orgId, fixture.orgId),
-        eq(browserProfiles.userId, fixture.userId),
-      ),
-    );
-  signal.throwIfAborted();
   await db
     .delete(usageEventHourlyRollup)
     .where(
@@ -431,7 +409,7 @@ async function seedRun(
   }
   await db.insert(zeroRuns).values({
     id: run.id,
-    triggerSource: args.triggerSource ?? "cli",
+    triggerSource: args.triggerSource ?? "test",
     chatThreadId: args.chatThreadId ?? null,
     selectedModel: args.selectedModel ?? null,
   });
@@ -586,92 +564,6 @@ async function insertUsageEvent(
     throw new Error("insertUsageEvent: insert returned no row");
   }
   return row.id;
-}
-
-async function setBrowserUsageHold(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly runId: string;
-    readonly chatThreadId: string;
-    readonly idempotencyKey: string;
-    readonly settled: boolean;
-  },
-): Promise<void> {
-  const [existing] = await db
-    .select({
-      providerSessionId: browserSessionInstances.providerSessionId,
-    })
-    .from(browserSessionInstances)
-    .where(eq(browserSessionInstances.providerSessionId, args.idempotencyKey))
-    .limit(1);
-  if (existing) {
-    await db
-      .update(browserSessionInstances)
-      .set({ settledAt: args.settled ? nowDate() : null })
-      .where(
-        eq(browserSessionInstances.providerSessionId, args.idempotencyKey),
-      );
-    return;
-  }
-
-  let [profile] = await db
-    .select({ id: browserProfiles.id })
-    .from(browserProfiles)
-    .where(
-      and(
-        eq(browserProfiles.orgId, args.orgId),
-        eq(browserProfiles.userId, args.userId),
-      ),
-    )
-    .limit(1);
-  if (!profile) {
-    [profile] = await db
-      .insert(browserProfiles)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        providerProfileId: randomUUID(),
-      })
-      .returning({ id: browserProfiles.id });
-  }
-  if (!profile) {
-    throw new Error("setBrowserUsageHold: profile insert returned no row");
-  }
-
-  const [browser] = await db
-    .insert(browserSessions)
-    .values({
-      chatThreadId: args.chatThreadId,
-      runId: args.runId,
-      orgId: args.orgId,
-      userId: args.userId,
-      name: "Compaction hold fixture",
-      browserProfileId: profile.id,
-      status: "suspended",
-      timeoutMinutes: 10,
-      maxCredits: 100,
-    })
-    .returning({ id: browserSessions.id });
-  if (!browser) {
-    throw new Error("setBrowserUsageHold: browser insert returned no row");
-  }
-
-  const now = nowDate();
-  await db.insert(browserSessionInstances).values({
-    providerSessionId: args.idempotencyKey,
-    browserSessionId: browser.id,
-    chatThreadId: args.chatThreadId,
-    runId: args.runId,
-    status: "stopped",
-    pricingUnitPrice: 1,
-    pricingUnitSize: 1,
-    timeoutAt: new Date(now.getTime() + 60_000),
-    startedAt: now,
-    finishedAt: now,
-    settledAt: args.settled ? now : null,
-  });
 }
 
 async function attachUsageAllowance(
@@ -1006,7 +898,6 @@ async function readUsageStorageCounts(
 ): Promise<{
   readonly raw: number;
   readonly processedRaw: number;
-  readonly compactedRaw: number;
   readonly hourly: number;
 }> {
   const rawPredicate =
@@ -1017,16 +908,12 @@ async function readUsageStorageCounts(
     args.scope === "organization"
       ? eq(usageEventHourlyRollup.orgId, args.id)
       : eq(usageEventHourlyRollup.userId, args.id);
-  const [[raw], [processedRaw], [compactedRaw], [hourly]] = await Promise.all([
+  const [[raw], [processedRaw], [hourly]] = await Promise.all([
     db.select({ value: count() }).from(usageEvent).where(rawPredicate),
     db
       .select({ value: count() })
       .from(usageEvent)
       .where(and(rawPredicate, eq(usageEvent.status, "processed"))),
-    db
-      .select({ value: count() })
-      .from(usageEvent)
-      .where(and(rawPredicate, eq(usageEvent.status, "compacted"))),
     db
       .select({ value: count() })
       .from(usageEventHourlyRollup)
@@ -1035,17 +922,61 @@ async function readUsageStorageCounts(
   return {
     raw: raw?.value ?? 0,
     processedRaw: processedRaw?.value ?? 0,
-    compactedRaw: compactedRaw?.value ?? 0,
     hourly: hourly?.value ?? 0,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function readInsightsDailyPermissions(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly date: string;
+  },
+): Promise<readonly Record<string, unknown>[]> {
+  const [row] = await db
+    .select({ data: insightsDaily.data })
+    .from(insightsDaily)
+    .where(
+      and(
+        eq(insightsDaily.orgId, args.orgId),
+        eq(insightsDaily.userId, args.userId),
+        eq(insightsDaily.date, args.date),
+      ),
+    )
+    .limit(1);
+  if (!row || !isRecord(row.data)) {
+    throw new Error("readInsightsDailyPermissions: insight data not found");
+  }
+  const { permissions } = row.data;
+  if (!Array.isArray(permissions) || !permissions.every(isRecord)) {
+    throw new Error(
+      "readInsightsDailyPermissions: insight permissions not found",
+    );
+  }
+  return permissions;
 }
 
 async function readUsageEventState(
   db: Db,
   idempotencyKey: string,
-): Promise<{ readonly id: string; readonly status: string }> {
+): Promise<{
+  readonly id: string;
+  readonly status: string;
+  readonly creditsCharged: number | null;
+  readonly billingError: string | null;
+}> {
   const [event] = await db
-    .select({ id: usageEvent.id, status: usageEvent.status })
+    .select({
+      id: usageEvent.id,
+      status: usageEvent.status,
+      creditsCharged: usageEvent.creditsCharged,
+      billingError: usageEvent.billingError,
+    })
     .from(usageEvent)
     .where(eq(usageEvent.idempotencyKey, idempotencyKey))
     .limit(1);
@@ -1222,18 +1153,6 @@ async function mutateUsageInsightEventWriteState(
         body: { ok: true as const, usage_event_id: id },
       };
     }
-    case "set-browser-usage-hold": {
-      await setBrowserUsageHold(db, {
-        orgId: body.org_id,
-        userId: body.user_id,
-        runId: body.run_id,
-        chatThreadId: body.chat_thread_id,
-        idempotencyKey: body.idempotency_key,
-        settled: body.settled,
-      });
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
-    }
     case "attach-usage-allowance": {
       const windows = await attachUsageAllowance(db, {
         orgId: body.org_id,
@@ -1279,6 +1198,8 @@ async function mutateUsageInsightEventWriteState(
           ok: true as const,
           usage_event_id: event.id,
           usage_event_status: event.status,
+          usage_event_credits_charged: event.creditsCharged,
+          usage_event_billing_error: event.billingError,
         },
       };
     }
@@ -1339,8 +1260,22 @@ async function mutateUsageInsightEventMaterializationState(
           ok: true as const,
           raw_count: counts.raw,
           processed_raw_count: counts.processedRaw,
-          compacted_raw_count: counts.compactedRaw,
           hourly_count: counts.hourly,
+        },
+      };
+    }
+    case "read-insights-daily-permissions": {
+      const permissions = await readInsightsDailyPermissions(db, {
+        orgId: body.org_id,
+        userId: body.user_id,
+        date: body.date,
+      });
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          insights_daily_permissions: permissions,
         },
       };
     }
@@ -1378,7 +1313,6 @@ async function mutateUsageInsightState(
     }
     case "insert-model-usage-event-for-run":
     case "insert-usage-event":
-    case "set-browser-usage-hold":
     case "attach-usage-allowance":
     case "read-allowance-window-state":
     case "read-usage-event-state": {
@@ -1388,7 +1322,8 @@ async function mutateUsageInsightState(
     case "seed-usage-overflow-grain":
     case "set-usage-event-created-at":
     case "materialize-hourly-usage":
-    case "read-usage-storage-counts": {
+    case "read-usage-storage-counts":
+    case "read-insights-daily-permissions": {
       return await mutateUsageInsightEventMaterializationState(
         db,
         body,

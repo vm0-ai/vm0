@@ -1,19 +1,14 @@
 import { userPermissionGrantActionSchema } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import type {
   FirewallPermissionGrant,
   FirewallPermissionGrantAction,
 } from "@vm0/connectors/firewall-metadata/policy";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
@@ -31,7 +26,7 @@ import type { ReadonlyDb } from "../external/db";
 import {
   agentConnectorScopeFromRows,
   type AgentConnectorScope,
-  type AgentConnectorTypeRow,
+  type AgentConnectorSlugRow,
   type AgentCustomConnectorRow,
 } from "./agent-connector-scope.service";
 import {
@@ -52,7 +47,6 @@ const bootstrapMetadataRowKindSchema = z.enum([
   "builtin_connector",
   "custom_connector",
   "permission_grant",
-  "trigger_agent",
 ]);
 type BootstrapMetadataRowKind = z.output<typeof bootstrapMetadataRowKindSchema>;
 const bootstrapMetadataRowKindDecoder = zodEnumDriverValueDecoder(
@@ -60,6 +54,9 @@ const bootstrapMetadataRowKindDecoder = zodEnumDriverValueDecoder(
 );
 const bootstrapMetadataSwitchesDecoder = zodDriverValueDecoder(
   z.record(z.string(), z.boolean()),
+);
+const customConnectorPermissionNamesDecoder = zodDriverValueDecoder(
+  z.array(z.string()),
 );
 const permissionGrantActionDecoder = zodEnumDriverValueDecoder(
   userPermissionGrantActionSchema,
@@ -71,6 +68,8 @@ const nullableBootstrapMetadataSwitchesDecoder = nullableDriverValueDecoder(
 const nullablePermissionGrantActionDecoder = nullableDriverValueDecoder(
   permissionGrantActionDecoder,
 );
+const nullableCustomConnectorPermissionNamesDecoder =
+  nullableDriverValueDecoder(customConnectorPermissionNamesDecoder);
 
 interface BootstrapMetadataQueryRow {
   readonly kind: BootstrapMetadataRowKind;
@@ -82,6 +81,7 @@ interface BootstrapMetadataQueryRow {
   readonly switches: Record<string, boolean> | null;
   readonly detail: string | null;
   readonly action: FirewallPermissionGrantAction | null;
+  readonly permissionNames: readonly string[] | null;
 }
 
 export interface UserInfo {
@@ -105,17 +105,14 @@ export interface UserInfo {
 export interface ZeroRunBootstrapContext extends AgentConnectorScope {
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly zeroFinanceEnabled: boolean;
   readonly workflows: readonly RunWorkflowRef[];
   readonly permissionGrants: readonly FirewallPermissionGrant[];
-  readonly triggerAgentId: string | undefined;
 }
 
 interface ZeroRunBootstrapSnapshotArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly agentId: string;
-  readonly triggerRunId: string | undefined;
   readonly checkedAt: Date;
 }
 
@@ -140,26 +137,49 @@ function emptyBootstrapMetadataFields() {
     action: sql`NULL::text`
       .mapWith(nullablePermissionGrantActionDecoder)
       .as("action"),
+    permissionNames: sql`NULL::text[]`
+      .mapWith(nullableCustomConnectorPermissionNamesDecoder)
+      .as("permission_names"),
   };
 }
 
-function zeroRunTriggerAgentMetadataQuery(
+function zeroRunCustomConnectorMetadataQuery(
   db: ReadonlyDb,
-  triggerRunId: string | undefined,
+  args: ZeroRunBootstrapSnapshotArgs,
 ) {
   return db
     .select({
-      kind: sql`'trigger_agent'`
+      kind: sql`'custom_connector'`
         .mapWith(bootstrapMetadataRowKindDecoder)
         .as("kind"),
       ...emptyBootstrapMetadataFields(),
-      id: sql`${agentSessions.agentComposeId}::text`
+      id: sql`${userCustomConnectors.customConnectorId}::text`
         .mapWith(nullableTextDecoder)
         .as("id"),
+      permissionNames: sql`${userCustomConnectors.permissionNames}`
+        .mapWith(nullableCustomConnectorPermissionNamesDecoder)
+        .as("permission_names"),
     })
-    .from(agentRuns)
-    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .where(triggerRunId ? eq(agentRuns.id, triggerRunId) : sql`FALSE`);
+    .from(userCustomConnectors)
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
+        eq(orgCustomConnectors.orgId, userCustomConnectors.orgId),
+        eq(
+          orgCustomConnectors.revision,
+          userCustomConnectors.connectorRevision,
+        ),
+      ),
+    )
+    .where(
+      and(
+        eq(userCustomConnectors.orgId, args.orgId),
+        eq(userCustomConnectors.userId, args.userId),
+        eq(userCustomConnectors.agentId, args.agentId),
+        eq(orgCustomConnectors.enabled, true),
+      ),
+    );
 }
 
 async function queryZeroRunBootstrapMetadataSnapshot(
@@ -214,7 +234,7 @@ async function queryZeroRunBootstrapMetadataSnapshot(
         .mapWith(bootstrapMetadataRowKindDecoder)
         .as("kind"),
       ...emptyBootstrapMetadataFields(),
-      name: sql`${userConnectors.connectorType}`
+      name: sql`${userConnectors.connectorSlug}`
         .mapWith(nullableTextDecoder)
         .as("name"),
     })
@@ -226,31 +246,14 @@ async function queryZeroRunBootstrapMetadataSnapshot(
         eq(userConnectors.agentId, args.agentId),
       ),
     );
-  const customConnectorQuery = db
-    .select({
-      kind: sql`'custom_connector'`
-        .mapWith(bootstrapMetadataRowKindDecoder)
-        .as("kind"),
-      ...emptyBootstrapMetadataFields(),
-      id: sql`${userCustomConnectors.customConnectorId}::text`
-        .mapWith(nullableTextDecoder)
-        .as("id"),
-    })
-    .from(userCustomConnectors)
-    .where(
-      and(
-        eq(userCustomConnectors.orgId, args.orgId),
-        eq(userCustomConnectors.userId, args.userId),
-        eq(userCustomConnectors.agentId, args.agentId),
-      ),
-    );
+  const customConnectorQuery = zeroRunCustomConnectorMetadataQuery(db, args);
   const permissionGrantQuery = db
     .select({
       kind: sql`'permission_grant'`
         .mapWith(bootstrapMetadataRowKindDecoder)
         .as("kind"),
       ...emptyBootstrapMetadataFields(),
-      name: sql`${userPermissionGrants.connectorRef}`
+      name: sql`${userPermissionGrants.connectorSlug}`
         .mapWith(nullableTextDecoder)
         .as("name"),
       detail: sql`${userPermissionGrants.permission}`
@@ -269,18 +272,12 @@ async function queryZeroRunBootstrapMetadataSnapshot(
         activeUserPermissionGrantCondition(args.checkedAt),
       ),
     );
-  const triggerAgentQuery = zeroRunTriggerAgentMetadataQuery(
-    db,
-    args.triggerRunId,
-  );
-
   return await unionAll(
     userInfoQuery,
     featureSwitchQuery,
     builtinConnectorQuery,
     customConnectorQuery,
     permissionGrantQuery,
-    triggerAgentQuery,
   );
 }
 
@@ -333,10 +330,9 @@ export function materializeZeroRunBootstrapContext(
     timezone: null,
   };
   const featureSwitchRows: UserFeatureSwitchOverrideRow[] = [];
-  const connectorRows: AgentConnectorTypeRow[] = [];
+  const connectorRows: AgentConnectorSlugRow[] = [];
   const customConnectorRows: AgentCustomConnectorRow[] = [];
   const permissionGrants: FirewallPermissionGrant[] = [];
-  let triggerAgentId: string | undefined;
 
   for (const row of rows.metadataRows) {
     switch (row.kind) {
@@ -362,16 +358,19 @@ export function materializeZeroRunBootstrapContext(
         if (row.name === null) {
           throw new Error("Invalid Zero bootstrap metadata connector row");
         }
-        connectorRows.push({ connectorType: row.name });
+        connectorRows.push({ connectorSlug: row.name });
         break;
       }
       case "custom_connector": {
-        if (row.id === null) {
+        if (row.id === null || row.permissionNames === null) {
           throw new Error(
             "Invalid Zero bootstrap metadata custom connector row",
           );
         }
-        customConnectorRows.push({ customConnectorId: row.id });
+        customConnectorRows.push({
+          customConnectorId: row.id,
+          permissionNames: row.permissionNames,
+        });
         break;
       }
       case "permission_grant": {
@@ -381,17 +380,10 @@ export function materializeZeroRunBootstrapContext(
           );
         }
         permissionGrants.push({
-          connectorRef: row.name,
+          connectorSlug: row.name,
           permission: row.detail,
           action: row.action,
         });
-        break;
-      }
-      case "trigger_agent": {
-        if (row.id === null) {
-          throw new Error("Invalid Zero bootstrap metadata trigger agent row");
-        }
-        triggerAgentId = row.id;
         break;
       }
     }
@@ -399,7 +391,7 @@ export function materializeZeroRunBootstrapContext(
 
   permissionGrants.sort((left, right) => {
     return (
-      left.connectorRef.localeCompare(right.connectorRef) ||
+      left.connectorSlug.localeCompare(right.connectorSlug) ||
       left.permission.localeCompare(right.permission)
     );
   });
@@ -419,13 +411,8 @@ export function materializeZeroRunBootstrapContext(
   return {
     userInfo,
     featureSwitchContext,
-    zeroFinanceEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ZeroFinance,
-      featureSwitchContext,
-    ),
     ...connectorScope,
     workflows: workflowsForRunFromRows(rows.workflowRows, args.userId),
     permissionGrants,
-    triggerAgentId,
   };
 }

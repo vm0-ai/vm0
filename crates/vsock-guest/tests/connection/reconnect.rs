@@ -1,5 +1,4 @@
 use std::io::{self, Write};
-use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
@@ -11,12 +10,12 @@ use vsock_proto::{
 };
 
 use super::support::{
-    read_and_discard_message, read_message, send_quiesce_operations, unique_socket_path,
+    guest_connection_completion_diagnostic, listener_has_pending_connection, read_guest_ready,
+    read_message, send_quiesce_operations, unique_socket_path, wait_for_guest_connection,
 };
 
 const EXPECTED_RECONNECT_ATTEMPTS: usize = 50;
 const ACCEPT_TIMEOUT: Duration = Duration::from_secs(5);
-const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 type RunReport = Result<(), (io::ErrorKind, String)>;
 
@@ -24,14 +23,14 @@ type RunReport = Result<(), (io::ErrorKind, String)>;
 fn run_exhausts_reconnect_attempts_after_immediate_disconnects() {
     assert_run_exhausts_after_short_lived_connections(
         "reconnect-immediate-disconnect",
-        read_and_discard_message,
+        read_guest_ready,
     );
 }
 
 #[test]
 fn run_exhausts_reconnect_attempts_after_ping_only_disconnects() {
     assert_run_exhausts_after_short_lived_connections("reconnect-ping-only-disconnect", |stream| {
-        read_and_discard_message(stream);
+        read_guest_ready(stream);
 
         let ping = vsock_proto::encode(MSG_PING, 7, &[]).unwrap();
         stream.write_all(&ping).unwrap();
@@ -49,20 +48,14 @@ fn run_resets_reconnect_attempts_after_real_host_work() {
 
     for accepted in 1..EXPECTED_RECONNECT_ATTEMPTS {
         let mut host_stream = accept_run_connection(&listener, &done_rx, accepted);
-        host_stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .unwrap();
-        read_and_discard_message(&mut host_stream);
+        read_guest_ready(&mut host_stream);
         drop(host_stream);
         assert_run_still_running(&done_rx, accepted);
     }
 
     let mut real_work_stream =
         accept_run_connection(&listener, &done_rx, EXPECTED_RECONNECT_ATTEMPTS);
-    real_work_stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    read_and_discard_message(&mut real_work_stream);
+    read_guest_ready(&mut real_work_stream);
     send_quiesce_operations(&mut real_work_stream, 9);
     let quiesced = read_message(&mut real_work_stream);
     assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
@@ -71,21 +64,19 @@ fn run_resets_reconnect_attempts_after_real_host_work() {
 
     let mut shutdown_stream =
         accept_run_connection(&listener, &done_rx, EXPECTED_RECONNECT_ATTEMPTS + 1);
-    shutdown_stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    read_and_discard_message(&mut shutdown_stream);
+    read_guest_ready(&mut shutdown_stream);
     let shutdown = vsock_proto::encode(MSG_SHUTDOWN, 10, &[]).unwrap();
     shutdown_stream.write_all(&shutdown).unwrap();
     let ack = read_message(&mut shutdown_stream);
     assert_eq!(ack.msg_type, MSG_SHUTDOWN_ACK);
     assert_eq!(ack.seq, 10);
 
-    let report = done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_run_still_running(&done_rx, EXPECTED_RECONNECT_ATTEMPTS + 1);
     drop(shutdown_stream);
+    let report = done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
     drop(listener);
     assert_eq!(report, Ok(()));
-    handle.join().unwrap().unwrap();
+    wait_for_guest_connection(handle).unwrap();
 }
 
 fn assert_run_exhausts_after_short_lived_connections(
@@ -99,9 +90,6 @@ fn assert_run_exhausts_after_short_lived_connections(
 
     for accepted in 1..=EXPECTED_RECONNECT_ATTEMPTS {
         let mut host_stream = accept_run_connection(&listener, &done_rx, accepted);
-        host_stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .unwrap();
         handle_connection(&mut host_stream);
         drop(host_stream);
 
@@ -116,15 +104,15 @@ fn assert_run_exhausts_after_short_lived_connections(
             drain_pending_connections(&listener);
             drop(listener);
             let _ = std::fs::remove_file(socket_path.as_str());
-            let result = handle.join().unwrap();
+            let guest_completion = guest_connection_completion_diagnostic(handle);
             panic!(
-                "run() did not exit after {EXPECTED_RECONNECT_ATTEMPTS} short-lived connections: wait_error={error}, result={result:?}"
+                "run() did not exit after {EXPECTED_RECONNECT_ATTEMPTS} short-lived connections: wait_error={error}, guest_completion={guest_completion}"
             );
         }
     };
     drop(listener);
 
-    let error = handle.join().unwrap().expect_err("run() should fail");
+    let error = wait_for_guest_connection(handle).expect_err("run() should fail");
     assert_eq!(
         report,
         Err((io::ErrorKind::ConnectionReset, error.to_string()))
@@ -183,46 +171,6 @@ fn assert_run_still_running(done_rx: &mpsc::Receiver<RunReport>, completed_attem
         }
         Err(mpsc::TryRecvError::Empty) => {}
     }
-}
-
-fn listener_has_pending_connection(
-    listener: &UnixListener,
-    remaining: Duration,
-) -> io::Result<bool> {
-    let timeout = std::cmp::min(remaining, ACCEPT_POLL_INTERVAL)
-        .as_millis()
-        .max(1) as libc::c_int;
-    let mut pollfd = libc::pollfd {
-        fd: listener.as_raw_fd(),
-        events: libc::POLLIN,
-        revents: 0,
-    };
-    // SAFETY: pollfd points to one initialized listener descriptor entry, and
-    // the timeout is a bounded non-negative millisecond value.
-    let result = unsafe { libc::poll(&mut pollfd, 1 as libc::nfds_t, timeout) };
-    if result < 0 {
-        let error = io::Error::last_os_error();
-        if error.kind() == io::ErrorKind::Interrupted {
-            return Ok(false);
-        }
-        return Err(error);
-    }
-    if result == 0 {
-        return Ok(false);
-    }
-    if pollfd.revents & libc::POLLNVAL != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "listener fd is invalid",
-        ));
-    }
-    if pollfd.revents & (libc::POLLERR | libc::POLLHUP) != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::BrokenPipe,
-            "listener is no longer accepting connections",
-        ));
-    }
-    Ok(pollfd.revents & libc::POLLIN != 0)
 }
 
 fn drain_pending_connections(listener: &UnixListener) {

@@ -1,7 +1,9 @@
 import { UsageInsightView } from "../usage-page/components/usage-insight-view.tsx";
 import { UsageInsightSelectors } from "../usage-page/components/usage-insight-selectors.tsx";
+import { useTranslation } from "react-i18next";
 
 export function ZeroUsagePage() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
@@ -9,10 +11,14 @@ export function ZeroUsagePage() {
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="hidden md:block">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
-                Usage
+                {t(($) => {
+                  return $.usage.page.title;
+                })}
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Your credit consumption across chats, automations, and channels.
+                {t(($) => {
+                  return $.usage.page.description;
+                })}
               </p>
             </div>
             <UsageInsightSelectors />

@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint,
   index,
   integer,
   pgTable,
@@ -16,8 +15,13 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-browser";
 
 import { agentRuns } from "./agent-run";
-import { usageEvent } from "./usage-event";
+import { chatThreads } from "./chat-thread";
 
+/**
+ * Compatibility store for the API version that predates thread-scoped browser
+ * profiles. The current API does not read or write this table; keep it in the
+ * expand release so the previous API can drain before a later contraction.
+ */
 export const browserProfiles = pgTable(
   "browser_profiles",
   {
@@ -38,18 +42,10 @@ export const browserProfiles = pgTable(
   },
 );
 
-/**
- * Thread-scoped profiles used by all new managed browsers.
- *
- * browserProfiles remains the compatibility store while API versions that
- * predate thread scope can still serve traffic. New sessions dual-reference a
- * legacy owner profile and this thread profile; current APIs always prefer the
- * thread profile. The legacy reference can be removed only after the previous
- * API version has fully drained.
- */
 export const browserThreadProfiles = pgTable(
   "browser_thread_profiles",
   {
+    // id remains the physical primary key until the previous API drains.
     id: uuid("id").defaultRandom().primaryKey(),
     chatThreadId: uuid("chat_thread_id").notNull(),
     orgId: text("org_id").notNull(),
@@ -72,10 +68,11 @@ export const browserThreadProfiles = pgTable(
 export const browserSessions = pgTable(
   "browser_sessions",
   {
+    // Compatibility identity for the previous API. Current code keys every
+    // lookup by chatThreadId and can remove this in the contraction release.
     id: uuid("id").defaultRandom().primaryKey(),
-    // External browser cleanup must survive chat-thread deletion. The terminal
-    // callback or reconciler uses this durable attribution key to stop and bill
-    // the provider instance after the parent thread is gone.
+    // External browser cleanup must survive chat-thread deletion. The delete
+    // path and reconciler use this durable key after the parent thread is gone.
     chatThreadId: uuid("chat_thread_id").notNull(),
     runId: uuid("run_id").references(
       () => {
@@ -86,16 +83,11 @@ export const browserSessions = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
-    /**
-     * Compatibility reference required by API versions that predate thread
-     * profiles. New sessions dual-write this and browserThreadProfileId.
-     */
-    browserProfileId: uuid("browser_profile_id")
-      .notNull()
-      .references(() => {
-        return browserProfiles.id;
-      }),
-    /** Thread-scoped profile preferred by current APIs when present. */
+    // Nullable compatibility references let the current API omit legacy
+    // profile identity while preserving the previous API's statement shapes.
+    browserProfileId: uuid("browser_profile_id").references(() => {
+      return browserProfiles.id;
+    }),
     browserThreadProfileId: uuid("browser_thread_profile_id").references(() => {
       return browserThreadProfiles.id;
     }),
@@ -104,13 +96,6 @@ export const browserSessions = pgTable(
       .notNull(),
     proxyCountryCode: varchar("proxy_country_code", { length: 2 }),
     timeoutMinutes: integer("timeout_minutes").notNull(),
-    maxCredits: integer("max_credits").notNull(),
-    grossCredits: bigint("gross_credits", { mode: "number" })
-      .default(0)
-      .notNull(),
-    creditsCharged: bigint("credits_charged", { mode: "number" })
-      .default(0)
-      .notNull(),
     suspendedAt: timestamp("suspended_at"),
     suspensionReason: varchar("suspension_reason", {
       length: 20,
@@ -171,45 +156,20 @@ export const browserSessionInstances = pgTable(
   "browser_session_instances",
   {
     providerSessionId: uuid("provider_session_id").primaryKey(),
-    browserSessionId: uuid("browser_session_id")
-      .notNull()
-      .references(
-        () => {
-          return browserSessions.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    // Nullable compatibility reference for the previous browser-ID API.
+    browserSessionId: uuid("browser_session_id").references(
+      () => {
+        return browserSessions.id;
+      },
+      { onDelete: "cascade" },
+    ),
     // These IDs are immutable attribution keys rather than ownership FKs.
-    // Provider cleanup and settlement must outlive deletion of either parent.
+    // Provider cleanup must outlive deletion of either parent.
     chatThreadId: uuid("chat_thread_id").notNull(),
     runId: uuid("run_id").notNull(),
-    // Run that owns this instance's whole cost. Chosen once when the instance
-    // is claimed for stop, so retries always settle onto the same run.
-    billingRunId: uuid("billing_run_id"),
     status: varchar("status", { length: 20 })
       .$type<"active" | "stopping" | "stopped">()
       .notNull(),
-    browserCostMicrousd: bigint("browser_cost_microusd", { mode: "number" })
-      .default(0)
-      .notNull(),
-    proxyCostMicrousd: bigint("proxy_cost_microusd", { mode: "number" })
-      .default(0)
-      .notNull(),
-    proxyUsedMb: text("proxy_used_mb").default("0").notNull(),
-    pricingUnitPrice: bigint("pricing_unit_price", {
-      mode: "number",
-    }).notNull(),
-    pricingUnitSize: bigint("pricing_unit_size", { mode: "number" }).notNull(),
-    grossCredits: bigint("gross_credits", { mode: "number" })
-      .default(0)
-      .notNull(),
-    creditsCharged: bigint("credits_charged", { mode: "number" }),
-    usageEventId: uuid("usage_event_id").references(
-      () => {
-        return usageEvent.id;
-      },
-      { onDelete: "set null" },
-    ),
     timeoutAt: timestamp("timeout_at").notNull(),
     startedAt: timestamp("started_at").notNull(),
     // Idle lease. Any run or open viewer touches the instance, and the
@@ -223,7 +183,6 @@ export const browserSessionInstances = pgTable(
       .notNull(),
     stopRequestedAt: timestamp("stop_requested_at"),
     finishedAt: timestamp("finished_at"),
-    settledAt: timestamp("settled_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -233,18 +192,99 @@ export const browserSessionInstances = pgTable(
         table.browserSessionId,
         table.createdAt.desc(),
       ),
+      index("idx_browser_session_instances_thread").on(
+        table.chatThreadId,
+        table.createdAt.desc(),
+      ),
       index("idx_browser_session_instances_run_status").on(
         table.runId,
         table.status,
       ),
       index("idx_browser_session_instances_reconcile").on(
         table.status,
-        table.settledAt,
         table.updatedAt,
       ),
       uniqueIndex("uq_browser_session_instances_thread_owned")
         .on(table.chatThreadId)
         .where(sql`${table.status} IN ('active', 'stopping')`),
     ];
+  },
+);
+
+/**
+ * Persisted dimensions for provider instances that support manual window
+ * fitting. Row absence means the instance is not resizable.
+ */
+export const browserSessionResizeStates = pgTable(
+  "browser_session_resize_states",
+  {
+    providerSessionId: uuid("provider_session_id")
+      .primaryKey()
+      .references(
+        () => {
+          return browserSessionInstances.providerSessionId;
+        },
+        { onDelete: "cascade" },
+      ),
+    screenWidth: integer("screen_width").notNull(),
+    screenHeight: integer("screen_height").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
+
+/**
+ * The last restorable page URLs captured for a chat thread before its browser
+ * is reclaimed. URL snapshots are encrypted because query strings and
+ * fragments may contain credentials or other sensitive state.
+ *
+ * Thread identity remains stable across browser lifecycle changes.
+ */
+export const browserSessionTabSnapshots = pgTable(
+  "browser_session_tab_snapshots",
+  {
+    chatThreadId: uuid("chat_thread_id")
+      .primaryKey()
+      .references(
+        () => {
+          return chatThreads.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    encryptedTabUrls: text("encrypted_tab_urls").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
+
+/**
+ * Latest foreground-tab screenshot for a chat thread. Screenshot objects use
+ * immutable artifact URLs, so the object key is retained to remove the
+ * previously published object after each successful replacement. This row
+ * intentionally outlives chat-thread deletion so the browser reconciler can
+ * remove the final external object before retiring its durable key.
+ */
+export const browserSessionScreenshots = pgTable(
+  "browser_session_screenshots",
+  {
+    chatThreadId: uuid("chat_thread_id").primaryKey(),
+    objectKey: text("object_key").notNull(),
+    url: text("url").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
+
+/**
+ * Durable deletion intent for immutable screenshot objects superseded by a
+ * later capture. The row deliberately has no thread foreign key: cleanup must
+ * remain retryable after the owning thread is deleted.
+ */
+export const browserSessionScreenshotDeletions = pgTable(
+  "browser_session_screenshot_deletions",
+  {
+    objectKey: text("object_key").primaryKey(),
+    chatThreadId: uuid("chat_thread_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
   },
 );

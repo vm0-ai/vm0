@@ -5,12 +5,6 @@ import { authContract } from "@vm0/api-contracts/contracts/auth";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import type { SetVariableRequest } from "@vm0/api-contracts/contracts/variables";
-import {
-  zeroSecretsByNameContract,
-  zeroVariablesByNameContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
 import {
   zeroUserModelPreferenceContract,
   type UpdateUserModelPreferenceRequest,
@@ -32,7 +26,6 @@ import {
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
-import { zeroSecretsRoutes } from "../../zero-secrets";
 import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
 import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
 import {
@@ -115,7 +108,6 @@ const userConfigRoutes = [
   ...zeroUserModelPreferenceRoutes,
   ...zeroPushSubscriptionsRoutes,
   ...zeroUserPreferencesRoutes,
-  ...zeroSecretsRoutes,
 ] as const;
 
 function isBearerCredential(
@@ -260,7 +252,7 @@ export function createUserConfigBddApi(context: TestContext) {
     async readUserConnectors(
       credential: Credential,
       agentId: string,
-    ): Promise<{ readonly enabledTypes: string[] }> {
+    ): Promise<{ readonly enabledConnectorSlugs: string[] }> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
         zeroUserConnectorsContract,
       );
@@ -294,16 +286,16 @@ export function createUserConfigBddApi(context: TestContext) {
     async updateUserConnectors(
       credential: Credential,
       agentId: string,
-      enabledTypes: readonly string[],
+      enabledConnectorSlugs: readonly string[],
       operation?: "replace" | "add" | "remove",
-    ): Promise<{ readonly enabledTypes: string[] }> {
+    ): Promise<{ readonly enabledConnectorSlugs: string[] }> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
         zeroUserConnectorsContract,
       );
       const body =
         operation === undefined
-          ? { enabledTypes: [...enabledTypes] }
-          : { enabledTypes: [...enabledTypes], operation };
+          ? { enabledConnectorSlugs: [...enabledConnectorSlugs] }
+          : { enabledConnectorSlugs: [...enabledConnectorSlugs], operation };
       const response = await accept(
         client.update({
           headers: authenticate(credential),
@@ -318,7 +310,7 @@ export function createUserConfigBddApi(context: TestContext) {
     async requestUpdateUserConnectors(
       credential: Credential | null,
       agentId: string,
-      enabledTypes: readonly string[],
+      enabledConnectorSlugs: readonly string[],
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
       operation?: "replace" | "add" | "remove",
     ) {
@@ -327,8 +319,8 @@ export function createUserConfigBddApi(context: TestContext) {
       );
       const body =
         operation === undefined
-          ? { enabledTypes: [...enabledTypes] }
-          : { enabledTypes: [...enabledTypes], operation };
+          ? { enabledConnectorSlugs: [...enabledConnectorSlugs] }
+          : { enabledConnectorSlugs: [...enabledConnectorSlugs], operation };
       return await accept(
         client.update({
           headers: authenticate(credential),
@@ -431,48 +423,6 @@ export function createUserConfigBddApi(context: TestContext) {
       );
       return await accept(
         client.update({ headers: authenticate(actor), body }),
-        statuses,
-      );
-    },
-
-    async requestSetVariable(
-      actor: ApiTestUser | null,
-      body: SetVariableRequest,
-      statuses: readonly (200 | 201 | 400 | 401)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroVariablesContract,
-      );
-      return await accept(
-        client.set({ headers: authenticate(actor), body }),
-        statuses,
-      );
-    },
-
-    async requestDeleteSecret(
-      actor: ApiTestUser | null,
-      name: string,
-      statuses: readonly (204 | 401 | 404)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroSecretsByNameContract,
-      );
-      return await accept(
-        client.delete({ headers: authenticate(actor), params: { name } }),
-        statuses,
-      );
-    },
-
-    async requestDeleteVariable(
-      actor: ApiTestUser | null,
-      name: string,
-      statuses: readonly (204 | 401 | 404)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroVariablesByNameContract,
-      );
-      return await accept(
-        client.delete({ headers: authenticate(actor), params: { name } }),
         statuses,
       );
     },

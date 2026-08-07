@@ -13,13 +13,38 @@ import http_network_log
 import matching
 import registry
 from logging_utils import log_proxy_entry
+from runtime_url_parsing import split_runtime_url, strip_url_query_and_fragment
 from url_utils import AuthorityValidationError
 
 _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
 _AMBIGUOUS_CONNECTOR_ROUTE_ERROR: Final = "ambiguous_connector_route"
+_FIREWALL_AUTHORIZATION_CHANGED_ERROR: Final = "firewall_authorization_changed"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
 _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
 _HTTP_STATUS_CONFLICT = 409
+
+
+def _diagnostic_url_without_query_or_fragment(original_url: str) -> str:
+    retained_url = strip_url_query_and_fragment(original_url)
+    parts = split_runtime_url(retained_url)
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
+def make_local_json_response(
+    flow: http.HTTPFlow,
+    status_code: int,
+    body: dict[str, object],
+) -> http.Response:
+    is_head_request = flow.request.method.upper() == "HEAD"
+    content = b"" if is_head_request else json.dumps(body).encode()
+    response = http.Response.make(
+        status_code,
+        content,
+        {"Content-Type": "application/json"},
+    )
+    if is_head_request:
+        del response.headers["Content-Length"]
+    return response
 
 
 def block_authority_validation_error(
@@ -43,19 +68,17 @@ def block_authority_validation_error(
         request_port=error.request_port,
     )
 
-    flow.response = http.Response.make(
+    flow.response = make_local_json_response(
+        flow,
         403,
-        json.dumps(
-            {
-                "error": error.reason,
-                "message": error.message,
-                "sni": error.sni,
-                "request_host": error.request_host,
-                "host_header": error.host_header,
-                "request_port": error.request_port,
-            }
-        ).encode(),
-        {"Content-Type": "application/json"},
+        {
+            "error": error.reason,
+            "message": error.message,
+            "sni": error.sni,
+            "request_host": error.request_host,
+            "host_header": error.host_header,
+            "request_port": error.request_port,
+        },
     )
 
 
@@ -68,16 +91,14 @@ def block_registry_unavailable(
         "BLOCK",
         error="registry_unavailable",
     )
-    flow.response = http.Response.make(
+    flow.response = make_local_json_response(
+        flow,
         503,
-        json.dumps(
-            {
-                "error": "registry_unavailable",
-                "message": "Proxy registry is unavailable",
-                "reason": unavailable.reason,
-            }
-        ).encode(),
-        {"Content-Type": "application/json"},
+        {
+            "error": "registry_unavailable",
+            "message": "Proxy registry is unavailable",
+            "reason": unavailable.reason,
+        },
     )
 
 
@@ -90,16 +111,14 @@ def block_invalid_registry_vm(
         "BLOCK",
         error="invalid_registry_vm",
     )
-    flow.response = http.Response.make(
+    flow.response = make_local_json_response(
+        flow,
         503,
-        json.dumps(
-            {
-                "error": "invalid_registry_vm",
-                "message": invalid_vm.message,
-                "reason": invalid_vm.reason,
-            }
-        ).encode(),
-        {"Content-Type": "application/json"},
+        {
+            "error": "invalid_registry_vm",
+            "message": invalid_vm.message,
+            "reason": invalid_vm.reason,
+        },
     )
 
 
@@ -109,19 +128,46 @@ def block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
         "BLOCK",
         error=_STALE_TLS_ADMISSION_ERROR,
     )
-    flow.response = http.Response.make(
+    flow.response = make_local_json_response(
+        flow,
         503,
-        json.dumps(
-            {
-                "error": _STALE_TLS_ADMISSION_ERROR,
-                "message": (
-                    "Request blocked: TLS admission is no longer backed by a valid "
-                    "proxy registry VM"
-                ),
-                "reason": reason,
-            }
-        ).encode(),
-        {"Content-Type": "application/json"},
+        {
+            "error": _STALE_TLS_ADMISSION_ERROR,
+            "message": (
+                "Request blocked: TLS admission is no longer backed by a valid proxy registry VM"
+            ),
+            "reason": reason,
+        },
+    )
+
+
+def block_firewall_authorization_changed(
+    flow: http.HTTPFlow,
+    *,
+    current_decision: str,
+) -> None:
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "Request blocked: firewall authorization changed while credentials were resolving",
+        type="firewall_authorization",
+        current_decision=current_decision,
+    )
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "BLOCK",
+        error=_FIREWALL_AUTHORIZATION_CHANGED_ERROR,
+    )
+    flow.response = make_local_json_response(
+        flow,
+        _HTTP_STATUS_CONFLICT,
+        {
+            "error": _FIREWALL_AUTHORIZATION_CHANGED_ERROR,
+            "message": (
+                "Request blocked: firewall authorization changed while credentials were resolving"
+            ),
+        },
     )
 
 
@@ -162,10 +208,10 @@ def block_upstream_destination_unbound(
     firewall_base = flow_metadata.firewall_base(flow.metadata)
     if firewall_base:
         body["base"] = firewall_base
-    flow.response = http.Response.make(
+    flow.response = make_local_json_response(
+        flow,
         403,
-        json.dumps(body).encode(),
-        {"Content-Type": "application/json"},
+        body,
     )
 
 
@@ -205,10 +251,10 @@ def block_builtin_host_policy_denied(
     firewall_base = flow_metadata.firewall_base(flow.metadata)
     if firewall_base:
         body["base"] = firewall_base
-    flow.response = http.Response.make(
+    flow.response = make_local_json_response(
+        flow,
         403,
-        json.dumps(body).encode(),
-        {"Content-Type": "application/json"},
+        body,
     )
 
 
@@ -238,11 +284,10 @@ def set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBl
         result.permissions[0] if len(result.permissions) == 1 else ""
     )
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
-    diagnostic_parts = urllib.parse.urlsplit(original_url)
-    diagnostic_url = urllib.parse.urlunsplit(
-        (diagnostic_parts.scheme, diagnostic_parts.netloc, diagnostic_parts.path, "", "")
-    )
-    error_body = json.dumps(
+    diagnostic_url = _diagnostic_url_without_query_or_fragment(original_url)
+    flow.response = make_local_json_response(
+        flow,
+        403,
         {
             "error": "permission_denied",
             "message": response_message,
@@ -253,12 +298,7 @@ def set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBl
             "permissions": list(result.permissions),
             "reason": result.reason,
             "base": result.base,
-        }
-    )
-    flow.response = http.Response.make(
-        403,
-        error_body.encode(),
-        {"Content-Type": "application/json"},
+        },
     )
 
 
@@ -285,24 +325,19 @@ def set_firewall_ambiguous_response(
     flow.metadata[metadata_keys.CONNECTOR_ROUTE_REASON] = result.reason
     flow.metadata[metadata_keys.CONNECTOR_ROUTE_CANDIDATES] = candidates
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
-    diagnostic_parts = urllib.parse.urlsplit(original_url)
-    diagnostic_url = urllib.parse.urlunsplit(
-        (diagnostic_parts.scheme, diagnostic_parts.netloc, diagnostic_parts.path, "", "")
-    )
-    flow.response = http.Response.make(
+    diagnostic_url = _diagnostic_url_without_query_or_fragment(original_url)
+    flow.response = make_local_json_response(
+        flow,
         _HTTP_STATUS_CONFLICT,
-        json.dumps(
-            {
-                "error": _AMBIGUOUS_CONNECTOR_ROUTE_ERROR,
-                "message": "Request blocked: connector route requires explicit intent",
-                "reason": result.reason,
-                "method": result.method,
-                "path": result.path,
-                "url": diagnostic_url,
-                "candidates": candidates,
-            }
-        ).encode(),
-        {"Content-Type": "application/json"},
+        {
+            "error": _AMBIGUOUS_CONNECTOR_ROUTE_ERROR,
+            "message": "Request blocked: connector route requires explicit intent",
+            "reason": result.reason,
+            "method": result.method,
+            "path": result.path,
+            "url": diagnostic_url,
+            "candidates": candidates,
+        },
     )
 
 
@@ -316,6 +351,15 @@ def block_public_destination_denied(
     reason: str,
     send_response: bool = True,
 ) -> None:
+    """Record a public-destination denial and optionally install its local response.
+
+    Both modes disable request streaming, record the DENY decision with the
+    ``unsafe_public_destination`` error and firewall base/name, and emit the redacted
+    public-destination proxy warning. When ``send_response`` is ``True``, this also installs
+    the JSON HTTP 403 response. When it is ``False``, the function leaves ``flow.response``
+    unchanged and does not terminate the flow; the caller must terminate it and prevent
+    later request dispatch.
+    """
     proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
     flow.request.stream = False
     flow_metadata.set_firewall_decision(
@@ -338,20 +382,19 @@ def block_public_destination_denied(
         reason=reason,
     )
 
-    error_body = json.dumps(
-        {
-            "error": "unsafe_public_destination",
-            "message": "Request blocked: publicDestination resolved to a non-public destination",
-            "name": name,
-            "base": base,
-            "destination_host": destination_host,
-            "trusted_authority_host": trusted_authority_host,
-            "reason": reason,
-        }
-    )
     if send_response:
-        flow.response = http.Response.make(
+        flow.response = make_local_json_response(
+            flow,
             403,
-            error_body.encode(),
-            {"Content-Type": "application/json"},
+            {
+                "error": "unsafe_public_destination",
+                "message": (
+                    "Request blocked: publicDestination resolved to a non-public destination"
+                ),
+                "name": name,
+                "base": base,
+                "destination_host": destination_host,
+                "trusted_authority_host": trusted_authority_host,
+                "reason": reason,
+            },
         )

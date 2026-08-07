@@ -311,6 +311,80 @@
       }
     },
     {
+      "name": "mixed path segment captures after literal prefix",
+      "path": "/v1/x",
+      "pattern": "/v{version}/x",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "version": "1"
+        }
+      }
+    },
+    {
+      "name": "mixed path segment captures between prefix and suffix",
+      "path": "/pre-abc.ext",
+      "pattern": "/pre-{name}.ext",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "name": "abc"
+        }
+      }
+    },
+    {
+      "name": "mixed path segment rejects literal prefix mismatch",
+      "path": "/foo-abc.ext",
+      "pattern": "/pre-{name}.ext",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed path segment rejects literal suffix mismatch",
+      "path": "/pre-abc.txt",
+      "pattern": "/pre-{name}.ext",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed path segment captures middle containing a dot",
+      "path": "/repos/octocat/foo.bar.git",
+      "pattern": "/repos/{owner}/{repo}.git",
+      "expected": {
+        "kind": "match",
+        "params": {
+          "owner": "octocat",
+          "repo": "foo.bar"
+        }
+      }
+    },
+    {
+      "name": "mixed path segment is case-sensitive",
+      "path": "/PRE-abc.ext",
+      "pattern": "/pre-{name}.ext",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed path segment rejects literal prefix longer than runtime",
+      "path": "/ab",
+      "pattern": "/prefix-{name}.ext",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "invalid literal-separated path parameters fail closed",
+      "path": "/foo/XabcY",
+      "pattern": "/foo/{a}abc{b}",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
       "name": "greedy plus path preserves repeated slash before non-empty rest",
       "path": "/repos/a/b/git//heads/main",
       "pattern": "/repos/{owner}/{repo}/git/{rest+}",
@@ -357,6 +431,22 @@
       "name": "non-terminal greedy path parameter fails closed",
       "path": "/api/a/b/tail",
       "pattern": "/api/{rest+}/tail",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed greedy plus path parameter fails closed",
+      "path": "/api/file-123",
+      "pattern": "/api/file-{id+}",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed greedy star path parameter fails closed",
+      "path": "/api/file-123",
+      "pattern": "/api/file-{id*}",
       "expected": {
         "kind": "no-match"
       }
@@ -419,6 +509,14 @@
       }
     },
     {
+      "name": "mixed host parameter rejects literal prefix mismatch",
+      "host": "foo-us.example.com",
+      "pattern": "api-{region}.example.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
       "name": "leading greedy plus host preserves input case",
       "host": "Foo.Bar.example.com",
       "pattern": "{sub+}.example.com",
@@ -457,9 +555,17 @@
       }
     },
     {
-      "name": "mixed greedy host parameter fails closed",
+      "name": "mixed greedy plus host parameter fails closed",
       "host": "api-us.example.com",
       "pattern": "api-{region+}.example.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed greedy star host parameter fails closed",
+      "host": "api-us.example.com",
+      "pattern": "api-{region*}.example.com",
       "expected": {
         "kind": "no-match"
       }
@@ -528,6 +634,15 @@
       }
     },
     {
+      "name": "mixed parameterized prefix returns remaining path",
+      "path": "/v1/octocat/hello.git/info/refs",
+      "pattern": "/v1/{owner}/{repo}.git",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/info/refs"
+      }
+    },
+    {
       "name": "mixed parameterized prefix rejects empty capture",
       "path": "/owner/.git/info/refs",
       "pattern": "/{owner}/{repo}.git",
@@ -565,6 +680,22 @@
       "name": "greedy plus prefix rejects only empty remaining segment",
       "path": "/api/",
       "pattern": "/api/{rest+}",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed greedy plus path prefix fails closed",
+      "path": "/api/file-123",
+      "pattern": "/api/file-{id+}",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed greedy star path prefix fails closed",
+      "path": "/api/file-123",
+      "pattern": "/api/file-{id*}",
       "expected": {
         "kind": "no-match"
       }
@@ -680,6 +811,32 @@
       "expected": {
         "kind": "match",
         "relativePath": "/main/README.md"
+      }
+    },
+    {
+      "name": "mixed path base returns remaining path",
+      "url": "https://github.com/octocat/hello.git/info/refs",
+      "base": "https://github.com/{owner}/{repo}.git",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/info/refs"
+      }
+    },
+    {
+      "name": "mixed path base rejects empty capture",
+      "url": "https://github.com/octocat/.git",
+      "base": "https://github.com/{owner}/{repo}.git",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed host base matches case-insensitively",
+      "url": "https://API-US.example.com/data",
+      "base": "https://api-{region}.example.com",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/data"
       }
     },
     {
@@ -1037,6 +1194,194 @@
         "relativePath": "/items/admin",
         "reason": "permission_denied",
         "permissions": ["items.specific"]
+      }
+    },
+    {
+      "name": "plus greedy blocked permission wins over star greedy allowed permission",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "files.star",
+                  "rules": ["GET /files/{rest*}"]
+                },
+                {
+                  "name": "files.plus",
+                  "rules": ["GET /files/{rest+}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": ["files.plus"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/files/readme"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/files/readme",
+        "reason": "permission_denied",
+        "permissions": ["files.plus"]
+      }
+    },
+    {
+      "name": "two-code-point literal block wins over one-code-point emoji literal allow",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "files.emoji",
+                  "rules": ["GET /files/😀{id}"]
+                },
+                {
+                  "name": "files.ascii",
+                  "rules": ["GET /files/{id}ab"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": ["files.ascii"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/files/😀xab"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/files/😀xab",
+        "reason": "permission_denied",
+        "permissions": ["files.ascii"]
+      }
+    },
+    {
+      "name": "plus greedy allowed base wins over star greedy denied base",
+      "firewalls": [
+        {
+          "name": "bentoml",
+          "apis": [
+            {
+              "base": "https://{deployment*}.bentoml.ai",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "deployment.star",
+                  "rules": ["GET /api"]
+                }
+              ]
+            },
+            {
+              "base": "https://{deployment+}.bentoml.ai",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "deployment.plus",
+                  "rules": ["GET /api"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "bentoml": {
+          "allow": ["deployment.plus"],
+          "deny": ["deployment.star"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://foo.bentoml.ai/api"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "bentoml",
+        "base": "https://{deployment+}.bentoml.ai",
+        "relativePath": "/api",
+        "permission": "deployment.plus",
+        "rule": "GET /api"
+      }
+    },
+    {
+      "name": "two-code-point allowed base wins over one-code-point emoji denied base",
+      "firewalls": [
+        {
+          "name": "files",
+          "apis": [
+            {
+              "base": "https://api.example.com/files/😀{id}",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "files.emoji",
+                  "rules": ["GET /tail"]
+                }
+              ]
+            },
+            {
+              "base": "https://api.example.com/files/{id}ab",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "files.ascii",
+                  "rules": ["GET /tail"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "files": {
+          "allow": ["files.ascii"],
+          "deny": ["files.emoji"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/files/😀xab/tail"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "files",
+        "base": "https://api.example.com/files/{id}ab",
+        "relativePath": "/tail",
+        "permission": "files.ascii",
+        "rule": "GET /tail"
       }
     },
     {
@@ -2266,6 +2611,35 @@
       "expected": {
         "kind": "allow",
         "firewallName": "beta",
+        "base": "https://api.example.com",
+        "relativePath": "/graphql"
+      }
+    },
+    {
+      "name": "custom connector id selects its internal firewall owner",
+      "firewalls": [
+        {
+          "name": "custom_connector_00000000000040008000000000000001",
+          "customConnectorId": "00000000-0000-4000-8000-000000000001",
+          "apis": [{ "base": "https://api.example.com", "auth": {} }]
+        },
+        {
+          "name": "custom_connector_00000000000040008000000000000002",
+          "customConnectorId": "00000000-0000-4000-8000-000000000002",
+          "apis": [{ "base": "https://api.example.com", "auth": {} }]
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "https://api.example.com/graphql",
+        "connectorIntent": {
+          "status": "present",
+          "value": "00000000-0000-4000-8000-000000000002"
+        }
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "custom_connector_00000000000040008000000000000002",
         "base": "https://api.example.com",
         "relativePath": "/graphql"
       }

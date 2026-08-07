@@ -31,6 +31,19 @@ function buttonByText(
   return button;
 }
 
+function buttonByLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 function menuItemByText(text: string): HTMLElement {
   const item = queryAllByRoleFast("menuitem").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -43,7 +56,7 @@ function menuItemByText(text: string): HTMLElement {
 
 function mockMembersStory(): void {
   let response: OrgMembersResponse = {
-    slug: "test-org",
+    name: "Test Org",
     role: "admin",
     createdAt: "2026-01-01T00:00:00Z",
     members: [
@@ -107,7 +120,6 @@ function mockMembersStory(): void {
 
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
@@ -204,11 +216,14 @@ function mockMembersStory(): void {
   );
 }
 
-async function openMembersTab(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=people" });
+async function openMembersTab(heading = "People"): Promise<void> {
+  detachedSetupPage({
+    context,
+    path: "/?settings=people",
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "People" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
   });
 }
 
@@ -309,7 +324,7 @@ describe("organization members settings", () => {
     });
 
     click(screen.getByLabelText("Actions for bob@example.com"));
-    click(menuItemByText("Remove from org"));
+    click(menuItemByText("Remove from workspace"));
 
     const removeDialog = await screen.findByRole("dialog", {
       name: "Remove member?",
@@ -385,6 +400,45 @@ describe("organization members settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Invitation revoked")).toBeInTheDocument();
       expect(screen.queryByText("pending@example.com")).not.toBeInTheDocument();
+    });
+  });
+
+  it("localizes the invitation flow without translating workspace data", async () => {
+    mockMembersStory();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+    await openMembersTab("Pessoas");
+
+    const settingsDialog = screen.getByRole("dialog", {
+      name: "Configurações",
+    });
+    expect(
+      within(settingsDialog).getByText("Espaço de trabalho"),
+    ).toBeVisible();
+    expect(buttonByLabel("Fechar", settingsDialog)).toBeVisible();
+    expect(screen.getByText("alice@example.com")).toBeVisible();
+    expect(screen.getByText("01/01/2026")).toBeVisible();
+
+    await fill(screen.getByPlaceholderText("Pesquisar"), "bob");
+    click(buttonByText("Adicionar membro"));
+
+    const inviteDialog = await screen.findByRole("dialog", {
+      name: "Convidar membro",
+    });
+    expect(buttonByLabel("Fechar", inviteDialog)).toBeVisible();
+    await fill(
+      within(inviteDialog).getByPlaceholderText("email@example.com"),
+      "bob.invited@example.com",
+    );
+    click(buttonByText("Enviar convite", inviteDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("bob.invited@example.com")).toBeInTheDocument();
+      expect(
+        screen.getByText("Convite enviado para bob.invited@example.com"),
+      ).toBeInTheDocument();
     });
   });
 });

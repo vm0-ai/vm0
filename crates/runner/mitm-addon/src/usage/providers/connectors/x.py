@@ -4,7 +4,6 @@ Computes per-permission billable resource counts from successful requests
 through the X firewall and buffers them for aggregate platform upload.
 """
 
-import json
 import re
 import urllib.parse
 from collections.abc import Callable
@@ -30,7 +29,6 @@ from ...json_selective import (
     JsonExtractionResult,
     JsonSelectiveExtractor,
     ScalarField,
-    json_nesting_within_limit,
 )
 from ...reporting_context import usage_reporting_context
 from ...underbilling import log_usage_underbilling
@@ -104,6 +102,12 @@ def _strip_request_target_query(request_target: str) -> str:
 # exceeding it indicates malformed or hostile upstream data, so the parser
 # discards that row through its terminating newline to protect memory.
 _MAX_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT
+# Bound dense syntax and slow scalar inspection across one non-streaming X JSON
+# response while retaining the selective parser's bulk discarded-string path.
+_MAX_JSON_RESPONSE_WORK_UNITS = 65_536
+# Bound dense syntax and slow scalar inspection while keeping multi-megabyte
+# ordinary discarded strings on the selective parser's bulk-scan path.
+_MAX_NDJSON_ROW_WORK_UNITS = 65_536
 _REQUEST_BODY_REFINEMENT_LIMIT = REQUEST_BODY_BILLING_INSPECTION_LIMIT
 _REQUEST_QUERY_HINT_MAX_BYTES = 64 * 1024
 _REQUEST_QUERY_HINT_KEY_MAX_CHARS = 128
@@ -240,6 +244,15 @@ def _create_x_json_selective_extractor() -> JsonSelectiveExtractor:
         array_count_paths={("data",), ("errors",)},
         wildcard_array_count_paths={("includes", "*")},
         object_presence_paths={(), ("data",)},
+        max_work_units=_MAX_JSON_RESPONSE_WORK_UNITS,
+    )
+
+
+def _create_x_ndjson_row_extractor() -> JsonSelectiveExtractor:
+    return JsonSelectiveExtractor(
+        wildcard_array_count_paths={("includes", "*")},
+        object_presence_paths={("data",)},
+        max_work_units=_MAX_NDJSON_ROW_WORK_UNITS,
     )
 
 
@@ -329,15 +342,17 @@ class _NdjsonExtractor:
       include quantities that are unsafe for category emission or exceed the
       per-stream unknown-category budget.
     - ``lines_parsed``: int — JSON-parseable non-blank lines.
-    - ``lines_failed``: int — lines that failed JSON decoding or exceeded
-      the single-line safety cap.
+    - ``lines_failed``: int — lines that failed JSON validation or exceeded a
+      single-line inspection bound.
 
-    The parser keeps a ``line_buf`` holding the in-flight partial line
-    across chunk boundaries.  If a single line ever exceeds
-    :data:`_MAX_NDJSON_LINE_BYTES` the whole line is discarded until its
-    terminating newline (malformed / hostile upstream). ``finish`` finalizes a
+    The parser keeps a ``line_buf`` holding the in-flight partial line across
+    chunk boundaries. If a single line ever exceeds
+    :data:`_MAX_NDJSON_LINE_BYTES`, the whole line is discarded until its
+    terminating newline. Complete rows are validated with bounded selective
+    extraction so unrelated fields are not materialized. ``finish`` finalizes a
     complete trailing line that arrived without a final ``\\n`` and treats
-    malformed or incomplete trailing data as a failed, unbilled line.
+    malformed, incomplete, or inspection-bound-exceeding trailing data as a
+    failed, unbilled line.
     """
 
     def __init__(self) -> None:
@@ -405,24 +420,18 @@ class _NdjsonExtractor:
         line = raw_line.rstrip(b"\r")
         if not line:
             return  # keep-alive blank line
-        if not json_nesting_within_limit(line):
-            self.state["lines_failed"] += 1
-            return
-        try:
-            obj = json.loads(line)
-        except (ValueError, RecursionError):
+        extractor = _create_x_ndjson_row_extractor()
+        extractor.feed(line)
+        extracted = extractor.finish()
+        if not extracted.complete:
             self.state["lines_failed"] += 1
             return
         self.state["lines_parsed"] += 1
-        if not isinstance(obj, dict):
-            return
-        if isinstance(obj.get("data"), dict):
+        if ("data",) in extracted.object_present:
             self.state["data_count"] += 1
-        inc = obj.get("includes")
-        if isinstance(inc, dict):
-            for k, v in inc.items():
-                if isinstance(v, list):
-                    self._record_include_count(k, len(v))
+        includes = extracted.wildcard_array_counts.get(("includes", "*"), {})
+        for key, count in includes.items():
+            self._record_include_count(key, count)
 
     def _record_include_count(self, key: str, count: int) -> None:
         if count <= 0:
@@ -452,6 +461,11 @@ class _XJsonResponseExtractor:
 
     def feed(self, chunk: bytes) -> None:
         self._extractor.feed(chunk)
+
+    def accepts_more_input(self) -> bool:
+        """Return whether the document parser can still consume input."""
+
+        return self._extractor.accepts_more_input()
 
     def finish(self) -> tuple[dict, str | None]:
         result: dict = {"body_parsed": False, "body_truncated": False}
@@ -524,6 +538,7 @@ def create_response_parser(
         report_on_interruption=False,
         finish=finish_json_state,
         finish_decode_error=finish_json_decode_error,
+        should_continue=extractor.accepts_more_input,
     )
 
 
@@ -535,7 +550,7 @@ def _count_bounded_non_empty_comma_segments(value: str, max_count: int) -> int |
         count += 1
         if count > max_count:
             return None
-    return count or None
+    return count
 
 
 def _empty_request_query_fallback_hints() -> dict:
@@ -692,9 +707,6 @@ def _parse_request_query_fallback_hints(original_url: str) -> dict:
                         decoded_value = urllib.parse.unquote_plus(raw_value)
                         if id_count_max is not None:
                             remaining = id_count_max - ids_count
-                            if remaining < 1:
-                                ids_count = 0
-                                break
                             value_count = _count_bounded_non_empty_comma_segments(
                                 decoded_value, remaining
                             )
@@ -743,11 +755,32 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     buffer; decoder/parser completeness is reported separately from forensic
     buffer truncation.
 
-    Buffered JSON fallback failures (truncated buffer, malformed JSON,
-    unexpected shape) leave ``body_parsed=False`` and emit no count fields, so
-    analysis can distinguish "field absent in response" from "we couldn't
-    parse it". NDJSON stream parser failures are reported through
-    ``ndjson_lines_failed``.
+    Ordinary X JSON responses handled by the incremental decoder/parser path
+    publish ``flow.metadata[metadata_keys.X_JSON_STATE]`` at normal response
+    finalization. When present, that state is authoritative over the capped
+    forensic buffer and buffered fallback because this path is fed decoded
+    response chunks independently of that buffer. Its
+    ``body_truncated=False`` therefore means billing inspection was not capped
+    by the forensic buffer; it does not mean the optional forensic capture
+    retained the full response. Parser and decoder failures are reported
+    separately through ``parse_error``.
+
+    Only when neither incremental state is present does the buffered JSON
+    fallback parse ``flow.metadata[metadata_keys.STREAM_BUFFER]``. On that path,
+    ``body_truncated`` retains ``STREAM_BUFFER_STATE["truncated"]`` because the
+    capped buffer is the billing input. Buffered fallback failures (truncated
+    buffer, malformed JSON, unexpected shape) leave ``body_parsed=False`` and
+    emit no count fields, so analysis can distinguish "field absent in
+    response" from "we couldn't parse it". NDJSON stream parser failures are
+    reported through ``ndjson_lines_failed``.
+
+    Focused coverage is
+    ``test_forensic_buffer_truncation_does_not_stop_x_json_parser`` for complete
+    incremental state after capture truncation,
+    ``test_response_logs_x_json_parse_error_after_forensic_buffer_truncates``
+    for incremental parse-error state after capture truncation, and
+    ``test_truncated_buffer_with_no_hints_skips_billing`` for the buffered
+    fallback branch.
     """
     state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE) or {}
     truncated = bool(state.get("truncated", False))

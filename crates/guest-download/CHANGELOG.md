@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.22.21](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.20...guest-download-v0.22.21) (2026-08-07)
+
+## [0.22.20](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.19...guest-download-v0.22.20) (2026-08-07)
+
+## [0.22.19](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.18...guest-download-v0.22.19) (2026-08-06)
+
+## [0.22.18](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.17...guest-download-v0.22.18) (2026-08-05)
+
+
+### Documentation
+
+* **guest-download:** document manifest partial failures ([#25272](https://github.com/vm0-ai/vm0/issues/25272)) ([a3fe705](https://github.com/vm0-ai/vm0/commit/a3fe705e88cd9a7ccd433bc1229e47d2c247a930))
+
+## [0.22.17](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.16...guest-download-v0.22.17) (2026-08-05)
+
+## [0.22.16](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.15...guest-download-v0.22.16) (2026-08-04)
+
+## [0.22.15](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.14...guest-download-v0.22.15) (2026-08-04)
+
+## [0.22.14](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.13...guest-download-v0.22.14) (2026-08-03)
+
+## [0.22.13](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.12...guest-download-v0.22.13) (2026-08-03)
+
+
+### Bug Fixes
+
+* **guest-download:** serialize resolved mount aliases ([#24701](https://github.com/vm0-ai/vm0/issues/24701)) ([7979e4a](https://github.com/vm0-ai/vm0/commit/7979e4afe797d10e4cdca6175031dbb15285d4cc))
+
+## [0.22.12](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.11...guest-download-v0.22.12) (2026-08-02)
+
+## [0.22.11](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.10...guest-download-v0.22.11) (2026-08-01)
+
+## [0.22.10](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.9...guest-download-v0.22.10) (2026-07-31)
+
+
+### Refactoring
+
+* **guest-download:** decouple telemetry from scheduling ([#24294](https://github.com/vm0-ai/vm0/issues/24294)) ([f1f6d40](https://github.com/vm0-ai/vm0/commit/f1f6d40d1304ea58fe9e31f7a05e045ce511e833))
+
+## [0.22.9](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.8...guest-download-v0.22.9) (2026-07-30)
+
+## [0.22.8](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.7...guest-download-v0.22.8) (2026-07-30)
+
+## [0.22.7](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.6...guest-download-v0.22.7) (2026-07-29)
+
+
+### Refactoring
+
+* **guest-download:** reject trailing path arguments ([#23748](https://github.com/vm0-ai/vm0/issues/23748)) ([1d12a27](https://github.com/vm0-ai/vm0/commit/1d12a2756bce188d7d76b504bddcd9a9738dd2b0))
+
+## [0.22.6](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.5...guest-download-v0.22.6) (2026-07-29)
+
+
+### Documentation
+
+* **rust:** document guest archive extraction outcomes ([#23688](https://github.com/vm0-ai/vm0/issues/23688)) ([7defbf1](https://github.com/vm0-ai/vm0/commit/7defbf12282ba63d0363dbf27ffd9b557de5fabf))
+
 ## [0.22.5](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.4...guest-download-v0.22.5) (2026-07-28)
 
 

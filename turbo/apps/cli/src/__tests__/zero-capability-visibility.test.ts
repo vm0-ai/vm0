@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { buildZeroHelpText, registerZeroCommands } from "../zero";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 
@@ -24,16 +23,13 @@ function buildCommands(): Command[] {
     new Command("logs"),
     new Command("chat"),
     new Command("resource"),
-    new Command("preference"),
     new Command("schedule"),
-    new Command("secret"),
     new Command("github"),
     new Command("slack"),
     new Command("feishu"),
     new Command("teams"),
     new Command("telegram"),
     new Command("phone"),
-    new Command("variable"),
     new Command("whoami"),
     new Command("browser"),
     new Command("generate"),
@@ -44,17 +40,17 @@ function buildCommands(): Command[] {
     new Command("scrape"),
     new Command("people-search"),
     new Command("web-search"),
+    new Command("recognize"),
+    new Command("translate"),
     new Command("finance"),
     new Command("banking"),
     new Command("goal"),
   ];
 }
 
-function buildProgram(
-  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>,
-): Command {
+function buildProgram(): Command {
   const prog = new Command();
-  registerZeroCommands(prog, buildCommands(), featureSwitchOverrides);
+  registerZeroCommands(prog, buildCommands());
   return prog;
 }
 
@@ -94,9 +90,6 @@ describe("decodeZeroTokenPayload", () => {
       orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "connector:read"],
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: true,
-      },
       iat: 1000,
       exp: 2000,
     });
@@ -107,9 +100,6 @@ describe("decodeZeroTokenPayload", () => {
       orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "connector:read"],
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: true,
-      },
       iat: 1000,
       exp: 2000,
     });
@@ -155,9 +145,9 @@ describe("registerZeroCommands", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(hiddenCommandNames(prog)).toEqual(["recognize", "translate"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
-    expect(registeredCommandNames(prog)).not.toContain("browser");
+    expect(visibleCommandNames(prog)).toContain("browser");
   });
 
   it("should hide unmapped commands and show capable ones with valid token", () => {
@@ -185,39 +175,39 @@ describe("registerZeroCommands", () => {
       "credit",
       "logs",
       "chat",
-      "preference",
       "schedule",
-      "secret",
       "github",
       "slack",
       "feishu",
       "teams",
       "telegram",
       "phone",
-      "variable",
+      "browser",
       "host",
       "maps",
       "weather",
       "scrape",
       "people-search",
       "web-search",
+      "recognize",
+      "translate",
       "finance",
       "banking",
       "goal",
     ]);
   });
 
-  it("should keep default-disabled feature commands unregistered with malformed token", () => {
+  it("should hide run-only commands and keep global commands visible with malformed token", () => {
     vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(hiddenCommandNames(prog)).toEqual(["recognize", "translate"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
-    expect(registeredCommandNames(prog)).not.toContain("browser");
+    expect(visibleCommandNames(prog)).toContain("browser");
   });
 
-  it("should keep default-disabled feature commands unregistered outside zero scope", () => {
+  it("should hide run-only commands and keep global commands visible outside zero scope", () => {
     const token = buildZeroToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
@@ -226,9 +216,9 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(hiddenCommandNames(prog)).toEqual(["recognize", "translate"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
-    expect(registeredCommandNames(prog)).not.toContain("browser");
+    expect(visibleCommandNames(prog)).toContain("browser");
   });
 
   it("should show globally enabled commands when capabilities array is empty", () => {
@@ -398,6 +388,32 @@ describe("registerZeroCommands", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["chat-thread:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("chat");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show chat when chat-event:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["chat-event:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("chat");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show chat when chat-event:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["chat-event:write"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 
@@ -676,32 +692,72 @@ describe("registerZeroCommands", () => {
     expect(buildZeroHelpText()).toContain("Upgrade plan?");
   });
 
-  it("should register browser only when its feature switch and capability are enabled", () => {
-    const disabledToken = buildZeroToken({
-      scope: "zero",
-      userId: "user-1",
-      orgId: "org-1",
-      capabilities: ["browser:read"],
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: false,
-      },
-    });
-    vi.stubEnv("ZERO_TOKEN", disabledToken);
-
-    expect(registeredCommandNames(buildProgram())).not.toContain("browser");
-
+  it("should expose browser when its capability is enabled", () => {
     const enabledToken = buildZeroToken({
       scope: "zero",
       userId: "user-1",
       orgId: "org-1",
       capabilities: ["browser:read"],
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: true,
-      },
     });
     vi.stubEnv("ZERO_TOKEN", enabledToken);
 
     expect(visibleCommandNames(buildProgram())).toContain("browser");
+  });
+
+  it("should expose recognition only to eligible Zero runs", () => {
+    vi.stubEnv("ZERO_TOKEN", undefined);
+    const noTokenProgram = buildProgram();
+    expect(registeredCommandNames(noTokenProgram)).toContain("recognize");
+    expect(hiddenCommandNames(noTokenProgram)).toContain("recognize");
+
+    const missingCapabilityToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: [],
+    });
+    vi.stubEnv("ZERO_TOKEN", missingCapabilityToken);
+    expect(hiddenCommandNames(buildProgram())).toContain("recognize");
+
+    const eligibleToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: ["image-recognition:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", eligibleToken);
+    expect(visibleCommandNames(buildProgram())).toContain("recognize");
+    expect(buildZeroHelpText(decodeZeroTokenPayload(eligibleToken))).toContain(
+      "Recognize an image?",
+    );
+  });
+
+  it("should expose translation only to capable Zero runs", () => {
+    vi.stubEnv("ZERO_TOKEN", undefined);
+    const noTokenProgram = buildProgram();
+    expect(registeredCommandNames(noTokenProgram)).toContain("translate");
+    expect(hiddenCommandNames(noTokenProgram)).toContain("translate");
+
+    const missingCapabilityToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: [],
+    });
+    vi.stubEnv("ZERO_TOKEN", missingCapabilityToken);
+    expect(hiddenCommandNames(buildProgram())).toContain("translate");
+
+    const capableToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: ["translation:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", capableToken);
+    expect(visibleCommandNames(buildProgram())).toContain("translate");
+    expect(buildZeroHelpText(decodeZeroTokenPayload(capableToken))).toContain(
+      "Translate text?",
+    );
   });
 
   it("should show billing help examples only for billing capabilities", () => {
@@ -1050,7 +1106,17 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should hide connector when connector:read capability is missing", () => {
+  it("should show connector when connector:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["connector:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    expect(visibleCommandNames(buildProgram())).toContain("connector");
+  });
+
+  it("should hide connector when connector capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["agent:read"],

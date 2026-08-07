@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import {
+  deleteUsagePricingRows,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi } from "./helpers/api-bdd";
@@ -127,6 +131,23 @@ describe("low-credit email delivery", () => {
 
     const before = await billing.readBillingStatus(actor);
     expect(before.credits).toBeGreaterThan(5000);
+    const modelProvider = `bdd-low-credit-${randomUUID()}`;
+    onTestFinished(async () => {
+      await deleteUsagePricingRows({
+        kind: "model",
+        provider: modelProvider,
+        categories: ["tokens.output"],
+      });
+    });
+    await seedUsagePricingRows([
+      {
+        kind: "model",
+        provider: modelProvider,
+        category: "tokens.output",
+        unitPrice: before.credits - 4999,
+        unitSize: 1,
+      },
+    ]);
 
     const agentName = `bdd-low-credit-${randomUUID().slice(0, 8)}`;
     const compose = await runs.createCompose(actor, {
@@ -150,10 +171,9 @@ describe("low-credit email delivery", () => {
           {
             idempotencyKey: randomUUID(),
             kind: "model",
-            provider: "bdd-model",
+            provider: modelProvider,
             category: "tokens.output",
             quantity: 1,
-            grossCredits: before.credits - 4999,
           },
         ],
       },

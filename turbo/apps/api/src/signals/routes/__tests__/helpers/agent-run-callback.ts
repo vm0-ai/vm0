@@ -26,11 +26,17 @@ const agentRunCallbackSnapshotSchema = z.object({
   lastError: z.string().nullable(),
 });
 
-const agentRunCallbacksResponseSchema = z.object({
+const agentRunStateResponseSchema = z.object({
+  zero_run: z
+    .object({
+      triggerSource: z.string().nullable(),
+    })
+    .nullable(),
   callbacks: z.array(agentRunCallbackSnapshotSchema),
 });
 
 type AgentRunCallbackSnapshot = z.infer<typeof agentRunCallbackSnapshotSchema>;
+type AgentRunStateSnapshot = z.infer<typeof agentRunStateResponseSchema>;
 
 interface ReadAgentRunCallbacksBaseOptions {
   readonly orgId: string;
@@ -104,12 +110,12 @@ export const seedAgentRunCallback$ = command(
   },
 );
 
-export const readAgentRunCallbacks$ = command(
+export const readAgentRunState$ = command(
   async (
     _,
     options: ReadAgentRunCallbacksOptions,
     signal: AbortSignal,
-  ): Promise<readonly AgentRunCallbackSnapshot[]> => {
+  ): Promise<AgentRunStateSnapshot> => {
     const response = await requestTelegramState(
       signal,
       TELEGRAM_STATE_ACTION_ROUTE,
@@ -126,10 +132,21 @@ export const readAgentRunCallbacks$ = command(
       },
     );
     signal.throwIfAborted();
-    expectOk(response, "readAgentRunCallbacks$");
+    expectOk(response, "readAgentRunState$");
     signal.throwIfAborted();
     const body = await readJson<unknown>(response);
     signal.throwIfAborted();
-    return agentRunCallbacksResponseSchema.parse(body).callbacks;
+    return agentRunStateResponseSchema.parse(body);
+  },
+);
+
+export const readAgentRunCallbacks$ = command(
+  async (
+    { set },
+    options: ReadAgentRunCallbacksOptions,
+    signal: AbortSignal,
+  ): Promise<readonly AgentRunCallbackSnapshot[]> => {
+    const state = await set(readAgentRunState$, options, signal);
+    return state.callbacks;
   },
 );

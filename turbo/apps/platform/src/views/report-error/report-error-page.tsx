@@ -18,15 +18,23 @@ import {
   submitErrorReport$,
 } from "../../signals/report-error/report-error-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { useTranslation } from "react-i18next";
 
 export function ReportErrorPage() {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const runLoadable = useLastLoadable(reportErrorRun$);
   const reference = useGet(reportReference$);
   const [submitLoadable, doSubmit] = useLoadableSet(submitErrorReport$);
 
   if (runLoadable.state === "hasError") {
-    return <ErrorCard message="Failed to load run details" />;
+    return (
+      <ErrorCard
+        message={t(($) => {
+          return $.reportError.error.loadFailed;
+        })}
+      />
+    );
   }
 
   if (runLoadable.state === "loading" || !runLoadable.data) {
@@ -36,7 +44,13 @@ export function ReportErrorPage() {
   const run = runLoadable.data;
 
   if (run.status !== "failed") {
-    return <ErrorCard message="This run did not fail and cannot be reported" />;
+    return (
+      <ErrorCard
+        message={t(($) => {
+          return $.reportError.error.notFailed;
+        })}
+      />
+    );
   }
 
   if (reference) {
@@ -54,11 +68,66 @@ export function ReportErrorPage() {
 }
 
 function LoadingCard() {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-      <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+      <div
+        role="status"
+        className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12"
+      >
         <IconLoader2 size={20} className="animate-spin text-muted-foreground" />
+        <span className="sr-only">
+          {t(($) => {
+            return $.reportError.loading;
+          })}
+        </span>
       </div>
+    </div>
+  );
+}
+
+function ReportDisclosure() {
+  const { t } = useTranslation();
+
+  return (
+    <div className="w-full rounded-lg border border-border bg-muted/40 px-4 py-3">
+      <p className="text-xs font-medium text-muted-foreground mb-1">
+        {t(($) => {
+          return $.reportError.disclosure.title;
+        })}
+      </p>
+      <ul className="text-sm text-muted-foreground space-y-1">
+        <li>
+          {t(($) => {
+            return $.reportError.disclosure.chatHistory;
+          })}
+        </li>
+        <li>
+          {t(($) => {
+            return $.reportError.disclosure.agentTelemetry;
+          })}
+        </li>
+        <li>
+          {t(($) => {
+            return $.reportError.disclosure.networkLogs;
+          })}
+        </li>
+        <li>
+          {t(($) => {
+            return $.reportError.disclosure.runContext;
+          })}
+        </li>
+        <li>
+          {t(($) => {
+            return $.reportError.disclosure.agentConfiguration;
+          })}
+        </li>
+        <li>
+          {t(($) => {
+            return $.reportError.disclosure.connectedServices;
+          })}
+        </li>
+      </ul>
     </div>
   );
 }
@@ -70,6 +139,7 @@ function ConfirmCard({
   loading: boolean;
   onSubmit: () => void;
 }) {
+  const { t } = useTranslation();
   const title = useGet(reportTitle$);
   const description = useGet(reportDescription$);
   const setTitle = useSet(setReportTitle$);
@@ -84,11 +154,14 @@ function ConfirmCard({
 
         <div className="flex flex-col items-center gap-2">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
-            Report error to developer
+            {t(($) => {
+              return $.reportError.title;
+            })}
           </p>
           <p className="text-center text-sm text-muted-foreground">
-            Send diagnostic information for this failed run to the developer
-            team. We will investigate and follow up shortly.
+            {t(($) => {
+              return $.reportError.description;
+            })}
           </p>
         </div>
 
@@ -98,11 +171,15 @@ function ConfirmCard({
               htmlFor="report-title"
               className="text-xs font-medium text-muted-foreground"
             >
-              Title
+              {t(($) => {
+                return $.reportError.fields.title;
+              })}
             </label>
             <Input
               id="report-title"
-              placeholder="Brief summary of the issue"
+              placeholder={t(($) => {
+                return $.reportError.fields.titlePlaceholder;
+              })}
               value={title}
               onChange={(e) => {
                 setTitle(e.target.value);
@@ -115,13 +192,17 @@ function ConfirmCard({
               htmlFor="report-description"
               className="text-xs font-medium text-muted-foreground"
             >
-              Description
+              {t(($) => {
+                return $.reportError.fields.description;
+              })}
             </label>
             <textarea
               id="report-description"
               className="flex w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
               rows={3}
-              placeholder="What happened? What did you expect?"
+              placeholder={t(($) => {
+                return $.reportError.fields.descriptionPlaceholder;
+              })}
               value={description}
               onChange={(e) => {
                 setDescription(e.target.value);
@@ -131,19 +212,7 @@ function ConfirmCard({
           </div>
         </div>
 
-        <div className="w-full rounded-lg border border-border bg-muted/40 px-4 py-3">
-          <p className="text-xs font-medium text-muted-foreground mb-1">
-            What will be sent
-          </p>
-          <ul className="text-sm text-muted-foreground space-y-1">
-            <li>Chat history and agent events</li>
-            <li>Agent telemetry and run logs</li>
-            <li>Network request logs</li>
-            <li>Run context and environment</li>
-            <li>Agent configuration</li>
-            <li>Connected services (no credentials)</li>
-          </ul>
-        </div>
+        <ReportDisclosure />
 
         <Button
           className="w-full"
@@ -153,7 +222,13 @@ function ConfirmCard({
           {loading ? (
             <IconLoader2 size={16} className="animate-spin mr-2" />
           ) : null}
-          {loading ? "Sending..." : "Send Report"}
+          {loading
+            ? t(($) => {
+                return $.reportError.sending;
+              })
+            : t(($) => {
+                return $.reportError.send;
+              })}
         </Button>
       </div>
     </div>
@@ -161,21 +236,30 @@ function ConfirmCard({
 }
 
 function SuccessCard({ reference }: { reference: string }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-6 rounded-[20px] border border-border bg-background px-8 py-10">
         <IconCheck size={40} className="text-green-600 opacity-70" />
         <div className="flex flex-col items-center gap-2">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
-            Report sent
+            {t(($) => {
+              return $.reportError.success.title;
+            })}
           </p>
           <p className="text-center text-sm text-muted-foreground">
-            Your error report has been sent to the developer team. They will
-            investigate and follow up.
+            {t(($) => {
+              return $.reportError.success.description;
+            })}
           </p>
         </div>
         <code className="text-xs text-muted-foreground">
-          Reference: {reference}
+          {t(
+            ($) => {
+              return $.reportError.success.reference;
+            },
+            { reference },
+          )}
         </code>
       </div>
     </div>
@@ -189,19 +273,24 @@ function ErrorCard({
   message: string;
   onRetry?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-6 rounded-[20px] border border-border bg-background px-8 py-10">
         <IconX size={40} className="text-destructive opacity-70" />
         <div className="flex flex-col items-center gap-2">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
-            Error
+            {t(($) => {
+              return $.reportError.error.title;
+            })}
           </p>
           <p className="text-center text-sm text-muted-foreground">{message}</p>
         </div>
         {onRetry && (
           <Button className="w-full" onClick={onRetry}>
-            Try Again
+            {t(($) => {
+              return $.reportError.error.tryAgain;
+            })}
           </Button>
         )}
       </div>

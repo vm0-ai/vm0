@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{
     self, BorrowedRawMessage, DecodeWithError, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY,
@@ -258,6 +259,7 @@ struct ConnectionDispatcher {
     exec_control_registry: ExecControlRegistry,
     operation_state: OperationState,
     process_containment_mode: ProcessContainmentMode,
+    exec_drain_deadline: Duration,
 }
 
 impl ConnectionDispatcher {
@@ -265,6 +267,7 @@ impl ConnectionDispatcher {
         writer: GuestWriter,
         connection_cancel: Arc<AtomicBool>,
         process_containment_mode: ProcessContainmentMode,
+        exec_drain_deadline: Duration,
     ) -> io::Result<Self> {
         let file_write_worker =
             FileWriteWorker::start(writer.clone(), Arc::clone(&connection_cancel))?;
@@ -276,6 +279,7 @@ impl ConnectionDispatcher {
             exec_control_registry: ExecControlRegistry::default(),
             operation_state: OperationState::default(),
             process_containment_mode,
+            exec_drain_deadline,
         })
     }
 
@@ -312,6 +316,7 @@ impl ConnectionDispatcher {
             msg.seq,
             decoded,
             self.process_containment_mode,
+            self.exec_drain_deadline,
         ) {
             Ok(request) => request,
             Err(error) => {
@@ -494,7 +499,6 @@ impl ConnectionDispatcher {
                 }) {
                     log("WARN", &format!("Failed to send shutdown_ack: {e}"));
                 }
-                log("INFO", "Shutdown complete, exiting");
                 Ok(DispatchOutcome::Shutdown)
             }
         }
@@ -569,11 +573,39 @@ pub fn handle_connection_with_test_process_containment(stream: UnixStream) -> io
     handle_connection_with_mode(stream, ProcessContainmentMode::TestNoop)
 }
 
+/// Handles a host-side test connection with an explicit exec output drain deadline.
+///
+/// This integration-test hook retains test process containment while allowing a real exec request
+/// to exercise timeout-driven output cancellation without waiting for the production deadline.
+#[doc(hidden)]
+pub fn handle_connection_with_test_process_containment_and_exec_drain_deadline(
+    stream: UnixStream,
+    exec_drain_deadline: Duration,
+) -> io::Result<()> {
+    handle_connection_with_mode_and_exec_drain_deadline(
+        stream,
+        ProcessContainmentMode::TestNoop,
+        exec_drain_deadline,
+    )
+}
+
 fn handle_connection_with_mode(
     stream: UnixStream,
     process_containment_mode: ProcessContainmentMode,
 ) -> io::Result<()> {
-    match handle_connection_with_outcome(stream, process_containment_mode) {
+    handle_connection_with_mode_and_exec_drain_deadline(
+        stream,
+        process_containment_mode,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
+    )
+}
+
+fn handle_connection_with_mode_and_exec_drain_deadline(
+    stream: UnixStream,
+    process_containment_mode: ProcessContainmentMode,
+    exec_drain_deadline: Duration,
+) -> io::Result<()> {
+    match handle_connection_with_outcome(stream, process_containment_mode, exec_drain_deadline) {
         Ok(_) => Ok(()),
         Err(failure) => Err(failure.error),
     }
@@ -582,6 +614,7 @@ fn handle_connection_with_mode(
 fn handle_connection_with_outcome(
     stream: UnixStream,
     process_containment_mode: ProcessContainmentMode,
+    exec_drain_deadline: Duration,
 ) -> Result<ConnectionEnd, ConnectionFailure> {
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while worker threads write results.
@@ -604,9 +637,13 @@ fn handle_connection_with_outcome(
     log("INFO", "Sent ready signal");
 
     let mut session = ConnectionSession::new();
-    let dispatcher =
-        ConnectionDispatcher::new(writer, connection_cancel.clone(), process_containment_mode)
-            .map_err(|error| session.failure(error))?;
+    let dispatcher = ConnectionDispatcher::new(
+        writer,
+        connection_cancel.clone(),
+        process_containment_mode,
+        exec_drain_deadline,
+    )
+    .map_err(|error| session.failure(error))?;
     let mut buf = [0u8; READ_BUFFER_SIZE];
     loop {
         // Read from stream (reader is separate, no lock needed)
@@ -637,6 +674,18 @@ fn handle_connection_with_outcome(
                 return Err(session.failure(error));
             }
             Err(DecodeWithError::Visitor(DecodeDispatchError::Shutdown)) => {
+                // Shutdown is terminal, so ignore all later frames while
+                // retaining the transport until the host has observed the ACK
+                // or abandoned its bounded graceful-shutdown attempt.
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(_) => {}
+                        Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                        Err(_) => break,
+                    }
+                }
+                log("INFO", "Shutdown complete, exiting");
                 return Ok(ConnectionEnd::Shutdown);
             }
         }
@@ -736,7 +785,11 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 .map_err(unstable_connection_failure)
                 .and_then(|stream| {
                     log("INFO", "Connected");
-                    handle_connection_with_outcome(stream, process_containment_mode)
+                    handle_connection_with_outcome(
+                        stream,
+                        process_containment_mode,
+                        EXEC_OUTPUT_DRAIN_DEADLINE,
+                    )
                 })
         } else {
             log("INFO", "Connecting to host (CID=2)...");
@@ -744,7 +797,11 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 .map_err(unstable_connection_failure)
                 .and_then(|stream| {
                     log("INFO", "Connected");
-                    handle_connection_with_outcome(stream, process_containment_mode)
+                    handle_connection_with_outcome(
+                        stream,
+                        process_containment_mode,
+                        EXEC_OUTPUT_DRAIN_DEADLINE,
+                    )
                 })
         };
 

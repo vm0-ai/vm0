@@ -3,9 +3,7 @@ import { spawnSync } from "node:child_process";
 import chalk from "chalk";
 import { Command, InvalidArgumentError, Option } from "commander";
 import {
-  ZERO_BROWSER_DEFAULT_MAX_CREDITS,
   ZERO_BROWSER_IDLE_LEASE_MINUTES,
-  ZERO_BROWSER_MAX_CREDITS,
   zeroBrowserCreateRequestSchema,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
@@ -15,15 +13,14 @@ import {
   getCurrentZeroBrowser,
   leaseZeroBrowser,
   useZeroBrowser,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-browser";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const DEFAULT_AGENT_BROWSER_SESSION = "zero-browser";
 
 interface NewOptions {
   readonly name: string;
   readonly country?: string;
-  readonly maxCredits: number;
   readonly agentSession?: string;
   readonly json?: boolean;
 }
@@ -35,26 +32,6 @@ interface ConnectionOptions {
 
 interface OutputOptions {
   readonly json?: boolean;
-}
-
-function positiveInteger(
-  label: string,
-  maximum: number,
-): (value: string) => number {
-  return (value) => {
-    if (!/^\d+$/u.test(value)) {
-      throw new InvalidArgumentError(
-        `${label} must be an integer from 1 to ${maximum}`,
-      );
-    }
-    const parsed = Number(value);
-    if (parsed < 1 || parsed > maximum) {
-      throw new InvalidArgumentError(
-        `${label} must be an integer from 1 to ${maximum}`,
-      );
-    }
-    return parsed;
-  };
 }
 
 function parseCountry(value: string): string {
@@ -107,12 +84,7 @@ function reclaimNotice(browser: ZeroBrowserSession): string {
 
 function renderBrowser(browser: ZeroBrowserSession): void {
   console.log(`${browser.name} · ${browser.status}`);
-  console.log(chalk.dim(`  ID: ${browser.id}`));
-  console.log(
-    chalk.dim(
-      `  Credits: ${browser.creditsCharged} charged / ${browser.maxCredits} budget`,
-    ),
-  );
+  console.log(chalk.dim(`  Thread ID: ${browser.threadId}`));
   console.log(chalk.dim(`  ${reclaimNotice(browser)}`));
   console.log(`  ${browser.viewerUrl}`);
 }
@@ -159,22 +131,6 @@ const useCommand = new Command()
     }),
   );
 
-const resumeCommand = new Command()
-  .name("resume")
-  .description("Deprecated alias of use")
-  .addOption(
-    new Option(
-      "--agent-session <name>",
-      "Named agent-browser session",
-    ).argParser(parseAgentSession),
-  )
-  .option("--json", "Print machine-readable output without connection secrets")
-  .action(
-    withErrorHandler(async (options: ConnectionOptions) => {
-      await connectResponse(await useZeroBrowser(), options);
-    }),
-  );
-
 const leaseCommand = new Command()
   .name("lease")
   .description(
@@ -196,7 +152,7 @@ const leaseCommand = new Command()
 const newCommand = new Command()
   .name("new")
   .description(
-    "Create another thread browser with the shared user profile and attach it to agent-browser",
+    "Create another thread browser with an isolated profile and attach it to agent-browser",
   )
   .addOption(new Option("--name <name>", "Browser name").default("browser"))
   .addOption(
@@ -204,11 +160,6 @@ const newCommand = new Command()
       "--country <code>",
       "Residential proxy country; omitted uses lower-cost proxyless egress",
     ).argParser(parseCountry),
-  )
-  .addOption(
-    new Option("--max-credits <credits>", "Logical browser credit budget")
-      .default(ZERO_BROWSER_DEFAULT_MAX_CREDITS)
-      .argParser(positiveInteger("max-credits", ZERO_BROWSER_MAX_CREDITS)),
   )
   .addOption(
     new Option(
@@ -222,7 +173,6 @@ const newCommand = new Command()
       const request = zeroBrowserCreateRequestSchema.parse({
         name: options.name,
         proxyCountryCode: options.country ?? null,
-        maxCredits: options.maxCredits,
       });
       await connectResponse(await createZeroBrowser(request), options);
     }),
@@ -257,7 +207,6 @@ export const zeroBrowserCommand = new Command()
   .description("Use a managed remote browser through agent-browser")
   .addCommand(useCommand)
   .addCommand(leaseCommand)
-  .addCommand(resumeCommand)
   .addCommand(newCommand)
   .addCommand(statusCommand)
   .addCommand(viewCommand)
@@ -273,9 +222,9 @@ Examples:
 
 Notes:
   - The browser outlives this run; the user can keep working in it from the viewer link
-  - Zero reclaims it after ${ZERO_BROWSER_IDLE_LEASE_MINUTES} idle minutes and settles its cost then
-  - \`zero browser use\` restores a reclaimed browser's login profile, not its old tabs
+  - Zero reclaims it after ${ZERO_BROWSER_IDLE_LEASE_MINUTES} idle minutes
+  - \`zero browser use\` restores a reclaimed browser's login profile and reopens saved tab URLs when possible
   - Browser Use credentials and connection URLs are never printed
-  - Threads for the same user and organization share one login profile
-  - Threads can use the shared profile in parallel`,
+  - Each thread keeps an isolated login profile
+  - Threads can run their browsers in parallel`,
   );

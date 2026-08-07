@@ -1,13 +1,12 @@
 import { command } from "ccstate";
 import { and, eq, or } from "drizzle-orm";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
-import type { ConnectorChangedPayload } from "@vm0/api-contracts/contracts/realtime";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { writeDb$, type Db } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import { publishConnectorChangedForUserSafely } from "../external/realtime";
 import { recomposeAgentIfStale$ } from "./agent-compose.service";
 import { updateUserConnectors } from "./user-connectors.service";
 
@@ -134,7 +133,7 @@ export const authorizeConnectedConnector$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly agentId: string | null;
-      readonly connectorType: ConnectorRef;
+      readonly connectorSlug: ConnectorSlug;
     },
     signal: AbortSignal,
   ): Promise<AuthorizeConnectedConnectorResult> => {
@@ -155,7 +154,7 @@ export const authorizeConnectedConnector$ = command(
       orgId: args.orgId,
       userId: args.userId,
       agentId: agent.id,
-      enabledTypes: [args.connectorType],
+      enabledConnectorSlugs: [args.connectorSlug],
       operation: "add",
       allowMissingZeroAgentForEmptyReplace: false,
     });
@@ -183,9 +182,7 @@ export const authorizeConnectedConnector$ = command(
         message: agentNotFoundMessage(agent.id),
       };
     }
-    await publishUserSignal([args.userId], "connector:changed", {
-      connectorRef: args.connectorType,
-    } satisfies ConnectorChangedPayload);
+    await publishConnectorChangedForUserSafely(args.userId, args.connectorSlug);
     signal.throwIfAborted();
     return { status: "authorized", agentId: agent.id };
   },

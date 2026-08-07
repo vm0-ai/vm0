@@ -1,4 +1,7 @@
-//! Newtype wrapper for the per-job identifier that the runner assigns.
+//! Newtype wrapper for the per-job identifier used by the runner.
+//!
+//! Normal API jobs receive their `RunId` from the control plane, while
+//! `runner local submit` allocates one locally.
 //!
 //! `RunId` is the server/API-facing job handle — visible on dashboards,
 //! used in claim/complete/cancel. It is distinct from [`sandbox::SandboxId`]
@@ -15,17 +18,20 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Per-job identifier assigned by the server (or `runner local submit`).
+/// Per-job identifier supplied by the server or allocated by `runner local submit`.
 /// This is what the user sees on dashboards and what API claim/complete use.
 ///
-/// Distinct from [`sandbox::SandboxId`] — the two are equal on the first
-/// run but diverge on sandbox reuse, when the FC keeps its original
-/// `SandboxId` while each successive job gets a fresh `RunId`.
+/// A fresh sandbox receives an independently allocated [`sandbox::SandboxId`].
+/// On reuse, the sandbox keeps its existing `SandboxId` while the new job has
+/// its own `RunId`. The two identifiers are not interchangeable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct RunId(Uuid);
 
 impl RunId {
+    /// Allocate a random v4 identifier for runner-local use.
+    ///
+    /// Normal API jobs receive their `RunId` from the control plane instead.
     pub fn new_v4() -> Self {
         Self(Uuid::new_v4())
     }

@@ -1,3 +1,5 @@
+import { formatAppNumber } from "../../../i18n/format.ts";
+
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
@@ -7,12 +9,20 @@ export function formatSize(bytes: number | undefined | null): string {
     return "—";
   }
   if (bytes < 1024) {
-    return `${bytes}B`;
+    return `${formatAppNumber(bytes, { useGrouping: false })}B`;
   }
   if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${formatAppNumber(bytes / 1024, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+      useGrouping: false,
+    })}KB`;
   }
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  return `${formatAppNumber(bytes / (1024 * 1024), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+    useGrouping: false,
+  })}MB`;
 }
 
 // ---------------------------------------------------------------------------

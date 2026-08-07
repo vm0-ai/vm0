@@ -11,7 +11,19 @@ const CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION = 22;
 // Rebuild every chat event cache so documents written by older App bundles
 // cannot reintroduce content-only events after the server migration.
 const CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION = 23;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION;
+// input.prompt and input.rejected now require content=null. Rebuild persisted
+// event caches so strict reads cannot encounter the retired input projection.
+const CHAT_IDB_INPUT_CONTENT_REMOVAL_VERSION = 24;
+// ChatEvent origin metadata now arrives through one projection field instead
+// of the source-specific fields cached by older App bundles.
+const CHAT_IDB_ANNOTATION_CUTOVER_VERSION = 25;
+// Source, automation, and goal display metadata now lives inside userMessage.
+// Rebuild event caches that still carry the retired projection fields.
+const CHAT_IDB_USER_MESSAGE_PARTS_CUTOVER_VERSION = 26;
+// Morning Brief identity now lives in userMessage. Rebuild event caches whose
+// documents predate the dedicated non-content part.
+const CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION = 27;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
 const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
@@ -88,6 +100,26 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   }
 
   if (oldVersion < CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteChatThreadEventStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_INPUT_CONTENT_REMOVAL_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteChatThreadEventStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_ANNOTATION_CUTOVER_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteChatThreadEventStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_USER_MESSAGE_PARTS_CUTOVER_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteChatThreadEventStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION) {
     deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }

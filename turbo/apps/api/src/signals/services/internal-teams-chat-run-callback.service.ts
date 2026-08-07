@@ -1,6 +1,6 @@
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
@@ -11,7 +11,6 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
-
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
@@ -20,7 +19,7 @@ import {
   deleteTeamsReaction,
   sendTeamsMessageReply,
 } from "../external/teams-bot-client";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveIntegrationAgentResponsePresentation } from "./integration-agent-response-presentation.service";
@@ -122,26 +121,26 @@ async function loadTeamsChatDeliveryContext(args: {
     throw new Error("Teams chat delivery run context is unavailable");
   }
 
-  const [message] = await args.db
-    .select({ content: chatMessages.content })
-    .from(chatMessages)
+  const [event] = await args.db
+    .select({ content: chatEvents.content })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.id, payload.chatMessageId),
-        eq(chatMessages.runId, args.callback.runId),
-        eq(chatMessages.chatThreadId, run.chatThreadId),
+        eq(chatEvents.id, payload.chatEventId),
+        eq(chatEvents.runId, args.callback.runId),
+        eq(chatEvents.chatThreadId, run.chatThreadId),
         chatEventTypeIn([
           "output.message",
           "output.error",
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatMessages.content),
+        isNotNull(chatEvents.content),
       ),
     )
     .limit(1);
   args.signal.throwIfAborted();
-  if (!message?.content) {
+  if (!event?.content) {
     throw new Error("Teams chat delivery message is unavailable");
   }
 
@@ -174,7 +173,7 @@ async function loadTeamsChatDeliveryContext(args: {
     )
     .limit(1);
   args.signal.throwIfAborted();
-  return { payload, run, messageContent: message.content, binding };
+  return { payload, run, messageContent: event.content, binding };
 }
 
 async function countTeamsMentioners(args: {
@@ -214,6 +213,46 @@ function buildTeamsResponseText(args: {
       return Boolean(part);
     })
     .join("\n\n");
+}
+
+async function clearTeamsThinkingReaction(args: {
+  readonly payload: TeamsDeliveryTarget;
+  readonly serviceUrl: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (
+    args.payload.conversationType === "personal" ||
+    !args.payload.activityId
+  ) {
+    return;
+  }
+
+  const cleared = await settleIncludingAbort(
+    deleteTeamsReaction({
+      serviceUrl: args.serviceUrl,
+      conversationId: args.payload.conversationId,
+      activityId: args.payload.activityId,
+      tenantId: args.payload.tenantId,
+      reactionType: TEAMS_THINKING_REACTION_TYPE,
+      signal: args.signal,
+    }),
+  );
+  args.signal.throwIfAborted();
+  if (!cleared.ok) {
+    L.warn("Failed to clear canonical Teams thinking reaction", {
+      conversationId: args.payload.conversationId,
+      activityId: args.payload.activityId,
+      error: cleared.error,
+    });
+    return;
+  }
+  if (cleared.value.kind === "teams-error") {
+    L.warn("Failed to clear canonical Teams thinking reaction", {
+      conversationId: args.payload.conversationId,
+      activityId: args.payload.activityId,
+      error: cleared.value.error,
+    });
+  }
 }
 
 async function deliverClaimedTeamsChatCallback(args: {
@@ -275,6 +314,11 @@ async function deliverClaimedTeamsChatCallback(args: {
     signal: args.signal,
   });
   args.signal.throwIfAborted();
+  await clearTeamsThinkingReaction({
+    payload,
+    serviceUrl,
+    signal: args.signal,
+  });
   if (result.kind === "teams-error") {
     throw new Error(`Microsoft Teams API error: ${result.error}`);
   }
@@ -342,7 +386,7 @@ interface TeamsChatAdmissionFailureArgs {
   readonly orgId: string;
   readonly agentId: string;
   readonly target: TeamsDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
   readonly signal: AbortSignal;
 }
 
@@ -354,16 +398,16 @@ interface TeamsAdmissionFailureContext {
 async function loadTeamsAdmissionFailureContext(
   args: TeamsChatAdmissionFailureArgs,
 ): Promise<TeamsAdmissionFailureContext | undefined> {
-  const [messageRows, bindingRows] = await Promise.all([
+  const [eventRows, bindingRows] = await Promise.all([
     args.db
-      .select({ content: chatMessages.content })
-      .from(chatMessages)
+      .select({ content: chatEvents.content })
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.id, args.chatMessageId),
-          eq(chatMessages.chatThreadId, args.chatThreadId),
+          eq(chatEvents.id, args.chatEventId),
+          eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["output.error"]),
-          isNotNull(chatMessages.content),
+          isNotNull(chatEvents.content),
         ),
       )
       .limit(1),
@@ -395,13 +439,13 @@ async function loadTeamsAdmissionFailureContext(
       .limit(1),
   ]);
   args.signal.throwIfAborted();
-  const message = messageRows[0];
+  const event = eventRows[0];
   const binding = bindingRows[0];
-  if (!message?.content || !binding) {
+  if (!event?.content || !binding) {
     return undefined;
   }
   return {
-    messageContent: message.content,
+    messageContent: event.content,
     installationServiceUrl: binding.serviceUrl,
   };
 }

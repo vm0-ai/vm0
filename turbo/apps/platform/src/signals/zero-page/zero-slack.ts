@@ -7,6 +7,7 @@ import {
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { i18n } from "../../i18n/index.ts";
 
 const internalReload$ = state(0);
 const internalSlackStatus$ = state<SlackOrgStatus | null>(null);
@@ -40,22 +41,42 @@ function toastSlackStatusChange(
   next: SlackOrgStatus,
 ): void {
   if (next.isConnected && !previous.isConnected) {
-    toast.success("Slack connected successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.slackConnected;
+      }),
+    );
     return;
   }
   if (next.isInstalled && !previous.isInstalled) {
-    toast.success("Slack installed successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.slackInstalled;
+      }),
+    );
     return;
   }
   if (!next.isInstalled && previous.isInstalled) {
-    toast.success("Slack workspace uninstalled");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.slackUninstalled;
+      }),
+    );
     return;
   }
   if (!next.isConnected && previous.isConnected) {
-    toast.success("Disconnected from Slack");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.slackDisconnected;
+      }),
+    );
     return;
   }
-  toast.success("Slack updated");
+  toast.success(
+    i18n.t(($) => {
+      return $.connectors.providerSettings.toasts.slackUpdated;
+    }),
+  );
 }
 
 /** True when the org-scoped Slack installation has outdated bot scopes (admin-only). */
@@ -135,14 +156,26 @@ export const watchSlackConnection$ = command(
 export const initSlackOrg$ = command((_ctx) => {
   const params = new URLSearchParams(window.location.search);
   if (params.get("updated") === "1") {
-    toast.success("Permissions updated");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.slackPermissionsUpdated;
+      }),
+    );
     window.history.replaceState({}, "", window.location.pathname);
   } else if (params.get("installed") === "1") {
-    toast.success("Slack installed successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.slackInstalled;
+      }),
+    );
     window.history.replaceState({}, "", window.location.pathname);
   }
   if (params.get("connected") === "1") {
-    toast.success("Slack connected successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.slackConnected;
+      }),
+    );
     window.history.replaceState({}, "", window.location.pathname);
   }
 });

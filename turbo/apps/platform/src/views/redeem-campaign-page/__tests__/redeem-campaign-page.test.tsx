@@ -6,7 +6,41 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
+function usePortugueseLocale(): void {
+  document.documentElement.lang = "pt-BR";
+  context.mocks.data.userPreferences({ locale: "pt-BR" });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
 describe("redeem campaign page", () => {
+  it("renders a ready campaign in Brazilian Portuguese", async () => {
+    usePortugueseLocale();
+    const checkoutUrl = "https://checkout.stripe.com/test/session-pt-br";
+    context.mocks.data.redeemResponse({ status: "ready", checkoutUrl });
+
+    detachedSetupPage({ context, path: "/redeem/ZERO100" });
+
+    await expect(
+      screen.findByText("Resgatar seus créditos"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Complete a finalização da compra para adicionar esses créditos ao saldo de Default Org/u,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Resgatar créditos")).toHaveAttribute(
+      "href",
+      checkoutUrl,
+    );
+    expect(document.title).toBe("Resgatar seus créditos | VM0");
+  });
+
   it("lets a user redeem a ready campaign through Stripe checkout", async () => {
     const checkoutUrl = "https://checkout.stripe.com/test/session-ready";
     context.mocks.data.redeemResponse({ status: "ready", checkoutUrl });

@@ -26,6 +26,7 @@ import chalk from "chalk";
 const PREPARE_URL = "http://localhost:3000/api/zero/uploads/prepare";
 const COMPLETE_URL = "http://localhost:3000/api/zero/uploads/complete";
 const PUT_URL = "https://mock-r2.test/upload-target";
+const CLI_VERSION = "0.0.0-test";
 
 function requiredHeader(headers: Headers, name: string): string {
   const value = headers.get(name);
@@ -72,6 +73,11 @@ describe("zero web upload-file command", () => {
         contentType: "application/pdf",
         size: 13,
         uploadUrl: PUT_URL,
+        uploadHeaders: {
+          "x-amz-meta-artifact-id": "file-uuid-1",
+          "x-amz-meta-filename": "report.pdf",
+          "x-amz-meta-user-id": "user-test",
+        },
         url: "https://presigned.example.com/file-uuid-1/report.pdf?sig=abc",
       };
 
@@ -86,7 +92,7 @@ describe("zero web upload-file command", () => {
             "Bearer test-token",
           );
           expect(request.headers.get("content-type")).toBe("application/json");
-          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
+          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBe(CLI_VERSION);
           expect(request.headers.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
           prepareSessionId = requiredHeader(
             request.headers,
@@ -110,6 +116,11 @@ describe("zero web upload-file command", () => {
         }),
         http.put(PUT_URL, ({ request }) => {
           putReceivedContentType = request.headers.get("content-type");
+          expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
+            "file-uuid-1",
+          );
+          expect(request.headers.get("x-amz-meta-filename")).toBe("report.pdf");
+          expect(request.headers.get("x-amz-meta-user-id")).toBe("user-test");
           expect(request.headers.get(CLIENT_TYPE_HEADER)).toBeNull();
           expect(request.headers.get(CLIENT_VERSION_HEADER)).toBeNull();
           expect(request.headers.get(CLIENT_SESSION_ID_HEADER)).toBeNull();
@@ -120,7 +131,7 @@ describe("zero web upload-file command", () => {
           expect(request.headers.get("authorization")).toBe(
             "Bearer test-token",
           );
-          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
+          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBe(CLI_VERSION);
           expect(request.headers.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
           expect(
             requiredHeader(request.headers, CLIENT_SESSION_ID_HEADER),

@@ -6,16 +6,17 @@ import {
   getToken,
   decodeZeroTokenPayload,
 } from "../../lib/api/config";
+import { listZeroConnectors } from "../../lib/api/domains/zero-connectors";
 import {
-  listZeroConnectors,
   getZeroAgentUserConnectors,
   listZeroUserPermissionGrants,
-} from "../../lib/api";
-import { withErrorHandler } from "../../lib/command";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
+} from "../../lib/api/domains/zero-agents";
+import { getZeroOrg } from "../../lib/api/domains/zero-orgs";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { policyIcon } from "../../lib/utils/format-utils";
 import {
   loadConnectorPermissionInfos,
+  connectorPermissionGrantsToFirewallPolicies,
   type ConnectorPermissionInfo,
 } from "./shared/firewall-permissions";
 
@@ -84,6 +85,22 @@ function printConnectorPermissions(info: ConnectorPermissionInfo): void {
   );
 }
 
+/**
+ * Workspace identity is supplementary: whoami must still print the agent
+ * identity, capabilities, and connectors when the org lookup fails or 404s.
+ */
+async function printWorkspace(): Promise<void> {
+  try {
+    const org = await getZeroOrg();
+    console.log(`Workspace:  ${org.name}`);
+    if (org.tier) {
+      console.log(`Tier:       ${org.tier}`);
+    }
+  } catch {
+    // Silently skip — workspace info is supplementary
+  }
+}
+
 async function showSandboxInfo(showPermissions: boolean): Promise<void> {
   const agentId = process.env.ZERO_AGENT_ID;
   const payload = decodeZeroTokenPayload();
@@ -91,6 +108,7 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
   console.log(`Agent ID:   ${agentId}`);
   console.log(`Run ID:     ${payload?.runId ?? chalk.dim("unavailable")}`);
   console.log(`Org ID:     ${payload?.orgId ?? chalk.dim("unavailable")}`);
+  await printWorkspace();
 
   // Capabilities section
   if (payload?.capabilities?.length) {
@@ -118,23 +136,23 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
 
       if (identities.length === 0) return;
 
-      let permissionInfoByType = new Map<string, ConnectorPermissionInfo>();
+      let permissionInfoBySlug = new Map<string, ConnectorPermissionInfo>();
       const permissionDataAvailable =
         grantsResult.status === "fulfilled" &&
         enabledResult.status === "fulfilled";
       if (permissionDataAvailable) {
         const permissionInfos = await loadConnectorPermissionInfos({
-          displayTypes: identities.map((connector) => {
-            return connector.type;
+          displayConnectorSlugs: identities.map((connector) => {
+            return connector.slug;
           }),
-          defaultPolicyTypes: enabledResult.value,
-          storedPolicies: permissionGrantsToFirewallPolicies(
+          defaultPolicyConnectorSlugs: enabledResult.value,
+          storedPolicies: connectorPermissionGrantsToFirewallPolicies(
             grantsResult.value,
           ),
         });
-        permissionInfoByType = new Map(
+        permissionInfoBySlug = new Map(
           permissionInfos.map((info) => {
-            return [info.type, info];
+            return [info.connectorSlug, info];
           }),
         );
       }
@@ -143,10 +161,10 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
       console.log(chalk.bold("Connectors:"));
       for (const connector of identities) {
         const identity = formatConnectorIdentity(connector);
-        console.log(`  ${connector.type.padEnd(14)}${identity}`);
+        console.log(`  ${connector.slug.padEnd(14)}${identity}`);
 
         if (permissionDataAvailable) {
-          const info = permissionInfoByType.get(connector.type);
+          const info = permissionInfoBySlug.get(connector.slug);
           if (info) {
             printConnectorPermissions(info);
           }
@@ -165,7 +183,7 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
       console.log(chalk.bold("Connectors:"));
       for (const connector of identities) {
         const identity = formatConnectorIdentity(connector);
-        console.log(`  ${connector.type.padEnd(14)}${identity}`);
+        console.log(`  ${connector.slug.padEnd(14)}${identity}`);
       }
     }
   } catch {

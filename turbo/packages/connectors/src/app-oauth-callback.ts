@@ -2,23 +2,10 @@
 export const CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY =
   "vm0.connector.appOauthCallbackMetadata";
 
-const LEGACY_CALLBACK_CONNECTOR_REFS: ReadonlySet<string> = new Set([
-  "airtable",
-  "asana",
-  "cloudflare",
-  "gumroad",
-  "microsoft-365",
-  "monday",
-  "outlook-calendar",
-  "outlook-mail",
-  "slack",
-  "strava",
-  "todoist",
-  "xero",
-]);
+const LEGACY_CALLBACK_CONNECTOR_SLUGS: ReadonlySet<string> = new Set(["slack"]);
 
 export function isConnectorAppOauthCallbackEnabled(
-  connectorRef: string,
+  connectorSlug: string,
 ): boolean {
-  return !LEGACY_CALLBACK_CONNECTOR_REFS.has(connectorRef);
+  return !LEGACY_CALLBACK_CONNECTOR_SLUGS.has(connectorSlug);
 }

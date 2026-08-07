@@ -1,20 +1,24 @@
 import { randomUUID } from "node:crypto";
 
-import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
 import {
   zeroConnectorOpenIdStartContract,
-  zeroConnectorOauthContinueContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
+import { zeroConnectorCatalogRoutes } from "../zero-connector-catalog";
+import { zeroConnectorsRoutes } from "../zero-connectors";
+import { zeroSteamPlayerRoutes } from "../zero-steam-player";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -49,8 +53,10 @@ function mockSteamRuntimeEnv(): void {
 async function startSteamOpenId(actor: TestActor): Promise<URL> {
   mockSession(actor);
   const response = await accept(
-    setupApp({ context })(zeroConnectorOpenIdStartContract).start({
-      params: { type: "steam" },
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorOpenIdStartContract,
+    ).start({
+      params: { connectorSlug: "steam" },
       headers: authHeaders(),
       body: { authMethod: "openid" },
     }),
@@ -127,11 +133,11 @@ function redirectLocation(response: RedirectResponseLike): URL {
 
 function expectConnectorErrorRedirect(
   response: RedirectResponseLike,
-  args: { readonly type: string; readonly message: string },
+  args: { readonly connectorSlug: string; readonly message: string },
 ): void {
   const url = redirectLocation(response);
   expect(url.pathname).toBe("/connector/error");
-  expect(url.searchParams.get("type")).toBe(args.type);
+  expect(url.searchParams.get("connectorSlug")).toBe(args.connectorSlug);
   expect(url.searchParams.get("message")).toBe(args.message);
 }
 
@@ -140,8 +146,10 @@ async function completeSteamOpenIdCallback(
 ): Promise<void> {
   mockSteamOpenIdVerification();
   await accept(
-    setupApp({ context })(connectorsTypeCallbackContract).callback({
-      params: { type: "steam" },
+    setupApp({ context, routes: connectorsSlugCallbackRoutes })(
+      connectorsSlugCallbackContract,
+    ).callback({
+      params: { connectorSlug: "steam" },
       query: steamCallbackQuery(authorizationUrl),
       headers: {},
     }),
@@ -302,41 +310,22 @@ function mockSteamPlayerApis(args: { readonly privateOwnedGames?: boolean }) {
 }
 
 describe("Steam OpenID connector", () => {
-  it("rejects a legacy OAuth handoff without an authorization URL", async () => {
-    const actor = testActor();
-    mockSteamRuntimeEnv();
-    const authorizationUrl = await startSteamOpenId(actor);
-
-    const response = await accept(
-      setupApp({ context })(zeroConnectorOauthContinueContract).continue({
-        params: { type: "steam" },
-        query: { state: stateFromSteamAuthorizationUrl(authorizationUrl) },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "OAuth handoff not found",
-        code: "NOT_FOUND",
-      },
-    });
-  });
-
   it("exposes Steam in the connector catalog by default", async () => {
     const actor = testActor();
     mockSession(actor);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const visible = await accept(
       client.status({ headers: authHeaders() }),
       [200],
     );
     const steam = visible.body.connectors.find((connector) => {
-      return connector.connectorRef === "steam";
+      return connector.slug === "steam";
     });
     expect(steam).toMatchObject({
-      connectorRef: "steam",
+      slug: "steam",
       connected: false,
       authMethods: [
         expect.objectContaining({
@@ -366,14 +355,16 @@ describe("Steam OpenID connector", () => {
 
     mockSession(actor);
     const connector = await accept(
-      setupApp({ context })(zeroConnectorsByTypeContract).get({
-        params: { type: "steam" },
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      ).get({
+        params: { connectorSlug: "steam" },
         headers: authHeaders(),
       }),
       [200],
     );
     expect(connector.body).toMatchObject({
-      type: "steam",
+      slug: "steam",
       authMethod: "openid",
       externalId: STEAM_ID,
       externalUsername: STEAM_ID,
@@ -388,8 +379,10 @@ describe("Steam OpenID connector", () => {
     mockSteamOpenIdVerification(false);
 
     const response = await accept(
-      setupApp({ context })(connectorsTypeCallbackContract).callback({
-        params: { type: "steam" },
+      setupApp({ context, routes: connectorsSlugCallbackRoutes })(
+        connectorsSlugCallbackContract,
+      ).callback({
+        params: { connectorSlug: "steam" },
         query: steamCallbackQuery(authorizationUrl),
         headers: {},
       }),
@@ -397,14 +390,16 @@ describe("Steam OpenID connector", () => {
     );
 
     expectConnectorErrorRedirect(response, {
-      type: "steam",
+      connectorSlug: "steam",
       message: "OpenID authorization failed. Please try again.",
     });
 
     mockSession(actor);
     const connector = await accept(
-      setupApp({ context })(zeroConnectorsByTypeContract).get({
-        params: { type: "steam" },
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      ).get({
+        params: { connectorSlug: "steam" },
         headers: authHeaders(),
       }),
       [404],
@@ -417,8 +412,10 @@ describe("Steam OpenID connector", () => {
     mockSession(actor);
 
     const response = await accept(
-      setupApp({ context })(zeroConnectorOpenIdStartContract).start({
-        params: { type: "github" },
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorOpenIdStartContract,
+      ).start({
+        params: { connectorSlug: "github" },
         headers: authHeaders(),
         body: { authMethod: "oauth" },
       }),
@@ -436,7 +433,9 @@ describe("Steam OpenID connector", () => {
 
     mockSession(actor);
     const response = await accept(
-      setupApp({ context })(zeroSteamPlayerContract).getPlayer({
+      setupApp({ context, routes: zeroSteamPlayerRoutes })(
+        zeroSteamPlayerContract,
+      ).getPlayer({
         headers: authHeaders(),
       }),
       [200],
@@ -500,7 +499,9 @@ describe("Steam OpenID connector", () => {
 
     mockSession(actor);
     const response = await accept(
-      setupApp({ context })(zeroSteamPlayerContract).getPlayer({
+      setupApp({ context, routes: zeroSteamPlayerRoutes })(
+        zeroSteamPlayerContract,
+      ).getPlayer({
         headers: authHeaders(),
       }),
       [200],
@@ -530,7 +531,9 @@ describe("Steam OpenID connector", () => {
 
     mockSession(actor);
     const response = await accept(
-      setupApp({ context })(zeroSteamPlayerContract).getPlayer({
+      setupApp({ context, routes: zeroSteamPlayerRoutes })(
+        zeroSteamPlayerContract,
+      ).getPlayer({
         headers: authHeaders(),
       }),
       [503],
@@ -555,7 +558,9 @@ describe("Steam OpenID connector", () => {
 
     mockSession(actor);
     const response = await accept(
-      setupApp({ context })(zeroSteamPlayerContract).getPlayer({
+      setupApp({ context, routes: zeroSteamPlayerRoutes })(
+        zeroSteamPlayerContract,
+      ).getPlayer({
         headers: authHeaders(),
       }),
       [503],

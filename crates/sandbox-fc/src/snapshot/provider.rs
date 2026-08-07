@@ -6,7 +6,7 @@ use sandbox::{PendingSnapshotPublish, SnapshotCreateConfig, SnapshotProvider};
 use crate::factory::config_hash;
 use crate::paths::SnapshotOutputPaths;
 
-use super::output::{snapshot_artifacts_are_regular_files, snapshot_complete_marker_present};
+use super::output::{SnapshotOutputValidation, validate_snapshot_output};
 use super::{SnapshotError, create_uncommitted_snapshot};
 
 /// Firecracker-backed snapshot provider.
@@ -32,10 +32,10 @@ impl SnapshotProvider for FirecrackerSnapshotProvider {
 
     async fn is_complete(&self, output_dir: &Path) -> Result<bool, sandbox::SnapshotError> {
         let output = SnapshotOutputPaths::new(output_dir.to_path_buf());
-        if !snapshot_complete_marker_present(&output).await? {
-            return Ok(false);
-        }
-        snapshot_artifacts_are_regular_files(&output).await
+        Ok(matches!(
+            validate_snapshot_output(&output).await?,
+            SnapshotOutputValidation::Complete
+        ))
     }
 }
 
@@ -45,7 +45,7 @@ mod tests {
 
     use crate::paths::SnapshotOutputPaths;
     use crate::snapshot::SNAPSHOT_COMPLETE_MARKER_CONTENT;
-    use crate::snapshot::output::{publish_snapshot_complete_marker, snapshot_artifact_paths};
+    use crate::snapshot::output::publish_snapshot_complete_marker;
 
     use super::*;
 
@@ -65,7 +65,7 @@ mod tests {
         }
 
         async fn write_required_snapshot_artifacts(&self) {
-            for artifact in snapshot_artifact_paths(&self.output) {
+            for artifact in self.output.required_artifacts() {
                 tokio::fs::write(&artifact, b"snapshot artifact")
                     .await
                     .unwrap_or_else(|e| panic!("write {}: {e}", artifact.display()));

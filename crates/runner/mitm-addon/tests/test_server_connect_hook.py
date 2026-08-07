@@ -375,49 +375,25 @@ def test_server_connect_does_not_bind_connected_connector_from_sni_only(tmp_path
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_server_connect_does_not_bind_api_authority_from_shared_cdn_ip(
+async def test_server_connect_waits_for_tls_before_binding_connector_on_shared_ip(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     shared_address = ("198.18.20.34", 443)
-    model_base = "https://www.vm0.ai/api/internal/vm0-model/v1/responses"
-    reg_path = _write_registry(
-        tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            firewall_name="model-provider:vm0-model",
-            api_entry={
-                "base": model_base,
-                "auth": {
-                    "headers": {
-                        "Authorization": "Bearer ${{ secrets.OPENAI_API_KEY }}",
-                        "X-VM0-Upstream-Authorization": (
-                            "Bearer ${{ secrets.VM0_MODEL_UPSTREAM_API_KEY }}"
-                        ),
-                    }
-                },
-                "permissions": [],
-            },
-            network_policy=None,
-        ),
-    )
+    reg_path = _write_github_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host=shared_address[0],
         sni="",
-        method="POST",
-        path="/api/internal/vm0-model/v1/responses",
-        request_headers=headers(("Host", "www.vm0.ai")),
+        path="/repos/vm0-ai/vm0",
+        request_headers=headers(("Host", "api.github.com")),
     )
     data = _ServerConnectData(client=flow.client_conn, server=flow.server_conn)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers(
-            headers={
-                "Authorization": "Bearer resolved-proxy-token",
-                "X-VM0-Upstream-Authorization": "Bearer resolved-upstream-token",
-            }
+            headers={"Authorization": "Bearer resolved-github-token"}
         ) as auth_fetch,
     ):
         mitm_addon.server_connect(data)
@@ -425,10 +401,10 @@ async def test_server_connect_does_not_bind_api_authority_from_shared_cdn_ip(
         assert flow.server_conn.address == shared_address
         assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
-        flow.client_conn.sni = "www.vm0.ai"
+        flow.client_conn.sni = "api.github.com"
         mark_connected_tls_upstream(
             flow,
-            sni="www.vm0.ai",
+            sni="api.github.com",
             server_address=shared_address,
             peername=shared_address,
         )
@@ -439,12 +415,11 @@ async def test_server_connect_does_not_bind_api_authority_from_shared_cdn_ip(
     assert flow.response is None
     assert flow.server_conn.address == shared_address
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "model-provider:vm0-model"
-    assert flow.metadata[metadata_keys.FIREWALL_BASE] == model_base
-    assert flow.request.headers["Authorization"] == "Bearer resolved-proxy-token"
-    assert flow.request.headers["X-VM0-Upstream-Authorization"] == "Bearer resolved-upstream-token"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.request.headers["Authorization"] == "Bearer resolved-github-token"
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "www.vm0.ai"
+    assert binding.host == "api.github.com"
     assert binding.kinds == frozenset(("connector_auth",))
     assert binding.original_address == shared_address
 
@@ -509,3 +484,44 @@ def test_server_disconnect_and_connect_error_clear_binding(tmp_path, mitm_ctx):
     assert data.server.id in upstream_destination_binding.binding_snapshot_for_tests()
     mitm_addon.server_connect_error(data)
     assert data.server.id not in upstream_destination_binding.binding_snapshot_for_tests()
+
+
+def test_client_disconnect_preserves_binding_reassociated_by_server_connect(
+    tmp_path,
+    mitm_ctx,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    server = connection.Server(address=("203.0.113.10", 443))
+    first_client = connection.Client(
+        peername=("10.200.0.5", 12345),
+        sockname=("127.0.0.1", 8080),
+        sni="api.github.com",
+    )
+    second_client = connection.Client(
+        peername=("10.200.0.5", 12346),
+        sockname=("127.0.0.1", 8080),
+        sni="api.github.com",
+    )
+    first_data = _ServerConnectData(client=first_client, server=server)
+    second_data = _ServerConnectData(client=second_client, server=server)
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(first_data)
+        mitm_addon.server_connect(second_data)
+
+    expected_original_address = ("203.0.113.10", 443)
+    assert (
+        upstream_destination_binding.server_binding_original_address(server)
+        == expected_original_address
+    )
+
+    mitm_addon.client_disconnected(first_client)
+
+    assert (
+        upstream_destination_binding.server_binding_original_address(server)
+        == expected_original_address
+    )
+
+    mitm_addon.client_disconnected(second_client)
+
+    assert not upstream_destination_binding.has_server_binding(server)

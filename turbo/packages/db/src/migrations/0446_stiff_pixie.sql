@@ -1,1 +1,0 @@
-ALTER TABLE "desktop_auth_handoff_codes" ADD COLUMN "completed_at" timestamp;

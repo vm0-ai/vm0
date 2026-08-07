@@ -1,9 +1,7 @@
 import type { ConnectorAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
-import type {
-  PublicConnectorCatalogAuthMethodDetail,
-  PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 
+import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import { getConnectorStatusDirectConnectMethod } from "../../../../signals/zero-page/settings/connectors.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
@@ -18,7 +16,7 @@ export interface ConnectorConnectHandlers {
 }
 
 interface LaunchConnectorConnectOptions extends ConnectorConnectHandlers {
-  readonly connector: PublicConnectorCatalogStatusItem;
+  readonly connector: PlatformConnectorCatalogStatusItem;
 }
 
 export function launchConnectorConnect({

@@ -1,7 +1,41 @@
 """Tests for server-catalog connector diagnostic URL classification."""
 
+import json
+from pathlib import Path
+
+import pytest
+
 import builtin_connector_diagnostics
 import builtin_firewall_cache
+
+_TEMPLATE_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[4]
+    / "turbo"
+    / "packages"
+    / "connectors"
+    / "src"
+    / "__tests__"
+    / "firewall-template-reference-contract.json"
+)
+
+
+def _contract_case_name(case: dict[str, object]) -> str:
+    name = case["name"]
+    assert isinstance(name, str)
+    return name
+
+
+def _load_basic_template_cases() -> list[dict[str, object]]:
+    raw_contract = json.loads(_TEMPLATE_CONTRACT_PATH.read_text(encoding="utf-8"))
+    assert isinstance(raw_contract, dict)
+    cases = raw_contract["basicTemplateCases"]
+    assert isinstance(cases, list)
+    assert cases
+    assert all(isinstance(case, dict) for case in cases)
+    return cases
+
+
+_BASIC_TEMPLATE_CASES = _load_basic_template_cases()
 
 _TEST_FILE_KEY = builtin_firewall_cache.CatalogFileKey(
     absolute_path="/test/catalog.json",
@@ -86,7 +120,7 @@ def test_classifies_static_connector_without_permission_method_enforcement():
     )
 
     assert candidate == builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
-        connector_type="catalog-connector",
+        connector_slug="catalog-connector",
         reason="not_configured_for_run",
         env_names=("SERVICE_TOKEN", "TENANT_ID"),
         base="https://service.example.com/api",
@@ -129,7 +163,7 @@ def test_classifies_static_base_with_literal_unbalanced_brace():
     )
 
     assert candidate is not None
-    assert candidate.connector_type == "literal-brace"
+    assert candidate.connector_slug == "literal-brace"
     assert candidate.env_names == ("LITERAL_BRACE_TOKEN",)
 
 
@@ -239,6 +273,66 @@ def test_classifies_mixed_basic_auth_with_only_real_references():
     assert candidate.env_names == ("REAL_TOKEN", "REAL_USER", "SIMPLE_VAR")
 
 
+def test_diagnostic_simple_references_use_ecmascript_whitespace():
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "whitespace-auth",
+                "UNUSED_TOKEN",
+                base="https://whitespace-auth.example.com",
+                auth={
+                    "headers": {
+                        "X-Ecma": "${{\ufeffsecrets.ECMA_TOKEN\ufeff}}",
+                        "X-Python": "${{\u0085secrets.PYTHON_TOKEN\u0085}}",
+                    }
+                },
+            )
+        ]
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://whitespace-auth.example.com/items",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is not None
+    assert candidate.env_names == ("ECMA_TOKEN",)
+
+
+@pytest.mark.parametrize("case", _BASIC_TEMPLATE_CASES, ids=_contract_case_name)
+def test_diagnostic_basic_templates_match_connector_contract(case: dict[str, object]) -> None:
+    template = case["template"]
+    expected_names = case["expectedDiagnosticNames"]
+    assert isinstance(template, str)
+    assert isinstance(expected_names, list)
+    assert all(isinstance(name, str) for name in expected_names)
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "template-contract",
+                "UNUSED_TOKEN",
+                base="https://template-contract.example.com",
+                auth={"headers": {"Authorization": template}},
+            )
+        ]
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://template-contract.example.com/items",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    if not expected_names:
+        assert candidate is None
+        return
+    assert candidate is not None
+    assert candidate.env_names == tuple(expected_names)
+
+
 def test_malformed_basic_auth_keeps_later_valid_templates_visible():
     snapshot = _diagnostic_snapshot(
         [
@@ -309,7 +403,7 @@ def test_model_provider_route_excludes_connector_on_same_host():
 
     assert excluded is None
     assert connector is not None
-    assert connector.connector_type == "catalog-connector"
+    assert connector.connector_slug == "catalog-connector"
 
 
 def test_find_candidate_suppresses_shared_base_only_candidates():
@@ -354,7 +448,7 @@ def test_literal_only_connector_does_not_create_shared_base_ambiguity():
     )
 
     assert candidate is not None
-    assert candidate.connector_type == "credentialed"
+    assert candidate.connector_slug == "credentialed"
     assert candidate.env_names == ("REAL_TOKEN",)
 
 
@@ -386,7 +480,7 @@ def test_find_candidate_selects_unique_shared_base_route_owner():
     )
 
     assert candidate == builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
-        connector_type="inactive",
+        connector_slug="inactive",
         reason="not_configured_for_run",
         env_names=("INACTIVE_HEADER_TOKEN", "INACTIVE_QUERY_TOKEN"),
         base="https://shared.example.com",
@@ -449,7 +543,7 @@ def test_shared_base_ownership_selects_route_specific_inactive_sibling():
     assert resolution.reason == "route_owner"
     assert resolution.hint_status == "absent"
     assert resolution.candidate is not None
-    assert resolution.candidate.connector_type == "inactive"
+    assert resolution.candidate.connector_slug == "inactive"
 
 
 def test_shared_base_ownership_suppresses_base_only_candidate():
@@ -494,7 +588,7 @@ def test_shared_base_ownership_uses_intent_inside_candidate_set():
     assert resolution.reason == "hint_owner"
     assert resolution.hint_status == "used"
     assert resolution.candidate is not None
-    assert resolution.candidate.connector_type == "inactive"
+    assert resolution.candidate.connector_slug == "inactive"
 
 
 def test_shared_base_ownership_ignores_intent_outside_candidate_set():
@@ -576,4 +670,4 @@ def test_shared_base_ownership_normalizes_static_base_keys():
     assert resolution is not None
     assert resolution.reason == "route_owner"
     assert resolution.candidate is not None
-    assert resolution.candidate.connector_type == "inactive"
+    assert resolution.candidate.connector_slug == "inactive"

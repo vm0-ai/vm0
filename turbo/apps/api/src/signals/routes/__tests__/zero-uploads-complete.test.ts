@@ -3,9 +3,10 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import { deleteAgentRunFixture } from "../../../test-fixtures/chat-events";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   createBddApi,
@@ -165,6 +166,40 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
+  it("recovers a v2 original filename from object metadata", async () => {
+    const fixture = await createRunUploadFixture();
+    const prepared = await chat.prepareUpload(fixture.actor, {
+      filename: "财务 报告.pdf",
+      contentType: "application/pdf",
+      size: 17,
+    });
+    const key = new URL(prepared.url).pathname.replace(/^\/+/u, "");
+    fixture.objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key,
+      size: 17,
+      contentType: "application/pdf",
+      metadata: {
+        "artifact-id": prepared.id,
+        filename: encodeURIComponent("财务 报告.pdf"),
+        "user-id": encodeURIComponent(fixture.actor.userId),
+      },
+    });
+    const response = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: prepared.id },
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: prepared.id,
+      filename: "财务 报告.pdf",
+      contentType: "application/pdf",
+      size: 17,
+      url: prepared.url,
+    });
+  });
+
   it("uses the validated complete content type when provided", async () => {
     const fixture = await createRunUploadFixture();
     const fileId = randomUUID();
@@ -219,6 +254,25 @@ describe("POST /api/zero/uploads/complete", () => {
     );
 
     expect(second.body).toStrictEqual(first.body);
+  });
+
+  it("acknowledges a late upload after its run root was deleted", async () => {
+    const fixture = await createRunUploadFixture();
+    const fileId = randomUUID();
+    addUploadObject(fixture, fileId, "late.txt", 11);
+    await deleteAgentRunFixture({ runId: fixture.runId });
+
+    const response = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: fileId },
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: fileId,
+      filename: "late.txt",
+      size: 11,
+    });
   });
 
   it("returns 404 when the uploaded object cannot be found", async () => {

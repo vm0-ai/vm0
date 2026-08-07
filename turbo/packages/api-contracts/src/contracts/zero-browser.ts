@@ -10,8 +10,10 @@ const c = initContract();
 // can never cut a browser short while somebody is still using it.
 export const ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES = 240;
 export const ZERO_BROWSER_IDLE_LEASE_MINUTES = 10;
-export const ZERO_BROWSER_DEFAULT_MAX_CREDITS = 500;
-export const ZERO_BROWSER_MAX_CREDITS = 100_000;
+export const ZERO_BROWSER_SCREEN_WIDTH = 1440;
+export const ZERO_BROWSER_INITIAL_SCREEN_HEIGHT = 900;
+export const ZERO_BROWSER_MIN_SCREEN_HEIGHT = 320;
+export const ZERO_BROWSER_MAX_SCREEN_HEIGHT = 3456;
 
 export const zeroBrowserStatusSchema = z.enum([
   "creating",
@@ -27,30 +29,42 @@ export const zeroBrowserSuspensionReasonSchema = z.enum([
   "run_end",
   "idle",
   "timeout",
-  "budget",
   "provider",
   "reconcile",
+  "user",
 ]);
 
-export const zeroBrowserSessionSchema = z.object({
-  id: z.uuid(),
-  name: z.string().min(1).max(64),
-  status: zeroBrowserStatusSchema,
-  viewerUrl: z.url(),
-  liveUrl: z.url().nullable(),
-  proxyCountryCode: z.string().length(2).nullable(),
-  timeoutMinutes: z.number().int().positive(),
-  maxCredits: z.number().int().positive(),
-  grossCredits: z.number().int().nonnegative(),
-  creditsCharged: z.number().int().nonnegative(),
-  // When Zero reclaims the live provider instance unless somebody leases it
-  // again. Null once no provider instance is running.
-  idleExpiresAt: z.iso.datetime().nullable(),
-  suspendedAt: z.iso.datetime().nullable(),
-  suspensionReason: zeroBrowserSuspensionReasonSchema.nullable(),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
+const zeroBrowserScreenSchema = z.object({
+  width: z.literal(ZERO_BROWSER_SCREEN_WIDTH),
+  height: z
+    .number()
+    .int()
+    .min(ZERO_BROWSER_MIN_SCREEN_HEIGHT)
+    .max(ZERO_BROWSER_MAX_SCREEN_HEIGHT),
+  resizable: z.boolean(),
 });
+
+export const zeroBrowserSessionSchema = z
+  .object({
+    threadId: z.uuid(),
+    name: z.string().min(1).max(64),
+    status: zeroBrowserStatusSchema,
+    viewerUrl: z.url(),
+    liveUrl: z.url().nullable(),
+    screenshotUrl: z.url().nullable(),
+    proxyCountryCode: z.string().length(2).nullable(),
+    timeoutMinutes: z.number().int().positive(),
+    // Only live provider instances have persisted window dimensions.
+    screen: zeroBrowserScreenSchema.optional(),
+    // When Zero reclaims the live provider instance unless somebody leases it
+    // again. Null once no provider instance is running.
+    idleExpiresAt: z.iso.datetime().nullable(),
+    suspendedAt: z.iso.datetime().nullable(),
+    suspensionReason: zeroBrowserSuspensionReasonSchema.nullable(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
 
 export type ZeroBrowserStatus = z.infer<typeof zeroBrowserStatusSchema>;
 export type ZeroBrowserSuspensionReason = z.infer<
@@ -58,39 +72,47 @@ export type ZeroBrowserSuspensionReason = z.infer<
 >;
 export type ZeroBrowserSession = z.infer<typeof zeroBrowserSessionSchema>;
 
-export const zeroBrowserCreateRequestSchema = z.object({
-  name: z.string().trim().min(1).max(64).default("browser"),
-  proxyCountryCode: z
-    .string()
-    .trim()
-    .length(2)
-    .transform((value) => {
-      return value.toLowerCase();
-    })
-    .nullable()
-    .default(null),
-  maxCredits: z
-    .number()
-    .int()
-    .min(1)
-    .max(ZERO_BROWSER_MAX_CREDITS)
-    .default(ZERO_BROWSER_DEFAULT_MAX_CREDITS),
-});
+export const zeroBrowserCreateRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).max(64).default("browser"),
+    proxyCountryCode: z
+      .string()
+      .trim()
+      .length(2)
+      .transform((value) => {
+        return value.toLowerCase();
+      })
+      .nullable()
+      .default(null),
+  })
+  .strict();
 
 export type ZeroBrowserCreateRequest = z.infer<
   typeof zeroBrowserCreateRequestSchema
 >;
 
-const browserIdParamsSchema = z.object({
-  browserId: z.uuid(),
-});
-
-const browserGetQuerySchema = z.object({
-  chatThreadId: z.uuid().optional(),
+const browserThreadParamsSchema = z.object({
+  threadId: z.uuid(),
 });
 
 const browserResponseSchema = z.object({
   browser: zeroBrowserSessionSchema,
+});
+
+const browserLifecycleRequestSchema = z.object({
+  eventId: z.uuid(),
+});
+
+const browserMutationResponseSchema = browserResponseSchema.extend({
+  lifecycleEventId: z.uuid().nullable(),
+});
+
+const browserCloseResponseSchema = z.object({
+  lifecycleEventId: z.uuid(),
+});
+
+const browserResizeRequestSchema = z.object({
+  aspectRatio: z.number().positive().finite(),
 });
 
 const browserAuthorizationRequestTokenPathParamsSchema = z.object({
@@ -115,12 +137,12 @@ const browserAuthorizationRequestApplyResponseSchema = z.object({
 
 const browserConnectionResponseSchema = browserResponseSchema.extend({
   cdpUrl: z.url(),
+  lifecycleEventId: z.uuid().nullable(),
 });
 
 const commonErrorResponses = {
   400: apiErrorSchema,
   401: apiErrorSchema,
-  402: apiErrorSchema,
   403: apiErrorSchema,
   404: apiErrorSchema,
   409: apiErrorSchema,
@@ -153,18 +175,6 @@ export const zeroBrowserContract = c.router({
     summary:
       "Create, reuse, or resume the current chat thread's managed browser and extend its idle lease",
   },
-  resume: {
-    method: "POST",
-    path: "/api/zero/browsers/resume",
-    headers: authHeadersSchema,
-    body: z.object({}),
-    responses: {
-      200: browserConnectionResponseSchema,
-      ...commonErrorResponses,
-    },
-    summary:
-      "Compatibility alias of use for CLI versions that predate zero browser use",
-  },
   lease: {
     method: "POST",
     path: "/api/zero/browsers/lease",
@@ -176,11 +186,11 @@ export const zeroBrowserContract = c.router({
     },
     summary: "Extend the idle lease of the current chat thread's live browser",
   },
-  leaseById: {
+  leaseByThread: {
     method: "POST",
-    path: "/api/zero/browsers/:browserId/lease",
+    path: "/api/zero/chat-threads/:threadId/browser/lease",
     headers: authHeadersSchema,
-    pathParams: browserIdParamsSchema,
+    pathParams: browserThreadParamsSchema,
     body: z.object({}),
     responses: {
       200: browserResponseSchema,
@@ -188,17 +198,41 @@ export const zeroBrowserContract = c.router({
     },
     summary: "Extend the idle lease of a live browser from its viewer",
   },
-  resumeById: {
+  open: {
     method: "POST",
-    path: "/api/zero/browsers/:browserId/resume",
+    path: "/api/zero/chat-threads/:threadId/browser/open",
     headers: authHeadersSchema,
-    pathParams: browserIdParamsSchema,
-    body: z.object({}),
+    pathParams: browserThreadParamsSchema,
+    body: browserLifecycleRequestSchema,
+    responses: {
+      200: browserMutationResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Open a chat thread's managed browser",
+  },
+  close: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:threadId/browser/close",
+    headers: authHeadersSchema,
+    pathParams: browserThreadParamsSchema,
+    body: browserLifecycleRequestSchema,
+    responses: {
+      200: browserCloseResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Record that the managed browser sidebar was closed",
+  },
+  resizeByThread: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:threadId/browser/resize",
+    headers: authHeadersSchema,
+    pathParams: browserThreadParamsSchema,
+    body: browserResizeRequestSchema,
     responses: {
       200: browserResponseSchema,
       ...commonErrorResponses,
     },
-    summary: "Resume a suspended browser from its viewer and start billing it",
+    summary: "Resize a live browser to match a viewer aspect ratio",
   },
   current: {
     method: "GET",
@@ -212,15 +246,14 @@ export const zeroBrowserContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/browsers/:browserId",
+    path: "/api/zero/chat-threads/:threadId/browser",
     headers: authHeadersSchema,
-    pathParams: browserIdParamsSchema,
-    query: browserGetQuerySchema,
+    pathParams: browserThreadParamsSchema,
     responses: {
       200: browserResponseSchema,
       ...commonErrorResponses,
-    },
-    summary: "Get a managed browser by universal-link ID",
+    } as const,
+    summary: "Get a chat thread's managed browser",
   },
 });
 

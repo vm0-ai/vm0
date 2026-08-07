@@ -1,15 +1,14 @@
 import { and, eq, inArray } from "drizzle-orm";
-
 import {
   zeroWorkflowAutomations,
   zeroWorkflowWebhookAutomations,
 } from "@vm0/db/schema/zero-workflow";
-
 import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
+import type { Tx } from "../../lib/db-types";
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 export async function lockWorkflowWebhookAutomationTierEligibleForOrg(
   tx: DbTransaction,

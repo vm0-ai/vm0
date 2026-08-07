@@ -24,7 +24,6 @@ describe("zero generate website command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
   });
 
   afterEach(() => {
@@ -48,12 +47,30 @@ describe("zero generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero generate website");
-    expect(stdout).toContain("federated generation source-selection packet");
+    expect(stdout).toContain("generation source-selection packet");
+    expect(stdout).not.toContain("federated");
     expect(stdout).toContain("## Stage 1: Resource Selection");
-    expect(stdout).toContain("## Candidate Registry Slice");
+    expect(stdout).toContain(
+      "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/website.json",
+    );
+    expect(stdout).not.toContain("Sources:");
+    expect(stdout).not.toContain("vm0-ai/vm0-skills");
+    expect(stdout).toContain(
+      "There is no fixed selection count for any resource type.",
+    );
+    expect(stdout).toContain(
+      "For a selected entry without `source.archive`, resolve its `source.path` from the index's pinned `source.repo@source.ref`. Do not run `zero resource pull` for it.",
+    );
+    expect(stdout).toContain(
+      "run its exact `source.pull.command`, then use `source.pull.resolvedPath`.",
+    );
+    expect(stdout).toContain(
+      "The Website index includes vm0 built-in R2 template packages as template entries with `source.archive`.",
+    );
+    expect(stdout).toContain(
+      "Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
+    );
     expect(stdout).toContain("observability launch site");
-    expect(stdout).toContain("template:black-slabs");
-    expect(stdout).toContain("template:web-prototype-taste-editorial");
     expect(stdout).toContain(
       "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
     );
@@ -63,7 +80,6 @@ describe("zero generate website command", () => {
     expect(stdout).toContain(
       "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
     );
-    expect(stdout).not.toContain("template:html-ppt-pitch-deck");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
@@ -137,11 +153,6 @@ describe("zero generate website command", () => {
     );
     expect(stdout).toContain(
       "Selected template package: zero resource pull template:dot-matrix --dir ./generated/resources",
-    );
-    expect(stdout).toContain('"id": "template:dot-matrix"');
-    expect(stdout).toContain('"type": "tar.gz"');
-    expect(stdout).toContain(
-      '"sha256": "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2"',
     );
   });
 

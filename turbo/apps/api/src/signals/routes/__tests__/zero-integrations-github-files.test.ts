@@ -9,7 +9,8 @@ import {
 } from "@vm0/api-contracts/contracts/integrations";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -19,6 +20,15 @@ import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroIntegrationsGithubUploadCompleteRoutes } from "../zero-integrations-github-upload-complete";
+import { zeroIntegrationsGithubUploadInitRoutes } from "../zero-integrations-github-upload-init";
+import { zeroIntegrationsGithubDownloadFileRoutes } from "../zero-integrations-github-download-file";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroIntegrationsGithubDownloadFileRoutes,
+  ...zeroIntegrationsGithubUploadCompleteRoutes,
+  ...zeroIntegrationsGithubUploadInitRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -95,7 +105,7 @@ describe("GitHub zero file integration routes", () => {
   }
 
   /**
-   * Creates a real run for the fixture agent through POST /api/zero/runs.
+   * Creates a real run for the fixture agent through the test-only adapter.
    * Run admission needs org credits, granted through the Stripe webhook
    * product path; the agent compose head is updated (through the product
    * compose upsert) to declare an inline ANTHROPIC_API_KEY so run creation
@@ -146,7 +156,7 @@ describe("GitHub zero file integration routes", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const query = new URLSearchParams({
       url: fileUrl,
       filename: "screenshot.png",
@@ -190,7 +200,7 @@ describe("GitHub zero file integration routes", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const query = new URLSearchParams({ url: fileUrl });
     const response = await app.request(
       `/api/zero/integrations/github/download-file?${query.toString()}`,
@@ -215,7 +225,7 @@ describe("GitHub zero file integration routes", () => {
   it("rejects non-GitHub file URLs", async () => {
     const fixture = await seedFixture();
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const query = new URLSearchParams({
       url: "https://example.com/file.png",
     });
@@ -241,7 +251,7 @@ describe("GitHub zero file integration routes", () => {
 
   it("requires github read capability for context file downloads", async () => {
     const fixture = await seedFixture();
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const query = new URLSearchParams({
       url: "https://github.com/user-attachments/assets/abc123",
     });
@@ -269,8 +279,12 @@ describe("GitHub zero file integration routes", () => {
   it("returns a presigned upload URL for GitHub file delivery", async () => {
     mockEnv("S3_ENDPOINT", "http://internal-s3.test");
     mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.test");
+    mocks.s3.listObjects([]);
     const fixture = await seedFixture();
-    const client = setupApp({ context })(integrationsGithubUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsGithubUploadInitRoutes,
+    })(integrationsGithubUploadInitContract);
 
     const response = await accept(
       client.init({
@@ -297,9 +311,10 @@ describe("GitHub zero file integration routes", () => {
       size: 1234,
     });
     expect(response.body.uploadId).toMatch(/^[0-9a-f-]{36}$/u);
-    expect(response.body.fileUrl).toBe(
-      `https://cdn.vm7.io/artifacts/${fixture.userId}/${response.body.uploadId}/daily_report.pdf`,
+    expect(response.body.fileUrl).toMatch(
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.pdf$/u,
     );
+    expect(response.body.fileUrl).not.toContain(fixture.userId);
 
     const calls = context.mocks.s3.getSignedUrl.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
@@ -307,7 +322,7 @@ describe("GitHub zero file integration routes", () => {
     expect(command).toHaveProperty("input.Bucket", "test-user-artifacts");
     expect(command).toHaveProperty(
       "input.Key",
-      `artifacts/${fixture.userId}/${response.body.uploadId}/daily_report.pdf`,
+      response.body.fileUrl.replace("https://cdn.vm7.io/", ""),
     );
   });
 
@@ -342,9 +357,10 @@ describe("GitHub zero file integration routes", () => {
       ),
     );
 
-    const client = setupApp({ context })(
-      integrationsGithubUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsGithubUploadCompleteRoutes,
+    })(integrationsGithubUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: {

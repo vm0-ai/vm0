@@ -27,6 +27,7 @@ out/
 build
 dist
 *.tsbuildinfo
+/apps/api/.typecheck/
 
 # Fumadocs generated content
 .contentlayer

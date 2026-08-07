@@ -1,4 +1,6 @@
 import { now } from "../../lib/time.ts";
+import { i18n } from "../../i18n/index.ts";
+import { formatLocalizedNumber, resolvedAppLocale } from "../../i18n/format.ts";
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -30,20 +32,29 @@ export function formatSubscriptionUsageReset(
 
   const date = new Date(text);
   if (Number.isNaN(date.getTime())) {
-    return { fallbackText: `resets ${text}` };
+    return {
+      fallbackText: i18n.t(
+        ($) => {
+          return $.settings.models.usage.resetsRaw;
+        },
+        { value: text },
+      ),
+    };
   }
 
   const absoluteText = formatAbsoluteResetDate(date);
   const relativeText = formatRelativeResetTime(date.getTime() - now());
 
   return {
-    absoluteResetText: `resets ${absoluteText}`,
+    absoluteResetText: i18n.t(
+      ($) => {
+        return $.settings.models.usage.resetsAt;
+      },
+      { date: absoluteText },
+    ),
     absoluteText,
     relativeText,
-    tooltipTitle:
-      relativeText === "reset time passed"
-        ? "Reset time passed"
-        : `Resets ${relativeText}`,
+    tooltipTitle: formatResetTooltipTitle(relativeText),
   };
 }
 
@@ -60,33 +71,91 @@ function formatAbsoluteResetDate(date: Date): string {
   if (browserTimeZone) {
     options.timeZone = browserTimeZone;
   }
-  return date.toLocaleDateString("en-US", options);
+  return date.toLocaleDateString(resolvedAppLocale(), options);
+}
+
+function resetTimePassed(): string {
+  return i18n.t(($) => {
+    return $.settings.models.usage.resetTimePassed;
+  });
+}
+
+function formatResetTooltipTitle(relativeText: string): string {
+  if (relativeText === resetTimePassed()) {
+    return i18n.t(($) => {
+      return $.settings.models.usage.resetTimePassedTitle;
+    });
+  }
+  return i18n.t(
+    ($) => {
+      return $.settings.models.usage.resetsRelative;
+    },
+    { relative: relativeText },
+  );
 }
 
 function formatRelativeResetTime(remainingMs: number): string {
   if (remainingMs <= 0) {
-    return "reset time passed";
+    return resetTimePassed();
   }
   if (remainingMs < MINUTE_MS) {
-    return "in <1m";
+    return i18n.t(($) => {
+      return $.settings.models.usage.inLessThanMinute;
+    });
   }
 
   const totalMinutes = Math.floor(remainingMs / MINUTE_MS);
   if (remainingMs < HOUR_MS) {
-    return `in ${totalMinutes}m`;
+    return i18n.t(
+      ($) => {
+        return $.settings.models.usage.inMinutes;
+      },
+      { minutes: formatLocalizedNumber(totalMinutes) },
+    );
   }
 
   const totalHours = Math.floor(remainingMs / HOUR_MS);
   if (remainingMs < DAY_MS) {
     const minutes = Math.floor((remainingMs % HOUR_MS) / MINUTE_MS);
-    return minutes > 0 ? `in ${totalHours}h ${minutes}m` : `in ${totalHours}h`;
+    if (minutes > 0) {
+      return i18n.t(
+        ($) => {
+          return $.settings.models.usage.inHoursMinutes;
+        },
+        {
+          hours: formatLocalizedNumber(totalHours),
+          minutes: formatLocalizedNumber(minutes),
+        },
+      );
+    }
+    return i18n.t(
+      ($) => {
+        return $.settings.models.usage.inHours;
+      },
+      { hours: formatLocalizedNumber(totalHours) },
+    );
   }
 
   const totalDays = Math.floor(remainingMs / DAY_MS);
   if (remainingMs < WEEK_MS) {
     const hours = Math.floor((remainingMs % DAY_MS) / HOUR_MS);
-    return hours > 0 ? `in ${totalDays}d ${hours}h` : `in ${totalDays}d`;
+    if (hours > 0) {
+      return i18n.t(
+        ($) => {
+          return $.settings.models.usage.inDaysHours;
+        },
+        {
+          days: formatLocalizedNumber(totalDays),
+          hours: formatLocalizedNumber(hours),
+        },
+      );
+    }
   }
 
-  return `in ${totalDays}d`;
+  return i18n.t(
+    ($) => {
+      return $.settings.models.usage.inDays;
+    },
+    { days: formatLocalizedNumber(totalDays) },
+  );
 }

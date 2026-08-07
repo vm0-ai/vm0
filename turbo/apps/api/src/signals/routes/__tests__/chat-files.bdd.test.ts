@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
+import type { UserMessageInputDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   createChatFilesBddApi,
-  hostedTextFile,
   persistedAttachment,
 } from "./helpers/api-bdd-chat-files";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
 
 /*
 helper gap:
@@ -44,17 +44,16 @@ describe("CHAT-01 chat thread lifecycle", () => {
     let detail = await api.readThread(actor, created.id);
     expect(detail).toStrictEqual({
       lastReadAt: expect.any(String),
+      cancellationRecoveryPending: false,
     });
     await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
       {
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       },
     );
 
     await api.patchThread(actor, created.id, {
-      draftContent: "follow up on the launch",
       draftUserMessage: {
         version: 1,
         parts: [
@@ -76,7 +75,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       ],
     });
     const draft = await api.readThreadDraft(actor, created.id);
-    expect(draft.draftContent).toBe("follow up on the launch");
     expect(draft.draftUserMessage).toStrictEqual({
       version: 1,
       parts: [
@@ -150,7 +148,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expectApiError(peerDraftRead.body);
     expect(peerDraftRead.body.error.code).toBe("NOT_FOUND");
     await api.patchThread(owner, thread.id, {
-      draftContent: "private draft",
       draftAttachments: null,
       draftUserMessage: {
         version: 1,
@@ -158,7 +155,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       },
     });
     await expect(api.readThreadDraft(owner, thread.id)).resolves.toMatchObject({
-      draftContent: "private draft",
       draftUserMessage: {
         version: 1,
         parts: [{ type: "text", text: "private draft" }],
@@ -199,7 +195,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     });
 
     await api.renameThread(owner, thread.id, "Pinned launch plan");
-    await api.updateThreadModelSelection(owner, thread.id, "gpt-5.6-terra");
+    await api.updateThreadModelSelection(owner, thread.id, "gpt-5.6-luna");
     await api.pinThread(owner, thread.id);
     const readEmpty = await api.markThreadRead(owner, thread.id);
 
@@ -219,7 +215,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: thread.id,
-        selectedModel: "gpt-5.6-terra",
+        selectedModel: "gpt-5.6-luna",
       }),
     );
     expect(detail.lastReadAt).toStrictEqual(expect.any(String));
@@ -292,7 +288,8 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
     const uploadId = randomUUID();
     const clientEventId = randomUUID();
-    const expectedUserMessage: UserMessageDocument = {
+    api.mockCompletedUploadObject(actor, uploadId, "launch-plan.txt", 24);
+    const expectedUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         { type: "text", text: "Build a launch-plan presentation" },
@@ -304,8 +301,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
         },
       ],
     };
-    const expectedContent = "Build a launch-plan presentation";
-
     const sent = await api.requestSendEvent(
       actor,
       {
@@ -335,7 +330,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
 
     const threadId = sent.body.threadId;
     await expect(api.readThreadDraft(actor, threadId)).resolves.toStrictEqual({
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -360,13 +354,13 @@ describe("CHAT-02 chat messages and visible validation", () => {
 
     expect(queuedMessage).toMatchObject({
       eventType: "input.prompt",
-      content: expectedContent,
+      content: null,
       userMessage: expectedUserMessage,
     });
     expect(queuedMessage).not.toHaveProperty("error");
     expect(rejectedUserMessage).toMatchObject({
       eventType: "input.rejected",
-      content: expectedContent,
+      content: null,
       userMessage: expectedUserMessage,
       error: "insufficient_credits",
       revokesEventId: clientEventId,
@@ -379,6 +373,8 @@ describe("CHAT-02 chat messages and visible validation", () => {
         },
       ],
     });
+    expect(rejectedUserMessage).not.toHaveProperty("automationId");
+    expect(rejectedUserMessage).not.toHaveProperty("triggerBrief");
     expect(assistantMessage?.content).toContain("Insufficient credits");
     expect(assistantMessage?.error).toBe("insufficient_credits");
 
@@ -607,7 +603,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         prompt: "Persist the model selected at send time",
-        model: "gpt-5.6-terra",
+        model: "gpt-5.6-luna",
       },
       [201],
     );
@@ -628,7 +624,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       expect.objectContaining({
         kind: "created",
         chatThreadId: modelSelected.body.threadId,
-        selectedModel: "gpt-5.6-terra",
+        selectedModel: "gpt-5.6-luna",
       }),
     );
   });
@@ -703,7 +699,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
     expect(ownerMessages).toStrictEqual({
       events: [],
-      hasHistoryBefore: false,
     });
 
     const peerMessages = await api.requestListThreadEvents(
@@ -752,6 +747,7 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
   it("prepares and completes an upload through S3 boundary state", async () => {
     const actor = bdd.user();
 
+    api.mockEmptyObjectStorage();
     const prepared = await api.prepareUpload(actor, {
       filename: "notes.txt",
       contentType: "Text/Plain; Charset=UTF-8",
@@ -765,7 +761,8 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
     expect("uploadUrl" in prepared ? prepared.uploadUrl : "").toMatch(
       /^https?:\/\//,
     );
-    expect(prepared.url).toContain(`/artifacts/${actor.userId}/`);
+    expect(prepared.url).toMatch(/\/artifacts\/[0-9a-z]{10}\.txt$/u);
+    expect(prepared.url).not.toContain(actor.userId);
 
     api.mockCompletedUploadObject(actor, prepared.id, "notes.txt", 12);
     const completed = await api.completeUpload(actor, { id: prepared.id });
@@ -816,9 +813,12 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
         ),
       ],
     });
-    expect(prepared.publicSlug).toMatch(
-      new RegExp(`^${site}-[a-f0-9]{8}-release-01$`),
-    );
+    expect(prepared).toMatchObject({
+      publicSlug: site,
+      aliasUrl: prepared.url,
+      deploymentVersion: 1,
+      artifactUrl: expect.stringContaining(`dpl-${prepared.deploymentId}.`),
+    });
     expect(prepared.uploads).toHaveLength(2);
 
     const otherActor = bdd.user();
@@ -835,12 +835,17 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
       actor,
       prepared.deploymentId,
     );
-    expect(completed).toStrictEqual({
+    expect(completed).toMatchObject({
       siteId: prepared.siteId,
       deploymentId: prepared.deploymentId,
       publicSlug: prepared.publicSlug,
       url: prepared.url,
       status: "ready",
+      deploymentVersion: 1,
+      artifactUrl: prepared.artifactUrl,
+      aliasUrl: prepared.url,
+      isActive: true,
+      activeDeploymentVersion: 1,
     });
 
     const invalid = await api.requestPrepareHostedSite(

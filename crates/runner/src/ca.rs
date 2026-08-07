@@ -287,12 +287,20 @@ fn openssl_error(args: &[&str], output: &std::process::Output) -> RunnerError {
 mod tests {
     use super::*;
     use crate::paths::HomePaths;
+    use tokio::sync::OnceCell;
 
     struct CaBytes {
         cert: Vec<u8>,
         key: Vec<u8>,
         combined: Vec<u8>,
     }
+
+    struct TestCaIdentities {
+        first: CaBytes,
+        second: CaBytes,
+    }
+
+    static TEST_CA_IDENTITIES: OnceCell<TestCaIdentities> = OnceCell::const_new();
 
     fn read_ca(ca_dir: &Path) -> CaBytes {
         CaBytes {
@@ -302,11 +310,53 @@ mod tests {
         }
     }
 
-    async fn generated_ca() -> CaBytes {
+    async fn generate_test_ca() -> CaBytes {
         let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().to_path_buf());
-        ensure(&home).await.unwrap();
-        read_ca(&home.ca_dir())
+        let files = CaFiles::new(dir.path());
+        let key_path = files.key.to_string_lossy();
+        let cert_path = files.cert.to_string_lossy();
+
+        // Recovery inputs need valid RSA identities, not production-strength keys.
+        run_openssl(&[
+            "req",
+            "-new",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "1",
+            "-keyout",
+            key_path.as_ref(),
+            "-out",
+            cert_path.as_ref(),
+            "-subj",
+            "/CN=runner-ca-test",
+        ])
+        .await
+        .unwrap();
+
+        let identity = load_identity(&files.cert, &files.key)
+            .await
+            .unwrap()
+            .expect("test CA should be valid");
+        let combined = identity.combined();
+        CaBytes {
+            cert: identity.cert,
+            key: identity.key,
+            combined,
+        }
+    }
+
+    async fn test_ca_identities() -> &'static TestCaIdentities {
+        TEST_CA_IDENTITIES
+            .get_or_init(|| async {
+                let first = generate_test_ca().await;
+                let second = generate_test_ca().await;
+                assert!(first.key != second.key, "test CA identities should differ");
+                TestCaIdentities { first, second }
+            })
+            .await
     }
 
     fn write_ca(ca_dir: &Path, cert: &[u8], key: &[u8], combined: Option<&[u8]>) {
@@ -346,7 +396,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ensure_generates_ca_files() {
+    async fn ensure_generates_valid_ca_and_is_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
 
@@ -363,38 +413,21 @@ mod tests {
             combined.contains("BEGIN PRIVATE KEY") || combined.contains("BEGIN RSA PRIVATE KEY")
         );
         assert_valid_ca(&ca_dir).await;
-    }
+        #[cfg(unix)]
+        {
+            assert_eq!(mode_of(&ca_dir), 0o700, "ca_dir should be 0700");
+            assert_eq!(mode_of(&ca_dir.join(CA_KEY)), 0o600, "key should be 0600");
+            assert_eq!(
+                mode_of(&ca_dir.join(CA_COMBINED)),
+                0o600,
+                "combined should be 0600"
+            );
+            assert_eq!(mode_of(&ca_dir.join(CA_CERT)), 0o644, "cert should be 0644");
+        }
 
-    #[tokio::test]
-    async fn ensure_is_idempotent() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().to_path_buf());
-
+        let first = read_ca(&ca_dir);
         ensure(&home).await.unwrap();
-        let first = read_ca(&home.ca_dir());
-
-        ensure(&home).await.unwrap();
-        let second = read_ca(&home.ca_dir());
-        assert_ca_eq(&second, &first);
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn ensure_sets_restrictive_permissions_on_fresh_generation() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = HomePaths::with_root(dir.path().to_path_buf());
-
-        ensure(&home).await.unwrap();
-
-        let ca_dir = home.ca_dir();
-        assert_eq!(mode_of(&ca_dir), 0o700, "ca_dir should be 0700");
-        assert_eq!(mode_of(&ca_dir.join(CA_KEY)), 0o600, "key should be 0600");
-        assert_eq!(
-            mode_of(&ca_dir.join(CA_COMBINED)),
-            0o600,
-            "combined should be 0600"
-        );
-        assert_eq!(mode_of(&ca_dir.join(CA_CERT)), 0o644, "cert should be 0644");
+        assert_ca_eq(&read_ca(&ca_dir), &first);
     }
 
     #[cfg(unix)]
@@ -475,38 +508,26 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn ensure_rebuilds_combined_without_rotating_ca() {
+        let identities = test_ca_identities().await;
+        let original = &identities.first;
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
         let ca_dir = home.ca_dir();
 
-        // Generate a real CA, then snapshot cert + key bytes.
-        ensure(&home).await.unwrap();
-        let original_key = std::fs::read(ca_dir.join(CA_KEY)).unwrap();
-        let original_cert = std::fs::read(ca_dir.join(CA_CERT)).unwrap();
-
         // Lose only the combined PEM — mirrors a manual cleanup or partial
         // disk corruption scenario.
+        write_ca(
+            &ca_dir,
+            &original.cert,
+            &original.key,
+            Some(&original.combined),
+        );
         std::fs::remove_file(ca_dir.join(CA_COMBINED)).unwrap();
 
-        // Second call must rebuild combined from existing cert + key, not
-        // rotate the CA.
+        // Rebuild combined from existing cert + key without rotating the CA.
         ensure(&home).await.unwrap();
 
-        assert!(
-            std::fs::read(ca_dir.join(CA_KEY)).unwrap() == original_key,
-            "key must not be rotated when only combined is missing"
-        );
-        assert!(
-            std::fs::read(ca_dir.join(CA_CERT)).unwrap() == original_cert,
-            "cert must not be reissued when only combined is missing"
-        );
-
-        let mut expected_combined = original_cert.clone();
-        expected_combined.extend_from_slice(&original_key);
-        assert!(
-            std::fs::read(ca_dir.join(CA_COMBINED)).unwrap() == expected_combined,
-            "combined should be cert + key concatenation"
-        );
+        assert_ca_eq(&read_ca(&ca_dir), original);
         assert_eq!(
             mode_of(&ca_dir.join(CA_COMBINED)),
             0o600,
@@ -549,8 +570,9 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_prefers_valid_combined_over_different_standalone_identity() {
-        let combined_identity = generated_ca().await;
-        let standalone_identity = generated_ca().await;
+        let identities = test_ca_identities().await;
+        let combined_identity = &identities.first;
+        let standalone_identity = &identities.second;
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
         write_ca(
@@ -562,13 +584,14 @@ mod tests {
 
         ensure(&home).await.unwrap();
 
-        assert_ca_eq(&read_ca(&home.ca_dir()), &combined_identity);
+        assert_ca_eq(&read_ca(&home.ca_dir()), combined_identity);
     }
 
     #[tokio::test]
     async fn ensure_repairs_mismatched_standalone_from_valid_combined() {
-        let committed = generated_ca().await;
-        let other = generated_ca().await;
+        let identities = test_ca_identities().await;
+        let committed = &identities.first;
+        let other = &identities.second;
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
         write_ca(
@@ -580,12 +603,13 @@ mod tests {
 
         ensure(&home).await.unwrap();
 
-        assert_ca_eq(&read_ca(&home.ca_dir()), &committed);
+        assert_ca_eq(&read_ca(&home.ca_dir()), committed);
     }
 
     #[tokio::test]
     async fn ensure_recovers_missing_standalone_from_valid_combined() {
-        let committed = generated_ca().await;
+        let identities = test_ca_identities().await;
+        let committed = &identities.first;
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
         std::fs::create_dir_all(home.ca_dir()).unwrap();
@@ -595,13 +619,14 @@ mod tests {
 
         ensure(&home).await.unwrap();
 
-        assert_ca_eq(&read_ca(&home.ca_dir()), &committed);
+        assert_ca_eq(&read_ca(&home.ca_dir()), committed);
     }
 
     #[tokio::test]
     async fn ensure_recovers_invalid_combined_from_valid_standalone() {
-        let standalone = generated_ca().await;
-        let other = generated_ca().await;
+        let identities = test_ca_identities().await;
+        let standalone = &identities.first;
+        let other = &identities.second;
         let mut mismatched_combined = standalone.cert.clone();
         mismatched_combined.extend_from_slice(&other.key);
 
@@ -622,14 +647,15 @@ mod tests {
 
             ensure(&home).await.unwrap();
 
-            assert_ca_eq(&read_ca(&home.ca_dir()), &standalone);
+            assert_ca_eq(&read_ca(&home.ca_dir()), standalone);
         }
     }
 
     #[tokio::test]
     async fn ensure_generates_when_no_identity_is_recoverable() {
-        let first = generated_ca().await;
-        let second = generated_ca().await;
+        let identities = test_ca_identities().await;
+        let first = &identities.first;
+        let second = &identities.second;
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
         write_ca(
@@ -643,11 +669,11 @@ mod tests {
 
         let generated = read_ca(&home.ca_dir());
         assert!(
-            generated.cert != first.cert,
+            generated.cert.as_slice() != first.cert.as_slice(),
             "unrecoverable certificate should be replaced"
         );
         assert!(
-            generated.key != second.key,
+            generated.key.as_slice() != second.key.as_slice(),
             "unrecoverable key should be replaced"
         );
         assert_valid_ca(&home.ca_dir()).await;
@@ -655,7 +681,8 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_ignores_dangling_staging_file() {
-        let standalone = generated_ca().await;
+        let identities = test_ca_identities().await;
+        let standalone = &identities.first;
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
         write_ca(
@@ -672,6 +699,6 @@ mod tests {
 
         ensure(&home).await.unwrap();
 
-        assert_ca_eq(&read_ca(&home.ca_dir()), &standalone);
+        assert_ca_eq(&read_ca(&home.ca_dir()), standalone);
     }
 }

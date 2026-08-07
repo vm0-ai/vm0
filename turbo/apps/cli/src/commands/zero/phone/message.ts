@@ -1,8 +1,8 @@
 import { readFileSync } from "fs";
 import { Command } from "commander";
 import chalk from "chalk";
-import { sendPhoneMessage } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { sendPhoneMessage } from "../../../lib/api/domains/integrations-phone";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 export const messageCommand = new Command()
   .name("message")

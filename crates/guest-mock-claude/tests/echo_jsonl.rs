@@ -64,36 +64,35 @@ fn echo_jsonl_without_init_skips_history() -> Result<(), Box<dyn std::error::Err
 }
 
 #[test]
-fn echo_jsonl_rejects_path_like_session_id_without_writing_history()
+fn echo_jsonl_rejects_non_contract_session_ids_without_writing_history()
 -> Result<(), Box<dyn std::error::Error>> {
-    let home = tempfile::tempdir()?;
-    let payload = r#"{"type":"system","subtype":"init","cwd":"/home/user/workspace","session_id":"../escape","tools":["Bash"],"model":"mock-claude"}"#;
-    let prompt = format!("@ECHO@\n{payload}\n");
+    for session_id in ["../escape", "session.with.dot"] {
+        let home = tempfile::tempdir()?;
+        let payload = format!(
+            r#"{{"type":"system","subtype":"init","cwd":"/home/user/workspace","session_id":"{session_id}","tools":["Bash"],"model":"mock-claude"}}"#
+        );
+        let prompt = format!("@ECHO@\n{payload}\n");
 
-    let mut command = mock_claude();
-    command
-        .env("HOME", home.path())
-        .args(["--output-format", "stream-json", "--", &prompt]);
-    let output = run_mock_output(&mut command)?;
+        let mut command = mock_claude();
+        command
+            .env("HOME", home.path())
+            .args(["--output-format", "stream-json", "--", &prompt]);
+        let output = run_mock_output(&mut command)?;
 
-    assert!(!output.status.success());
-    assert!(
-        output.stdout.is_empty(),
-        "expected empty stdout, got: {}",
-        String::from_utf8_lossy(&output.stdout)
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("invalid @ECHO@ session_id"));
-    assert!(stderr.contains("../escape"));
-    assert!(!expected_history_path(home.path(), "../escape").exists());
-    assert!(
-        !home
-            .path()
-            .join(".claude")
-            .join("projects")
-            .join("escape.jsonl")
-            .exists()
-    );
+        assert!(!output.status.success());
+        assert!(
+            output.stdout.is_empty(),
+            "expected empty stdout, got: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("invalid @ECHO@ session_id"));
+        assert!(stderr.contains(session_id));
+        assert!(
+            !home.path().join(".claude").exists(),
+            "rejected session id must not create history directories: {session_id:?}"
+        );
+    }
     Ok(())
 }
 

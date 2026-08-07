@@ -1,7 +1,18 @@
 import { defineConfig } from "i18next-cli";
 
 export default defineConfig({
-  locales: ["en-US", "pt-BR"],
+  locales: [
+    "en-US",
+    "pt-BR",
+    "ja-JP",
+    "ko-KR",
+    "id-ID",
+    "de-DE",
+    "es-ES",
+    "it-IT",
+    "fr-FR",
+    "hi-IN",
+  ],
   extract: {
     input: ["src/**/*.{ts,tsx}"],
     ignore: [
@@ -14,6 +25,12 @@ export default defineConfig({
     output: "src/i18n/locales/{{language}}/{{namespace}}.json",
     defaultNS: "common",
     functions: ["i18n.t"],
+    preservePatterns: [
+      "onboarding.categories.*",
+      "onboarding.make.options.*",
+      "onboarding.templates.*.*",
+      "onboarding.workflows.*",
+    ],
     primaryLanguage: "en-US",
     useTranslationNames: ["useTranslation"],
   },

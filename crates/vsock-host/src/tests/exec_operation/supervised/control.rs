@@ -7,8 +7,8 @@ use vsock_proto::{
 };
 
 use super::super::super::support::{
-    normal_operation_readiness, operation_count, read_guest_message, send_exec_control_result,
-    send_exec_result,
+    assert_connection_accepts_exec_operation, normal_operation_readiness, operation_count,
+    read_guest_message, send_exec_control_result, send_exec_result,
 };
 use super::support::{
     StartedControlSupervisedExec, StartedSupervisedExec, assert_no_guest_frame,
@@ -33,7 +33,11 @@ async fn supervised_exec_control_uses_exec_control_messages() {
     let control_task = tokio::spawn({
         async move {
             control_handle
-                .control("message-1", b"payload", Duration::from_secs(5))
+                .control_owned(
+                    "message-1".to_owned(),
+                    b"payload".to_vec(),
+                    Duration::from_secs(5),
+                )
                 .await
         }
     });
@@ -295,6 +299,103 @@ async fn supervised_exec_control_guest_error_uses_control_error_fallback() {
     )
     .await;
     handle.wait(Duration::from_secs(5)).await.unwrap();
+}
+
+#[tokio::test]
+async fn supervised_exec_control_cancelled_before_write_remains_reusable() {
+    let StartedControlSupervisedExec {
+        host,
+        mut guest,
+        start,
+        handle,
+        control_handle,
+        ..
+    } = start_control_supervised_exec_fixture("control-cancelled-before-write").await;
+    let start_seq = start.seq();
+    let writer_guard = host.shared.writer.lock().await;
+
+    {
+        let control = control_handle.control("cancelled", b"payload", Duration::from_secs(5));
+        tokio::pin!(control);
+        tokio::select! {
+            result = &mut control => {
+                panic!("control must wait for the held writer lock: {result:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    drop(writer_guard);
+    assert_no_guest_frame(
+        &mut guest,
+        "control cancelled before write must not send a frame",
+    );
+    finish_supervised_exec_success(&mut guest, start_seq, handle)
+        .await
+        .unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn supervised_exec_control_cancelled_after_write_ignores_late_result() {
+    let StartedControlSupervisedExec {
+        host,
+        mut guest,
+        start,
+        handle,
+        control_handle,
+        control_nonce,
+        ..
+    } = start_control_supervised_exec_fixture("control-cancelled-after-write").await;
+    let start_seq = start.seq();
+
+    let control_task = tokio::spawn(async move {
+        control_handle
+            .control("cancelled", b"payload", Duration::from_secs(5))
+            .await
+    });
+    let control = read_guest_message(&mut guest).await;
+    control_task.abort();
+    assert!(control_task.await.unwrap_err().is_cancelled());
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    send_exec_control_result(
+        &mut guest,
+        control.seq,
+        start_seq,
+        control_nonce,
+        "cancelled",
+        ExecControlStatus::Delivered,
+        "",
+    )
+    .await;
+    send_exec_result(
+        &mut guest,
+        start_seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 }
 
 #[tokio::test]

@@ -41,6 +41,7 @@ class TestUsageReportingIdempotency:
         )
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "gpt-5.5",
+            "tokens.input": 0,
             "tokens.output": 20,
         }
         body = b'{"id":"resp_1","usage":{"input_tokens":'
@@ -82,7 +83,10 @@ class TestUsageReportingIdempotency:
             firewall_name="model-provider:openai-api-key",
             cli_agent_type="codex",
         )
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"model": "gpt-5.5"}
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+            "model": "gpt-5.5",
+            "tokens.input": 0,
+        }
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),

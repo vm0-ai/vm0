@@ -3,12 +3,28 @@
 //! The API resolves provider capability metadata before dispatch. The guest
 //! only translates that structured payload into Codex startup configuration.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::Instant;
+
+use guest_common::telemetry::record_sandbox_op;
 
 use crate::error::AgentError;
 
-const MODEL_CATALOG_FILENAME: &str = "vm0-model-catalog.json";
+const MODEL_CATALOG_FILENAME: &str = "models.json";
+const MODEL_CATALOG_PREPARE_ACTION: &str = "codex_model_catalog_prepare";
+
+/// Per-model default for Codex app-server's turn reasoning effort.
+pub(super) fn default_reasoning_effort_for_model(model: &str) -> Option<&'static str> {
+    let bare = model.strip_prefix("openai/").unwrap_or(model);
+    match bare {
+        "gpt-5.6-sol" => Some("max"),
+        "gpt-5.6-terra" => Some("low"),
+        "gpt-5.6-luna" => Some("max"),
+        "gpt-5.5" => Some("xhigh"),
+        _ => None,
+    }
+}
 
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,24 +33,14 @@ pub(super) struct CodexRuntimeConfig {
     pub name: String,
     pub base_url: String,
     pub env_key: String,
+    #[serde(default)]
+    pub http_headers: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    pub requires_openai_auth: Option<bool>,
     pub wire_api: String,
     pub supports_websockets: bool,
     #[serde(default)]
     pub model_catalog: Option<serde_json::Value>,
-}
-
-#[derive(serde::Deserialize)]
-struct BundledModelCatalog {
-    models: Vec<BundledModel>,
-}
-
-#[derive(serde::Deserialize)]
-struct BundledModel {
-    priority: i64,
-    visibility: String,
-    supported_in_api: bool,
-    base_instructions: String,
-    model_messages: serde_json::Value,
 }
 
 pub(super) fn parse_raw(raw: &str) -> Result<Option<CodexRuntimeConfig>, AgentError> {
@@ -98,59 +104,22 @@ pub(super) fn write_model_catalog(
     let Some(model_catalog) = &config.model_catalog else {
         return Ok(());
     };
-    let model_catalog = if config.provider_id == "vm0-model" {
-        inherit_default_model_instructions(model_catalog, load_bundled_model_catalog()?)?
-    } else {
-        model_catalog.clone()
-    };
-    std::fs::create_dir_all(codex_home)?;
-    let path = model_catalog_path(codex_home);
-    write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(&model_catalog)?)?;
-    Ok(())
+    record_catalog_operation(MODEL_CATALOG_PREPARE_ACTION, || {
+        std::fs::create_dir_all(codex_home)?;
+        let path = model_catalog_path(codex_home);
+        write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(model_catalog)?)?;
+        Ok(())
+    })
 }
 
-fn load_bundled_model_catalog() -> Result<BundledModelCatalog, AgentError> {
-    let output = Command::new("codex")
-        .args(["debug", "models", "--bundled"])
-        .output()?;
-    if !output.status.success() {
-        return Err(AgentError::Execution(
-            "failed to read the bundled Codex model catalog".to_string(),
-        ));
-    }
-    Ok(serde_json::from_slice(&output.stdout)?)
-}
-
-fn inherit_default_model_instructions(
-    model_catalog: &serde_json::Value,
-    bundled: BundledModelCatalog,
-) -> Result<serde_json::Value, AgentError> {
-    let source = bundled
-        .models
-        .into_iter()
-        .filter(|model| model.visibility == "list" && model.supported_in_api)
-        .min_by_key(|model| model.priority)
-        .ok_or_else(|| {
-            AgentError::Execution(
-                "bundled Codex model catalog has no default model instructions".to_string(),
-            )
-        })?;
-    let mut hydrated = model_catalog.clone();
-    let models = hydrated
-        .get_mut("models")
-        .and_then(serde_json::Value::as_array_mut)
-        .ok_or_else(|| AgentError::Execution("invalid Codex model catalog".to_string()))?;
-    for model in models {
-        let model = model
-            .as_object_mut()
-            .ok_or_else(|| AgentError::Execution("invalid Codex model entry".to_string()))?;
-        model.insert(
-            "base_instructions".to_string(),
-            serde_json::Value::String(source.base_instructions.clone()),
-        );
-        model.insert("model_messages".to_string(), source.model_messages.clone());
-    }
-    Ok(hydrated)
+fn record_catalog_operation<T>(
+    action_type: &str,
+    operation: impl FnOnce() -> Result<T, AgentError>,
+) -> Result<T, AgentError> {
+    let started_at = Instant::now();
+    let result = operation();
+    record_sandbox_op(action_type, started_at.elapsed(), result.is_ok(), None);
+    result
 }
 
 fn write_model_catalog_json_atomic(
@@ -210,6 +179,25 @@ pub(super) fn startup_config_overrides(
             config.supports_websockets
         ),
     ];
+    if let Some(headers) = &config.http_headers {
+        let entries = headers
+            .iter()
+            .map(|(name, value)| {
+                format!(
+                    "{}={}",
+                    quote_toml_basic_string(name),
+                    quote_toml_basic_string(value)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        overrides.push(format!("{provider_prefix}.http_headers={{{entries}}}"));
+    }
+    if let Some(requires_openai_auth) = config.requires_openai_auth {
+        overrides.push(format!(
+            "{provider_prefix}.requires_openai_auth={requires_openai_auth}"
+        ));
+    }
     if config.model_catalog.is_some() {
         overrides.push(format!(
             "model_catalog_json={}",
@@ -245,35 +233,84 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn default_reasoning_effort_matches_supported_models() {
+        for (model, effort) in [
+            ("gpt-5.5", "xhigh"),
+            ("openai/gpt-5.5", "xhigh"),
+            ("gpt-5.6-sol", "max"),
+            ("openai/gpt-5.6-sol", "max"),
+            ("gpt-5.6-terra", "low"),
+            ("openai/gpt-5.6-terra", "low"),
+            ("gpt-5.6-luna", "max"),
+            ("openai/gpt-5.6-luna", "max"),
+        ] {
+            assert_eq!(default_reasoning_effort_for_model(model), Some(effort));
+        }
+        assert_eq!(default_reasoning_effort_for_model("custom-model"), None);
+    }
+
+    #[test]
     fn startup_config_overrides_include_provider_and_catalog_path() {
         let codex_home = Path::new("/tmp/codex-home");
         let config = CodexRuntimeConfig {
-            provider_id: "minimax".to_string(),
-            name: "MiniMax".to_string(),
-            base_url: "https://api.minimax.io/v1".to_string(),
+            provider_id: "deepseek".to_string(),
+            name: "DeepSeek".to_string(),
+            base_url: "https://api.deepseek.com/".to_string(),
             env_key: "OPENAI_API_KEY".to_string(),
+            http_headers: None,
+            requires_openai_auth: None,
             wire_api: "responses".to_string(),
             supports_websockets: false,
-            model_catalog: Some(json!({ "models": [{ "slug": "MiniMax-M3" }] })),
+            model_catalog: Some(json!({ "models": [{ "slug": "deepseek-v4-flash" }] })),
         };
 
         let overrides = startup_config_overrides(Some(&config), codex_home);
 
-        assert_eq!(overrides[0], r#"model_provider="minimax""#);
-        assert!(overrides.contains(&r#"model_providers.minimax.name="MiniMax""#.to_string()));
+        assert_eq!(overrides[0], r#"model_provider="deepseek""#);
+        assert!(overrides.contains(&r#"model_providers.deepseek.name="DeepSeek""#.to_string()));
         assert!(overrides.contains(
-            &r#"model_providers.minimax.base_url="https://api.minimax.io/v1""#.to_string()
+            &r#"model_providers.deepseek.base_url="https://api.deepseek.com/""#.to_string()
         ));
         assert!(
-            overrides.contains(&r#"model_providers.minimax.env_key="OPENAI_API_KEY""#.to_string())
+            overrides.contains(&r#"model_providers.deepseek.env_key="OPENAI_API_KEY""#.to_string())
         );
-        assert!(overrides.contains(&r#"model_providers.minimax.wire_api="responses""#.to_string()));
         assert!(
-            overrides.contains(&r#"model_providers.minimax.supports_websockets=false"#.to_string())
+            overrides.contains(&r#"model_providers.deepseek.wire_api="responses""#.to_string())
         );
+        assert!(
+            overrides
+                .contains(&r#"model_providers.deepseek.supports_websockets=false"#.to_string())
+        );
+        assert!(
+            overrides.contains(&r#"model_catalog_json="/tmp/codex-home/models.json""#.to_string())
+        );
+    }
+
+    #[test]
+    fn startup_config_overrides_support_custom_headers_without_openai_auth() {
+        let config = CodexRuntimeConfig {
+            provider_id: "gateway".to_string(),
+            name: "Gateway".to_string(),
+            base_url: "https://gateway.example.test/v1".to_string(),
+            env_key: "OPENAI_API_KEY".to_string(),
+            http_headers: Some(BTreeMap::from([(
+                "x-api-key".to_string(),
+                "__VM0_OPENAI_API_KEY_PLACEHOLDER__".to_string(),
+            )])),
+            requires_openai_auth: Some(false),
+            wire_api: "responses".to_string(),
+            supports_websockets: false,
+            model_catalog: None,
+        };
+
+        let overrides = startup_config_overrides(Some(&config), Path::new("/tmp/codex-home"));
+
         assert!(overrides.contains(
-            &r#"model_catalog_json="/tmp/codex-home/vm0-model-catalog.json""#.to_string()
+            &r#"model_providers.gateway.http_headers={"x-api-key"="__VM0_OPENAI_API_KEY_PLACEHOLDER__"}"#.to_string()
         ));
+        assert!(
+            overrides.contains(&"model_providers.gateway.requires_openai_auth=false".to_string())
+        );
     }
 
     #[test]
@@ -317,6 +354,8 @@ mod tests {
             name: "Provider".to_string(),
             base_url: "https://example.test/v1".to_string(),
             env_key: "OPENAI_API_KEY".to_string(),
+            http_headers: None,
+            requires_openai_auth: None,
             wire_api: "responses".to_string(),
             supports_websockets: false,
             model_catalog: None,
@@ -338,19 +377,21 @@ mod tests {
     fn write_model_catalog_writes_json_when_present() {
         let tmp = tempfile::tempdir().unwrap();
         let config = CodexRuntimeConfig {
-            provider_id: "minimax".to_string(),
-            name: "MiniMax".to_string(),
-            base_url: "https://api.minimax.io/v1".to_string(),
+            provider_id: "deepseek".to_string(),
+            name: "DeepSeek".to_string(),
+            base_url: "https://api.deepseek.com/".to_string(),
             env_key: "OPENAI_API_KEY".to_string(),
+            http_headers: None,
+            requires_openai_auth: None,
             wire_api: "responses".to_string(),
             supports_websockets: false,
-            model_catalog: Some(json!({ "models": [{ "slug": "MiniMax-M3" }] })),
+            model_catalog: Some(json!({ "models": [{ "slug": "deepseek-v4-flash" }] })),
         };
 
         write_model_catalog(tmp.path(), &config).unwrap();
 
         let written = std::fs::read_to_string(model_catalog_path(tmp.path())).unwrap();
-        assert_eq!(written, r#"{"models":[{"slug":"MiniMax-M3"}]}"#);
+        assert_eq!(written, r#"{"models":[{"slug":"deepseek-v4-flash"}]}"#);
     }
 
     #[cfg(unix)]
@@ -365,13 +406,15 @@ mod tests {
         std::fs::write(&symlink_target, b"TARGET_CONTENT_MUST_SURVIVE").unwrap();
         symlink(&symlink_target, model_catalog_path(&codex_home)).unwrap();
         let config = CodexRuntimeConfig {
-            provider_id: "minimax".to_string(),
-            name: "MiniMax".to_string(),
-            base_url: "https://api.minimax.io/v1".to_string(),
+            provider_id: "deepseek".to_string(),
+            name: "DeepSeek".to_string(),
+            base_url: "https://api.deepseek.com/".to_string(),
             env_key: "OPENAI_API_KEY".to_string(),
+            http_headers: None,
+            requires_openai_auth: None,
             wire_api: "responses".to_string(),
             supports_websockets: false,
-            model_catalog: Some(json!({ "models": [{ "slug": "MiniMax-M3" }] })),
+            model_catalog: Some(json!({ "models": [{ "slug": "deepseek-v4-flash" }] })),
         };
 
         write_model_catalog(&codex_home, &config).unwrap();
@@ -389,60 +432,6 @@ mod tests {
             "model catalog path should be a regular replacement file, not the old symlink"
         );
         let written = std::fs::read_to_string(model_catalog_path(&codex_home)).unwrap();
-        assert_eq!(written, r#"{"models":[{"slug":"MiniMax-M3"}]}"#);
-    }
-
-    #[test]
-    fn inherit_default_model_instructions_uses_highest_priority_visible_model() {
-        let target = json!({
-            "models": [{
-                "slug": "vm0-model",
-                "base_instructions": "",
-                "model_messages": null,
-                "context_window": 1_000_000
-            }]
-        });
-        let bundled = BundledModelCatalog {
-            models: vec![
-                BundledModel {
-                    priority: 0,
-                    visibility: "hide".to_string(),
-                    supported_in_api: true,
-                    base_instructions: "hidden instructions".to_string(),
-                    model_messages: serde_json::Value::Null,
-                },
-                BundledModel {
-                    priority: 2,
-                    visibility: "list".to_string(),
-                    supported_in_api: true,
-                    base_instructions: "lower priority instructions".to_string(),
-                    model_messages: serde_json::Value::Null,
-                },
-                BundledModel {
-                    priority: 1,
-                    visibility: "list".to_string(),
-                    supported_in_api: true,
-                    base_instructions: "default instructions".to_string(),
-                    model_messages: json!({
-                        "instructions_template": "default template",
-                        "instructions_variables": null,
-                        "approvals": null,
-                        "auto_review": null
-                    }),
-                },
-            ],
-        };
-
-        let hydrated = inherit_default_model_instructions(&target, bundled).unwrap();
-
-        assert_eq!(
-            hydrated["models"][0]["base_instructions"],
-            "default instructions"
-        );
-        assert_eq!(
-            hydrated["models"][0]["model_messages"]["instructions_template"],
-            "default template"
-        );
-        assert_eq!(hydrated["models"][0]["context_window"], 1_000_000);
+        assert_eq!(written, r#"{"models":[{"slug":"deepseek-v4-flash"}]}"#);
     }
 }

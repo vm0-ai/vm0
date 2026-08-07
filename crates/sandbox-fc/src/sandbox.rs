@@ -11,9 +11,10 @@ use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
     ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig,
-    SandboxError, SandboxFinalExecParkOutcome, SandboxIdleTransition, SandboxInvalidStateContext,
-    SandboxOperation, SandboxOperationReason, SandboxParkNonReusableReason, SandboxParkOutcome,
-    SandboxStartObserver, SandboxStartStage, StartProcessRequest, WriteFileEntry,
+    SandboxError, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome,
+    SandboxFinalExecParkStage, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
+    SandboxOperationReason, SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver,
+    SandboxStartStage, StartProcessRequest, WriteFileEntry,
 };
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
@@ -41,16 +42,13 @@ use crate::factory::InvariantConfig;
 use crate::guest_dns_failure_diagnostics::{
     GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_diagnostics,
 };
-use crate::guest_dns_netfilter_trace::GuestDnsNetfilterTraceAttachment;
-use crate::guest_dns_network_evidence::GuestDnsNetworkEvidenceBaseline;
-use crate::guest_dns_network_evidence::GuestDnsNetworkEvidenceTarget;
 use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
 use crate::park_coordinator::{
     CoordinatorState, DirtyReason, OperationStartRejection, ParkAttempt, ParkCoordinator,
-    PrepareParkError, PrepareParkEvidence,
+    PrepareParkError, PrepareParkEvidence, RunControlBindError,
 };
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{ChildExitNotifier, kill_process_group};
@@ -59,14 +57,12 @@ use crate::process_log::{
     read_process_log_records,
 };
 use crate::runtime_dirs::{prepare_private_runtime_vsock_dir, set_private_runtime_socket_mode};
+use crate::snapshot_mount_namespace::{BindMount, SnapshotMountMode, build_command};
 
 mod snapshot_restore;
 mod state;
 
-use snapshot_restore::{
-    SNAPSHOT_RESTORE_INNER_CMD, UNSHARE_MOUNT_ARGS, ensure_snapshot_drive_bind_target,
-    load_snapshot_and_apply_rate_limits,
-};
+use snapshot_restore::{ensure_snapshot_drive_bind_target, load_snapshot_and_apply_rate_limits};
 pub(crate) use state::SandboxState;
 use state::{
     publish_process_state, publish_watch_state, state_publish_guard, transition_process_state,
@@ -99,6 +95,22 @@ impl<'a> SandboxStartTiming<'a> {
     }
 
     fn record(&mut self, stage: SandboxStartStage, started: Instant, success: bool) {
+        if let Some(observer) = self.observer.as_deref_mut() {
+            observer.record_stage(stage, started.elapsed(), success);
+        }
+    }
+}
+
+struct SandboxFinalExecParkTiming<'a> {
+    observer: Option<&'a mut dyn SandboxFinalExecParkObserver>,
+}
+
+impl<'a> SandboxFinalExecParkTiming<'a> {
+    fn new(observer: Option<&'a mut dyn SandboxFinalExecParkObserver>) -> Self {
+        Self { observer }
+    }
+
+    fn record(&mut self, stage: SandboxFinalExecParkStage, started: Instant, success: bool) {
         if let Some(observer) = self.observer.as_deref_mut() {
             observer.record_stage(stage, started.elapsed(), success);
         }
@@ -460,8 +472,6 @@ pub struct FirecrackerSandbox {
     pub(crate) cow_device: Option<PooledNbdCowDevice>,
     /// Firecracker-local device rate limiters for this sandbox lifecycle.
     device_rate_limits: Option<FirecrackerDeviceRateLimits>,
-    /// Attachment-local counters captured before Firecracker starts.
-    guest_dns_network_baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
     /// Per-sandbox runtime task handles.
     runtime: SandboxRuntimeHandles,
     /// Process-group leader PID for the spawned Firecracker wrapper.
@@ -515,7 +525,6 @@ pub(crate) struct FirecrackerSandboxInit {
     pub(crate) cow_device: PooledNbdCowDevice,
     pub(crate) device_rate_limits: Option<FirecrackerDeviceRateLimits>,
     pub(crate) leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
-    pub(crate) guest_dns_network_baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
 }
 
 pub(crate) struct SandboxNetwork {
@@ -541,27 +550,6 @@ impl SandboxNetwork {
 
     fn host_device(&self) -> &str {
         self.info.host_device()
-    }
-
-    fn attachment_generation(&self) -> u64 {
-        self.info.attachment_generation()
-    }
-
-    fn guest_dns_netfilter_trace(&self) -> &GuestDnsNetfilterTraceAttachment {
-        self.info.guest_dns_netfilter_trace()
-    }
-
-    fn reuse_eligible(&self) -> bool {
-        self.lease.as_ref().is_some_and(NetnsLease::reuse_eligible)
-    }
-
-    pub(crate) fn set_dns_network_baseline(
-        &mut self,
-        baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
-    ) {
-        if let Some(lease) = self.lease.as_mut() {
-            lease.set_dns_network_baseline(baseline);
-        }
     }
 
     fn mark_non_reusable(&mut self) -> sandbox::Result<()> {
@@ -604,7 +592,6 @@ impl FirecrackerSandbox {
             cow_device,
             device_rate_limits,
             leak_tx,
-            guest_dns_network_baseline,
         } = init;
         let id = config.id.to_string();
         Self {
@@ -616,7 +603,6 @@ impl FirecrackerSandbox {
             network: SandboxNetwork::from_lease(network),
             cow_device: Some(cow_device),
             device_rate_limits,
-            guest_dns_network_baseline,
             runtime: SandboxRuntimeHandles::default(),
             process_group_pid: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
@@ -645,23 +631,6 @@ impl FirecrackerSandbox {
 
     pub(crate) fn allow_workspace_delete_on_leak_cleanup(&mut self) {
         self.delete_workspace_on_leak_cleanup = true;
-    }
-
-    pub(crate) fn dns_network_evidence_target_for_reuse(
-        &self,
-    ) -> Option<GuestDnsNetworkEvidenceTarget> {
-        self.factory_config
-            .dns_port
-            .filter(|_| self.network.reuse_eligible())
-            .map(|dns_port| {
-                GuestDnsNetworkEvidenceTarget::new(
-                    self.network.name(),
-                    self.network.host_device(),
-                    self.network.peer_ip(),
-                    dns_port,
-                    self.network.guest_dns_netfilter_trace(),
-                )
-            })
     }
 
     fn current_state(&self) -> SandboxState {
@@ -906,9 +875,9 @@ impl FirecrackerSandbox {
         )?;
 
         let outcome = tokio::select! {
-            result = control.control(
-                &message_id,
-                &payload,
+            result = control.control_owned(
+                message_id,
+                payload,
                 timeout,
             ) => ControlOutcome::Returned(result),
             () = wait_for_backend_crash(state_rx) => ControlOutcome::BackendCrashed,
@@ -1126,11 +1095,9 @@ impl FirecrackerSandbox {
             "spawning firecracker (snapshot restore)"
         );
 
-        // Use positional args ($1..$9) to avoid shell injection from paths.
-        //
-        // Bind mount targets ($2, $4, $6) are snapshot-level paths shared by
-        // all sandboxes. Each sandbox runs inside `unshare --mount`, so bind
-        // mounts are per-namespace and don't conflict.
+        // Bind mount targets are snapshot-level paths shared by all sandboxes.
+        // Each sandbox runs inside `unshare --mount`, so bind mounts are
+        // per-namespace and don't conflict.
         //
         // IMPORTANT: we must NOT `rm -f` the bind mount target.  The target
         // file is shared across all mount namespaces via the underlying
@@ -1143,19 +1110,19 @@ impl FirecrackerSandbox {
         // namespace (e.g. from a crashed snapshot creation).
         let snapshot_str = snapshot.snapshot_path.display().to_string();
         let memory_str = snapshot.memory_path.display().to_string();
-        let mut command = tokio::process::Command::new("unshare");
-        command
-            .args(UNSHARE_MOUNT_ARGS)
-            .args(["bash", "-c", SNAPSHOT_RESTORE_INNER_CMD, "_"])
-            .arg(self.sock_paths.vsock_dir()) // $1
-            .arg(&snapshot.vsock_bind_dir) // $2
-            .arg(cow_device_path) // $3
-            .arg(&snapshot.drive_bind_path) // $4
-            .arg(&workspace_image_path) // $5
-            .arg(&snapshot.workspace_drive_bind_path) // $6
-            .arg(self.network.name()) // $7
-            .arg(&self.factory_config.binary_path) // $8
-            .arg(&api_sock); // $9
+        let command = build_command(
+            SnapshotMountMode::Restore {
+                vsock: BindMount::new(&self.sock_paths.vsock_dir(), &snapshot.vsock_bind_dir),
+                rootfs: BindMount::new(cow_device_path, &snapshot.drive_bind_path),
+                workspace: BindMount::new(
+                    &workspace_image_path,
+                    &snapshot.workspace_drive_bind_path,
+                ),
+            },
+            self.network.name(),
+            &self.factory_config.binary_path,
+            &api_sock,
+        );
 
         let client = self
             .spawn_and_wait_for_api(command, &api_sock, runtime_cancel, "snapshot restore")
@@ -1321,10 +1288,7 @@ impl FirecrackerSandbox {
                             host_device: self.network.host_device(),
                             peer_ip: self.network.peer_ip(),
                             dns_port,
-                            attachment_generation: self.network.attachment_generation(),
                             readiness_attempts: error.attempts,
-                            root_netfilter_trace: self.network.guest_dns_netfilter_trace(),
-                            network_evidence_baseline: self.guest_dns_network_baseline.as_deref(),
                             startup_mode: if self.factory_config.snapshot.is_some() {
                                 "snapshot_restore"
                             } else {
@@ -1799,6 +1763,94 @@ fn exec_capture_request<'a>(
     }
 }
 
+impl FirecrackerSandbox {
+    async fn final_exec_and_park_with_optional_observer(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+        observer: Option<&mut dyn SandboxFinalExecParkObserver>,
+    ) -> sandbox::Result<SandboxFinalExecParkOutcome> {
+        if self.is_parked {
+            return Err(idle_transition_error(
+                SandboxIdleTransition::Park,
+                "final guest exec cannot run on an already parked sandbox",
+            ));
+        }
+
+        let operation = SandboxOperation::Exec;
+        Self::validate_exec_env_keys(operation, request.env)?;
+        let timeout_ms = request.timeout_ms();
+        validate_exec_capture_timeout(timeout_ms)
+            .map_err(|error| Self::operation_error(operation, error, self.has_backend_crashed()))?;
+
+        let coordinator = self.park_coordinator.clone();
+        let guest = Arc::clone(&self.guest);
+        let final_exec_guest = Arc::clone(&guest);
+        let id = self.id.clone();
+        let api_sock = self.sock_paths.api_sock();
+        let final_exec_request = exec_capture_request(request, timeout_ms, diagnostic_label);
+        let (normal_operations_fence, park_outcome, exec_result) =
+            park_with_ready_for_park_and_preparation_with_observer(
+                &id,
+                &coordinator,
+                observer,
+                || async move {
+                    let guest =
+                        final_exec_guest
+                            .lock()
+                            .await
+                            .as_ref()
+                            .cloned()
+                            .ok_or_else(|| {
+                                ParkNormalOperationFenceError::GuestUnavailable(io::Error::new(
+                                    io::ErrorKind::NotConnected,
+                                    "guest connection missing during final park operation",
+                                ))
+                            })?;
+                    let (result, fence) = guest
+                        .exec_operation_capture_with_fence(final_exec_request)
+                        .await
+                        .map_err(|error| match error {
+                            FencedExecError::FenceRejected(error) => {
+                                ParkNormalOperationFenceError::Rejected(error)
+                            }
+                            FencedExecError::Operation(error) => {
+                                ParkNormalOperationFenceError::FinalOperation(error)
+                            }
+                        })?;
+                    let result = exec_result_from_operation_result(result)
+                        .map_err(ParkNormalOperationFenceError::FinalOperation)?;
+                    Ok((fence, result))
+                },
+                || async move {
+                    let guest = guest.lock().await.as_ref().cloned().ok_or_else(|| {
+                        io::Error::new(
+                            io::ErrorKind::NotConnected,
+                            "guest connection missing during park quiesce",
+                        )
+                    })?;
+                    guest.quiesce_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
+                },
+                || {
+                    park_inner(
+                        &mut self.is_parked,
+                        self.config.resources.memory_mb,
+                        self.runtime.balloon_mut(),
+                        &api_sock,
+                        &id,
+                    )
+                },
+            )
+            .await?;
+        self.park_fence = Some(normal_operations_fence);
+        self.park_outcome = Some(park_outcome);
+        Ok(SandboxFinalExecParkOutcome {
+            exec_result,
+            park_outcome,
+        })
+    }
+}
+
 #[async_trait]
 impl Sandbox for FirecrackerSandbox {
     // -- identity --
@@ -1813,6 +1865,40 @@ impl Sandbox for FirecrackerSandbox {
 
     fn host_process_pid(&self) -> Option<u32> {
         self.process_group_pid
+    }
+
+    fn bind_run_control(&mut self, run_id: &str) -> sandbox::Result<()> {
+        if run_id.is_empty() {
+            return Err(SandboxError::Configuration {
+                message: "run control identity must not be empty".into(),
+            });
+        }
+
+        let sandbox_state = self.current_state();
+        let valid_boundary = (sandbox_state == SandboxState::Created && !self.is_parked)
+            || (sandbox_state == SandboxState::Running && self.is_parked);
+        if !valid_boundary {
+            return Err(SandboxError::InvalidState {
+                context: SandboxInvalidStateContext::Sandbox,
+                state: sandbox_state.to_string(),
+                message: "run control identity must be bound before start or while parked".into(),
+            });
+        }
+
+        self.park_coordinator
+            .bind_run_control(run_id)
+            .map_err(|error| match error {
+                RunControlBindError::AlreadyBound => SandboxError::InvalidState {
+                    context: SandboxInvalidStateContext::Sandbox,
+                    state: format!("{:?}", self.park_coordinator.state()),
+                    message: "run control identity is already bound".into(),
+                },
+                RunControlBindError::InvalidState { state } => SandboxError::InvalidState {
+                    context: SandboxInvalidStateContext::Sandbox,
+                    state: format!("{state:?}"),
+                    message: "run control identity cannot be bound at this lifecycle state".into(),
+                },
+            })
     }
 
     // -- lifecycle --
@@ -2015,83 +2101,18 @@ impl Sandbox for FirecrackerSandbox {
         request: &ExecRequest<'_>,
         diagnostic_label: &'static str,
     ) -> sandbox::Result<SandboxFinalExecParkOutcome> {
-        if self.is_parked {
-            return Err(idle_transition_error(
-                SandboxIdleTransition::Park,
-                "final guest exec cannot run on an already parked sandbox",
-            ));
-        }
+        self.final_exec_and_park_with_optional_observer(request, diagnostic_label, None)
+            .await
+    }
 
-        let operation = SandboxOperation::Exec;
-        Self::validate_exec_env_keys(operation, request.env)?;
-        let timeout_ms = request.timeout_ms();
-        validate_exec_capture_timeout(timeout_ms)
-            .map_err(|error| Self::operation_error(operation, error, self.has_backend_crashed()))?;
-
-        let coordinator = self.park_coordinator.clone();
-        let guest = Arc::clone(&self.guest);
-        let final_exec_guest = Arc::clone(&guest);
-        let id = self.id.clone();
-        let api_sock = self.sock_paths.api_sock();
-        let final_exec_request = exec_capture_request(request, timeout_ms, diagnostic_label);
-        let (normal_operations_fence, park_outcome, exec_result) =
-            park_with_ready_for_park_and_preparation(
-                &id,
-                &coordinator,
-                || async move {
-                    let guest =
-                        final_exec_guest
-                            .lock()
-                            .await
-                            .as_ref()
-                            .cloned()
-                            .ok_or_else(|| {
-                                ParkNormalOperationFenceError::GuestUnavailable(io::Error::new(
-                                    io::ErrorKind::NotConnected,
-                                    "guest connection missing during final park operation",
-                                ))
-                            })?;
-                    let (result, fence) = guest
-                        .exec_operation_capture_with_fence(final_exec_request)
-                        .await
-                        .map_err(|error| match error {
-                            FencedExecError::FenceRejected(error) => {
-                                ParkNormalOperationFenceError::Rejected(error)
-                            }
-                            FencedExecError::Operation(error) => {
-                                ParkNormalOperationFenceError::FinalOperation(error)
-                            }
-                        })?;
-                    let result = exec_result_from_operation_result(result)
-                        .map_err(ParkNormalOperationFenceError::FinalOperation)?;
-                    Ok((fence, result))
-                },
-                || async move {
-                    let guest = guest.lock().await.as_ref().cloned().ok_or_else(|| {
-                        io::Error::new(
-                            io::ErrorKind::NotConnected,
-                            "guest connection missing during park quiesce",
-                        )
-                    })?;
-                    guest.quiesce_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
-                },
-                || {
-                    park_inner(
-                        &mut self.is_parked,
-                        self.config.resources.memory_mb,
-                        self.runtime.balloon_mut(),
-                        &api_sock,
-                        &id,
-                    )
-                },
-            )
-            .await?;
-        self.park_fence = Some(normal_operations_fence);
-        self.park_outcome = Some(park_outcome);
-        Ok(SandboxFinalExecParkOutcome {
-            exec_result,
-            park_outcome,
-        })
+    async fn final_exec_and_park_with_observer(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+        observer: &mut dyn SandboxFinalExecParkObserver,
+    ) -> sandbox::Result<SandboxFinalExecParkOutcome> {
+        self.final_exec_and_park_with_optional_observer(request, diagnostic_label, Some(observer))
+            .await
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
@@ -2617,6 +2638,45 @@ where
     P: FnOnce() -> PF,
     PF: Future<Output = sandbox::Result<Outcome>>,
 {
+    park_with_ready_for_park_and_preparation_with_observer(
+        log_id,
+        coordinator,
+        None,
+        fence_and_prepare,
+        quiesce_guest,
+        park_firecracker,
+    )
+    .await
+}
+
+async fn park_with_ready_for_park_and_preparation_with_observer<
+    Fence,
+    Outcome,
+    Preparation,
+    F,
+    FF,
+    Q,
+    QF,
+    P,
+    PF,
+>(
+    log_id: &str,
+    coordinator: &ParkCoordinator,
+    observer: Option<&mut dyn SandboxFinalExecParkObserver>,
+    fence_and_prepare: F,
+    quiesce_guest: Q,
+    park_firecracker: P,
+) -> sandbox::Result<(Fence, Outcome, Preparation)>
+where
+    F: FnOnce() -> FF,
+    FF: Future<Output = Result<(Fence, Preparation), ParkNormalOperationFenceError>>,
+    Q: FnOnce() -> QF,
+    QF: Future<Output = io::Result<()>>,
+    P: FnOnce() -> PF,
+    PF: Future<Output = sandbox::Result<Outcome>>,
+{
+    let mut timing = SandboxFinalExecParkTiming::new(observer);
+    let preparation_started = Instant::now();
     info!(
         id = %log_id,
         transition = "park",
@@ -2645,6 +2705,11 @@ where
                 error = %error_message,
                 "sandbox park lifecycle prepare rejected"
             );
+            timing.record(
+                SandboxFinalExecParkStage::ReusePreparation,
+                preparation_started,
+                false,
+            );
             return Err(prepare_park_error(SandboxIdleTransition::Park, error));
         }
     };
@@ -2669,6 +2734,11 @@ where
                 reason_kind = "busy",
                 "sandbox park lifecycle normal-operation fence rejected"
             );
+            timing.record(
+                SandboxFinalExecParkStage::ReusePreparation,
+                preparation_started,
+                false,
+            );
             return Err(idle_transition_error(
                 SandboxIdleTransition::Park,
                 "normal operations busy while preparing park",
@@ -2688,6 +2758,11 @@ where
                 "sandbox park lifecycle normal-operation fence failed"
             );
             guard.mark_dirty(message.clone());
+            timing.record(
+                SandboxFinalExecParkStage::ReusePreparation,
+                preparation_started,
+                false,
+            );
             return Err(idle_transition_error(SandboxIdleTransition::Park, message));
         }
         Err(ParkNormalOperationFenceError::GuestUnavailable(error)) => {
@@ -2701,6 +2776,11 @@ where
                 "sandbox park lifecycle normal-operation fence failed"
             );
             guard.mark_dirty(message.clone());
+            timing.record(
+                SandboxFinalExecParkStage::ReusePreparation,
+                preparation_started,
+                false,
+            );
             return Err(idle_transition_error(SandboxIdleTransition::Park, message));
         }
         Err(ParkNormalOperationFenceError::FinalOperation(error)) => {
@@ -2714,6 +2794,11 @@ where
                 "sandbox park lifecycle final guest operation failed"
             );
             guard.mark_dirty(message.clone());
+            timing.record(
+                SandboxFinalExecParkStage::ReusePreparation,
+                preparation_started,
+                false,
+            );
             return Err(idle_transition_error(SandboxIdleTransition::Park, message));
         }
     };
@@ -2736,6 +2821,11 @@ where
             "sandbox park lifecycle guest quiesce failed"
         );
         guard.mark_dirty(message.clone());
+        timing.record(
+            SandboxFinalExecParkStage::ReusePreparation,
+            preparation_started,
+            false,
+        );
         return Err(idle_transition_error(SandboxIdleTransition::Park, message));
     }
 
@@ -2755,17 +2845,35 @@ where
             "sandbox park lifecycle failed to enter ReadyForPark"
         );
         guard.mark_dirty(message.clone());
+        timing.record(
+            SandboxFinalExecParkStage::ReusePreparation,
+            preparation_started,
+            false,
+        );
         return Err(idle_transition_error(SandboxIdleTransition::Park, message));
     }
 
+    timing.record(
+        SandboxFinalExecParkStage::ReusePreparation,
+        preparation_started,
+        true,
+    );
     info!(
         id = %log_id,
         transition = "park",
         phase = "ready_for_park",
         "sandbox park lifecycle ReadyForPark reached"
     );
+    let physical_park_started = Instant::now();
     let outcome = match park_firecracker().await {
-        Ok(outcome) => outcome,
+        Ok(outcome) => {
+            timing.record(
+                SandboxFinalExecParkStage::PhysicalPark,
+                physical_park_started,
+                true,
+            );
+            outcome
+        }
         Err(error) => {
             warn!(
                 id = %log_id,
@@ -2778,6 +2886,11 @@ where
             guard.mark_dirty(format!(
                 "Firecracker park failed after ReadyForPark: {error}"
             ));
+            timing.record(
+                SandboxFinalExecParkStage::PhysicalPark,
+                physical_park_started,
+                false,
+            );
             return Err(error);
         }
     };
@@ -3035,8 +3148,21 @@ fn idle_transition_error(
 
 /// Maximum time to wait for balloon inflation before pausing vCPUs.
 const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
-/// Poll interval while waiting for balloon inflation.
-const BALLOON_SETTLE_POLL: Duration = Duration::from_millis(500);
+/// Additional bounded wait when the balloon is still making progress and the
+/// guest reports enough unused memory to finish reclaiming safely.
+const BALLOON_SETTLE_PROGRESS_GRACE: Duration = Duration::from_secs(5);
+/// Fast-start poll intervals while waiting for balloon inflation.
+const BALLOON_SETTLE_FAST_POLL_INTERVALS: [Duration; 7] = [
+    Duration::from_millis(25),
+    Duration::from_millis(50),
+    Duration::from_millis(100),
+    Duration::from_millis(100),
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(200),
+];
+/// Maximum poll interval while waiting for balloon inflation.
+const BALLOON_SETTLE_MAX_POLL: Duration = Duration::from_millis(500);
 /// Upper bound for accepting residual differences between requested and
 /// reported balloon size. Current 4 GiB production profiles commonly settle
 /// with low-hundreds MiB residuals when the guest reports little available
@@ -3062,6 +3188,7 @@ struct BalloonSettleSummary {
     last_observed_target_mib: Option<u32>,
     target_observed: bool,
     first_actual_mib: Option<u32>,
+    previous_actual_mib: Option<u32>,
     last_actual_mib: Option<u32>,
     max_actual_mib: Option<u32>,
     last_deficit_mib: Option<u32>,
@@ -3080,6 +3207,7 @@ impl BalloonSettleSummary {
             last_observed_target_mib: None,
             target_observed: false,
             first_actual_mib: None,
+            previous_actual_mib: None,
             last_actual_mib: None,
             max_actual_mib: None,
             last_deficit_mib: None,
@@ -3097,6 +3225,7 @@ impl BalloonSettleSummary {
         self.last_observed_target_mib = Some(stats.target_mib);
         self.target_observed |= stats.target_mib == self.requested_target_mib;
         self.first_actual_mib.get_or_insert(stats.actual_mib);
+        self.previous_actual_mib = self.last_actual_mib;
         self.last_actual_mib = Some(stats.actual_mib);
         self.max_actual_mib = Some(
             self.max_actual_mib
@@ -3165,6 +3294,31 @@ impl BalloonSettleSummary {
                 .is_some_and(|deficit| deficit >= self.severe_deficit_threshold_mib())
     }
 
+    fn can_extend_for_progress(&self) -> bool {
+        let (
+            Some(previous_actual_mib),
+            Some(last_actual_mib),
+            Some(deficit_mib),
+            Some(free_mib),
+            Some(available_mib),
+        ) = (
+            self.previous_actual_mib,
+            self.last_actual_mib,
+            self.last_deficit_mib,
+            self.reported_free_mib(),
+            self.reported_available_mib(),
+        )
+        else {
+            return false;
+        };
+
+        self.is_severe_deficit()
+            && self.last_observed_target_mib == Some(self.requested_target_mib)
+            && last_actual_mib > previous_actual_mib
+            && free_mib >= i64::from(deficit_mib)
+            && available_mib >= i64::from(deficit_mib) + balloon::PRESSURE_AVAILABLE_MIB
+    }
+
     fn park_outcome(&self) -> SandboxParkOutcome {
         if self.is_severe_deficit() {
             SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
@@ -3194,6 +3348,7 @@ fn log_balloon_settle_timeout(
     log_id: &str,
     target_mib: u32,
     tolerance_mib: u32,
+    settle_timeout: Duration,
     summary: &BalloonSettleSummary,
     outcome: SandboxParkOutcome,
 ) {
@@ -3218,7 +3373,27 @@ fn log_balloon_settle_timeout(
         reason = summary.reason(),
         admission_action = park_admission_action(outcome),
         "balloon inflate incomplete after {}s, pausing anyway",
-        BALLOON_SETTLE_TIMEOUT.as_secs()
+        settle_timeout.as_secs()
+    );
+}
+
+fn log_balloon_settle_progress_grace(
+    log_id: &str,
+    target_mib: u32,
+    summary: &BalloonSettleSummary,
+) {
+    info!(
+        id = %log_id,
+        actual = ?summary.last_actual_mib,
+        target = target_mib,
+        deficit_mib = ?summary.last_deficit_mib,
+        elapsed_ms = summary.elapsed_ms(),
+        sample_count = summary.sample_count,
+        previous_actual_mib = ?summary.previous_actual_mib,
+        reported_free_mib = ?summary.reported_free_mib(),
+        reported_available_mib = ?summary.reported_available_mib(),
+        grace_ms = duration_ms(BALLOON_SETTLE_PROGRESS_GRACE),
+        "balloon inflation still progressing, extending settle deadline"
     );
 }
 
@@ -3235,19 +3410,37 @@ fn park_admission_action(outcome: SandboxParkOutcome) -> &'static str {
 /// **before** pausing. Returns when `actual_mib >= target_mib`, when
 /// the remaining deficit is within [`balloon_settle_tolerance_mib`],
 /// when guest pressure indicates further reclaim is unsafe, or after
-/// [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better than none). The
-/// returned outcome rejects only the existing severe-deficit classification.
-/// Errors from stats fetching are non-fatal — we log and
-/// proceed to pause.
+/// [`BALLOON_SETTLE_TIMEOUT`]. A severe deficit that is still progressing with
+/// enough unused guest memory gets one bounded
+/// [`BALLOON_SETTLE_PROGRESS_GRACE`]. The returned outcome rejects only the
+/// existing severe-deficit classification. Errors from stats fetching are
+/// non-fatal — we log and proceed to pause.
 async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> SandboxParkOutcome {
-    let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
+    let mut settle_timeout = BALLOON_SETTLE_TIMEOUT;
+    let mut deadline = summary.started_at + settle_timeout;
+    let mut progress_grace_used = false;
+    let mut fast_poll_intervals = BALLOON_SETTLE_FAST_POLL_INTERVALS.into_iter();
     loop {
         if tokio::time::Instant::now() >= deadline {
-            let outcome = summary.park_outcome();
-            log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary, outcome);
-            return outcome;
+            if !progress_grace_used && summary.can_extend_for_progress() {
+                progress_grace_used = true;
+                settle_timeout += BALLOON_SETTLE_PROGRESS_GRACE;
+                deadline = summary.started_at + settle_timeout;
+                log_balloon_settle_progress_grace(log_id, target_mib, &summary);
+            } else {
+                let outcome = summary.park_outcome();
+                log_balloon_settle_timeout(
+                    log_id,
+                    target_mib,
+                    tolerance_mib,
+                    settle_timeout,
+                    &summary,
+                    outcome,
+                );
+                return outcome;
+            }
         }
 
         match tokio::time::timeout_at(deadline, client.get_balloon_statistics()).await {
@@ -3366,12 +3559,22 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
             }
             Err(_) => {
                 let outcome = summary.park_outcome();
-                log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary, outcome);
+                log_balloon_settle_timeout(
+                    log_id,
+                    target_mib,
+                    tolerance_mib,
+                    settle_timeout,
+                    &summary,
+                    outcome,
+                );
                 return outcome;
             }
         }
 
-        let next_poll = tokio::time::Instant::now() + BALLOON_SETTLE_POLL;
+        let poll_interval = fast_poll_intervals
+            .next()
+            .unwrap_or(BALLOON_SETTLE_MAX_POLL);
+        let next_poll = tokio::time::Instant::now() + poll_interval;
         tokio::time::sleep_until(if next_poll < deadline {
             next_poll
         } else {

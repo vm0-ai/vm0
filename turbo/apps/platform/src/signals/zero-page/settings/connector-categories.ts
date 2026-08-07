@@ -27,7 +27,7 @@ function fallbackCategoryLabel(category: string): string {
       return part.charAt(0).toUpperCase() + part.slice(1);
     })
     .join(" ");
-  return label || "Other";
+  return label;
 }
 
 function sortedCategoryConnectors<
@@ -53,6 +53,7 @@ export function groupConnectorsByCategory<
 >(
   connectors: readonly T[],
   categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined,
+  otherCategoryLabel = "Other",
 ): ConnectorCategoryGroup<T>[] {
   const grouped = new Map<string, T[]>();
 
@@ -91,7 +92,7 @@ export function groupConnectorsByCategory<
     if (groupedCategoryIds.has(category)) {
       continue;
     }
-    const label = fallbackCategoryLabel(category);
+    const label = fallbackCategoryLabel(category) || otherCategoryLabel;
     categorySections.push({
       category,
       label,
@@ -134,9 +135,10 @@ export function groupConnectorsByCategory<
     }
 
     const metadata = groupMetadata.get(section.groupId);
-    const label = metadata?.label ?? fallbackCategoryLabel(section.groupId);
-    const menuLabel =
-      metadata?.menuLabel ?? fallbackCategoryLabel(section.groupId);
+    const fallbackGroupLabel =
+      fallbackCategoryLabel(section.groupId) || otherCategoryLabel;
+    const label = metadata?.label ?? fallbackGroupLabel;
+    const menuLabel = metadata?.menuLabel ?? fallbackGroupLabel;
     groups.push({
       id: section.groupId,
       kind: "group",

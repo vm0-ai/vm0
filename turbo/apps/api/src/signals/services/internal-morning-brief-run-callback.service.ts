@@ -12,7 +12,7 @@ import { logger } from "../../lib/log";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { downloadS3BufferWithMaxBytes } from "../external/s3";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeJsonParse, safeUrlParse, settle } from "../utils";
 import type {
   InternalRunCallbackDispatchResult,
@@ -246,6 +246,19 @@ export async function handleMorningBriefEmailInternalCallback(
     .limit(1);
   if (!delivery) {
     return { success: false, error: "Morning brief delivery not found" };
+  }
+  if (
+    envelope.status === "failed" &&
+    delivery.status === "failed" &&
+    delivery.error === null
+  ) {
+    await markDelivery(
+      db,
+      deliveryId,
+      "failed",
+      envelope.error ?? "Run failed",
+    );
+    return { success: true };
   }
   // Idempotency guard: retried callbacks after a terminal state are no-ops.
   if (delivery.status !== "running" && delivery.status !== "collecting") {

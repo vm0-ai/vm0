@@ -3,39 +3,80 @@ import type {
   LogStatus,
   TriggerSource,
 } from "@vm0/api-contracts/contracts/logs";
+import { i18n } from "../../i18n/index.ts";
 
 // Re-export from core contract to stay in sync with the API schema
 export type { LogStatus, TriggerSource };
 
-/** Human-readable labels for each trigger source, shared across activity views. */
-export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
-  web: "Web",
-  slack: "Slack",
-  teams: "Teams",
-  feishu: "Feishu",
-  email: "Email",
-  telegram: "Telegram",
-  agentphone: "AgentPhone",
-  github: "GitHub",
-  cli: "CLI",
-  agent: "Agent",
-  webhook: "Webhook",
-  "workflow-schedule": "Workflow schedule",
-  "workflow-event": "Workflow event",
-};
-
-/**
- * Build a display label for a trigger source.
- * For "agent" sources with a known parent agent name, returns "Agent (name)".
- */
-export function getTriggerSourceLabel(
-  source: TriggerSource,
-  triggerAgentName?: string | null,
-): string {
-  if (source === "agent" && triggerAgentName) {
-    return `Agent (${triggerAgentName})`;
+/** Build a display label for a trigger source. */
+export function getTriggerSourceLabel(source: TriggerSource): string {
+  switch (source) {
+    case "web": {
+      return i18n.t(($) => {
+        return $.activity.sources.web;
+      });
+    }
+    case "slack": {
+      return i18n.t(($) => {
+        return $.activity.sources.slack;
+      });
+    }
+    case "teams": {
+      return i18n.t(($) => {
+        return $.activity.sources.teams;
+      });
+    }
+    case "feishu": {
+      return i18n.t(($) => {
+        return $.activity.sources.feishu;
+      });
+    }
+    case "email": {
+      return i18n.t(($) => {
+        return $.activity.sources.email;
+      });
+    }
+    case "telegram": {
+      return i18n.t(($) => {
+        return $.activity.sources.telegram;
+      });
+    }
+    case "agentphone": {
+      return i18n.t(($) => {
+        return $.activity.sources.agentphone;
+      });
+    }
+    case "github": {
+      return i18n.t(($) => {
+        return $.activity.sources.github;
+      });
+    }
+    case "test": {
+      return i18n.t(($) => {
+        return $.activity.sources.test;
+      });
+    }
+    case "agent": {
+      return i18n.t(($) => {
+        return $.activity.sources.agent;
+      });
+    }
+    case "webhook": {
+      return i18n.t(($) => {
+        return $.activity.sources.webhook;
+      });
+    }
+    case "workflow-schedule": {
+      return i18n.t(($) => {
+        return $.activity.sources.workflowSchedule;
+      });
+    }
+    case "workflow-event": {
+      return i18n.t(($) => {
+        return $.activity.sources.workflowEvent;
+      });
+    }
   }
-  return TRIGGER_SOURCE_LABELS[source];
 }
 
 // List response - contains basic fields for list display
@@ -46,7 +87,6 @@ export interface LogEntry {
   displayName: string | null;
   framework: string | null;
   triggerSource: TriggerSource | null;
-  triggerAgentName: string | null;
   status: LogStatus;
   prompt: string;
   createdAt: string;
@@ -69,7 +109,6 @@ export interface LogDetail {
   modelProvider: string | null;
   selectedModel: string | null;
   triggerSource: TriggerSource | null;
-  triggerAgentName: string | null;
   status: LogStatus;
   prompt: string;
   appendSystemPrompt: string | null;

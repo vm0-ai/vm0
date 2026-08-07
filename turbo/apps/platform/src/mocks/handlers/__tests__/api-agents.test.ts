@@ -15,7 +15,7 @@ describe("api agents mock handlers", () => {
     await accept(
       client.update({
         params: { id: agentId },
-        body: { enabledTypes: ["github"], operation: "add" },
+        body: { enabledConnectorSlugs: ["github"], operation: "add" },
       }),
       [200],
     );
@@ -23,11 +23,11 @@ describe("api agents mock handlers", () => {
     const updated = await accept(
       client.update({
         params: { id: agentId },
-        body: { enabledTypes: ["slack"], operation: "add" },
+        body: { enabledConnectorSlugs: ["slack"], operation: "add" },
       }),
       [200],
     );
-    expect(new Set(updated.body.enabledTypes)).toStrictEqual(
+    expect(new Set(updated.body.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
 
@@ -35,7 +35,7 @@ describe("api agents mock handlers", () => {
       client.get({ params: { id: agentId } }),
       [200],
     );
-    expect(new Set(readBack.body.enabledTypes)).toStrictEqual(
+    expect(new Set(readBack.body.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
   });

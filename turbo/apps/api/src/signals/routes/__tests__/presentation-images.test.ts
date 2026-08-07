@@ -3,12 +3,14 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { presentationImagesRoutes } from "../presentation-images";
 
 const context = testContext();
 const routeMocks = createZeroRouteMocks(context);
@@ -136,7 +138,9 @@ describe("POST /api/presentation/images/resolve", () => {
       ),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -248,7 +252,9 @@ describe("POST /api/presentation/images/resolve", () => {
       }),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -282,7 +288,9 @@ describe("POST /api/presentation/images/resolve", () => {
       }),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -309,7 +317,9 @@ describe("POST /api/presentation/images/resolve", () => {
   it("returns 503 when no image provider is configured", async () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -331,7 +341,9 @@ describe("POST /api/presentation/images/resolve", () => {
   it("requires file write capability for zero tokens", async () => {
     const fixture = createFixture();
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: {

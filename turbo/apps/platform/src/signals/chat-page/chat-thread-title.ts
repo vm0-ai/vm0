@@ -1,13 +1,13 @@
 export const CHAT_THREAD_EMOJI_OPTIONS = [
-  { emoji: "✅", label: "Done" },
-  { emoji: "🔥", label: "Urgent" },
-  { emoji: "❌", label: "No" },
-  { emoji: "⚠️", label: "Risk" },
-  { emoji: "💡", label: "Idea" },
-  { emoji: "❓", label: "Question" },
-  { emoji: "⏳", label: "Waiting" },
-  { emoji: "👀", label: "Watching" },
-  { emoji: "🚀", label: "Shipped" },
+  { emoji: "✅" },
+  { emoji: "🔥" },
+  { emoji: "❌" },
+  { emoji: "⚠️" },
+  { emoji: "💡" },
+  { emoji: "❓" },
+  { emoji: "⏳" },
+  { emoji: "👀" },
+  { emoji: "🚀" },
 ] as const;
 
 const CHAT_THREAD_EMOJI_PATTERN =

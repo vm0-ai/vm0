@@ -13,17 +13,18 @@ import {
   zeroAgentsByIdContract,
   zeroAgentDraftContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { resetSignal } from "../../../signals/utils.ts";
+import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const THREAD_ONE_ID = "b0000000-0000-4000-a000-000000000801";
@@ -96,11 +97,11 @@ function mockThreadDetails(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -196,7 +197,6 @@ describe("chat drafts", () => {
     mockAgentChatPage(agentId);
     context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
       return respond(200, {
-        draftContent: `Resume the ${params.id} launch notes`,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -239,6 +239,72 @@ describe("chat drafts", () => {
     });
   });
 
+  it("keeps local edits made while an agent draft is loading", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000112";
+    const draftResponse = createDeferredPromise<void>(context.signal);
+    let draftRequested = false;
+    mockAgentChatPage(agentId);
+    context.mocks.api(zeroAgentDraftContract.get, async ({ respond }) => {
+      draftRequested = true;
+      await draftResponse.promise;
+      return respond(200, {
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "stale-agent-draft-image",
+              filenameSnapshot: "lightbox.svg",
+              contentType: "image/svg+xml",
+            },
+          ],
+        },
+        draftAttachments: [
+          {
+            id: "stale-agent-draft-image",
+            filename: "lightbox.svg",
+            contentType: "image/svg+xml",
+            size: 64,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/lightbox.svg",
+          },
+        ],
+      });
+    });
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(200, {
+        concurrency: {
+          tier: "pro",
+          limit: 2,
+          active: 0,
+          available: 2,
+        },
+        queue: [],
+        runningTasks: [],
+        estimatedTimePerRun: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat?queue=1`,
+    });
+
+    const editor = await findComposerEditor();
+    await waitFor(() => {
+      expect(draftRequested).toBeTruthy();
+    });
+    await fillComposer(editor, "Local draft created while loading");
+    draftResponse.resolve();
+
+    await screen.findByRole("heading", {
+      name: "Your agent is waiting in line",
+    });
+    await expect(findComposerEditor()).resolves.toHaveTextContent(
+      "Local draft created while loading",
+    );
+    expect(screen.queryByLabelText("Remove lightbox.svg")).toBeNull();
+  });
+
   it("loads an agent feedback draft from the canonical API", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000111";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000111";
@@ -259,7 +325,6 @@ describe("chat drafts", () => {
     mockAgentChatPage(agentId);
     context.mocks.http.get("*/api/zero/agents/:id/draft", () => {
       return HttpResponse.json({
-        draftContent: "stale legacy agent draft",
         draftUserMessage: {
           version: 1,
           parts: [
@@ -332,7 +397,6 @@ describe("chat drafts", () => {
     mockAgentChatPage(agentId);
     context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       });
@@ -358,7 +422,6 @@ describe("chat drafts", () => {
 
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
-          draftContent: "agent-level draft",
           draftUserMessage: {
             version: 1,
             parts: [{ type: "text", text: "agent-level draft" }],
@@ -372,7 +435,6 @@ describe("chat drafts", () => {
 
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
-          draftContent: null,
           draftUserMessage: null,
           draftAttachments: null,
         });
@@ -406,7 +468,6 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: "thread-level draft",
         draftUserMessage: {
           version: 1,
           parts: [{ type: "text", text: "thread-level draft" }],
@@ -420,7 +481,6 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       });
@@ -470,13 +530,11 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
       if (params.id !== THREAD_ONE_ID) {
         return respond(200, {
-          draftContent: null,
           draftUserMessage: null,
           draftAttachments: null,
         });
       }
       return respond(200, {
-        draftContent: `Feedback on this part of your reply:\n\n> ${quote}\n\n${note}`,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -527,11 +585,11 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: "Review the saved launch brief",
         draftUserMessage: {
           version: 1,
           parts: [
@@ -592,10 +650,12 @@ describe("chat drafts", () => {
       },
     };
 
-    mockChatLifecycle(context, { threadId });
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "claude-sonnet-4-6",
+    });
     context.mocks.http.get("*/api/zero/chat-threads/:id/draft", () => {
       return HttpResponse.json({
-        draftContent: "stale legacy draft",
         draftUserMessage: {
           version: 1,
           parts: [
@@ -659,8 +719,8 @@ describe("chat drafts", () => {
         ),
       ).toHaveTextContent("Launch research");
       expect(
-        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
-      ).toBeInTheDocument();
+        editor.querySelector("[data-composer-inline-template]"),
+      ).toHaveTextContent(illustrationTemplate.title);
       const feedbackItem = editor.querySelector("[data-feedback-item]");
       expect(feedbackItem).toHaveTextContent("The launch sequence is vague");
       expect(feedbackItem).toHaveTextContent(
@@ -688,24 +748,21 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent:
-          `Review [Launch research](/chats/${referencedThreadId}) now\n\n` +
-          "Feedback on this part of your reply:\n\n" +
-          "> The launch sequence is vague\n\n" +
-          `Add the rollout dates from [Release notes](/chats/${feedbackReferencedThreadId})`,
         draftUserMessage: {
           version: 1,
           parts: [
-            {
-              type: "template",
-              titleSnapshot: illustrationTemplate.title,
-              template,
-            },
+            // Elevated file parts lead the document; the inline template keeps
+            // its place in the text flow behind them.
             {
               type: "file",
               fileId: secondAttachment.id,
               filenameSnapshot: secondAttachment.filename,
               contentType: secondAttachment.contentType,
+            },
+            {
+              type: "template",
+              titleSnapshot: illustrationTemplate.title,
+              template,
             },
             { type: "text", text: "Review " },
             {
@@ -746,11 +803,11 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: "Review the saved launch brief",
         draftUserMessage: {
           version: 1,
           parts: [
@@ -807,7 +864,6 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: "Review the updated launch brief",
         draftUserMessage: {
           version: 1,
           parts: [
@@ -854,7 +910,6 @@ describe("chat drafts", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(textarea().textContent ?? "").toBe("");
       expect(draftPatches).toContainEqual({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       });
@@ -874,26 +929,38 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
-      return HttpResponse.json({
-        id: "upload-photo",
-        filename: "photo.png",
-        contentType: "image/png",
-        size: 1024,
-        uploadUrl: "https://mock-upload.example.com/photo.png",
-        url: "https://example.com/photo.png",
-      });
-    });
+    context.mocks.http.post(
+      "*/api/zero/uploads/prepare",
+      async ({ request }) => {
+        await expect(request.json()).resolves.toMatchObject({
+          filename: "photo.png",
+        });
+        return HttpResponse.json({
+          id: "upload-photo",
+          filename: "photo.png",
+          contentType: "image/png",
+          size: 1024,
+          uploadUrl: "https://mock-upload.example.com/photo.png",
+          uploadHeaders: {
+            "x-amz-meta-artifact-id": "upload-photo",
+          },
+          url: "https://example.com/photo.png",
+        });
+      },
+    );
     context.mocks.http.put(
       "https://mock-upload.example.com/photo.png",
-      ({ deferred }) => {
+      ({ deferred, request }) => {
+        expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
+          "upload-photo",
+        );
         uploadStarted.resolve();
-        const request = deferred<Response>();
+        const pendingResponse = deferred<Response>();
         uploadRequest = {
-          promise: request.promise,
-          resolve: request.resolve,
+          promise: pendingResponse.promise,
+          resolve: pendingResponse.resolve,
         };
-        return request.promise;
+        return pendingResponse.promise;
       },
     );
 
@@ -950,6 +1017,7 @@ describe("chat drafts", () => {
             contentType: "text/plain",
             size: 2,
             uploadUrl: "https://mock-upload.example.com/ok.txt",
+            uploadHeaders: {},
             url: "https://example.com/ok.txt",
           });
         }
@@ -959,6 +1027,7 @@ describe("chat drafts", () => {
           contentType: "text/plain",
           size: 6,
           uploadUrl: "https://mock-upload.example.com/failed.txt",
+          uploadHeaders: {},
           url: "https://example.com/failed.txt",
         });
       },
@@ -1093,60 +1162,6 @@ describe("chat drafts", () => {
         uploadId: "multipart-upload-1",
         partCount: 2,
       });
-    });
-  });
-
-  it("falls back to a legacy single PUT response during API rollout", async () => {
-    const user = userEvent.setup({ delay: null });
-    let prepareBody: unknown = null;
-    let uploadedSize = 0;
-
-    context.mocks.data.userModelPreference({
-      selectedModel: "claude-sonnet-4-6",
-      updatedAt: "2026-03-10T00:00:00Z",
-    });
-    mockThreadDetails();
-    context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
-      async ({ request }) => {
-        prepareBody = await request.json();
-        return HttpResponse.json({
-          id: "3b649e8a-c608-4355-a7d9-12e21af26df5",
-          filename: "legacy.mp4",
-          contentType: "video/mp4",
-          size: 5 * 1024 * 1024 + 1,
-          uploadUrl: "https://mock-upload.example.com/legacy.mp4",
-          url: "https://example.com/legacy.mp4",
-        });
-      },
-    );
-    context.mocks.http.put(
-      "https://mock-upload.example.com/legacy.mp4",
-      async ({ request }) => {
-        uploadedSize = (await request.arrayBuffer()).byteLength;
-        return new HttpResponse(null, { status: 200 });
-      },
-    );
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
-
-    await waitFor(() => {
-      expect(textarea()).toBeInTheDocument();
-    });
-
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(
-      fileInput,
-      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "legacy.mp4", {
-        type: "video/mp4",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove legacy.mp4")).toBeInTheDocument();
-      expect(prepareBody).toMatchObject({ multipart: true });
-      expect(uploadedSize).toBe(5 * 1024 * 1024 + 1);
     });
   });
 
@@ -1346,6 +1361,7 @@ describe("chat drafts", () => {
           contentType: "application/pdf",
           size: 11,
           uploadUrl: "https://mock-upload.example.com/launch-plan.pdf",
+          uploadHeaders: {},
           url: "https://example.com/launch-plan.pdf",
         });
       },

@@ -1,14 +1,19 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroAvatarVideoContract } from "@vm0/api-contracts/contracts/zero-avatar-video";
+import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { ILLUSTRATION_TEMPLATE_ITEMS, VIDEO_TEMPLATE_ITEMS } from "@vm0/core";
 
 import {
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { findComposerEditor } from "./chat-composer-test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -27,7 +32,7 @@ describe("user messages", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Inline template rendering",
-      chatMessages: [
+      chatEvents: [
         {
           id: "00000000-0000-4000-8000-000000000748",
           role: "user",
@@ -65,9 +70,6 @@ describe("user messages", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
     });
 
     const userMessageElement = await waitFor(() => {
@@ -112,13 +114,180 @@ describe("user messages", () => {
     ).toBeNull();
   });
 
+  it("echoes the video parameters a sent template used", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000750";
+    const templateItem = VIDEO_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Sent video template",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000750",
+          role: "user",
+          content: "Make the clip",
+          runId: "d0000000-0000-4000-a000-000000000750",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: templateItem.title,
+                template: {
+                  type: "video",
+                  selection: {
+                    stylePresetId: templateItem.id,
+                    // Only the ratio was changed; the duration still resolves
+                    // from the catalog.
+                    videoOptions: { aspectRatio: "9:16" },
+                  },
+                },
+              },
+              { type: "text", text: "Make the clip" },
+            ],
+          },
+          createdAt: "2026-08-07T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+      },
+    });
+
+    const reference = await screen.findByLabelText(
+      `Message template ${templateItem.title}`,
+    );
+    expect(reference).toHaveTextContent("9:16 \u00b7 8s");
+  });
+
+  it("opens avatar message templates at the voice picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000749";
+    const avatar = {
+      id: 81,
+      name: "Ada",
+      coverUrl: "https://example.com/ada.jpg",
+    };
+    const voice = {
+      id: "en-US-ChristopherNeural",
+      name: "Christopher",
+      sampleUrl: "https://example.com/christopher.mp3",
+      language: "English",
+      gender: "male",
+    };
+    const avatarOptions = {
+      titleSnapshot: avatar.name,
+      previewUrl: avatar.coverUrl,
+      voiceId: voice.id,
+      aspectRatio: "landscape" as const,
+    };
+    // The stored message predates avatarOptions, so it carries only the flat
+    // fields; reopening it must still resolve the avatar and its voice.
+    const template = {
+      type: "video" as const,
+      selection: {
+        stylePresetId: avatarTemplateStylePresetId(avatar.id),
+        ...avatarOptions,
+      },
+    };
+    context.mocks.api(zeroAvatarVideoContract.voices, ({ respond }) => {
+      return respond(200, {
+        voices: [voice],
+        hasMore: false,
+        filterOptions: { languages: ["english"], useCases: [] },
+      });
+    });
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Avatar template reference",
+      onRunCreate(body) {
+        const templatePart = body.userMessage?.parts.find((part) => {
+          return part.type === "template";
+        });
+        submittedTemplate =
+          templatePart?.type === "template" ? templatePart.template : undefined;
+      },
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000749",
+          role: "user",
+          content: "Create an avatar video",
+          runId: "d0000000-0000-4000-a000-000000000749",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: avatar.name,
+                template,
+              },
+              { type: "text", text: "Create an avatar video" },
+            ],
+          },
+          createdAt: "2026-08-05T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.JoggAiBuiltIn]: true,
+      },
+    });
+
+    await screen.findByLabelText("Template");
+    const editor = await findComposerEditor();
+    await fill(editor, "Reuse this avatar template");
+    await user.click(
+      await screen.findByLabelText(`Message template ${avatar.name}`),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    await expect(
+      within(dialog).findByText(`Choose a voice for ${avatar.name}`),
+    ).resolves.toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText(`Select voice ${voice.name}`),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(dialog).queryByLabelText(`Select template ${avatar.name}`),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByLabelText(`Select voice ${voice.name}`),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Preview template ${avatar.name}`),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    // Re-selecting the voice rewrites the selection, which now nests the
+    // options and mirrors them flat.
+    await waitFor(() => {
+      expect(submittedTemplate).toStrictEqual({
+        ...template,
+        selection: { ...template.selection, avatarOptions },
+      });
+    });
+  });
+
   it("renders ordered snapshots with literal Markdown text", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000741";
     const referencedThreadId = "b0000000-0000-4000-a000-000000000742";
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Structured message rendering",
-      chatMessages: [
+      chatEvents: [
         {
           id: "00000000-0000-4000-8000-000000000741",
           role: "user",
@@ -222,7 +391,7 @@ describe("user messages", () => {
       return element as HTMLElement;
     });
     expect(userMessageElement.textContent).toBe(
-      "Start Archived source with PDForiginal-report.pdf, then " +
+      "Archived deckStart Archived source with , then " +
         "TXTdeleted-notes.txt.\n" +
         "Use **literal** <span>.",
     );
@@ -234,27 +403,34 @@ describe("user messages", () => {
     expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
     const template = screen.getByLabelText("Message template Archived deck");
     const image = screen.getByLabelText("Preview reference.png");
-    expect(template).toBeInTheDocument();
     expect(image).toBeInTheDocument();
-    expect(
-      template.compareDocumentPosition(userMessageElement) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // Templates render inline at their position in the message, so the chip
+    // stays inside the bubble instead of being elevated above it.
+    expect(userMessageElement).toContainElement(template);
     expect(
       image.compareDocumentPosition(userMessageElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // Resolved files leave the bubble too, so they show the live filename
+    // rather than the snapshot the message was written with.
+    const pdf = screen.getByLabelText(
+      "Open pdf preview for renamed-report.pdf",
+    );
     expect(
-      userMessageElement.querySelector(
-        'button[aria-label="Open pdf preview for original-report.pdf"]',
+      within(screen.getByTestId("message-file-attachments")).getByLabelText(
+        "Open pdf preview for renamed-report.pdf",
       ),
-    ).toBeInTheDocument();
+    ).toBe(pdf);
+    expect(
+      pdf.compareDocumentPosition(userMessageElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getByLabelText("File deleted-notes.txt")).toBeInTheDocument();
     expect(
       screen.queryByText("Legacy structured body should stay hidden"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Retired template")).not.toBeInTheDocument();
-    expect(screen.queryByText("renamed-report.pdf")).not.toBeInTheDocument();
+    expect(screen.queryByText("original-report.pdf")).not.toBeInTheDocument();
 
     const literalMarkdown = await screen.findByText(
       "Canonical **bold** remains",
@@ -275,7 +451,7 @@ describe("user messages", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Structured feedback group",
-      chatMessages: [
+      chatEvents: [
         {
           id: "00000000-0000-4000-8000-000000000746",
           role: "user",
@@ -351,5 +527,235 @@ describe("user messages", () => {
     expect(group).not.toHaveTextContent(`/chats/${referencedThreadId}`);
     expect(screen.getByText("Before feedback.")).toBeInTheDocument();
     expect(screen.getByText("After feedback.")).toBeInTheDocument();
+  });
+
+  it("renders agent mentions as chips in messages and feedback notes", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000749";
+    const mentionedAgentId = "a1000000-0000-4000-a000-000000000009";
+    const mentionedAgentAvatarUrl = "https://example.com/ada-agent-avatar.png";
+    context.mocks.data.team([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: mentionedAgentId,
+        displayName: "Ada",
+        description: null,
+        sound: null,
+        avatarUrl: mentionedAgentAvatarUrl,
+        headVersionId: "version_2",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Agent mention rendering",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000749",
+          role: "user",
+          content: `Ask [Ada](/agents/${mentionedAgentId}/chat) about it.`,
+          runId: "d0000000-0000-4000-a000-000000000749",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Ask " },
+              {
+                type: "agent",
+                agentId: mentionedAgentId,
+                nameSnapshot: "Ada",
+              },
+              { type: "text", text: " about it." },
+              {
+                type: "feedback",
+                quote: "The rollout needs a reviewer",
+                note: [
+                  { type: "text", text: "Loop in " },
+                  {
+                    type: "agent",
+                    agentId: mentionedAgentId,
+                    nameSnapshot: "Ada",
+                  },
+                  { type: "text", text: "." },
+                ],
+              },
+            ],
+          },
+          createdAt: "2026-07-30T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const userMessageElement = await waitFor(() => {
+      const element = document.querySelector("[data-structured-user-message]");
+      expect(element).toBeInstanceOf(HTMLElement);
+      return element as HTMLElement;
+    });
+    const agentLinks = userMessageElement.querySelectorAll(
+      'a[aria-label="Open agent Ada"]',
+    );
+    expect(agentLinks).toHaveLength(2);
+    await waitFor(() => {
+      for (const agentLink of agentLinks) {
+        expect(agentLink.querySelector("img")).toHaveAttribute(
+          "src",
+          mentionedAgentAvatarUrl,
+        );
+      }
+    });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    for (const agentLink of agentLinks) {
+      expect(agentLink.querySelector("img")).not.toHaveClass("bg-muted");
+    }
+    expect(agentLinks[0]).toHaveAttribute(
+      "href",
+      `/agents/${mentionedAgentId}/chat`,
+    );
+    expect(agentLinks[0]).toHaveTextContent("Ada");
+    expect(userMessageElement).not.toHaveTextContent(
+      `/agents/${mentionedAgentId}/chat`,
+    );
+    expect(
+      userMessageElement.querySelector("[data-structured-feedback-group]"),
+    ).toBeInstanceOf(HTMLElement);
+  });
+
+  it("renders agent-run source annotations with avatar, link, and run anchor", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000750";
+    const sourceThreadId = "b0000000-0000-4000-a000-000000000751";
+    const sourceRunId = "d0000000-0000-4000-a000-000000000751";
+    const targetRunId = "d0000000-0000-4000-a000-000000000750";
+    const sourceAgentId = "a1000000-0000-4000-a000-000000000010";
+    const sourceAgentAvatarUrl = "https://example.com/source-agent-avatar.png";
+    context.mocks.data.team([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: sourceAgentId,
+        displayName: "Source agent",
+        description: null,
+        sound: null,
+        avatarUrl: sourceAgentAvatarUrl,
+        headVersionId: "version_2",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delegated work",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000750",
+          role: "user",
+          content: "Delegated prompt",
+          runId: targetRunId,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Delegated prompt" },
+              {
+                type: "source",
+                kind: "agent",
+                runId: sourceRunId,
+                threadId: sourceThreadId,
+                agentId: sourceAgentId,
+                titleSnapshot: "Source thread",
+                href: `/chats/${sourceThreadId}#run-${sourceRunId}`,
+              },
+            ],
+          },
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const sourceLink = await waitFor(() => {
+      const found = queryAllByRoleFast("link").find((element) => {
+        return element.getAttribute("aria-label") === "Open chat Source thread";
+      });
+      if (!found) {
+        throw new Error("Expected the agent source chat link");
+      }
+      return found;
+    });
+    expect(sourceLink).toHaveAttribute(
+      "href",
+      `/chats/${sourceThreadId}#run-${sourceRunId}`,
+    );
+    await waitFor(() => {
+      expect(sourceLink.querySelector("img")).toHaveAttribute(
+        "src",
+        sourceAgentAvatarUrl,
+      );
+    });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    expect(sourceLink.querySelector("img")).not.toHaveClass("bg-muted");
+    expect(document.getElementById(`run-${targetRunId}`)).toHaveAttribute(
+      "data-role",
+      "user",
+    );
+  });
+
+  it("renders Morning Brief metadata outside the message body", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000760";
+    const prompt = "Generate my Morning Brief for 2026-08-05.";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Morning Brief",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000760",
+          role: "user",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: prompt },
+              { type: "morning_brief", briefDate: "2026-08-05" },
+            ],
+          },
+          createdAt: "2026-08-05T07:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const annotation = await screen.findByLabelText("Morning Brief");
+    const messageBody = await waitFor(() => {
+      const element = document.querySelector("[data-structured-user-message]");
+      expect(element).toBeInstanceOf(HTMLElement);
+      return element as HTMLElement;
+    });
+    expect(messageBody.textContent).toBe(prompt);
+    expect(messageBody).not.toContainElement(annotation);
   });
 });

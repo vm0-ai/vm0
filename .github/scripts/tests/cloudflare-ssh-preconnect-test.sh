@@ -106,6 +106,19 @@ case "$FAKE_SSH_SCENARIO" in
       exit 255
     fi
     ;;
+  reconnect-window-success)
+    if [ "$count" -le 3 ]; then
+      echo "Connection closed by UNKNOWN port 65535 --secret super-secret" >&2
+      echo "TUNNEL_SERVICE_TOKEN_ID=client-id" >&2
+      exit 255
+    fi
+    ;;
+  timeout-success)
+    if [ "$count" -eq 1 ]; then
+      echo "Cloudflare SSH transport timed out --secret super-secret" >&2
+      exit 124
+    fi
+    ;;
   permanent)
     echo "Permission denied (publickey)." >&2
     echo "TUNNEL_SERVICE_TOKEN_SECRET=super-secret" >&2
@@ -149,16 +162,35 @@ printf '%s\n' "$*" >> "$FAKE_SLEEP_INVOCATIONS"
 EOF
 chmod +x "$fake_sleep"
 
+fake_timeout="$fake_bin/timeout"
+cat > "$fake_timeout" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$FAKE_TIMEOUT_INVOCATIONS"
+if [[ "${1:-}" == --kill-after=* ]]; then
+  shift
+fi
+shift
+exec "$@"
+EOF
+chmod +x "$fake_timeout"
+
 run_case() {
   local name="$1"
   local scenario="$2"
   local hosts="$3"
   local require_all_hosts="${4:-true}"
+  local control_path="${5:-}"
   local case_dir="$tmp/$name"
+  local -a preconnect_args=()
 
   mkdir -p "$case_dir/state" "$case_dir/runner-temp"
   : > "$case_dir/ssh-invocations"
   : > "$case_dir/sleep-invocations"
+  : > "$case_dir/timeout-invocations"
+  if [ -n "$control_path" ]; then
+    preconnect_args=(--control-path "$control_path")
+  fi
 
   local status=0
   PATH="$fake_bin:$PATH" \
@@ -166,9 +198,10 @@ run_case() {
   FAKE_SSH_SCENARIO="$scenario" \
   FAKE_SSH_STATE_DIR="$case_dir/state" \
   FAKE_SLEEP_INVOCATIONS="$case_dir/sleep-invocations" \
+  FAKE_TIMEOUT_INVOCATIONS="$case_dir/timeout-invocations" \
   GITHUB_STEP_SUMMARY="$case_dir/outer-summary" \
   RUNNER_TEMP="$case_dir/runner-temp" \
-  bash "$PRECONNECT" metal "$hosts" "$require_all_hosts" \
+  bash "$PRECONNECT" "${preconnect_args[@]}" metal "$hosts" "$require_all_hosts" \
     > "$case_dir/stdout" 2> "$case_dir/stderr" || status=$?
 
   printf '%s\n' "$status" > "$case_dir/status"
@@ -183,6 +216,8 @@ assert_not_contains "$tmp/transient/stderr" "super-secret"
 assert_not_contains "$tmp/transient/stderr" "client-id"
 assert_line_count "$tmp/transient/ssh-invocations" 2 "-n -M -N -f metal@dev-1.aws.vm3.ai"
 assert_line_count "$tmp/transient/ssh-invocations" 1 "-n -O check metal@dev-1.aws.vm3.ai"
+assert_contains "$tmp/transient/timeout-invocations" "--kill-after=5s 40s ssh -n -M -N -f metal@dev-1.aws.vm3.ai"
+assert_contains "$tmp/transient/timeout-invocations" "--kill-after=2s 5s ssh -n -O check metal@dev-1.aws.vm3.ai"
 assert_line_count "$tmp/transient/sleep-invocations" 1 "1"
 if [ -e "$tmp/transient/outer-summary" ]; then
   echo "expected recovered attempt not to write the job summary" >&2
@@ -190,6 +225,34 @@ if [ -e "$tmp/transient/outer-summary" ]; then
   exit 1
 fi
 assert_runner_temp_empty "$tmp/transient/runner-temp"
+
+run_case reconnect-window reconnect-window-success "dev-1.aws.vm3.ai"
+assert_contains "$tmp/reconnect-window/status" "0"
+assert_contains "$tmp/reconnect-window/stdout" "Established replay-safe SSH transport to dev-1.aws.vm3.ai"
+assert_contains "$tmp/reconnect-window/stderr" "attempt 3/4"
+assert_not_contains "$tmp/reconnect-window/stderr" "::error"
+assert_not_contains "$tmp/reconnect-window/stderr" "super-secret"
+assert_not_contains "$tmp/reconnect-window/stderr" "client-id"
+assert_line_count "$tmp/reconnect-window/ssh-invocations" 4 "-n -M -N -f metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/reconnect-window/ssh-invocations" 1 "-n -O check metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "1"
+assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "5"
+assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "15"
+if [ -e "$tmp/reconnect-window/outer-summary" ]; then
+  echo "expected recovered attempts not to write the job summary" >&2
+  cat "$tmp/reconnect-window/outer-summary" >&2
+  exit 1
+fi
+assert_runner_temp_empty "$tmp/reconnect-window/runner-temp"
+
+run_case timeout timeout-success "dev-1.aws.vm3.ai"
+assert_contains "$tmp/timeout/status" "0"
+assert_contains "$tmp/timeout/stderr" "::warning title=Retrying Cloudflare SSH preconnection::"
+assert_contains "$tmp/timeout/stderr" "Cloudflare SSH transport timed out --secret [redacted]"
+assert_not_contains "$tmp/timeout/stderr" "super-secret"
+assert_line_count "$tmp/timeout/ssh-invocations" 2 "-n -M -N -f metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/timeout/sleep-invocations" 1 "1"
+assert_runner_temp_empty "$tmp/timeout/runner-temp"
 
 run_case check-failure check-failure-success "dev-1.aws.vm3.ai"
 assert_contains "$tmp/check-failure/status" "0"
@@ -200,6 +263,20 @@ assert_line_count "$tmp/check-failure/ssh-invocations" 2 "-n -O check metal@dev-
 assert_line_count "$tmp/check-failure/ssh-invocations" 1 "-n -O exit metal@dev-1.aws.vm3.ai"
 assert_line_count "$tmp/check-failure/sleep-invocations" 1 "1"
 assert_runner_temp_empty "$tmp/check-failure/runner-temp"
+
+explicit_control_path="$tmp/explicit-check/runner-temp/recovery.sock"
+run_case explicit-check check-failure-success "dev-1.aws.vm3.ai" true "$explicit_control_path"
+assert_contains "$tmp/explicit-check/status" "0"
+assert_line_count "$tmp/explicit-check/ssh-invocations" 2 "-S $explicit_control_path -n -M -N -f metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/explicit-check/ssh-invocations" 2 "-S $explicit_control_path -n -O check metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/explicit-check/ssh-invocations" 1 "-S $explicit_control_path -n -O exit metal@dev-1.aws.vm3.ai"
+assert_contains "$tmp/explicit-check/timeout-invocations" "--kill-after=2s 5s ssh -S $explicit_control_path -n -O exit metal@dev-1.aws.vm3.ai"
+if [ ! -f "${explicit_control_path}.stderr" ]; then
+  echo "expected explicit recovery master diagnostics to remain addressable" >&2
+  exit 1
+fi
+rm -f "${explicit_control_path}.stderr"
+assert_runner_temp_empty "$tmp/explicit-check/runner-temp"
 
 run_case permanent permanent "dev-1.aws.vm3.ai"
 assert_contains "$tmp/permanent/status" "255"
@@ -251,14 +328,20 @@ assert_runner_temp_empty "$tmp/partial-best-effort/runner-temp"
 
 run_case exhaustion exhaustion "dev-1.aws.vm3.ai"
 assert_contains "$tmp/exhaustion/status" "255"
-assert_contains "$tmp/exhaustion/stderr" "retry limit reached after 3 attempts"
+assert_contains "$tmp/exhaustion/stderr" "retry limit reached after 4 attempts"
 assert_contains "$tmp/exhaustion/stderr" "--secret [redacted]"
 assert_contains "$tmp/exhaustion/stderr" "--id [redacted]"
 assert_not_contains "$tmp/exhaustion/stderr" "super-secret"
 assert_not_contains "$tmp/exhaustion/stderr" "client-id"
-assert_line_count "$tmp/exhaustion/ssh-invocations" 3 "-n -M -N -f metal@dev-1.aws.vm3.ai"
+if [ "$(grep -c '^::error' "$tmp/exhaustion/stderr")" -ne 1 ]; then
+  echo "expected one final error annotation after retry exhaustion" >&2
+  cat "$tmp/exhaustion/stderr" >&2
+  exit 1
+fi
+assert_line_count "$tmp/exhaustion/ssh-invocations" 4 "-n -M -N -f metal@dev-1.aws.vm3.ai"
 assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "1"
-assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "2"
+assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "5"
+assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "15"
 assert_runner_temp_empty "$tmp/exhaustion/runner-temp"
 
 run_case multiple success $' dev-1.aws.vm3.ai,dev-11.gcp.aws.vm3.ai\nDEV-1.AWS.VM3.AI '

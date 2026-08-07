@@ -293,7 +293,7 @@ function githubConnectSignaturePayload(args: {
   ].join(":");
 }
 
-export function signGithubConnectParams(args: {
+function signGithubConnectParams(args: {
   readonly installationId: string;
   readonly githubUserId: string;
   readonly timestamp: number;
@@ -322,7 +322,7 @@ export function verifyGithubConnectSignature(args: {
   return signaturesMatch(args.signature, expected);
 }
 
-export async function buildGithubOauthState(args: {
+async function buildGithubOauthState(args: {
   readonly vm0UserId?: string;
   readonly orgId?: string;
   readonly composeId?: string;
@@ -359,6 +359,38 @@ export function githubUserConnectCallbackRedirectUri(origin: string): string {
   return `${origin}/api/zero/github/oauth/connect/callback`;
 }
 
+function githubAppSetupCallbackRedirectUri(origin: string): string {
+  return `${origin}/api/github/app/setup/callback`;
+}
+
+export async function buildGithubAppInstallUrl(args: {
+  readonly appSlug: string;
+  readonly vm0UserId?: string;
+  readonly orgId?: string;
+  readonly composeId?: string;
+  readonly origin: string;
+  readonly secretsEncryptionKey: string;
+}): Promise<string> {
+  const state = await buildGithubOauthState({
+    vm0UserId: args.vm0UserId,
+    orgId: args.orgId,
+    composeId: args.composeId,
+    secretsEncryptionKey: args.secretsEncryptionKey,
+  });
+  const url = new URL(
+    `https://github.com/apps/${args.appSlug}/installations/new`,
+  );
+  if (state) {
+    url.searchParams.set("state", state);
+  }
+  url.searchParams.set(
+    "redirect_uri",
+    githubAppSetupCallbackRedirectUri(args.origin),
+  );
+
+  return url.toString();
+}
+
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
 }
@@ -392,7 +424,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   const redirectUri = `${args.origin}/api/connectors/github/callback`;
   const authResult = normalizeAuthUrlResult(
     await buildConnectorAuthCodeAuthorizationUrlWithMethod({
-      connectorRef: "github",
+      connectorSlug: "github",
       authMethodId: args.authMethodId,
       method: args.method,
       authClient,
@@ -403,7 +435,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
 
   await args.db.insert(connectorOauthStates).values({
     state,
-    type: "github",
+    connectorSlug: "github",
     authMethod: args.authMethodId,
     userId: args.vm0UserId,
     orgId: args.orgId,
@@ -501,7 +533,7 @@ export async function linkGithubVm0User(args: {
       .where(
         and(
           eq(connectors.userId, args.vm0UserId),
-          eq(connectors.type, "github"),
+          eq(connectors.connectorSlug, "github"),
         ),
       )
       .limit(1);

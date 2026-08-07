@@ -11,10 +11,10 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
-  chatMessages,
-  type ChatMessageRecommendedFollowups,
-  type ChatMessageUsagePayload,
-} from "@vm0/db/schema/chat-message";
+  chatEvents,
+  type ChatEventRecommendedFollowups,
+  type ChatEventUsagePayload,
+} from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -30,8 +30,11 @@ const ALLOW_NON_LOCAL_ENV = "DEV_BENCH_SEED_ALLOW_NON_LOCAL";
 type Database = ReturnType<typeof db>;
 type AgentRunInsert = typeof agentRuns.$inferInsert;
 type ZeroRunInsert = typeof zeroRuns.$inferInsert;
-type ChatMessageInsert = typeof chatMessages.$inferInsert;
-type SeedChatMessageRow = Omit<ChatMessageInsert, "role" | "seqId"> & {
+type ChatEventInsert = typeof chatEvents.$inferInsert;
+type SeedChatEventRow = Omit<
+  ChatEventInsert,
+  "role" | "runLifecycleEvent" | "seqId"
+> & {
   id: string;
   createdAt: Date;
   sequenceNumber?: number | null;
@@ -41,7 +44,7 @@ type SeedChatMessageRow = Omit<ChatMessageInsert, "role" | "seqId"> & {
 export interface BuiltProfileRows {
   readonly runRows: AgentRunInsert[];
   readonly zeroRunRows: ZeroRunInsert[];
-  readonly messageRows: SeedChatMessageRow[];
+  readonly eventRows: SeedChatEventRow[];
 }
 
 export interface BuildProfileRowsArgs {
@@ -383,14 +386,14 @@ function loremParagraph(seed: number): string {
 function markdownLorem(
   profile: ThreadProfile,
   runIndex: number,
-  messageIndex: number,
+  eventIndex: number,
 ): string {
   const repeatedParagraphs = Array.from({ length: 3 }, (_, index) => {
-    return loremParagraph(runIndex + messageIndex + index);
+    return loremParagraph(runIndex + eventIndex + index);
   }).join("\n\n");
 
   return [
-    `### ${profile.slug} run ${String(runIndex)} event ${String(messageIndex)}`,
+    `### ${profile.slug} run ${String(runIndex)} event ${String(eventIndex)}`,
     "",
     repeatedParagraphs,
     "",
@@ -399,7 +402,7 @@ function markdownLorem(
     "- Purpose: stress chat serialization, IndexedDB cache, and renderer paths",
     "",
     "```ts",
-    `const event = { run: ${String(runIndex)}, message: ${String(messageIndex)}, profile: "${profile.slug}" };`,
+    `const event = { run: ${String(runIndex)}, message: ${String(eventIndex)}, profile: "${profile.slug}" };`,
     "console.log(event);",
     "```",
   ].join("\n");
@@ -416,15 +419,15 @@ function userPromptLorem(profile: ThreadProfile, runIndex: number): string {
 function runEventId(
   profile: ThreadProfile,
   runIndex: number,
-  messageIndex: number,
+  eventIndex: number,
 ): string {
   if (profile.runEventStyle === "items") {
-    return `item_${String(messageIndex)}`;
+    return `item_${String(eventIndex)}`;
   }
-  if ((runIndex + messageIndex) % 3 === 0) {
-    return `gen-${String(1_782_000_000 + runIndex)}-${stableHash(`${profile.slug}:gen:${runIndex}:${messageIndex}`).slice(0, 20)}`;
+  if ((runIndex + eventIndex) % 3 === 0) {
+    return `gen-${String(1_782_000_000 + runIndex)}-${stableHash(`${profile.slug}:gen:${runIndex}:${eventIndex}`).slice(0, 20)}`;
   }
-  return `msg_${stableHash(`${profile.slug}:msg:${runIndex}:${messageIndex}`).slice(0, 24)}`;
+  return `msg_${stableHash(`${profile.slug}:msg:${runIndex}:${eventIndex}`).slice(0, 24)}`;
 }
 
 function sequenceNumberFor(
@@ -447,7 +450,7 @@ function sequenceNumberFor(
 function recommendedFollowups(
   profile: ThreadProfile,
   runIndex: number,
-): ChatMessageRecommendedFollowups {
+): ChatEventRecommendedFollowups {
   return [
     {
       kind: "talk",
@@ -468,7 +471,7 @@ function usagePayload(
   profile: ThreadProfile,
   runIndex: number,
   settledAt: Date,
-): ChatMessageUsagePayload {
+): ChatEventUsagePayload {
   const kind = runIndex % 9 === 0 ? "image" : "model";
   const provider =
     kind === "image" ? "fal-ai/nano-banana-2" : profile.selectedModel;
@@ -549,8 +552,8 @@ async function cleanupExistingBenchThreads(
   ];
 
   await database
-    .delete(chatMessages)
-    .where(inArray(chatMessages.chatThreadId, threadIds));
+    .delete(chatEvents)
+    .where(inArray(chatEvents.chatThreadId, threadIds));
   if (runIds.length > 0) {
     await database.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
     await database.delete(agentRuns).where(inArray(agentRuns.id, runIds));
@@ -619,7 +622,7 @@ async function ensureComposeVersion(
   return versionId;
 }
 
-function appendRunMessages(
+function appendRunEvents(
   args: BuildProfileRowsArgs & {
     readonly runIndex: number;
     readonly runRowCount: number;
@@ -628,7 +631,7 @@ function appendRunMessages(
     readonly startAt: Date;
     readonly endAt: Date;
     readonly rows: BuiltProfileRows;
-    readonly runUserMessageRows: SeedChatMessageRow[];
+    readonly runUserMessageRows: SeedChatEventRow[];
   },
 ): void {
   const runId = randomUUID();
@@ -646,18 +649,18 @@ function appendRunMessages(
   );
   const failed = args.runIndex < args.profile.failedRunCount;
   const prompt = userPromptLorem(args.profile, args.runIndex);
-  const userMessageRow: SeedChatMessageRow = {
+  const userMessageRow: SeedChatEventRow = {
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId,
     eventType: "input.prompt",
-    content: prompt,
+    contextType: args.workflowAutomationBrief ? "automation" : "web",
     userMessage: { version: 1, parts: [{ type: "text", text: prompt }] },
     createdAt: baseCreatedAt,
   };
 
   args.runUserMessageRows.push(userMessageRow);
-  args.rows.messageRows.push(userMessageRow);
+  args.rows.eventRows.push(userMessageRow);
   args.rows.runRows.push({
     id: runId,
     userId: args.userId,
@@ -686,16 +689,16 @@ function appendRunMessages(
     triggerBrief: args.workflowAutomationBrief,
   });
 
-  appendAssistantEventMessages({
+  appendAssistantEvents({
     profile: args.profile,
     threadId: args.threadId,
     runId,
     runIndex: args.runIndex,
     eventCount,
     baseCreatedAt,
-    messageRows: args.rows.messageRows,
+    eventRows: args.rows.eventRows,
   });
-  appendUsageMessage({
+  appendUsageEvent({
     profile: args.profile,
     threadId: args.threadId,
     runId,
@@ -703,9 +706,9 @@ function appendRunMessages(
     eventCount,
     baseCreatedAt,
     hasUsage,
-    messageRows: args.rows.messageRows,
+    eventRows: args.rows.eventRows,
   });
-  appendLifecycleMessage({
+  appendLifecycleEvent({
     profile: args.profile,
     threadId: args.threadId,
     runId,
@@ -713,9 +716,9 @@ function appendRunMessages(
     eventCount,
     baseCreatedAt,
     failed,
-    messageRows: args.rows.messageRows,
+    eventRows: args.rows.eventRows,
   });
-  appendFollowupsMessage({
+  appendFollowupsEvent({
     profile: args.profile,
     threadId: args.threadId,
     runId,
@@ -723,18 +726,18 @@ function appendRunMessages(
     eventCount,
     baseCreatedAt,
     hasFollowups,
-    messageRows: args.rows.messageRows,
+    eventRows: args.rows.eventRows,
   });
 }
 
-function appendAssistantEventMessages(args: {
+function appendAssistantEvents(args: {
   readonly profile: ThreadProfile;
   readonly threadId: string;
   readonly runId: string;
   readonly runIndex: number;
   readonly eventCount: number;
   readonly baseCreatedAt: Date;
-  readonly messageRows: SeedChatMessageRow[];
+  readonly eventRows: SeedChatEventRow[];
 }): void {
   for (let eventIndex = 0; eventIndex < args.eventCount; eventIndex++) {
     const sequenceNumber = sequenceNumberFor(
@@ -743,7 +746,7 @@ function appendAssistantEventMessages(args: {
       eventIndex,
       args.eventCount,
     );
-    args.messageRows.push({
+    args.eventRows.push({
       id: randomUUID(),
       chatThreadId: args.threadId,
       runId: args.runId,
@@ -756,7 +759,7 @@ function appendAssistantEventMessages(args: {
   }
 }
 
-function appendUsageMessage(args: {
+function appendUsageEvent(args: {
   readonly profile: ThreadProfile;
   readonly threadId: string;
   readonly runId: string;
@@ -764,13 +767,13 @@ function appendUsageMessage(args: {
   readonly eventCount: number;
   readonly baseCreatedAt: Date;
   readonly hasUsage: boolean;
-  readonly messageRows: SeedChatMessageRow[];
+  readonly eventRows: SeedChatEventRow[];
 }): void {
   if (!args.hasUsage) {
     return;
   }
   const createdAt = addMs(args.baseCreatedAt, 44_000 + args.eventCount * 100);
-  args.messageRows.push({
+  args.eventRows.push({
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId: args.runId,
@@ -781,7 +784,7 @@ function appendUsageMessage(args: {
   });
 }
 
-function appendLifecycleMessage(args: {
+function appendLifecycleEvent(args: {
   readonly profile: ThreadProfile;
   readonly threadId: string;
   readonly runId: string;
@@ -789,21 +792,20 @@ function appendLifecycleMessage(args: {
   readonly eventCount: number;
   readonly baseCreatedAt: Date;
   readonly failed: boolean;
-  readonly messageRows: SeedChatMessageRow[];
+  readonly eventRows: SeedChatEventRow[];
 }): void {
-  args.messageRows.push({
+  args.eventRows.push({
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: args.failed ? "run.failed" : "run.completed",
     content: null,
     error: args.failed ? "Synthetic benchmark failure" : null,
-    runLifecycleEvent: args.failed ? "failed" : "completed",
     createdAt: addMs(args.baseCreatedAt, 45_000 + args.eventCount * 100),
   });
 }
 
-function appendFollowupsMessage(args: {
+function appendFollowupsEvent(args: {
   readonly profile: ThreadProfile;
   readonly threadId: string;
   readonly runId: string;
@@ -811,12 +813,12 @@ function appendFollowupsMessage(args: {
   readonly eventCount: number;
   readonly baseCreatedAt: Date;
   readonly hasFollowups: boolean;
-  readonly messageRows: SeedChatMessageRow[];
+  readonly eventRows: SeedChatEventRow[];
 }): void {
   if (!args.hasFollowups) {
     return;
   }
-  args.messageRows.push({
+  args.eventRows.push({
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId: args.runId,
@@ -832,7 +834,7 @@ function appendNullRunControlRows(args: {
   readonly threadId: string;
   readonly startAt: Date;
   readonly endAt: Date;
-  readonly messageRows: SeedChatMessageRow[];
+  readonly eventRows: SeedChatEventRow[];
 }): void {
   for (
     let controlIndex = 0;
@@ -848,19 +850,23 @@ function appendNullRunControlRows(args: {
       ),
       500,
     );
-    args.messageRows.push({
+    const prompt = userPromptLorem(args.profile, controlIndex);
+    const isInputPrompt = controlIndex % 2 === 0;
+    args.eventRows.push({
       id: randomUUID(),
       chatThreadId: args.threadId,
       runId: null,
-      eventType: controlIndex % 2 === 0 ? "input.prompt" : "output.thinking",
-      content:
-        controlIndex % 2 === 0
-          ? userPromptLorem(args.profile, controlIndex)
-          : null,
-      thinking:
-        controlIndex % 2 === 0
-          ? null
-          : `Synthetic background state ${String(controlIndex)}`,
+      eventType: isInputPrompt ? "input.prompt" : "output.thinking",
+      content: null,
+      ...(isInputPrompt
+        ? {
+            contextType: "web",
+            userMessage: {
+              version: 1,
+              parts: [{ type: "text", text: prompt }],
+            },
+          }
+        : { thinking: `Synthetic background state ${String(controlIndex)}` }),
       createdAt,
     });
   }
@@ -868,7 +874,7 @@ function appendNullRunControlRows(args: {
 
 function applyRevokeMarkers(
   profile: ThreadProfile,
-  runUserMessageRows: readonly SeedChatMessageRow[],
+  runUserMessageRows: readonly SeedChatEventRow[],
 ): void {
   for (
     let revokeIndex = 0;
@@ -889,16 +895,16 @@ function applyRevokeMarkers(
   }
 }
 
-function sortMessageRows(messageRows: SeedChatMessageRow[]): void {
-  messageRows.sort((left, right) => {
+function sortEventRows(eventRows: SeedChatEventRow[]): void {
+  eventRows.sort((left, right) => {
     const byCreatedAt = left.createdAt.getTime() - right.createdAt.getTime();
     if (byCreatedAt !== 0) {
       return byCreatedAt;
     }
     return (left.sequenceNumber ?? -1) - (right.sequenceNumber ?? -1);
   });
-  for (const [index, message] of messageRows.entries()) {
-    message.seqId = index + 1;
+  for (const [index, event] of eventRows.entries()) {
+    event.seqId = index + 1;
   }
 }
 
@@ -910,12 +916,12 @@ export function buildProfileRows(args: BuildProfileRowsArgs): BuiltProfileRows {
   const rows: BuiltProfileRows = {
     runRows: [],
     zeroRunRows: [],
-    messageRows: [],
+    eventRows: [],
   };
-  const runUserMessageRows: SeedChatMessageRow[] = [];
+  const runUserMessageRows: SeedChatEventRow[] = [];
 
   for (let runIndex = 0; runIndex < runCounts.length; runIndex++) {
-    appendRunMessages({
+    appendRunEvents({
       ...args,
       runIndex,
       runRowCount: runCounts[runIndex]!,
@@ -932,10 +938,10 @@ export function buildProfileRows(args: BuildProfileRowsArgs): BuiltProfileRows {
     threadId: args.threadId,
     startAt,
     endAt,
-    messageRows: rows.messageRows,
+    eventRows: rows.eventRows,
   });
   applyRevokeMarkers(args.profile, runUserMessageRows);
-  sortMessageRows(rows.messageRows);
+  sortEventRows(rows.eventRows);
   return rows;
 }
 
@@ -949,22 +955,22 @@ async function insertProfileRows(
   await chunkedInsert(rows.zeroRunRows, (chunk) => {
     return database.insert(zeroRuns).values(chunk);
   });
-  const messageRows = rows.messageRows.map((row) => {
+  const eventRows = rows.eventRows.map((row) => {
     const seqId = row.seqId;
     if (seqId === undefined) {
       throw new Error(`benchmark message ${row.id} has no seq_id`);
     }
     return { ...row, seqId };
   });
-  await chunkedInsert(messageRows, (chunk) => {
-    return database.insert(chatMessages).values(chunk);
+  await chunkedInsert(eventRows, (chunk) => {
+    return database.insert(chatEvents).values(chunk);
   });
-  const lastMessage = messageRows.at(-1);
-  if (lastMessage) {
+  const lastEvent = eventRows.at(-1);
+  if (lastEvent) {
     await database
       .update(chatThreads)
-      .set({ lastChatMessageSeqId: lastMessage.seqId })
-      .where(eq(chatThreads.id, lastMessage.chatThreadId));
+      .set({ lastChatEventSeqId: lastEvent.seqId })
+      .where(eq(chatThreads.id, lastEvent.chatThreadId));
   }
 }
 
@@ -977,7 +983,7 @@ async function seedProfile(
     readonly versionId: string;
     readonly profile: ThreadProfile;
   },
-): Promise<{ readonly threadId: string; readonly messageCount: number }> {
+): Promise<{ readonly threadId: string; readonly eventCount: number }> {
   const threadId = randomUUID();
   const sessionId = randomUUID();
   const startAt = new Date(args.profile.startAt);
@@ -1009,19 +1015,19 @@ async function seedProfile(
   await insertProfileRows(database, rows);
 
   const lastReadRow =
-    rows.messageRows[Math.floor(rows.messageRows.length * 0.6)] ??
-    rows.messageRows[0];
+    rows.eventRows[Math.floor(rows.eventRows.length * 0.6)] ??
+    rows.eventRows[0];
   await database
     .update(chatThreads)
     .set({
       lastReadAt: lastReadRow?.createdAt ?? null,
       lastMessageAt:
-        rows.messageRows[rows.messageRows.length - 1]?.createdAt ?? endAt,
+        rows.eventRows[rows.eventRows.length - 1]?.createdAt ?? endAt,
       updatedAt: endAt,
     })
     .where(eq(chatThreads.id, threadId));
 
-  return { threadId, messageCount: rows.messageRows.length };
+  return { threadId, eventCount: rows.eventRows.length };
 }
 
 async function seedDevBench(args: {
@@ -1049,13 +1055,13 @@ async function seedDevBench(args: {
   }
 
   await database.execute(
-    sql`ANALYZE zero_runs, agent_runs, chat_threads, chat_messages`,
+    sql`ANALYZE zero_runs, agent_runs, chat_threads, chat_events`,
   );
 
   writeLine("Seeded prod-shaped chat benchmark threads:");
   for (const item of seeded) {
     writeLine(
-      `- ${item.profile.title}: ${item.threadId} (${String(item.messageCount)} chat_messages)`,
+      `- ${item.profile.title}: ${item.threadId} (${String(item.eventCount)} chat_messages)`,
     );
     writeLine(`  /chats/${item.threadId}`);
   }

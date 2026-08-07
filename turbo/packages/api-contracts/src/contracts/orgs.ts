@@ -21,29 +21,10 @@ export function isOrgTier(value: string | null | undefined): value is OrgTier {
 }
 
 /**
- * Org slug validation
- * - 3-64 characters (or 1-2 for single/double char slugs)
- * - lowercase letters, numbers, and hyphens only
- * - must start and end with alphanumeric
- */
-export const orgSlugSchema = z
-  .string()
-  .min(3, "Org slug must be at least 3 characters")
-  .max(64, "Org slug must be at most 64 characters")
-  .regex(
-    /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$/,
-    "Org slug must contain only lowercase letters, numbers, and hyphens, and must start and end with an alphanumeric character",
-  )
-  .transform((s) => {
-    return s.toLowerCase();
-  });
-
-/**
  * Org response schema
  */
 export const orgResponseSchema = z.object({
   id: z.string(),
-  slug: z.string(),
   name: z.string(),
   tier: z.string().optional(),
   role: orgRoleSchema.optional(),
@@ -54,11 +35,13 @@ export type OrgResponse = z.infer<typeof orgResponseSchema>;
 
 /**
  * Update org request schema
+ *
+ * `name` is required: the endpoint only updates the org profile name, so an
+ * optional field would let a body carrying only removed keys (`slug`,
+ * `force`) parse into an empty no-op update.
  */
 export const updateOrgRequestSchema = z.object({
-  slug: orgSlugSchema.optional(),
-  name: z.string().min(1).max(128).optional(),
-  force: z.boolean().optional().default(false),
+  name: z.string().min(1).max(128),
 });
 
 export type UpdateOrgRequest = z.infer<typeof updateOrgRequestSchema>;

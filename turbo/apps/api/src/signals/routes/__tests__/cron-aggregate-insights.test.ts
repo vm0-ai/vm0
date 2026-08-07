@@ -7,7 +7,8 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -22,7 +23,11 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   insertUsageEvent$,
   materializeHourlyUsage$,
+  readInsightsDailyPermissions$,
 } from "./helpers/zero-usage-insight";
+import { cronAggregateInsightsRoutes } from "../cron-aggregate-insights";
+
+const TEST_APP_ROUTES = Object.freeze([...cronAggregateInsightsRoutes]);
 
 /**
  * The aggregation cron sweeps all activity within a 25h lookback of "now".
@@ -51,7 +56,9 @@ function previousDayCompletedAt(): Date {
 }
 
 function apiClient() {
-  return setupApp({ context })(cronAggregateInsightsContract);
+  return setupApp({ context, routes: cronAggregateInsightsRoutes })(
+    cronAggregateInsightsContract,
+  );
 }
 
 function cronHeaders(secret = "test-cron-secret") {
@@ -61,7 +68,7 @@ function cronHeaders(secret = "test-cron-secret") {
 async function rawCronRequest(
   headers: Record<string, string> = {},
 ): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   return await app.request("/api/cron/aggregate-insights", {
     method: "GET",
     headers,
@@ -819,19 +826,44 @@ describe("GET /api/cron/aggregate-insights", () => {
 
     await runAggregation();
 
+    if (!seeded.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const storedPermissions = await store.set(
+      readInsightsDailyPermissions$,
+      {
+        orgId: seeded.actor.orgId,
+        userId: seeded.actor.userId,
+        date: TODAY,
+      },
+      context.signal,
+    );
+    expect(storedPermissions).toHaveLength(2);
+    expect(storedPermissions).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          connectorSlug: "github",
+          denied: 2,
+        }),
+        expect.objectContaining({
+          connectorSlug: "github",
+          allowed: 1,
+        }),
+      ]),
+    );
     const data = await findInsights(seeded.actor);
     const githubDeny = data?.permissions.find((permission) => {
       return permission.label === "github" && permission.denied > 0;
     });
     expect(githubDeny).toMatchObject({
-      connectorType: "github",
+      connectorSlug: "github",
       denied: 2,
     });
     const repoRead = data?.permissions.find((permission) => {
       return permission.label.includes("repo-read");
     });
     expect(repoRead).toMatchObject({
-      connectorType: "github",
+      connectorSlug: "github",
       allowed: 1,
     });
   });
@@ -891,7 +923,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label.includes("repo-read");
     });
     expect(repoRead).toMatchObject({
-      connectorType: "github",
+      connectorSlug: "github",
       allowed: 1,
       denied: 0,
     });
@@ -981,7 +1013,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label === "github";
     });
     expect(githubDeny).toMatchObject({
-      connectorType: "github",
+      connectorSlug: "github",
       allowed: 0,
       denied: 3,
     });
@@ -989,7 +1021,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label.includes("repo-read");
     });
     expect(repoRead).toMatchObject({
-      connectorType: "github",
+      connectorSlug: "github",
       allowed: 1,
       denied: 0,
     });

@@ -20,7 +20,7 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 | **guest-common**      | Guest-only shared utilities — logging macros and telemetry recording                                                                |
 | **guest-download**    | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic                      |
 | **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL                                            |
-| **guest-mock-codex**  | Mock Codex CLI for testing — emits Codex JSONL protocol on stdout and persists JSONL session files                                  |
+| **guest-mock-codex**  | Mock Codex app-server for testing — speaks JSON-RPC over stdio and persists session artifacts                                       |
 | **guest-reseed**      | Entropy reseed after snapshot restore — mixes stdin entropy into /dev/urandom and forces CRNG reseed via RNDRESEEDCRNG              |
 | **guest-write-file**  | Direct file writer for vsock `write_file` — writes stdin to guest files without shell startup overhead                              |
 | **ably-subscriber**   | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection             |
@@ -50,6 +50,13 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 │    └── mitmproxy (HTTPS interception)    │
 └──────────────────────────────────────────┘
 ```
+
+## Runner Operations
+
+- [Host configuration and I/O capacity](../docs/runner-host-configuration.md):
+  configure host-local concurrency and aggregate I/O capacity overrides.
+- [Multi-architecture rollout](../docs/runner-multi-architecture.md): select,
+  build, deploy, and validate architecture-specific runner artifacts.
 
 ## Logging
 
@@ -94,10 +101,6 @@ GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
 GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
 cargo build --target "$TARGET_TRIPLE" -p runner --profile ci
 ```
-
-See [`../docs/runner-multi-architecture.md`](../docs/runner-multi-architecture.md)
-for runner deployment, release asset naming, and host-architecture target
-selection.
 
 ## Testing
 

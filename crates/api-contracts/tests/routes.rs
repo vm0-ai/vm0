@@ -24,6 +24,14 @@ fn exposes_nested_generated_webhook_route_constants() {
 }
 
 #[test]
+fn exposes_generated_pi_transcript_route_constant() {
+    let transcript = routes::webhooks::agent::pi_transcript::READ;
+
+    assert_eq!(transcript.method, Method::Get);
+    assert_eq!(transcript.path, "/api/webhooks/agent/pi-transcript");
+}
+
+#[test]
 fn exposes_generated_runner_route_constants() {
     let poll = routes::runners::poll::POLL;
     let claim: RouteTemplate = routes::runners::jobs::by_id::claim::CLAIM;

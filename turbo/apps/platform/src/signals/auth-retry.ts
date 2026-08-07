@@ -11,9 +11,17 @@ import { command, computed, state } from "ccstate";
 import type { Clerk } from "@clerk/clerk-js";
 import { isNetworkRequestError } from "../lib/network-error.ts";
 import { now } from "../lib/time.ts";
-import { detach, Reason, retryWithFibonacciBackoff } from "./utils";
+import {
+  createDeferredPromise,
+  detach,
+  Reason,
+  retryWithFibonacciBackoff,
+} from "./utils";
 
-export type ClerkLike = Pick<Clerk, "session" | "redirectToSignIn">;
+export type ClerkLike = Pick<
+  Clerk,
+  "session" | "addListener" | "redirectToSignIn"
+>;
 
 const AUTH_TRANSITION_REDIRECT_SUPPRESSION_MS = 30_000;
 
@@ -43,6 +51,41 @@ function isUnauthorizedRedirectSuppressed(suppressionUntil: number): boolean {
   return now() < suppressionUntil;
 }
 
+type SettledClerkSession = Exclude<Clerk["session"], undefined>;
+
+function waitForSettledClerkSession(
+  clerk: ClerkLike,
+  signal: AbortSignal,
+): Promise<SettledClerkSession> {
+  signal.throwIfAborted();
+
+  if (clerk.session !== undefined) {
+    return Promise.resolve(clerk.session);
+  }
+
+  const deferred = createDeferredPromise<SettledClerkSession>(signal);
+  const resolveIfSettled = (session: Clerk["session"]): void => {
+    if (session === undefined) {
+      return;
+    }
+    signal.removeEventListener("abort", unsubscribe);
+    unsubscribe();
+    deferred.resolve(session);
+  };
+  const unsubscribe = clerk.addListener(
+    ({ session }) => {
+      resolveIfSettled(session);
+    },
+    { skipInitialEmit: true },
+  );
+  signal.addEventListener("abort", unsubscribe, { once: true });
+
+  // Close the race between the initial read and listener registration.
+  resolveIfSettled(clerk.session);
+
+  return deferred.promise;
+}
+
 /**
  * Force-refresh the Clerk session token. Network failures retry until the
  * request's owning signal aborts, so a temporarily offline browser does not
@@ -56,12 +99,13 @@ export async function fetchFreshToken(
   clerk: ClerkLike,
   signal: AbortSignal,
 ): Promise<FreshTokenResult> {
-  signal.throwIfAborted();
-  const session = clerk.session;
-  if (!session) {
+  const session = await waitForSettledClerkSession(clerk, signal);
+  if (session === null) {
     return { status: "unavailable" };
   }
-  const token = await retryAuthRecoveryOperation(() => {
+
+  const token = await retryAuthRecoveryOperation(async () => {
+    await session.touch({ intent: "focus" });
     return session.getToken({ skipCache: true });
   }, signal);
   if (!token) {
@@ -107,7 +151,12 @@ export function handleUnauthorizedRedirect(
   clerk: ClerkLike,
   suppressionUntil: number,
 ) {
-  if (isUnauthorizedRedirectSuppressed(suppressionUntil)) {
+  // A hidden PWA can receive 401s before Clerk finishes resuming its session.
+  // Leave navigation to the next visible request's recovery attempt.
+  if (
+    document.visibilityState !== "visible" ||
+    isUnauthorizedRedirectSuppressed(suppressionUntil)
+  ) {
     return;
   }
   // confirmed by ethan@vm0.ai

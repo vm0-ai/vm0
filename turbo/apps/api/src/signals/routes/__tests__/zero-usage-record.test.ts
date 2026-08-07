@@ -6,7 +6,8 @@ import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -22,6 +23,8 @@ import {
   materializeHourlyUsage$,
   readUsageStorageCounts$,
 } from "./helpers/zero-usage-insight";
+import { zeroMapsRoutes } from "../zero-maps";
+import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -45,14 +48,29 @@ const GOOGLE_GEOCODING_URL =
 const MODEL_TOKEN_CATEGORIES = {
   input: "tokens.input",
   output: "tokens.output",
+  inputLongContext: "tokens.input.long_context",
+  outputLongContext: "tokens.output.long_context",
+  cacheReadLongContext: "tokens.cache_read.long_context",
+  cacheCreationLongContext: "tokens.cache_creation.long_context",
 } as const;
+
+interface ModelTokenCounts {
+  readonly input?: number;
+  readonly output?: number;
+  readonly inputLongContext?: number;
+  readonly outputLongContext?: number;
+  readonly cacheReadLongContext?: number;
+  readonly cacheCreationLongContext?: number;
+}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroUsageRecordContract);
+  return setupApp({ context, routes: zeroUsageRecordRoutes })(
+    zeroUsageRecordContract,
+  );
 }
 
 function createdAt(minutesAgo: number): Date {
@@ -255,12 +273,10 @@ async function recordModelUsage(
   actor: ApiTestUser,
   runId: string,
   model: string,
-  tokens: { readonly input?: number; readonly output?: number },
+  tokens: ModelTokenCounts,
 ): Promise<void> {
   const events = (
-    Object.keys(
-      MODEL_TOKEN_CATEGORIES,
-    ) as (keyof typeof MODEL_TOKEN_CATEGORIES)[]
+    Object.keys(MODEL_TOKEN_CATEGORIES) as (keyof ModelTokenCounts)[]
   ).flatMap((key) => {
     const quantity = tokens[key];
     if (!quantity) {
@@ -734,8 +750,10 @@ describe("GET /api/zero/usage/record", () => {
       createdAt: createdAt(10),
     });
     await recordModelUsage(fixture.actor, webhookRun.runId, model, {
-      input: 25,
-      output: 5,
+      inputLongContext: 25,
+      outputLongContext: 5,
+      cacheReadLongContext: 7,
+      cacheCreationLongContext: 3,
     });
 
     await billing.processOrgUsageEvents(fixture.actor);
@@ -756,8 +774,8 @@ describe("GET /api/zero/usage/record", () => {
       threadId: null,
       runId: webhookRun.runId,
       title: "Webhook triggered run",
-      credits: 30,
-      tokens: 30,
+      credits: 40,
+      tokens: 40,
     });
   });
 
@@ -835,7 +853,7 @@ describe("GET /api/zero/usage/record", () => {
 
     const run = await createUnthreadedRun(fixture.actor, {
       prompt: "Mixed media run",
-      triggerSource: "cli",
+      triggerSource: "test",
       createdAt: createdAt(5),
     });
     await recordModelUsage(fixture.actor, run.runId, model, {
@@ -922,7 +940,7 @@ describe("GET /api/zero/usage/record", () => {
 
     const run = await createUnthreadedRun(fixture.actor, {
       prompt: "Settlement boundary usage",
-      triggerSource: "cli",
+      triggerSource: "test",
     });
     const settledAt = new Date(nowDate().getTime() + 8 * DAY_MS);
     mockNow(settledAt);
@@ -931,7 +949,9 @@ describe("GET /api/zero/usage/record", () => {
       run.runId,
       ["maps:read"],
     );
-    const maps = setupApp({ context })(zeroMapsContract);
+    const maps = setupApp({ context, routes: zeroMapsRoutes })(
+      zeroMapsContract,
+    );
     const geocode = await accept(
       maps.geocode({
         headers: { authorization: `Bearer ${mapsToken}` },
@@ -956,7 +976,7 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.pagination.total).toBe(1);
     expect(response.body.totalCredits).toBe(6);
     expect(response.body.rows[0]).toMatchObject({
-      source: "cli",
+      source: "other",
       runId: run.runId,
       credits: 6,
       tokens: 0,

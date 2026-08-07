@@ -11,11 +11,12 @@ import { afterEach, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { mockEnv } from "../../../lib/env";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { buildTelegramBotAvatarUrl } from "../../external/telegram-avatar";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
@@ -31,6 +32,9 @@ import {
 } from "./helpers/zero-telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
+import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
+
+const TEST_APP_ROUTES = Object.freeze([...zeroIntegrationsTelegramRoutes]);
 
 const context = testContext();
 const store = createStore();
@@ -156,7 +160,9 @@ function signConnectParams(args: {
 async function listTelegramBots(
   token: string,
 ): Promise<TelegramListResponse["bots"]> {
-  const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+  const client = setupApp({ context, routes: zeroIntegrationsTelegramRoutes })(
+    zeroIntegrationsTelegramContract,
+  );
   const response = await accept(
     client.list({ headers: { authorization: `Bearer ${token}` } }),
     [200],
@@ -210,7 +216,10 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
   });
 
   it("returns 401 when no auth token is provided", async () => {
-    const client = setupApp({ context })(integrationsTelegramBotListContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(integrationsTelegramBotListContract);
 
     const response = await accept(client.listBots({ headers: {} }), [401]);
 
@@ -229,7 +238,10 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
       orgId,
       capabilities: ["telegram:read"],
     });
-    const client = setupApp({ context })(integrationsTelegramBotListContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(integrationsTelegramBotListContract);
 
     const response = await accept(
       client.listBots({ headers: { authorization: `Bearer ${token}` } }),
@@ -241,7 +253,10 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
 
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
-    const client = setupApp({ context })(integrationsTelegramBotListContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(integrationsTelegramBotListContract);
 
     const response = await accept(
       client.listBots({
@@ -325,7 +340,10 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
       orgId,
       capabilities: ["telegram:read"],
     });
-    const client = setupApp({ context })(integrationsTelegramBotListContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(integrationsTelegramBotListContract);
 
     const response = await accept(
       client.listBots({ headers: { authorization: `Bearer ${token}` } }),
@@ -381,7 +399,10 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
       orgId,
       capabilities: ["telegram:read"],
     });
-    const client = setupApp({ context })(integrationsTelegramBotListContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(integrationsTelegramBotListContract);
 
     const response = await accept(
       client.listBots({ headers: { authorization: `Bearer ${token}` } }),
@@ -415,7 +436,10 @@ describe("GET /api/integrations/telegram", () => {
   });
 
   it("returns 401 when no auth token is provided", async () => {
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(client.list({ headers: {} }), [401]);
 
@@ -433,7 +457,10 @@ describe("GET /api/integrations/telegram", () => {
       orgId,
       capabilities: ["telegram:read"],
     });
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.list({ headers: { authorization: `Bearer ${token}` } }),
@@ -515,7 +542,10 @@ describe("GET /api/integrations/telegram", () => {
       orgId,
       capabilities: ["telegram:read"],
     });
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.list({ headers: { authorization: `Bearer ${token}` } }),
@@ -580,7 +610,10 @@ describe("GET /api/integrations/telegram", () => {
       orgId,
       capabilities: ["telegram:read"],
     });
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.list({ headers: { authorization: `Bearer ${token}` } }),
@@ -673,7 +706,10 @@ describe("GET /api/integrations/telegram", () => {
       orgId,
       capabilities: ["telegram:read"],
     });
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.list({ headers: { authorization: `Bearer ${token}` } }),
@@ -747,7 +783,10 @@ describe("GET /api/integrations/telegram/link", () => {
   }
 
   it("returns 401 when no auth token is provided", async () => {
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -762,7 +801,10 @@ describe("GET /api/integrations/telegram/link", () => {
 
   it("returns linked false without installation when no link exists", async () => {
     const { token } = await seedLinkContext();
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -796,7 +838,10 @@ describe("GET /api/integrations/telegram/link", () => {
       },
       context.signal,
     );
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -839,7 +884,10 @@ describe("GET /api/integrations/telegram/link", () => {
       context.signal,
     );
 
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
     const linkedResponse = await accept(
       client.getLinkStatus({
         query: { botId: linkedBotId },
@@ -884,7 +932,10 @@ describe("GET /api/integrations/telegram/link", () => {
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
     server.use(telegramOauthHead("2048", "https://app.example.com"));
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -910,7 +961,10 @@ describe("GET /api/integrations/telegram/link", () => {
 
   it("returns official bot link status with the login bot id", async () => {
     const { token } = await seedLinkContext();
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -951,7 +1005,10 @@ describe("GET /api/integrations/telegram/link", () => {
     builder.composeIds.push(installation.composeId);
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -966,7 +1023,10 @@ describe("GET /api/integrations/telegram/link", () => {
 
   it("returns linked false without installation for an unknown bot", async () => {
     const { token } = await seedLinkContext();
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -1028,7 +1088,10 @@ describe("POST /api/integrations/telegram/link", () => {
   }
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1043,7 +1106,10 @@ describe("POST /api/integrations/telegram/link", () => {
 
   it("returns 400 when telegramBotId is missing", async () => {
     const { token } = await seedLinkContext();
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1058,7 +1124,10 @@ describe("POST /api/integrations/telegram/link", () => {
 
   it("returns 404 when the custom bot installation does not exist", async () => {
     const { token } = await seedLinkContext();
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1086,7 +1155,10 @@ describe("POST /api/integrations/telegram/link", () => {
     builder.composeIds.push(installation.composeId);
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1114,7 +1186,10 @@ describe("POST /api/integrations/telegram/link", () => {
     builder.composeIds.push(installation.composeId);
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1167,7 +1242,10 @@ describe("POST /api/integrations/telegram/link", () => {
   it("returns 409 when connecting the official bot before onboarding creates a default agent", async () => {
     const { token } = await seedLinkContext();
     const telegramUserId = Number(newTelegramBotId());
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
     server.use(telegramOauthHead("0"));
 
     const response = await accept(
@@ -1204,7 +1282,10 @@ describe("POST /api/integrations/telegram/link", () => {
     const { token, orgId, userId } = await seedLinkContext();
     await seedDefaultAgentForLink(orgId, userId);
     const telegramUserId = Number(newTelegramBotId());
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1251,7 +1332,10 @@ describe("POST /api/integrations/telegram/link", () => {
       },
       context.signal,
     );
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1295,7 +1379,10 @@ describe("POST /api/integrations/telegram/link", () => {
       },
       context.signal,
     );
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1335,7 +1422,10 @@ describe("POST /api/integrations/telegram/link", () => {
       },
       context.signal,
     );
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1386,7 +1476,10 @@ describe("POST /api/integrations/telegram/link", () => {
       },
       context.signal,
     );
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1430,7 +1523,10 @@ describe("POST /api/integrations/telegram/link", () => {
       },
       context.signal,
     );
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1485,7 +1581,10 @@ describe("POST /api/integrations/telegram/link", () => {
     );
     const timestamp = Math.floor(now() / 1000);
     const telegramUserId = "99005";
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1545,7 +1644,10 @@ describe("POST /api/integrations/telegram/link", () => {
     builder.composeIds.push(installation.composeId);
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1573,7 +1675,10 @@ describe("POST /api/integrations/telegram/link", () => {
     builder.composeIds.push(installation.composeId);
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1606,7 +1711,10 @@ describe("POST /api/integrations/telegram/link", () => {
     builder.composeIds.push(installation.composeId);
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1642,7 +1750,10 @@ describe("POST /api/integrations/telegram/link", () => {
     fixtures.push(freezeTelegramFixture(builder));
     const timestamp = Math.floor(now() / 1000) - 601;
     const telegramUserId = "99008";
-    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsTelegramRoutes,
+    })(zeroIntegrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1773,7 +1884,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
   }
 
   it("returns 401 when not authenticated and signature is missing", async () => {
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(
       "/api/integrations/telegram/tg-bot/avatar",
     );
@@ -1785,7 +1896,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
 
   it("returns 404 when the bot is not visible in the active org", async () => {
     const { token } = await seedAvatarAuthContext();
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(
       "/api/integrations/telegram/missing-bot/avatar",
       { headers: { authorization: `Bearer ${token}` } },
@@ -1808,7 +1919,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
       fileBytes,
     });
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(
       `/api/integrations/telegram/${botId}/avatar`,
       { headers: { authorization: `Bearer ${token}` } },
@@ -1878,7 +1989,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
       ),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(
       requestPathFromSignedUrl(buildTelegramBotAvatarUrl(botId)),
     );
@@ -1902,7 +2013,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
       fileBytes,
     });
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(
       requestPathFromSignedUrl(
         buildTelegramBotAvatarUrl(OFFICIAL_TELEGRAM_BOT_ID),
@@ -1943,7 +2054,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
     });
     context.mocks.telegram.getUserProfilePhotos.mockResolvedValue([]);
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(
       `/api/integrations/telegram/${botId}/avatar`,
       { headers: { authorization: `Bearer ${token}` } },
@@ -1960,7 +2071,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
 
 describe("GET /api/integrations/telegram/auth-callback", () => {
   it("returns the Telegram auth bridge html", async () => {
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     const response = await app.request(
       "/api/integrations/telegram/auth-callback",
@@ -2013,7 +2124,7 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
     if (args.authorization) {
       headers.authorization = args.authorization;
     }
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     return app.request(`${downloadPath}${args.search}`, { headers });
   }
 

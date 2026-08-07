@@ -28,7 +28,8 @@ mod writer;
 
 pub use connection::{
     connect_unix, connect_vsock, handle_connection,
-    handle_connection_with_test_process_containment, run,
+    handle_connection_with_test_process_containment,
+    handle_connection_with_test_process_containment_and_exec_drain_deadline, run,
 };
 pub use log::log;
 

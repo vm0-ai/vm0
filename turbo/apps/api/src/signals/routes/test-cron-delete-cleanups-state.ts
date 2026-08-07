@@ -12,7 +12,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const FIXTURE_INSERT_BATCH_SIZE = 5000;
 const MAX_EXPIRED_COUNT = 10_001;
@@ -105,7 +105,7 @@ async function seedConnectorStates(
     (_, index) => {
       return {
         state: connectorState(body.marker, `expired-${index}`),
-        type: "github",
+        connectorSlug: "github",
         authMethod: "oauth",
         userId: body.marker,
         orgId: body.marker,
@@ -127,7 +127,7 @@ async function seedConnectorStates(
   await db.insert(connectorOauthStates).values([
     {
       state: connectorState(body.marker, "equal"),
-      type: "github",
+      connectorSlug: "github",
       authMethod: "oauth",
       userId: body.marker,
       orgId: body.marker,
@@ -136,7 +136,7 @@ async function seedConnectorStates(
     },
     {
       state: connectorState(body.marker, "future"),
-      type: "github",
+      connectorSlug: "github",
       authMethod: "oauth",
       userId: body.marker,
       orgId: body.marker,

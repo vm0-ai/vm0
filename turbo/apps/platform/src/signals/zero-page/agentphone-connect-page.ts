@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { capturePlausibleEvent } from "../../lib/plausible.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -21,7 +22,12 @@ export const setupAgentPhoneConnectPage$ = command(
     });
 
     set(updatePage$, createElement(ZeroAgentPhoneConnectPage));
-    set(updateDocumentTitle$, "Connect Messages");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.connectors.providerConnect.agentphone.documentTitle;
+      }),
+    );
     await set(hideAppSkeleton$, signal);
   },
 );

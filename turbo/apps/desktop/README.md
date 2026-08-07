@@ -109,14 +109,15 @@ Desktop releases are versioned by release-please. Changes under
 `package.json`, this changelog, and the manifest entry, then create a
 `desktop-vX.Y.Z` GitHub Release.
 
-When release-please creates the `desktop-vX.Y.Z` GitHub Release, the
-`build-desktop-release` job in the release-please workflow checks out the
-matching tag, builds the production `Zero Computer Use.app` for Apple silicon
-Macs, signs the app with the Developer ID Application certificate, notarizes it
-for direct distribution outside the Mac App Store, validates the stapled
-tickets, and uploads `Zero-darwin-arm64-X.Y.Z.zip` and
-`Zero-darwin-arm64-X.Y.Z.dmg` to the matching GitHub Release. The release
-workflow then updates the Desktop update manifest.
+When a release-please merge group changes the Desktop package version, the
+`deploy-desktop` job builds the unsigned production `Zero Computer Use.app` for
+Apple silicon Macs and publishes it to R2 under
+`okou-desktop/<commit-sha>/`. The matching release run resolves the same commit
+as `release_target`, downloads and verifies that immutable app artifact, signs
+it with the Developer ID Application certificate, notarizes it for direct
+distribution outside the Mac App Store, and uploads
+`Zero-darwin-arm64-X.Y.Z.zip` and `Zero-darwin-arm64-X.Y.Z.dmg` to the matching
+GitHub Release. The release workflow then updates the Desktop update manifest.
 
 Use the DMG for manual installation. It opens with a styled Finder background,
 `Zero Computer Use.app` on the left, and an `/Applications` symlink on the right

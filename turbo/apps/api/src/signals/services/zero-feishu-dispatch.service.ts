@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-
 import { command } from "ccstate";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
@@ -12,7 +11,6 @@ import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 import { feishuUserAgentPreferences } from "@vm0/db/schema/feishu-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-
 import {
   buildFeishuHelpMessage,
   buildFeishuLoginMessage,
@@ -28,9 +26,10 @@ import {
   type FeishuOutboundMessage,
 } from "../external/feishu-client";
 import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
 import { buildFeishuConnectUrl } from "./feishu-connect-token";
+import { disconnectFeishuCustomConnectorOAuthConnection } from "./feishu-custom-connector.service";
 import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
@@ -627,30 +626,31 @@ export async function loadFeishuConversationHistory(args: {
 }
 
 export function buildFeishuSystemPrompt(args: {
-  readonly message: FeishuInboundMessage;
+  readonly chatType: FeishuInboundMessage["chatType"];
+  readonly installationId: string;
+  readonly tenantKey: string;
+  readonly chatId: string;
+  readonly threadId: string;
+  readonly messageId: string;
+  readonly senderOpenId: string;
   readonly history: string;
 }): string {
-  const isDirectMessage = args.message.chatType === "p2p";
+  const isDirectMessage = args.chatType === "p2p";
   const typeLabel = isDirectMessage ? "Direct message" : "Group mention";
   const groupIdLine = isDirectMessage
     ? ""
-    : `Group ID: ${args.message.chatId} (same as Chat ID; use it directly as the \`--chat\` value for \`zero feishu message send\`)`;
+    : `Group ID: ${args.chatId} (same as Chat ID; use it directly as the \`--chat\` value for \`zero feishu message send\`)`;
   return [
     "# Current Integration",
     "You are currently running inside: Feishu",
     `Scope: ${typeLabel}`,
-    `Installation ID: ${args.message.installationId}`,
-    `Tenant key: ${args.message.tenantKey}`,
-    `Chat ID: ${args.message.chatId}`,
+    `Installation ID: ${args.installationId}`,
+    `Tenant key: ${args.tenantKey}`,
+    `Chat ID: ${args.chatId}`,
     groupIdLine,
-    `Thread ID: ${
-      args.message.threadId ??
-      args.message.rootId ??
-      args.message.parentId ??
-      args.message.messageId
-    }`,
-    `Message ID: ${args.message.messageId}`,
-    `Sender open ID: ${args.message.openId}`,
+    `Thread ID: ${args.threadId}`,
+    `Message ID: ${args.messageId}`,
+    `Sender open ID: ${args.senderOpenId}`,
     args.history,
   ]
     .filter(Boolean)
@@ -750,9 +750,16 @@ async function handleDisconnectCommand(
   args: ConnectedCommandArgs,
   signal: AbortSignal,
 ): Promise<void> {
-  await args.db
-    .delete(feishuOrgConnections)
-    .where(eq(feishuOrgConnections.id, args.connection.id));
+  await args.db.transaction(async (tx) => {
+    await tx
+      .delete(feishuOrgConnections)
+      .where(eq(feishuOrgConnections.id, args.connection.id));
+    await disconnectFeishuCustomConnectorOAuthConnection(tx, {
+      orgId: args.installation.orgId,
+      userId: args.connection.vm0UserId,
+      installationId: args.message.installationId,
+    });
+  });
   signal.throwIfAborted();
   await publishFeishuOrgChanged(
     args.db,

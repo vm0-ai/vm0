@@ -113,7 +113,7 @@ fn job_candidate_from_discovered(discovered: LocalDiscoveredJob) -> JobCandidate
         discovered.profile_name,
         discovered.job_path,
     )
-    .with_affinity_metadata(discovered.cli_agent_session_id, None)
+    .with_reuse_key(discovered.reuse_key)
 }
 
 #[async_trait::async_trait]
@@ -164,9 +164,9 @@ impl JobProvider for LocalProvider {
         };
 
         let environment_merge = merge_local_environments(req.environment, req.secret_environment);
-
         let context = ExecutionContext {
             run_id,
+            reuse_key: req.reuse_key,
             prompt: req.prompt,
             append_system_prompt: None,
             vars: req.vars,
@@ -190,6 +190,7 @@ impl JobProvider for LocalProvider {
             firewalls: None,
             network_policies: None,
             network_policy_refreshes: None,
+            connector_runtime_targets: None,
             disallowed_tools: None,
             tools: None,
             settings: None,
@@ -197,6 +198,9 @@ impl JobProvider for LocalProvider {
             billable_firewalls: vec![],
             model_usage_provider: None,
             codex_runtime_config: None,
+            pi_system_prompt: None,
+            pi_model_config: None,
+            run_skill_snapshot: None,
         };
         let active_input_source = req.active_input.unwrap_or(false).then(|| {
             crate::active_input::ActiveInputSource::local_queue(self.queue.clone(), run_id)

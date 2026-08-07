@@ -19,6 +19,7 @@ import { zeroClient$ } from "../../api-client.ts";
 import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const internalBillingScrollTarget$ = state<"buy-credits" | null>(null);
 
@@ -66,16 +67,6 @@ export const profileName$ = computed((get) => {
 
 export const setProfileName$ = command(({ set }, value: string) => {
   set(internalProfileName$, value);
-});
-
-const internalProfileSlug$ = state("");
-
-export const profileSlug$ = computed((get) => {
-  return get(internalProfileSlug$);
-});
-
-export const setProfileSlug$ = command(({ set }, value: string) => {
-  set(internalProfileSlug$, value);
 });
 
 const internalProfileLogoUrl$ = state<string | null>(null);
@@ -147,7 +138,6 @@ export const initProfileName$ = command(
     const org = await get(org$);
     signal.throwIfAborted();
     set(internalProfileName$, org?.name ?? "");
-    set(internalProfileSlug$, org?.slug ?? "");
     set(internalProfileLogoUrl$, null);
     set(clearPendingLogo$);
     set(internalLogoLoaded$, false);
@@ -157,6 +147,12 @@ export const initProfileName$ = command(
 // ---------------------------------------------------------------------------
 // Workspace danger zone
 // ---------------------------------------------------------------------------
+
+/**
+ * Literal the user must type to confirm workspace deletion. It is deliberately
+ * untranslated so the same token works in every locale.
+ */
+export const WORKSPACE_DELETE_CONFIRMATION = "confirm";
 
 const internalDeleteConfirm$ = state("");
 
@@ -326,7 +322,6 @@ export const setLockedTarget$ = command(
 
 interface SaveOrgProfileInput {
   readonly name: string;
-  readonly slug: string;
   readonly logoFile: File | null;
 }
 
@@ -378,7 +373,6 @@ export const saveOrgProfile$ = command(
     }
 
     const hasNameChange = input.name !== (org.name ?? "");
-    const hasSlugChange = input.slug !== (org.slug ?? "");
 
     if (input.logoFile) {
       const result = await set(uploadOrgLogo$, input.logoFile, signal);
@@ -386,19 +380,11 @@ export const saveOrgProfile$ = command(
       set(internalProfileLogoUrl$, result.logoUrl);
     }
 
-    if (hasNameChange || hasSlugChange) {
-      const body: { name?: string; slug?: string; force?: boolean } = {};
-      if (hasNameChange) {
-        body.name = input.name;
-      }
-      if (hasSlugChange) {
-        body.slug = input.slug;
-        body.force = true;
-      }
+    if (hasNameChange) {
       const client = get(zeroClient$)(zeroOrgContract);
       await accept(
         client.update({
-          body,
+          body: { name: input.name },
           fetchOptions: { signal },
         }),
         [200],
@@ -412,7 +398,11 @@ export const saveOrgProfile$ = command(
     signal.throwIfAborted();
     await clerk?.organization?.reload();
     signal.throwIfAborted();
-    toast.success("Workspace updated");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.updated;
+      }),
+    );
   },
 );
 
@@ -431,7 +421,11 @@ export const leaveOrg$ = command(
     signal.throwIfAborted();
     await clerk?.setActive({ organization: null });
     signal.throwIfAborted();
-    toast.success("You have left the workspace");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.left;
+      }),
+    );
     window.location.href = resolveAppAuthUrl(
       "/sign-in/tasks/choose-organization",
     );
@@ -439,11 +433,11 @@ export const leaveOrg$ = command(
 );
 
 export const deleteOrg$ = command(
-  async ({ get }, slug: string, signal: AbortSignal): Promise<void> => {
+  async ({ get }, signal: AbortSignal): Promise<void> => {
     const client = get(zeroClient$)(zeroOrgDeleteContract);
     await accept(
       client.delete({
-        body: { slug },
+        body: { confirm: WORKSPACE_DELETE_CONFIRMATION },
         fetchOptions: { signal },
       }),
       [200],
@@ -453,7 +447,11 @@ export const deleteOrg$ = command(
     signal.throwIfAborted();
     await clerk?.setActive({ organization: null });
     signal.throwIfAborted();
-    toast.success("Workspace deleted");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.deleted;
+      }),
+    );
     window.location.href = resolveAppAuthUrl(
       "/sign-in/tasks/choose-organization",
     );
@@ -476,7 +474,14 @@ export const inviteMember$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success(`Invitation sent to ${email}`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.settings.workspace.toasts.invitationSent;
+        },
+        { email },
+      ),
+    );
     set(refreshOrgMembers$);
     set(internalInviteDialogOpen$, false);
     set(internalInviteEmail$, "");
@@ -496,7 +501,14 @@ export const changeRole$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success(`Updated role for ${email}`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.settings.workspace.toasts.roleUpdated;
+        },
+        { email },
+      ),
+    );
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     await clerk.session?.getToken({ skipCache: true });
@@ -518,7 +530,14 @@ export const selfDemote$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success(`Updated role for ${email}`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.settings.workspace.toasts.roleUpdated;
+        },
+        { email },
+      ),
+    );
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     await clerk.session?.getToken({ skipCache: true });
@@ -541,7 +560,14 @@ export const removeMember$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success(`Removed ${email}`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.settings.workspace.toasts.memberRemoved;
+        },
+        { email },
+      ),
+    );
     set(refreshOrgMembers$);
     set(internalRemoveMemberDialogTarget$, null);
   },
@@ -559,7 +585,11 @@ export const revokeInvitation$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success("Invitation revoked");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.invitationRevoked;
+      }),
+    );
     set(refreshOrgMembers$);
     set(internalRevokeInvitationDialogTarget$, null);
   },
@@ -577,7 +607,11 @@ export const acceptRequest$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success("Membership request accepted");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.membershipRequestAccepted;
+      }),
+    );
     set(refreshOrgMembers$);
   },
 );
@@ -594,7 +628,11 @@ export const rejectRequest$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success("Membership request rejected");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.membershipRequestRejected;
+      }),
+    );
     set(refreshOrgMembers$);
   },
 );

@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 
-import { chatThreadSidebarAutoOpenEnabled$ } from "../external/feature-switch.ts";
+import { artifactSidebarInlineOpenEnabled$ } from "../external/feature-switch.ts";
 import {
   classifyChatAttachment,
   previewAttachmentFromUrl,
@@ -9,18 +9,16 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "./chat-thread-pane-state.ts";
-import type { ChatThreadSignals } from "./chat-thread-signals.ts";
-import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "./chat-thread-sidebar-layout.ts";
-import type { ArtifactRef, ThreadSidebarTarget } from "./thread-sidebar.ts";
-import {
-  threadSidebarAutoOpenCandidateKey,
-  type ThreadSidebarAutoOpenCandidate,
-} from "./thread-sidebar-auto-open.ts";
-import { settle } from "../utils.ts";
+import type { ChatPanelSignals } from "./chat-panel-signals.ts";
+import type {
+  ArtifactRef,
+  ArtifactRefInput,
+  ThreadSidebarTarget,
+} from "./thread-sidebar.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
-// lives in the initiating thread's `ChatThreadSignals`; this module only
+// lives in the initiating thread's `ChatPanelSignals`; this module only
 // enforces "at most one utility sidebar per page" across the two thread panes
 // and routes every entry point into that thread-owned state.
 // ---------------------------------------------------------------------------
@@ -33,7 +31,7 @@ export const activeThreadSidebar$ = computed(
   (
     get,
   ): {
-    readonly thread: ChatThreadSignals;
+    readonly thread: ChatPanelSignals;
     readonly target: ThreadSidebarTarget;
     readonly animateEntry: boolean;
   } | null => {
@@ -54,8 +52,16 @@ export const activeThreadSidebar$ = computed(
   },
 );
 
+export const syncActiveBrowserFitAction$ = command(({ get, set }) => {
+  const active = get(activeThreadSidebar$);
+  if (active?.target.type !== "browser") {
+    return;
+  }
+  set(active.thread.browserSessionSignals.syncFitActionVisibility$);
+});
+
 const openOnThread$ = command(
-  ({ get, set }, thread: ChatThreadSignals, target: ThreadSidebarTarget) => {
+  ({ get, set }, thread: ChatPanelSignals, target: ThreadSidebarTarget) => {
     for (const other of [get(currentLeftThread$), get(currentRightThread$)]) {
       if (other && other.threadId !== thread.threadId) {
         set(other.sidebar.close$);
@@ -65,111 +71,14 @@ const openOnThread$ = command(
   },
 );
 
-function targetFromAutoOpenCandidate(
-  candidate: ThreadSidebarAutoOpenCandidate,
-): ThreadSidebarTarget {
-  if (candidate.type === "email-draft") {
-    return { type: "email-draft", mailDraftId: candidate.resourceKey };
-  }
-  if (candidate.type === "browser") {
-    return { type: "browser", browserSessionId: candidate.resourceKey };
-  }
-  const attachment = previewAttachmentFromUrl(candidate.resourceKey);
-  const ref: ArtifactRef = {
-    url: candidate.resourceKey,
-    kind: classifyChatAttachment(attachment),
-    filename: attachment.filename,
-  };
-  return {
-    type: "artifact",
-    source: { kind: "attachment", ref },
-  };
-}
-
-const autoOpenThreadSidebarFromCurrentMessages$ = command(
-  async (
-    { get, set },
-    thread: ChatThreadSignals,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    if (
-      !get(chatThreadSidebarAutoOpenEnabled$) ||
-      typeof window === "undefined" ||
-      !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
-    ) {
-      return;
-    }
-
-    const candidate = await get(thread.sidebarAutoOpenCandidate$);
-    signal.throwIfAborted();
-    if (!candidate) {
-      return;
-    }
-
-    const visible = [get(currentLeftThread$), get(currentRightThread$)].some(
-      (current) => {
-        return current === thread;
-      },
-    );
-    if (!visible) {
-      return;
-    }
-
-    const candidateKey = threadSidebarAutoOpenCandidateKey(candidate);
-    if (!set(thread.sidebar.claimAutoOpenCandidate$, candidateKey)) {
-      return;
-    }
-    if (
-      !get(chatThreadSidebarAutoOpenEnabled$) ||
-      typeof window === "undefined" ||
-      !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches ||
-      get(activeThreadSidebar$) !== null
-    ) {
-      return;
-    }
-    set(openOnThread$, thread, targetFromAutoOpenCandidate(candidate));
-  },
-);
-
-export const autoOpenInitialThreadSidebar$ = command(
-  async (
-    { get, set },
-    thread: ChatThreadSignals,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await get(thread.indexedDbMessagesInitialized$);
-    signal.throwIfAborted();
-    const result = await settle(
-      set(autoOpenThreadSidebarFromCurrentMessages$, thread, signal),
-      signal,
-    );
-    set(thread.sidebar.enableEntryAnimations$);
-    if (!result.ok) {
-      throw result.error;
-    }
-  },
-);
-
-export const autoOpenThreadSidebar$ = command(
-  async (
-    { get, set },
-    thread: ChatThreadSignals,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await get(thread.hasNewMessages$);
-    signal.throwIfAborted();
-    await set(autoOpenThreadSidebarFromCurrentMessages$, thread, signal);
-  },
-);
-
 export const openThreadArtifacts$ = command(
-  ({ set }, thread: ChatThreadSignals) => {
+  ({ set }, thread: ChatPanelSignals) => {
     set(openOnThread$, thread, { type: "artifacts" });
   },
 );
 
 export const openThreadAutomations$ = command(
-  ({ set }, thread: ChatThreadSignals) => {
+  ({ set }, thread: ChatPanelSignals) => {
     set(openOnThread$, thread, { type: "automations" });
   },
 );
@@ -180,9 +89,9 @@ export const openThreadAutomations$ = command(
  * wins in the impossible tie.
  */
 function threadOwningCard(
-  threads: readonly (ChatThreadSignals | null)[],
-  owns: (thread: ChatThreadSignals) => boolean,
-): ChatThreadSignals | null {
+  threads: readonly (ChatPanelSignals | null)[],
+  owns: (thread: ChatPanelSignals) => boolean,
+): ChatPanelSignals | null {
   for (const thread of threads) {
     if (thread && owns(thread)) {
       return thread;
@@ -207,42 +116,87 @@ export const openThreadMailDraft$ = command(
 );
 
 export const openThreadBrowserSession$ = command(
-  ({ get, set }, browserSessionId: string) => {
-    const thread = threadOwningCard(
-      [get(currentLeftThread$), get(currentRightThread$)],
+  ({ get, set }, threadId: string) => {
+    const thread = [get(currentLeftThread$), get(currentRightThread$)].find(
       (candidate) => {
-        return get(candidate.browserSessionCardSignalsById$).has(
-          browserSessionId,
-        );
+        return candidate?.threadId === threadId;
       },
     );
     if (!thread) {
       return;
     }
-    set(openOnThread$, thread, { type: "browser", browserSessionId });
+    set(openOnThread$, thread, { type: "browser" });
   },
 );
+
+export function artifactRefFromUrl(url: string): ArtifactRef {
+  const attachment = previewAttachmentFromUrl(url);
+  return {
+    url,
+    kind: classifyChatAttachment(attachment),
+    filename: attachment.filename,
+  };
+}
+
+function materializeArtifactRef(input: ArtifactRefInput): ArtifactRef {
+  if (typeof input === "string") {
+    return artifactRefFromUrl(input);
+  }
+  return {
+    url: input.url,
+    kind: classifyChatAttachment({
+      contentType: input.file.type,
+      filename: input.file.name,
+      url: input.url,
+    }),
+    filename: input.file.name,
+    ...(input.shareAvailable === undefined
+      ? {}
+      : { shareAvailable: input.shareAvailable }),
+  };
+}
 
 /**
  * Promote a message attachment from the lightbox into split view. The lightbox
  * is page-global, so the main (left) thread hosts the sidebar.
  */
 export const openThreadArtifactSplitView$ = command(
-  ({ get, set }, url: string) => {
+  ({ get, set }, input: ArtifactRefInput) => {
     const thread = get(currentLeftThread$) ?? get(currentRightThread$);
     if (!thread) {
       return;
     }
-    const attachment = previewAttachmentFromUrl(url);
-    const ref: ArtifactRef = {
-      url,
-      kind: classifyChatAttachment(attachment),
-      filename: attachment.filename,
-    };
     set(openOnThread$, thread, {
       type: "artifact",
-      source: { kind: "attachment", ref },
+      source: { kind: "attachment", ref: materializeArtifactRef(input) },
     });
+  },
+);
+
+/**
+ * Route an artifact click into an artifact sidebar the page already has open,
+ * replacing its content in place. Returns false when the page has no artifact
+ * sidebar, leaving the caller on its own preview surface.
+ */
+export const openArtifactInOpenSidebar$ = command(
+  ({ get, set }, input: ArtifactRefInput): boolean => {
+    if (!get(artifactSidebarInlineOpenEnabled$)) {
+      return false;
+    }
+    const active = get(activeThreadSidebar$);
+    if (
+      active?.target.type !== "artifacts" &&
+      active?.target.type !== "artifact"
+    ) {
+      return false;
+    }
+    // The owning thread already holds the page's only utility sidebar, so this
+    // swaps its content without closing and reopening the pane.
+    set(active.thread.sidebar.open$, {
+      type: "artifact",
+      source: { kind: "attachment", ref: materializeArtifactRef(input) },
+    });
+    return true;
   },
 );
 
@@ -257,9 +211,7 @@ export const activeSidebarMailDraftId$ = computed((get): string | null => {
     : null;
 });
 
-export const activeSidebarBrowserSessionId$ = computed((get): string | null => {
+export const activeSidebarBrowserThreadId$ = computed((get): string | null => {
   const active = get(activeThreadSidebar$);
-  return active?.target.type === "browser"
-    ? active.target.browserSessionId
-    : null;
+  return active?.target.type === "browser" ? active.thread.threadId : null;
 });

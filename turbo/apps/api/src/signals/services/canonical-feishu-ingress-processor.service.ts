@@ -1,12 +1,11 @@
 import { command } from "ccstate";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { feishuChatIngress } from "@vm0/db/schema/feishu-chat-ingress";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 import { and, asc, eq, inArray, lt, or } from "drizzle-orm";
 import { z } from "zod";
-
 import { logger } from "../../lib/log";
 import { env } from "../../lib/env";
 import { buildFeishuNoticeMessage } from "../../lib/feishu-message-card";
@@ -15,7 +14,7 @@ import {
   replyWithFeishuMessage,
   sendFeishuMessage,
 } from "../external/feishu-client";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
@@ -24,19 +23,19 @@ import {
 import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
-import { feishuChatOpenUrl } from "./feishu-config";
+import { buildFeishuChatOpenUrl } from "./feishu-config";
 import { ensureFeishuChatThreadRoute } from "./feishu-chat-ingress.service";
+import { hasFeishuCustomConnectorOAuthConnection } from "./feishu-custom-connector.service";
 import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
+import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
 import {
   addFeishuThinkingReaction,
-  buildFeishuSystemPrompt,
   dispatchConnectedFeishuCommand$,
   loadFeishuConversationHistory,
   markFeishuMessageReceived,
@@ -173,6 +172,7 @@ function parseMatchingMessage(
 
 async function loadConnection(
   db: Db,
+  orgId: string,
   message: FeishuInboundMessage,
 ): Promise<FeishuDispatchConnection | undefined> {
   const [connection] = await db
@@ -189,7 +189,15 @@ async function loadConnection(
       ),
     )
     .limit(1);
-  return connection;
+  if (!connection) {
+    return undefined;
+  }
+  const hasOAuthConnection = await hasFeishuCustomConnectorOAuthConnection(db, {
+    orgId,
+    userId: connection.vm0UserId,
+    installationId: message.installationId,
+  });
+  return hasOAuthConnection ? connection : undefined;
 }
 
 async function markIngressProcessed(db: Db, ingressId: string): Promise<void> {
@@ -232,7 +240,67 @@ interface PersistedCanonicalFeishuIngress {
   readonly receivedAt: Date;
 }
 
-function feishuInboundUserMessage(message: FeishuInboundMessage) {
+interface CanonicalFeishuLaunchContext {
+  readonly conversationHistory: string;
+  readonly messageText: string;
+  readonly messageFiles: {
+    readonly fileId: string;
+    readonly messageId: string;
+    readonly fileKey: string;
+    readonly type: "file" | "image";
+  }[];
+  readonly chatType: "group" | "p2p" | "topic_group";
+  readonly chatId: string;
+  readonly messageId: string;
+  readonly threadId: string;
+  readonly replyInThread: boolean;
+  readonly reactionId: string | null;
+  readonly senderOpenId: string;
+  readonly connectionId: string;
+  readonly installationId: string;
+}
+
+function canonicalFeishuLaunchContext(args: {
+  readonly message: FeishuInboundMessage;
+  readonly connectionId: string;
+  readonly reactionId: string | undefined;
+  readonly conversationHistory: string;
+  readonly files: readonly FeishuPromptFile[];
+}): CanonicalFeishuLaunchContext {
+  return {
+    conversationHistory: args.conversationHistory,
+    messageText: args.message.text,
+    messageFiles: [
+      ...(args.message.file ? [args.message.file] : []),
+      ...args.files,
+    ].map((file) => {
+      return {
+        fileId: file.fileId,
+        messageId: file.messageId,
+        fileKey: file.fileKey,
+        type: file.type,
+      };
+    }),
+    chatType: args.message.chatType,
+    chatId: args.message.chatId,
+    messageId: args.message.messageId,
+    threadId:
+      args.message.threadId ??
+      args.message.rootId ??
+      args.message.parentId ??
+      args.message.messageId,
+    replyInThread: shouldReplyInFeishuThread(args.message),
+    reactionId: args.reactionId ?? null,
+    senderOpenId: args.message.openId,
+    connectionId: args.connectionId,
+    installationId: args.message.installationId,
+  };
+}
+
+function feishuInboundUserMessage(
+  message: FeishuInboundMessage,
+  chatOpenUrl: string,
+) {
   return createUserMessageDocument({
     text: message.file ? null : message.text,
     files: (message.file ? [message.file] : []).map((file) => {
@@ -241,6 +309,10 @@ function feishuInboundUserMessage(message: FeishuInboundMessage) {
         filename: file.filename,
         contentType: inferMimetype(file.filename),
       };
+    }),
+    nonContentPart: createChatEventSourcePart({
+      kind: "feishu",
+      chatOpenUrl,
     }),
   });
 }
@@ -254,11 +326,10 @@ async function persistCanonicalFeishuIngress(args: {
   readonly agentId: string;
   readonly selectedModel: string | null;
   readonly reactionId: string | undefined;
-  readonly files: readonly FeishuPromptFile[];
-  readonly appendSystemPrompt: string;
+  readonly launchContext: CanonicalFeishuLaunchContext;
   readonly signal: AbortSignal;
 }): Promise<PersistedCanonicalFeishuIngress> {
-  const threadId = canonicalThreadId({
+  const routeThreadId = canonicalThreadId({
     message: args.message,
     agentId: args.agentId,
     selectedModel: args.selectedModel,
@@ -266,7 +337,7 @@ async function persistCanonicalFeishuIngress(args: {
   const route = await ensureFeishuChatThreadRoute(args.db, {
     connectionId: args.connection.id,
     chatId: args.message.chatId,
-    threadId,
+    threadId: routeThreadId,
     userId: args.connection.vm0UserId,
     orgId: args.installation.orgId,
     agentComposeId: args.agentId,
@@ -275,57 +346,19 @@ async function persistCanonicalFeishuIngress(args: {
   });
   args.signal.throwIfAborted();
 
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    {
-      version: 1,
-      prompt: args.message.text,
-      appendSystemPrompt: args.appendSystemPrompt,
-      apiStartTime: args.ingress.createdAt.getTime(),
-      feishuDelivery: {
-        installationId: args.message.installationId,
-        connectionId: args.connection.id,
-        chatId: args.message.chatId,
-        messageId: args.message.messageId,
-        threadId,
-        replyInThread: shouldReplyInFeishuThread(args.message),
-        reactionId: args.reactionId,
-        files: [
-          ...(args.message.file ? [args.message.file] : []),
-          ...args.files,
-        ].map((file) => {
-          return {
-            fileId: file.fileId,
-            messageId: file.messageId,
-            fileKey: file.fileKey,
-            type: file.type,
-          };
-        }),
-      },
-      userInfoExtras: {
-        feishuDisplayName: args.connection.feishuUserName ?? undefined,
-        feishuOpenId: args.message.openId,
-      },
-    },
-    {
-      orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
-    },
-  );
-  args.signal.throwIfAborted();
-
   await args.db.transaction(async (tx) => {
+    const chatOpenUrl = buildFeishuChatOpenUrl(args.message.chatId);
     const inserted = await insertChatEvent(
       tx,
       {
         id: args.ingress.ingressId,
         chatThreadId: route.chatThreadId,
         eventType: "input.prompt",
-        content: args.message.text,
-        userMessage: feishuInboundUserMessage(args.message),
+        userMessage: feishuInboundUserMessage(args.message, chatOpenUrl),
         runId: null,
-        triggerSource: "feishu",
-        encryptedParams,
-        feishuChatOpenUrl: feishuChatOpenUrl(args.message.chatId),
+        feishuContext: {
+          ...args.launchContext,
+        },
         createdAt: args.ingress.createdAt,
       },
       "id",
@@ -368,12 +401,12 @@ async function notifyQueuedFeishuRun(args: {
 }): Promise<void> {
   const [run] = await args.db
     .select({ status: agentRuns.status })
-    .from(chatMessages)
-    .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .from(chatEvents)
+    .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
     .where(
       or(
-        eq(chatMessages.id, args.ingressId),
-        eq(chatMessages.revokesEventId, args.ingressId),
+        eq(chatEvents.id, args.ingressId),
+        eq(chatEvents.revokesEventId, args.ingressId),
       ),
     )
     .limit(1);
@@ -445,7 +478,7 @@ async function processClaimedIngress(args: {
     message,
     signal: args.signal,
   });
-  const connection = await loadConnection(args.db, message);
+  const connection = await loadConnection(args.db, ingress.orgId, message);
   args.signal.throwIfAborted();
   if (!connection) {
     await replyToUnconnectedFeishuMessage({
@@ -522,10 +555,12 @@ async function processClaimedIngress(args: {
     agentId: effectiveAgent.agent.id,
     selectedModel,
     reactionId,
-    files: history.files,
-    appendSystemPrompt: buildFeishuSystemPrompt({
+    launchContext: canonicalFeishuLaunchContext({
       message,
-      history: history.text,
+      connectionId: connection.id,
+      reactionId,
+      conversationHistory: history.text,
+      files: history.files,
     }),
     signal: args.signal,
   });

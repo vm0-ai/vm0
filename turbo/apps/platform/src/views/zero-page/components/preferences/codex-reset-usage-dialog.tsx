@@ -7,14 +7,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
+import { formatLocalizedNumber } from "../../../../i18n/format.ts";
+import { i18n } from "../../../../i18n/index.ts";
 
 export function formatCodexResetCredits(
   value: number | null | undefined,
 ): string {
   if (value === null || value === undefined) {
-    return "Resets left unavailable";
+    return i18n.t(($) => {
+      return $.settings.models.reset.remainingUnavailable;
+    });
   }
-  return `${value} ${value === 1 ? "reset" : "resets"} left`;
+  return i18n.t(
+    ($) => {
+      return $.settings.models.reset.remaining;
+    },
+    {
+      count: value,
+      value: formatLocalizedNumber(value),
+    },
+  );
 }
 
 export function CodexResetUsageDialog({
@@ -30,6 +43,9 @@ export function CodexResetUsageDialog({
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }) {
+  const { t } = useTranslation();
+  const remaining = formatCodexResetCredits(resetCredits);
+
   return (
     <Dialog
       open={open}
@@ -39,12 +55,26 @@ export function CodexResetUsageDialog({
         }
       }}
     >
-      <DialogContent>
+      <DialogContent
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+      >
         <DialogHeader>
-          <DialogTitle>Reset Codex usage?</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.models.reset.title;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            Use one Codex reset to reset your current usage windows. You have{" "}
-            {formatCodexResetCredits(resetCredits)}.
+            {t(
+              ($) => {
+                return $.settings.models.reset.confirmDescription;
+              },
+              {
+                remaining,
+              },
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -56,14 +86,22 @@ export function CodexResetUsageDialog({
               onOpenChange(false);
             }}
           >
-            Cancel
+            {t(($) => {
+              return $.settings.shared.cancel;
+            })}
           </Button>
           <Button
             type="button"
             disabled={resetting || resetCredits === 0}
             onClick={onConfirm}
           >
-            {resetting ? "Resetting..." : "Reset usage"}
+            {resetting
+              ? t(($) => {
+                  return $.settings.models.reset.progress;
+                })
+              : t(($) => {
+                  return $.settings.models.actions.resetUsage;
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>

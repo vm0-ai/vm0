@@ -4,6 +4,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { resetSignal } from "../utils.ts";
 import { threadMeta } from "./chat-thread-event-sourcing.ts";
+import { i18n } from "../../i18n/index.ts";
 
 const resetSyncPrimarySignal$ = resetSignal();
 
@@ -27,7 +28,12 @@ export const syncPrimaryThread$ = command(
 
     // Initial title, set synchronously so the document tab updates on the
     // very first frame after the pane switch.
-    set(updateDocumentTitle$, "Chat");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.chat.documentTitle;
+      }),
+    );
 
     const threadMeta$ = threadMeta(threadId);
     const meta = get(threadMeta$);
@@ -41,13 +47,25 @@ export const syncPrimaryThread$ = command(
       set(setChatAgentId$, meta.agentId);
     }
 
-    set(updateDocumentTitle$, meta.title ?? "New chat");
+    set(
+      updateDocumentTitle$,
+      meta.title ??
+        i18n.t(($) => {
+          return $.chat.newChat;
+        }),
+    );
 
     // Forever-running Ably loop until signal aborts.
     const onThreadUpdated$ = command(({ get, set }) => {
       const updatedMeta = get(threadMeta$);
       if (updatedMeta) {
-        set(updateDocumentTitle$, updatedMeta.title ?? "New chat");
+        set(
+          updateDocumentTitle$,
+          updatedMeta.title ??
+            i18n.t(($) => {
+              return $.chat.newChat;
+            }),
+        );
       }
       return false;
     });

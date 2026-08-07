@@ -8,6 +8,8 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { Button, CopyButton } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
 import { clerk$, resolveAppAuthUrl } from "../../signals/auth.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -35,13 +37,16 @@ function signInHref(): string {
 }
 
 function BackLink() {
+  const { t } = useTranslation();
   return (
     <Link
       pathname="/settings/telegram"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
       <IconArrowLeft size={14} />
-      Back to Telegram settings
+      {t(($) => {
+        return $.connectors.providerConnect.telegram.back;
+      })}
     </Link>
   );
 }
@@ -121,23 +126,24 @@ function TelegramAutoOpen({ href }: { href: string }) {
 }
 
 function SuccessState({ botUsername }: { botUsername: string }) {
+  const { t } = useTranslation();
   const telegramHref = `tg://resolve?domain=${botUsername.replace(/^@/, "")}`;
+  const botLabel = `@${botUsername.replace(/^@/, "")}`;
 
   return (
     <PageShell>
       <TelegramAutoOpen href={telegramHref} />
       <TelegramMark state="success" />
       <CenterText
-        title="Connected to Telegram!"
-        body={
-          <>
-            You&apos;re connected to{" "}
-            <span className="font-medium">
-              @{botUsername.replace(/^@/, "")}
-            </span>
-            . Send a message in Telegram to start chatting.
-          </>
-        }
+        title={t(($) => {
+          return $.connectors.providerConnect.telegram.successTitle;
+        })}
+        body={t(
+          ($) => {
+            return $.connectors.providerConnect.telegram.successDescription;
+          },
+          { bot: botLabel },
+        )}
       />
       <div className="flex w-full flex-col gap-3">
         <Button
@@ -147,7 +153,9 @@ function SuccessState({ botUsername }: { botUsername: string }) {
           }}
         >
           <img src={telegramIconImg} alt="" className="h-4 w-4" />
-          Open Telegram
+          {t(($) => {
+            return $.connectors.providerConnect.telegram.open;
+          })}
         </Button>
         <div className="flex justify-center">
           <BackLink />
@@ -162,6 +170,7 @@ function AlreadyConnectedState({
 }: {
   botUsername: string | undefined;
 }) {
+  const { t } = useTranslation();
   const normalizedBotUsername = botUsername?.replace(/^@/, "");
   const telegramHref = normalizedBotUsername
     ? `tg://resolve?domain=${normalizedBotUsername}`
@@ -171,19 +180,21 @@ function AlreadyConnectedState({
     <PageShell>
       <TelegramMark state="success" />
       <CenterText
-        title="Already connected to Telegram"
+        title={t(($) => {
+          return $.connectors.providerConnect.telegram.alreadyTitle;
+        })}
         body={
-          <>
-            {normalizedBotUsername ? (
-              <>
-                You&apos;re already connected to{" "}
-                <span className="font-medium">@{normalizedBotUsername}</span>.
-                Send a message in Telegram to start chatting.
-              </>
-            ) : (
-              "You're already connected. Send a message in Telegram to start chatting."
-            )}
-          </>
+          normalizedBotUsername
+            ? t(
+                ($) => {
+                  return $.connectors.providerConnect.telegram
+                    .alreadyDescriptionNamed;
+                },
+                { bot: `@${normalizedBotUsername}` },
+              )
+            : t(($) => {
+                return $.connectors.providerConnect.telegram.alreadyDescription;
+              })
         }
       />
       <div className="flex w-full flex-col gap-3">
@@ -195,7 +206,9 @@ function AlreadyConnectedState({
             }}
           >
             <img src={telegramIconImg} alt="" className="h-4 w-4" />
-            Open Telegram
+            {t(($) => {
+              return $.connectors.providerConnect.telegram.open;
+            })}
           </Button>
         ) : null}
         <div className="flex justify-center">
@@ -213,10 +226,13 @@ function getTelegramLoginDomain(): string {
 function getTelegramConnectErrorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
-    : "We couldn't connect Telegram. Try again from Telegram.";
+    : i18n.t(($) => {
+        return $.connectors.providerConnect.telegram.errorFallback;
+      });
 }
 
 function DomainStatusPolling() {
+  const { t } = useTranslation();
   const domainStatusPollerRef = useSet(telegramDomainStatusPollerRef$);
 
   return (
@@ -224,7 +240,9 @@ function DomainStatusPolling() {
       <span ref={domainStatusPollerRef} hidden />
       <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
         <IconLoader2 size={13} className="animate-spin" />
-        Checking domain status...
+        {t(($) => {
+          return $.connectors.providerConnect.telegram.checkingDomain;
+        })}
       </div>
     </>
   );
@@ -235,42 +253,60 @@ function DomainSetupState({
 }: {
   botUsername: string | undefined;
 }) {
+  const { t } = useTranslation();
   const domain = getTelegramLoginDomain();
   const normalizedBotUsername = botUsername?.replace(/^@/, "");
+  const botLabel = normalizedBotUsername
+    ? `@${normalizedBotUsername}`
+    : t(($) => {
+        return $.connectors.providerConnect.telegram.botFallback;
+      });
 
   return (
     <PageShell>
       <TelegramMark state="warning" />
       <div className="text-center space-y-1.5">
         <h2 className="text-base font-semibold text-foreground">
-          Set Telegram login domain
+          {t(($) => {
+            return $.connectors.providerConnect.telegram.domainTitle;
+          })}
         </h2>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Telegram web login is not enabled for{" "}
-          {normalizedBotUsername ? (
-            <span className="font-medium">@{normalizedBotUsername}</span>
-          ) : (
-            "this bot"
+          {t(
+            ($) => {
+              return $.connectors.providerConnect.telegram.domainDescription;
+            },
+            { bot: botLabel },
           )}
-          .
         </p>
       </div>
       <div className="w-full rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-relaxed text-foreground">
         <p>
-          In{" "}
+          {t(($) => {
+            return $.connectors.providerConnect.telegram.domainIn;
+          })}
           <a
             href="https://t.me/BotFather"
             target="_blank"
             rel="noreferrer"
             className="font-medium text-foreground underline-offset-4 hover:underline"
           >
-            @BotFather
+            {t(($) => {
+              return $.connectors.providerConnect.telegram.botFatherHandle;
+            })}
           </a>
-          , send{" "}
+          {t(($) => {
+            return $.connectors.providerConnect.telegram.domainSend;
+          })}
           <code className="rounded border border-amber-500/30 bg-background/80 px-1 py-0.5 font-mono text-xs">
-            /setdomain
+            {t(($) => {
+              return $.connectors.providerConnect.telegram.setDomainCommand;
+            })}
           </code>
-          , choose the bot, then set the domain to:
+          {t(($) => {
+            return $.connectors.providerConnect.telegram
+              .domainInstructionsAfter;
+          })}
         </p>
         <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2">
           <code className="min-w-0 truncate font-mono text-xs">{domain}</code>
@@ -280,8 +316,9 @@ function DomainSetupState({
           />
         </div>
         <p className="mt-3 text-muted-foreground">
-          Keep this page open after saving the domain. You can also connect from
-          Telegram with <code className="font-mono text-xs">/connect</code>.
+          {t(($) => {
+            return $.connectors.providerConnect.telegram.domainKeepOpen;
+          })}
         </p>
         <DomainStatusPolling />
       </div>
@@ -292,7 +329,9 @@ function DomainSetupState({
           rel="noreferrer"
           className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
-          Open BotFather
+          {t(($) => {
+            return $.connectors.providerConnect.telegram.openBotFather;
+          })}
         </a>
         <div className="flex justify-center">
           <BackLink />
@@ -311,6 +350,7 @@ function ConnectActions({
   connecting: boolean;
   onConnect: () => void;
 }) {
+  const { t } = useTranslation();
   if (parsed.connectSignature) {
     return (
       <div className="flex w-full flex-col gap-3">
@@ -318,7 +358,13 @@ function ConnectActions({
           {connecting ? (
             <IconLoader2 size={16} className="animate-spin" />
           ) : null}
-          {connecting ? "Connecting..." : "Connect"}
+          {connecting
+            ? t(($) => {
+                return $.connectors.actions.connecting;
+              })
+            : t(($) => {
+                return $.connectors.actions.connect;
+              })}
         </Button>
       </div>
     );
@@ -327,12 +373,127 @@ function ConnectActions({
   return (
     <Button className="w-full" disabled={connecting} onClick={onConnect}>
       {connecting ? <IconLoader2 size={16} className="animate-spin" /> : null}
-      {connecting ? "Connecting..." : "Continue with Telegram"}
+      {connecting
+        ? t(($) => {
+            return $.connectors.actions.connecting;
+          })
+        : t(($) => {
+            return $.connectors.providerConnect.telegram.continue;
+          })}
     </Button>
   );
 }
 
+type TelegramConnectParamErrorCode = Extract<
+  ReturnType<typeof parseTelegramConnectParams>,
+  { ok: false }
+>["error"]["code"];
+
+function InvalidTelegramConnectParams({
+  code,
+}: {
+  code: TelegramConnectParamErrorCode;
+}) {
+  const { t } = useTranslation();
+  const title =
+    code === "incomplete"
+      ? t(($) => {
+          return $.connectors.providerConnect.telegram.linkIncompleteTitle;
+        })
+      : t(($) => {
+          return $.connectors.providerConnect.telegram.invalidTitle;
+        });
+  const messages: Record<TelegramConnectParamErrorCode, string> = {
+    incomplete: t(($) => {
+      return $.connectors.providerConnect.telegram.linkIncomplete;
+    }),
+    invalid_signature: t(($) => {
+      return $.connectors.providerConnect.telegram.invalidSignature;
+    }),
+    invalid_timestamp: t(($) => {
+      return $.connectors.providerConnect.telegram.invalidTimestamp;
+    }),
+    invalid_user: t(($) => {
+      return $.connectors.providerConnect.telegram.invalidUser;
+    }),
+    invalid_username: t(($) => {
+      return $.connectors.providerConnect.telegram.invalidUsername;
+    }),
+  };
+  return <InvalidState title={title} message={messages[code]} />;
+}
+
+function TelegramSessionLoadingState({ brandName }: { brandName: string }) {
+  const { t } = useTranslation();
+  return (
+    <PageShell>
+      <TelegramMark state="loading" />
+      <CenterText
+        title={t(($) => {
+          return $.connectors.providerConnect.common.checkingTitle;
+        })}
+        body={t(
+          ($) => {
+            return $.connectors.providerConnect.telegram.checkingSession;
+          },
+          { brandName },
+        )}
+      />
+    </PageShell>
+  );
+}
+
+function TelegramSignInState({ brandName }: { brandName: string }) {
+  const { t } = useTranslation();
+  return (
+    <PageShell>
+      <TelegramMark />
+      <CenterText
+        title={t(($) => {
+          return $.connectors.providerConnect.telegram.signInTitle;
+        })}
+        body={t(
+          ($) => {
+            return $.connectors.providerConnect.telegram.signInDescription;
+          },
+          { brandName },
+        )}
+      />
+      <a
+        href={signInHref()}
+        className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        {t(
+          ($) => {
+            return $.connectors.providerConnect.telegram.signInButton;
+          },
+          { brandName },
+        )}
+      </a>
+    </PageShell>
+  );
+}
+
+function TelegramConnectionLoadingState() {
+  const { t } = useTranslation();
+  return (
+    <PageShell>
+      <TelegramMark state="loading" />
+      <CenterText
+        title={t(($) => {
+          return $.connectors.providerConnect.telegram.checkingConnectionTitle;
+        })}
+        body={t(($) => {
+          return $.connectors.providerConnect.telegram
+            .checkingConnectionDescription;
+        })}
+      />
+    </PageShell>
+  );
+}
+
 export function ZeroTelegramConnectPage(): JSX.Element {
+  const { t } = useTranslation();
   const brandName = useGet(brandName$);
   const params = useGet(searchParams$);
   const parsed = parseTelegramConnectParams(params);
@@ -351,48 +512,28 @@ export function ZeroTelegramConnectPage(): JSX.Element {
       : null;
 
   if (!parsed.ok) {
-    return (
-      <InvalidState title={parsed.error.title} message={parsed.error.message} />
-    );
+    return <InvalidTelegramConnectParams code={parsed.error.code} />;
   }
 
   if (clerkLoadable.state === "loading") {
-    return (
-      <PageShell>
-        <TelegramMark state="loading" />
-        <CenterText
-          title="Checking account status..."
-          body={`Please wait while we verify your ${brandName} session.`}
-        />
-      </PageShell>
-    );
+    return <TelegramSessionLoadingState brandName={brandName} />;
   }
 
   if (clerkLoadable.state === "hasError") {
     return (
       <InvalidState
-        title="Couldn't check sign-in"
-        message="Refresh this page and try again."
+        title={t(($) => {
+          return $.connectors.providerConnect.telegram.signInCheckFailed;
+        })}
+        message={t(($) => {
+          return $.connectors.providerConnect.telegram.refresh;
+        })}
       />
     );
   }
 
   if (!clerkLoadable.data.user) {
-    return (
-      <PageShell>
-        <TelegramMark />
-        <CenterText
-          title="Sign in to continue"
-          body={`Use your ${brandName} account before connecting this Telegram user.`}
-        />
-        <a
-          href={signInHref()}
-          className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          Sign in to {brandName}
-        </a>
-      </PageShell>
-    );
+    return <TelegramSignInState brandName={brandName} />;
   }
 
   if (success) {
@@ -400,15 +541,7 @@ export function ZeroTelegramConnectPage(): JSX.Element {
   }
 
   if (linkStatusLoadable.state === "loading") {
-    return (
-      <PageShell>
-        <TelegramMark state="loading" />
-        <CenterText
-          title="Checking connection..."
-          body="Please wait while we check your Telegram connection."
-        />
-      </PageShell>
-    );
+    return <TelegramConnectionLoadingState />;
   }
 
   const linkStatus =
@@ -429,8 +562,12 @@ export function ZeroTelegramConnectPage(): JSX.Element {
     <PageShell>
       <TelegramMark />
       <CenterText
-        title="Connect to Telegram"
-        body="Link your account to this Telegram bot so you can interact with your agent directly from Telegram."
+        title={t(($) => {
+          return $.connectors.providerConnect.telegram.connectTitle;
+        })}
+        body={t(($) => {
+          return $.connectors.providerConnect.telegram.connectDescription;
+        })}
       />
       {error ? (
         <div

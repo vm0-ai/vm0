@@ -12,6 +12,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -22,14 +23,17 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearTeamsBotAuthCacheForTest } from "../../../lib/teams-bot-auth";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
-import { ROUTES } from "../../route";
+import { zeroIntegrationsTeamsDownloadFileRoutes } from "../zero-integrations-teams-download-file";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import {
   installTeamsForTest,
   removeTeamsForTest,
@@ -42,13 +46,17 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();
+const callbackStore = createStore();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const computerUseApi = createComputerUseBddApi(context);
 const runsApi = createRunsApi(context);
 const userConfigApi = createUserConfigBddApi(context);
+const webhooksApi = createWebhookCallbackApi(context);
 const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
   async (fixture) => {
     await removeTeamsForTest(context.signal, fixture);
@@ -711,6 +719,18 @@ async function runIdForPrompt(
   return run.id;
 }
 
+async function completeCancelledRun(
+  runId: string,
+  sandboxToken: string,
+): Promise<void> {
+  await webhooksApi.requestAgentComplete(
+    { runId, exitCode: 1, error: "Run cancelled" },
+    { authorization: `Bearer ${sandboxToken}` },
+    [200],
+  );
+  await flushWaitUntilForTest();
+}
+
 function requestTokenFromUrl(authorizationUrl: string): string {
   const url = new URL(authorizationUrl);
   const prefix = "/computer-use/authorize/";
@@ -743,7 +763,9 @@ async function connectTeamsFixture(
   fixture: TeamsConnectFixture,
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-  const client = setupApp({ context })(zeroTeamsConnectContract);
+  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    zeroTeamsConnectContract,
+  );
   await accept(
     client.connect({
       headers: { authorization: "Bearer clerk-session" },
@@ -1038,7 +1060,9 @@ describe("POST /api/zero/teams/bot", () => {
       "org_teams_bot_test",
       "org:admin",
     );
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
@@ -1475,7 +1499,9 @@ describe("POST /api/zero/teams/bot", () => {
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context })(chatThreadsContract).events({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
         headers: { authorization: "Bearer clerk-session" },
         query: {},
       }),
@@ -1490,7 +1516,9 @@ describe("POST /api/zero/teams/bot", () => {
       throw new Error("Expected the canonical Teams file chat thread");
     }
     const threadEventsPage = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: chatThreadCreated.chatThreadId },
         query: {},
@@ -1499,13 +1527,7 @@ describe("POST /api/zero/teams/bot", () => {
     );
     expect(threadEventsPage.body.events).toContainEqual(
       expect.objectContaining({
-        content: [
-          "please inspect this",
-          "",
-          "[Teams file] spec.png (image/png)",
-          "   [Teams attachment ID] channel-attachment-1",
-          `   [ID] ${fileId}`,
-        ].join("\n"),
+        content: null,
         userMessage: {
           version: 1,
           parts: [
@@ -1516,6 +1538,15 @@ describe("POST /api/zero/teams/bot", () => {
               contentType: "image/png",
             },
             { type: "text", text: "please inspect this" },
+            {
+              type: "source",
+              kind: "teams",
+              href: `https://teams.microsoft.com/l/message/${encodeURIComponent(
+                "19:channel@thread.tacv2",
+              )}/activity-file-channel?tenantId=${encodeURIComponent(
+                fixture.teamsTenantId,
+              )}`,
+            },
           ],
         },
       }),
@@ -1546,7 +1577,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     const app = createAppWithRoutes({
       signal: context.signal,
-      routes: ROUTES,
+      routes: zeroIntegrationsTeamsDownloadFileRoutes,
     });
     const downloadResponse = await app.request(
       `/api/zero/integrations/teams/download-file?${new URLSearchParams({
@@ -1628,7 +1659,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     const app = createAppWithRoutes({
       signal: context.signal,
-      routes: ROUTES,
+      routes: zeroIntegrationsTeamsDownloadFileRoutes,
     });
     const downloadResponse = await app.request(
       `/api/zero/integrations/teams/download-file?${new URLSearchParams({
@@ -2023,8 +2054,9 @@ describe("POST /api/zero/teams/bot", () => {
     await readTeamsBotResponseAndFlush(initialResponse);
     const initialRunId = await runIdForPrompt(actor, "run before switching");
     await runsApi.heartbeatRunner(runnerGroup);
-    await runsApi.claimRunnerJob(initialRunId);
+    const initialClaim = await runsApi.claimRunnerJob(initialRunId);
     await runsApi.requestCancelRun(actor, initialRunId, [200]);
+    await completeCancelledRun(initialRunId, initialClaim.sandboxToken);
 
     const switchAgentResponse = await postTeamsActivity({
       activity: teamsPersonalMessageActivity({
@@ -2062,6 +2094,10 @@ describe("POST /api/zero/teams/bot", () => {
       "Your name is Teams switched agent.",
     );
     await runsApi.requestCancelRun(actor, switchedAgentRunId, [200]);
+    await completeCancelledRun(
+      switchedAgentRunId,
+      switchedAgentClaim.sandboxToken,
+    );
 
     const switchModelResponse = await postTeamsActivity({
       activity: teamsPersonalMessageActivity({
@@ -2572,6 +2608,17 @@ describe("POST /api/zero/teams/bot", () => {
         id: "activity-dispatch-1",
         replyToId: "root-dispatch",
         text: "<at>Zero</at> ship the Teams dispatch",
+        attachments: [
+          {
+            id: "teams-file-current-1",
+            name: "current-task.txt",
+            contentType: "application/vnd.microsoft.teams.file.download.info",
+            content: {
+              downloadUrl: "https://files.example.test/current-task.txt",
+              fileType: "txt",
+            },
+          },
+        ],
       }),
       token: teamsToken(),
     });
@@ -2595,7 +2642,14 @@ describe("POST /api/zero/teams/bot", () => {
       },
     ]);
 
-    const runId = await runIdForPrompt(actor, "ship the Teams dispatch");
+    const dispatchRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const dispatchRun = dispatchRuns.runs.find((run) => {
+      return run.prompt.includes("ship the Teams dispatch");
+    });
+    if (!dispatchRun) {
+      throw new Error("Expected Teams dispatch run");
+    }
+    const runId = dispatchRun.id;
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
@@ -2618,7 +2672,33 @@ describe("POST /api/zero/teams/bot", () => {
       appendSystemPrompt,
       "# Microsoft Teams Thread Context",
     );
-    expect(claim.prompt).toBe("ship the Teams dispatch");
+    expect(claim.prompt).toContain("ship the Teams dispatch");
+    expect(claim.prompt).toContain("[Web file] current-task.txt (text/plain)");
+    expect(claim.prompt).not.toContain("deployment-plan.pdf");
+    expect(claim.prompt).not.toContain("release-checklist.txt");
+    await expect(
+      callbackStore.set(
+        readAgentRunCallbacks$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual([
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          teamsDelivery: expect.objectContaining({
+            files: expect.arrayContaining([
+              expect.objectContaining({ name: "current-task.txt" }),
+              expect.objectContaining({ name: "deployment-plan.pdf" }),
+              expect.objectContaining({ name: "release-checklist.txt" }),
+            ]),
+          }),
+        }),
+      }),
+    ]);
     expect(currentIntegrationPrompt).toContain(
       "You are currently running inside: Microsoft Teams",
     );
@@ -2803,6 +2883,7 @@ describe("POST /api/zero/teams/bot", () => {
       host.hostId,
     );
     await runsApi.requestCancelRun(actor, firstRunId, [200]);
+    await completeCancelledRun(firstRunId, firstClaim.sandboxToken);
 
     const secondResponse = await postTeamsActivity({
       activity: teamsPersonalThreadMessageActivity({
@@ -2909,7 +2990,9 @@ describe("POST /api/zero/teams/bot", () => {
     });
     await flushWaitUntilForTest();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },

@@ -1,5 +1,6 @@
 use tracing::info;
 
+use crate::cmd::nbd::NbdOrphanDisconnect;
 use crate::error::{RunnerError, RunnerResult};
 
 use super::report::GcReport;
@@ -7,7 +8,24 @@ use super::report::GcReport;
 /// Scan for lock-free NBD devices whose recorded owner task has exited and
 /// optionally disconnect them. Returns the number of orphans cleaned.
 pub(super) async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<GcReport> {
-    let (max_devs, orphans) = tokio::task::spawn_blocking(crate::cmd::nbd::find_nbd_orphans)
+    gc_nbd_orphans_with(
+        dry_run,
+        crate::cmd::nbd::find_nbd_orphans,
+        crate::cmd::nbd::disconnect_orphan_if_still_dead,
+    )
+    .await
+}
+
+async fn gc_nbd_orphans_with<Scan, Disconnect>(
+    dry_run: bool,
+    scan: Scan,
+    disconnect: Disconnect,
+) -> RunnerResult<GcReport>
+where
+    Scan: FnOnce() -> (u32, Vec<(u32, u32)>) + Send + 'static,
+    Disconnect: Fn(u32, u32) -> NbdOrphanDisconnect + Clone + Send + 'static,
+{
+    let (max_devs, orphans) = tokio::task::spawn_blocking(scan)
         .await
         .map_err(|e| RunnerError::Internal(format!("nbd orphan scan task failed: {e}")))?;
 
@@ -28,10 +46,9 @@ pub(super) async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<GcReport> {
             // Re-check before disconnect while holding the same per-index lock
             // the allocator uses. Between the scan and now, the device could
             // have been freed and re-acquired by another runner.
-            let result = match tokio::task::spawn_blocking(move || {
-                crate::cmd::nbd::disconnect_orphan_if_still_dead(device_index, pid)
-            })
-            .await
+            let disconnect = disconnect.clone();
+            let result = match tokio::task::spawn_blocking(move || disconnect(device_index, pid))
+                .await
             {
                 Ok(result) => result,
                 Err(e) => {
@@ -41,21 +58,21 @@ pub(super) async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<GcReport> {
             };
 
             match result {
-                crate::cmd::nbd::NbdOrphanDisconnect::Disconnected => {
+                NbdOrphanDisconnect::Disconnected => {
                     info!(
                         "disconnected orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
                     );
                     cleaned += 1;
                 }
-                crate::cmd::nbd::NbdOrphanDisconnect::Locked => {
+                NbdOrphanDisconnect::Locked => {
                     info!("nbd{device_index}: skipping disconnect, NBD device lock is held");
                 }
-                crate::cmd::nbd::NbdOrphanDisconnect::Changed => {
+                NbdOrphanDisconnect::Changed => {
                     info!(
                         "nbd{device_index}: skipping disconnect, device state changed since scan"
                     );
                 }
-                crate::cmd::nbd::NbdOrphanDisconnect::Failed(e) => {
+                NbdOrphanDisconnect::Failed(e) => {
                     info!("failed to disconnect orphan NBD device /dev/nbd{device_index}: {e}");
                 }
             }
@@ -71,26 +88,95 @@ pub(super) async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<GcReport> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
     use super::*;
 
     #[tokio::test]
-    async fn gc_nbd_orphans_no_devices() {
-        // On CI / dev machines without NBD module, this should return 0 without panicking.
-        let report = gc_nbd_orphans(true).await.unwrap();
+    async fn gc_nbd_orphans_returns_empty_report_without_candidates() {
+        let report = gc_nbd_orphans_with(
+            false,
+            || (8, Vec::new()),
+            |_, _| panic!("disconnect should not run without candidates"),
+        )
+        .await
+        .unwrap();
+
         assert_eq!(report, GcReport::default());
     }
 
-    #[test]
-    fn read_nbd_pid_nonexistent_device() {
-        // A device index that almost certainly doesn't exist.
-        assert!(crate::cmd::nbd::read_nbd_pid(9999).is_none());
+    #[tokio::test]
+    async fn gc_nbd_orphans_dry_run_counts_candidates_without_disconnect() {
+        let report = gc_nbd_orphans_with(
+            true,
+            || (8, vec![(2, 101), (5, 202)]),
+            |_, _| panic!("disconnect should not run during dry-run"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report, GcReport::cleanup(2, 0));
     }
 
-    #[test]
-    fn read_nbds_max_returns_default_without_module() {
-        // When the NBD module is not loaded, the function should return the default.
-        // On CI this is expected; on a host with NBD it returns the actual value.
-        let max = crate::cmd::nbd::read_nbds_max();
-        assert!(max > 0);
+    #[tokio::test]
+    async fn gc_nbd_orphans_counts_only_disconnected_outcomes() {
+        let report = gc_nbd_orphans_with(
+            false,
+            || (8, vec![(0, 100), (1, 101), (2, 102), (3, 103), (4, 104)]),
+            |device_index, _| match device_index {
+                0 | 4 => NbdOrphanDisconnect::Disconnected,
+                1 => NbdOrphanDisconnect::Locked,
+                2 => NbdOrphanDisconnect::Changed,
+                3 => NbdOrphanDisconnect::Failed("netlink failed".to_string()),
+                other => panic!("unexpected device index {other}"),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report, GcReport::cleanup(2, 0));
+    }
+
+    #[tokio::test]
+    async fn gc_nbd_orphans_propagates_scan_task_failure() {
+        let error = gc_nbd_orphans_with(
+            false,
+            || panic!("scan failed"),
+            |_, _| panic!("disconnect should not run after scan failure"),
+        )
+        .await
+        .unwrap_err();
+
+        match error {
+            RunnerError::Internal(message) => {
+                assert!(message.contains("nbd orphan scan task failed"));
+            }
+            other => panic!("expected internal scan task error, got {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn gc_nbd_orphans_continues_after_disconnect_task_failure() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_disconnect = attempts.clone();
+        let report = gc_nbd_orphans_with(
+            false,
+            || (8, vec![(0, 100), (1, 101)]),
+            move |device_index, _| {
+                attempts_for_disconnect.fetch_add(1, Ordering::Relaxed);
+                if device_index == 0 {
+                    panic!("disconnect task failed");
+                }
+                NbdOrphanDisconnect::Disconnected
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(attempts.load(Ordering::Relaxed), 2);
+        assert_eq!(report, GcReport::cleanup(1, 0));
     }
 }

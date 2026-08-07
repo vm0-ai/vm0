@@ -12,7 +12,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { ConnectorCatalogFilteredAuthMethods } from "@vm0/db/jsonb-contracts/connector-catalog";
+import type { ConnectorCatalogCompatibilityEvaluationPayload } from "@vm0/db/jsonb-contracts/connector-catalog";
 
 export const CONNECTOR_CATALOG_ATTEMPT_OUTCOMES = [
   "accepted",
@@ -260,7 +260,7 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
     ),
     evaluatedAt: timestamp("evaluated_at").notNull(),
     filteredAuthMethods: jsonb("filtered_auth_methods")
-      .$type<ConnectorCatalogFilteredAuthMethods>()
+      .$type<ConnectorCatalogCompatibilityEvaluationPayload>()
       .notNull(),
   },
   (table) => {

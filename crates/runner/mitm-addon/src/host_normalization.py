@@ -12,7 +12,8 @@ normalization steps are implementation details, not a complete WHATWG/IDNA API.
 
 from unicodedata import bidirectional, category, normalize
 
-_ASCII_MAX = 0x7F
+_ASCII_SPACE = " "
+_ASCII_DELETE = "\x7f"
 _IPV4_MAX_OCTET = 255
 _IPV4_HEX_PREFIX_LENGTH = 2
 _IPV4_MIN_PARTS = 1
@@ -51,6 +52,7 @@ _BIDI_RTL_END_CLASSES = _BIDI_RTL_CLASSES | frozenset((_BIDI_ARABIC_NUMBER, _BID
 _BIDI_ARABIC_NUMBER_END_CLASSES = _BIDI_RTL_CLASSES | frozenset((_BIDI_ARABIC_NUMBER,))
 _FORBIDDEN_NORMALIZED_LABEL_CHARS = frozenset("#%,/:<>?@[\\]^|[]")
 _FORBIDDEN_NORMALIZED_LABEL_DOTS = frozenset(".\u3002\uff0e\uff61")
+_FORBIDDEN_ASCII_LABEL_CHARS = _FORBIDDEN_NORMALIZED_LABEL_CHARS | frozenset((".",))
 _GREEK_CAPITAL_SIGMA = "\u03a3"
 _GREEK_COMBINING_YPOGEGRAMMENI = "\u0345"
 _GREEK_SMALL_IOTA = "\u03b9"
@@ -123,7 +125,7 @@ class UnsafeIdnaCompatibilityMappingError(UnicodeError):
 
 
 def _is_ascii(value: str) -> bool:
-    return all(ord(char) <= _ASCII_MAX for char in value)
+    return value.isascii()
 
 
 def _is_ipv4_number_component(value: str) -> bool:
@@ -389,9 +391,17 @@ def _has_invalid_alabel(ascii_host: str) -> bool:
 def _normalize_label(label: str) -> str:
     if not label:
         raise UnicodeError("empty IDNA label")
-    normalized_label = _normalize_label_text(label)
-    _validate_normalized_label_text(normalized_label)
-    ascii_label = label.lower() if _is_ascii(label) else _encode_unicode_label(label)
+    if _is_ascii(label):
+        if any(
+            char <= _ASCII_SPACE or char == _ASCII_DELETE or char in _FORBIDDEN_ASCII_LABEL_CHARS
+            for char in label
+        ):
+            raise UnicodeError("invalid IDNA label")
+        ascii_label = label.lower()
+    else:
+        normalized_label = _normalize_label_text(label)
+        _validate_normalized_label_text(normalized_label)
+        ascii_label = _encode_unicode_label(label)
     if len(ascii_label) > _DNS_LABEL_MAX_LENGTH:
         raise UnicodeError("IDNA label too long")
     if not _is_valid_alabel(ascii_label):

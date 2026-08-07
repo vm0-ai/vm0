@@ -11,11 +11,14 @@ import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   CONNECTOR_CATALOG_MAX_RAW_BYTES,
   connectorCatalogArtifactSchema,
-  connectorCatalogVersionSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,
 } from "./artifacts";
-import { artifactKeySchema, digestSchema } from "./common";
+import {
+  connectorCatalogVersionSchema,
+  artifactKeySchema,
+  digestSchema,
+} from "./common";
 import { validateConnectorCatalogPublicProjection } from "./public-leak";
 import { validateConnectorCatalogArtifact } from "./relationships";
 

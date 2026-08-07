@@ -14,11 +14,16 @@ import {
 } from "@vm0/api-contracts/contracts/cli-auth";
 import { createStore } from "ccstate";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { cliAuthRoutes } from "../cli-auth";
+import { zeroAgentInstructionsRoutes } from "../zero-agent-instructions";
+import { zeroAgentsRoutes } from "../zero-agents";
+import { zeroWorkflowsRoutes } from "../zero-workflows";
 
 const context = testContext();
 const store = createStore();
@@ -57,20 +62,26 @@ async function cliAuthHeaders(
   );
 
   const device = await accept(
-    setupApp({ context })(cliAuthDeviceContract).create({ body: {} }),
+    setupApp({ context, routes: cliAuthRoutes })(cliAuthDeviceContract).create({
+      body: {},
+    }),
     [200],
   );
   await accept(
-    setupApp({ context })(cliAuthApproveContract).approve({
+    setupApp({ context, routes: cliAuthRoutes })(
+      cliAuthApproveContract,
+    ).approve({
       headers: authHeaders(),
       body: { device_code: device.body.device_code },
     }),
     [200],
   );
   const response = await accept(
-    setupApp({ context })(cliAuthTokenContract).exchange({
-      body: { device_code: device.body.device_code },
-    }),
+    setupApp({ context, routes: cliAuthRoutes })(cliAuthTokenContract).exchange(
+      {
+        body: { device_code: device.body.device_code },
+      },
+    ),
     [200],
   );
 
@@ -78,15 +89,21 @@ async function cliAuthHeaders(
 }
 
 function agentsClient() {
-  return setupApp({ context })(zeroAgentsByIdContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsByIdContract,
+  );
 }
 
 function agentsCollectionClient() {
-  return setupApp({ context })(zeroAgentsMainContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsMainContract,
+  );
 }
 
 function instructionsClient() {
-  return setupApp({ context })(zeroAgentInstructionsContract);
+  return setupApp({ context, routes: zeroAgentInstructionsRoutes })(
+    zeroAgentInstructionsContract,
+  );
 }
 
 /** Creates an agent through POST /api/zero/agents with the user as owner. */
@@ -111,7 +128,9 @@ async function createWorkflowFor(
 ): Promise<void> {
   mocks.clerk.session(user.userId, user.orgId);
   await accept(
-    setupApp({ context })(zeroWorkflowsCollectionContract).create({
+    setupApp({ context, routes: zeroWorkflowsRoutes })(
+      zeroWorkflowsCollectionContract,
+    ).create({
       headers: authHeaders(),
       body: { agentId, name },
     }),

@@ -67,7 +67,7 @@ function publicDeviceAuthStartOptionDescriptors(
 }
 
 export function normalizeManualGrantSubmittedValuesWithMethod(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly values: Readonly<Record<string, string>>;
@@ -77,7 +77,7 @@ export function normalizeManualGrantSubmittedValuesWithMethod(args: {
       ? publicManualGrantFieldDescriptors(args.method.grant)
       : null;
   return normalizeManualGrantSubmittedValuesFromDescriptors({
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     authMethodId: args.authMethodId,
     descriptors,
     values: args.values,
@@ -85,7 +85,7 @@ export function normalizeManualGrantSubmittedValuesWithMethod(args: {
 }
 
 function normalizeManualGrantSubmittedValuesFromDescriptors(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly descriptors: readonly PublicManualGrantFieldDescriptor[] | null;
   readonly values: Readonly<Record<string, string>>;
@@ -94,7 +94,7 @@ function normalizeManualGrantSubmittedValuesFromDescriptors(args: {
   if (!descriptors) {
     return {
       ok: false,
-      message: `${args.connectorRef} ${args.authMethodId} auth method does not use a manual grant`,
+      message: `${args.connectorSlug} ${args.authMethodId} auth method does not use a manual grant`,
     };
   }
 
@@ -135,7 +135,7 @@ function normalizeManualGrantSubmittedValuesFromDescriptors(args: {
 
 export function normalizeDeviceAuthStartOptionsWithMethod(args: {
   readonly authMethodId: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly options: ConnectorDeviceAuthStartOptions | undefined;
 }): DeviceAuthStartOptionsNormalizationResult {
@@ -145,7 +145,7 @@ export function normalizeDeviceAuthStartOptionsWithMethod(args: {
       : null;
   return normalizeDeviceAuthStartOptionsFromDescriptors({
     authMethodId: args.authMethodId,
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     descriptors,
     options: args.options,
   });
@@ -153,7 +153,7 @@ export function normalizeDeviceAuthStartOptionsWithMethod(args: {
 
 function normalizeDeviceAuthStartOptionsFromDescriptors(args: {
   readonly authMethodId: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly descriptors: readonly PublicDeviceAuthStartOptionDescriptor[] | null;
   readonly options: ConnectorDeviceAuthStartOptions | undefined;
 }): DeviceAuthStartOptionsNormalizationResult {
@@ -161,7 +161,7 @@ function normalizeDeviceAuthStartOptionsFromDescriptors(args: {
   if (!descriptors) {
     return {
       ok: false,
-      message: `${args.connectorRef} ${args.authMethodId} auth method does not use a device-auth grant`,
+      message: `${args.connectorSlug} ${args.authMethodId} auth method does not use a device-auth grant`,
     };
   }
 
@@ -177,7 +177,7 @@ function normalizeDeviceAuthStartOptionsFromDescriptors(args: {
   if (hasUnknownName && descriptors.length > 0) {
     return {
       ok: false,
-      message: `${args.connectorRef} ${args.authMethodId} device-auth start option(s) must use public IDs: ${formatFieldList(
+      message: `${args.connectorSlug} ${args.authMethodId} device-auth start option(s) must use public IDs: ${formatFieldList(
         descriptors.map((descriptor) => {
           return descriptor.publicId;
         }),
@@ -186,7 +186,7 @@ function normalizeDeviceAuthStartOptionsFromDescriptors(args: {
   }
 
   const parsed = parseConnectorDeviceAuthStartOptionsConfig({
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     authMethodId: args.authMethodId,
     startOptions: startOptionsByPublicId,
     options: args.options,

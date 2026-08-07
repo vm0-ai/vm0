@@ -7,7 +7,8 @@ mod started_cancel;
 pub use control::{
     DecodedExecControl, DecodedExecControlResult, EXEC_CONTROL_MAX_PAYLOAD_BYTES,
     EXEC_CONTROL_NONCE_LEN, ExecControlNonce, ExecControlStatus, decode_exec_control,
-    decode_exec_control_result, encode_exec_control, encode_exec_control_result,
+    decode_exec_control_result, encode_exec_control, encode_exec_control_frame_into,
+    encode_exec_control_result, validate_exec_control,
 };
 pub use output::{
     DecodedExecOutput, ExecOutputStream, decode_exec_output, encode_exec_output,
@@ -15,6 +16,7 @@ pub use output::{
 };
 pub use result::{
     DecodedExecResult, ExecCapturedOutput, ExecTermination, decode_exec_result, encode_exec_result,
+    encode_exec_result_frame_into,
 };
 pub use start::{
     DecodedExecStart, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy,

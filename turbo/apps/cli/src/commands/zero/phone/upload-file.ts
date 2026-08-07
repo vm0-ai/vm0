@@ -1,8 +1,11 @@
 import { readFileSync, statSync } from "fs";
 import { basename, extname } from "path";
 import { Command } from "commander";
-import { completePhoneFileUpload, initPhoneFileUpload } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  completePhoneFileUpload,
+  initPhoneFileUpload,
+} from "../../../lib/api/domains/integrations-phone";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
@@ -85,7 +88,10 @@ Output:
         const fileContent = readFileSync(options.file);
         const uploadResponse = await fetch(prepared.uploadUrl, {
           method: "PUT",
-          headers: { "Content-Type": prepared.contentType },
+          headers: {
+            "Content-Type": prepared.contentType,
+            ...prepared.uploadHeaders,
+          },
           body: new Uint8Array(fileContent),
         });
 

@@ -4,20 +4,28 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  type PiModelConfig,
+  PI_MEMORY_ROOT,
+  PI_SKILLS_ROOT,
   type SecretConnectorMetadata,
+  type RunSkillSnapshot,
   type StorageMountEntry,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
+import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
+import { modelProviderSurfaceProtocolSchema } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
-  getModelProviderFirewall,
+  getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
+  getModelImageInputSupport,
   getFrameworkForType,
   getProviderRuntimeModel,
   getSecretNameForType,
@@ -31,6 +39,7 @@ import {
   type ModelProviderCodexRuntimeConfig,
   type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
+  getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -45,6 +54,7 @@ import {
   canonicalizeFirewallBaseUrlVarsForExecution,
   extractSecretNamesFromApis,
   type ExecutionFirewallEntry,
+  type ExecutionFirewallInlineEntry,
   type ExecutionFirewalls,
   type ExpandedFirewallConfig,
   FirewallBaseUrlResolutionError,
@@ -52,6 +62,8 @@ import {
   type FirewallPolicies,
   type FirewallPolicy,
   type NetworkPolicies,
+  type NetworkPolicy,
+  normalizeFirewallFixedHost,
 } from "@vm0/connectors/firewall-types";
 import {
   type CreateRunResponse,
@@ -64,10 +76,13 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
+  getCustomConnectorSkillName,
+  getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
@@ -90,24 +105,47 @@ import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { blobs } from "@vm0/db/schema/blob";
 import { conversations } from "@vm0/db/schema/conversation";
+import { blobs } from "@vm0/db/schema/blob";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import {
+  modelProviderConnections,
+  modelProviderSurfaces,
+} from "@vm0/db/schema/model-provider-gateway";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { PersistedStorageMount } from "@vm0/db/types";
-import { and, count, eq, inArray, or, sql } from "drizzle-orm";
+import {
+  formatPiUserPrompt,
+  loadPiRunSkills,
+  renderPiSystemPrompt,
+  type ExecutionEnv,
+} from "@vm0/pi-agent-runtime";
+import {
+  and,
+  count,
+  eq,
+  inArray,
+  isNotNull,
+  or,
+  sql,
+  type SQL,
+  type SQLWrapper,
+  type WithSubquery,
+} from "drizzle-orm";
 import { z } from "zod";
-
 import { env, optionalEnv } from "../../lib/env";
 import {
+  nullableDriverValueDecoder,
   pgInt8ToBigIntDecoder,
   pgNullDecoder,
+  pgTextDecoder,
   zodDriverValueDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
@@ -124,7 +162,7 @@ import {
   publishOrgSignal,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
@@ -139,6 +177,16 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 import {
+  compileModelProviderGatewayRuntime,
+  GATEWAY_RUNTIME_SECRET_NAME,
+} from "./model-provider-gateway-runtime";
+import {
+  autonomyBudgetSchemaAvailable,
+  insertRolloutCompatibleZeroRun,
+  rolloutLegacyZeroRuns,
+} from "./autonomy-budget-schema.service";
+import {
+  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
   customConnectorPrefixTemplateVariableKeys,
@@ -149,7 +197,12 @@ import {
   renderCustomConnectorRuntimePrefix,
   renderTemplateForRuntime,
 } from "./zero-custom-connector.service";
-import { activePendingRunPredicate } from "./agent-run-activity.service";
+import { refreshCustomConnectorOAuth2ValuesIfNeeded } from "./custom-connector-oauth2.service";
+import {
+  loadCustomConnectorPermissionBundle,
+  type CustomConnectorPermissionBundle,
+} from "./custom-connector-permission-bundle.service";
+import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import {
   prepareAgentRunStorage,
   type PreparedAgentRunStorage,
@@ -163,7 +216,22 @@ import {
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
-import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import {
+  isPiEdgeCompatibleProviderType,
+  piSandboxModelConfig,
+  PI_STANDBY_PROFILE,
+  resolvePiEdgeModelConfig,
+  type PiEdgeModelConfig,
+  type PiEdgeTurnArgs,
+} from "./pi-edge-config";
+import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
+import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
+import { resolveLiveCodexModelProviderAccessToken } from "./agent-webhook-firewall-auth.service";
+import {
+  recordSameThreadRunnerJobPersisted,
+  runnerJobQueueTimestamps,
+} from "./runner-job-queue-lifecycle.service";
 import {
   connectorRuntimeCredentialStatusWithMethod,
   type ConnectorCredentialStatus,
@@ -194,13 +262,20 @@ import type {
 } from "./chat-session-continuity.service";
 import {
   claimQueueFirstRunAssociation,
+  lockGoalQueueFirstRunSource,
+  recordQueueFirstClaimedRun,
+  recordQueueFirstFailedRun,
+  resolveQueueFirstRunAdmission,
+  type QueueFirstRunAdmission,
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
-} from "./zero-chat-queued-message.service";
-import { recordFirstAssistantMessageEligibility } from "./zero-chat-first-assistant-message-metric.service";
+  type QueueFirstRunSessionSnapshotState,
+} from "./zero-chat-queued-event.service";
+import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
+import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 import {
-  activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
+  loadOrgConcurrencyState,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
@@ -226,6 +301,7 @@ import {
   normalizeSessionHistoryBlobEncoding,
   type CompressedSessionHistoryBlobEncoding,
 } from "./session-history-blobs";
+import type { Tx } from "../../lib/db-types";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -262,11 +338,18 @@ const COUNT_BUCKET_DIMENSIONS = [
   "17_plus",
 ] as const;
 
-type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type CreateRunBody = Omit<
+  z.infer<typeof unifiedRunRequestSchema>,
+  "triggerSource"
+> & {
+  readonly triggerSource: TriggerSource;
+};
+type DbTransaction = Tx;
 
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
+const ZERO_IMAGE_RECOGNITION_PROMPT =
+  '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `zero recognize --file <image-path> --prompt "<instruction>"`.';
 
 function withZeroTokenSecret(
   body: CreateRunBody,
@@ -285,21 +368,30 @@ function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
   return withZeroTokenSecret(body, "__pending_zero_token__");
 }
 
-function withFinalFrameworkAppendSystemPrompt(
+function withFinalRunAppendSystemPrompt(
   body: CreateRunBody,
   framework: SupportedFramework,
   chatThreadId: string | undefined,
+  imageRecognitionAvailable: boolean,
 ): CreateRunBody {
-  if (framework !== "codex" || body.triggerSource !== "web" || !chatThreadId) {
+  const appendedParts: string[] = [];
+  if (imageRecognitionAvailable) {
+    appendedParts.push(ZERO_IMAGE_RECOGNITION_PROMPT);
+  }
+  if (
+    framework === "codex" &&
+    isWebChatTriggerSource(body.triggerSource) &&
+    chatThreadId
+  ) {
+    appendedParts.push(CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT);
+  }
+  if (appendedParts.length === 0) {
     return body;
   }
 
   return {
     ...body,
-    appendSystemPrompt: [
-      body.appendSystemPrompt,
-      CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT,
-    ]
+    appendSystemPrompt: [body.appendSystemPrompt, ...appendedParts]
       .filter((part): part is string => {
         return Boolean(part);
       })
@@ -344,14 +436,12 @@ interface PreparedAdditionalVolumes {
 }
 
 interface ZeroRunMetadata {
-  readonly triggerAgentId?: string;
   // Run provenance for workflow schedule automations.
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
-  // Stable chat run-group key for automation/workflow/goal-triggered runs.
-  readonly runGroupId?: string;
   // Run provenance for autonomous thread-goal continuation.
   readonly goalId?: string;
+  readonly autonomyBudget?: number;
 }
 
 interface AgentConfig {
@@ -387,14 +477,18 @@ interface ResolvedCompose {
 type ConnectorScopeSource = "explicit" | "zero_agent" | "legacy_all" | "empty";
 
 interface EffectiveConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
   readonly allowedCustomConnectorIds: readonly string[] | undefined;
+  readonly customConnectorGrants:
+    | readonly AgentCustomConnectorGrant[]
+    | undefined;
   readonly source: ConnectorScopeSource;
 }
 
 interface ExplicitConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorRef[];
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
+  readonly customConnectorGrants?: readonly AgentCustomConnectorGrant[];
   readonly source?: Exclude<ConnectorScopeSource, "legacy_all" | "empty">;
 }
 
@@ -402,9 +496,13 @@ interface ExplicitConnectorScope {
 // - agentSessionId is the vm0 application session (`agent_sessions.id`) used
 //   for product-level continuation and future correctness checks.
 // - cliAgentSessionId is the Claude/Codex CLI agent session stored on
-//   `conversations.cli_agent_session_id`; runner sandbox reuse is keyed by it.
+//   `conversations.cli_agent_session_id`.
 // Existing API/runner wire fields named `sessionId` are preserved for
 // compatibility and normalized to these semantic names at the boundary.
+
+function runnerReuseKey(chatThreadId: string | undefined): string | null {
+  return chatThreadId ? `thread:${chatThreadId}` : null;
+}
 
 interface RunRecord {
   readonly id: string;
@@ -431,6 +529,21 @@ interface ThreadSessionBindingWrite {
   readonly action: ThreadSessionBindingAction;
 }
 
+type PersistedAtomicLaunchRows =
+  | {
+      readonly kind: "pending";
+      readonly run: RunRecord;
+      readonly runnerJobCreatedAt: Date;
+      readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
+    }
+  | {
+      readonly kind: "queued";
+      readonly run: RunRecord;
+      readonly queueDepth: number;
+      readonly telemetryTimestamp: string;
+      readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
+    };
+
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
 const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
 
@@ -439,12 +552,18 @@ type CustomConnectorAuthRefKind = "secret" | "variable";
 interface CustomConnectorAuthRef {
   readonly secretName: string;
   readonly connectorId: string;
+  readonly connectorRevision: number;
   readonly kind: CustomConnectorAuthRefKind;
   readonly key: string;
-  readonly encryptedValue: string;
+  readonly encryptedValue: string | null;
 }
 
 interface PreparedRunnerLaunch {
+  readonly piEdge?: PiEdgeModelConfig;
+  readonly piExecutionEnv?: ExecutionEnv;
+  readonly piPrompt?: string;
+  readonly piSystemPrompt?: string;
+  readonly runSkillSnapshot?: RunSkillSnapshot;
   readonly runnerJobPayload: RunnerJobPayload;
   readonly runContextSnapshot: RunContextAxiomSnapshot;
   readonly runStorageMounts: readonly PersistedStorageMount[];
@@ -470,6 +589,12 @@ interface ThreadSessionSnapshotStale {
   readonly agentSessionRunId: string;
   readonly resolutionAction: ChatThreadSessionResolutionAction;
   readonly reason: "binding_changed" | "session_changed";
+}
+
+interface ValidatedThreadSessionSnapshot {
+  readonly kind: "validated-thread-session-snapshot";
+  readonly chatThreadId: string;
+  readonly agentSessionId: string | null;
 }
 
 type AtomicLaunchCommitResult =
@@ -582,7 +707,6 @@ interface HttpRunCallback {
 
 interface InternalRunCallback {
   readonly internalKind: InternalRunCallbackKind;
-  readonly secret: string;
   readonly payload: unknown;
 }
 
@@ -594,6 +718,9 @@ interface ResolvedModelProviderEnvironment {
   readonly concreteType?: ModelProviderType;
   readonly environment: Record<string, string>;
   readonly secrets: Record<string, string>;
+  // Server-only credential for the in-API Pi turn. Never persisted into the
+  // runner payload; firewall providers keep their sandbox secret placeholders.
+  readonly piEdgeApiKey?: string;
   readonly selectedModel: string | null;
   readonly firewall?: ExpandedFirewallConfig;
   readonly inlineFirewall?: boolean;
@@ -680,6 +807,7 @@ export interface CreateAgentRunArgs {
   readonly orgId: string;
   readonly body: CreateRunBody;
   readonly apiStartTime: number;
+  readonly kickoffPiEdgeTurn?: (turnArgs: PiEdgeTurnArgs) => void;
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
@@ -713,6 +841,14 @@ export interface CreateAgentRunArgs {
   readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
 
+function assertThreadBoundRunHasQueueAssociation(
+  args: CreateAgentRunArgs,
+): void {
+  if (args.chatThreadId !== undefined && !args.queueFirstAssociation) {
+    throw new Error("Thread-bound run requires a queue-first association");
+  }
+}
+
 interface ConnectorRuntimeContext {
   readonly secrets: Record<string, string> | undefined;
   readonly vars: Record<string, string> | undefined;
@@ -720,7 +856,7 @@ interface ConnectorRuntimeContext {
   readonly secretConnectorMetadataMap:
     | Record<string, SecretConnectorMetadata>
     | undefined;
-  readonly connectorTypes: readonly ConnectorRef[];
+  readonly connectorSlugs: readonly ConnectorSlug[];
   readonly storedEnvironment: Record<string, string> | undefined;
 }
 
@@ -749,10 +885,16 @@ interface CustomConnectorRuntimeContext {
   readonly firewalls: readonly ExpandedFirewallConfig[];
   readonly reservedSecretAliases: Record<string, true> | undefined;
   readonly authRefs: readonly CustomConnectorAuthRef[];
+  readonly permissionPolicies: FirewallPolicies | undefined;
+  readonly skills: readonly {
+    readonly connectorId: string;
+    readonly connectorSlug: string;
+  }[];
 }
 
 function customConnectorAuthRefsForApis(args: {
   readonly connectorId: string;
+  readonly connectorRevision: number;
   readonly values: readonly {
     readonly connectorId: string;
     readonly kind: CustomConnectorAuthRefKind;
@@ -777,9 +919,13 @@ function customConnectorAuthRefsForApis(args: {
           {
             secretName,
             connectorId: value.connectorId,
+            connectorRevision: args.connectorRevision,
             kind: value.kind,
             key: value.key,
-            encryptedValue: value.encryptedValue,
+            encryptedValue:
+              value.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
+                ? null
+                : value.encryptedValue,
           },
         ]
       : [];
@@ -850,21 +996,16 @@ function frameworkSkillsMountPath(framework: SupportedFramework): string {
     : "/home/user/.claude/skills";
 }
 
-function skillMountPath(
-  framework: SupportedFramework,
-  skillName: string,
-): string {
-  return `${frameworkSkillsMountPath(framework)}/${skillName}`;
+function skillMountPath(skillsRoot: string, skillName: string): string {
+  return `${skillsRoot}/${skillName}`;
 }
 
-// Skill volume mount paths are framework-specific. The framework MUST be the
-// one resolved from the model provider (see prepareRunContext), never the one
-// declared in the compose — a run can execute on a provider whose framework
-// differs from the compose, and skills mounted at the wrong path are invisible
-// to the agent.
+// Legacy CLI runs use the framework resolved from the model provider, never
+// the framework declared in the compose. Eligible Pi runs instead receive the
+// fixed Pi root before Storage resolves any versions or overlays.
 function buildLegacySystemSkillVolumes(
   skillNames: readonly string[],
-  framework: SupportedFramework,
+  skillsRoot: string,
 ): readonly AdditionalVolume[] {
   return [...new Set(skillNames)].flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
@@ -875,7 +1016,7 @@ function buildLegacySystemSkillVolumes(
     return [
       {
         name: getSkillStorageName(parsed.fullPath),
-        mountPath: skillMountPath(framework, parsed.skillName),
+        mountPath: skillMountPath(skillsRoot, parsed.skillName),
         system: true,
       },
     ];
@@ -883,12 +1024,12 @@ function buildLegacySystemSkillVolumes(
 }
 
 function buildConnectorSkillVolumes(
-  connectorTypes: readonly ConnectorRef[],
+  connectorSlugs: readonly ConnectorSlug[],
   snapshot: ConnectorRuntimeSnapshot,
-  framework: SupportedFramework,
+  skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] {
-  return connectorTypes.flatMap((connectorRef) => {
-    const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
+  return connectorSlugs.flatMap((connectorSlug) => {
+    const connector = getConnectorRuntimeConnector(snapshot, connectorSlug);
     if (connector === undefined) {
       throw new Error("Accepted connector skill metadata is unavailable");
     }
@@ -899,7 +1040,7 @@ function buildConnectorSkillVolumes(
       volume: {
         name: connector.skill.storageName,
         version: connector.skill.versionId,
-        mountPath: skillMountPath(framework, connectorRef),
+        mountPath: skillMountPath(skillsRoot, connectorSlug),
         system: true,
       },
       source: "connector_skill",
@@ -910,7 +1051,7 @@ function buildConnectorSkillVolumes(
 
 function buildWorkflowSkillVolumes(
   workflows: readonly { readonly name: string; readonly workflowId: string }[],
-  framework: SupportedFramework,
+  skillsRoot: string,
 ): readonly AdditionalVolume[] {
   return workflows
     .filter((workflow) => {
@@ -920,41 +1061,59 @@ function buildWorkflowSkillVolumes(
       return {
         // The volume is keyed by the workflow id; it mounts at the slug.
         name: getCustomSkillStorageName(workflow.workflowId),
-        mountPath: skillMountPath(framework, workflow.name),
+        mountPath: skillMountPath(skillsRoot, workflow.name),
       };
     });
+}
+
+function buildCustomConnectorSkillVolumes(
+  skills: CustomConnectorRuntimeContext["skills"],
+  skillsRoot: string,
+): readonly PreparedAdditionalVolume[] {
+  return skills.map((skill) => {
+    return {
+      volume: {
+        name: getCustomConnectorSkillStorageName(skill.connectorId),
+        mountPath: skillMountPath(
+          skillsRoot,
+          getCustomConnectorSkillName(skill.connectorSlug, skill.connectorId),
+        ),
+      },
+      source: "custom_connector_skill",
+    };
+  });
 }
 
 function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
-  framework: SupportedFramework,
+  skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] | undefined {
   if (!args.injectSkillVolumes) {
     return undefined;
   }
-  const connectorTypes = args.allowedConnectorTypes ?? [];
+  const connectorSlugs = args.allowedConnectorSlugs ?? [];
   const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
-  // Connector rollout switches govern discovery only. Once a connector ref is
+  // Connector rollout switches govern discovery only. Once a connector slug is
   // part of a run, its accepted catalog skill remains executable and mountable.
   const systemSkillVolumes = [
     ...(prepareAdditionalVolumesWithSource(
-      buildLegacySystemSkillVolumes(seedSkillNames, framework),
+      buildLegacySystemSkillVolumes(seedSkillNames, skillsRoot),
       "system_skill",
     ) ?? []),
     ...buildConnectorSkillVolumes(
-      connectorTypes,
+      connectorSlugs,
       args.connectorCatalogSnapshot,
-      framework,
+      skillsRoot,
     ),
   ];
   return [
     ...systemSkillVolumes,
     ...(prepareAdditionalVolumesWithSource(
-      buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, framework),
+      buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, skillsRoot),
       "workflow_skill",
     ) ?? []),
   ];
@@ -1074,26 +1233,36 @@ function frameworkApiKeyEnv(framework: SupportedFramework): string {
   return framework === "codex" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
 }
 
-function autoMemoryMountPath(framework: SupportedFramework): string {
+function autoMemoryMountPath(
+  framework: SupportedFramework,
+  usePiMemoryPath: boolean,
+): string {
+  if (usePiMemoryPath) {
+    return PI_MEMORY_ROOT;
+  }
   return framework === "codex"
     ? CANONICAL_CODEX_MEMORY_MOUNT_PATH
     : CANONICAL_CLAUDE_MEMORY_MOUNT_PATH;
 }
 
-function autoMemoryArtifact(framework: SupportedFramework): ContextArtifact {
+function autoMemoryArtifact(
+  framework: SupportedFramework,
+  usePiMemoryPath: boolean,
+): ContextArtifact {
   return withAutoMemoryMissingRootPolicy({
     name: AUTO_MEMORY_ARTIFACT_NAME,
-    mountPath: autoMemoryMountPath(framework),
+    mountPath: autoMemoryMountPath(framework, usePiMemoryPath),
   });
 }
 
-function isCanonicalAutoMemoryArtifact(
-  artifact: ContextArtifact,
-  framework: SupportedFramework,
-): boolean {
+function isCanonicalAutoMemoryArtifact(artifact: ContextArtifact): boolean {
+  if (artifact.name !== AUTO_MEMORY_ARTIFACT_NAME) {
+    return false;
+  }
   return (
-    artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
-    artifact.mountPath === autoMemoryMountPath(framework)
+    artifact.mountPath === PI_MEMORY_ROOT ||
+    artifact.mountPath === CANONICAL_CODEX_MEMORY_MOUNT_PATH ||
+    artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
   );
 }
 
@@ -1106,13 +1275,17 @@ function withAutoMemoryMissingRootPolicy(
   };
 }
 
-function withCanonicalAutoMemoryMissingRootPolicy(
+function withCanonicalAutoMemoryConfiguration(
   artifacts: readonly ContextArtifact[],
   framework: SupportedFramework,
+  usePiMemoryPath: boolean,
 ): readonly ContextArtifact[] {
   return artifacts.map((artifact) => {
-    return isCanonicalAutoMemoryArtifact(artifact, framework)
-      ? withAutoMemoryMissingRootPolicy(artifact)
+    return isCanonicalAutoMemoryArtifact(artifact)
+      ? withAutoMemoryMissingRootPolicy({
+          ...artifact,
+          mountPath: autoMemoryMountPath(framework, usePiMemoryPath),
+        })
       : artifact;
   });
 }
@@ -1120,23 +1293,20 @@ function withCanonicalAutoMemoryMissingRootPolicy(
 function claimsAutoMemorySlot(
   artifact: ContextArtifact,
   framework: SupportedFramework,
+  usePiMemoryPath: boolean,
 ): boolean {
   return (
     artifact.name === AUTO_MEMORY_ARTIFACT_NAME ||
-    artifact.mountPath === autoMemoryMountPath(framework)
+    artifact.mountPath === autoMemoryMountPath(framework, usePiMemoryPath)
   );
 }
 
 function withoutSupersededAutoMemoryArtifacts(
   artifacts: readonly ContextArtifact[],
-  framework: SupportedFramework,
   slotOwnerIndex: number,
 ): readonly ContextArtifact[] {
   return artifacts.filter((artifact, index) => {
-    return (
-      index >= slotOwnerIndex ||
-      !isCanonicalAutoMemoryArtifact(artifact, framework)
-    );
+    return index >= slotOwnerIndex || !isCanonicalAutoMemoryArtifact(artifact);
   });
 }
 
@@ -1159,6 +1329,7 @@ function composeArtifacts(
 function artifactsForRun(args: {
   readonly resolved: ResolvedCompose;
   readonly framework: SupportedFramework;
+  readonly usePiMemoryPath: boolean;
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
 }): RunArtifacts {
   const isContinuation = Boolean(args.resolved.agentSessionId);
@@ -1174,32 +1345,38 @@ function artifactsForRun(args: {
   let autoMemorySlotArtifactIndex: number | undefined;
   for (let index = artifacts.length - 1; index >= 0; index -= 1) {
     const artifact = artifacts[index];
-    if (artifact && claimsAutoMemorySlot(artifact, args.framework)) {
+    if (
+      artifact &&
+      claimsAutoMemorySlot(artifact, args.framework, args.usePiMemoryPath)
+    ) {
       autoMemorySlotArtifactIndex = index;
       break;
     }
   }
   if (autoMemorySlotArtifactIndex === undefined) {
     return {
-      artifacts: [...artifacts, autoMemoryArtifact(args.framework)],
+      artifacts: [
+        ...artifacts,
+        autoMemoryArtifact(args.framework, args.usePiMemoryPath),
+      ],
     };
   }
 
   const slotOwner = artifacts[autoMemorySlotArtifactIndex]!;
-  if (!isCanonicalAutoMemoryArtifact(slotOwner, args.framework)) {
+  if (!isCanonicalAutoMemoryArtifact(slotOwner)) {
     return {
       artifacts: withoutSupersededAutoMemoryArtifacts(
         artifacts,
-        args.framework,
         autoMemorySlotArtifactIndex,
       ),
     };
   }
 
   return {
-    artifacts: withCanonicalAutoMemoryMissingRootPolicy(
+    artifacts: withCanonicalAutoMemoryConfiguration(
       artifacts,
       args.framework,
+      args.usePiMemoryPath,
     ),
   };
 }
@@ -1584,6 +1761,7 @@ function modelProviderEnvironment(args: {
   readonly type: ModelProviderType;
   readonly config: SingleSecretModelProviderConfig;
   readonly secretValue: string | undefined;
+  readonly piEdgeApiKey?: string;
   readonly sourceUserId: string;
   readonly selectedModel: string | null;
 }): ResolvedModelProviderEnvironment {
@@ -1616,13 +1794,16 @@ function modelProviderEnvironment(args: {
       .replaceAll("$secret", environmentSecret)
       .replaceAll("$model", runtimeModel);
   }
+  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(args.type);
 
   return {
     id: args.id,
     type: args.type,
     environment,
     secrets,
+    ...(args.piEdgeApiKey ? { piEdgeApiKey: args.piEdgeApiKey } : {}),
     selectedModel: model,
+    ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
     ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
       args.config.secretName,
     ]),
@@ -1736,10 +1917,6 @@ function providerEnvironmentFromSecretMap(
   return environment;
 }
 
-function vm0ApiKeySelectionOrder() {
-  return sql`case when ${eq(vm0ApiKeys.label, sql`'dev-seed'`)} then 0 else 1 end`;
-}
-
 async function multiAuthModelProviderEnvironment(
   db: Db,
   args: {
@@ -1750,6 +1927,7 @@ async function multiAuthModelProviderEnvironment(
     readonly authMethod: string | null;
     readonly selectedModel: string | null;
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly resolvePiEdgeCredentials: boolean;
   },
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (!args.authMethod) {
@@ -1808,6 +1986,8 @@ async function multiAuthModelProviderEnvironment(
     }
   }
 
+  const piEdgeApiKey = await resolveMultiAuthPiEdgeApiKey(db, args);
+
   const selectedModelEnvBindings = getModelProviderEnvBindings(args.type);
   const selectedModel = resolveModelProviderModel({
     type: args.type,
@@ -1833,9 +2013,38 @@ async function multiAuthModelProviderEnvironment(
     ),
     secrets: hasFirewallAuth ? {} : forwardableSecrets,
     selectedModel,
+    ...(piEdgeApiKey === undefined ? {} : { piEdgeApiKey }),
     secretConnectorMap: authMaps?.secretConnectorMap,
     secretConnectorMetadataMap: authMaps?.secretConnectorMetadataMap,
   };
+}
+
+/**
+ * Pi edge turns run inside the API with the real credential, but firewall
+ * providers above only expose lazy placeholders. Resolve and refresh the Codex
+ * access token (a JWT the Pi runtime must be able to parse) when the run is Pi
+ * eligible; it is carried only on the API-side edge config, never into the
+ * Sandbox environment.
+ */
+async function resolveMultiAuthPiEdgeApiKey(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly type: ModelProviderType;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly resolvePiEdgeCredentials: boolean;
+  },
+): Promise<string | undefined> {
+  if (!args.resolvePiEdgeCredentials || args.type !== "codex-oauth-token") {
+    return undefined;
+  }
+  return await resolveLiveCodexModelProviderAccessToken({
+    db,
+    orgId: args.orgId,
+    sourceUserId: args.userId,
+    featureSwitchContext: args.featureSwitchContext,
+  });
 }
 
 async function vm0ModelProviderEnvironment(
@@ -1845,26 +2054,17 @@ async function vm0ModelProviderEnvironment(
   const concreteType = getVm0ConcreteProviderType(selectedModel);
   const vendor = getVm0Vendor(selectedModel);
   const apiModel = getProviderRuntimeModel("vm0", selectedModel);
-  const exactRows = await db
+  const rows = await db
     .select({ apiKey: vm0ApiKeys.apiKey })
     .from(vm0ApiKeys)
-    .where(and(eq(vm0ApiKeys.vendor, vendor), eq(vm0ApiKeys.model, apiModel)))
-    .orderBy(vm0ApiKeySelectionOrder(), sql`random()`)
+    .where(eq(vm0ApiKeys.vendor, vendor))
     .limit(1);
-  const fallbackRows =
-    exactRows.length > 0
-      ? exactRows
-      : await db
-          .select({ apiKey: vm0ApiKeys.apiKey })
-          .from(vm0ApiKeys)
-          .where(eq(vm0ApiKeys.vendor, vendor))
-          .orderBy(vm0ApiKeySelectionOrder(), sql`random()`)
-          .limit(1);
-  const apiKey = fallbackRows[0]?.apiKey;
+  const apiKey = rows[0]?.apiKey;
   const secretName = getSecretNameForType(concreteType);
   if (!apiKey || !secretName) {
     return null;
   }
+  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
 
   return {
     id: null,
@@ -1878,6 +2078,7 @@ async function vm0ModelProviderEnvironment(
     ),
     secrets: { [secretName]: apiKey },
     selectedModel,
+    ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
   };
 }
 
@@ -1890,6 +2091,88 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly resolvePiEdgeCredentials: boolean;
+}
+
+async function customGatewayModelProviderEnvironment(
+  db: Db,
+  args: ResolveModelProviderEnvironmentArgs,
+): Promise<ResolvedModelProviderEnvironment | null> {
+  if (!args.modelProviderId || !args.selectedModelOverride) {
+    return null;
+  }
+  const [row] = await db
+    .select({
+      id: modelProviderSurfaces.id,
+      protocol: modelProviderSurfaces.protocol,
+      apiBaseUrl: modelProviderSurfaces.apiBaseUrl,
+      authHeaderName: modelProviderSurfaces.authHeaderName,
+      authHeaderTemplate: modelProviderSurfaces.authHeaderTemplate,
+      modelMappings: modelProviderSurfaces.modelMappings,
+      displayName: modelProviderConnections.displayName,
+      encryptedValue: secretsTable.encryptedValue,
+    })
+    .from(modelProviderSurfaces)
+    .innerJoin(
+      modelProviderConnections,
+      eq(modelProviderSurfaces.connectionId, modelProviderConnections.id),
+    )
+    .innerJoin(
+      secretsTable,
+      eq(modelProviderConnections.secretId, secretsTable.id),
+    )
+    .where(
+      and(
+        eq(modelProviderSurfaces.id, args.modelProviderId),
+        eq(modelProviderConnections.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    return null;
+  }
+
+  const upstreamModel = row.modelMappings[args.selectedModelOverride];
+  const protocol = modelProviderSurfaceProtocolSchema.safeParse(row.protocol);
+  if (!protocol.success || !upstreamModel) {
+    return null;
+  }
+  const runtime = compileModelProviderGatewayRuntime({
+    surfaceId: row.id,
+    protocol: protocol.data,
+    apiBaseUrl: row.apiBaseUrl,
+    displayName: row.displayName,
+    authHeaderName: row.authHeaderName,
+    authHeaderTemplate: row.authHeaderTemplate,
+    upstreamModel,
+  });
+  if (
+    getFrameworkForType(runtime.type) !== args.framework ||
+    (args.modelProviderType !== undefined &&
+      args.modelProviderType !== runtime.type)
+  ) {
+    return null;
+  }
+
+  const secretValue = await decryptStoredSecretValue(
+    row.encryptedValue,
+    args.featureSwitchContext,
+  );
+  if (!hasUsableModelProviderSecretValue(secretValue)) {
+    return null;
+  }
+  return {
+    id: row.id,
+    type: runtime.type,
+    environment: runtime.environment,
+    secrets: { [GATEWAY_RUNTIME_SECRET_NAME]: secretValue },
+    selectedModel: args.selectedModelOverride,
+    firewall: runtime.firewall,
+    inlineFirewall: true,
+    ...(runtime.codexRuntimeConfig
+      ? { codexRuntimeConfig: runtime.codexRuntimeConfig }
+      : {}),
+  };
 }
 
 interface ModelProviderEnvironmentRow {
@@ -1931,6 +2214,21 @@ function isCandidateModelProviderRow(
   return isModelProviderType(row.type);
 }
 
+async function resolveCandidatePiEdgeApiKey(
+  args: ResolveModelProviderEnvironmentArgs,
+  type: ModelProviderType,
+  encryptedValue: string,
+  decryptedValue?: string,
+): Promise<string | undefined> {
+  if (!args.resolvePiEdgeCredentials || !isPiEdgeCompatibleProviderType(type)) {
+    return undefined;
+  }
+  const apiKey =
+    decryptedValue ??
+    (await decryptStoredSecretValue(encryptedValue, args.featureSwitchContext));
+  return hasUsableModelProviderSecretValue(apiKey) ? apiKey : undefined;
+}
+
 async function resolveCandidateModelProviderEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
@@ -1961,6 +2259,7 @@ async function resolveCandidateModelProviderEnvironment(
       authMethod: row.authMethod,
       selectedModel: args.selectedModelOverride ?? row.selectedModel,
       featureSwitchContext: args.featureSwitchContext,
+      resolvePiEdgeCredentials: args.resolvePiEdgeCredentials,
     });
   }
 
@@ -1969,11 +2268,17 @@ async function resolveCandidateModelProviderEnvironment(
     return null;
   }
   if (getModelProviderFirewall(row.type) !== undefined) {
+    const piEdgeApiKey = await resolveCandidatePiEdgeApiKey(
+      args,
+      row.type,
+      row.encryptedValue,
+    );
     return modelProviderEnvironment({
       id: row.id,
       type: row.type,
       config,
       secretValue: undefined,
+      ...(piEdgeApiKey ? { piEdgeApiKey } : {}),
       sourceUserId: row.userId,
       selectedModel: args.selectedModelOverride ?? row.selectedModel,
     });
@@ -1985,11 +2290,18 @@ async function resolveCandidateModelProviderEnvironment(
   if (!hasUsableModelProviderSecretValue(secretValue)) {
     return null;
   }
+  const piEdgeApiKey = await resolveCandidatePiEdgeApiKey(
+    args,
+    row.type,
+    row.encryptedValue,
+    secretValue,
+  );
   return modelProviderEnvironment({
     id: row.id,
     type: row.type,
     config,
     secretValue,
+    ...(piEdgeApiKey ? { piEdgeApiKey } : {}),
     sourceUserId: row.userId,
     selectedModel: args.selectedModelOverride ?? row.selectedModel,
   });
@@ -2008,6 +2320,11 @@ async function resolveModelProviderEnvironment(
       getFrameworkForType(provider.concreteType) === args.framework
       ? provider
       : null;
+  }
+
+  const customGateway = await customGatewayModelProviderEnvironment(db, args);
+  if (customGateway) {
+    return customGateway;
   }
 
   const rows = await db
@@ -2257,7 +2574,7 @@ function filterSecretConnectorMetadataMap(args: {
 
 interface StoredConnectorRuntimeRow {
   readonly access: ConnectorCredentialAccess;
-  readonly connectorType: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly connectorStateRevision: bigint;
   readonly authMethod: ConnectorAuthMethodId;
   readonly runtimeMethod: ConnectorRuntimeMethod;
@@ -2267,7 +2584,7 @@ interface StoredConnectorRuntimeRow {
 
 interface StoredConnectorRuntimeRowCandidate {
   readonly connectorId: string;
-  readonly type: string;
+  readonly connectorSlug: string;
   readonly authMethod: string;
   readonly connectorStateRevision: bigint;
   readonly needsReconnect: boolean;
@@ -2291,7 +2608,7 @@ const storedConnectorVariableValuesDecoder = zodDriverValueDecoder(
 
 interface ConnectorEnvBindingSet {
   readonly access: ConnectorCredentialAccess;
-  readonly connectorType: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly connectorStateRevision: bigint;
   readonly authMethod: ConnectorAuthMethodId;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
@@ -2336,14 +2653,14 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     vars: undefined,
     secretConnectorMap: undefined,
     secretConnectorMetadataMap: undefined,
-    connectorTypes: [],
+    connectorSlugs: [],
     storedEnvironment: undefined,
   };
 }
 
 function allowedStoredConnectorRows(
   rows: readonly StoredConnectorRuntimeRowCandidate[],
-  allowedConnectorTypes: readonly ConnectorRef[] | undefined,
+  allowedConnectorSlugs: readonly ConnectorSlug[] | undefined,
   snapshot: ConnectorRuntimeSnapshot,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
@@ -2353,7 +2670,7 @@ function allowedStoredConnectorRows(
       stored: {
         authMethodId: row.authMethod,
         connectorId: row.connectorId,
-        connectorRef: row.type,
+        connectorSlug: row.connectorSlug,
         orgId: row.orgId,
         storageVersion: row.storageVersion,
         userId: row.userId,
@@ -2366,7 +2683,7 @@ function allowedStoredConnectorRows(
     return [
       {
         access,
-        connectorType: access.runtimeMethod.connectorRef,
+        connectorSlug: access.runtimeMethod.connectorSlug,
         connectorStateRevision: row.connectorStateRevision,
         authMethod: access.runtimeMethod.authMethodId,
         runtimeMethod: access.runtimeMethod,
@@ -2377,8 +2694,8 @@ function allowedStoredConnectorRows(
   });
   return validRows.filter((row) => {
     return (
-      (!allowedConnectorTypes ||
-        allowedConnectorTypes.includes(row.connectorType)) &&
+      (!allowedConnectorSlugs ||
+        allowedConnectorSlugs.includes(row.connectorSlug)) &&
       storedConnectorRuntimeCredentialStatus(row, now) === "available"
     );
   });
@@ -2405,7 +2722,7 @@ function connectorEnvBindingSets(
     );
     return {
       access: row.access,
-      connectorType: row.connectorType,
+      connectorSlug: row.connectorSlug,
       connectorStateRevision: row.connectorStateRevision,
       authMethod: row.authMethod,
       runtimeBindings: metadata.runtimeBindings,
@@ -2680,7 +2997,7 @@ function resolveStoredConnectorState(
     {};
   const environment: Record<string, string> = {};
 
-  for (const { connectorType, runtimeBindings } of bindingSets) {
+  for (const { connectorSlug, runtimeBindings } of bindingSets) {
     for (const { envName, valueRef, optional, source } of runtimeBindings) {
       switch (source.kind) {
         case "connector-secret": {
@@ -2718,9 +3035,9 @@ function resolveStoredConnectorState(
     // backing secret name. Refreshability is resolved later from access metadata.
     for (const { envName, source } of runtimeBindings) {
       if (source.kind === "connector-secret") {
-        secretConnectorMap[envName] = connectorType;
+        secretConnectorMap[envName] = connectorSlug;
       } else if (source.kind === "platform-secret") {
-        secretConnectorMap[envName] = connectorType;
+        secretConnectorMap[envName] = connectorSlug;
         secretConnectorMetadataMap[envName] = { sourceType: "platform-secret" };
       }
     }
@@ -2751,8 +3068,8 @@ function storedConnectorContextFromSnapshot(
     ),
     secretConnectorMap: undefined,
     secretConnectorMetadataMap: undefined,
-    connectorTypes: snapshot.allowedConnectorRows.map((row) => {
-      return row.connectorType;
+    connectorSlugs: snapshot.allowedConnectorRows.map((row) => {
+      return row.connectorSlug;
     }),
     storedEnvironment: undefined,
   };
@@ -2833,8 +3150,8 @@ async function materializeStoredConnectorContext(
         secretConnectorMetadataMap: compactRecord(
           resolved.secretConnectorMetadataMap,
         ),
-        connectorTypes: snapshot.allowedConnectorRows.map((row) => {
-          return row.connectorType;
+        connectorSlugs: snapshot.allowedConnectorRows.map((row) => {
+          return row.connectorSlug;
         }),
         storedEnvironment: compactRecord(resolved.environment),
       });
@@ -2964,18 +3281,18 @@ async function loadStoredConnectorMaterializationPlan(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
-  if (args.allowedConnectorTypes?.length === 0) {
+  if (args.allowedConnectorSlugs?.length === 0) {
     return null;
   }
 
-  const allowedConnectorTypes = args.allowedConnectorTypes
-    ? [...new Set(args.allowedConnectorTypes)]
+  const allowedConnectorSlugs = args.allowedConnectorSlugs
+    ? [...new Set(args.allowedConnectorSlugs)]
     : undefined;
 
   const snapshot = await loadStoredConnectorMaterializationSnapshot(
@@ -2983,7 +3300,7 @@ async function loadStoredConnectorMaterializationPlan(
     {
       orgId: args.orgId,
       userId: args.userId,
-      allowedConnectorTypes,
+      allowedConnectorSlugs,
       scopeSource: args.scopeSource,
       connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     },
@@ -2997,14 +3314,16 @@ function storedConnectorSnapshotQuery(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
   },
 ) {
   const selectedConnectors = db.$with("stored_connector_candidates").as(
     db
       .select({
         connectorId: connectors.id,
-        type: connectors.type,
+        connectorSlug: sql`${connectors.connectorSlug}`
+          .mapWith(pgTextDecoder)
+          .as("connector_slug"),
         authMethod: connectors.authMethod,
         connectorStateRevision: sql`(
             EXTRACT(EPOCH FROM ${connectors.updatedAt})
@@ -3023,8 +3342,9 @@ function storedConnectorSnapshotQuery(
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
-          args.allowedConnectorTypes
-            ? inArray(connectors.type, args.allowedConnectorTypes)
+          isNotNull(connectors.connectorSlug),
+          args.allowedConnectorSlugs
+            ? inArray(connectors.connectorSlug, args.allowedConnectorSlugs)
             : undefined,
         ),
       ),
@@ -3072,7 +3392,7 @@ function storedConnectorSnapshotQuery(
     .with(selectedConnectors)
     .select({
       connectorId: selectedConnectors.connectorId,
-      type: selectedConnectors.type,
+      connectorSlug: selectedConnectors.connectorSlug,
       authMethod: selectedConnectors.authMethod,
       connectorStateRevision: selectedConnectors.connectorStateRevision,
       needsReconnect: selectedConnectors.needsReconnect,
@@ -3104,7 +3424,7 @@ async function loadStoredConnectorSnapshotRows(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3134,12 +3454,12 @@ async function loadStoredConnectorSnapshotRows(
 
 function buildStoredConnectorMaterializationPlan(args: {
   readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
-  readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
 }): StoredConnectorMaterializationPlan | null {
   const allowedConnectorRows = allowedStoredConnectorRows(
     args.connectorRows,
-    args.allowedConnectorTypes,
+    args.allowedConnectorSlugs,
     args.connectorCatalogSnapshot,
     nowDate(),
   );
@@ -3157,7 +3477,7 @@ function buildStoredConnectorMaterializationPlan(args: {
 function materializeStoredConnectorSnapshotRows(
   args: {
     readonly rows: readonly StoredConnectorMaterializationSnapshotRow[];
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
@@ -3167,7 +3487,7 @@ function materializeStoredConnectorSnapshotRows(
   const result = safeSync(() => {
     const plan = buildStoredConnectorMaterializationPlan({
       connectorRows: args.rows,
-      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedConnectorSlugs: args.allowedConnectorSlugs,
       connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     });
     if (!plan) {
@@ -3241,7 +3561,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
@@ -3255,7 +3575,7 @@ async function loadStoredConnectorMaterializationSnapshot(
     {
       orgId: args.orgId,
       userId: args.userId,
-      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedConnectorSlugs: args.allowedConnectorSlugs,
       timingDimensions: baseTimingDimensions,
     },
     timing,
@@ -3267,7 +3587,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   return materializeStoredConnectorSnapshotRows(
     {
       rows,
-      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedConnectorSlugs: args.allowedConnectorSlugs,
       connectorCatalogSnapshot: args.connectorCatalogSnapshot,
       timingDimensions: baseTimingDimensions,
     },
@@ -3275,7 +3595,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   );
 }
 
-type CustomConnectorRuntimeDataRows = Awaited<
+export type CustomConnectorRuntimeDataRows = Awaited<
   ReturnType<typeof loadCustomConnectorRuntimeData>
 >;
 
@@ -3418,14 +3738,154 @@ class CustomConnectorRuntimeBuildStats {
   }
 }
 
-async function buildCustomConnectorRuntimeContext(args: {
+function customConnectorRuntimeAuth(args: {
+  readonly connector: CustomConnectorRuntimeDataRows[number]["connector"];
+  readonly valueMarkers: ReadonlySet<string> | undefined;
+}): {
+  readonly headers: Record<string, string>;
+  readonly query: Record<string, string>;
+} {
+  return {
+    headers: Object.fromEntries(
+      args.connector.headerInjections.flatMap((header) => {
+        const rendered = renderTemplateForRuntime({
+          template: header.valueTemplate,
+          connectorId: args.connector.id,
+          fields: args.connector.fields,
+          configuredValueMarkers: args.valueMarkers,
+        });
+        return rendered === null ? [] : [[header.name, rendered]];
+      }),
+    ),
+    query: Object.fromEntries(
+      args.connector.queryInjections.flatMap((queryInjection) => {
+        const rendered = renderTemplateForRuntime({
+          template: queryInjection.valueTemplate,
+          connectorId: args.connector.id,
+          fields: args.connector.fields,
+          configuredValueMarkers: args.valueMarkers,
+        });
+        return rendered === null ? [] : [[queryInjection.name, rendered]];
+      }),
+    ),
+  };
+}
+
+async function buildCustomConnectorRuntimeApis(args: {
+  readonly row: CustomConnectorRuntimeDataRows[number];
+  readonly headers: Record<string, string>;
+  readonly query: Record<string, string>;
+  readonly permissionBundle: CustomConnectorPermissionBundle | null;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly stats: CustomConnectorRuntimeBuildStats;
+}): Promise<ExpandedFirewallConfig["apis"]> {
+  const prefixVariableKeys = customConnectorPrefixTemplateVariableKeys(
+    args.row.connector.prefixTemplates,
+  );
+  const prefixValues = args.row.values.filter((value) => {
+    return value.kind === "variable" && prefixVariableKeys.has(value.key);
+  });
+  const decryptStartedAt = now();
+  const decryptedValues =
+    prefixValues.length === 0
+      ? {}
+      : await decryptCustomConnectorValues({
+          values: prefixValues,
+          featureSwitchContext: args.featureSwitchContext,
+        });
+  args.stats.recordPhaseDuration("decryptValues", decryptStartedAt);
+  args.stats.recordDecryptedValues(prefixValues.length);
+
+  const apis: ExpandedFirewallConfig["apis"] = [];
+  const prefixStartedAt = now();
+  for (const prefixTemplate of args.row.connector.prefixTemplates) {
+    const renderedPrefix = renderCustomConnectorRuntimePrefix({
+      template: prefixTemplate,
+      values: decryptedValues,
+      connectorName: args.row.connector.displayName,
+    });
+    if (!renderedPrefix) {
+      args.stats.recordInvalidPrefix();
+      continue;
+    }
+    args.stats.recordRenderedApi();
+    apis.push({
+      base: renderedPrefix,
+      auth: { headers: args.headers, query: args.query },
+      ...(args.permissionBundle
+        ? { permissions: [...args.permissionBundle.permissions] }
+        : {}),
+    });
+  }
+  args.stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
+  return apis;
+}
+
+interface BuildCustomConnectorRuntimeContextArgs {
   readonly rows: CustomConnectorRuntimeDataRows;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly grants: readonly AgentCustomConnectorGrant[] | undefined;
+  readonly preserveFirewallWithoutCredentials: boolean;
   readonly timing?: ApiDispatchTimingCollector;
-}): Promise<CustomConnectorRuntimeContext> {
+}
+
+export async function loadEffectiveCustomConnectorPermissionBundle(args: {
+  readonly row: CustomConnectorRuntimeDataRows[number];
+  readonly snapshot: ConnectorRuntimeSnapshot;
+}): Promise<CustomConnectorPermissionBundle | null | undefined> {
+  const ref = effectiveCustomConnectorPermissionBundleRef({
+    slug: args.row.connector.slug,
+    authMode: args.row.connector.authMode,
+    oauthProviderAdapter:
+      args.row.connector.oauthConfig?.providerAdapter ?? null,
+    prefixTemplates: args.row.connector.prefixTemplates,
+    permissionBundleRef: args.row.connector.permissionBundleRef,
+  });
+  return ref
+    ? ((await loadCustomConnectorPermissionBundle({
+        snapshot: args.snapshot,
+        ref,
+      })) ?? undefined)
+    : null;
+}
+
+function buildCustomConnectorPermissionPolicy(args: {
+  readonly bundle: CustomConnectorPermissionBundle;
+  readonly selectedPermissionNames: readonly string[];
+}): FirewallPolicy {
+  const selectedPermissionNames = new Set(args.selectedPermissionNames);
+  return {
+    policies: Object.fromEntries(
+      [...args.bundle.permissionNames].map((permissionName) => {
+        return [
+          permissionName,
+          selectedPermissionNames.has(permissionName)
+            ? "allow"
+            : (args.bundle.defaultPolicies[permissionName] ?? "deny"),
+        ];
+      }),
+    ),
+    unknownPolicy: "deny",
+  };
+}
+
+export async function buildCustomConnectorRuntimeContext(
+  args: BuildCustomConnectorRuntimeContextArgs,
+): Promise<CustomConnectorRuntimeContext> {
   const firewalls: ExpandedFirewallConfig[] = [];
   const reservedSecretAliases: Record<string, true> = {};
   const authRefs: CustomConnectorAuthRef[] = [];
+  const permissionPolicies: FirewallPolicies = {};
+  const skills: {
+    connectorId: string;
+    connectorSlug: string;
+  }[] = [];
+  const grantByConnectorId = new Map(
+    (args.grants ?? []).map((grant) => {
+      return [grant.customConnectorId, grant.permissionNames] as const;
+    }),
+  );
   const stats = new CustomConnectorRuntimeBuildStats(args.rows);
   for (const row of args.rows) {
     const missingRequiredStartedAt = now();
@@ -3434,83 +3894,52 @@ async function buildCustomConnectorRuntimeContext(args: {
         return customConnectorValueMarkerKey(value);
       }),
     );
-    const missingRequired = row.connector.fields.some((field) => {
-      return (
-        field.required &&
-        !valueMarkers.has(customConnectorValueMarkerKey(field))
-      );
-    });
+    const oauthConnected = valueMarkers.has(
+      customConnectorValueMarkerKey({
+        kind: "secret",
+        key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+      }),
+    );
+    const missingRequired =
+      !args.preserveFirewallWithoutCredentials &&
+      ((row.connector.authMode === "oauth" && !oauthConnected) ||
+        row.connector.fields.some((field) => {
+          return (
+            field.required &&
+            !valueMarkers.has(customConnectorValueMarkerKey(field))
+          );
+        }));
     stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
     if (missingRequired) {
       stats.recordMissingRequiredConnector();
       continue;
     }
-    const apis: ExpandedFirewallConfig["apis"] = [];
     const authTemplateStartedAt = now();
-    const headers = Object.fromEntries(
-      row.connector.headerInjections.flatMap((header) => {
-        const rendered = renderTemplateForRuntime({
-          template: header.valueTemplate,
-          connectorId: row.connector.id,
-          fields: row.connector.fields,
-          configuredValueMarkers: valueMarkers,
-        });
-        return rendered === null ? [] : [[header.name, rendered]];
-      }),
-    );
-    const query = Object.fromEntries(
-      row.connector.queryInjections.flatMap((queryInjection) => {
-        const rendered = renderTemplateForRuntime({
-          template: queryInjection.valueTemplate,
-          connectorId: row.connector.id,
-          fields: row.connector.fields,
-          configuredValueMarkers: valueMarkers,
-        });
-        return rendered === null ? [] : [[queryInjection.name, rendered]];
-      }),
-    );
+    const { headers, query } = customConnectorRuntimeAuth({
+      connector: row.connector,
+      valueMarkers: args.preserveFirewallWithoutCredentials
+        ? undefined
+        : valueMarkers,
+    });
     stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
     if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
       stats.recordNoAuthInjectionConnector();
       continue;
     }
-    const prefixVariableKeys = customConnectorPrefixTemplateVariableKeys(
-      row.connector.prefixTemplates,
+    const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle(
+      { row, snapshot: args.connectorCatalogSnapshot },
     );
-    const prefixValues = row.values.filter((value) => {
-      return value.kind === "variable" && prefixVariableKeys.has(value.key);
-    });
-    const decryptStartedAt = now();
-    const decryptedValues =
-      prefixValues.length === 0
-        ? {}
-        : await decryptCustomConnectorValues({
-            values: prefixValues,
-            featureSwitchContext: args.featureSwitchContext,
-          });
-    stats.recordPhaseDuration("decryptValues", decryptStartedAt);
-    stats.recordDecryptedValues(prefixValues.length);
-    const prefixStartedAt = now();
-    for (const prefixTemplate of row.connector.prefixTemplates) {
-      const renderedPrefix = renderCustomConnectorRuntimePrefix({
-        template: prefixTemplate,
-        values: decryptedValues,
-        connectorName: row.connector.displayName,
-      });
-      if (!renderedPrefix) {
-        stats.recordInvalidPrefix();
-        continue;
-      }
-      stats.recordRenderedApi();
-      apis.push({
-        base: renderedPrefix,
-        auth: {
-          headers,
-          query,
-        },
-      });
+    if (permissionBundle === undefined) {
+      continue;
     }
-    stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
+    const apis = await buildCustomConnectorRuntimeApis({
+      row,
+      headers,
+      query,
+      permissionBundle,
+      featureSwitchContext: args.featureSwitchContext,
+      stats,
+    });
     const assemblyStartedAt = now();
     if (apis.length === 0) {
       stats.recordPhaseDuration("assembleFirewalls", assemblyStartedAt);
@@ -3521,8 +3950,23 @@ async function buildCustomConnectorRuntimeContext(args: {
       description: row.connector.displayName,
       apis,
     });
+    if (permissionBundle) {
+      permissionPolicies[customConnectorInternalName(row.connector.id)] =
+        buildCustomConnectorPermissionPolicy({
+          bundle: permissionBundle,
+          selectedPermissionNames:
+            grantByConnectorId.get(row.connector.id) ?? [],
+        });
+    }
+    if (row.connector.skillMarkdown !== null) {
+      skills.push({
+        connectorId: row.connector.id,
+        connectorSlug: row.connector.slug,
+      });
+    }
     const rowAuthRefs = customConnectorAuthRefsForApis({
       connectorId: row.connector.id,
+      connectorRevision: row.connector.revision,
       values: row.values,
       apis,
     });
@@ -3538,10 +3982,70 @@ async function buildCustomConnectorRuntimeContext(args: {
     firewalls,
     reservedSecretAliases: compactRecord(reservedSecretAliases),
     authRefs,
+    permissionPolicies: compactRecord(permissionPolicies),
+    skills,
   };
   stats.recordPhaseDuration("assembleFirewalls", finalAssemblyStartedAt);
   stats.flush(args.timing);
   return result;
+}
+
+interface CustomConnectorRuntimeExecutionState {
+  readonly firewall: Omit<ExecutionFirewallInlineEntry, "firewall"> & {
+    readonly firewall: Omit<Firewall, "apis"> & {
+      readonly apis: (Firewall["apis"][number] & {
+        readonly id: string;
+      })[];
+    };
+  };
+  readonly networkPolicy: NetworkPolicy;
+}
+
+export function customConnectorRuntimeExecutionState(args: {
+  readonly context: CustomConnectorRuntimeContext;
+  readonly connectorId: string;
+}): CustomConnectorRuntimeExecutionState | null {
+  const firewallName = customConnectorInternalName(args.connectorId);
+  const source = args.context.firewalls.find((firewall) => {
+    return firewall.name === firewallName;
+  });
+  if (!source) {
+    return null;
+  }
+
+  const permissionNames = collectPermissionNames(source.apis);
+  const defaultPolicy = allAllowPolicyForPermissions(permissionNames);
+  const policy = args.context.permissionPolicies?.[firewallName];
+  const networkPolicy = networkPolicyForFirewallPolicy(
+    permissionNames,
+    policy
+      ? {
+          ...policy,
+          unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
+        }
+      : defaultPolicy,
+  );
+
+  return {
+    firewall: {
+      kind: "inline",
+      firewall: {
+        name: source.name,
+        apis: source.apis.map((api, index) => {
+          return {
+            id: `${firewallName}:${index}`,
+            base: api.base,
+            ...(api.hostPolicy !== undefined
+              ? { hostPolicy: api.hostPolicy }
+              : {}),
+            auth: api.auth,
+            permissions: api.permissions ?? [],
+          };
+        }),
+      },
+    },
+    networkPolicy,
+  };
 }
 
 async function loadCustomConnectorContext(
@@ -3550,12 +4054,23 @@ async function loadCustomConnectorContext(
     readonly orgId: string;
     readonly userId: string;
     readonly allowedCustomConnectorIds: readonly string[] | undefined;
+    readonly customConnectorGrants:
+      | readonly AgentCustomConnectorGrant[]
+      | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
+  signal: AbortSignal,
   timing?: ApiDispatchTimingCollector,
 ): Promise<CustomConnectorRuntimeContext> {
   if (args.allowedCustomConnectorIds?.length === 0) {
-    return { firewalls: [], reservedSecretAliases: undefined, authRefs: [] };
+    return {
+      firewalls: [],
+      reservedSecretAliases: undefined,
+      authRefs: [],
+      permissionPolicies: undefined,
+      skills: [],
+    };
   }
 
   const rows = await loadCustomConnectorRuntimeData(db, {
@@ -3576,7 +4091,29 @@ async function loadCustomConnectorContext(
     },
   });
   if (rows.length === 0) {
-    return { firewalls: [], reservedSecretAliases: undefined, authRefs: [] };
+    return {
+      firewalls: [],
+      reservedSecretAliases: undefined,
+      authRefs: [],
+      permissionPolicies: undefined,
+      skills: [],
+    };
+  }
+  const refreshedRows: CustomConnectorRuntimeDataRows[number][] = [];
+  for (const row of rows) {
+    refreshedRows.push({
+      connector: row.connector,
+      values: await refreshCustomConnectorOAuth2ValuesIfNeeded({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        connector: row.connector,
+        values: row.values,
+        featureContext: args.featureSwitchContext,
+        signal,
+      }),
+    });
+    signal.throwIfAborted();
   }
 
   return await measureApiDispatchTiming(
@@ -3585,8 +4122,11 @@ async function loadCustomConnectorContext(
     "nested",
     async () => {
       return await buildCustomConnectorRuntimeContext({
-        rows,
+        rows: refreshedRows,
         featureSwitchContext: args.featureSwitchContext,
+        connectorCatalogSnapshot: args.connectorCatalogSnapshot,
+        grants: args.customConnectorGrants,
+        preserveFirewallWithoutCredentials: false,
         timing,
       });
     },
@@ -3620,14 +4160,14 @@ function allAllowPolicyForPermissions(
 
 async function loadRequiredFirewallPermissionIndex(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
 }): Promise<ConnectorServerFirewallPermissionIndex> {
   const index = await args.snapshot.serverFirewalls.loadPermissionIndex(
-    args.connectorRef,
+    args.connectorSlug,
   );
   if (!index) {
     throw new Error(
-      `Missing connector server firewall permission metadata: ${args.connectorRef}`,
+      `Missing connector server firewall permission metadata: ${args.connectorSlug}`,
     );
   }
   return index;
@@ -3635,12 +4175,12 @@ async function loadRequiredFirewallPermissionIndex(args: {
 
 function getRequiredFirewallExecutionMetadata(
   snapshot: ConnectorRuntimeSnapshot,
-  connectorRef: string,
+  connectorSlug: string,
 ): ConnectorServerFirewallExecutionMetadata {
-  const metadata = snapshot.serverFirewalls.getExecutionMetadata(connectorRef);
+  const metadata = snapshot.serverFirewalls.getExecutionMetadata(connectorSlug);
   if (!metadata) {
     throw new Error(
-      `Missing connector server firewall execution metadata: ${connectorRef}`,
+      `Missing connector server firewall execution metadata: ${connectorSlug}`,
     );
   }
   return metadata;
@@ -3704,11 +4244,11 @@ function builtinFirewallEntryForMetadata(
   vars: Record<string, string> | undefined,
 ): ExecutionFirewallEntry {
   if (metadata.baseUrlVarNames.length === 0) {
-    return { kind: "builtin", name: metadata.connectorRef };
+    return { kind: "builtin", name: metadata.connectorSlug };
   }
 
   const validationFirewall: Firewall = {
-    name: metadata.connectorRef,
+    name: metadata.connectorSlug,
     apis: metadata.baseUrlTemplates.map((template) => {
       return {
         base: template.base,
@@ -3724,7 +4264,7 @@ function builtinFirewallEntryForMetadata(
     [validationFirewall],
     vars,
   );
-  return { kind: "builtin", name: metadata.connectorRef, baseUrlVars };
+  return { kind: "builtin", name: metadata.connectorSlug, baseUrlVars };
 }
 
 function inlineFirewallEntry(
@@ -3819,6 +4359,81 @@ interface BuiltinConnectorManifestSource {
   readonly permissionIndex: ConnectorServerFirewallPermissionIndex;
 }
 
+interface FixedFirewallBaseParts {
+  readonly protocol: string;
+  readonly authority: string;
+  readonly pathPrefix: string;
+}
+
+function fixedFirewallBaseParts(base: string): FixedFirewallBaseParts | null {
+  const schemeEnd = base.indexOf("://");
+  if (schemeEnd === -1) {
+    return null;
+  }
+  const authorityStart = schemeEnd + 3;
+  const authorityEnd = base.indexOf("/", authorityStart);
+  const rawAuthority = base.slice(
+    authorityStart,
+    authorityEnd === -1 ? base.length : authorityEnd,
+  );
+  if (/[${}*]/u.test(rawAuthority)) {
+    return null;
+  }
+  const parsed = safeSync(() => {
+    return new URL(base);
+  });
+  if ("error" in parsed) {
+    return null;
+  }
+  const authority = normalizeFirewallFixedHost(parsed.ok.host);
+  if (!authority) {
+    return null;
+  }
+  const pathname = parsed.ok.pathname.endsWith("/")
+    ? parsed.ok.pathname
+    : `${parsed.ok.pathname}/`;
+  return {
+    protocol: parsed.ok.protocol.toLowerCase(),
+    authority,
+    pathPrefix: pathname,
+  };
+}
+
+function customFirewallCoversBuiltinBase(
+  customBase: string,
+  builtinBase: string,
+): boolean {
+  const custom = fixedFirewallBaseParts(customBase);
+  const builtin = fixedFirewallBaseParts(builtinBase);
+  return (
+    custom !== null &&
+    builtin !== null &&
+    custom.protocol === builtin.protocol &&
+    custom.authority === builtin.authority &&
+    builtin.pathPrefix.startsWith(custom.pathPrefix)
+  );
+}
+
+function builtinConnectorOverriddenByCustomFirewalls(args: {
+  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly connectorSlug: ConnectorSlug;
+  readonly customFirewalls: readonly ExpandedFirewallConfig[];
+}): boolean {
+  const metadata = args.snapshot.serverFirewalls.getRoutingIndexMetadata(
+    args.connectorSlug,
+  );
+  if (!metadata) {
+    return false;
+  }
+  return metadata.apis.some((builtinApi) => {
+    return args.customFirewalls.some((customFirewall) => {
+      return customFirewall.apis.some((customApi) => {
+        return customFirewallCoversBuiltinBase(customApi.base, builtinApi.base);
+      });
+    });
+  });
+}
+
 function buildConnectorPermissionBaseline(
   snapshot: ConnectorRuntimeSnapshot,
   sources: readonly BuiltinConnectorManifestSource[],
@@ -3836,7 +4451,7 @@ function buildConnectorPermissionBaseline(
         const defaultPolicy = source.permissionIndex.defaultPolicy;
         const permissionOverrides = defaultPolicy.permissionOverrides;
         return [
-          source.metadata.connectorRef,
+          source.metadata.connectorSlug,
           {
             permissionNames: [...source.permissionIndex.permissionNames],
             defaultPolicy: {
@@ -3876,7 +4491,7 @@ function applyBuiltinConnectorMetadataPolicies(
   const billableFirewalls: string[] = [];
 
   for (const source of sources) {
-    const name = source.metadata.connectorRef;
+    const name = source.metadata.connectorSlug;
     const permissionNames = [...source.permissionIndex.permissionNames];
     const defaultPolicy = defaultFirewallPolicyForPermissionIndex(
       source.permissionIndex,
@@ -3913,24 +4528,39 @@ function applyBuiltinConnectorMetadataPolicies(
   };
 }
 
-async function buildPermissionManifest(args: {
+interface BuildPermissionManifestArgs {
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly connectorVars?: Record<string, string>;
-  readonly connectorTypes?: readonly ConnectorRef[];
+  readonly connectorSlugs?: readonly ConnectorSlug[];
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
+  readonly customConnectorPermissionPolicies?: FirewallPolicies;
   readonly timing?: ApiDispatchTimingCollector;
-}): Promise<PermissionManifest | undefined> {
-  const connectorTypes =
-    args.connectorTypes ??
-    Object.keys(args.permissionPolicies ?? {}).filter((connectorRef) => {
-      return args.connectorCatalogSnapshot.serverFirewalls.has(connectorRef);
+}
+
+async function buildPermissionManifest(
+  args: BuildPermissionManifestArgs,
+): Promise<PermissionManifest | undefined> {
+  const connectorSlugs =
+    args.connectorSlugs ??
+    Object.keys(args.permissionPolicies ?? {}).filter((connectorSlug) => {
+      return args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug);
     });
   const connectorBaseUrlVars = mergeRecords(args.vars, args.connectorVars);
-  const builtinConnectorTypes = connectorTypes.filter((connectorRef) => {
-    return args.connectorCatalogSnapshot.serverFirewalls.has(connectorRef);
+  const customConnectorFirewalls = args.customConnectorFirewalls ?? [];
+  // Narrower custom bases already win by base specificity. Remove a built-in
+  // only when a custom base covers it, which avoids equal/broader ambiguity.
+  const builtinConnectorSlugs = connectorSlugs.filter((connectorSlug) => {
+    return (
+      args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug) &&
+      !builtinConnectorOverriddenByCustomFirewalls({
+        snapshot: args.connectorCatalogSnapshot,
+        connectorSlug,
+        customFirewalls: customConnectorFirewalls,
+      })
+    );
   });
 
   const builtinSources = await measureApiDispatchTiming(
@@ -3939,14 +4569,14 @@ async function buildPermissionManifest(args: {
     "nested",
     async () => {
       return await Promise.all(
-        builtinConnectorTypes.map(async (type) => {
+        builtinConnectorSlugs.map(async (connectorSlug) => {
           const metadata = getRequiredFirewallExecutionMetadata(
             args.connectorCatalogSnapshot,
-            type,
+            connectorSlug,
           );
           const permissionIndex = await loadRequiredFirewallPermissionIndex({
             snapshot: args.connectorCatalogSnapshot,
-            connectorRef: type,
+            connectorSlug,
           });
           return { metadata, permissionIndex };
         }),
@@ -3975,8 +4605,11 @@ async function buildPermissionManifest(args: {
     () => {
       return Promise.resolve(
         applyConnectorPolicies(
-          args.customConnectorFirewalls ?? [],
-          args.permissionPolicies,
+          customConnectorFirewalls,
+          mergeRecords(
+            args.permissionPolicies,
+            args.customConnectorPermissionPolicies,
+          ),
           inlineFirewallEntry,
           (_firewall, permissionNames) => {
             return allAllowPolicyForPermissions(permissionNames);
@@ -4020,9 +4653,7 @@ async function buildPermissionManifest(args: {
         environmentSecretPlaceholders: mergeRecords(
           providerManifest?.environmentSecretPlaceholders,
           connectorManifest.environmentSecretPlaceholders,
-          firewallSecretPlaceholdersFromFirewalls(
-            args.customConnectorFirewalls,
-          ),
+          firewallSecretPlaceholdersFromFirewalls(customConnectorFirewalls),
         ),
         billableFirewalls: [
           ...(providerManifest?.billableFirewalls ?? []),
@@ -4042,42 +4673,28 @@ async function checkRunConcurrencyLimit(
   tx: DbTransaction,
   orgId: string,
 ): Promise<CreateRunErrorResult | null> {
-  const [capabilities, paidSlots] = await Promise.all([
-    loadOrgPlanCapabilities(tx, orgId),
-    activePaidConcurrencySlots(tx, orgId),
-  ]);
+  const at = nowDate();
+  const state = await loadOrgConcurrencyState(tx, {
+    orgId,
+    at,
+    activePendingAfter: new Date(at.getTime() - PENDING_RUN_TTL_MS),
+  });
   const limit = getEffectiveConcurrencyLimit(
-    capabilities?.baseConcurrencyLimit ?? 0,
-    paidSlots,
+    state.baseConcurrencyLimit,
+    state.paidSlots,
   );
   if (limit === 0) {
     return null;
   }
 
-  const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
-  const [activeResult] = await tx
-    .select({ count: count() })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.orgId, orgId),
-        or(
-          eq(agentRuns.status, "running"),
-          and(
-            eq(agentRuns.status, "pending"),
-            activePendingRunPredicate(staleThreshold),
-          ),
-        ),
-      ),
-    );
-  const activeCount = Number(activeResult?.count ?? 0);
-  return activeCount >= limit ? concurrentRunLimit() : null;
+  return state.activeRunCount >= limit ? concurrentRunLimit() : null;
 }
 
 async function checkFinalRunAdmission(
   db: Db,
   args: {
     readonly orgId: string;
+    readonly userId: string;
     readonly modelProviderType: string | null | undefined;
     readonly selectedModel: string | null | undefined;
     readonly enforceVm0Credits: boolean;
@@ -4093,12 +4710,14 @@ async function checkFinalRunAdmission(
         const availability = await resolveOrgCreditAvailability({
           db,
           orgId: args.orgId,
+          userId: args.userId,
         });
         args.signal.throwIfAborted();
         return (
           (await checkResolvedOrgCreditsForRunAdmission({
             db,
             orgId: args.orgId,
+            userId: args.userId,
             modelProviderType: args.modelProviderType,
             selectedModel: args.selectedModel,
             availability,
@@ -4626,70 +5245,45 @@ async function prepareRunCallbackRows(args: {
   );
 }
 
-async function insertZeroRunRecord(
-  tx: Db,
-  args: {
-    readonly runId: string;
-    readonly body: CreateRunBody;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly zeroRunModelPin: ZeroRunModelPin | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly zeroRunMetadata: ZeroRunMetadata | undefined;
-    readonly apiStartedAt: Date | null;
-  },
-): Promise<void> {
-  const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
-  await tx.insert(zeroRuns).values({
-    id: args.runId,
-    triggerSource: args.body.triggerSource ?? "cli",
-    workflowAutomationId: metadata.workflowAutomationId ?? null,
-    triggerBrief: metadata.triggerBrief ?? null,
-    runGroupId: metadata.runGroupId ?? null,
-    goalId: metadata.goalId ?? null,
-    triggerAgentId: metadata.triggerAgentId ?? null,
-    ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
-    chatThreadId: args.chatThreadId ?? null,
-    apiStartedAt: args.apiStartedAt,
-  });
+interface LaunchRunRowsArgs {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly identity: LaunchRunIdentity;
+  readonly status: LaunchRunStatus;
+  readonly resolved: ResolvedCompose;
+  readonly body: CreateRunBody;
+  readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
+  readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly zeroRunModelPin: ZeroRunModelPin | undefined;
+  readonly callbackRows: readonly AgentRunCallbackInsert[];
+  readonly chatThreadId: string | undefined;
+  readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+  readonly apiStartTime: number;
+  readonly runnerGroup: string | undefined;
+  readonly error: string | undefined;
 }
 
-async function insertLaunchRunRows(
-  tx: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly identity: LaunchRunIdentity;
-    readonly status: LaunchRunStatus;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
-    readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly zeroRunModelPin: ZeroRunModelPin | undefined;
-    readonly callbackRows: readonly AgentRunCallbackInsert[];
-    readonly chatThreadId: string | undefined;
-    readonly zeroRunMetadata: ZeroRunMetadata | undefined;
-    readonly apiStartTime: number;
-    readonly runnerGroup: string | undefined;
-    readonly error: string | undefined;
-  },
-): Promise<{ readonly createdAt: Date }> {
-  if (args.identity.shouldCreateSession) {
-    await tx.insert(agentSessions).values({
-      id: args.identity.sessionId,
-      userId: args.userId,
-      orgId: args.orgId,
-      agentComposeId: args.resolved.composeId,
-      storageMounts: args.sessionStorageMounts
-        ? [...args.sessionStorageMounts]
-        : null,
-      conversationId: null,
-    });
-  }
+function launchSessionValues(
+  args: LaunchRunRowsArgs,
+): typeof agentSessions.$inferInsert {
+  return {
+    id: args.identity.sessionId,
+    userId: args.userId,
+    orgId: args.orgId,
+    agentComposeId: args.resolved.composeId,
+    storageMounts: args.sessionStorageMounts
+      ? [...args.sessionStorageMounts]
+      : null,
+    conversationId: null,
+  };
+}
 
-  const createdAt = nowDate();
-  const completedAt = args.status === "failed" ? createdAt : undefined;
-  const runValues: typeof agentRuns.$inferInsert = {
+function launchRunValues(
+  args: LaunchRunRowsArgs,
+  createdAt: Date,
+): typeof agentRuns.$inferInsert {
+  return {
     id: args.identity.runId,
     createdAt,
     userId: args.userId,
@@ -4705,20 +5299,48 @@ async function insertLaunchRunRows(
     sessionId: args.identity.sessionId,
     lastHeartbeatAt: createdAt,
     runnerGroup: args.runnerGroup ?? null,
-    completedAt: completedAt ?? null,
+    completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
   };
-  await tx.insert(agentRuns).values(runValues);
+}
 
-  await insertZeroRunRecord(tx, {
-    runId: args.identity.runId,
-    body: args.body,
-    modelProvider: args.modelProvider,
-    zeroRunModelPin: args.zeroRunModelPin,
-    chatThreadId: args.chatThreadId,
-    zeroRunMetadata: args.zeroRunMetadata,
+function launchZeroRunValues(
+  args: LaunchRunRowsArgs,
+  autonomyBudgetAvailable: boolean,
+): typeof zeroRuns.$inferInsert {
+  const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
+  return {
+    id: args.identity.runId,
+    triggerSource: args.body.triggerSource,
+    workflowAutomationId: metadata.workflowAutomationId ?? null,
+    triggerBrief: metadata.triggerBrief ?? null,
+    runGroupId: metadata.goalId ?? null,
+    goalId: metadata.goalId ?? null,
+    ...(metadata.autonomyBudget === undefined || !autonomyBudgetAvailable
+      ? {}
+      : { autonomyBudget: metadata.autonomyBudget }),
+    ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
+    chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
-  });
+  };
+}
+
+async function insertLaunchRunRows(
+  tx: Db,
+  args: LaunchRunRowsArgs,
+): Promise<{ readonly createdAt: Date }> {
+  if (args.identity.shouldCreateSession) {
+    await tx.insert(agentSessions).values(launchSessionValues(args));
+  }
+
+  const createdAt = nowDate();
+  await tx.insert(agentRuns).values(launchRunValues(args, createdAt));
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(tx);
+  await insertRolloutCompatibleZeroRun(
+    tx,
+    launchZeroRunValues(args, autonomyBudgetAvailable),
+    autonomyBudgetAvailable,
+  );
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -4771,6 +5393,7 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
     ...args.extraEnvironment,
+    CLI_PKG_URL: env("CLI_PKG_URL"),
   };
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
@@ -5239,6 +5862,7 @@ interface BuildRunnerJobPayloadInput {
   readonly body: CreateRunBody;
   readonly artifacts: readonly ContextArtifact[];
   readonly framework: SupportedFramework;
+  readonly piEdge: PiEdgeModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
@@ -5251,27 +5875,121 @@ interface BuildRunnerJobPayloadInput {
   readonly includeZeroTokenSecret: boolean | undefined;
   readonly zeroTokenComputerUseHostId: string | undefined;
   readonly zeroTokenCloudBrowserEnabled: boolean | undefined;
+  readonly imageRecognitionAvailable: boolean;
   readonly chatThreadId: string | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly timing?: ApiDispatchTimingCollector;
 }
+
+interface PreparedPiLaunchResources {
+  readonly executionEnv: ExecutionEnv;
+  readonly modelConfig: PiModelConfig;
+  readonly prompt: string;
+  readonly systemPrompt: string;
+  readonly snapshot: RunSkillSnapshot;
+}
+
+function storedExecutionContextWithPiResources(
+  context: StoredExecutionContext,
+  resources: PreparedPiLaunchResources | undefined,
+): StoredExecutionContext {
+  if (resources === undefined) {
+    return context;
+  }
+  return {
+    ...context,
+    runSkillSnapshot: resources.snapshot,
+    piSystemPrompt: resources.systemPrompt,
+    piModelConfig: resources.modelConfig,
+  };
+}
+
+async function resolvePiAgentName(db: Db, composeId: string): Promise<string> {
+  const [agent] = await db
+    .select({
+      displayName: zeroAgents.displayName,
+      name: zeroAgents.name,
+    })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, composeId))
+    .limit(1);
+
+  if (agent?.displayName?.trim()) {
+    return agent.displayName;
+  }
+  if (agent?.name.trim()) {
+    return agent.name;
+  }
+  return "Okou";
+}
+
+async function preparePiLaunchResources(args: {
+  readonly get: <T>(computedValue: Computed<T>) => T;
+  readonly db: Db;
+  readonly runId: string;
+  readonly body: CreateRunBody;
+  readonly composeId: string;
+  readonly piEdge: PiEdgeModelConfig | undefined;
+  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly additionalVolumeSources: AdditionalVolumeSources;
+  readonly persistedStorageMounts: readonly PersistedStorageMount[];
+}): Promise<PreparedPiLaunchResources | undefined> {
+  if (args.piEdge === undefined) {
+    return undefined;
+  }
+  const snapshot = buildRunSkillSnapshot({
+    additionalVolumes: args.additionalVolumes,
+    additionalVolumeSources: args.additionalVolumeSources,
+    persistedStorageMounts: args.persistedStorageMounts,
+  });
+  const [resources, agentName] = await Promise.all([
+    loadPiLaunchStorageResources(args.get, args.db, {
+      snapshot,
+      persistedStorageMounts: args.persistedStorageMounts,
+    }),
+    resolvePiAgentName(args.db, args.composeId),
+  ]);
+  const skills = await loadPiRunSkills(resources.env, snapshot);
+  if (skills.diagnostics.length > 0) {
+    L.warn("Pi run Skill catalog contains diagnostics", {
+      runId: args.runId,
+      diagnostics: skills.diagnostics,
+    });
+  }
+  return {
+    executionEnv: resources.env,
+    modelConfig: piSandboxModelConfig(args.piEdge),
+    prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
+    systemPrompt: renderPiSystemPrompt({
+      agentName,
+      appendSystemPrompt: args.body.appendSystemPrompt,
+      agentInstructions: resources.agentInstructions,
+      memory: resources.memory,
+      skills: skills.skills,
+    }),
+    snapshot,
+  };
+}
+
+function preparedRunnerGroup(content: AgentComposeContent): string {
+  const group = runnerGroup(content) ?? optionalEnv("RUNNER_DEFAULT_GROUP");
+  if (!group) {
+    throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
+  }
+  if (!isOfficialRunnerGroup(group)) {
+    throw new Error("Only vm0/* runner groups are supported");
+  }
+  return group;
+}
+
 function buildRunnerJobPayload(
   db: Db,
   args: BuildRunnerJobPayloadInput,
 ): Computed<Promise<PreparedRunnerLaunch>> {
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
-    const group =
-      runnerGroup(args.resolved.content) ?? optionalEnv("RUNNER_DEFAULT_GROUP");
-    if (!group) {
-      throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
-    }
-    if (!isOfficialRunnerGroup(group)) {
-      throw new Error("Only vm0/* runner groups are supported");
-    }
-
-    const profile = runnerProfile(args.resolved.content);
+    const group = preparedRunnerGroup(args.resolved.content);
     const featureSwitchOverrides = args.includeZeroTokenSecret
       ? args.featureSwitchContext.overrides
       : undefined;
@@ -5283,18 +6001,15 @@ function buildRunnerJobPayload(
             args.run.id,
             args.orgId,
             featureSwitchOverrides,
-            args.zeroTokenComputerUseHostId ||
-              args.zeroTokenCloudBrowserEnabled === true
-              ? {
-                  ...(args.zeroTokenComputerUseHostId
-                    ? {
-                        computerUseHostId: args.zeroTokenComputerUseHostId,
-                      }
-                    : {}),
-                  cloudBrowserEnabled:
-                    args.zeroTokenCloudBrowserEnabled === true,
-                }
-              : undefined,
+            {
+              ...(args.zeroTokenComputerUseHostId
+                ? {
+                    computerUseHostId: args.zeroTokenComputerUseHostId,
+                  }
+                : {}),
+              cloudBrowserEnabled: args.zeroTokenCloudBrowserEnabled === true,
+              imageRecognitionAvailable: args.imageRecognitionAvailable,
+            },
           ),
         )
       : args.body;
@@ -5345,19 +6060,43 @@ function buildRunnerJobPayload(
       preparedStoragePromise,
       builtContextDraftPromise,
     );
+    const piResources = await preparePiLaunchResources({
+      get,
+      db,
+      runId: args.run.id,
+      body,
+      composeId: args.resolved.composeId,
+      piEdge: args.piEdge,
+      additionalVolumes: args.additionalVolumes,
+      additionalVolumeSources: args.additionalVolumeSources,
+      persistedStorageMounts: builtContext.persistedStorageMounts,
+    });
+    const storedContext = storedExecutionContextWithPiResources(
+      builtContext.context,
+      piResources,
+    );
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
       userId: args.userId,
       body,
-      builtContext,
+      builtContext: { ...builtContext, context: storedContext },
     });
-    const storedContext = builtContext.context;
     const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
     return {
+      ...(args.piEdge === undefined ? {} : { piEdge: args.piEdge }),
+      ...(piResources === undefined
+        ? {}
+        : {
+            piExecutionEnv: piResources.executionEnv,
+            piPrompt: piResources.prompt,
+            piSystemPrompt: piResources.systemPrompt,
+            runSkillSnapshot: piResources.snapshot,
+          }),
       runnerJobPayload: queuedRunnerJobPayload({
         runnerGroup: group,
-        profile,
+        profile: runnerProfile(args.resolved.content),
         cliAgentSessionId,
+        reuseKey: runnerReuseKey(args.chatThreadId),
         executionContext: storedContext,
       }),
       runContextSnapshot,
@@ -5371,60 +6110,383 @@ function buildRunnerJobPayload(
   });
 }
 
-async function insertRunnerJobQueueRow(
-  tx: DbTransaction,
-  args: {
-    readonly runId: string;
-    readonly payload: RunnerJobPayload;
-  },
-): Promise<Date> {
-  const timestamps = runnerJobQueueTimestamps();
-  const [runnerJob] = await tx
-    .insert(runnerJobQueue)
-    .values({
-      runId: args.runId,
-      runnerGroup: args.payload.runnerGroup,
-      profile: args.payload.profile,
-      cliAgentSessionId: args.payload.cliAgentSessionId,
-      executionContext: args.payload.executionContext,
-      ...timestamps,
-    })
-    .returning({ createdAt: runnerJobQueue.createdAt });
-  if (!runnerJob) {
-    throw new Error("Runner job queue insert returned no row");
-  }
-  return runnerJob.createdAt;
+function preparedLaunchRowsArgs(args: {
+  readonly commit: CommitPreparedLaunchArgs;
+  readonly status: Extract<LaunchRunStatus, "pending" | "queued">;
+  readonly runnerGroup: string;
+}): LaunchRunRowsArgs {
+  return {
+    userId: args.commit.createArgs.userId,
+    orgId: args.commit.createArgs.orgId,
+    identity: args.commit.identity,
+    status: args.status,
+    resolved: args.commit.context.resolved,
+    body: args.commit.context.body,
+    runStorageMounts: args.commit.launch.runStorageMounts,
+    sessionStorageMounts: args.commit.launch.sessionStorageMounts,
+    modelProvider: args.commit.context.modelProvider,
+    zeroRunModelPin: args.commit.createArgs.zeroRunModelPin,
+    callbackRows: args.commit.callbackRows,
+    chatThreadId: args.commit.createArgs.chatThreadId,
+    zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
+    apiStartTime: args.commit.createArgs.apiStartTime,
+    runnerGroup: args.runnerGroup,
+    error: undefined,
+  };
 }
 
-async function persistRunCustomConnectorAuthRefs(
-  tx: DbTransaction,
-  args: {
-    readonly runId: string;
-    readonly refs: readonly CustomConnectorAuthRef[];
-  },
-): Promise<void> {
+interface PersistAtomicLaunchRowsArgs {
+  readonly tx: DbTransaction;
+  readonly commit: CommitPreparedLaunchArgs;
+  readonly status: Extract<LaunchRunStatus, "pending" | "queued">;
+  readonly payload: RunnerJobPayload;
+  readonly validatedThreadSession: ValidatedThreadSessionSnapshot | undefined;
+}
+
+type ReturnedIdCte = WithSubquery & { readonly id: SQLWrapper };
+
+function returnedCteId(cte: ReturnedIdCte): SQL {
+  // Child mutations read the returned key so their dependency is explicit;
+  // data-modifying CTE declaration order alone does not order execution.
+  return sql`(SELECT ${cte.id} FROM ${cte})`;
+}
+
+function nullableReturnedCteId(cte: ReturnedIdCte | undefined): SQL {
+  return cte ? sql`(SELECT ${cte.id} FROM ${cte})` : sql`NULL`;
+}
+
+function appendLaunchCallbackCte(args: {
+  readonly tx: DbTransaction;
+  readonly ctes: WithSubquery[];
+  readonly callbacks: readonly AgentRunCallbackInsert[];
+  readonly insertedRun: ReturnedIdCte;
+}): void {
+  if (args.callbacks.length === 0) {
+    return;
+  }
+  const insertedCallbacks = args.tx.$with("inserted_launch_callbacks").as(
+    args.tx.insert(agentRunCallbacks).values(
+      args.callbacks.map((callback) => {
+        return { ...callback, runId: returnedCteId(args.insertedRun) };
+      }),
+    ),
+  );
+  args.ctes.push(insertedCallbacks);
+}
+
+function appendLaunchCustomConnectorAuthRefCte(args: {
+  readonly tx: DbTransaction;
+  readonly ctes: WithSubquery[];
+  readonly refs: readonly CustomConnectorAuthRef[];
+  readonly insertedRun: ReturnedIdCte;
+}): void {
   if (args.refs.length === 0) {
     return;
   }
-
-  await tx
-    .delete(agentRunCustomConnectorAuthRefs)
-    .where(eq(agentRunCustomConnectorAuthRefs.runId, args.runId));
-
   const expiresAt = new Date(now() + CUSTOM_CONNECTOR_AUTH_REF_TTL_MS);
-  await tx.insert(agentRunCustomConnectorAuthRefs).values(
-    args.refs.map((ref) => {
-      return {
-        runId: args.runId,
-        secretName: ref.secretName,
-        connectorId: ref.connectorId,
-        kind: ref.kind,
-        key: ref.key,
-        encryptedValue: ref.encryptedValue,
-        expiresAt,
-      };
-    }),
+  const insertedRefs = args.tx
+    .$with("inserted_launch_custom_connector_auth_refs")
+    .as(
+      args.tx.insert(agentRunCustomConnectorAuthRefs).values(
+        args.refs.map((ref) => {
+          return {
+            runId: returnedCteId(args.insertedRun),
+            secretName: ref.secretName,
+            connectorId: ref.connectorId,
+            connectorRevision: ref.connectorRevision,
+            kind: ref.kind,
+            key: ref.key,
+            encryptedValue: ref.encryptedValue,
+            expiresAt,
+          };
+        }),
+      ),
+    );
+  args.ctes.push(insertedRefs);
+}
+
+function launchThreadBindingCte(args: {
+  readonly tx: DbTransaction;
+  readonly chatThreadId: string | undefined;
+  readonly identity: LaunchRunIdentity;
+  readonly insertedRun: ReturnedIdCte;
+  readonly validatedThreadSession: ValidatedThreadSessionSnapshot | undefined;
+}) {
+  if (!args.chatThreadId || !args.validatedThreadSession) {
+    return undefined;
+  }
+  if (args.validatedThreadSession.chatThreadId !== args.chatThreadId) {
+    throw new Error("Validated chat thread does not match binding target");
+  }
+  return args.tx.$with("updated_launch_thread_binding").as(
+    args.tx
+      .update(chatThreads)
+      .set({
+        agentSessionId: args.identity.sessionId,
+        agentSessionRunId: returnedCteId(args.insertedRun),
+      })
+      .where(eq(chatThreads.id, args.chatThreadId))
+      .returning({ id: chatThreads.id }),
   );
+}
+
+function buildAtomicLaunchCteContext(
+  args: PersistAtomicLaunchRowsArgs,
+  autonomyBudgetAvailable: boolean,
+) {
+  const rowsArgs = preparedLaunchRowsArgs({
+    commit: args.commit,
+    status: args.status,
+    runnerGroup: args.payload.runnerGroup,
+  });
+  const createdAt = nowDate();
+  const ctes: WithSubquery[] = [];
+  const insertedSession = rowsArgs.identity.shouldCreateSession
+    ? args.tx
+        .$with("inserted_launch_session")
+        .as(
+          args.tx
+            .insert(agentSessions)
+            .values(launchSessionValues(rowsArgs))
+            .returning({ id: agentSessions.id }),
+        )
+    : undefined;
+  if (insertedSession) {
+    ctes.push(insertedSession);
+  }
+
+  const insertedRun = args.tx.$with("inserted_launch_run").as(
+    args.tx
+      .insert(agentRuns)
+      .values({
+        ...launchRunValues(rowsArgs, createdAt),
+        sessionId: insertedSession
+          ? returnedCteId(insertedSession)
+          : rowsArgs.identity.sessionId,
+      })
+      .returning({ id: agentRuns.id, createdAt: agentRuns.createdAt }),
+  );
+  ctes.push(insertedRun);
+
+  const zeroRunValues = {
+    ...launchZeroRunValues(rowsArgs, autonomyBudgetAvailable),
+    id: returnedCteId(insertedRun),
+  };
+  const insertedZeroRun = args.tx
+    .$with("inserted_launch_zero_run")
+    .as(
+      autonomyBudgetAvailable
+        ? args.tx.insert(zeroRuns).values(zeroRunValues)
+        : args.tx.insert(rolloutLegacyZeroRuns).values(zeroRunValues),
+    );
+  ctes.push(insertedZeroRun);
+
+  appendLaunchCallbackCte({
+    tx: args.tx,
+    ctes,
+    callbacks: rowsArgs.callbackRows,
+    insertedRun,
+  });
+  appendLaunchCustomConnectorAuthRefCte({
+    tx: args.tx,
+    ctes,
+    refs: args.commit.launch.customConnectorAuthRefs,
+    insertedRun,
+  });
+  const chatThreadId = args.commit.createArgs.chatThreadId;
+  const updatedThread = launchThreadBindingCte({
+    tx: args.tx,
+    chatThreadId,
+    identity: rowsArgs.identity,
+    insertedRun,
+    validatedThreadSession: args.validatedThreadSession,
+  });
+  return { rowsArgs, createdAt, ctes, insertedRun, updatedThread };
+}
+
+type AtomicLaunchCteContext = ReturnType<typeof buildAtomicLaunchCteContext>;
+
+function atomicThreadSessionBinding(args: {
+  readonly context: AtomicLaunchCteContext;
+  readonly commit: CommitPreparedLaunchArgs;
+  readonly validatedThreadSession: ValidatedThreadSessionSnapshot | undefined;
+  readonly boundThreadId: string | null;
+  readonly runId: string;
+}): ThreadSessionBindingWrite | undefined {
+  if (!args.boundThreadId) {
+    return undefined;
+  }
+  if (!args.validatedThreadSession) {
+    throw new Error("Atomic thread binding requires a validated snapshot");
+  }
+  return {
+    chatThreadId: args.boundThreadId,
+    agentSessionId: args.context.rowsArgs.identity.sessionId,
+    agentSessionRunId: args.runId,
+    action: threadSessionBindingAction({
+      identity: args.context.rowsArgs.identity,
+      previousAgentSessionId: args.validatedThreadSession.agentSessionId,
+      resolution: args.commit.createArgs.threadSessionResolution,
+    }),
+  };
+}
+
+async function persistPendingAtomicLaunch(
+  args: PersistAtomicLaunchRowsArgs,
+  context: AtomicLaunchCteContext,
+): Promise<Extract<PersistedAtomicLaunchRows, { readonly kind: "pending" }>> {
+  const timestamps = runnerJobQueueTimestamps();
+  const insertedQueue = args.tx.$with("inserted_launch_runner_job").as(
+    args.tx
+      .insert(runnerJobQueue)
+      .values({
+        runId: returnedCteId(context.insertedRun),
+        runnerGroup: args.payload.runnerGroup,
+        profile: args.commit.launch.piEdge
+          ? PI_STANDBY_PROFILE
+          : args.payload.profile,
+        cliAgentSessionId: args.payload.cliAgentSessionId,
+        reuseKey: args.payload.reuseKey,
+        executionContext: args.payload.executionContext,
+        ...timestamps,
+      })
+      .returning({
+        runId: runnerJobQueue.runId,
+        createdAt: runnerJobQueue.createdAt,
+      }),
+  );
+  const ctes = [...context.ctes, insertedQueue];
+  if (context.updatedThread) {
+    ctes.push(context.updatedThread);
+  }
+  const [row] = await args.tx
+    .with(...ctes)
+    .select({
+      runId: context.insertedRun.id,
+      createdAt: context.insertedRun.createdAt,
+      runnerJobCreatedAt: insertedQueue.createdAt,
+      boundThreadId: nullableReturnedCteId(context.updatedThread).mapWith(
+        nullableDriverValueDecoder(pgTextDecoder),
+      ),
+    })
+    .from(context.insertedRun)
+    .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id));
+  if (!row || (context.updatedThread && !row.boundThreadId)) {
+    throw new Error("Atomic pending launch persistence returned no row");
+  }
+  return {
+    kind: "pending",
+    run: runRecordFromLaunchIdentity(
+      context.rowsArgs.identity,
+      "pending",
+      row.createdAt,
+    ),
+    runnerJobCreatedAt: row.runnerJobCreatedAt,
+    threadSessionBinding: atomicThreadSessionBinding({
+      context,
+      commit: args.commit,
+      validatedThreadSession: args.validatedThreadSession,
+      boundThreadId: row.boundThreadId,
+      runId: row.runId,
+    }),
+  };
+}
+
+async function persistQueuedAtomicLaunch(
+  args: PersistAtomicLaunchRowsArgs,
+  context: AtomicLaunchCteContext,
+): Promise<Extract<PersistedAtomicLaunchRows, { readonly kind: "queued" }>> {
+  if (!args.commit.encryptedQueuedParams) {
+    throw new Error("Missing encrypted queued runner job payload");
+  }
+  const insertedQueue = args.tx.$with("inserted_launch_run_queue").as(
+    args.tx
+      .insert(agentRunQueue)
+      .values({
+        runId: returnedCteId(context.insertedRun),
+        userId: args.commit.createArgs.userId,
+        orgId: args.commit.createArgs.orgId,
+        encryptedParams: args.commit.encryptedQueuedParams,
+        createdAt: context.createdAt,
+        expiresAt: sql`now() + interval '2 hours'`,
+      })
+      .returning({ runId: agentRunQueue.runId }),
+  );
+  const ctes = [...context.ctes, insertedQueue];
+  if (context.updatedThread) {
+    ctes.push(context.updatedThread);
+  }
+  const visibleQueueDepth = args.tx
+    .select({ depth: count().as("depth") })
+    .from(agentRunQueue)
+    .where(eq(agentRunQueue.orgId, args.commit.createArgs.orgId))
+    .as("visible_launch_queue_depth");
+  const [row] = await args.tx
+    .with(...ctes)
+    .select({
+      runId: context.insertedRun.id,
+      createdAt: context.insertedRun.createdAt,
+      queueDepth: sql`(${visibleQueueDepth.depth} + 1)`.mapWith(
+        pgInt8ToBigIntDecoder,
+      ),
+      boundThreadId: nullableReturnedCteId(context.updatedThread).mapWith(
+        nullableDriverValueDecoder(pgTextDecoder),
+      ),
+    })
+    .from(context.insertedRun)
+    .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id))
+    .crossJoin(visibleQueueDepth);
+  if (!row || (context.updatedThread && !row.boundThreadId)) {
+    throw new Error("Atomic queued launch persistence returned no row");
+  }
+  return {
+    kind: "queued",
+    run: runRecordFromLaunchIdentity(
+      context.rowsArgs.identity,
+      "queued",
+      row.createdAt,
+    ),
+    queueDepth: Number(row.queueDepth),
+    telemetryTimestamp: nowDate().toISOString(),
+    threadSessionBinding: atomicThreadSessionBinding({
+      context,
+      commit: args.commit,
+      validatedThreadSession: args.validatedThreadSession,
+      boundThreadId: row.boundThreadId,
+      runId: row.runId,
+    }),
+  };
+}
+
+async function persistAtomicLaunchRows(
+  args: PersistAtomicLaunchRowsArgs,
+): Promise<PersistedAtomicLaunchRows> {
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(args.tx);
+  const context = buildAtomicLaunchCteContext(args, autonomyBudgetAvailable);
+  const persisted = await args.commit.timing.measure(
+    "api_dispatch_persist_atomic_launch",
+    "nested",
+    async () => {
+      return args.status === "pending"
+        ? await persistPendingAtomicLaunch(args, context)
+        : await persistQueuedAtomicLaunch(args, context);
+    },
+  );
+
+  const chatThreadId = args.commit.createArgs.chatThreadId;
+  if (chatThreadId && !args.validatedThreadSession) {
+    const threadSessionBinding = await persistUnvalidatedThreadSessionBinding(
+      args.tx,
+      {
+        chatThreadId,
+        identity: context.rowsArgs.identity,
+        resolution: args.commit.createArgs.threadSessionResolution,
+        timing: args.commit.timing,
+      },
+    );
+    return { ...persisted, threadSessionBinding };
+  }
+  return persisted;
 }
 
 async function checkRunConcurrencyPreflight(args: {
@@ -5452,8 +6514,45 @@ async function checkRunConcurrencyPreflight(args: {
   });
 }
 
+async function resolveQueueFirstAdmissionForLaunch(args: {
+  readonly tx: DbTransaction;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly sessionSnapshotState: QueueFirstRunSessionSnapshotState;
+  readonly threadAlreadyLocked?: true;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<QueueFirstRunAdmission | undefined> {
+  const association = args.createArgs.queueFirstAssociation;
+  if (!association) {
+    return undefined;
+  }
+  if (association.threadId !== args.createArgs.chatThreadId) {
+    throw new Error("Queue-first association must match the run chat thread");
+  }
+  return await resolveQueueFirstRunAdmission(args.tx, {
+    admissionTime:
+      association.kind === "user_message"
+        ? association.admissionTime
+        : args.createArgs.apiStartTime,
+    sessionSnapshotState: args.sessionSnapshotState,
+    threadId: association.threadId,
+    timing: args.timing,
+    ...(args.threadAlreadyLocked ? { threadAlreadyLocked: true } : {}),
+  });
+}
+
+async function lockQueueFirstRunSourceForLaunch(args: {
+  readonly tx: DbTransaction;
+  readonly createArgs: CreateAgentRunArgs;
+}): Promise<void> {
+  const association = args.createArgs.queueFirstAssociation;
+  if (association?.kind === "goal_event") {
+    await lockGoalQueueFirstRunSource(args.tx, association);
+  }
+}
+
 async function claimQueueFirstAssociationForLaunch(args: {
   readonly tx: DbTransaction;
+  readonly admission: QueueFirstRunAdmission | undefined;
   readonly createArgs: CreateAgentRunArgs;
   readonly identity: LaunchRunIdentity;
   readonly timing: ApiDispatchTimingCollector;
@@ -5462,12 +6561,17 @@ async function claimQueueFirstAssociationForLaunch(args: {
   if (!association) {
     return undefined;
   }
-  if (association.threadId !== args.createArgs.chatThreadId) {
-    throw new Error("Queue-first association must match the run chat thread");
+  if (!args.admission) {
+    throw new Error("Queue-first claim requires resolved thread admission");
+  }
+  if (!args.createArgs.zeroRunModelPin) {
+    throw new Error("Queue-first claim requires a run model pin");
   }
   return await claimQueueFirstRunAssociation(args.tx, {
     ...association,
+    admission: args.admission,
     runId: args.identity.runId,
+    selectedModel: args.createArgs.zeroRunModelPin.selectedModel,
     timing: args.timing,
   });
 }
@@ -5484,8 +6588,19 @@ async function commitFailedLaunch(args: {
   const message = runFailureMessage(args.error);
   const committed = await args.db.transaction(
     async (tx): Promise<FailedLaunchCommitResult> => {
+      await lockQueueFirstRunSourceForLaunch({
+        tx,
+        createArgs: args.createArgs,
+      });
+      const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
+        tx,
+        createArgs: args.createArgs,
+        sessionSnapshotState: "unvalidated",
+        timing: args.timing,
+      });
       const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
         tx,
+        admission: queueFirstAdmission,
         createArgs: args.createArgs,
         identity: args.identity,
         timing: args.timing,
@@ -5511,6 +6626,12 @@ async function commitFailedLaunch(args: {
         runnerGroup: undefined,
         error: message,
       });
+      if (queueFirstClaim) {
+        await recordQueueFirstFailedRun(tx, {
+          claim: queueFirstClaim,
+          runId: args.identity.runId,
+        });
+      }
       return {
         kind: "failed",
         createdAt,
@@ -5524,7 +6645,7 @@ async function commitFailedLaunch(args: {
   }
 
   if (args.createArgs.chatThreadId) {
-    recordFirstAssistantMessageEligibility({
+    recordFirstAssistantEventEligibility({
       runId: args.identity.runId,
       apiStartedAt: args.createArgs.apiStartTime,
     });
@@ -5561,41 +6682,11 @@ async function commitFailedLaunch(args: {
     : response;
 }
 
-async function insertAtomicLaunchRunRecord(args: {
+async function activatePreparedLaunchUsageAllowance(args: {
   readonly tx: DbTransaction;
   readonly commit: CommitPreparedLaunchArgs;
-  readonly status: Extract<LaunchRunStatus, "pending" | "queued">;
-  readonly runnerGroup: string;
-}): Promise<RunRecord> {
-  const { createdAt } = await args.commit.timing.measure(
-    "api_dispatch_insert_run_record",
-    "nested",
-    async () => {
-      return await insertLaunchRunRows(args.tx, {
-        userId: args.commit.createArgs.userId,
-        orgId: args.commit.createArgs.orgId,
-        identity: args.commit.identity,
-        status: args.status,
-        resolved: args.commit.context.resolved,
-        body: args.commit.context.body,
-        runStorageMounts: args.commit.launch.runStorageMounts,
-        sessionStorageMounts: args.commit.launch.sessionStorageMounts,
-        modelProvider: args.commit.context.modelProvider,
-        zeroRunModelPin: args.commit.createArgs.zeroRunModelPin,
-        callbackRows: args.commit.callbackRows,
-        chatThreadId: args.commit.createArgs.chatThreadId,
-        zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
-        apiStartTime: args.commit.createArgs.apiStartTime,
-        runnerGroup: args.runnerGroup,
-        error: undefined,
-      });
-    },
-  );
-  const run = runRecordFromLaunchIdentity(
-    args.commit.identity,
-    args.status,
-    createdAt,
-  );
+  readonly run: RunRecord;
+}): Promise<void> {
   if (args.commit.context.modelProvider?.type === "vm0") {
     await args.commit.timing.measure(
       "api_dispatch_activate_usage_allowance_windows",
@@ -5603,29 +6694,39 @@ async function insertAtomicLaunchRunRecord(args: {
       async () => {
         await activateUsageAllowanceWindowsForRun(args.tx, {
           orgId: args.commit.createArgs.orgId,
-          runId: run.id,
-          runCreatedAt: run.createdAt,
+          runId: args.run.id,
+          runCreatedAt: args.run.createdAt,
         });
       },
     );
   }
-  return run;
 }
 
-async function persistThreadSessionBinding(
+function threadSessionBindingAction(args: {
+  readonly identity: LaunchRunIdentity;
+  readonly previousAgentSessionId: string | null;
+  readonly resolution: ChatThreadSessionResolution | undefined;
+}): ThreadSessionBindingAction {
+  return (
+    args.resolution?.action ??
+    (args.previousAgentSessionId === null
+      ? "initialized"
+      : args.previousAgentSessionId === args.identity.sessionId
+        ? "reused"
+        : "rotated")
+  );
+}
+
+async function persistUnvalidatedThreadSessionBinding(
   tx: DbTransaction,
   args: {
-    readonly chatThreadId: string | undefined;
+    readonly chatThreadId: string;
     readonly identity: LaunchRunIdentity;
     readonly resolution: ChatThreadSessionResolution | undefined;
     readonly timing: ApiDispatchTimingCollector;
   },
-): Promise<ThreadSessionBindingWrite | undefined> {
-  if (!args.chatThreadId) {
-    return undefined;
-  }
+): Promise<ThreadSessionBindingWrite> {
   const chatThreadId = args.chatThreadId;
-
   const [thread] = await args.timing.measure(
     "api_dispatch_load_thread_session_binding",
     "nested",
@@ -5642,13 +6743,11 @@ async function persistThreadSessionBinding(
     throw new Error("Chat thread not found while persisting session binding");
   }
 
-  const action: ThreadSessionBindingAction =
-    args.resolution?.action ??
-    (thread.agentSessionId === null
-      ? "initialized"
-      : thread.agentSessionId === args.identity.sessionId
-        ? "reused"
-        : "rotated");
+  const action = threadSessionBindingAction({
+    identity: args.identity,
+    previousAgentSessionId: thread.agentSessionId,
+    resolution: args.resolution,
+  });
   const [updated] = await args.timing.measure(
     "api_dispatch_update_thread_session_binding",
     "nested",
@@ -5702,7 +6801,9 @@ async function validateThreadSessionSnapshot(
     readonly identity: LaunchRunIdentity;
     readonly timing: ApiDispatchTimingCollector;
   },
-): Promise<ThreadSessionSnapshotStale | undefined> {
+): Promise<
+  ThreadSessionSnapshotStale | ValidatedThreadSessionSnapshot | undefined
+> {
   const resolution = args.createArgs.threadSessionResolution;
   const chatThreadId = args.createArgs.chatThreadId;
   if (!resolution || !chatThreadId) {
@@ -5740,7 +6841,11 @@ async function validateThreadSessionSnapshot(
 
   const expectedSessionId = resolution.expected.sessionId;
   if (expectedSessionId === null) {
-    return undefined;
+    return {
+      kind: "validated-thread-session-snapshot",
+      chatThreadId,
+      agentSessionId: thread.agentSessionId,
+    };
   }
   const [session] = await args.timing.measure(
     "api_dispatch_validate_thread_session_snapshot_session",
@@ -5764,7 +6869,11 @@ async function validateThreadSessionSnapshot(
       reason: "session_changed",
     });
   }
-  return undefined;
+  return {
+    kind: "validated-thread-session-snapshot",
+    chatThreadId,
+    agentSessionId: thread.agentSessionId,
+  };
 }
 
 async function commitQueuedPreparedLaunch(
@@ -5772,66 +6881,38 @@ async function commitQueuedPreparedLaunch(
   args: CommitPreparedLaunchArgs,
   payload: RunnerJobPayload,
   queueFirstClaim: QueueFirstRunClaimed | undefined,
+  validatedThreadSession: ValidatedThreadSessionSnapshot | undefined,
 ): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "queued" }>> {
   if (!args.encryptedQueuedParams) {
     throw new Error("Missing encrypted queued runner job payload");
   }
 
-  const run = await insertAtomicLaunchRunRecord({
+  const persisted = await persistAtomicLaunchRows({
     tx,
     commit: args,
     status: "queued",
-    runnerGroup: payload.runnerGroup,
+    payload,
+    validatedThreadSession,
   });
-  await args.timing.measure(
-    "api_dispatch_persist_custom_connector_auth_refs",
-    "nested",
-    async () => {
-      await persistRunCustomConnectorAuthRefs(tx, {
-        runId: args.identity.runId,
-        refs: args.launch.customConnectorAuthRefs,
-      });
-    },
-  );
-  await args.timing.measure(
-    "api_dispatch_insert_agent_run_queue",
-    "nested",
-    async () => {
-      await tx.insert(agentRunQueue).values({
-        runId: args.identity.runId,
-        userId: args.createArgs.userId,
-        orgId: args.createArgs.orgId,
-        encryptedParams: args.encryptedQueuedParams,
-        createdAt: run.createdAt,
-        expiresAt: sql`now() + interval '2 hours'`,
-      });
-    },
-  );
-  const [depthRow] = await args.timing.measure(
-    "api_dispatch_count_agent_run_queue_depth",
-    "nested",
-    async () => {
-      return await tx
-        .select({ depth: count() })
-        .from(agentRunQueue)
-        .where(eq(agentRunQueue.orgId, args.createArgs.orgId));
-    },
-  );
-  const threadSessionBinding = await persistThreadSessionBinding(tx, {
-    chatThreadId: args.createArgs.chatThreadId,
-    identity: args.identity,
-    resolution: args.createArgs.threadSessionResolution,
-    timing: args.timing,
+  if (persisted.kind !== "queued") {
+    throw new Error("Queued launch persistence returned a pending result");
+  }
+  await activatePreparedLaunchUsageAllowance({
+    tx,
+    commit: args,
+    run: persisted.run,
   });
+  if (queueFirstClaim) {
+    await recordQueueFirstClaimedRun(tx, {
+      claim: queueFirstClaim,
+      runId: persisted.run.id,
+    });
+  }
   return {
-    kind: "queued",
-    run,
+    ...persisted,
     runnerJobPayload: payload,
-    queueDepth: Number(depthRow?.depth ?? 0),
-    telemetryTimestamp: nowDate().toISOString(),
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
-    threadSessionBinding,
   };
 }
 
@@ -5840,61 +6921,146 @@ async function commitPendingPreparedLaunch(
   args: CommitPreparedLaunchArgs,
   payload: RunnerJobPayload,
   queueFirstClaim: QueueFirstRunClaimed | undefined,
+  validatedThreadSession: ValidatedThreadSessionSnapshot | undefined,
 ): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "pending" }>> {
-  const run = await insertAtomicLaunchRunRecord({
+  const persisted = await persistAtomicLaunchRows({
     tx,
     commit: args,
     status: "pending",
-    runnerGroup: payload.runnerGroup,
+    payload,
+    validatedThreadSession,
   });
-  const runnerJobCreatedAt = await args.timing.measure(
-    "api_dispatch_persist_runner_job_queue",
-    "top_level",
-    async () => {
-      await args.timing.measure(
-        "api_dispatch_persist_custom_connector_auth_refs",
-        "nested",
-        async () => {
-          await persistRunCustomConnectorAuthRefs(tx, {
-            runId: args.identity.runId,
-            refs: args.launch.customConnectorAuthRefs,
-          });
-        },
-      );
-      return await args.timing.measure(
-        "api_dispatch_insert_runner_job_queue",
-        "nested",
-        async () => {
-          return await insertRunnerJobQueueRow(tx, {
-            runId: args.identity.runId,
-            payload,
-          });
-        },
-      );
-    },
-  );
-  const threadSessionBinding = await persistThreadSessionBinding(tx, {
-    chatThreadId: args.createArgs.chatThreadId,
-    identity: args.identity,
-    resolution: args.createArgs.threadSessionResolution,
-    timing: args.timing,
+  if (persisted.kind !== "pending") {
+    throw new Error("Pending launch persistence returned a queued result");
+  }
+  await activatePreparedLaunchUsageAllowance({
+    tx,
+    commit: args,
+    run: persisted.run,
   });
+  if (queueFirstClaim) {
+    await recordQueueFirstClaimedRun(tx, {
+      claim: queueFirstClaim,
+      runId: persisted.run.id,
+    });
+  }
   return {
-    kind: "pending",
-    run,
+    ...persisted,
     runnerJobPayload: payload,
-    runnerJobCreatedAt,
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
-    threadSessionBinding,
   };
+}
+
+async function commitPreparedLaunchUnderLock(
+  tx: DbTransaction,
+  args: CommitPreparedLaunchArgs,
+  payload: RunnerJobPayload,
+): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
+  const threadSessionValidation = await validateThreadSessionSnapshot(tx, {
+    createArgs: args.createArgs,
+    identity: args.identity,
+    timing: args.timing,
+  });
+  if (threadSessionValidation?.kind === "thread-session-snapshot-stale") {
+    const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
+      tx,
+      createArgs: args.createArgs,
+      sessionSnapshotState: threadSessionValidation.reason,
+      threadAlreadyLocked: true,
+      timing: args.timing,
+    });
+    if (!queueFirstAdmission || queueFirstAdmission.kind === "idle") {
+      return threadSessionValidation;
+    }
+    const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+      tx,
+      admission: queueFirstAdmission,
+      createArgs: args.createArgs,
+      identity: args.identity,
+      timing: args.timing,
+    });
+    if (queueFirstClaim?.kind !== "lost") {
+      throw new Error("Blocked queue-first admission must lose its claim");
+    }
+    return { kind: "queue-first-claim-lost" };
+  }
+  const validatedThreadSession = threadSessionValidation;
+  const concurrency = await args.timing.measure(
+    "api_dispatch_check_concurrency_limit",
+    "nested",
+    async () => {
+      return await checkRunConcurrencyLimit(tx, args.createArgs.orgId);
+    },
+  );
+
+  if (concurrency) {
+    if (!args.createArgs.queueOnConcurrencyLimit) {
+      return concurrency;
+    }
+    if (!args.encryptedQueuedParams) {
+      return { kind: "queue-payload-required" };
+    }
+    const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
+      tx,
+      createArgs: args.createArgs,
+      sessionSnapshotState: validatedThreadSession ? "current" : "unvalidated",
+      ...(validatedThreadSession ? { threadAlreadyLocked: true } : {}),
+      timing: args.timing,
+    });
+    const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+      tx,
+      admission: queueFirstAdmission,
+      createArgs: args.createArgs,
+      identity: args.identity,
+      timing: args.timing,
+    });
+    if (queueFirstClaim?.kind === "lost") {
+      return { kind: "queue-first-claim-lost" };
+    }
+    return await commitQueuedPreparedLaunch(
+      tx,
+      args,
+      payload,
+      queueFirstClaim,
+      validatedThreadSession,
+    );
+  }
+
+  const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
+    tx,
+    createArgs: args.createArgs,
+    sessionSnapshotState: validatedThreadSession ? "current" : "unvalidated",
+    ...(validatedThreadSession ? { threadAlreadyLocked: true } : {}),
+    timing: args.timing,
+  });
+  const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+    tx,
+    admission: queueFirstAdmission,
+    createArgs: args.createArgs,
+    identity: args.identity,
+    timing: args.timing,
+  });
+  if (queueFirstClaim?.kind === "lost") {
+    return { kind: "queue-first-claim-lost" };
+  }
+  return await commitPendingPreparedLaunch(
+    tx,
+    args,
+    payload,
+    queueFirstClaim,
+    validatedThreadSession,
+  );
 }
 
 async function commitPreparedLaunch(
   args: CommitPreparedLaunchArgs,
 ): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
-  const payload = args.launch.runnerJobPayload;
-  return await args.db.transaction(async (tx) => {
+  const committed = await args.db.transaction(async (tx) => {
+    const payload = queuedRunnerJobPayload({
+      ...args.launch.runnerJobPayload,
+      reuseKey: runnerReuseKey(args.createArgs.chatThreadId),
+    });
     await args.timing.measure(
       "api_dispatch_admission_lock_wait",
       "nested",
@@ -5904,62 +7070,22 @@ async function commitPreparedLaunch(
         );
       },
     );
-    const staleThreadSession = await validateThreadSessionSnapshot(tx, {
-      createArgs: args.createArgs,
-      identity: args.identity,
-      timing: args.timing,
-    });
-    if (staleThreadSession) {
-      return staleThreadSession;
-    }
-    const concurrency = await args.timing.measure(
-      "api_dispatch_check_concurrency_limit",
-      "nested",
-      async () => {
-        return await checkRunConcurrencyLimit(tx, args.createArgs.orgId);
-      },
-    );
-
-    if (concurrency) {
-      if (!args.createArgs.queueOnConcurrencyLimit) {
-        return concurrency;
-      }
-      if (!args.encryptedQueuedParams) {
-        return { kind: "queue-payload-required" };
-      }
-      const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
-        tx,
-        createArgs: args.createArgs,
-        identity: args.identity,
-        timing: args.timing,
-      });
-      if (queueFirstClaim?.kind === "lost") {
-        return { kind: "queue-first-claim-lost" };
-      }
-      return await commitQueuedPreparedLaunch(
-        tx,
-        args,
-        payload,
-        queueFirstClaim,
-      );
-    }
-
-    const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+    const admissionLockHeldStartedAt = now();
+    await lockQueueFirstRunSourceForLaunch({
       tx,
       createArgs: args.createArgs,
-      identity: args.identity,
-      timing: args.timing,
     });
-    if (queueFirstClaim?.kind === "lost") {
-      return { kind: "queue-first-claim-lost" };
-    }
-    return await commitPendingPreparedLaunch(
-      tx,
-      args,
-      payload,
-      queueFirstClaim,
-    );
+    return {
+      result: await commitPreparedLaunchUnderLock(tx, args, payload),
+      admissionLockHeldStartedAt,
+    };
   });
+  args.timing.recordElapsed(
+    "api_dispatch_admission_lock_held",
+    "nested",
+    committed.admissionLockHeldStartedAt,
+  );
+  return committed.result;
 }
 
 function buildAtomicLaunchPayload(
@@ -5979,6 +7105,7 @@ function buildAtomicLaunchPayload(
     body: args.context.body,
     artifacts: args.context.artifacts,
     framework: args.context.framework,
+    piEdge: args.context.piEdge,
     modelProvider: args.context.modelProvider,
     connectorContext: args.context.connectorContext,
     customConnectorContext: args.context.customConnectorContext,
@@ -5991,6 +7118,7 @@ function buildAtomicLaunchPayload(
     includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,
     zeroTokenComputerUseHostId: args.createArgs.zeroTokenComputerUseHostId,
     zeroTokenCloudBrowserEnabled: args.createArgs.zeroTokenCloudBrowserEnabled,
+    imageRecognitionAvailable: args.context.imageRecognitionAvailable,
     chatThreadId: args.createArgs.chatThreadId,
     extraEnvironment: args.createArgs.extraEnvironment,
     userTimezone: args.context.userTimezone,
@@ -6039,6 +7167,7 @@ interface PreparedRunContext {
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
   readonly framework: SupportedFramework;
+  readonly piEdge: PiEdgeModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
@@ -6050,6 +7179,22 @@ interface PreparedRunContext {
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly imageRecognitionAvailable: boolean;
+}
+
+function resolvePreparedPiEdgeModelConfig(args: {
+  readonly createArgs: CreateAgentRunArgs;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+}): PiEdgeModelConfig | undefined {
+  if (
+    args.createArgs.chatThreadId === undefined ||
+    args.createArgs.kickoffPiEdgeTurn === undefined ||
+    !isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)
+  ) {
+    return undefined;
+  }
+  return resolvePiEdgeModelConfig(args.modelProvider) ?? undefined;
 }
 
 async function resolveRunModelProvider(
@@ -6081,6 +7226,13 @@ async function resolveRunModelProvider(
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
         featureSwitchContext: options.featureSwitchContext,
+        resolvePiEdgeCredentials:
+          args.chatThreadId !== undefined &&
+          args.kickoffPiEdgeTurn !== undefined &&
+          isFeatureEnabled(
+            FeatureSwitchKey.PiLoop,
+            options.featureSwitchContext,
+          ),
       })
     : null;
   options.signal.throwIfAborted();
@@ -6094,6 +7246,7 @@ async function resolveRunModelProvider(
       (await checkOrgCreditsForRunAdmission({
         db,
         orgId: args.orgId,
+        userId: args.userId,
         modelProviderType: "vm0",
         selectedModel: args.selectedModelOverride,
       })) ?? null;
@@ -6145,12 +7298,35 @@ async function loadUserTimezone(
   return row?.timezone ?? undefined;
 }
 
+async function resolvePreparedUserTimezone(input: {
+  readonly db: Db;
+  readonly args: CreateAgentRunArgs;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly preloadedUserTimezone: string | null | undefined;
+}): Promise<string | undefined> {
+  return await input.timing.measure(
+    "api_dispatch_prepare_context_load_user_timezone",
+    "nested",
+    async () => {
+      if (input.preloadedUserTimezone !== undefined) {
+        return input.preloadedUserTimezone ?? undefined;
+      }
+      return await loadUserTimezone(input.db, input.args);
+    },
+    {
+      user_timezone_source:
+        input.preloadedUserTimezone === undefined ? "database" : "preloaded",
+    },
+  );
+}
+
 async function loadRunConnectorContexts(
   db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly connectorScope: EffectiveConnectorScope;
+    readonly signal: AbortSignal;
   },
   connectorCatalogSnapshot: ConnectorRuntimeSnapshot,
   featureSwitchContext: FeatureSwitchContext,
@@ -6171,7 +7347,7 @@ async function loadRunConnectorContexts(
           {
             orgId: args.orgId,
             userId: args.userId,
-            allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+            allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
             scopeSource: args.connectorScope.source,
             connectorCatalogSnapshot,
           },
@@ -6194,8 +7370,11 @@ async function loadRunConnectorContexts(
             userId: args.userId,
             allowedCustomConnectorIds:
               args.connectorScope.allowedCustomConnectorIds,
+            customConnectorGrants: args.connectorScope.customConnectorGrants,
             featureSwitchContext,
+            connectorCatalogSnapshot,
           },
+          args.signal,
           timing,
         );
       },
@@ -6293,8 +7472,10 @@ async function buildPreparedPermissionManifest(args: {
       permissionPolicies: args.body.permissionPolicies,
       vars: args.body.vars,
       connectorVars: args.storedConnectorMetadataContext.vars,
-      connectorTypes: args.storedConnectorMetadataContext.connectorTypes,
+      connectorSlugs: args.storedConnectorMetadataContext.connectorSlugs,
       customConnectorFirewalls: args.customConnectorContext.firewalls,
+      customConnectorPermissionPolicies:
+        args.customConnectorContext.permissionPolicies,
       timing: args.timing,
     }),
   );
@@ -6311,21 +7492,29 @@ function preparedRunAdditionalVolumes(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
-  readonly framework: SupportedFramework;
+  readonly customConnectorContext: CustomConnectorRuntimeContext;
+  readonly skillsRoot: string;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
 }): PreparedAdditionalVolumes {
   const bodyAdditionalVolumes = args.body.additionalVolumes;
+  const injectedSkillVolumes = buildInjectedSkillVolumes(
+    {
+      injectSkillVolumes: args.createArgs.injectSkillVolumes,
+      allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
+      connectorCatalogSnapshot: args.connectorCatalogSnapshot,
+    },
+    args.skillsRoot,
+  );
   return mergeAdditionalVolumes({
-    prepend: buildInjectedSkillVolumes(
-      {
-        injectSkillVolumes: args.createArgs.injectSkillVolumes,
-        allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
-        connectorCatalogSnapshot: args.connectorCatalogSnapshot,
-      },
-      args.framework,
-    ),
+    prepend: [
+      ...buildCustomConnectorSkillVolumes(
+        args.customConnectorContext.skills,
+        args.skillsRoot,
+      ),
+      ...(injectedSkillVolumes ?? []),
+    ],
     base: prepareAdditionalVolumesWithSource(
       bodyAdditionalVolumes ?? args.resolved.additionalVolumes,
       bodyAdditionalVolumes ? "request_additional_volume" : "unknown",
@@ -6359,14 +7548,14 @@ function connectorScopeForRuntimeSnapshot(
   scope: EffectiveConnectorScope,
   snapshot: ConnectorRuntimeSnapshot,
 ): EffectiveConnectorScope {
-  if (scope.allowedConnectorTypes === undefined) {
+  if (scope.allowedConnectorSlugs === undefined) {
     return scope;
   }
   return {
     ...scope,
-    allowedConnectorTypes: scope.allowedConnectorTypes.filter(
-      (connectorRef) => {
-        const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
+    allowedConnectorSlugs: scope.allowedConnectorSlugs.filter(
+      (connectorSlug) => {
+        const connector = getConnectorRuntimeConnector(snapshot, connectorSlug);
         return (
           connector !== undefined &&
           [...connector.methods.values()].some((method) => {
@@ -6385,13 +7574,14 @@ function connectorScopeFromCreateArgs(
     return null;
   }
   const source =
-    args.connectorScope.allowedConnectorTypes.length === 0 &&
+    args.connectorScope.allowedConnectorSlugs.length === 0 &&
     args.connectorScope.allowedCustomConnectorIds.length === 0
       ? "empty"
       : (args.connectorScope.source ?? "explicit");
   return {
-    allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+    allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
     allowedCustomConnectorIds: args.connectorScope.allowedCustomConnectorIds,
+    customConnectorGrants: args.connectorScope.customConnectorGrants,
     source,
   };
 }
@@ -6426,7 +7616,7 @@ async function resolveEffectiveConnectorScope(args: {
     return {
       ...scope,
       source:
-        scope.allowedConnectorTypes.length === 0 &&
+        scope.allowedConnectorSlugs.length === 0 &&
         scope.allowedCustomConnectorIds.length === 0
           ? "empty"
           : "zero_agent",
@@ -6434,8 +7624,9 @@ async function resolveEffectiveConnectorScope(args: {
   }
 
   return {
-    allowedConnectorTypes: undefined,
+    allowedConnectorSlugs: undefined,
     allowedCustomConnectorIds: undefined,
+    customConnectorGrants: undefined,
     source: "legacy_all",
   };
 }
@@ -6568,6 +7759,7 @@ async function prepareRunConnectorContexts(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
 }): Promise<
   Awaited<ReturnType<typeof loadRunConnectorContexts>> | CreateRunErrorResult
 > {
@@ -6582,6 +7774,7 @@ async function prepareRunConnectorContexts(args: {
             orgId: args.createArgs.orgId,
             userId: args.createArgs.userId,
             connectorScope: args.connectorScope,
+            signal: args.signal,
           },
           args.connectorCatalogSnapshot,
           args.featureSwitchContext,
@@ -6638,12 +7831,10 @@ async function prepareRunRuntimeContext(args: {
     ? modelProviderFramework(modelProvider)
     : requestedFramework;
   const connectorContexts = await prepareRunConnectorContexts({
-    db: args.db,
-    createArgs: args.createArgs,
+    ...args,
     connectorScope,
     featureSwitchContext,
     connectorCatalogSnapshot,
-    timing: args.timing,
   });
   if (isRouteError(connectorContexts)) {
     return connectorContexts;
@@ -6719,7 +7910,6 @@ async function prepareRunRuntimeContext(args: {
   if (isRouteError(modelUsageContext)) {
     return modelUsageContext;
   }
-
   return {
     framework,
     modelProvider,
@@ -6744,7 +7934,7 @@ async function connectorCatalogSnapshotForRun(args: {
     (await loadConnectorRuntimeSnapshot(args.db, {
       timing: args.timing,
       requestedConnectorCount:
-        args.connectorScope.allowedConnectorTypes?.length,
+        args.connectorScope.allowedConnectorSlugs?.length,
     }))
   );
 }
@@ -6753,7 +7943,9 @@ function prepareRunOutputMetadata(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly framework: SupportedFramework;
+  readonly piEdge: PiEdgeModelConfig | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
@@ -6766,7 +7958,11 @@ function prepareRunOutputMetadata(args: {
     createArgs: args.createArgs,
     connectorScope: args.connectorScope,
     connectorCatalogSnapshot: args.connectorCatalogSnapshot,
-    framework: args.framework,
+    customConnectorContext: args.customConnectorContext,
+    skillsRoot:
+      args.piEdge === undefined
+        ? frameworkSkillsMountPath(args.framework)
+        : PI_SKILLS_ROOT,
     featureSwitchContext: args.featureSwitchContext,
     body: args.body,
     resolved: args.resolved,
@@ -6774,6 +7970,7 @@ function prepareRunOutputMetadata(args: {
   const artifacts = artifactsForRun({
     resolved: args.resolved,
     framework: args.framework,
+    usePiMemoryPath: args.piEdge !== undefined,
     bodyArtifacts: args.body.artifacts,
   }).artifacts;
   return {
@@ -6783,12 +7980,23 @@ function prepareRunOutputMetadata(args: {
   };
 }
 
+function isImageRecognitionAvailableForRun(args: {
+  readonly includeZeroTokenSecret: boolean | undefined;
+  readonly selectedModel: string | undefined;
+}): boolean {
+  return (
+    args.includeZeroTokenSecret === true &&
+    getModelImageInputSupport(args.selectedModel) === "unsupported"
+  );
+}
+
 function prepareRunContext(input: {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
+  readonly preloadedUserTimezone: string | null | undefined;
   readonly preloadedConnectorCatalogSnapshot:
     | ConnectorRuntimeSnapshot
     | undefined;
@@ -6839,8 +8047,12 @@ function prepareRunContext(input: {
       if (isRouteError(runtimeContext)) {
         return runtimeContext;
       }
-      const body = bodyContext.body;
-      const resolved = bodyContext.resolved;
+      const { body, resolved } = bodyContext;
+      const piEdge = resolvePreparedPiEdgeModelConfig({
+        createArgs: args,
+        featureSwitchContext: bodyContext.featureSwitchContext,
+        modelProvider: runtimeContext.modelProvider,
+      });
 
       const validation = await timing.measure(
         "api_dispatch_prepare_context_validate_environment",
@@ -6863,13 +8075,7 @@ function prepareRunContext(input: {
         return validation;
       }
 
-      const userTimezone = await timing.measure(
-        "api_dispatch_prepare_context_load_user_timezone",
-        "nested",
-        async () => {
-          return await loadUserTimezone(db, args);
-        },
-      );
+      const userTimezone = await resolvePreparedUserTimezone(input);
       signal.throwIfAborted();
 
       const outputMetadata = await timing.measure(
@@ -6881,7 +8087,9 @@ function prepareRunContext(input: {
               createArgs: args,
               connectorScope: runtimeContext.connectorScope,
               connectorCatalogSnapshot: runtimeContext.connectorCatalogSnapshot,
+              customConnectorContext: runtimeContext.customConnectorContext,
               framework: runtimeContext.framework,
+              piEdge,
               featureSwitchContext: bodyContext.featureSwitchContext,
               body,
               resolved,
@@ -6894,6 +8102,7 @@ function prepareRunContext(input: {
         body,
         resolved,
         framework: runtimeContext.framework,
+        piEdge,
         modelProvider: runtimeContext.modelProvider,
         connectorContext: runtimeContext.connectorContext,
         customConnectorContext: runtimeContext.customConnectorContext,
@@ -6905,6 +8114,12 @@ function prepareRunContext(input: {
         additionalVolumeSources: outputMetadata.additionalVolumeSources,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
+        imageRecognitionAvailable: isImageRecognitionAvailableForRun({
+          includeZeroTokenSecret: args.includeZeroTokenSecret,
+          selectedModel:
+            runtimeContext.modelProvider?.selectedModel ??
+            args.selectedModelOverride,
+        }),
       };
     },
   );
@@ -6915,6 +8130,7 @@ async function committedAtomicLaunchResponse(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
+  readonly launch: PreparedRunnerLaunch;
 }): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
   if (args.committed.threadSessionBinding) {
     recordThreadSessionBindingTelemetry({
@@ -6954,17 +8170,47 @@ async function committedAtomicLaunchResponse(args: {
   }
 
   if (args.createArgs.chatThreadId) {
-    recordFirstAssistantMessageEligibility({
+    recordSameThreadRunnerJobPersisted({
+      runId: args.committed.run.id,
+      createdAt: args.committed.runnerJobCreatedAt,
+    });
+    recordFirstAssistantEventEligibility({
       runId: args.committed.run.id,
       apiStartedAt: args.createArgs.apiStartTime,
     });
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
+  const kickoffPiEdgeTurn = args.createArgs.kickoffPiEdgeTurn;
+  if (
+    args.launch.piEdge &&
+    args.launch.piExecutionEnv &&
+    args.launch.piPrompt &&
+    args.launch.piSystemPrompt &&
+    args.launch.runSkillSnapshot &&
+    kickoffPiEdgeTurn
+  ) {
+    kickoffPiEdgeTurn({
+      runId: args.committed.run.id,
+      userId: args.createArgs.userId,
+      orgId: args.createArgs.orgId,
+      prompt: args.launch.piPrompt,
+      systemPrompt: args.launch.piSystemPrompt,
+      model: args.launch.piEdge,
+      executionEnv: args.launch.piExecutionEnv,
+      skillSnapshot: args.launch.runSkillSnapshot,
+      runnerGroup: args.committed.runnerJobPayload.runnerGroup,
+      apiStartTime: args.createArgs.apiStartTime,
+    });
+  }
+  const dispatchedProfile = args.launch.piEdge
+    ? PI_STANDBY_PROFILE
+    : args.committed.runnerJobPayload.profile;
   await notifyRunnerJob(args.db, {
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
     runId: args.committed.run.id,
-    profile: args.committed.runnerJobPayload.profile,
+    profile: dispatchedProfile,
+    reuseKey: args.committed.runnerJobPayload.reuseKey,
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
     historyGenerationRunId:
       args.committed.runnerJobPayload.historyGenerationRunId,
@@ -6973,7 +8219,7 @@ async function committedAtomicLaunchResponse(args: {
   args.timing.flush({
     runId: args.committed.run.id,
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
-    profile: args.committed.runnerJobPayload.profile,
+    profile: dispatchedProfile,
     dispatchPath: "direct",
     ...(args.createArgs.timingDimensions
       ? { dimensions: args.createArgs.timingDimensions }
@@ -7059,6 +8305,7 @@ async function finalizeAtomicLaunchCommit(args: {
     createArgs: args.input.args,
     committed: args.committed,
     timing: args.input.timing,
+    launch: args.launch,
   });
 }
 
@@ -7175,6 +8422,8 @@ function createAtomicLaunchRun(
       });
     }
 
+    const launch = launchResult.value;
+
     const commitLaunch: CommitAtomicLaunch = async (
       encryptedQueuedParams: string | undefined,
     ) => {
@@ -7188,7 +8437,7 @@ function createAtomicLaunchRun(
             context: input.context,
             identity,
             callbackRows,
-            launch: launchResult.value,
+            launch,
             encryptedQueuedParams,
             timing: input.timing,
           });
@@ -7200,7 +8449,7 @@ function createAtomicLaunchRun(
     const finalized = await finalizeAtomicLaunchCommit({
       input,
       identity,
-      launch: launchResult.value,
+      launch,
       committed,
     });
     if (isQueuePayloadRequiredResult(finalized)) {
@@ -7208,7 +8457,7 @@ function createAtomicLaunchRun(
         input,
         identity,
         callbackRows,
-        launch: launchResult.value,
+        launch,
         commitLaunch,
       });
     }
@@ -7227,6 +8476,8 @@ interface PrepareAgentRunArgs {
   readonly timing: ApiDispatchTimingCollector;
   readonly checkOrgPlanStatusBeforeContext: boolean;
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
+  // Undefined means not preloaded; null is an authoritative missing value.
+  readonly preloadedUserTimezone?: string | null;
   readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
 }
 
@@ -7241,13 +8492,14 @@ function finalizePreparedRunContext(
 ): PreparedRunContext {
   return {
     ...prepared.context,
-    body: withFinalFrameworkAppendSystemPrompt(
+    body: withFinalRunAppendSystemPrompt(
       {
         ...prepared.context.body,
         appendSystemPrompt: finalAppendSystemPrompt,
       },
       prepared.context.framework,
       prepared.args.chatThreadId,
+      prepared.context.imageRecognitionAvailable,
     ),
   };
 }
@@ -7258,6 +8510,7 @@ export const prepareAgentRun$ = command(
     input: PrepareAgentRunArgs,
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
+    assertThreadBoundRunHasQueueAssociation(input.args);
     // A preview request that passed the protection guard gives its sandbox CLI
     // the same bypass through the existing user-environment channel.
     const previewAutomationBypass = get(previewAutomationBypass$);
@@ -7297,6 +8550,7 @@ export const prepareAgentRun$ = command(
             timing,
             signal,
             preloadedFeatureSwitchContext: input.preloadedFeatureSwitchContext,
+            preloadedUserTimezone: input.preloadedUserTimezone,
             preloadedConnectorCatalogSnapshot:
               input.preloadedConnectorCatalogSnapshot,
           }),
@@ -7318,6 +8572,7 @@ export const completeAgentRun$ = command(
     input: CompleteAgentRunArgs,
     signal: AbortSignal,
   ): Promise<QueueFirstAgentRunResult> => {
+    assertThreadBoundRunHasQueueAssociation(input.prepared.args);
     const db = set(writeDb$);
     const { args, timing } = input.prepared;
     const context = finalizePreparedRunContext(
@@ -7336,6 +8591,7 @@ export const completeAgentRun$ = command(
       async () => {
         return await checkFinalRunAdmission(db, {
           orgId: args.orgId,
+          userId: args.userId,
           modelProviderType,
           selectedModel,
           enforceVm0Credits:

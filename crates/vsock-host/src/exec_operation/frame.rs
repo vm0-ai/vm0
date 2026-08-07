@@ -218,16 +218,22 @@ pub(in crate::exec_operation) async fn write_exec_start_frame(
     payload: &[u8],
     diagnostic: &ExecOperationDiagnostic,
     tracks_normal_operation: bool,
+    write_admission: FrameWriteObserver,
     write_observer: FrameWriteObserver,
 ) -> io::Result<()> {
-    write_frame(
+    write_frame_with_pre_write(
         shared,
         MSG_EXEC_START,
         seq,
         payload,
         Some(diagnostic.frame("start")),
-        tracks_normal_operation.then_some(seq),
-        write_observer,
+        || {
+            write_admission.record_write_start()?;
+            if tracks_normal_operation {
+                mark_exec_operation_possible_guest_write(shared, seq)?;
+            }
+            write_observer.record_write_start()
+        },
     )
     .await
 }
@@ -249,6 +255,20 @@ pub(in crate::exec_operation) async fn write_frame_with_pre_write(
     Ok(())
 }
 
+pub(in crate::exec_operation) async fn write_encoded_frame_with_pre_write(
+    shared: &Arc<Shared>,
+    data: &[u8],
+    diagnostic: Option<ExecOperationFrameDiagnostic>,
+    pre_write: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    let _decision = write_encoded_frame_with_pre_write_decision(shared, data, diagnostic, || {
+        pre_write()?;
+        Ok(FrameWriteDecision::Write)
+    })
+    .await?;
+    Ok(())
+}
+
 async fn write_frame_with_pre_write_decision(
     shared: &Arc<Shared>,
     msg_type: u8,
@@ -259,6 +279,15 @@ async fn write_frame_with_pre_write_decision(
 ) -> io::Result<FrameWriteDecision> {
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+    write_encoded_frame_with_pre_write_decision(shared, &data, diagnostic, pre_write).await
+}
+
+async fn write_encoded_frame_with_pre_write_decision(
+    shared: &Arc<Shared>,
+    data: &[u8],
+    diagnostic: Option<ExecOperationFrameDiagnostic>,
+    pre_write: impl FnOnce() -> io::Result<FrameWriteDecision>,
+) -> io::Result<FrameWriteDecision> {
     let state = Arc::new(AtomicU8::new(EXEC_OPERATION_FRAME_WRITE_NOT_STARTED));
     let guard = ExecOperationFrameWriteGuard::new(Arc::clone(shared), Arc::clone(&state));
 
@@ -271,7 +300,7 @@ async fn write_frame_with_pre_write_decision(
     }
     state.store(EXEC_OPERATION_FRAME_WRITE_STARTED, Ordering::Release);
     let write_started_at = Instant::now();
-    let result = writer.write_all(&data).await;
+    let result = writer.write_all(data).await;
     let write_elapsed_ms = write_started_at.elapsed().as_millis();
     if result.is_ok() {
         state.store(EXEC_OPERATION_FRAME_WRITE_COMPLETED, Ordering::Release);

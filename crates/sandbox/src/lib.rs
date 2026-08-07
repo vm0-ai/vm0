@@ -31,7 +31,9 @@ pub use config::{
     RuntimeConfig, SandboxConfig, SandboxId, SnapshotRef, WorkspaceDriveConfig,
     WorkspaceDriveSeedImage,
 };
-pub use control::{RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError};
+pub use control::{
+    RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError, SandboxControlTarget,
+};
 pub use error::{
     Result, SandboxError, SandboxGuestDnsReadinessReason, SandboxIdleTransition,
     SandboxInitializationPhase, SandboxInvalidStateContext, SandboxOperation,
@@ -43,8 +45,8 @@ pub use factory::{
 };
 pub use runtime::{RuntimeProvider, SandboxRuntime};
 pub use sandbox::{
-    Sandbox, SandboxFinalExecParkOutcome, SandboxParkNonReusableReason, SandboxParkOutcome,
-    SandboxStartObserver, SandboxStartStage,
+    Sandbox, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome, SandboxFinalExecParkStage,
+    SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
 };
 pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,

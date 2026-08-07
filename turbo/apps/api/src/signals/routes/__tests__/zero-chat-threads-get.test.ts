@@ -1,17 +1,21 @@
 import { randomUUID } from "node:crypto";
-
-import { chatThreadMetadataContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadEventsContract,
+  chatThreadMetadataContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
 
 const context = testContext();
 const store = createStore();
@@ -21,6 +25,7 @@ const chat = createChatFilesBddApi(context);
 interface ChatThreadFixture {
   readonly userId: string;
   readonly orgId: string;
+  readonly agentId: string;
   readonly threadId: string;
 }
 
@@ -44,7 +49,12 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
     { orgId: actor.orgId, userId: actor.userId },
     context.signal,
   );
-  return { userId: actor.userId, orgId: actor.orgId, threadId: thread.id };
+  return {
+    userId: actor.userId,
+    orgId: actor.orgId,
+    agentId: agent.agentId,
+    threadId: thread.id,
+  };
 }
 
 function currentSecond(): number {
@@ -69,7 +79,15 @@ function zeroToken(args: {
 }
 
 function client() {
-  return setupApp({ context })(chatThreadMetadataContract);
+  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+    chatThreadMetadataContract,
+  );
+}
+
+function eventsClient() {
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadEventsContract,
+  );
 }
 
 describe("GET /api/zero/chat-threads/:id/metadata", () => {
@@ -91,6 +109,7 @@ describe("GET /api/zero/chat-threads/:id/metadata", () => {
 
     expect(response.body).toStrictEqual({
       id: fixture.threadId,
+      agentId: fixture.agentId,
       title: "Launch plan",
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });
@@ -116,6 +135,55 @@ describe("GET /api/zero/chat-threads/:id/metadata", () => {
       error: {
         code: "FORBIDDEN",
         message: "Missing required capability: chat-thread:read",
+      },
+    });
+  });
+});
+
+describe("GET /api/zero/chat-threads/:threadId/events", () => {
+  it("lists events with ZERO_TOKEN chat-event:read capability", async () => {
+    const fixture = await seedChatThread("Launch plan");
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-event:read"],
+    });
+
+    const response = await accept(
+      eventsClient().list({
+        headers: { authorization: `Bearer ${token}` },
+        params: { threadId: fixture.threadId },
+        query: {},
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      events: [],
+    });
+  });
+
+  it("rejects ZERO_TOKEN without chat-event:read capability", async () => {
+    const fixture = await seedChatThread("Launch plan");
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read"],
+    });
+
+    const response = await accept(
+      eventsClient().list({
+        headers: { authorization: `Bearer ${token}` },
+        params: { threadId: fixture.threadId },
+        query: {},
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "FORBIDDEN",
+        message: "Missing required capability: chat-event:read",
       },
     });
   });

@@ -4,7 +4,7 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ::sandbox::*;
 use async_trait::async_trait;
@@ -14,7 +14,7 @@ use crate::call_records::{
     WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{MockLifecycleGate, wait_lifecycle_gate};
-use crate::overrides::MockSandboxOverrides;
+use crate::overrides::{ExecMatcherOutcome, MockSandboxOverrides};
 use crate::support::{
     LockIgnoringPoison, MOCK_COPY_FILE_MAX_BYTES, validate_mock_copy_host_path,
     validate_mock_exec_env_keys, validate_mock_guest_file_path,
@@ -32,6 +32,7 @@ use crate::support::{
 pub struct MockSandbox {
     id: String,
     source_ip: String,
+    run_control_id: Option<String>,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     exec_calls: Mutex<Vec<ExecCall>>,
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
@@ -46,9 +47,8 @@ pub struct MockSandbox {
     private_write_file_calls: Mutex<Vec<WriteFileCall>>,
     write_file_gate: Mutex<Option<MockLifecycleGate>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
-    /// Holds the stdout channel sender alive when simulating a non-closing
-    /// channel (e.g. wait_process_error override). Without this, the sender is
-    /// dropped immediately in `start_process` and the drain task exits.
+    /// Holds the stdout channel sender alive when an override requests a
+    /// non-closing process stream.
     stdout_tx: Mutex<Option<tokio::sync::mpsc::Sender<ProcessOutputChunk>>>,
 }
 
@@ -73,6 +73,7 @@ impl MockSandbox {
         Self {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
+            run_control_id: None,
             exec_results: Mutex::new(VecDeque::new()),
             exec_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
@@ -280,10 +281,33 @@ impl Sandbox for MockSandbox {
         &self.source_ip
     }
 
+    fn bind_run_control(&mut self, run_id: &str) -> Result<()> {
+        if self.run_control_id.is_some() {
+            return Err(SandboxError::InvalidState {
+                context: SandboxInvalidStateContext::Sandbox,
+                state: "active".into(),
+                message: "run control identity is already bound".into(),
+            });
+        }
+        self.run_control_id = Some(run_id.to_owned());
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .lifecycle
+                .run_control_bind_calls
+                .lock_ignoring_poison()
+                .push(run_id.to_owned());
+        }
+        Ok(())
+    }
+
     async fn start(&mut self) -> Result<()> {
         let Some(o) = &self.overrides else {
             return Ok(());
         };
+        o.lifecycle
+            .start_run_control_ids
+            .lock_ignoring_poison()
+            .push(self.run_control_id.clone());
         o.lifecycle
             .start_results
             .lock_ignoring_poison()
@@ -309,14 +333,19 @@ impl Sandbox for MockSandbox {
     /// is side-effect-free; tests that need to exercise non-idempotent
     /// scenarios queue explicit results.
     async fn park(&mut self) -> Result<SandboxParkOutcome> {
-        let Some(o) = &self.overrides else {
-            return Ok(SandboxParkOutcome::Reusable);
+        let result = if let Some(o) = &self.overrides {
+            *o.lifecycle.park_calls.lock_ignoring_poison() += 1;
+            wait_lifecycle_gate(&o.lifecycle.park_gate).await;
+            o.lifecycle
+                .park_behaviors
+                .next_result(SandboxParkOutcome::Reusable)
+        } else {
+            Ok(SandboxParkOutcome::Reusable)
         };
-        *o.lifecycle.park_calls.lock_ignoring_poison() += 1;
-        wait_lifecycle_gate(&o.lifecycle.park_gate).await;
-        o.lifecycle
-            .park_behaviors
-            .next_result(SandboxParkOutcome::Reusable)
+        if result.is_ok() {
+            self.run_control_id = None;
+        }
+        result
     }
 
     async fn final_exec_and_park(
@@ -334,6 +363,59 @@ impl Sandbox for MockSandbox {
         })
     }
 
+    async fn final_exec_and_park_with_observer(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+        observer: &mut dyn SandboxFinalExecParkObserver,
+    ) -> Result<SandboxFinalExecParkOutcome> {
+        let preparation_started = Instant::now();
+        let exec_result = match self
+            .exec_with_diagnostic_label(request, diagnostic_label)
+            .await
+        {
+            Ok(exec_result) => {
+                observer.record_stage(
+                    SandboxFinalExecParkStage::ReusePreparation,
+                    preparation_started.elapsed(),
+                    true,
+                );
+                exec_result
+            }
+            Err(error) => {
+                observer.record_stage(
+                    SandboxFinalExecParkStage::ReusePreparation,
+                    preparation_started.elapsed(),
+                    false,
+                );
+                return Err(error);
+            }
+        };
+        let physical_park_started = Instant::now();
+        let park_outcome = match self.park().await {
+            Ok(park_outcome) => {
+                observer.record_stage(
+                    SandboxFinalExecParkStage::PhysicalPark,
+                    physical_park_started.elapsed(),
+                    true,
+                );
+                park_outcome
+            }
+            Err(error) => {
+                observer.record_stage(
+                    SandboxFinalExecParkStage::PhysicalPark,
+                    physical_park_started.elapsed(),
+                    false,
+                );
+                return Err(error);
+            }
+        };
+        Ok(SandboxFinalExecParkOutcome {
+            exec_result,
+            park_outcome,
+        })
+    }
+
     /// Mock unpark: counter + queued-result semantics mirror [`park`]
     /// exactly. See [`park`] for details.
     ///
@@ -342,6 +424,10 @@ impl Sandbox for MockSandbox {
         let Some(o) = &self.overrides else {
             return Ok(());
         };
+        o.lifecycle
+            .unpark_run_control_ids
+            .lock_ignoring_poison()
+            .push(self.run_control_id.clone());
         *o.lifecycle.unpark_calls.lock_ignoring_poison() += 1;
         o.lifecycle.unpark_behaviors.next_result(())
     }
@@ -364,28 +450,40 @@ impl Sandbox for MockSandbox {
         self.exec_calls.lock_ignoring_poison().push(call.clone());
         if let Some(overrides) = &self.overrides {
             overrides.exec.calls.lock_ignoring_poison().push(call);
+            overrides.exec.call_notify.notify_waiters();
+            wait_lifecycle_gate(&overrides.exec.lifecycle_gate).await;
         }
         // Check pattern matchers before the FIFO queue.
         let result = if let Some(overrides) = &self.overrides {
-            let mut matchers = overrides.exec.matchers.lock_ignoring_poison();
-            if let Some(idx) = matchers
-                .iter()
-                .position(|m| request.cmd.contains(&m.pattern))
-            {
-                Ok(matchers.remove(idx).result)
-            } else if let Some(matcher) = overrides
-                .exec
-                .persistent_matchers
-                .lock_ignoring_poison()
-                .iter()
-                .find(|matcher| request.cmd.contains(&matcher.pattern))
-            {
-                Ok(clone_exec_result(&matcher.result))
-            } else {
-                self.exec_results
-                    .lock_ignoring_poison()
-                    .pop_front()
-                    .unwrap_or_else(|| Ok(default_exec_result()))
+            let matched = {
+                let mut matchers = overrides.exec.matchers.lock_ignoring_poison();
+                matchers
+                    .iter()
+                    .position(|matcher| request.cmd.contains(&matcher.pattern))
+                    .map(|index| matchers.remove(index).outcome)
+            };
+            match matched {
+                Some(ExecMatcherOutcome::Return(result)) => Ok(result),
+                Some(ExecMatcherOutcome::Error(error)) => Err(error),
+                Some(ExecMatcherOutcome::Panic(message)) => {
+                    std::panic::resume_unwind(Box::new(message))
+                }
+                None => {
+                    if let Some(matcher) = overrides
+                        .exec
+                        .persistent_matchers
+                        .lock_ignoring_poison()
+                        .iter()
+                        .find(|matcher| request.cmd.contains(&matcher.pattern))
+                    {
+                        Ok(clone_exec_result(&matcher.result))
+                    } else {
+                        self.exec_results
+                            .lock_ignoring_poison()
+                            .pop_front()
+                            .unwrap_or_else(|| Ok(default_exec_result()))
+                    }
+                }
             }
         } else {
             self.exec_results
@@ -494,8 +592,28 @@ impl Sandbox for MockSandbox {
             });
         }
 
-        let queued = self.copy_file_results.lock_ignoring_poison().pop_front();
-        let gate = self.copy_file_gate.lock_ignoring_poison().clone();
+        let queued = self
+            .copy_file_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .or_else(|| {
+                self.overrides.as_ref().and_then(|overrides| {
+                    overrides
+                        .file
+                        .copy_file_results
+                        .lock_ignoring_poison()
+                        .pop_front()
+                })
+            });
+        let gate = self
+            .copy_file_gate
+            .lock_ignoring_poison()
+            .clone()
+            .or_else(|| {
+                self.overrides.as_ref().and_then(|overrides| {
+                    overrides.file.copy_file_gate.lock_ignoring_poison().clone()
+                })
+            });
         if let Some(gate) = gate {
             gate.enter_and_wait().await;
         }
@@ -607,6 +725,9 @@ impl Sandbox for MockSandbox {
     }
 
     async fn write_private_file(&self, path: &str, content: &[u8]) -> Result<()> {
+        if let Some(overrides) = &self.overrides {
+            wait_lifecycle_gate(&overrides.file.private_write_file_gate).await;
+        }
         let call = WriteFileCall {
             path: path.to_string(),
             content: content.to_vec(),
@@ -642,6 +763,9 @@ impl Sandbox for MockSandbox {
     }
 
     async fn start_process(&self, request: &StartProcessRequest<'_>) -> Result<GuestProcessHandle> {
+        if let Some(overrides) = &self.overrides {
+            wait_lifecycle_gate(&overrides.process.start_process_lifecycle_gate).await;
+        }
         validate_mock_exec_env_keys(SandboxOperation::StartProcess, request.env)?;
         validate_start_process_output(request.output)?;
         if let Some(overrides) = &self.overrides {
@@ -695,45 +819,51 @@ impl Sandbox for MockSandbox {
                 }
             }
         }
-        // When simulating wait_process error (timeout/crash), keep the sender
-        // alive so the stdout channel never closes — reproducing the real bug.
-        if self
-            .overrides
-            .as_ref()
-            .is_some_and(|o| o.process.wait_process_error.is_some())
-            && let Some(tx) = tx.take()
+        if self.overrides.as_ref().is_some_and(|overrides| {
+            *overrides
+                .process
+                .keep_stdout_sender_open
+                .lock_ignoring_poison()
+        }) && let Some(tx) = tx.take()
         {
             *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
-        let control = (request.control == ProcessControlMode::Enabled).then(|| {
-            let overrides = self.overrides.clone();
-            GuestProcessControlHandle::new(move |message_id, payload, timeout| {
-                let overrides = overrides.clone();
-                Box::pin(async move {
-                    if let Some(overrides) = overrides {
-                        overrides
-                            .process
-                            .process_control_calls
-                            .lock_ignoring_poison()
-                            .push(ProcessControlCall {
-                                message_id: message_id.clone(),
-                                payload,
-                                timeout,
-                            });
-                        overrides.process.process_control_notify.notify_waiters();
-                        if let Some((kind, message)) = overrides
-                            .process
-                            .process_control_errors
-                            .lock_ignoring_poison()
-                            .pop_front()
-                        {
-                            return Err(std::io::Error::new(kind, message));
-                        }
-                    }
-                    Ok(ProcessControlAck { message_id })
-                })
-            })
+        let process_control_supported = self.overrides.as_ref().is_none_or(|overrides| {
+            *overrides
+                .process
+                .process_control_supported
+                .lock_ignoring_poison()
         });
+        let control = (request.control == ProcessControlMode::Enabled && process_control_supported)
+            .then(|| {
+                let overrides = self.overrides.clone();
+                GuestProcessControlHandle::new(move |message_id, payload, timeout| {
+                    let overrides = overrides.clone();
+                    Box::pin(async move {
+                        if let Some(overrides) = overrides {
+                            overrides
+                                .process
+                                .process_control_calls
+                                .lock_ignoring_poison()
+                                .push(ProcessControlCall {
+                                    message_id: message_id.clone(),
+                                    payload,
+                                    timeout,
+                                });
+                            overrides.process.process_control_notify.notify_waiters();
+                            if let Some((kind, message)) = overrides
+                                .process
+                                .process_control_errors
+                                .lock_ignoring_poison()
+                                .pop_front()
+                            {
+                                return Err(std::io::Error::new(kind, message));
+                            }
+                        }
+                        Ok(ProcessControlAck { message_id })
+                    })
+                })
+            });
         let process_cancel = self.overrides.as_ref().and_then(|overrides| {
             if !*overrides
                 .process
@@ -782,6 +912,15 @@ impl Sandbox for MockSandbox {
         if let Some(process_cancel) = process_cancel {
             handle = handle.with_cancel_handle(process_cancel);
         }
+        if let Some(cancel) = self.overrides.as_ref().and_then(|overrides| {
+            overrides
+                .process
+                .start_process_result_cancellations
+                .lock_ignoring_poison()
+                .pop_front()
+        }) {
+            cancel.cancel();
+        }
         Ok(handle)
     }
 
@@ -801,7 +940,7 @@ impl Sandbox for MockSandbox {
         // longer be observed by the caller and would otherwise buffer forever.
         handle.drop_unclaimed_stdout();
 
-        if let Some(overrides) = &self.overrides {
+        let exit = if let Some(overrides) = &self.overrides {
             overrides
                 .process
                 .wait_process_calls
@@ -813,34 +952,36 @@ impl Sandbox for MockSandbox {
             if let Some(ref msg) = overrides.process.wait_process_error {
                 return Err(SandboxError::Operation {
                     operation: SandboxOperation::WaitProcess,
-                    reason: SandboxOperationReason::Timeout,
+                    reason: overrides.process.wait_process_error_reason,
                     message: msg.clone(),
                 });
             }
             // Return override exit code when configured.
             if let Some(code) = overrides.process.wait_process_code {
-                return Ok(ProcessExit::new(
-                    handle.guest_pid,
-                    code,
-                    Vec::new(),
-                    Vec::new(),
-                ));
-            }
-            if let Some(exit) = overrides
+                ProcessExit::new(handle.guest_pid, code, Vec::new(), Vec::new())
+            } else if let Some(exit) = overrides
                 .process
                 .wait_process_exits
                 .lock_ignoring_poison()
                 .pop_front()
             {
-                return Ok(exit);
+                exit
+            } else {
+                ProcessExit::new(handle.guest_pid, 0, Vec::new(), Vec::new())
             }
+        } else {
+            ProcessExit::new(handle.guest_pid, 0, Vec::new(), Vec::new())
+        };
+        if let Some(cancel) = self.overrides.as_ref().and_then(|overrides| {
+            overrides
+                .process
+                .wait_process_result_cancellations
+                .lock_ignoring_poison()
+                .pop_front()
+        }) {
+            cancel.cancel();
         }
-        Ok(ProcessExit::new(
-            handle.guest_pid,
-            0,
-            Vec::new(),
-            Vec::new(),
-        ))
+        Ok(exit)
     }
 }
 

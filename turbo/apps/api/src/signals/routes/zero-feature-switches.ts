@@ -1,10 +1,7 @@
 import { command, computed } from "ccstate";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
-import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -20,26 +17,36 @@ const featureSwitchesAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
+const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
+
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly switches: Record<string, boolean>;
-  readonly supportsStructuredInlineTemplates: boolean;
 }) {
-  const effectiveSwitches = getAllFeatureStates({
+  const registeredEffectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
     userId: params.userId,
     overrides: params.switches,
   });
-  effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] =
-    isZeroMailReplyFollowUpRolloutEnabled();
-  effectiveSwitches[FeatureSwitchKey.BrazilianPortugueseLocale] =
-    isBrazilianPortugueseLocaleRolloutEnabled();
+  // Platform bundles loaded before Mail follow-up removal still carry this
+  // key. Force them off until their compatible follow-up endpoint can be
+  // removed after the old frontend release drains.
+  const effectiveSwitches = {
+    ...registeredEffectiveSwitches,
+    [LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH]: false,
+  };
 
   return {
     switches: params.switches,
     effectiveSwitches,
-    supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
+    // The pre-cleanup Platform bundle gates inline templates, image
+    // recognition, and avatar templates on these handshakes and disables each
+    // feature when the field is absent. Keep returning them until that
+    // frontend release has drained.
+    supportsStructuredInlineTemplates: true,
+    supportsImageRecognition: true,
+    supportsAvatarTemplates: true,
   };
 }
 
@@ -54,7 +61,6 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       orgId: auth.orgId,
       userId: auth.userId,
       switches,
-      supportsStructuredInlineTemplates: true,
     }),
   };
 });
@@ -88,7 +94,6 @@ const updateFeatureSwitchesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         switches,
-        supportsStructuredInlineTemplates: true,
       }),
     };
   },

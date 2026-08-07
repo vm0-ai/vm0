@@ -5,15 +5,15 @@ import {
   getZeroAgentInstructions,
   getZeroAgentUserConnectors,
   listZeroUserPermissionGrants,
-  listZeroConnectors,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+} from "../../../lib/api/domains/zero-agents";
+import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import type { ZeroConnector } from "../../../lib/api/domains/zero-connectors";
 import { policyIcon } from "../../../lib/utils/format-utils";
 import { formatAvatar } from "./avatar";
 import {
   loadConnectorPermissionInfos,
+  connectorPermissionGrantsToFirewallPolicies,
   type ConnectorPermissionInfo,
 } from "../shared/firewall-permissions";
 
@@ -45,9 +45,7 @@ function printDetailedPermissions(info: ConnectorPermissionInfo): void {
   );
 }
 
-function formatConnectorIdentity(
-  connector: ConnectorResponse | undefined,
-): string {
+function formatConnectorIdentity(connector: ZeroConnector | undefined): string {
   if (!connector) return "";
   if (connector.externalUsername) return `@${connector.externalUsername}`;
   if (connector.externalEmail) return connector.externalEmail;
@@ -56,18 +54,16 @@ function formatConnectorIdentity(
 
 function formatConnectorSummary(
   info: ConnectorPermissionInfo,
-  identity?: ConnectorResponse,
+  identity?: ZeroConnector,
 ): string {
   const id = formatConnectorIdentity(identity);
   const idStr = id ? ` ${id}` : "";
-  if (!info.hasPermissions) return `${info.type}${idStr}`;
-  if (!info.policies) return `${info.type}${idStr} (full access)`;
-  return `${info.type}${idStr} (${info.allowed}/${info.total} allowed)`;
+  if (!info.hasPermissions) return `${info.connectorSlug}${idStr}`;
+  if (!info.policies) return `${info.connectorSlug}${idStr} (full access)`;
+  return `${info.connectorSlug}${idStr} (${info.allowed}/${info.total} allowed)`;
 }
 
-function formatDetailIdentity(
-  connector: ConnectorResponse | undefined,
-): string {
+function formatDetailIdentity(connector: ZeroConnector | undefined): string {
   if (!connector) return "";
   let identity = "";
   if (connector.externalUsername && connector.externalEmail) {
@@ -105,17 +101,17 @@ Examples:
         agentId: string,
         options: { instructions?: boolean; permissions?: boolean },
       ) => {
-        const [agent, connectorTypes, connectorIdentities] = await Promise.all([
+        const [agent, connectorSlugs, connectorIdentities] = await Promise.all([
           getZeroAgent(agentId),
           getZeroAgentUserConnectors(agentId),
           listZeroConnectors().catch(() => {
-            return { connectors: [] as ConnectorResponse[] };
+            return { connectors: [] as ZeroConnector[] };
           }),
         ]);
 
-        const identityMap = new Map<string, ConnectorResponse>(
+        const identityMap = new Map<string, ZeroConnector>(
           connectorIdentities.connectors.map((c) => {
-            return [c.type, c];
+            return [c.slug, c];
           }),
         );
 
@@ -125,19 +121,22 @@ Examples:
         console.log(`Agent ID:     ${agent.agentId}`);
 
         const storedPolicies = options.permissions
-          ? permissionGrantsToFirewallPolicies(
+          ? connectorPermissionGrantsToFirewallPolicies(
               await listZeroUserPermissionGrants(agent.agentId),
             )
           : null;
         const connectorInfos = await loadConnectorPermissionInfos({
-          displayTypes: connectorTypes,
-          defaultPolicyTypes: connectorTypes,
+          displayConnectorSlugs: connectorSlugs,
+          defaultPolicyConnectorSlugs: connectorSlugs,
           storedPolicies,
         });
 
         if (connectorInfos.length > 0) {
           const summaries = connectorInfos.map((info) => {
-            return formatConnectorSummary(info, identityMap.get(info.type));
+            return formatConnectorSummary(
+              info,
+              identityMap.get(info.connectorSlug),
+            );
           });
           console.log(`Connectors:   ${summaries.join(", ")}`);
         }
@@ -152,8 +151,10 @@ Examples:
           console.log();
           console.log(chalk.bold("Connectors:"));
           for (const info of connectorInfos) {
-            const identity = formatDetailIdentity(identityMap.get(info.type));
-            console.log(`  ${info.type.padEnd(14)}${identity}`);
+            const identity = formatDetailIdentity(
+              identityMap.get(info.connectorSlug),
+            );
+            console.log(`  ${info.connectorSlug.padEnd(14)}${identity}`);
             if (info.hasPermissions) {
               printDetailedPermissions(info);
             }

@@ -34,6 +34,8 @@ import {
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
 import { Input } from "@vm0/ui/components/ui/input";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   agentPhoneLinkStatus$,
@@ -51,7 +53,6 @@ import {
   setAgentPhoneVerificationPhone$,
   startAgentPhoneLink$,
 } from "../../signals/zero-page/zero-agentphone.ts";
-import { AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE } from "../../signals/zero-page/agentphone-connect-params.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
@@ -73,21 +74,35 @@ function PhoneNumberCopyButton({
 }: {
   readonly phoneNumber: string;
 }) {
+  const { t } = useTranslation();
   const formatted = formatAgentPhoneNumber(phoneNumber);
 
   return (
     <button
       type="button"
-      aria-label={`Copy ${formatted}`}
+      aria-label={t(
+        ($) => {
+          return $.connectors.providerSettings.agentphone.copyAria;
+        },
+        { phone: formatted },
+      )}
       className="inline-flex items-center gap-1 rounded font-medium text-foreground transition-colors hover:text-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
       onClick={() => {
         detach(
           (async () => {
             const copied = await writeToClipboard(phoneNumber);
             if (copied) {
-              toast.success("Phone number copied");
+              toast.success(
+                i18n.t(($) => {
+                  return $.connectors.providerSettings.agentphone.copySuccess;
+                }),
+              );
             } else {
-              toast.error("Failed to copy phone number");
+              toast.error(
+                i18n.t(($) => {
+                  return $.connectors.providerSettings.agentphone.copyError;
+                }),
+              );
             }
           })(),
           Reason.DomCallback,
@@ -107,6 +122,7 @@ function AgentPhoneVerificationStatus({
   readonly verificationPhone: string | null;
   readonly connecting: boolean;
 }) {
+  const { t } = useTranslation();
   if (!verificationPhone) {
     return null;
   }
@@ -123,8 +139,12 @@ function AgentPhoneVerificationStatus({
           <IconCircleCheck size={14} className="shrink-0 text-green-600" />
         )}
         <span>
-          Verification text sent to {verificationPhone}. Open the link in that
-          text to finish connecting.
+          {t(
+            ($) => {
+              return $.connectors.providerSettings.agentphone.verificationSent;
+            },
+            { phone: verificationPhone },
+          )}
         </span>
       </span>
     </div>
@@ -144,6 +164,7 @@ function AgentPhoneConnectActions({
   readonly phoneError: string | null;
   readonly onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const busy = starting || connecting;
 
   return (
@@ -154,7 +175,9 @@ function AgentPhoneConnectActions({
         disabled={starting}
         onClick={onCancel}
       >
-        Cancel
+        {t(($) => {
+          return $.connectors.actions.cancel;
+        })}
       </Button>
       <Button
         type="submit"
@@ -162,16 +185,49 @@ function AgentPhoneConnectActions({
       >
         {busy ? <IconLoader2 size={14} className="animate-spin" /> : null}
         {starting
-          ? "Sending..."
+          ? t(($) => {
+              return $.connectors.providerSettings.agentphone.sending;
+            })
           : connecting
-            ? "Connecting..."
-            : "Send verification"}
+            ? t(($) => {
+                return $.connectors.actions.connecting;
+              })
+            : t(($) => {
+                return $.connectors.providerSettings.agentphone
+                  .sendVerification;
+              })}
       </Button>
     </DialogFooter>
   );
 }
 
+function AgentPhoneConnectIntro() {
+  const { t } = useTranslation();
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>
+          {t(($) => {
+            return $.connectors.providerSettings.agentphone.connectTitle;
+          })}
+        </DialogTitle>
+        <DialogDescription>
+          {t(($) => {
+            return $.connectors.providerSettings.agentphone.connectDescription;
+          })}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+        {t(($) => {
+          return $.connectors.providerSettings.agentphone.risk;
+        })}
+      </div>
+    </>
+  );
+}
+
 function AgentPhoneConnectDialog() {
+  const { t } = useTranslation();
   const open = useGet(agentPhoneConnectDialogOpen$);
   const phoneForm = useGet(agentPhonePhoneForm$);
   const normalizedPhone = useLastResolved(agentPhonePhoneFormNormalized$) ?? "";
@@ -222,22 +278,15 @@ function AgentPhoneConnectDialog() {
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Connect phone</DialogTitle>
-          <DialogDescription>
-            Enter your phone number. We will text a verification link that
-            connects this workspace.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
-          {AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE}
-        </div>
+        <AgentPhoneConnectIntro />
         <form className="grid gap-3" onSubmit={submit}>
           <label
             htmlFor="agentphone-phone-input"
             className="text-sm font-medium text-foreground"
           >
-            Phone number
+            {t(($) => {
+              return $.connectors.providerSettings.agentphone.phoneNumber;
+            })}
           </label>
           <Input
             id="agentphone-phone-input"
@@ -263,7 +312,12 @@ function AgentPhoneConnectDialog() {
               className="text-xs text-muted-foreground"
               data-testid="agentphone-normalized-phone"
             >
-              We will text {normalizedPhone}.
+              {t(
+                ($) => {
+                  return $.connectors.providerSettings.agentphone.normalized;
+                },
+                { phone: normalizedPhone },
+              )}
             </p>
           ) : null}
           {visiblePhoneError ? (
@@ -290,7 +344,8 @@ function AgentPhoneConnectDialog() {
   );
 }
 
-export function AgentPhoneCard() {
+function AgentPhoneCardActions() {
+  const { t } = useTranslation();
   const statusLoadable = useLastLoadable(agentPhoneLinkStatus$);
   const status =
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
@@ -302,6 +357,101 @@ export function AgentPhoneCard() {
   const disconnecting = disconnectLoadable.state === "loading";
   const isConnected = status?.linked ?? false;
   const connectedPhone = status?.linked ? status.phoneHandle : null;
+
+  return (
+    <>
+      {isConnected ? (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                data-testid="agentphone-connected-indicator"
+                className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
+              >
+                <IconCircleCheck className="h-3 w-3 text-green-600" />
+                <span className="min-w-0 truncate">
+                  {connectedPhone ??
+                    t(($) => {
+                      return $.connectors.providerSettings.works.connected;
+                    })}
+                </span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t(($) => {
+                return $.connectors.providerSettings.agentphone
+                  .authorizedSender;
+              })}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : null}
+      {status !== null && !isConnected ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 gap-1.5 rounded-lg"
+          aria-label={t(($) => {
+            return $.connectors.providerSettings.agentphone.connectAria;
+          })}
+          onClick={() => {
+            setConnectOpen(true);
+          }}
+        >
+          {t(($) => {
+            return $.connectors.actions.connect;
+          })}
+        </Button>
+      ) : null}
+      {isConnected ? (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label={t(($) => {
+                return $.connectors.providerSettings.agentphone.options;
+              })}
+            >
+              <IconDotsVertical size={16} stroke={1.5} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            className="flex flex-col gap-0.5 w-40 p-2"
+          >
+            <button
+              type="button"
+              aria-label={t(($) => {
+                return $.connectors.actions.disconnect;
+              })}
+              disabled={disconnecting}
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              onClick={() => {
+                return detach(disconnect(pageSignal), Reason.DomCallback);
+              }}
+            >
+              {disconnecting
+                ? t(($) => {
+                    return $.connectors.actions.disconnecting;
+                  })
+                : t(($) => {
+                    return $.connectors.actions.disconnect;
+                  })}
+            </button>
+          </PopoverContent>
+        </Popover>
+      ) : null}
+    </>
+  );
+}
+
+export function AgentPhoneCard() {
+  const { t } = useTranslation();
+  const statusLoadable = useLastLoadable(agentPhoneLinkStatus$);
+  const status =
+    statusLoadable.state === "hasData" ? statusLoadable.data : null;
   const agentPhoneNumber = status?.agentPhoneNumber ?? null;
 
   return (
@@ -314,81 +464,30 @@ export function AgentPhoneCard() {
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <div className="flex min-w-0 items-center gap-2">
               <div className="truncate text-sm font-medium text-foreground">
-                Phone
+                {t(($) => {
+                  return $.connectors.providerSettings.agentphone.phoneLabel;
+                })}
               </div>
             </div>
             <div className="truncate text-sm text-muted-foreground">
               {agentPhoneNumber ? (
                 <span className="inline-flex max-w-full items-center gap-1">
-                  <span className="shrink-0">iMessage or SMS to</span>
+                  <span className="shrink-0">
+                    {t(($) => {
+                      return $.connectors.providerSettings.agentphone
+                        .destination;
+                    })}
+                  </span>
                   <PhoneNumberCopyButton phoneNumber={agentPhoneNumber} />
                 </span>
               ) : (
-                "Text-message access to Zero"
+                t(($) => {
+                  return $.connectors.providerSettings.agentphone.description;
+                })
               )}
             </div>
           </div>
-          {isConnected ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    data-testid="agentphone-connected-indicator"
-                    className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
-                  >
-                    <IconCircleCheck className="h-3 w-3 text-green-600" />
-                    <span className="min-w-0 truncate">
-                      {connectedPhone ?? "Connected"}
-                    </span>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Authorized Sender</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : null}
-          {status !== null && !isConnected ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 shrink-0 gap-1.5 rounded-lg"
-              aria-label="Connect phone"
-              onClick={() => {
-                setConnectOpen(true);
-              }}
-            >
-              Connect
-            </Button>
-          ) : null}
-          {isConnected ? (
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  aria-label="Phone options"
-                >
-                  <IconDotsVertical size={16} stroke={1.5} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="end"
-                className="flex flex-col gap-0.5 w-40 p-2"
-              >
-                <button
-                  type="button"
-                  aria-label="Disconnect phone"
-                  disabled={disconnecting}
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
-                  onClick={() => {
-                    return detach(disconnect(pageSignal), Reason.DomCallback);
-                  }}
-                >
-                  {disconnecting ? "Disconnecting..." : "Disconnect"}
-                </button>
-              </PopoverContent>
-            </Popover>
-          ) : null}
+          <AgentPhoneCardActions />
         </div>
       </div>
       <AgentPhoneConnectDialog />

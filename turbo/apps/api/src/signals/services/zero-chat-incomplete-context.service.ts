@@ -1,11 +1,10 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import {
   CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   and,
   asc,
@@ -14,26 +13,30 @@ import {
   gt,
   inArray,
   isNotNull,
+  max,
   not,
+  notExists,
   or,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
-import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
-import {
-  projectUserMessage,
-  requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
-const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
+const INCOMPLETE_EVENT_CHAR_CAP = 4000;
+const successfulRunBoundaryEvent = alias(
+  chatEvents,
+  "successful_run_boundary_event",
+);
+const successfulRunBoundaryRevoker = alias(
+  chatEvents,
+  "successful_run_boundary_revoker",
+);
 
 type IncompleteRunStatus = "cancelled" | "failed" | "timeout";
 
@@ -42,16 +45,15 @@ interface IncompleteRoundSelection {
   readonly status: IncompleteRunStatus;
 }
 
-interface IncompleteRoundMessage {
+interface IncompleteRoundEvent {
   readonly eventType: ChatEventType;
   readonly role: "user" | "assistant";
   readonly content: string | null;
-  readonly userMessage: UserMessageDocument | null;
-  readonly attachFiles: readonly string[] | null;
+  readonly agentPrompt: string;
 }
 
 interface IncompleteRound extends IncompleteRoundSelection {
-  readonly messages: IncompleteRoundMessage[];
+  readonly events: IncompleteRoundEvent[];
 }
 
 const incompleteRoundFrontierRowSchema = z.object({
@@ -82,7 +84,7 @@ async function selectIncompleteRoundFrontier(
     FALSE
   )`;
   // Terminal chat materialization runs in waitUntil, so lifecycle rows can lag
-  // behind agent_runs.status. Walk the existing recent-message index instead.
+  // behind agent_runs.status. Walk the existing recent-event index instead.
   // The fixed 21-run frontier is the 20-round output plus one boundary candidate.
   const rows = await executeRawRows(
     db,
@@ -106,18 +108,16 @@ async function selectIncompleteRoundFrontier(
       FROM incomplete_frontier
       CROSS JOIN LATERAL (
         SELECT
-          ${chatMessages.runId} AS run_id,
+          ${chatEvents.runId} AS run_id,
           ${agentRuns.status} AS run_status,
           (${isSuccessfulRun}) AS is_success
-        FROM ${chatMessages}
+        FROM ${chatEvents}
         INNER JOIN ${agentRuns}
-          ON ${eq(agentRuns.id, chatMessages.runId)}
+          ON ${eq(agentRuns.id, chatEvents.runId)}
         WHERE ${and(
-          eq(chatMessages.chatThreadId, threadId),
-          isNotNull(chatMessages.runId),
-          not(
-            sql`${chatMessages.runId} = ANY(incomplete_frontier.seen_run_ids)`,
-          ),
+          eq(chatEvents.chatThreadId, threadId),
+          isNotNull(chatEvents.runId),
+          not(sql`${chatEvents.runId} = ANY(incomplete_frontier.seen_run_ids)`),
           visibleChatEventCondition(db),
           or(
             isSuccessfulRun,
@@ -131,7 +131,7 @@ async function selectIncompleteRoundFrontier(
           ),
         )}
         ORDER BY
-          ${desc(chatMessages.seqId)}
+          ${desc(chatEvents.seqId)}
         LIMIT 1
       ) AS candidate
       WHERE incomplete_frontier.depth < ${INCOMPLETE_ROUND_LIMIT + 1}
@@ -166,24 +166,32 @@ async function selectIncompleteRoundFrontier(
   return { rounds: rounds.reverse(), successfulRunId };
 }
 
-function afterSuccessfulRunBoundary(threadId: string, successfulRunId: string) {
-  return gt(
-    chatMessages.seqId,
-    sql`COALESCE(
-      (
-        SELECT MAX(boundary_message.seq_id)
-        FROM chat_messages boundary_message
-        WHERE boundary_message.chat_thread_id = ${threadId}
-          AND boundary_message.run_id = ${successfulRunId}
-          AND NOT EXISTS (
-            SELECT 1
-            FROM chat_messages boundary_revoker
-            WHERE boundary_revoker.revokes_message_id = boundary_message.id
-          )
+function afterSuccessfulRunBoundary(
+  db: Pick<Db, "select">,
+  threadId: string,
+  successfulRunId: string,
+) {
+  const boundary = db
+    .select({ seqId: max(successfulRunBoundaryEvent.seqId) })
+    .from(successfulRunBoundaryEvent)
+    .where(
+      and(
+        eq(successfulRunBoundaryEvent.chatThreadId, threadId),
+        eq(successfulRunBoundaryEvent.runId, successfulRunId),
+        notExists(
+          db
+            .select({ id: successfulRunBoundaryRevoker.id })
+            .from(successfulRunBoundaryRevoker)
+            .where(
+              eq(
+                successfulRunBoundaryRevoker.revokesEventId,
+                successfulRunBoundaryEvent.id,
+              ),
+            ),
+        ),
       ),
-      0::bigint
-    )`,
-  );
+    );
+  return gt(chatEvents.seqId, sql`COALESCE(${boundary}, 0::bigint)`);
 }
 
 async function loadSelectedIncompleteRounds(
@@ -203,25 +211,31 @@ async function loadSelectedIncompleteRounds(
   });
   const rows = await db
     .select({
-      runId: chatMessages.runId,
-      eventType: chatEventTypeSql().as("event_type"),
-      content: chatMessages.content,
-      userMessage: chatMessages.userMessage,
-      attachFiles: chatMessages.attachFiles,
+      runId: chatEvents.runId,
+      eventType: chatEvents.eventType,
+      content: chatEvents.content,
+      agentPrompt: agentRuns.prompt,
     })
-    .from(chatMessages)
+    .from(chatEvents)
+    .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
     .where(
       and(
-        eq(chatMessages.chatThreadId, threadId),
-        inArray(chatMessages.runId, runIds),
+        eq(chatEvents.chatThreadId, threadId),
+        inArray(chatEvents.runId, runIds),
         chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
         ...(selection.successfulRunId === null
           ? []
-          : [afterSuccessfulRunBoundary(threadId, selection.successfulRunId)]),
+          : [
+              afterSuccessfulRunBoundary(
+                db,
+                threadId,
+                selection.successfulRunId,
+              ),
+            ]),
       ),
     )
-    .orderBy(asc(chatMessages.seqId));
+    .orderBy(asc(chatEvents.seqId));
 
   const statusByRunId = new Map(
     selection.rounds.map((round) => {
@@ -239,72 +253,39 @@ async function loadSelectedIncompleteRounds(
     }
     let round = roundsByRunId.get(row.runId);
     if (round === undefined) {
-      round = { runId: row.runId, status, messages: [] };
+      round = { runId: row.runId, status, events: [] };
       roundsByRunId.set(row.runId, round);
     }
-    round.messages.push({
+    round.events.push({
       eventType: row.eventType,
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
-      userMessage: row.userMessage,
-      attachFiles: row.attachFiles,
+      agentPrompt: row.agentPrompt,
     });
   }
 
   return [...roundsByRunId.values()];
 }
 
-function formatAttachFileIds(
-  ids: readonly string[] | null | undefined,
-): string {
-  if (!ids || ids.length === 0) {
-    return "";
-  }
-  return ids
-    .map((id) => {
-      return `[Web file]\n   [ID] ${id}`;
-    })
-    .join("\n");
-}
-
 function truncateIncomplete(value: string): string {
-  if (value.length <= INCOMPLETE_MESSAGE_CHAR_CAP) {
+  if (value.length <= INCOMPLETE_EVENT_CHAR_CAP) {
     return value;
   }
-  return `${value.slice(0, INCOMPLETE_MESSAGE_CHAR_CAP)}...[truncated]`;
+  return `${value.slice(0, INCOMPLETE_EVENT_CHAR_CAP)}...[truncated]`;
 }
 
-function formatIncompleteMessage(
-  message: IncompleteRoundMessage,
-  inlineTemplatesEnabled: boolean,
-): string {
-  const userMessage = requiredUserMessageForEvent(
-    message.eventType,
-    message.userMessage,
-  );
-  if (userMessage) {
-    const prompt = projectUserMessage(userMessage, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }).agentPrompt;
-    return `User: ${truncateIncomplete(prompt) || "[empty message]"}`;
+function formatIncompleteEvent(event: IncompleteRoundEvent): string {
+  if (event.role === "user") {
+    return `User: ${truncateIncomplete(event.agentPrompt) || "[empty message]"}`;
   }
-  const attach = formatAttachFileIds(message.attachFiles);
-  if (message.role === "user") {
-    const body =
-      message.content !== null && message.content !== ""
-        ? truncateIncomplete(message.content)
-        : "[empty message]";
-    return attach ? `User: ${body}\n${attach}` : `User: ${body}`;
-  }
-  if (message.content !== null && message.content !== "") {
-    return `Assistant (partial): ${truncateIncomplete(message.content)}`;
+  if (event.content !== null && event.content !== "") {
+    return `Assistant (partial): ${truncateIncomplete(event.content)}`;
   }
   return "Assistant: [no response before run ended]";
 }
 
 function buildWebChatIncompleteContext(
   rounds: readonly IncompleteRound[],
-  inlineTemplatesEnabled: boolean,
 ): string {
   if (rounds.length === 0) {
     return "";
@@ -312,11 +293,11 @@ function buildWebChatIncompleteContext(
   const total = rounds.length;
   const blocks = rounds.map((round, index) => {
     const relativeIndex = index - total + 1;
-    const rendered = round.messages.map((message) => {
-      return formatIncompleteMessage(message, inlineTemplatesEnabled);
+    const rendered = round.events.map((event) => {
+      return formatIncompleteEvent(event);
     });
-    const hasAssistant = round.messages.some((message) => {
-      return message.role === "assistant";
+    const hasAssistant = round.events.some((event) => {
+      return event.role === "assistant";
     });
     if (!hasAssistant) {
       rendered.push("Assistant: [no response before run ended]");
@@ -347,9 +328,8 @@ function buildWebChatIncompleteContext(
 export async function loadWebChatIncompleteContext(
   db: Db,
   threadId: string,
-  inlineTemplatesEnabled = false,
 ): Promise<string> {
   const selection = await selectIncompleteRoundFrontier(db, threadId);
   const rounds = await loadSelectedIncompleteRounds(db, threadId, selection);
-  return buildWebChatIncompleteContext(rounds, inlineTemplatesEnabled);
+  return buildWebChatIncompleteContext(rounds);
 }

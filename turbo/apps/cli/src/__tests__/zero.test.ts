@@ -6,6 +6,9 @@ describe("zero CLI program", () => {
   const commandNames = program.commands.map((cmd) => {
     return cmd.name();
   });
+  const publicCommandNames = commandNames.filter((name) => {
+    return !name.startsWith("__");
+  });
 
   it("should be named 'zero'", () => {
     expect(program.name()).toBe("zero");
@@ -13,7 +16,6 @@ describe("zero CLI program", () => {
 
   it("should register all expected zero commands", () => {
     const expectedCommands = [
-      "org",
       "model",
       "model-provider",
       "agent",
@@ -26,19 +28,19 @@ describe("zero CLI program", () => {
       "search",
       "chat",
       "resource",
-      "preference",
-      "secret",
       "workflow",
       "goal",
       "slack",
+      "feishu",
+      "teams",
       "telegram",
       "github",
       "phone",
-      "variable",
       "whoami",
       "intro",
       "developer-support",
       "computer-use",
+      "browser",
       "generate",
       "web",
       "video",
@@ -48,6 +50,8 @@ describe("zero CLI program", () => {
       "scrape",
       "web-search",
       "people-search",
+      "recognize",
+      "translate",
       "finance",
       "banking",
     ];
@@ -58,11 +62,15 @@ describe("zero CLI program", () => {
 
   it("should not include infrastructure or utility commands", () => {
     const excludedCommands = [
+      "org",
       "auth",
       "compose",
       "volume",
       "artifact",
       "run",
+      "preference",
+      "secret",
+      "variable",
 
       "init",
       "info",
@@ -72,7 +80,12 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 39 commands", () => {
-    expect(commandNames).toHaveLength(39);
+  it("should keep internal commands out of the public surface", () => {
+    expect(commandNames).toContain("__agent-loop");
+    expect(publicCommandNames).not.toContain("__agent-loop");
+  });
+
+  it("should have exactly 38 public commands", () => {
+    expect(publicCommandNames).toHaveLength(38);
   });
 });

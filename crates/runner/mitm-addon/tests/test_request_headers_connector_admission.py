@@ -30,6 +30,7 @@ from tests.requestheaders_helpers import (
 from tests.upstream_connection_helpers import (
     mark_connected_tls_upstream,
     seed_server_binding,
+    track_normalized_binding_ip_parses,
 )
 
 
@@ -81,7 +82,7 @@ async def test_firewall_allow_current_server_binding_address_mismatch_blocks(
     assert diagnostics["direct_binding_present"] is True
     assert diagnostics["server_connected"] is False
     assert diagnostics["server_address"] == "203.0.113.99:443"
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
 
 
 async def test_test_connector_bounded_requestheaders_uses_connector_binding(
@@ -603,6 +604,60 @@ async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
     )
 
 
+async def test_firewall_allow_prior_client_binding_scan_parses_live_endpoint_once(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+):
+    reg_path = _write_github_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.99",
+        sni="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    flow.server_conn.peername = ("203.0.113.99", 443)
+    flow.server_conn.address = ("api.github.com", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    for index in range(8):
+        prior_server = connection.Server(address=(f"198.18.20.{index + 1}", 443))
+        seed_server_binding(
+            prior_server,
+            client=flow.client_conn,
+            host="api.github.com",
+            port=443,
+            kinds=frozenset(("connector_auth",)),
+            original_address=prior_server.address,
+        )
+    binding_ip_parses = track_normalized_binding_ip_parses(monkeypatch)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+        _assert_no_request_stream(flow)
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert binding_ip_parses
+    for parses in binding_ip_parses:
+        assert len(parses) == 9
+        assert parses.count("203.0.113.99") == 1
+
+
 async def test_firewall_allow_prior_client_binding_endpoint_match_still_requires_tls(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
@@ -659,8 +714,8 @@ async def test_firewall_allow_prior_client_binding_endpoint_match_still_requires
     assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
 
 
-async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_upstream(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+async def test_firewall_allow_header_auth_unconnected_skips_prior_client_binding_scan(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
@@ -677,6 +732,39 @@ async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_u
             ("Host", "api.github.com"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
+    )
+    prior_server = connection.Server(address=("198.18.20.34", 443))
+    seed_server_binding(
+        prior_server,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("198.18.20.34", 443),
+    )
+    client_binding_lookups = 0
+    matching_client_bindings = upstream_destination_binding._matching_client_bindings
+
+    def track_matching_client_bindings(
+        client: object,
+        *,
+        host: str,
+        port: int,
+        allowed_kinds: frozenset[upstream_destination_binding.BindingKind],
+    ) -> tuple[upstream_destination_binding.UpstreamDestinationBinding, ...]:
+        nonlocal client_binding_lookups
+        client_binding_lookups += 1
+        return matching_client_bindings(
+            client,
+            host=host,
+            port=port,
+            allowed_kinds=allowed_kinds,
+        )
+
+    monkeypatch.setattr(
+        upstream_destination_binding,
+        "_matching_client_bindings",
+        track_matching_client_bindings,
     )
 
     with (
@@ -697,6 +785,7 @@ async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_u
     assert flow.response is None
     assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
+    assert client_binding_lookups == 0
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
     assert binding.host == "api.github.com"
     assert binding.kinds == frozenset(("connector_auth",))
@@ -734,7 +823,9 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
 
         await mitm_addon.request(flow)
 
-    assert validated_flows == [flow, flow]
+    # Header prebinding, request dispatch, and the post-auth authorization guard
+    # each validate the current trusted authority before credential mutation.
+    assert validated_flows == [flow, flow, flow]
     auth_fetch.assert_awaited_once()
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer resolved"

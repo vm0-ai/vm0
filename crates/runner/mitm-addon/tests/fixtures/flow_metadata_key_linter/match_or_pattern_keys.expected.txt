@@ -1,0 +1,2 @@
+match_or_pattern_keys.py:2: use metadata_keys.VM_RUN_ID for flow.metadata access
+match_or_pattern_keys.py:2: use metadata_keys.FIREWALL_NAME for flow.metadata access

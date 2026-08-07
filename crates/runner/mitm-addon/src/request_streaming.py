@@ -1,8 +1,15 @@
-"""Shared capped request streaming state for capture logging and X billing.
+"""Shared request streaming state for size, capture logging, and X billing.
 
-The pass-through buffer is consumed by network capture and X connector billing
-refinement. Terminal response and error handling retain its metadata through
-applicable connector usage reporting, then release it.
+When this module installs its pass-through callback, the callback counts every
+chunk. Capture-enabled callers also retain a capped prefix consumed by network
+capture and X connector billing refinement.
+
+Configuration preserves any existing callable stream without composing with it.
+When setup first finds an externally owned callback, it creates no vm0
+observation or capture state, so the size and capture helpers return ``None``. A
+repeated call for this module's callback leaves its existing state intact.
+Terminal response and error handling retain installed metadata through connector
+usage reporting, then release it.
 """
 
 from typing import NamedTuple
@@ -20,8 +27,19 @@ class CapturedRequestStreamBody(NamedTuple):
     truncated: bool
 
 
-def configure_request_stream(flow: http.HTTPFlow) -> None:
-    """Enable capped shared body observation without modifying forwarded chunks."""
+def configure_request_stream(
+    flow: http.HTTPFlow,
+    *,
+    capture_body: bool = True,
+) -> None:
+    """Install vm0 request-size observation and optional capped body capture.
+
+    If the request stream is already callable, preserve it without composition
+    and do not create or reset vm0 request-stream metadata. An external callback
+    encountered before vm0 setup therefore leaves no vm0 size or capture state,
+    while repeated vm0 configuration retains the state installed by the first
+    call.
+    """
     if callable(flow.request.stream):
         return
 
@@ -31,7 +49,7 @@ def configure_request_stream(flow: http.HTTPFlow) -> None:
 
     def stream_and_buffer(chunk: bytes) -> bytes:
         state["total_bytes"] += len(chunk)
-        if not state["truncated"]:
+        if capture_body and not state["truncated"]:
             remaining = buf_limit - len(buf)
             if len(chunk) <= remaining:
                 buf.extend(chunk)
@@ -41,7 +59,8 @@ def configure_request_stream(flow: http.HTTPFlow) -> None:
         return chunk
 
     flow.request.stream = stream_and_buffer
-    flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = buf
+    if capture_body:
+        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = buf
     flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = state
     flow.metadata[_REQUEST_STREAM_CALLBACK] = stream_and_buffer
 

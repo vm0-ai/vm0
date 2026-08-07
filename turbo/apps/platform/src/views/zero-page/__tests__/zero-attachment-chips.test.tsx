@@ -1,21 +1,22 @@
 import {
   chatThreadArtifactsContract,
+  chatThreadEventsContract,
   type ChatThreadArtifactFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   createEvent,
   fireEvent,
-  render,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
-import { StoreProvider } from "ccstate-react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { Markdown } from "../../components/markdown.tsx";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -41,6 +42,7 @@ function artifactFile(
 
 function setupHostedSiteArtifactPreview({
   artifactUrl,
+  featureSwitches,
   filename,
   html,
   htmlUrl,
@@ -50,6 +52,7 @@ function setupHostedSiteArtifactPreview({
   runId,
 }: {
   artifactUrl?: string;
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   filename: string;
   html?: string;
   htmlUrl: string;
@@ -95,7 +98,7 @@ function setupHostedSiteArtifactPreview({
   });
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
-    chatMessages: [
+    chatEvents: [
       {
         id: `msg-${runId}`,
         role: "assistant",
@@ -109,6 +112,7 @@ function setupHostedSiteArtifactPreview({
   detachedSetupPage({
     context,
     path,
+    ...(featureSwitches ? { featureSwitches } : {}),
   });
 }
 
@@ -117,6 +121,11 @@ beforeEach(() => {
     selectedModel: "claude-sonnet-4-6",
     updatedAt: "2026-03-10T00:00:00Z",
   });
+});
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
 });
 
 async function uploadFile(file: File): Promise<void> {
@@ -231,6 +240,75 @@ function clipboardFileItem(file: File): DataTransferItem {
       return file;
     },
   } as DataTransferItem;
+}
+
+const BODY_LINK_PREVIEWS = {
+  audio: "https://cdn.vm7.io/artifacts/test/body-audio/briefing.mp3",
+  video: "https://cdn.vm7.io/artifacts/test/body-video/demo.mp4",
+  image: "https://cdn.vm7.io/artifacts/test/body-image/chart.png",
+  markdown: "https://cdn.vm7.io/artifacts/test/body-markdown/release-notes.md",
+  csv: "https://cdn.vm7.io/artifacts/test/body-csv/launch-metrics.csv",
+  pdf: "https://cdn.vm7.io/artifacts/test/body-pdf/rollout-plan.pdf",
+  html: "https://cdn.vm7.io/artifacts/test/body-html/launch-site.html",
+  archive: "https://cdn.vm7.io/artifacts/test/body-file/archive.bin",
+} as const;
+
+// Renders one assistant message carrying every supported preview link type and
+// waits until each parsed chip is on screen. The media and document preview
+// specs share this setup so that each spec opens only its own previews within
+// the default test timeout.
+async function setupBodyLinkPreviews(): Promise<void> {
+  const { audio, video, image, markdown, csv, pdf, html, archive } =
+    BODY_LINK_PREVIEWS;
+  context.mocks.http.get(markdown, () => {
+    return new Response("# Release notes\n\nBody link rollout is ready.", {
+      headers: { "Content-Type": "text/markdown" },
+    });
+  });
+  context.mocks.http.get(csv, () => {
+    return new Response("metric,value\nactivation,87", {
+      headers: { "Content-Type": "text/csv" },
+    });
+  });
+  context.mocks.http.get(archive, () => {
+    return new Response(null, { status: 500 });
+  });
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    chatEvents: [
+      {
+        id: "msg-body-preview-links",
+        role: "assistant",
+        content: `Generated preview links:\n\n${audio}\n${video}\n${image}\n${markdown}\n${csv}\n${pdf}\n[Launch site](${html})\n${archive}`,
+        runId: "run-body-previews",
+        createdAt: "2026-03-10T00:00:00Z",
+      },
+    ],
+  });
+
+  detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+  await waitFor(() => {
+    expect(screen.getByText("Generated preview links:")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open audio preview for briefing.mp3"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
+    expect(screen.getByAltText("chart.png")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open markdown preview for release-notes.md"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open csv preview for launch-metrics.csv"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open pdf preview for rollout-plan.pdf"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open html preview for Launch site"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
+  });
 }
 
 describe("zero attachment chips", () => {
@@ -376,7 +454,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("opens, zooms, and closes an uploaded image preview", async () => {
+  it("zooms an uploaded image preview with controls and double-click", async () => {
     await setupUploadedImagePreview();
 
     click(screen.getByLabelText("Open image preview for photo.png"));
@@ -395,9 +473,12 @@ describe("zero attachment chips", () => {
       "artifact-dialog-image-stage-content",
     );
     const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
 
     const lightboxImage = screen.getByTestId("attachment-lightbox-image");
     mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformWrapper, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
     Object.defineProperty(lightboxImage, "naturalWidth", {
       configurable: true,
       value: 1200,
@@ -406,6 +487,22 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("200%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(-200px, -150px) scale(2)",
+      );
+    });
+
+    click(screen.getByLabelText("Reset zoom"));
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
     });
 
     click(screen.getByLabelText("Zoom in"));
@@ -430,6 +527,50 @@ describe("zero attachment chips", () => {
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("resets a transformed uploaded image preview with double-click", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(screen.getByText("115%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toContain("scale(1.15)");
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
     });
   });
 
@@ -749,7 +890,7 @@ describe("zero attachment chips", () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/photo/photo.png";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-image-then-text",
           role: "user",
@@ -784,17 +925,86 @@ describe("zero attachment chips", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the user image preview frame stable while the image loads", async () => {
+    const imageUrl = "https://cdn.vm7.io/artifacts/test/stable-photo/photo.png";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-stable-photo",
+          role: "user",
+          content: "Review this image",
+          attachFiles: [
+            {
+              id: "attachment-stable-photo",
+              filename: "photo.png",
+              contentType: "image/png",
+              size: 2048,
+              url: imageUrl,
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const image = await screen.findByAltText("photo.png");
+    const preview = image.closest("a");
+    if (!preview) {
+      throw new Error("Chat image preview link not found");
+    }
+    const spacer = preview.querySelector('span[aria-hidden="true"]');
+    expect(preview).toHaveClass(
+      "relative",
+      "inline-flex",
+      "aspect-[10/9]",
+      "w-[50px]",
+    );
+    expect(spacer).toHaveClass("block", "h-full", "w-full");
+    expect(
+      within(preview).getByTestId("chat-image-preview-loading"),
+    ).toHaveClass("absolute", "inset-0");
+    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
+
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(
+        within(preview).queryByTestId("chat-image-preview-loading"),
+      ).not.toBeInTheDocument();
+    });
+    expect(preview.querySelector('span[aria-hidden="true"]')).toBe(spacer);
+    expect(image).not.toHaveClass("opacity-0");
+  });
+
   it("renders a canonical Slack input with the standard attachment UI", async () => {
     const assetId = "a0000000-0000-4000-a000-000000000051";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-canonical-slack-input",
           role: "user",
           content: "Review the source notes",
-          slackMessagePermalink:
-            "https://example.slack.com/archives/C123/p123456789",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Review the source notes" },
+              {
+                type: "file",
+                fileId: assetId,
+                filenameSnapshot: "source-notes.md",
+                contentType: "text/markdown",
+              },
+              {
+                type: "source",
+                kind: "slack",
+                href: "https://example.slack.com/archives/C123/p123456789",
+              },
+            ],
+          },
           attachFiles: [
             {
               id: assetId,
@@ -831,13 +1041,28 @@ describe("zero attachment chips", () => {
     const assetId = "a0000000-0000-4000-a000-000000000052";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-failed-slack-input",
           role: "user",
           content: "Use this attachment",
-          slackMessagePermalink:
-            "https://example.slack.com/archives/C123/p123456790",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Use this attachment" },
+              {
+                type: "file",
+                fileId: assetId,
+                filenameSnapshot: "expired.pdf",
+                contentType: "application/pdf",
+              },
+              {
+                type: "source",
+                kind: "slack",
+                href: "https://example.slack.com/archives/C123/p123456790",
+              },
+            ],
+          },
           attachFiles: [
             {
               id: assetId,
@@ -880,51 +1105,12 @@ describe("zero attachment chips", () => {
     ).toBeNull();
   });
 
-  it("renders an Agent-published attachment on an otherwise empty reply", async () => {
-    const assetId = "a0000000-0000-4000-a000-000000000053";
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatMessages: [
-        {
-          id: "msg-canonical-agent-output-completed",
-          role: "assistant",
-          content: null,
-          runId: "run-canonical-output",
-          runLifecycleEvent: "completed",
-          attachFiles: [
-            {
-              id: assetId,
-              filename: "final-report.pdf",
-              contentType: "application/pdf",
-              size: 4096,
-              url: "https://cdn.vm7.io/artifacts/test/final-report.pdf",
-              assetRef: {
-                id: assetId,
-                classification: "published-output",
-                access: "published",
-                materialization: { status: "ready" },
-                provenance: { provider: "agent" },
-              },
-            },
-          ],
-          createdAt: "2026-03-10T00:00:02Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    await expect(
-      screen.findByLabelText("Open pdf preview for final-report.pdf"),
-    ).resolves.toBeInTheDocument();
-  });
-
   it("renders canonical user video attachments at the same size as image attachments", async () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/media/photo.png";
     const videoUrl = "https://cdn.vm7.io/artifacts/test/media/screencast.mp4";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-image-video-attachments",
           role: "user",
@@ -974,6 +1160,69 @@ describe("zero attachment chips", () => {
     expect(screen.getByText("this is the screencast")).toBeInTheDocument();
   });
 
+  it("shows user attachments above the text bubble with media and file chips on separate rows", async () => {
+    const videoUrl = "https://cdn.vm7.io/artifacts/test/elevated/clip.mp4";
+    const docUrl = "https://cdn.vm7.io/artifacts/test/elevated/README.md";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-video-then-text",
+          role: "user",
+          content: "Watch this clip",
+          attachFiles: [
+            {
+              id: "attachment-clip",
+              filename: "clip.mp4",
+              contentType: "video/mp4",
+              size: 4096,
+              url: videoUrl,
+            },
+            {
+              id: "attachment-readme",
+              filename: "README.md",
+              contentType: "text/markdown",
+              size: 512,
+              url: docUrl,
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const videoPreview = await screen.findByLabelText("Preview clip.mp4");
+    const text = await screen.findByText("Watch this clip");
+    const textBubble = text.closest(".zero-chat-bubble-user");
+    const docChip = screen.getByLabelText(
+      "Open markdown preview for README.md",
+    );
+
+    expect(textBubble).not.toBeNull();
+    expect(videoPreview.closest(".zero-chat-bubble-user")).toBeNull();
+    expect(docChip.closest(".zero-chat-bubble-user")).toBeNull();
+    expect(
+      videoPreview.compareDocumentPosition(textBubble!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      docChip.compareDocumentPosition(textBubble!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("message-media-attachments")).getByLabelText(
+        "Preview clip.mp4",
+      ),
+    ).toBe(videoPreview);
+    expect(
+      within(screen.getByTestId("message-file-attachments")).getByLabelText(
+        "Open markdown preview for README.md",
+      ),
+    ).toBe(docChip);
+  });
+
   it("opens persisted canonical audio, video, and document attachments", async () => {
     const audioUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-audio/briefing.mp3";
@@ -988,7 +1237,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-attachments",
           role: "user",
@@ -1093,7 +1342,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-document-previews",
           role: "user",
@@ -1241,7 +1490,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-image-navigation",
           role: "user",
@@ -1322,7 +1571,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("navigates modal images generated in an assistant message body", async () => {
+  it("shows assistant message image navigation before artifacts load", async () => {
     const user = userEvent.setup({ delay: null });
     const firstImageUrl =
       "https://cdn.vm7.io/artifacts/test/body-image-navigation/first.png";
@@ -1332,7 +1581,11 @@ describe("zero attachment chips", () => {
     // in the message body. It must be excluded from message-scoped navigation.
     const unreferencedImageUrl =
       "https://cdn.vm7.io/artifacts/test/body-image-navigation/unreferenced.png";
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+    const artifactsRequested = context.mocks.deferred<void>();
+    const artifactsReady = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadArtifactsContract.list, async ({ respond }) => {
+      artifactsRequested.resolve();
+      await artifactsReady.promise;
       return respond(200, {
         runs: [
           {
@@ -1363,7 +1616,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-body-image-navigation",
           role: "assistant",
@@ -1393,8 +1646,12 @@ describe("zero attachment chips", () => {
         "first.png",
       );
     });
+    await artifactsRequested.promise;
     expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
-    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Next image artifact"),
+    ).resolves.toBeInTheDocument();
+    artifactsReady.resolve();
 
     await user.click(screen.getByLabelText("Next image artifact"));
     await waitFor(() => {
@@ -1414,6 +1671,110 @@ describe("zero attachment chips", () => {
         "first.png",
       );
     });
+  });
+
+  it("scopes assistant image navigation to its split-view thread before artifacts load", async () => {
+    const user = userEvent.setup({ delay: null });
+    const leftThreadId = "b0000000-0000-4000-a000-000000000051";
+    const rightThreadId = "b0000000-0000-4000-a000-000000000052";
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/split-image-navigation/first.png";
+    const leftSecondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/split-image-navigation/left-second.png";
+    const rightSecondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/split-image-navigation/right-second.png";
+    const rightArtifactsRequested = context.mocks.deferred<void>();
+    const artifactsReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      chatThreadArtifactsContract.list,
+      async ({ params, respond }) => {
+        if (params.threadId === rightThreadId) {
+          rightArtifactsRequested.resolve();
+        }
+        await artifactsReady.promise;
+        return respond(200, { runs: [] });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: leftThreadId,
+      threadTitle: "Left image thread",
+    });
+    context.mocks.api(
+      chatThreadEventsContract.list,
+      ({ params, query, respond }) => {
+        if (query.beforeSeqId !== undefined) {
+          return respond(200, { events: [] });
+        }
+        if (query.sinceSeqId !== undefined) {
+          return respond(200, { events: [] });
+        }
+        const secondImageUrl =
+          params.threadId === leftThreadId
+            ? leftSecondImageUrl
+            : params.threadId === rightThreadId
+              ? rightSecondImageUrl
+              : undefined;
+        if (!secondImageUrl) {
+          return respond(200, { events: [] });
+        }
+        return respond(200, {
+          events: [
+            {
+              id: `msg-${params.threadId}`,
+              threadId: params.threadId,
+              eventType: "output.message",
+              content: `Generated images:\n\n${firstImageUrl}\n${secondImageUrl}`,
+              runId: `run-${params.threadId}`,
+              seqId: 1,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+          ],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${leftThreadId}?sidebar=${rightThreadId}`,
+    });
+
+    const threadRegions = await screen.findAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const leftThread = threadRegions[0];
+    const rightThread = threadRegions[1];
+    if (!leftThread || !rightThread) {
+      throw new Error("Split chat threads not found");
+    }
+    await expect(
+      within(leftThread).findByAltText("first.png"),
+    ).resolves.toBeInTheDocument();
+    const rightImage = await within(rightThread).findByAltText("first.png");
+    const rightPreviewButton = rightImage.closest("button");
+    if (!rightPreviewButton) {
+      throw new Error("Right thread image preview button not found");
+    }
+    fireEvent.load(rightImage);
+    click(rightPreviewButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    await rightArtifactsRequested.promise;
+    await expect(
+      screen.findByLabelText("Next image artifact"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "right-second.png",
+      );
+    });
+    artifactsReady.resolve();
   });
 
   it("navigates markdown images generated in an ordered assistant list", async () => {
@@ -1447,7 +1808,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-body-image-ordered-navigation",
           role: "assistant",
@@ -1524,7 +1885,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-body-image-link-navigation",
           role: "assistant",
@@ -1570,7 +1931,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("navigates human-uploaded images that are not run artifacts", async () => {
+  it("waits for artifacts before showing user message image navigation", async () => {
     const user = userEvent.setup({ delay: null });
     const firstImageUrl =
       "https://cdn.vm7.io/artifacts/test/user-image-navigation/first.png";
@@ -1578,12 +1939,16 @@ describe("zero attachment chips", () => {
       "https://cdn.vm7.io/artifacts/test/user-image-navigation/second.png";
     // The images the user attached are NOT part of the thread's run artifacts;
     // they resolve from the user artifacts bucket. Navigation must still work.
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+    const artifactsRequested = context.mocks.deferred<void>();
+    const artifactsReady = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadArtifactsContract.list, async ({ respond }) => {
+      artifactsRequested.resolve();
+      await artifactsReady.promise;
       return respond(200, { runs: [] });
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-image-navigation",
           role: "user",
@@ -1615,15 +1980,24 @@ describe("zero attachment chips", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    click(await screen.findByLabelText("Preview first.png"));
+    await expect(
+      screen.findByLabelText("Preview second.png"),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByLabelText("Preview first.png"));
     await waitFor(() => {
       expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
         "alt",
         "first.png",
       );
     });
+    await artifactsRequested.promise;
     expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
-    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    artifactsReady.resolve();
+    await expect(
+      screen.findByLabelText("Next image artifact"),
+    ).resolves.toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Next image artifact"));
     await waitFor(() => {
@@ -1677,7 +2051,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-fullscreen-navigation",
           role: "user",
@@ -1750,7 +2124,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-presentation-artifact",
           role: "assistant",
@@ -1854,6 +2228,47 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("localizes a hosted-site preview and its artifact actions", async () => {
+    document.documentElement.lang = "pt-BR";
+    context.mocks.browser.clipboardWriteText();
+    setupHostedSiteArtifactPreview({
+      filename: "localized-site.html",
+      htmlUrl: "https://localized-site.sites.vm7.io",
+      label: "Launch site",
+      runId: "run-localized-site",
+    });
+
+    click(
+      await screen.findByLabelText("Abrir visualização de HTML de Launch site"),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Compartilhar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Opções de download")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Abrir em visualização dividida"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Entrar em tela cheia")).toBeInTheDocument();
+      expect(screen.getByLabelText("Fechar")).toBeInTheDocument();
+    });
+    expect(screen.getByText("localized-site.html")).toBeInTheDocument();
+    expect(
+      screen.getByText(/^Site hospedado · 1 kB · Gerado em /u),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Compartilhar"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Link copiado")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Entrar em tela cheia"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Sair da tela cheia")).toBeInTheDocument();
+    });
+  });
+
   it("uses a video artifact thumbnail before falling back to the video frame", async () => {
     const videoUrl =
       "https://cdn.vm7.io/artifacts/test/video-thumbnail-soft-switch/demo.mp4";
@@ -1878,7 +2293,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-video-thumbnail-soft-switch",
           role: "assistant",
@@ -1910,6 +2325,11 @@ describe("zero attachment chips", () => {
   it("opens only the dialog download menu when the same artifact is in split view", async () => {
     const user = userEvent.setup({ delay: null });
     setupHostedSiteArtifactPreview({
+      // Stacking a dialog over the sidebar for the same artifact only happens
+      // with inline open off; the on path is covered by the next test.
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: false,
+      },
       filename: "split-dialog-download.html",
       htmlUrl: "https://split-dialog-download.sites.vm7.io",
       label: "Split dialog download",
@@ -1945,70 +2365,163 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("opens media and file previews parsed from chat message links", async () => {
+  it("reopens the artifact already in split view without stacking a dialog", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupHostedSiteArtifactPreview({
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
+      filename: "split-dialog-download.html",
+      htmlUrl: "https://split-dialog-download.sites.vm7.io",
+      label: "Split dialog download",
+      runId: "run-split-dialog-download",
+    });
+
+    await user.click(
+      await screen.findByLabelText(
+        "Open html preview for Split dialog download",
+      ),
+    );
+    await user.click(await screen.findByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    // Body previews stay disabled until the promoted lightbox finishes its exit
+    // animation, so wait it out before the click that must reach the sidebar.
+    const htmlChip = await screen.findByLabelText(
+      "Open html preview for Split dialog download",
+    );
+    await waitFor(() => {
+      expect(htmlChip).toBeEnabled();
+    });
+    click(htmlChip);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+    // The same node: the click swapped sidebar content in place instead of
+    // closing and reopening the pane.
+    expect(screen.getByTestId("artifact-sidebar")).toBe(sidebar);
+  });
+
+  it("keeps a composer upload preview in the lightbox while the sidebar is open", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.upload.success({
+      id: "upload-composer-photo",
+      filename: "photo.png",
+      contentType: "image/png",
+      size: 2048,
+      url: "https://example.com/photo.png",
+    });
+    setupHostedSiteArtifactPreview({
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
+      filename: "composer-guard.html",
+      htmlUrl: "https://composer-guard.sites.vm7.io",
+      label: "Composer guard",
+      runId: "run-composer-guard",
+    });
+
+    await user.click(
+      await screen.findByLabelText("Open html preview for Composer guard"),
+    );
+    await user.click(await screen.findByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+    });
+
+    await uploadFile(new File(["img"], "photo.png", { type: "image/png" }));
+    const composerPreview = await screen.findByLabelText(
+      "Open image preview for photo.png",
+    );
+    await waitFor(() => {
+      expect(composerPreview).toBeEnabled();
+    });
+    click(composerPreview);
+
+    // The pending upload opens the lightbox and leaves the sidebar on the
+    // artifact the user was reading.
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+    });
+    expect(
+      within(sidebar).getByTestId("artifact-sidebar-body-html"),
+    ).toBeInTheDocument();
+  });
+
+  it("swaps the open artifact sidebar to a different clicked artifact", async () => {
+    const user = userEvent.setup({ delay: null });
+    const videoUrl = "https://cdn.vm7.io/artifacts/test/sidebar-swap/demo.mp4";
     const audioUrl =
-      "https://cdn.vm7.io/artifacts/test/body-audio/briefing.mp3";
-    const videoUrl = "https://cdn.vm7.io/artifacts/test/body-video/demo.mp4";
-    const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
-    const markdownUrl =
-      "https://cdn.vm7.io/artifacts/test/body-markdown/release-notes.md";
-    const csvUrl =
-      "https://cdn.vm7.io/artifacts/test/body-csv/launch-metrics.csv";
-    const pdfUrl =
-      "https://cdn.vm7.io/artifacts/test/body-pdf/rollout-plan.pdf";
-    const htmlUrl =
-      "https://cdn.vm7.io/artifacts/test/body-html/launch-site.html";
-    const archiveUrl =
-      "https://cdn.vm7.io/artifacts/test/body-file/archive.bin";
-    context.mocks.http.get(markdownUrl, () => {
-      return new Response("# Release notes\n\nBody link rollout is ready.", {
-        headers: { "Content-Type": "text/markdown" },
-      });
-    });
-    context.mocks.http.get(csvUrl, () => {
-      return new Response("metric,value\nactivation,87", {
-        headers: { "Content-Type": "text/csv" },
-      });
-    });
-    context.mocks.http.get(archiveUrl, () => {
-      return new Response(null, { status: 500 });
-    });
+      "https://cdn.vm7.io/artifacts/test/sidebar-swap/briefing.mp3";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
-          id: "msg-body-preview-links",
+          id: "msg-sidebar-swap",
           role: "assistant",
-          content: `Generated preview links:\n\n${audioUrl}\n${videoUrl}\n${imageUrl}\n${markdownUrl}\n${csvUrl}\n${pdfUrl}\n[Launch site](${htmlUrl})\n${archiveUrl}`,
-          runId: "run-body-previews",
+          content: `Generated preview links:\n\n${videoUrl}\n${audioUrl}`,
+          runId: "run-sidebar-swap",
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
+    });
+
+    await user.click(await screen.findByLabelText("Preview demo.mp4"));
+    await user.click(await screen.findByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-body-video"),
+      ).toBeInTheDocument();
+    });
+
+    // Body previews stay disabled until the promoted lightbox finishes its exit
+    // animation, so wait it out before the click that must reach the sidebar.
+    const audioChip = screen.getByLabelText(
+      "Open audio preview for briefing.mp3",
+    );
+    await waitFor(() => {
+      expect(audioChip).toBeEnabled();
+    });
+    click(audioChip);
 
     await waitFor(() => {
-      expect(screen.getByText("Generated preview links:")).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Open audio preview for briefing.mp3"),
+        within(sidebar).getByTestId("artifact-sidebar-body-audio"),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
-      expect(screen.getByAltText("chart.png")).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Open markdown preview for release-notes.md"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Open csv preview for launch-metrics.csv"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Open pdf preview for rollout-plan.pdf"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Open html preview for Launch site"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
     });
+    expect(
+      within(sidebar).queryByTestId("artifact-sidebar-body-video"),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("artifact-sidebar")).toBe(sidebar);
+  });
+
+  it("opens media previews parsed from chat message links", async () => {
+    await setupBodyLinkPreviews();
 
     const bodyVideoPreview = screen.getByLabelText("Preview demo.mp4");
     expect(bodyVideoPreview).toHaveClass(
@@ -2079,6 +2592,139 @@ describe("zero attachment chips", () => {
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("renders short artifact video urls and links as preview cards", async () => {
+    const bareVideoUrl = "https://cdn.vm7.io/artifacts/0123456789.mp4";
+    const linkedVideoUrl = "https://cdn.vm7.io/artifacts/abcdefghij.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-short-artifact-video-links",
+          role: "assistant",
+          content: `${bareVideoUrl}\n[Generated clip](${linkedVideoUrl})`,
+          runId: "run-short-artifact-video-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Preview 0123456789.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
+  });
+
+  it("requires complete urls for flat artifact preview cards", async () => {
+    const incompletePath = "artifacts/97ngzkxdyn.mp4";
+    const rootRelativePath = "/artifacts/97ngzkxdyn.mp4";
+    const completeUrl = "https://cdn.vm7.io/artifacts/97ngzkxdyn.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-incomplete-short-artifact-video-links",
+          role: "assistant",
+          content: `${incompletePath}\n${rootRelativePath}\n${completeUrl}`,
+          runId: "run-incomplete-short-artifact-video-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Preview 97ngzkxdyn.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Preview 97ngzkxdyn.mp4")).toHaveLength(1);
+    expect(
+      screen.getByText(incompletePath, { exact: false }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(rootRelativePath, { exact: false }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders other short artifact urls with their preview ui", async () => {
+    const urls = {
+      audio: "https://cdn.vm7.io/artifacts/0000000001.mp3",
+      markdown: "https://cdn.vm7.io/artifacts/0000000002.md",
+      text: "https://cdn.vm7.io/artifacts/0000000003.txt",
+      json: "https://cdn.vm7.io/artifacts/0000000004.json",
+      csv: "https://cdn.vm7.io/artifacts/0000000005.csv",
+      pdf: "https://cdn.vm7.io/artifacts/0000000006.pdf",
+      html: "https://cdn.vm7.io/artifacts/0000000007.html",
+      file: "https://cdn.vm7.io/artifacts/0000000008.bin",
+      image: "https://cdn.vm7.io/artifacts/0000000009.png",
+    } as const;
+    context.mocks.http.get(urls.markdown, () => {
+      return new Response("# Notes", {
+        headers: { "Content-Type": "text/markdown" },
+      });
+    });
+    context.mocks.http.get(urls.text, () => {
+      return new Response("Transcript", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    context.mocks.http.get(urls.json, () => {
+      return new Response('{"status":"ready"}', {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.http.get(urls.csv, () => {
+      return new Response("metric,value\nactivation,87", {
+        headers: { "Content-Type": "text/csv" },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-other-short-artifact-links",
+          role: "assistant",
+          content: `${urls.audio}\n[Notes](${urls.markdown})\n${urls.text}\n[Status](${urls.json})\n${urls.csv}\n[Plan](${urls.pdf})\n[Short site](${urls.html})\n${urls.file}\n${urls.image}`,
+          runId: "run-other-short-artifact-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Open audio preview for 0000000001.mp3"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open markdown preview for 0000000002.md"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open text preview for 0000000003.txt"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open json preview for 0000000004.json"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open csv preview for 0000000005.csv"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open pdf preview for 0000000006.pdf"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open html preview for Short site"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Download 0000000008.bin"),
+    ).toBeInTheDocument();
+    expect(screen.getByAltText("0000000009.png")).toBeInTheDocument();
+  });
+
+  it("opens document previews parsed from chat message links", async () => {
+    await setupBodyLinkPreviews();
 
     click(screen.getByLabelText("Open markdown preview for release-notes.md"));
 
@@ -2155,7 +2801,7 @@ describe("zero attachment chips", () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-stable-image-preview",
           role: "assistant",
@@ -2173,15 +2819,19 @@ describe("zero attachment chips", () => {
     if (!preview) {
       throw new Error("Markdown image preview button not found");
     }
+    const spacer = preview.querySelector('span[aria-hidden="true"]');
     expect(preview).toHaveClass(
+      "relative",
+      "inline-flex",
       "aspect-[10/9]",
       "w-[200px]",
-      "max-w-full",
-      "cursor-pointer",
     );
+    expect(spacer).toHaveClass("block", "h-full", "w-full");
     expect(
       within(preview).getByTestId("markdown-image-preview-loading"),
-    ).toHaveClass("h-full", "w-full");
+    ).toHaveClass("absolute", "inset-0");
+    expect(image).toHaveAttribute("src", imageUrl);
+    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
 
     fireEvent.load(image);
 
@@ -2190,53 +2840,14 @@ describe("zero attachment chips", () => {
         within(preview).queryByTestId("markdown-image-preview-loading"),
       ).not.toBeInTheDocument();
     });
-    expect(preview).toHaveClass(
-      "aspect-[10/9]",
-      "w-[200px]",
-      "max-w-full",
-      "cursor-pointer",
-    );
-    expect(image).toHaveClass("h-full", "w-full", "object-contain");
-  });
+    expect(preview.querySelector('span[aria-hidden="true"]')).toBe(spacer);
+    expect(image).not.toHaveClass("opacity-0");
+    click(preview);
 
-  it("keeps markdown image preview dimensions stable while the image loads", async () => {
-    const imageUrl =
-      "https://cdn.vm7.io/artifacts/test/body-image/kitten-1280x720.png";
-    render(
-      <StoreProvider value={context.store}>
-        <Markdown source={`![1280x720](${imageUrl})`} mediaPreview />
-      </StoreProvider>,
-    );
-
-    const image = await screen.findByAltText("1280x720");
-    const preview = image.closest("button");
-    if (!preview) {
-      throw new Error("Markdown image preview button not found");
-    }
-    expect(preview).toHaveClass(
-      "aspect-[10/9]",
-      "w-[200px]",
-      "max-w-full",
-      "cursor-pointer",
-    );
+    const lightbox = await screen.findByTestId("attachment-lightbox");
     expect(
-      within(preview).getByTestId("markdown-image-preview-loading"),
-    ).toHaveClass("h-full", "w-full");
-
-    fireEvent.load(image);
-
-    await waitFor(() => {
-      expect(
-        within(preview).queryByTestId("markdown-image-preview-loading"),
-      ).not.toBeInTheDocument();
-    });
-    expect(preview).toHaveClass(
-      "aspect-[10/9]",
-      "w-[200px]",
-      "max-w-full",
-      "cursor-pointer",
-    );
-    expect(image).toHaveClass("h-full", "w-full", "object-contain");
+      within(lightbox).getByTestId("attachment-lightbox-image"),
+    ).toHaveAttribute("src", imageUrl);
   });
 
   it("renders canonical user markdown image syntax literally", async () => {
@@ -2244,7 +2855,7 @@ describe("zero attachment chips", () => {
       "https://cdn.vm7.io/artifacts/test/user-markdown-image/kitten-1280x720.png";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-markdown-image",
           role: "user",
@@ -2285,7 +2896,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-text-previews",
           role: "user",

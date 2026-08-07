@@ -26,15 +26,16 @@ export type ImageArtifactNavigationItem = {
 type ImageArtifactNavigation = {
   readonly next?: ImageArtifactNavigationItem;
   readonly previous?: ImageArtifactNavigationItem;
+  readonly role?: EventImageGroup["role"];
 };
 
 /**
- * Minimal shape of a chat message needed to scope image navigation. Images in a
- * message come from two sources: `attachFiles` (files the user attached) and the
- * rendered body `blocks` (image previews parsed from message content, e.g.
- * agent-generated images). Structurally satisfied by `EnrichedChatMessage`.
+ * Minimal shape of a chat event needed to scope image navigation. Images in a
+ * event come from two sources: `attachFiles` (files the user attached) and the
+ * rendered body `blocks` (image previews parsed from event content, e.g.
+ * agent-generated images). Structurally satisfied by `EnrichedChatEvent`.
  */
-type MessageImageSource = {
+type EventImageSource = {
   readonly attachFiles?: readonly {
     readonly url: string;
     readonly filename: string;
@@ -43,8 +44,9 @@ type MessageImageSource = {
   readonly blocks?: readonly BodyRenderBlock[];
 };
 
-type MessageImageGroup = {
-  readonly messages: readonly MessageImageSource[];
+type EventImageGroup = {
+  readonly role: "user" | "assistant";
+  readonly events: readonly EventImageSource[];
 };
 
 function isImageDescriptor(descriptor: {
@@ -61,7 +63,7 @@ function isImageDescriptor(descriptor: {
   );
 }
 
-type MessageImage = {
+type EventImage = {
   readonly url: string;
   readonly filename: string;
 };
@@ -101,9 +103,9 @@ function filenameFromMarkdownLink(label: string, url: string): string {
   return filenameFromImageUrl(url);
 }
 
-/** Ordered, de-duplicated images (url + filename) shown in a single message. */
-function messageImages(message: MessageImageSource): MessageImage[] {
-  const images: MessageImage[] = [];
+/** Ordered, de-duplicated images (url + filename) shown in a single event. */
+function eventImages(event: EventImageSource): EventImage[] {
+  const images: EventImage[] = [];
   const seen = new Set<string>();
   const add = (url: string, filename: string): void => {
     if (!seen.has(url)) {
@@ -112,12 +114,12 @@ function messageImages(message: MessageImageSource): MessageImage[] {
     }
   };
 
-  for (const file of message.attachFiles ?? []) {
+  for (const file of event.attachFiles ?? []) {
     if (isImageDescriptor(file)) {
       add(file.url, file.filename);
     }
   }
-  for (const block of message.blocks ?? []) {
+  for (const block of event.blocks ?? []) {
     if (block.type === "artifact") {
       if (block.signals.kind === "image") {
         add(block.signals.url, block.signals.filename);
@@ -148,21 +150,19 @@ function messageImages(message: MessageImageSource): MessageImage[] {
   return images;
 }
 
-function messageHasImageUrl(
-  message: MessageImageSource,
+function eventHasImageUrl(
+  event: EventImageSource,
   currentUrl: string,
 ): boolean {
-  return messageImages(message).some((image) => {
+  return eventImages(event).some((image) => {
     return artifactPreviewUrlsMatch(image.url, currentUrl);
   });
 }
 
-function scopedMessageImages(
-  messages: readonly MessageImageSource[],
-): MessageImage[] {
-  const images: MessageImage[] = [];
-  for (const message of messages) {
-    for (const image of messageImages(message)) {
+function scopedEventImages(events: readonly EventImageSource[]): EventImage[] {
+  const images: EventImage[] = [];
+  for (const event of events) {
+    for (const image of eventImages(event)) {
       if (
         images.some((candidate) => {
           return artifactPreviewUrlsMatch(candidate.url, image.url);
@@ -176,16 +176,21 @@ function scopedMessageImages(
   return images;
 }
 
-function imageScopes(groups: readonly MessageImageGroup[]): MessageImage[][] {
+type EventImageScope = {
+  readonly images: readonly EventImage[];
+  readonly role: EventImageGroup["role"];
+};
+
+function imageScopes(groups: readonly EventImageGroup[]): EventImageScope[] {
   return groups.flatMap((group) => {
-    const images = scopedMessageImages(group.messages);
-    return images.length > 0 ? [images] : [];
+    const images = scopedEventImages(group.events);
+    return images.length > 0 ? [{ images, role: group.role }] : [];
   });
 }
 
-export function equalMessageImageGroups(
-  previous: readonly MessageImageGroup[],
-  next: readonly MessageImageGroup[],
+export function equalEventImageGroups(
+  previous: readonly EventImageGroup[],
+  next: readonly EventImageGroup[],
 ): boolean {
   if (previous === next) {
     return true;
@@ -198,9 +203,10 @@ export function equalMessageImageGroups(
       const nextScope = nextScopes[scopeIndex];
       return (
         nextScope !== undefined &&
-        scope.length === nextScope.length &&
-        scope.every((image, imageIndex) => {
-          const nextImage = nextScope[imageIndex];
+        scope.role === nextScope.role &&
+        scope.images.length === nextScope.images.length &&
+        scope.images.every((image, imageIndex) => {
+          const nextImage = nextScope.images[imageIndex];
           return (
             nextImage !== undefined &&
             image.url === nextImage.url &&
@@ -223,20 +229,20 @@ function artifactMetadataForUrl(
 
 /**
  * Navigate image previews within the displayed image scope for `currentUrl`.
- * The rendered chat message group is the scope boundary, so agent and human
- * messages use the same rule: extract the images visible in the group that
+ * The rendered chat event group is the scope boundary, so agent and human
+ * events use the same rule: extract the images visible in the group that
  * contains the current image. Run artifacts only enrich metadata when
  * available; generated/hosted artifacts that live in the run but are not shown
- * in rendered messages are excluded.
+ * in rendered events are excluded.
  */
-export function currentMessageImageArtifactNavigation(
+export function currentEventImageArtifactNavigation(
   runs: readonly ChatThreadArtifactRun[],
-  groups: readonly MessageImageGroup[],
+  groups: readonly EventImageGroup[],
   currentUrl: string,
 ): ImageArtifactNavigation {
   const group = groups.find((candidateGroup) => {
-    return candidateGroup.messages.some((message) => {
-      return messageHasImageUrl(message, currentUrl);
+    return candidateGroup.events.some((event) => {
+      return eventHasImageUrl(event, currentUrl);
     });
   });
 
@@ -251,8 +257,8 @@ export function currentMessageImageArtifactNavigation(
     }
   }
 
-  const images: ImageArtifactNavigationItem[] = scopedMessageImages(
-    group.messages,
+  const images: ImageArtifactNavigationItem[] = scopedEventImages(
+    group.events,
   ).map((image) => {
     const artifact = artifactMetadataForUrl(artifacts, image.url);
     if (artifact) {
@@ -276,6 +282,7 @@ export function currentMessageImageArtifactNavigation(
     previous: currentIndex > 0 ? images[currentIndex - 1] : undefined,
     next:
       currentIndex < images.length - 1 ? images[currentIndex + 1] : undefined,
+    role: group.role,
   };
 }
 

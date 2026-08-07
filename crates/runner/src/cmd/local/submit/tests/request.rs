@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
 use super::super::{SubmitArgs, run_submit_with_home};
-use super::support::{submit_args_for_test, wait_for_job_and_write_success};
+use super::support::{run_submit_and_write_success, submit_args_for_test};
 use crate::paths::HomePaths;
 
 #[tokio::test]
@@ -9,18 +9,14 @@ async fn submit_defaults_profile_and_writes_default_partition() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let group = "test/group";
-    let group_dir = home.groups_dir().join(group);
-    let watcher = tokio::spawn(wait_for_job_and_write_success(
-        group_dir,
-        crate::profile::DEFAULT_PROFILE.to_owned(),
-    ));
 
-    let code = run_submit_with_home(
+    let (code, request) = run_submit_and_write_success(
         SubmitArgs {
             group: group.into(),
             prompt: "hello".into(),
             cli_agent_type: "claude-code".into(),
             profile: None,
+            chat_thread_id: None,
             session_id: None,
             feature_flags: vec![],
             env: vec![],
@@ -32,7 +28,6 @@ async fn submit_defaults_profile_and_writes_default_partition() {
     )
     .await
     .unwrap();
-    let request = watcher.await.unwrap();
 
     assert_eq!(code, ExitCode::SUCCESS);
     assert_eq!(request.prompt, "hello");
@@ -49,18 +44,14 @@ async fn submit_writes_non_default_profile_partition() {
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let group = "test/group";
     let profile = "vm0/large";
-    let group_dir = home.groups_dir().join(group);
-    let watcher = tokio::spawn(wait_for_job_and_write_success(
-        group_dir,
-        profile.to_owned(),
-    ));
 
-    let code = run_submit_with_home(
+    let (code, request) = run_submit_and_write_success(
         SubmitArgs {
             group: group.into(),
             prompt: "hello".into(),
             cli_agent_type: "claude-code".into(),
             profile: Some(profile.into()),
+            chat_thread_id: None,
             session_id: None,
             feature_flags: vec![],
             env: vec![],
@@ -72,29 +63,24 @@ async fn submit_writes_non_default_profile_partition() {
     )
     .await
     .unwrap();
-    let request = watcher.await.unwrap();
 
     assert_eq!(code, ExitCode::SUCCESS);
     assert_eq!(request.profile.as_deref(), Some(profile));
 }
 
 #[tokio::test]
-async fn submit_serializes_feature_flags() {
+async fn submit_serializes_feature_flags_and_identity_fields() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let group = "test/group";
-    let group_dir = home.groups_dir().join(group);
-    let watcher = tokio::spawn(wait_for_job_and_write_success(
-        group_dir,
-        crate::profile::DEFAULT_PROFILE.to_owned(),
-    ));
 
-    let code = run_submit_with_home(
+    let (code, request) = run_submit_and_write_success(
         SubmitArgs {
             group: group.into(),
             prompt: "hello".into(),
             cli_agent_type: "codex".into(),
             profile: None,
+            chat_thread_id: Some("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".parse().unwrap()),
             session_id: Some("sess-123".into()),
             feature_flags: vec!["alpha=true".into(), "beta=false".into()],
             env: vec![],
@@ -106,15 +92,48 @@ async fn submit_serializes_feature_flags() {
     )
     .await
     .unwrap();
-    let request = watcher.await.unwrap();
     let flags = request.feature_flags.as_ref().unwrap();
 
     assert_eq!(code, ExitCode::SUCCESS);
     assert_eq!(request.prompt, "hello");
     assert_eq!(request.cli_agent_type, "codex");
+    assert_eq!(
+        request.reuse_key.as_deref(),
+        Some("thread:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    );
     assert_eq!(request.session_id.as_deref(), Some("sess-123"));
     assert_eq!(flags.get("alpha"), Some(&true));
     assert_eq!(flags.get("beta"), Some(&false));
+}
+
+#[tokio::test]
+async fn submit_keeps_session_only_job_without_reuse_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().to_path_buf());
+    let group = "test/group";
+
+    let (code, request) = run_submit_and_write_success(
+        SubmitArgs {
+            group: group.into(),
+            prompt: "hello".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: None,
+            chat_thread_id: None,
+            session_id: Some("sess-123".into()),
+            feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
+            timeout: 5,
+            active_inputs: vec![],
+        },
+        home,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(code, ExitCode::SUCCESS);
+    assert_eq!(request.session_id.as_deref(), Some("sess-123"));
+    assert!(request.reuse_key.is_none());
 }
 
 #[tokio::test]
@@ -122,11 +141,6 @@ async fn submit_serializes_env_and_secret_env() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let group = "test/group";
-    let group_dir = home.groups_dir().join(group);
-    let watcher = tokio::spawn(wait_for_job_and_write_success(
-        group_dir,
-        crate::profile::DEFAULT_PROFILE.to_owned(),
-    ));
 
     let mut args = submit_args_for_test();
     args.group = group.into();
@@ -143,8 +157,7 @@ async fn submit_serializes_env_and_secret_env() {
         "PRIVATE_KEY=-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----".into(),
     ];
 
-    let code = run_submit_with_home(args, home).await.unwrap();
-    let request = watcher.await.unwrap();
+    let (code, request) = run_submit_and_write_success(args, home).await.unwrap();
     let environment = request.environment.as_ref().unwrap();
     let secret_environment = request.secret_environment.as_ref().unwrap();
 

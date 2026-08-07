@@ -1,10 +1,7 @@
 import {
-  parseCustomConnectorProposalUrl,
   parseConnectorAuthorizeUrl,
   type ConnectorActionDescriptor,
   type ConnectorSignals,
-  type CustomConnectorActionDescriptor,
-  type CustomConnectorSignals,
 } from "./connector-action-block.ts";
 import {
   parsePermissionActionUrl,
@@ -65,11 +62,6 @@ export type BodyRenderBlock =
       signals: ConnectorSignals;
     }
   | {
-      type: "custom-connector-action";
-      resourceKey: string;
-      signals: CustomConnectorSignals;
-    }
-  | {
       type: "permission-action";
       resourceKey: string;
       signals: PermissionSignals;
@@ -106,11 +98,6 @@ export type ParsedBodyBlock =
       type: "connector-action";
       resourceKey: string;
       descriptor: ConnectorActionDescriptor;
-    }
-  | {
-      type: "custom-connector-action";
-      resourceKey: string;
-      descriptor: CustomConnectorActionDescriptor;
     }
   | {
       type: "permission-action";
@@ -158,11 +145,18 @@ type OpenMarkdownFence = {
   lines: string[];
 };
 
+interface ParseBodyBlocksOptions {
+  readonly previews?: boolean;
+  readonly browserThreadId?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLATFORM_FILE_PATH_PATTERN = /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
+const LEGACY_PLATFORM_FILE_PATH_PATTERN =
+  /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
+const SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/[0-9a-z]{10}\.[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
@@ -402,11 +396,15 @@ function isPlatformFileUrl(url: string): boolean {
     return false;
   }
   const parsed = new URL(url, baseUrl);
-  if (!PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname)) {
+  const isLegacyPath = LEGACY_PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname);
+  const isShortArtifactPath = SHORT_ARTIFACT_FILE_PATH_PATTERN.test(
+    parsed.pathname,
+  );
+  if (!isLegacyPath && !isShortArtifactPath) {
     return false;
   }
   if (!hasExplicitUrlOrigin(url)) {
-    return true;
+    return isLegacyPath;
   }
   return (
     platformFileHosts().has(parsed.host) ||
@@ -517,22 +515,23 @@ function renderExtractedPreviewLine(
   const { title, url } = extracted;
   const attachment = previewAttachmentFromUrl(url, title);
   const kind = classifyChatAttachment(attachment);
+  const previewable = isPreviewableChatUrl(url);
 
   if (
     extracted.source === "markdown-link" &&
-    (kind === "image" || kind === "video")
+    (kind === "image" || (kind === "video" && !previewable))
   ) {
     return { renderKind: "markdown", line };
   }
 
-  if (kind === "image" && isPreviewableChatUrl(url)) {
+  if (kind === "image" && previewable) {
     return {
       renderKind: "markdown",
       line: markdownImageLine(url, attachment.filename),
     };
   }
 
-  if (isBodyPreviewKind(kind) && isPreviewableChatUrl(url)) {
+  if (isBodyPreviewKind(kind) && previewable) {
     return {
       renderKind: "preview",
       preview: { filename: attachment.filename, url, kind },
@@ -752,12 +751,14 @@ function extractActionUrlFromLine(line: string): string | null {
   return urls.length === 1 ? urls[0]! : null;
 }
 
-function createActionBlockFromLine(line: string): Extract<
+function createActionBlockFromLine(
+  line: string,
+  browserThreadId: string | undefined,
+): Extract<
   ParsedBodyBlock,
   {
     type:
       | "connector-action"
-      | "custom-connector-action"
       | "permission-action"
       | "computer-use-authorization"
       | "plan-upgrade"
@@ -776,15 +777,6 @@ function createActionBlockFromLine(line: string): Extract<
       type: "connector-action",
       resourceKey: connectorAction.originalUrl,
       descriptor: connectorAction,
-    };
-  }
-
-  const customConnectorAction = parseCustomConnectorProposalUrl(url);
-  if (customConnectorAction) {
-    return {
-      type: "custom-connector-action",
-      resourceKey: customConnectorAction.originalUrl,
-      descriptor: customConnectorAction,
     };
   }
 
@@ -824,11 +816,11 @@ function createActionBlockFromLine(line: string): Extract<
     };
   }
 
-  const browserSession = parseBrowserSessionUrl(url, line);
-  if (browserSession) {
+  const browserSession = parseBrowserSessionUrl(url);
+  if (browserSession && browserSession.threadId === browserThreadId) {
     return {
       type: "browser-session",
-      resourceKey: browserSession.fallbackMarkdown,
+      resourceKey: browserSession.href,
       descriptor: browserSession,
     };
   }
@@ -946,7 +938,7 @@ function markdownTableRowIndexes(lines: string[]): Set<number> {
 
 export function parseBodyBlocks(
   content: string,
-  options: { previews?: boolean } = {},
+  options: ParseBodyBlocksOptions = {},
 ): {
   cleanContent: string;
   blocks: ParsedBodyBlock[];
@@ -1016,7 +1008,9 @@ export function parseBodyBlocks(
       continue;
     }
 
-    const actionBlock = previews ? createActionBlockFromLine(line) : null;
+    const actionBlock = previews
+      ? createActionBlockFromLine(line, options.browserThreadId)
+      : null;
     if (actionBlock) {
       if (actionBlock.type === "connector-action") {
         const retainedMarkdown = retainedConnectorActionMarkdown(

@@ -59,7 +59,7 @@ function connectorIdentity(
   overrides: Partial<ConnectorIdentity> = {},
 ): ConnectorIdentity {
   return {
-    connectorRef: "github",
+    connectorSlug: "github",
     label: "GitHub",
     visibility: "available",
     credentialResolution: "network-boundary",
@@ -127,12 +127,12 @@ function resolvedUrl(
 }
 
 function connectorResponse(
-  connectorRef: string,
+  connectorSlug: string,
   connectionStatus: ConnectorResponse["connectionStatus"] = "connected",
 ): ConnectorResponse {
   return {
     id: "00000000-0000-4000-8000-000000000002",
-    type: connectorRef,
+    slug: connectorSlug,
     authMethod: "oauth",
     externalId: "external-1",
     externalUsername: "user",
@@ -168,13 +168,13 @@ function stubDiagnostic(
 }
 
 function stubConnector(
-  connectorRef: string,
-  response: ConnectorResponse | null = connectorResponse(connectorRef),
+  connectorSlug: string,
+  response: ConnectorResponse | null = connectorResponse(connectorSlug),
   onRequest?: () => void,
   baseUrl = API_BASE_URL,
 ): void {
   server.use(
-    http.get(`${baseUrl}/api/zero/connectors/${connectorRef}`, () => {
+    http.get(`${baseUrl}/api/zero/connectors/${connectorSlug}`, () => {
       onRequest?.();
       if (response === null) {
         return HttpResponse.json(
@@ -188,37 +188,39 @@ function stubConnector(
 }
 
 function stubAgentConnectors(
-  enabledTypes: string[],
+  enabledConnectorSlugs: string[],
   onRequest?: () => void,
   baseUrl = API_BASE_URL,
 ): void {
   server.use(
     http.get(`${baseUrl}/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
       onRequest?.();
-      return HttpResponse.json({ enabledTypes });
+      return HttpResponse.json({
+        enabledConnectorSlugs: enabledConnectorSlugs,
+      });
     }),
   );
 }
 
 function stubResolvedDependencies(
-  connectorRef = "github",
+  connectorSlug = "github",
   options: {
     readonly connector?: ConnectorResponse | null;
-    readonly enabledTypes?: string[];
+    readonly enabledConnectorSlugs?: string[];
     readonly baseUrl?: string;
   } = {},
 ): void {
   const baseUrl = options.baseUrl ?? API_BASE_URL;
   stubConnector(
-    connectorRef,
+    connectorSlug,
     options.connector === undefined
-      ? connectorResponse(connectorRef)
+      ? connectorResponse(connectorSlug)
       : options.connector,
     undefined,
     baseUrl,
   );
   stubAgentConnectors(
-    options.enabledTypes ?? [connectorRef],
+    options.enabledConnectorSlugs ?? [connectorSlug],
     undefined,
     baseUrl,
   );
@@ -266,7 +268,7 @@ describe("zero connector check command", () => {
       stubDiagnostic(
         resolvedUrl({
           connector: connectorIdentity({
-            connectorRef: "server-only",
+            connectorSlug: "server-only",
             label: "Server Only",
           }),
           environmentNames: ["SERVER_ONLY_TOKEN"],
@@ -297,7 +299,7 @@ describe("zero connector check command", () => {
         mode: "url",
         method: "POST",
         url: "https://service.example.com/api/items",
-        connectorRef: "server-only",
+        connectorSlug: "server-only",
         environmentName: "SERVER_ONLY_TOKEN",
       } satisfies ConnectorCheckRequest);
       expect(getOutput()).toContain(
@@ -368,12 +370,12 @@ describe("zero connector check command", () => {
         'Result: "contents:write" is in the deny list — denied.',
       );
       expect(getOutput()).toContain(
-        "zero connector permission-request github --permission contents:write",
+        "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
       );
       expect(getOutput()).not.toContain("--callback-prompt");
     });
 
-    it("prints a callback permission command example in the current web chat", async () => {
+    it("requires a URL diagnostic before printing a callback permission command", async () => {
       vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
       vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
       stubDiagnostic(
@@ -393,9 +395,10 @@ describe("zero connector check command", () => {
       ]);
 
       expect(getOutput()).toContain(
-        'zero connector permission-request github --permission contents:write --callback-prompt "SOMETHING_AGENT_WANT_TO_BE_CALLBACK"',
+        "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
       );
-      expect(getOutput()).toContain("automatically start the next round");
+      expect(getOutput()).not.toContain("--callback-prompt");
+      expect(getOutput()).not.toContain("automatically start the next round");
     });
 
     it.each([
@@ -461,9 +464,9 @@ describe("zero connector check command", () => {
   });
 
   describe("resolved identities and local responsibilities", () => {
-    it("uses a server-only connector ref for local presence, connection, and authorization checks", async () => {
+    it("uses a server-only connector slug for local presence, connection, and authorization checks", async () => {
       const serverOnlyIdentity = connectorIdentity({
-        connectorRef: "server-only",
+        connectorSlug: "server-only",
         label: "Server Only Connector",
       });
       let connectorCalls = 0;
@@ -498,7 +501,7 @@ describe("zero connector check command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        "SERVER_ONLY_TOKEN is managed by the Server Only Connector connector (type: server-only).",
+        "SERVER_ONLY_TOKEN is managed by the Server Only Connector connector (slug: server-only).",
       );
       expect(output).toContain(
         "Checking process.env.SERVER_ONLY_TOKEN: present",
@@ -543,35 +546,38 @@ describe("zero connector check command", () => {
         name: "unavailable",
         identity: connectorIdentity({ visibility: "unavailable" }),
         connector: null,
-        enabledTypes: [] as string[],
+        enabledConnectorSlugs: [] as string[],
         expected: "not available for this account",
       },
       {
         name: "disconnected but authorized",
         identity: connectorIdentity(),
         connector: null,
-        enabledTypes: ["github"],
+        enabledConnectorSlugs: ["github"],
         expected: "authorized for this agent, but it is not connected",
       },
       {
         name: "expired",
         identity: connectorIdentity(),
         connector: connectorResponse("github", "reconnect-required"),
-        enabledTypes: ["github"],
+        enabledConnectorSlugs: ["github"],
         expected: "needs to be reconnected",
       },
       {
         name: "connected but unauthorized",
         identity: connectorIdentity(),
         connector: connectorResponse("github"),
-        enabledTypes: [] as string[],
+        enabledConnectorSlugs: [] as string[],
         expected: "not authorized for this agent",
       },
     ])(
       "renders $name connector state",
-      async ({ identity, connector, enabledTypes, expected }) => {
+      async ({ identity, connector, enabledConnectorSlugs, expected }) => {
         stubDiagnostic(resolvedEnvironment({ connector: identity }));
-        stubResolvedDependencies("github", { connector, enabledTypes });
+        stubResolvedDependencies("github", {
+          connector,
+          enabledConnectorSlugs,
+        });
 
         await checkConnectorCommand.parseAsync([
           "node",
@@ -657,7 +663,7 @@ describe("zero connector check command", () => {
         stubDiagnostic(resolvedEnvironment(), undefined, baseUrl);
         stubResolvedDependencies("github", {
           connector: null,
-          enabledTypes: [],
+          enabledConnectorSlugs: [],
           baseUrl,
         });
 
@@ -752,7 +758,7 @@ describe("zero connector check command", () => {
       stubDiagnostic({
         outcome: "unresolved-dynamic-base",
         connector: connectorIdentity({
-          connectorRef: "reap",
+          connectorSlug: "reap",
           label: "Reap",
         }),
       });
@@ -863,10 +869,12 @@ describe("zero connector check command", () => {
         expect(getOutput()).not.toContain("allow list: [");
         expect(getOutput()).not.toContain("deny list:  [");
         expect(getOutput()).not.toContain("ask list:   [");
-        const requestCommand =
-          "zero connector permission-request github --permission contents:read";
+        const requestCommand = "zero connector permission-request";
         if (policy.outcome === "deny" || policy.outcome === "ask") {
-          expect(getOutput()).toContain(requestCommand);
+          expect(getOutput()).toContain(
+            "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
+          );
+          expect(getOutput()).not.toContain(requestCommand);
         } else {
           expect(getOutput()).not.toContain(requestCommand);
         }
@@ -907,7 +915,7 @@ describe("zero connector check command", () => {
       expect(getOutput()).toContain('"metadata:read" is in the ask list');
       expect(getOutput()).not.toContain("--permission contents:read");
       expect(getOutput()).toContain(
-        "zero connector permission-request github --permission metadata:read",
+        "zero connector permission-request 'github' --permission 'metadata:read' --url 'https://api.github.com/repos/vm0-ai/vm0' --method 'GET'",
       );
     });
 
@@ -972,7 +980,7 @@ describe("zero connector check command", () => {
         expect(getOutput()).toContain(expected);
         if (expectsGuidance) {
           expect(getOutput()).toContain(
-            "zero connector permission-request github --permission __unknown__",
+            "zero connector permission-request 'github' --permission '__unknown__' --url 'https://api.github.com/not-a-known-endpoint' --method 'GET'",
           );
         } else {
           expect(getOutput()).not.toContain("--permission __unknown__");
@@ -1022,7 +1030,7 @@ describe("zero connector check command", () => {
           "missing-connector",
         ],
         result: { outcome: "unknown-connector" },
-        expected: "Unknown connector type: missing-connector",
+        expected: "Unknown connector slug: missing-connector",
       },
       {
         name: "unknown environment",
@@ -1098,7 +1106,7 @@ describe("zero connector check command", () => {
         result: {
           outcome: "unresolved-dynamic-base",
           connector: connectorIdentity({
-            connectorRef: "reap",
+            connectorSlug: "reap",
             label: "Reap",
           }),
         },
@@ -1129,8 +1137,8 @@ describe("zero connector check command", () => {
       stubDiagnostic({
         outcome: "ambiguous",
         candidates: [
-          { connectorRef: "zeta", label: "Zeta" },
-          { connectorRef: "alpha", label: "Alpha" },
+          { connectorSlug: "zeta", label: "Zeta" },
+          { connectorSlug: "alpha", label: "Alpha" },
         ],
       });
 

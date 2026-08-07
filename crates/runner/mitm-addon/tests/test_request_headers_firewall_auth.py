@@ -340,7 +340,7 @@ async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
         else "auth_failed"
     )
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == expected_error
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
 
 
 async def test_firewall_allow_header_auth_cancellation_restores_probe_state(
@@ -381,7 +381,7 @@ async def test_firewall_allow_header_auth_cancellation_restores_probe_state(
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert metadata_keys.FIREWALL_API_ID not in flow.metadata
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
 
 
 @pytest.mark.parametrize(
@@ -430,30 +430,27 @@ async def test_capture_enabled_body_dependent_firewall_auth_does_not_install_req
         ),
     )
     get_headers = AsyncMock()
-    used_auth_base_header_admission = False
+    admission_key = (
+        metadata_keys.AUTH_BASE_FORWARD_ADMISSION
+        if "base" in auth_config
+        else metadata_keys.AWS_SIGV4_BODY_ADMISSION
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
-        if "base" in auth_config:
-            used_auth_base_header_admission = True
-            assert requestheaders_result is None
-            assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION in flow.metadata
-            mitm_addon.error(flow)
-        else:
-            await await_requestheaders_result(requestheaders_result)
+        assert requestheaders_result is None
+        assert admission_key in flow.metadata
+        mitm_addon.error(flow)
 
     get_headers.assert_not_called()
     _assert_no_request_stream(flow)
     assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
-    if used_auth_base_header_admission:
-        assert metadata_keys.VM_RUN_ID in flow.metadata
-        assert metadata_keys.ORIGINAL_URL in flow.metadata
-    else:
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
-        assert metadata_keys.ORIGINAL_URL not in flow.metadata
+    assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
+    assert metadata_keys.VM_RUN_ID in flow.metadata
+    assert metadata_keys.ORIGINAL_URL in flow.metadata
 
 
 def test_capture_enabled_firewall_block_does_not_install_request_stream(

@@ -17,28 +17,38 @@
 
 #![allow(dead_code)] // consumed across multiple test binaries
 
+mod process_session;
 mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::ffi::OsStr;
+use std::future::Future;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::process::{Output, Stdio};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU64, AtomicUsize, Ordering},
 };
+use std::task::Poll;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot};
+
+use process_session::CommandSession;
 
 pub type SystemLogOverrideGuard = system_log::SystemLogOverrideGuard;
 
 static UNIQUE_TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+const COMMAND_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// 128 + SIGTERM(15). Rust / glibc's default signal handler maps a
 /// SIGTERM-terminated process to this exit code.
@@ -51,6 +61,16 @@ pub const SIGKILL_EXIT: i32 = 137;
 /// Normal clean exit. Reap should never fire on this path.
 pub const CLEAN_EXIT: i32 = 0;
 
+pub const MOCK_TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
+pub const MOCK_CODEX_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
+pub const MOCK_CODEX_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+pub const MOCK_POST_RESULT_READY_EVENT: &str = "vm0_mock_post_result_ready";
+pub const MOCK_POST_RESULT_ACTIVITY_ONE_EVENT: &str = "vm0_mock_post_result_activity_1_ready";
+pub const MOCK_POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_ready";
+pub const MOCK_POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_deadline_survived";
+pub const MOCK_POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
+pub const MOCK_POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
+
 /// Documented maximum number of stderr lines returned in
 /// `guest_agent::cli::CliExecutionResult`.
 pub const CLI_STDERR_RESULT_MAX_LINES: usize = 200;
@@ -58,7 +78,7 @@ pub const CLI_STDERR_RESULT_MAX_LINES: usize = 200;
 /// Documented maximum byte length for one returned stderr line after CRLF normalization.
 pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 
-/// Integration contract for one accepted ordinary CLI stdout record.
+/// Integration contract for one accepted Claude Code stdout record.
 pub const CLI_STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 
 /// Documented replacement for a stderr line that exceeds the diagnostic limit.
@@ -77,11 +97,132 @@ pub fn unique_temp_path(prefix: &str) -> PathBuf {
     ))
 }
 
+pub async fn command_output_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+    timeout_context: &str,
+) -> io::Result<Output> {
+    CommandSession::configure(command);
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()?;
+    let session = CommandSession::from_child(&child)?;
+    let (Some(mut stdout), Some(mut stderr)) = (child.stdout.take(), child.stderr.take()) else {
+        return match terminate_command(&mut child, &session).await {
+            Ok(_) => Err(io::Error::other(
+                "captured child omitted its stdout or stderr pipe",
+            )),
+            Err(error) => Err(io::Error::other(format!(
+                "captured child omitted its stdout or stderr pipe; cleanup failed: {error}"
+            ))),
+        };
+    };
+    let mut stdout_bytes = Vec::new();
+    let mut stderr_bytes = Vec::new();
+
+    let output = {
+        let wait_with_output = async {
+            let (stdout_result, stderr_result) = tokio::join!(
+                stdout.read_to_end(&mut stdout_bytes),
+                stderr.read_to_end(&mut stderr_bytes),
+            );
+            let status = child.wait().await?;
+            stdout_result?;
+            stderr_result?;
+            Ok(Output {
+                status,
+                stdout: stdout_bytes,
+                stderr: stderr_bytes,
+            })
+        };
+        tokio::time::timeout(timeout, wait_with_output).await
+    };
+
+    match output {
+        Ok(output) => output,
+        Err(_) => match terminate_command(&mut child, &session).await {
+            Ok(_) => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                timeout_context.to_string(),
+            )),
+            Err(error) => Err(io::Error::other(format!(
+                "{timeout_context}; timed-out command cleanup failed: {error}"
+            ))),
+        },
+    }
+}
+
+async fn terminate_command(
+    child: &mut tokio::process::Child,
+    session: &CommandSession,
+) -> Result<std::process::ExitStatus, String> {
+    let direct_kill_error = child.start_kill().err();
+    let deadline = tokio::time::Instant::now() + COMMAND_CLEANUP_TIMEOUT;
+    let session_error = session
+        .kill_members(deadline, COMMAND_CLEANUP_TIMEOUT)
+        .await
+        .err();
+    let wait_result = wait_for_child_until(child, deadline).await;
+
+    match (session_error, wait_result) {
+        (None, Ok(status)) => Ok(status),
+        (Some(session_error), Ok(status)) => Err(command_cleanup_error(
+            direct_kill_error,
+            Some(session_error),
+            format!("killed child status: {status}"),
+        )),
+        (session_error, Err(wait_error)) => Err(command_cleanup_error(
+            direct_kill_error,
+            session_error,
+            wait_error,
+        )),
+    }
+}
+
+async fn wait_for_child_until(
+    child: &mut tokio::process::Child,
+    deadline: tokio::time::Instant,
+) -> Result<std::process::ExitStatus, String> {
+    match child.try_wait() {
+        Ok(Some(status)) => return Ok(status),
+        Ok(None) => {}
+        Err(error) => return Err(format!("wait after kill failed: {error}")),
+    }
+
+    match tokio::time::timeout_at(deadline, child.wait()).await {
+        Ok(Ok(status)) => Ok(status),
+        Ok(Err(error)) => Err(format!("wait after kill failed: {error}")),
+        Err(_) => Err(format!(
+            "wait after kill timed out after {}ms",
+            COMMAND_CLEANUP_TIMEOUT.as_millis()
+        )),
+    }
+}
+
+fn command_cleanup_error(
+    direct_kill_error: Option<io::Error>,
+    session_error: Option<String>,
+    wait_result: String,
+) -> String {
+    let mut errors = Vec::new();
+    if let Some(direct_kill_error) = direct_kill_error {
+        errors.push(format!("start kill failed: {direct_kill_error}"));
+    }
+    if let Some(session_error) = session_error {
+        errors.push(format!("session cleanup failed: {session_error}"));
+    }
+    errors.push(wait_result);
+    errors.join("; ")
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordedRequest {
     pub path: String,
     pub authorization: Option<String>,
     pub content_type: Option<String>,
+    pub client_request_id: Option<String>,
     pub body: String,
 }
 
@@ -232,6 +373,8 @@ impl ControlledRequest {
 pub struct ControlledHttpServer {
     pub base_url: String,
     requests: Arc<AtomicUsize>,
+    completed_responses: Arc<AtomicUsize>,
+    recorded_requests: Arc<Mutex<Vec<RecordedRequest>>>,
     request_rx: mpsc::UnboundedReceiver<ControlledRequest>,
     handle: tokio::task::JoinHandle<()>,
 }
@@ -246,17 +389,26 @@ impl ControlledHttpServer {
             .map_err(|error| format!("controlled HTTP server local_addr: {error}"))?;
         let requests = Arc::new(AtomicUsize::new(0));
         let task_requests = Arc::clone(&requests);
+        let completed_responses = Arc::new(AtomicUsize::new(0));
+        let task_completed_responses = Arc::clone(&completed_responses);
+        let recorded_requests = Arc::new(Mutex::new(Vec::new()));
+        let task_recorded_requests = Arc::clone(&recorded_requests);
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let handle = tokio::spawn(async move {
             while let Ok((mut socket, _peer)) = listener.accept().await {
                 let connection_tx = request_tx.clone();
                 let connection_requests = Arc::clone(&task_requests);
+                let connection_completed_responses = Arc::clone(&task_completed_responses);
+                let connection_recorded_requests = Arc::clone(&task_recorded_requests);
                 tokio::spawn(async move {
                     let Ok(request) = read_http_request(&mut socket).await else {
                         let _ = write_http_response(&mut socket, 400).await;
                         return;
                     };
                     connection_requests.fetch_add(1, Ordering::SeqCst);
+                    if let Ok(mut requests) = connection_recorded_requests.lock() {
+                        requests.push(request.clone());
+                    }
                     let (response, response_rx) = oneshot::channel();
                     if connection_tx
                         .send(ControlledRequest { request, response })
@@ -268,6 +420,7 @@ impl ControlledHttpServer {
                         return;
                     };
                     let _ = write_http_response(&mut socket, status).await;
+                    connection_completed_responses.fetch_add(1, Ordering::SeqCst);
                 });
             }
         });
@@ -275,6 +428,8 @@ impl ControlledHttpServer {
         Ok(Self {
             base_url: format!("http://{addr}"),
             requests,
+            completed_responses,
+            recorded_requests,
             request_rx,
             handle,
         })
@@ -289,6 +444,17 @@ impl ControlledHttpServer {
 
     pub fn request_count(&self) -> usize {
         self.requests.load(Ordering::SeqCst)
+    }
+
+    pub fn completed_response_count(&self) -> usize {
+        self.completed_responses.load(Ordering::SeqCst)
+    }
+
+    pub fn requests(&self) -> Result<Vec<RecordedRequest>, String> {
+        self.recorded_requests
+            .lock()
+            .map(|requests| requests.clone())
+            .map_err(|_| "controlled HTTP request mutex poisoned".to_string())
     }
 }
 
@@ -324,7 +490,6 @@ impl Drop for RunFilesGuard {
 
 fn cleanup_run_files_for_paths(paths: &guest_agent::paths::GuestPaths) {
     let _ = std::fs::remove_file(paths.agent_log_file());
-    let _ = std::fs::remove_file(paths.event_error_flag());
     let _ = std::fs::remove_file(paths.session_id_file());
     let _ = std::fs::remove_file(paths.session_history_path_file());
     let _ = std::fs::remove_file(paths.sandbox_ops_file());
@@ -367,6 +532,7 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
 
     let mut authorization = None;
     let mut content_type = None;
+    let mut client_request_id = None;
     let mut content_length = 0usize;
     for line in header_lines.lines() {
         let Some((name, value)) = line.split_once(':') else {
@@ -379,6 +545,9 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
         }
         if trimmed_name.eq_ignore_ascii_case("content-type") {
             content_type = Some(trimmed_value.to_string());
+        }
+        if trimmed_name.eq_ignore_ascii_case("x-client-request-id") {
+            client_request_id = Some(trimmed_value.to_string());
         }
         if trimmed_name.eq_ignore_ascii_case("content-length") {
             content_length = trimmed_value
@@ -418,6 +587,7 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
         path,
         authorization,
         content_type,
+        client_request_id,
         body,
     })
 }
@@ -492,8 +662,8 @@ pub fn ensure_canonical_workspace_for_test() -> Result<(), String> {
     Ok(())
 }
 
-/// Build the mock binary (idempotent when up to date) and resolve its
-/// filesystem path.
+/// Build the mock binary once per verified Cargo test invocation and resolve
+/// its filesystem path.
 ///
 /// The subprocess `cargo build` must land the artifact in the same
 /// `target/` directory + profile that the enclosing `cargo test` uses,
@@ -521,6 +691,28 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
         .parent()
         .and_then(|p| p.parent())
         .ok_or_else(|| "target/<profile> dir".to_string())?;
+    let workspace_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "guest-agent workspace directory".to_string())?;
+
+    let build_session = cargo_build_session_id();
+    build_and_locate_mock_package_in_workspace(
+        workspace_dir,
+        target_profile_dir,
+        package,
+        binary,
+        build_session.as_deref(),
+    )
+}
+
+/// Build a mock package in an explicit workspace and cache it for one Cargo build session.
+pub fn build_and_locate_mock_package_in_workspace(
+    workspace_dir: &Path,
+    target_profile_dir: &Path,
+    package: &str,
+    binary: &str,
+    build_session: Option<&str>,
+) -> Result<PathBuf, String> {
     let target_dir = target_profile_dir
         .parent()
         .ok_or_else(|| "target dir".to_string())?;
@@ -528,110 +720,110 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| "profile dir name".to_string())?;
-
     let mock = target_profile_dir.join(binary);
-    let workspace_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or_else(|| "guest-agent workspace directory".to_string())?;
-    let package_dir = workspace_dir.join(package);
-    let fingerprint = mock_fingerprint(&package_dir, profile_dir_name)?;
-    let marker = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.fingerprint"));
+    let marker = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.build-session"));
     let lock = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.lock"));
+    let _lock = acquire_mock_build_lock(&lock)?;
 
-    while std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&lock)
-        .is_err()
+    if mock.exists()
+        && build_session.is_some()
+        && std::fs::read_to_string(&marker).ok().as_deref() == build_session
     {
-        if std::fs::metadata(&lock)
-            .and_then(|metadata| metadata.modified())
-            .ok()
-            .and_then(|modified| modified.elapsed().ok())
-            .is_some_and(|age| age > Duration::from_secs(600))
-        {
-            let _ = std::fs::remove_file(&lock);
-            continue;
-        }
-        std::thread::sleep(Duration::from_millis(25));
+        return Ok(mock);
     }
 
-    let result = (|| {
-        if mock.exists() && std::fs::read_to_string(&marker).ok().as_deref() == Some(&fingerprint) {
-            return Ok(mock.clone());
-        }
-
-        let mut cmd = std::process::Command::new("cargo");
-        cmd.args(["build", "-p", package, "--quiet"])
-            .arg("--target-dir")
-            .arg(target_dir);
-        // Cargo profile → output dir mapping:
-        //   --release            → target_dir/release
-        //   --profile <name>     → target_dir/<name>
-        //   (default / dev)      → target_dir/debug
-        // So pick the flag that lands the artifact beside our test binary.
-        match profile_dir_name {
-            "debug" => {}
-            "release" => {
-                cmd.arg("--release");
-            }
-            other => {
-                cmd.args(["--profile", other]);
-            }
-        }
-
-        let status = cmd
-            .status()
-            .map_err(|e| format!("invoke cargo build: {e}"))?;
-        if !status.success() {
-            return Err(format!("cargo build -p {package} failed"));
-        }
-        if !mock.exists() {
-            return Err(format!("mock binary not found at {}", mock.display()));
-        }
-        std::fs::write(&marker, fingerprint).map_err(|e| format!("write mock fingerprint: {e}"))?;
-        Ok(mock.clone())
-    })();
-    let _ = std::fs::remove_file(lock);
-    result
-}
-
-fn mock_fingerprint(package_dir: &Path, profile: &str) -> Result<String, String> {
-    let mut files = Vec::new();
-    collect_files(package_dir, &mut files)?;
-    files.sort();
-    let mut hasher = Sha256::new();
-    hasher.update(profile.as_bytes());
-    for path in files {
-        hasher.update(
-            path.strip_prefix(package_dir)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .as_bytes(),
-        );
-        hasher.update(std::fs::read(&path).map_err(|e| format!("read mock source: {e}"))?);
-    }
-    Ok(hex::encode(hasher.finalize()))
-}
-
-fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    for entry in std::fs::read_dir(dir).map_err(|e| format!("read mock package: {e}"))? {
-        let path = entry
-            .map_err(|e| format!("read mock package entry: {e}"))?
-            .path();
-        if path.file_name().is_some_and(|name| name == "target") {
-            continue;
-        }
-        if path.is_dir() {
-            collect_files(&path, files)?;
-        } else {
-            files.push(path);
+    match std::fs::remove_file(&marker) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "remove mock build session {}: {error}",
+                marker.display()
+            ));
         }
     }
-    Ok(())
+
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.args(["build", "-p", package, "--quiet"])
+        .arg("--target-dir")
+        .arg(target_dir)
+        .current_dir(workspace_dir);
+    // Cargo profile → output dir mapping:
+    //   --release            → target_dir/release
+    //   --profile <name>     → target_dir/<name>
+    //   (default / dev)      → target_dir/debug
+    // So pick the flag that lands the artifact beside our test binary.
+    match profile_dir_name {
+        "debug" => {}
+        "release" => {
+            cmd.arg("--release");
+        }
+        other => {
+            cmd.args(["--profile", other]);
+        }
+    }
+
+    let status = cmd
+        .status()
+        .map_err(|e| format!("invoke cargo build: {e}"))?;
+    if !status.success() {
+        return Err(format!("cargo build -p {package} failed"));
+    }
+    if !mock.exists() {
+        return Err(format!("mock binary not found at {}", mock.display()));
+    }
+    if let Some(build_session) = build_session {
+        std::fs::write(&marker, build_session)
+            .map_err(|e| format!("write mock build session: {e}"))?;
+    }
+    Ok(mock)
 }
 
-/// Test-specific values for the experimental Codex app-server backend env.
+pub fn acquire_mock_build_lock(lock: &Path) -> Result<std::fs::File, String> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(lock)
+        .map_err(|e| format!("open mock build lock {}: {e}", lock.display()))?;
+    file.lock()
+        .map_err(|e| format!("lock mock build file {}: {e}", lock.display()))?;
+    Ok(file)
+}
+
+/// Resolve a reusable session only for tests launched directly by Cargo on Linux.
+fn cargo_build_session_id() -> Option<String> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let parent_pid = status
+        .lines()
+        .find_map(|line| line.strip_prefix("PPid:"))?
+        .trim()
+        .parse::<u32>()
+        .ok()?;
+    let parent_exe = std::fs::read_link(format!("/proc/{parent_pid}/exe")).ok()?;
+    if parent_exe.file_name()? != OsStr::new("cargo") {
+        return None;
+    }
+
+    let parent_stat = std::fs::read_to_string(format!("/proc/{parent_pid}/stat")).ok()?;
+    let fields_after_command = parent_stat.get(parent_stat.rfind(')')? + 1..)?;
+    // `starttime` is field 22, or field 20 after the PID and parenthesized command.
+    let parent_start_time = fields_after_command
+        .split_whitespace()
+        .nth(19)?
+        .parse::<u64>()
+        .ok()?;
+    let boot_id = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    let boot_id = boot_id.trim();
+    if boot_id.is_empty() {
+        return None;
+    }
+
+    Some(format!("{boot_id}:{parent_pid}:{parent_start_time}"))
+}
+
+/// Test-specific values for Codex app-server execution env.
 pub struct CodexAppServerEnvConfig<'a> {
     pub run_id: &'a str,
     pub prompt: &'a str,
@@ -657,6 +849,7 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
         guest_contracts::env::RESUME_SESSION_ID_ENV,
         guest_contracts::env::API_START_TIME_ENV,
+        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         guest_contracts::env::SECRET_VALUES_ENV,
         guest_contracts::env::DISALLOWED_TOOLS_ENV,
         guest_contracts::env::TOOLS_ENV,
@@ -672,12 +865,10 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
-        guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
         guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
         guest_contracts::env::MOCK_CODEX_PATH_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         process_control_ipc::BOOTSTRAP_ENV,
-        "MOCK_CODEX_FIXTURE",
         "MOCK_CODEX_APP_SERVER_SCENARIO",
     ] {
         unsafe {
@@ -734,7 +925,7 @@ pub unsafe fn set_user_env_file_env_for_test(
     Ok(())
 }
 
-/// Configure one test binary for the experimental Codex app-server backend.
+/// Configure one test binary for Codex app-server execution.
 ///
 /// Must be called before building a `GuestRuntime` because runtime bootstrap
 /// captures the process env snapshot.
@@ -750,7 +941,6 @@ pub unsafe fn setup_codex_app_server_env(
     unsafe {
         clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
-        std::env::set_var("VM0_CODEX_APP_SERVER_BACKEND", "1");
         std::env::set_var("VM0_MOCK_CODEX_PATH", mock_path);
         std::env::set_var("USE_MOCK_CODEX", "true");
         if let Some(scenario) = config.scenario {
@@ -957,6 +1147,127 @@ pub async fn execute_cli_with_active_input_for_runtime(
         &runtime.paths,
     )
     .await
+}
+
+pub async fn execute_cli_with_cancellation_for_runtime(
+    runtime: &guest_agent::run_context::GuestRuntime,
+    masker: &guest_agent::masker::SecretMasker,
+    heartbeat: guest_agent::cli::HeartbeatMonitor,
+    cancellation: tokio_util::sync::CancellationToken,
+) -> Result<guest_agent::cli::CliExecutionResult, guest_agent::error::AgentError> {
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+        &runtime.config.run_id,
+        false,
+        &runtime.config.prompt,
+    );
+    guest_agent::cli::execute_cli_with_controls_for_config_started_at(
+        masker,
+        heartbeat,
+        runtime.http.clone(),
+        guest_agent::cli::CliExecutionControls::new(active_input.into_writer(), cancellation, None),
+        &runtime.config,
+        &runtime.paths,
+        Instant::now(),
+    )
+    .await
+}
+
+pub struct VirtualTimeCheckpoint<'a> {
+    file: &'a str,
+    needle: &'a str,
+    advance: Duration,
+    release_socket: Option<&'a Path>,
+}
+
+impl<'a> VirtualTimeCheckpoint<'a> {
+    pub fn new(file: &'a str, needle: &'a str, advance: Duration) -> Self {
+        Self {
+            file,
+            needle,
+            advance,
+            release_socket: None,
+        }
+    }
+
+    pub fn release_after_advance(mut self, release_socket: &'a Path) -> Self {
+        self.release_socket = Some(release_socket);
+        self
+    }
+}
+
+pub async fn execute_with_virtual_time_checkpoints<F>(
+    future: F,
+    checkpoints: &[VirtualTimeCheckpoint<'_>],
+) -> Result<F::Output, String>
+where
+    F: Future,
+{
+    for checkpoint in checkpoints {
+        guest_agent::paths::ensure_parent_dir(checkpoint.file).map_err(|error| {
+            format!(
+                "prepare parent directory for virtual-time checkpoint {}: {error}",
+                checkpoint.file
+            )
+        })?;
+    }
+
+    tokio::pin!(future);
+    for (index, checkpoint) in checkpoints.iter().enumerate() {
+        tokio::select! {
+            _ = &mut future => {
+                return Err(format!(
+                    "CLI execution completed before {:?} appeared in {}",
+                    checkpoint.needle, checkpoint.file
+                ));
+            }
+            ready = wait_for_file_contains(
+                Path::new(checkpoint.file),
+                checkpoint.needle,
+                Duration::from_secs(5),
+            ) => {
+                ready.map_err(|error| {
+                    format!(
+                        "wait for {:?} in {} before advancing time: {error}",
+                        checkpoint.needle, checkpoint.file
+                    )
+                })?;
+            }
+        }
+
+        tokio::time::pause();
+        tokio::time::advance(checkpoint.advance).await;
+
+        let execution_poll =
+            std::future::poll_fn(|context| Poll::Ready(future.as_mut().poll(context))).await;
+        let release_result = if matches!(&execution_poll, Poll::Pending)
+            && let Some(release_socket) = checkpoint.release_socket
+        {
+            UnixStream::connect(release_socket)
+                .map(|_| ())
+                .map_err(|error| {
+                    format!(
+                        "release virtual-time checkpoint through {}: {error}",
+                        release_socket.display()
+                    )
+                })
+        } else {
+            Ok(())
+        };
+        tokio::time::resume();
+        release_result?;
+
+        if let Poll::Ready(output) = execution_poll {
+            if index + 1 == checkpoints.len() && checkpoint.release_socket.is_none() {
+                return Ok(output);
+            }
+            return Err(format!(
+                "CLI execution completed after advancing time for {:?} before all checkpoint stages finished",
+                checkpoint.needle
+            ));
+        }
+    }
+
+    Ok(future.await)
 }
 
 pub async fn wait_for_path(path: &Path, timeout: Duration) -> io::Result<()> {

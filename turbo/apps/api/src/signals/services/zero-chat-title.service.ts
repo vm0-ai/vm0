@@ -1,14 +1,15 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import type { SharedMessage } from "@vm0/api-contracts/contracts/shared-threads";
 import {
   CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
 import {
-  chatMessages,
-  type ChatMessageRecommendedFollowups,
-  type ChatMessageUserMessage,
-} from "@vm0/db/schema/chat-message";
+  chatEvents,
+  type ChatEventRecommendedFollowups,
+  type ChatEventUserMessage,
+} from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
   and,
@@ -18,29 +19,25 @@ import {
   inArray,
   isNotNull,
   isNull,
-  ne,
   not,
   or,
   type SQL,
 } from "drizzle-orm";
-
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { waitUntil } from "../context/wait-until";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
-import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
   normalizeRecommendedFollowups,
 } from "./zero-chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
-import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
+import { queuedUserMessageExists } from "./zero-chat-queued-event.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
@@ -69,7 +66,6 @@ export interface ChatCompletionContextMessage {
 
 interface ChatTitleInput {
   readonly currentUserMessage: string;
-  readonly currentAssistantReply?: string;
   readonly priorRounds?: readonly ChatCompletionContextMessage[];
 }
 
@@ -89,12 +85,12 @@ interface ChatMessageForGeneration {
 interface ChatCompletionContextRow {
   readonly eventType: ChatEventType;
   readonly content: string | null;
-  readonly userMessage: ChatMessageUserMessage | null;
+  readonly userMessage: ChatEventUserMessage | null;
 }
 
 type SelectDb = Pick<Db, "select">;
 
-export function isChatTitleGenerationConfigured(): boolean {
+function isChatTitleGenerationConfigured(): boolean {
   return Boolean(optionalEnv("OPENROUTER_API_KEY"));
 }
 
@@ -103,14 +99,14 @@ function completedConversationContextMessageCondition(db: SelectDb) {
     not(queuedUserMessageExists(db)),
     not(
       and(
-        isNotNull(chatMessages.runId),
+        isNotNull(chatEvents.runId),
         exists(
           db
             .select({ one: agentRuns.id })
             .from(agentRuns)
             .where(
               and(
-                eq(agentRuns.id, chatMessages.runId),
+                eq(agentRuns.id, chatEvents.runId),
                 inArray(agentRuns.status, ["queued", "pending", "running"]),
               ),
             ),
@@ -124,11 +120,11 @@ function contextMessageContentCondition(): SQL {
   return or(
     and(
       chatEventTypeIn(["input.prompt", "input.rejected"]),
-      isNotNull(chatMessages.userMessage),
+      isNotNull(chatEvents.userMessage),
     ),
     and(
       not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-      isNotNull(chatMessages.content),
+      isNotNull(chatEvents.content),
     ),
   ) as SQL;
 }
@@ -225,11 +221,6 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
   sections.push(
     `Most recent user message:\n${input.currentUserMessage.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
   );
-  if (input.currentAssistantReply) {
-    sections.push(
-      `Most recent assistant reply:\n${input.currentAssistantReply.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
-    );
-  }
 
   return generateText([
     {
@@ -244,41 +235,57 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
   ]);
 }
 
+/** Generate the immutable title stored with a public shared-thread snapshot. */
+export async function generateSharedThreadTitle(
+  messages: readonly SharedMessage[],
+): Promise<string> {
+  const recent = messages.slice(-TITLE_PRIOR_MESSAGE_CAP);
+  const conversation = recent
+    .map((message) => {
+      return `${message.role}: ${message.content.slice(0, TITLE_CONTEXT_CHAR_CAP)}`;
+    })
+    .join("\n");
+  const title = await generateText([
+    {
+      role: "system",
+      content:
+        "Generate a short, descriptive title (max 60 chars) for this shared conversation. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
+    },
+    {
+      role: "user",
+      content: conversation,
+    },
+  ]);
+  if (!title) {
+    throw new Error("Shared thread title generation returned no title");
+  }
+  return title;
+}
+
 async function getLatestTitleContextMessages(
   db: Db,
   threadId: string,
-  options?: { readonly excludeRunId?: string },
 ): Promise<ChatCompletionContextMessage[]> {
-  const filters = [
-    eq(chatMessages.chatThreadId, threadId),
-    contextMessageContentCondition(),
-    chatEventTypeIn(CHAT_EVENT_TYPES),
-    visibleChatEventCondition(db),
-    completedConversationContextMessageCondition(db),
-  ];
-  if (options?.excludeRunId !== undefined) {
-    filters.push(
-      // Keep prior context free of the current exchange. User rows have the run
-      // id too, so this excludes both sides of the just-completed round.
-      or(
-        isNull(chatMessages.runId),
-        ne(chatMessages.runId, options.excludeRunId),
-      ) as SQL,
-    );
-  }
-
   const rows = await db
     .select({
-      eventType: chatEventTypeSql().as("event_type"),
-      content: chatMessages.content,
-      userMessage: chatMessages.userMessage,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
+      eventType: chatEvents.eventType,
+      content: chatEvents.content,
+      userMessage: chatEvents.userMessage,
+      createdAt: chatEvents.createdAt,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     })
-    .from(chatMessages)
-    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-    .where(and(...filters))
-    .orderBy(desc(chatMessages.seqId))
+    .from(chatEvents)
+    .leftJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, threadId),
+        contextMessageContentCondition(),
+        chatEventTypeIn(CHAT_EVENT_TYPES),
+        visibleChatEventCondition(db),
+        completedConversationContextMessageCondition(db),
+      ),
+    )
+    .orderBy(desc(chatEvents.seqId))
     .limit(TITLE_PRIOR_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
@@ -342,7 +349,7 @@ async function shouldGenerateChatThreadTitle(
   return Boolean(thread && thread.title === null && thread.renamedAt === null);
 }
 
-export async function generateAndPersistChatThreadTitle(args: {
+async function generateAndPersistChatThreadTitle(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
@@ -382,48 +389,24 @@ export async function generateAndPersistChatThreadTitle(args: {
   );
 }
 
-export async function generateAndPersistChatThreadTitleFromCallback(args: {
+/**
+ * Fire-and-forget eager title generation, shared by the inline web send route
+ * and the queue drain. Every chat-thread-bound run passes through one of the
+ * two, so the trigger source no longer decides whether a thread is titled
+ * before its run finishes.
+ */
+export function scheduleChatThreadTitleGeneration(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
   readonly orgId: string | null;
-  readonly runId: string;
   readonly prompt: string;
-  readonly currentAssistantReply: string | undefined;
-}): Promise<void> {
-  await tapError(
-    (async () => {
-      if (!(await shouldGenerateChatThreadTitle(args.db, args.threadId))) {
-        return;
-      }
-
-      const priorRounds = await getLatestTitleContextMessages(
-        args.db,
-        args.threadId,
-        { excludeRunId: args.runId },
-      );
-      const title = await generateChatTitle({
-        currentUserMessage: args.prompt,
-        currentAssistantReply: args.currentAssistantReply,
-        priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
-      });
-      if (title) {
-        await updateChatThreadTitle(
-          args.db,
-          args.threadId,
-          args.userId,
-          args.orgId,
-          title,
-        );
-      }
-    })(),
-    (err) => {
-      log.warn("Chat title generation failed", {
-        threadId: args.threadId,
-        err,
-      });
-    },
-  );
+  readonly includePriorRounds: boolean;
+}): void {
+  if (!isChatTitleGenerationConfigured() || args.prompt.trim().length === 0) {
+    return;
+  }
+  waitUntil(generateAndPersistChatThreadTitle(args));
 }
 
 export function generateChatNotificationSummary(
@@ -448,7 +431,7 @@ export function generateChatNotificationSummary(
 
 function parseRecommendedFollowups(
   text: string,
-): ChatMessageRecommendedFollowups {
+): ChatEventRecommendedFollowups {
   const unfenced = text
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -464,23 +447,23 @@ async function getLatestFollowupContextMessages(
 ): Promise<ChatCompletionContextMessage[]> {
   const rows = await db
     .select({
-      eventType: chatEventTypeSql().as("event_type"),
-      content: chatMessages.content,
-      userMessage: chatMessages.userMessage,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
+      eventType: chatEvents.eventType,
+      content: chatEvents.content,
+      userMessage: chatEvents.userMessage,
+      createdAt: chatEvents.createdAt,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, threadId),
+        eq(chatEvents.chatThreadId, threadId),
         contextMessageContentCondition(),
         chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
         completedConversationContextMessageCondition(db),
       ),
     )
-    .orderBy(desc(chatMessages.seqId))
+    .orderBy(desc(chatEvents.seqId))
     .limit(FOLLOWUP_CONTEXT_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
@@ -490,7 +473,7 @@ async function getLatestFollowupContextMessages(
 
 async function generateRecommendedFollowups(
   messages: readonly ChatCompletionContextMessage[],
-): Promise<ChatMessageRecommendedFollowups> {
+): Promise<ChatEventRecommendedFollowups> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
     return [];
@@ -538,7 +521,7 @@ export async function loadChatThreadRecommendedFollowupContext(args: {
 export async function generateChatThreadRecommendedFollowupsFromContext(args: {
   readonly messages: readonly ChatCompletionContextMessage[];
   readonly threadId?: string;
-}): Promise<ChatMessageRecommendedFollowups> {
+}): Promise<ChatEventRecommendedFollowups> {
   return (
     (await tapError(generateRecommendedFollowups(args.messages), (err) => {
       log.warn("Recommended follow-up generation failed", {

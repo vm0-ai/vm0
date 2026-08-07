@@ -2,17 +2,18 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroConnectorManualGrantContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { afterEach } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroConnectorsRoutes } from "../zero-connectors";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 interface AuthenticatedFixture {
   readonly orgId: string;
@@ -35,8 +36,10 @@ function seedAuthenticatedFixture(): AuthenticatedFixture {
 async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorManualGrantContract).connect({
-      params: { type: "gitlab" },
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    ).connect({
+      params: { connectorSlug: "gitlab" },
       body: {
         authMethod: "api-token",
         values: {
@@ -53,8 +56,10 @@ async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
 async function deleteGitlab(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorsByTypeContract).delete({
-      params: { type: "gitlab" },
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    ).delete({
+      params: { connectorSlug: "gitlab" },
       headers: authHeaders(),
     }),
     [204, 404],
@@ -77,36 +82,37 @@ describe("GET /api/zero/connectors", () => {
     const fixture = seedAuthenticatedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroConnectorsMainContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsMainContract,
+    );
     const response = await accept(
       client.list({ headers: authHeaders() }),
       [200],
     );
 
     expect(response.body.connectors).toStrictEqual([]);
-    expect(Array.isArray(response.body.configuredTypes)).toBeTruthy();
+    expect(Array.isArray(response.body.configuredConnectorSlugs)).toBeTruthy();
     expect(Array.isArray(response.body.connectorProvidedBindings)).toBeTruthy();
   });
 
-  it("filters configured connector types by feature availability", async () => {
+  it("filters configured connector slugs by feature availability", async () => {
     const fixture = seedAuthenticatedFixture();
     seededFixtures.push(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroConnectorsMainContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsMainContract,
+    );
     const nonStaff = await accept(
       client.list({ headers: authHeaders() }),
       [200],
     );
-    expect(nonStaff.body.configuredTypes).not.toContain("aws");
-    expect(nonStaff.body.configuredTypes).toContain("nintendo-store");
-    expect(nonStaff.body.configuredTypes).toContain(
+    expect(nonStaff.body.configuredConnectorSlugs).toContain("aws");
+    expect(nonStaff.body.configuredConnectorSlugs).not.toContain("test-oauth");
+    expect(nonStaff.body.configuredConnectorSlugs).toContain("nintendo-store");
+    expect(nonStaff.body.configuredConnectorSlugs).toContain(
       "nintendo-switch-parental-controls",
     );
-
-    mocks.clerk.session(fixture.userId, STAFF_ORG_ID);
-    const staff = await accept(client.list({ headers: authHeaders() }), [200]);
-    expect(staff.body.configuredTypes).toContain("aws");
   });
 
   it("returns connectors created through the connector API", async () => {
@@ -115,7 +121,9 @@ describe("GET /api/zero/connectors", () => {
     await connectGitlab(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroConnectorsMainContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsMainContract,
+    );
     const response = await accept(
       client.list({ headers: authHeaders() }),
       [200],
@@ -123,14 +131,14 @@ describe("GET /api/zero/connectors", () => {
 
     expect(response.body.connectors).toContainEqual(
       expect.objectContaining({
-        type: "gitlab",
+        slug: "gitlab",
         authMethod: "api-token",
         connectionStatus: "connected",
       }),
     );
     expect(response.body.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "gitlab",
+        connectorSlug: "gitlab",
         namespace: "secrets",
         name: "GITLAB_TOKEN",
       }),
@@ -138,7 +146,9 @@ describe("GET /api/zero/connectors", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorsMainContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsMainContract,
+    );
     const response = await accept(client.list({ headers: {} }), [401]);
 
     expect(response.body.error.code).toBe("UNAUTHORIZED");
@@ -147,7 +157,9 @@ describe("GET /api/zero/connectors", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroConnectorsMainContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsMainContract,
+    );
     const response = await accept(
       client.list({ headers: authHeaders() }),
       [401],

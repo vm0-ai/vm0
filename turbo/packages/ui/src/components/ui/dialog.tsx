@@ -32,35 +32,41 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 interface DialogContentProps extends React.ComponentPropsWithoutRef<
   typeof DialogPrimitive.Content
 > {
+  readonly closeLabel?: string;
   readonly overlayClassName?: string;
 }
 
 const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, overlayClassName, children, ...props }, ref) => {
-  return (
-    <DialogPortal>
-      <DialogOverlay className={overlayClassName} />
-      <DialogPrimitive.Content
-        ref={ref}
-        className={cn(
-          "zero-dialog-content fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg max-h-[90vh] overflow-y-auto dialog-scrollable translate-x-[-50%] translate-y-[-50%] gap-4 border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-6 shadow-lg rounded-xl outline-none",
-          className,
-        )}
-        {...props}
-      >
-        {children}
-        <DialogPrimitive.Close
-          className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100"
-          aria-label="Close"
+>(
+  (
+    { className, closeLabel = "Close", overlayClassName, children, ...props },
+    ref,
+  ) => {
+    return (
+      <DialogPortal>
+        <DialogOverlay className={overlayClassName} />
+        <DialogPrimitive.Content
+          ref={ref}
+          className={cn(
+            "zero-dialog-content fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg max-h-[90vh] overflow-y-auto dialog-scrollable translate-x-[-50%] translate-y-[-50%] gap-4 border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-6 shadow-lg rounded-xl outline-none",
+            className,
+          )}
+          {...props}
         >
-          <IconX size={20} className="text-foreground" />
-        </DialogPrimitive.Close>
-      </DialogPrimitive.Content>
-    </DialogPortal>
-  );
-});
+          {children}
+          <DialogPrimitive.Close
+            className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100"
+            aria-label={closeLabel}
+          >
+            <IconX size={20} className="text-foreground" />
+          </DialogPrimitive.Close>
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    );
+  },
+);
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({

@@ -17,7 +17,7 @@ async fn idle_pool_park_and_reuse_cycle() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -25,7 +25,11 @@ async fn idle_pool_park_and_reuse_cycle() {
     )
     .await;
     assert_eq!(outcome.exit_code(), 0);
-    let sandbox = outcome.sandbox.expect("sandbox alive");
+    let mut sandbox = outcome.sandbox.expect("sandbox alive");
+    assert_eq!(
+        sandbox.park().await.unwrap(),
+        sandbox::SandboxParkOutcome::Reusable
+    );
 
     // Park in idle pool
     let mut pool = IdlePool::new(IdlePoolConfig {
@@ -49,7 +53,10 @@ async fn idle_pool_park_and_reuse_cycle() {
 
     // Execute reuse
     let cancel = tokio_util::sync::CancellationToken::new();
-    let (idle_sandbox, _lease) = match reuse_entry.try_unpark().await {
+    let (idle_sandbox, _lease) = match reuse_entry
+        .try_unpark_for_run(crate::ids::RunId::new_v4())
+        .await
+    {
         crate::idle_pool::IdleUnparkResult::Reused {
             sandbox,
             budget_lease,
@@ -68,28 +75,4 @@ async fn idle_pool_park_and_reuse_cycle() {
     .await;
     assert_eq!(reuse_outcome.exit_code(), 0);
     assert!(reuse_outcome.sandbox.is_some());
-}
-
-#[tokio::test]
-async fn idle_pool_profile_mismatch_returns_none() {
-    use crate::idle_pool::{IdlePool, IdlePoolConfig, test_support::ParkedIdleCandidateBuilder};
-
-    let mut pool = IdlePool::new(IdlePoolConfig {
-        default_timeout: std::time::Duration::from_secs(300),
-        max_idle: 0,
-    });
-
-    // Park with profile "vm0/default"
-    let entry = ParkedIdleCandidateBuilder::new("test-session", test_budget_lease())
-        .with_mock_sandbox_name("test")
-        .build();
-    let _ = pool.park(entry);
-
-    // Take and verify profile
-    let taken = pool.take("test-session").expect("should find");
-    assert_eq!(taken.profile_name(), "vm0/default");
-
-    // Simulate caller checking profile mismatch
-    let matches_browser = taken.profile_name() == "vm0/browser";
-    assert!(!matches_browser, "should not match different profile");
 }

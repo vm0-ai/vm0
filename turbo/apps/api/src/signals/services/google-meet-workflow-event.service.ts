@@ -1,10 +1,8 @@
 import { Buffer } from "node:buffer";
-
 import { OAuth2Client } from "google-auth-library";
 import { command } from "ccstate";
 import { and, eq, lte, or } from "drizzle-orm";
 import { z } from "zod";
-
 import { googleMeetTranscriptGeneratedEventConfigSchema } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   googleWorkspaceEventSubscriptionStates,
@@ -15,13 +13,13 @@ import {
   zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialRuntimeValueRef,
@@ -33,11 +31,9 @@ import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
-import {
-  buildChatOnlyWorkflowAutomationCallbacks,
-  runWorkflowAutomationNow$,
-  type AutomationRow,
-} from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { AutomationRow } from "./zero-workflow-automation-launch.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const log = logger("api:google-meet-workflow-event");
@@ -240,7 +236,7 @@ async function resolveGoogleMeetAccess(args: {
     snapshot,
     orgId: args.orgId,
     userId: args.userId,
-    connectorRef: "google-meet",
+    connectorSlug: "google-meet",
     ...(args.connectorId === undefined
       ? {}
       : { connectorId: args.connectorId }),
@@ -1137,7 +1133,7 @@ async function loadGoogleMeetEventAutomations(args: {
 }): Promise<GoogleMeetEventAutomationRow[]> {
   const automationRows = await args.db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(false),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
@@ -1241,35 +1237,31 @@ function buildGoogleMeetWorkflowAutomationBrief(
   return `Google Meet transcript ready: ${event.transcriptName}`;
 }
 
-function buildGoogleMeetWorkflowEventSystemPrompt(args: {
+function googleMeetTriggerContext(args: {
+  readonly workflowName: string;
   readonly automationId: string;
   readonly event: GoogleMeetTranscriptEventContext;
-}): string {
-  return [
-    "# Current context",
-    "You are running because Google Meet generated a transcript for a meeting organized by the connected Google Meet account.",
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "The transcript text is not included in this automation context. Use the connected Google Meet tools to read transcript metadata or transcript entries if the workflow needs the content.",
-    "",
-    "# Google Meet event",
-    JSON.stringify(
-      {
-        automationId: args.automationId,
-        eventType: GOOGLE_MEET_TRANSCRIPT_GENERATED_EVENT_TYPE,
-        googleWorkspaceEventType: args.event.cloudEventType,
-        cloudEventId: args.event.cloudEventId,
-        cloudEventSource: args.event.cloudEventSource,
-        cloudEventSubject: args.event.cloudEventSubject,
-        cloudEventTime: args.event.cloudEventTime,
-        subscriptionName: args.event.subscriptionName,
-        conferenceRecordName: args.event.conferenceRecordName,
-        transcriptName: args.event.transcriptName,
-      },
-      null,
-      2,
-    ),
-  ].join("\n");
+}): WorkflowAutomationContext {
+  return {
+    workflowName: args.workflowName,
+    eventType: "google-meet-transcript-generated",
+    trigger: `Google Meet generated transcript ${args.event.transcriptName} for a meeting organized by the connected account (cloud event ${args.event.cloudEventId}).`,
+    notes: [
+      "Not included below: the transcript text. Connected Google Meet tools return transcript metadata and entries.",
+    ],
+    event: {
+      automationId: args.automationId,
+      eventType: GOOGLE_MEET_TRANSCRIPT_GENERATED_EVENT_TYPE,
+      googleWorkspaceEventType: args.event.cloudEventType,
+      cloudEventId: args.event.cloudEventId,
+      cloudEventSource: args.event.cloudEventSource,
+      cloudEventSubject: args.event.cloudEventSubject,
+      cloudEventTime: args.event.cloudEventTime,
+      subscriptionName: args.event.subscriptionName,
+      conferenceRecordName: args.event.conferenceRecordName,
+      transcriptName: args.event.transcriptName,
+    },
+  };
 }
 
 async function dispatchGoogleMeetTranscriptEventForState(args: {
@@ -1418,16 +1410,14 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
         const runInput = await timing.measure(
           "api_dispatch_pre_create_zero_workflow_event_build_run_input",
           () => {
+            const context = googleMeetTriggerContext({
+              workflowName: automation.workflowName,
+              automationId: automation.automation.id,
+              event,
+            });
             return {
-              appendSystemPrompt: buildGoogleMeetWorkflowEventSystemPrompt({
-                automationId: automation.automation.id,
-                event,
-              }),
+              context,
               triggerBrief: buildGoogleMeetWorkflowAutomationBrief(event),
-              callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-                automation.chatThreadId,
-                automation.agentId,
-              ),
             };
           },
         );
@@ -1437,17 +1427,12 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
             due: {
               automation: automation.automation,
               agentId: automation.agentId,
-              workflowName: automation.workflowName,
               chatThreadId: automation.chatThreadId,
             },
+            automationContext: runInput.context,
             apiStartTime: args.apiStartTime,
             triggerSource: "workflow-event",
-            appendSystemPrompt: runInput.appendSystemPrompt,
             triggerBrief: runInput.triggerBrief,
-            callbacks: runInput.callbacks,
-            activePreviousRunPolicy: "allow",
-            recordLastRunId: false,
-            recordLastRunAt: true,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
             timing: timing.collectorForRunStart(),
           },

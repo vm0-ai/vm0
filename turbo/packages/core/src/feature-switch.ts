@@ -4,9 +4,8 @@
  * Provides centralized feature flag management with user-identity based overrides.
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
  *
- * NOT AN AUTHORIZATION BOUNDARY. User-overridable switches can be self-enabled
- * through `POST /api/zero/feature-switches`, and `userOverridable: false` only
- * excludes a switch from that API. For money-granting, credential, or
+ * NOT AN AUTHORIZATION BOUNDARY. Every registered switch accepts user overrides
+ * through `POST /api/zero/feature-switches`. For money-granting, credential, or
  * privilege-escalation endpoints, gate with a hard identity check (e.g.
  * `isStaffOrg()` from `./staff-org`) instead of this system.
  */
@@ -21,13 +20,11 @@ export interface FeatureSwitch {
   readonly enabledUserHashes?: readonly string[];
   readonly enabledEmailHashes?: readonly string[];
   readonly enabledOrgIdHashes?: readonly string[];
-  readonly userOverridable?: boolean;
 }
 
 export interface FeatureSwitchMetadata {
   readonly maintainer: string;
   readonly description?: string;
-  readonly userOverridable: boolean;
 }
 
 export interface FeatureSwitchContext {
@@ -111,20 +108,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Expensify accounting connector",
     enabled: false,
   },
-  [FeatureSwitchKey.GoogleContactsConnector]: {
+  [FeatureSwitchKey.JoggAiBuiltIn]: {
     maintainer: "yuma@vm0.ai",
-    description: "Enable the Google Contacts connector",
+    description: "Enable vm0-managed JoggAI talking-avatar video generation",
     enabled: false,
-  },
-  [FeatureSwitchKey.GoogleFormsConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Google Forms connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.JoggAiConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the JoggAI video generation connector",
-    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -181,12 +169,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the TikTok Ads Manager connector",
     enabled: false,
   },
-  [FeatureSwitchKey.AwsConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the temporary AWS remote login connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",
@@ -223,26 +205,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
-  [FeatureSwitchKey.LanguagePreference]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Enable workspace language bootstrap, persistence, and the Settings preference entry.",
-    enabled: false,
-  },
-  [FeatureSwitchKey.BrazilianPortugueseLocale]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Allow pt-BR preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
-    userOverridable: false,
-  },
-  [FeatureSwitchKey.ZeroFinance]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable the managed APIDojo-backed Zero Finance API and finance:read ZERO_TOKEN capability.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -262,7 +224,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the daily 7:00 local-time Morning Brief email built from GitHub, Gmail, and Google Calendar.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: true,
   },
   [FeatureSwitchKey.ManualMorningBrief]: {
     maintainer: "ethan@vm0.ai",
@@ -270,7 +231,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show a Send now button in Settings that triggers a Morning Brief immediately for testing.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: true,
   },
   [FeatureSwitchKey.NotionWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
@@ -279,13 +239,24 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: {
+    maintainer: "lancy@vm0.ai",
+    description: "Enable Google Forms response workflow automations.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Stripe invoice-paid workflow automations with immutable Live-mode OAuth bindings.",
+    enabled: false,
+  },
   [FeatureSwitchKey.GithubWebhookAutomations]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Show creation entry points for GitHub workflow job, pull request review, deployment status, and issue comment automations.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -322,19 +293,18 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CodexSessionPruning]: {
-    maintainer: "liangyou@vm0.ai",
+  [FeatureSwitchKey.NewChatDefaultModelAction]: {
+    maintainer: "lancy@vm0.ai",
     description:
-      "Prune oversized Codex checkpoint histories to the latest native compact generation.",
+      "Make changing the personal default model an explicit action in the new-chat model picker.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ClaudeSessionPruning]: {
-    maintainer: "liangyou@vm0.ai",
+  [FeatureSwitchKey.ChatNextRunModelNotice]: {
+    maintainer: "ethan@vm0.ai",
     description:
-      "Prune oversized Claude Code checkpoint histories to the latest native compact generation.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+      "Show a composer notice when the selected model differs from the running chat model.",
+    enabled: true,
   },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
@@ -342,20 +312,24 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
-  [FeatureSwitchKey.ComposerUploadPopover]: {
+  [FeatureSwitchKey.VideoTemplateOptions]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
-    enabled: false,
-    userOverridable: false,
-  },
-  [FeatureSwitchKey.StructuredPromptInlineTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable multiple inline artifact templates in structured chat prompts.",
+      "Let a video template chip in the chat composer set the generation model, aspect ratio, duration, resolution, and audio.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
+  },
+  [FeatureSwitchKey.PiLoop]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Run web chat runs through the in-API Pi edge loop with sandbox handoff instead of dispatching a runner job immediately.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.UsagePackPlans]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show the new Pro and Team plan UI with required monthly usage packs.",
+    enabled: false,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -370,24 +344,30 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
+  [FeatureSwitchKey.ChatErrorRecovery]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
+      "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
+  [FeatureSwitchKey.SharedThreadSharing]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Automatically open the latest sidebar-capable card from a running or successfully completed chat run when the utility sidebar is closed and split view is available.",
+      "Create immutable public snapshots from explicitly selected chat messages.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ComposerSkillSubstringSearch]: {
-    maintainer: "yuma@vm0.ai",
+  [FeatureSwitchKey.ArtifactSidebarInlineOpen]: {
+    maintainer: "bingjie@vm0.ai",
     description:
-      "Match chat composer slash skill suggestions by any slug substring instead of only prefixes.",
+      "Open an artifact clicked in a chat thread inside the already-open artifact sidebar instead of stacking the page-global lightbox over it.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.CjkFriendlyMarkdown]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Close markdown emphasis (`*`, `**`, `***`, `~~`) that sits directly against CJK punctuation, which plain CommonMark leaves as literal asterisks. Turn off to fall back to stock CommonMark parsing.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -406,18 +386,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.SlackDmSessionRouting]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Reuse agent/model-scoped sessions for top-level Slack direct messages after compatible callback readers are deployed.",
-    enabled: false,
-  },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",
@@ -432,60 +405,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Strapi integration settings and Strapi entry-published workflow automations.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
-  },
-  [FeatureSwitchKey.Artifacts]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Show the Artifacts manage page for generated artifacts in the current organization.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.HostedArtifactVersions]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Create immutable hosted artifact versions behind stable site aliases.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.VideoArtifactPosters]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ImageStyleR2]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.OrgPlanEntitlementReads]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Read runtime plan capability limits from org_plan_entitlements instead of deriving them from org_metadata.tier.",
-    enabled: true,
-    userOverridable: false,
   },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Show the manual connector readiness check on workflow settings pages.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
-  },
-  [FeatureSwitchKey.ZeroMailReplyFollowUp]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Enable Zero Mail reply follow-up after all API deployments can read Gmail event configurations with threadId.",
-    enabled: false,
-    userOverridable: false,
-  },
-  [FeatureSwitchKey.ZeroBrowser]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable thread-scoped Cloud browser access in chat and the Zero CLI.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -494,7 +418,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
-    userOverridable: true,
   },
 };
 
@@ -591,31 +514,18 @@ export function getFeatureSwitchMetadata(): Record<
     result[key] = {
       maintainer: featureSwitch.maintainer,
       description: featureSwitch.description,
-      userOverridable: featureSwitch.userOverridable !== false,
     };
   }
   return result;
 }
 
-export function isUserOverridableFeatureSwitch(
-  key: string,
-): key is FeatureSwitchKey {
-  if (!(key in FEATURE_SWITCHES)) {
-    return false;
-  }
-  return FEATURE_SWITCHES[key as FeatureSwitchKey].userOverridable !== false;
-}
-
-export function getUserOverridableFeatureSwitchKeys(): readonly FeatureSwitchKey[] {
-  return Object.values(FeatureSwitchKey).filter(isUserOverridableFeatureSwitch);
-}
-
-export function filterUserOverridableFeatureSwitchOverrides(
+/** Keep overrides for currently registered feature switches. */
+export function filterFeatureSwitchOverrides(
   switches: Record<string, boolean>,
 ): Record<string, boolean> {
   const filtered: Record<string, boolean> = {};
   for (const [key, value] of Object.entries(switches)) {
-    if (isUserOverridableFeatureSwitch(key)) {
+    if (key in FEATURE_SWITCHES) {
       filtered[key] = value;
     }
   }

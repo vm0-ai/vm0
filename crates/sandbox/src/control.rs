@@ -5,6 +5,59 @@ use async_trait::async_trait;
 
 use crate::types::ExecTermination;
 
+/// Identity scope for a remote sandbox control operation.
+///
+/// Sandbox-scoped targets intentionally follow the current owner of a sandbox.
+/// Run-scoped targets additionally require the sandbox to still be assigned to
+/// the full run ID resolved by the caller.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SandboxControlTarget {
+    /// Control whichever active workload currently owns this sandbox.
+    Sandbox {
+        /// Sandbox identifier (full UUID or unique prefix).
+        sandbox_id: String,
+    },
+    /// Control this sandbox only while it remains assigned to the expected run.
+    Run {
+        /// Full run identifier resolved before dispatch.
+        run_id: String,
+        /// Sandbox identifier (full UUID or unique prefix).
+        sandbox_id: String,
+    },
+}
+
+impl SandboxControlTarget {
+    /// Construct an explicitly sandbox-scoped target.
+    pub fn sandbox(sandbox_id: impl Into<String>) -> Self {
+        Self::Sandbox {
+            sandbox_id: sandbox_id.into(),
+        }
+    }
+
+    /// Construct a run-scoped target with its full resolved run identity.
+    pub fn run(run_id: impl Into<String>, sandbox_id: impl Into<String>) -> Self {
+        Self::Run {
+            run_id: run_id.into(),
+            sandbox_id: sandbox_id.into(),
+        }
+    }
+
+    /// Return the sandbox identifier used for backend endpoint resolution.
+    pub fn sandbox_id(&self) -> &str {
+        match self {
+            Self::Sandbox { sandbox_id } | Self::Run { sandbox_id, .. } => sandbox_id,
+        }
+    }
+
+    /// Return the expected full run identity for guarded targets.
+    pub fn expected_run_id(&self) -> Option<&str> {
+        match self {
+            Self::Sandbox { .. } => None,
+            Self::Run { run_id, .. } => Some(run_id),
+        }
+    }
+}
+
 /// Result of executing a command inside a running sandbox.
 #[derive(Debug)]
 pub struct RemoteExecResult {
@@ -55,22 +108,26 @@ pub enum SandboxControlError {
 /// without exposing backend-specific types (sockets, paths, wire protocol).
 #[async_trait]
 pub trait SandboxControl: Send + Sync {
-    /// Execute a command inside a running sandbox identified by sandbox ID
-    /// (full UUID or unique prefix).
+    /// Execute a command inside a running sandbox using the requested identity
+    /// scope.
     ///
-    /// `timeout` is the command timeout; the implementation may add extra
-    /// time for connection overhead.
+    /// `timeout` is the requested command timeout. Implementations may
+    /// normalize it to backend-specific granularity and limits, and may add
+    /// extra time for control or connection overhead. Consult the concrete
+    /// backend's documentation for its normalization rules.
     async fn exec_remote(
         &self,
-        sandbox_id: &str,
+        target: SandboxControlTarget,
         command: &str,
         timeout: Duration,
         sudo: bool,
     ) -> Result<RemoteExecResult, SandboxControlError>;
 
-    /// Request host-side termination of a running sandbox identified by
-    /// sandbox ID (full UUID or unique prefix).
-    async fn kill_remote(&self, sandbox_id: &str) -> Result<RemoteKillResult, SandboxControlError>;
+    /// Request host-side termination using the requested identity scope.
+    async fn kill_remote(
+        &self,
+        target: SandboxControlTarget,
+    ) -> Result<RemoteKillResult, SandboxControlError>;
 
     /// Return the runtime socket directory for a given sandbox ID.
     ///

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use ::sandbox::{ExecOutputLimits, ProcessControlMode, ProcessOutputMode};
+use ::sandbox::{ExecOutputLimits, ProcessControlMode, ProcessOutputMode, SandboxControlTarget};
 
 /// Behavior override applied to exec calls whose command contains the pattern.
 ///
@@ -22,8 +22,8 @@ pub struct ExecMatcher {
 /// Captured `exec_remote` call fields recorded for test assertions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RemoteExecCall {
-    /// Sandbox identifier passed to `SandboxControl::exec_remote`.
-    pub sandbox_id: String,
+    /// Identity scope passed to `SandboxControl::exec_remote`.
+    pub target: SandboxControlTarget,
     /// Command string passed to `SandboxControl::exec_remote`.
     pub command: String,
     /// Timeout passed to `SandboxControl::exec_remote`.

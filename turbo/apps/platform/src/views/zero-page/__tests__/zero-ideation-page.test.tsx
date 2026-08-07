@@ -3,7 +3,7 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -15,21 +15,29 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { reloadConnectors$ } from "../../../signals/external/connectors.ts";
 import { setIdeationActiveTab$ } from "../../../signals/zero-page/zero-ideation.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
+const PT_BR_PLACEHOLDER =
+  "Peça para automatizar fluxos de trabalho, gerenciar tarefas...";
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
 
 const agentId = "c0000000-0000-4000-a000-000000000001";
 
 function publicConnectorStatusItem(
-  connectorRef: string,
+  connectorSlug: string,
 ): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef,
-    label: connectorRef,
-    description: `${connectorRef} public description`,
+    slug: connectorSlug,
+    label: connectorSlug,
+    description: `${connectorSlug} public description`,
     category: "data-automation-infrastructure",
     icon: {
-      url: `https://icons.example.test/${connectorRef}.svg`,
+      url: `https://icons.example.test/${connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     generation: [],
@@ -52,10 +60,10 @@ function publicConnectorStatusItem(
   };
 }
 
-function mockConnectorCatalogStatus(connectorRefs: readonly string[]): void {
+function mockConnectorCatalogStatus(connectorSlugs: readonly string[]): void {
   context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
     return respond(200, {
-      connectors: connectorRefs.map(publicConnectorStatusItem),
+      connectors: connectorSlugs.map(publicConnectorStatusItem),
     });
   });
 }
@@ -148,7 +156,7 @@ describe("zero ideation page", () => {
     expect(screen.queryByText("Daily standup report")).not.toBeInTheDocument();
   });
 
-  it("hides connector-only use cases when catalog omits all refs", async () => {
+  it("hides connector-only use cases when catalog omits all connector slugs", async () => {
     mockConnectorCatalogStatus([]);
 
     detachedSetupPage({
@@ -319,6 +327,78 @@ describe("zero ideation page", () => {
     expect(
       screen.queryByText("No use cases match your search."),
     ).not.toBeInTheDocument();
+  });
+
+  it("localizes agent chat ideas without changing the selected prompt", async () => {
+    mockConnectorCatalogStatus(["agentmail"]);
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+    context.mocks.data.onboardingStatus({ defaultAgentId: null });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+    });
+
+    await expect(
+      screen.findByText("Ideias e casos de uso"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Fixar na barra lateral"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Ver perfil do agente"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText("Explore casos de uso em todos os conectores"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Ver todos")).toBeInTheDocument();
+    await expect(
+      screen.findByText("Caixa de entrada do AgentMail"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("AgentMail inbox")).not.toBeInTheDocument();
+
+    click(screen.getByText("Caixa de entrada do AgentMail"));
+
+    const composer = (await screen.findByPlaceholderText(
+      PT_BR_PLACEHOLDER,
+    )) as HTMLTextAreaElement;
+    expect(composer).toHaveTextContent(
+      "Create a new AgentMail inbox and set up email forwarding rules",
+    );
+  });
+
+  it("localizes the ideas catalog without changing the selected prompt", async () => {
+    mockConnectorCatalogStatus([]);
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/ideas`,
+    });
+
+    const localizedTitles = await screen.findAllByText("Ideias e casos de uso");
+    expect(localizedTitles[0]).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.textContent === "Todos";
+      }),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("Buscar casos de uso")).toBeInTheDocument();
+
+    click(screen.getByText("Capturas de tela do navegador"));
+
+    const composer = (await screen.findByPlaceholderText(
+      PT_BR_PLACEHOLDER,
+    )) as HTMLTextAreaElement;
+    expect(composer).toHaveTextContent(
+      "Open this URL in the browser and take a screenshot: [paste URL]",
+    );
   });
 
   it("does not render connector-dependent suggested prompts when catalog is empty", async () => {

@@ -16,9 +16,8 @@ import {
   sql,
 } from "drizzle-orm";
 
-import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import {
@@ -29,13 +28,16 @@ import {
   upsertOrgPlanEntitlement,
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
+import {
+  knownPlanPriceItem,
+  tierFromPriceId,
+} from "./zero-billing-checkout.service";
+import { reconcileUsagePackSubscriptions } from "./usage-pack-subscription.service";
 import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("CronBillingEntitlements");
 const PAID_TIERS = ["pro", "team", "custom"] as const;
-const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
-type SubscriptionPriceTier = (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
-
 const ENTITLEMENT_PERIOD_REFRESH_STATUSES = ["active", "trialing"] as const;
 const PAYMENT_FAILED_SUBSCRIPTION_STATUSES = ["past_due", "unpaid"] as const;
 const USAGE_ALLOWANCE_RECONCILE_STATUSES = [
@@ -127,7 +129,7 @@ interface ReconcileBillingContext {
   readonly signal: AbortSignal;
 }
 
-type ReconcileTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type ReconcileTx = Tx;
 
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
@@ -308,26 +310,6 @@ async function updateUsageAllowanceCandidate(
   });
 }
 
-function priceIdsForTier(tier: SubscriptionPriceTier): readonly string[] {
-  switch (tier) {
-    case "pro": {
-      return env("ZERO_PRICE_PRO") ?? [];
-    }
-    case "team": {
-      return env("ZERO_PRICE_TEAM") ?? [];
-    }
-  }
-}
-
-function tierFromPriceId(priceId: string): OrgTier {
-  for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
-    if (priceIdsForTier(tier).includes(priceId)) {
-      return tier;
-    }
-  }
-  throw new Error(`Unknown Stripe price ID: ${priceId}`);
-}
-
 interface SyncedBillingFields {
   readonly subscriptionStatus: string;
   readonly cancelAtPeriodEnd: boolean;
@@ -395,7 +377,9 @@ async function refreshRecoveredBillingCandidate(
   syncedFields: SyncedBillingFields,
 ): Promise<void> {
   const { db, signal } = context;
-  const priceId = subscription.items.data[0]?.price.id;
+  const priceId =
+    knownPlanPriceItem(subscription.items.data)?.price.id ??
+    subscription.items.data[0]?.price.id;
   const tier = priceId ? tierFromPriceId(priceId) : undefined;
 
   await db.transaction(async (tx) => {
@@ -455,7 +439,10 @@ async function refreshPaymentFailedPaidThroughCandidate(
           tier: knownOrgTier(row.tier),
           subscription,
           stripeSubscriptionId: candidate.stripeSubscriptionId,
-          stripePriceId: subscription.items.data[0]?.price.id ?? null,
+          stripePriceId:
+            knownPlanPriceItem(subscription.items.data)?.price.id ??
+            subscription.items.data[0]?.price.id ??
+            null,
           status: subscription.status,
         });
       },
@@ -493,7 +480,10 @@ async function downgradePaymentFailedBillingCandidate(
           tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
           subscription,
           stripeSubscriptionId: row.subscriptionId,
-          stripePriceId: subscription.items.data[0]?.price.id ?? null,
+          stripePriceId:
+            knownPlanPriceItem(subscription.items.data)?.price.id ??
+            subscription.items.data[0]?.price.id ??
+            null,
         });
       },
     });
@@ -972,6 +962,12 @@ export const reconcileBillingEntitlements$ = command(
       now.getTime() - PAYMENT_FAILURE_DOWNGRADE_GRACE_MS,
     );
 
+    const usagePackReconciliation = await reconcileUsagePackSubscriptions(
+      db,
+      signal,
+    );
+    signal.throwIfAborted();
+
     const {
       candidates,
       atomGrantCandidates,
@@ -1059,6 +1055,12 @@ export const reconcileBillingEntitlements$ = command(
         subscriptionIds: reconciledUsageAllowances.slice(0, 10).map((row) => {
           return row.subscriptionId;
         }),
+      });
+    }
+    if (usagePackReconciliation.reconciled > 0) {
+      L.warn("usage pack subscriptions reconciled from Stripe", {
+        count: usagePackReconciliation.reconciled,
+        orgIds: usagePackReconciliation.orgIds.slice(0, 10),
       });
     }
 

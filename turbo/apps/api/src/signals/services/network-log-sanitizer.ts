@@ -204,6 +204,8 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     port: numberValue(event.port),
     method: stringValue(event.method),
     url: stringValue(event.url),
+    url_truncated: booleanValue(event.url_truncated),
+    url_original_char_count: numberValue(event.url_original_char_count),
     status: numberValue(event.status),
     latency_ms: numberValue(event.latency_ms),
     request_size: numberValue(event.request_size),
@@ -244,7 +246,7 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     firewall_billable: booleanValue(event.firewall_billable),
     firewall_error: stringValue(event.firewall_error),
     ...sanitizeUpstreamBindingFields(event),
-    connector_diagnostic_type: stringValue(event.connector_diagnostic_type),
+    connector_diagnostic_slug: stringValue(event.connector_diagnostic_slug),
     connector_diagnostic_reason: stringValue(event.connector_diagnostic_reason),
     connector_diagnostic_env_names: stringArrayValue(
       event.connector_diagnostic_env_names,

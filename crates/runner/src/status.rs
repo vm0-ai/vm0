@@ -9,29 +9,7 @@ use tracing::warn;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
-
-/// Runner lifecycle state.
-///
-/// - `Starting`: startup/readiness work is still in progress. The process is
-///   alive, but must not discover or claim new jobs.
-/// - `Running`: normal operation — discover and claim new jobs.
-/// - `Draining`: soft drain. No new jobs claimed; in-flight jobs keep
-///   running; idle pool destroyed. **Resumable** via SIGUSR2.
-/// - `Stopping`: irreversible teardown in progress — discovery released,
-///   per-job tokens cancelled, factories/proxy/kmsg/dns shutting down.
-///   Reached via SIGTERM/SIGINT, or automatically from `Draining` once
-///   `jobs.is_empty()`.
-/// - `Stopped`: teardown complete. The process exits immediately after
-///   writing this state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum RunnerMode {
-    Starting,
-    Running,
-    Draining,
-    Stopping,
-    Stopped,
-}
+use crate::lifecycle::RunnerMode;
 
 /// Active run lifecycle phase serialized as `active_runs[*].phase`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -77,13 +55,10 @@ struct ActiveRunState {
     phase_started_at: DateTime<Utc>,
 }
 
-/// One parked (idle) sandbox's identity: the `session_id` it's keyed by in
-/// the idle pool and the `sandbox_id` of the Firecracker VM kept alive for
-/// reuse. Pairing these as a struct (rather than parallel arrays) matches
-/// `ActiveRun` and avoids the "indexed-by-position" bug class.
+/// One parked sandbox's reuse identity and Firecracker sandbox identity.
 #[derive(Debug, Clone, Serialize)]
 pub struct IdleVm {
-    pub session_id: String,
+    pub reuse_key: String,
     pub sandbox_id: SandboxId,
 }
 
@@ -868,11 +843,11 @@ mod tests {
                     1,
                     vec![
                         IdleVm {
-                            session_id: "sess-1".into(),
+                            reuse_key: "sess-1".into(),
                             sandbox_id: sb1,
                         },
                         IdleVm {
-                            session_id: "sess-2".into(),
+                            reuse_key: "sess-2".into(),
                             sandbox_id: sb2,
                         },
                     ],
@@ -883,9 +858,9 @@ mod tests {
         let status = read_status(&path);
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 2);
-        assert_eq!(vms[0]["session_id"], "sess-1");
+        assert_eq!(vms[0]["reuse_key"], "sess-1");
         assert_eq!(vms[0]["sandbox_id"], sb1.to_string());
-        assert_eq!(vms[1]["session_id"], "sess-2");
+        assert_eq!(vms[1]["reuse_key"], "sess-2");
         assert_eq!(vms[1]["sandbox_id"], sb2.to_string());
     }
 
@@ -903,7 +878,7 @@ mod tests {
                 .set_idle_info_at_revision(
                     2,
                     vec![IdleVm {
-                        session_id: "fresh".into(),
+                        reuse_key: "fresh".into(),
                         sandbox_id: fresh_id,
                     }],
                 )
@@ -914,7 +889,7 @@ mod tests {
                 .set_idle_info_at_revision(
                     1,
                     vec![IdleVm {
-                        session_id: "stale".into(),
+                        reuse_key: "stale".into(),
                         sandbox_id: stale_id,
                     }],
                 )
@@ -924,7 +899,7 @@ mod tests {
         let status = read_status(&path);
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["session_id"], "fresh");
+        assert_eq!(vms[0]["reuse_key"], "fresh");
         assert_eq!(vms[0]["sandbox_id"], fresh_id.to_string());
     }
 
@@ -942,7 +917,7 @@ mod tests {
                 .set_idle_info_at_revision(
                     1,
                     vec![IdleVm {
-                        session_id: "sess-replaced".into(),
+                        reuse_key: "sess-replaced".into(),
                         sandbox_id: original_id,
                     }],
                 )
@@ -954,13 +929,13 @@ mod tests {
         let delayed_cleanup_revision = 2;
         let delayed_cleanup_snapshot = Vec::new();
 
-        // Meanwhile the same session is parked again with a newer sandbox.
+        // Meanwhile the same reuse key is parked again with a newer sandbox.
         assert!(
             tracker
                 .set_idle_info_at_revision(
                     3,
                     vec![IdleVm {
-                        session_id: "sess-replaced".into(),
+                        reuse_key: "sess-replaced".into(),
                         sandbox_id: replacement_id,
                     }],
                 )
@@ -976,7 +951,7 @@ mod tests {
         let status = read_status(&path);
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["session_id"], "sess-replaced");
+        assert_eq!(vms[0]["reuse_key"], "sess-replaced");
         assert_eq!(vms[0]["sandbox_id"], replacement_id.to_string());
     }
 
@@ -996,7 +971,7 @@ mod tests {
                 .set_idle_info_at_revision(
                     2,
                     vec![IdleVm {
-                        session_id: "fresh".into(),
+                        reuse_key: "fresh".into(),
                         sandbox_id: idle_id,
                     }],
                 )
@@ -1009,7 +984,7 @@ mod tests {
                     active_id,
                     1,
                     vec![IdleVm {
-                        session_id: "stale".into(),
+                        reuse_key: "stale".into(),
                         sandbox_id: stale_id,
                     }],
                 )
@@ -1024,7 +999,7 @@ mod tests {
         assert_eq!(runs[0]["phase"], "running");
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["session_id"], "fresh");
+        assert_eq!(vms[0]["reuse_key"], "fresh");
         assert_eq!(vms[0]["sandbox_id"], idle_id.to_string());
     }
 
@@ -1045,7 +1020,7 @@ mod tests {
                     active_id,
                     1,
                     vec![IdleVm {
-                        session_id: "fresh-create-after-reuse-miss".into(),
+                        reuse_key: "fresh-create-after-reuse-miss".into(),
                         sandbox_id: idle_id,
                     }],
                 )
@@ -1060,7 +1035,7 @@ mod tests {
         assert_eq!(runs[0]["phase"], "preparing");
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["session_id"], "fresh-create-after-reuse-miss");
+        assert_eq!(vms[0]["reuse_key"], "fresh-create-after-reuse-miss");
         assert_eq!(vms[0]["sandbox_id"], idle_id.to_string());
     }
 

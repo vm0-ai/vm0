@@ -6,7 +6,13 @@ import { useGet, useSet } from "ccstate-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import rehypeKatex from "rehype-katex";
+import remarkCjkFriendly from "remark-cjk-friendly";
+import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethrough";
 import remarkMath from "remark-math";
+import { MermaidDiagram } from "./mermaid-diagram.tsx";
+import { rehypeMermaid } from "../../lib/rehype-mermaid.ts";
+import { cjkFriendlyMarkdownEnabled$ } from "../../signals/external/feature-switch.ts";
+import { pageLifecycleId$ } from "../../signals/page-signal.ts";
 import { theme$ } from "../../signals/theme.ts";
 import {
   imageLoadStatusByKey$,
@@ -17,6 +23,11 @@ import {
 type MarkdownNodeProp = { node?: unknown };
 type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & MarkdownNodeProp;
+type MarkdownDivProps = ComponentPropsWithoutRef<"div"> &
+  MarkdownNodeProp & {
+    "data-mermaid-code"?: string;
+    "data-mermaid-scope"?: string;
+  };
 
 type RewriteArgs = Parameters<
   NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
@@ -147,11 +158,15 @@ const rehypeRewriteHandler = (() => {
   return (...args: RewriteArgs) => {
     const [node, , parent] = args;
 
-    // Convert unknown HTML tags to plain text, preserving child content
+    // Convert unknown HTML tags to plain text, preserving child content.
+    // Raw HTML written at the top level of a document lands directly under the
+    // hast root, so root-level nodes must be rewritten too — otherwise tags
+    // like <style> and <script> survive into the app's DOM, where a generated
+    // `* { margin: 0; padding: 0 }` reset unstyles the whole page.
     if (
       node.type === "element" &&
       !validHtmlTags.has(node.tagName) &&
-      parent?.type === "element"
+      (parent?.type === "element" || parent?.type === "root")
     ) {
       const inner = collectText(node);
       const text = inner
@@ -247,15 +262,20 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
   return (
     <button
       type="button"
-      onClick={() => {
-        openImageLightbox(src);
+      onClick={(event) => {
+        const threadId = event.currentTarget.closest<HTMLElement>(
+          "[data-chat-thread-container-id]",
+        )?.dataset.chatThreadContainerId;
+        openImageLightbox(threadId ? { threadId, url: src } : src);
       }}
       className="relative my-1 inline-flex aspect-[10/9] w-[200px] max-w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-foreground/10 bg-muted/30"
     >
+      {/* Preserve one flex item so the inline baseline cannot change on load. */}
+      <span aria-hidden="true" className="block h-full w-full" />
       {showPlaceholder && (
         <span
           data-testid="markdown-image-preview-loading"
-          className="flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground"
+          className="absolute inset-0 flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground"
         >
           {imageStatus === "loading" ? (
             <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
@@ -277,8 +297,8 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
         onError={() => {
           setImageLoadStatus(imageLoadKey, "error");
         }}
-        className={`h-full w-full object-contain ${
-          showPlaceholder ? "absolute inset-0 opacity-0" : ""
+        className={`absolute inset-0 h-full w-full object-contain ${
+          showPlaceholder ? "opacity-0" : ""
         }`}
       />
     </button>
@@ -347,16 +367,34 @@ function MediaImageRenderer(props: MarkdownImageProps) {
   return <img {...omitMarkdownNodeProp(rest)} src={src} alt={alt} />;
 }
 
+// `rehypeMermaid` turns mermaid fences into `<div data-mermaid-code>`; every
+// other div renders as-is.
+function MarkdownDivRenderer(props: MarkdownDivProps) {
+  const { children, ...rest } = props;
+  const mermaidCode = props["data-mermaid-code"];
+  if (typeof mermaidCode === "string") {
+    return (
+      <MermaidDiagram
+        code={mermaidCode}
+        scope={props["data-mermaid-scope"] ?? ""}
+      />
+    );
+  }
+  return <div {...omitMarkdownNodeProp(rest)}>{children}</div>;
+}
+
 const PLAIN_MARKDOWN_COMPONENTS = {
   table: ResponsiveTable,
   a: PlainLinkRenderer,
   img: PlainImageRenderer,
+  div: MarkdownDivRenderer,
 } as const;
 
 const MEDIA_MARKDOWN_COMPONENTS = {
   table: ResponsiveTable,
   a: MediaLinkRenderer,
   img: MediaImageRenderer,
+  div: MarkdownDivRenderer,
 } as const;
 
 // Neutralize raw HTML by escaping only `<`: a tag cannot start without it, so
@@ -367,10 +405,69 @@ function escapeHtmlTags(source: string): string {
   return source.replace(/</g, "&lt;");
 }
 
+type RehypePlugins = MarkdownPreviewProps["rehypePlugins"];
+type RemarkPlugins = NonNullable<MarkdownPreviewProps["remarkPlugins"]>;
+type PluginsFilter = NonNullable<MarkdownPreviewProps["pluginsFilter"]>;
+
+// CommonMark only closes `**`/`*` when the delimiter is not wedged between a
+// punctuation character and a letter. CJK writes `（）。「」` with no surrounding
+// spaces, so `**加粗（x）**后面` never closes and the asterisks leak as text.
+// These two plugins relax that rule for CJK punctuation only; ASCII output is
+// unchanged.
+//
+// `remark-cjk-friendly` is order-independent, but the strikethrough companion
+// has to replace `remark-gfm`'s own `~~` extension and therefore must run after
+// it. `@uiw/react-markdown-preview` builds `[remarkAlert, ...caller, gfm]`, so
+// caller plugins always land *before* `gfm` — moving the companion to the tail
+// is what puts it behind `gfm`.
+const reorderCjkStrikethrough: PluginsFilter = (type, plugins) => {
+  if (type !== "remark") {
+    return plugins;
+  }
+  return [
+    ...plugins.filter((plugin) => {
+      return plugin !== remarkCjkFriendlyStrikethrough;
+    }),
+    remarkCjkFriendlyStrikethrough,
+  ];
+};
+
+function buildRemarkPlugins(args: {
+  mathEnabled: boolean;
+  cjkFriendlyEnabled: boolean;
+  remarkPlugins: MarkdownPreviewProps["remarkPlugins"];
+}): RemarkPlugins {
+  const mathPlugins: RemarkPlugins = args.mathEnabled
+    ? [[remarkMath, { singleDollarTextMath: false }]]
+    : [];
+  const cjkPlugins: RemarkPlugins = args.cjkFriendlyEnabled
+    ? [remarkCjkFriendly, remarkCjkFriendlyStrikethrough]
+    : [];
+  return [...mathPlugins, ...cjkPlugins, ...(args.remarkPlugins ?? [])];
+}
+
+// The mermaid plugin has to stay ahead of `rehype-prism-plus`, which
+// `@uiw/react-markdown-preview` appends after every caller-provided plugin.
+function buildRehypePlugins(args: {
+  mathEnabled: boolean;
+  mermaidScope: string;
+  rehypePlugins: RehypePlugins;
+}): RehypePlugins {
+  const mermaidPlugins: NonNullable<RehypePlugins> = [
+    [rehypeMermaid, { scope: args.mermaidScope }],
+  ];
+  return [
+    ...(args.mathEnabled ? [rehypeKatex] : []),
+    ...(args.rehypePlugins ?? []),
+    ...mermaidPlugins,
+  ];
+}
+
 export function Markdown({
   className,
   style,
   mediaPreview = false,
+  mermaidScope,
   mathEnabled = false,
   escapeHtml = false,
   source,
@@ -379,10 +476,13 @@ export function Markdown({
   ...rest
 }: MarkdownPreviewProps & {
   mediaPreview?: boolean;
+  mermaidScope?: string;
   mathEnabled?: boolean;
   escapeHtml?: boolean;
 }) {
   const theme = useGet(theme$);
+  const pageLifecycleId = useGet(pageLifecycleId$);
+  const cjkFriendlyEnabled = useGet(cjkFriendlyMarkdownEnabled$);
   const components = mediaPreview
     ? MEDIA_MARKDOWN_COMPONENTS
     : PLAIN_MARKDOWN_COMPONENTS;
@@ -400,17 +500,17 @@ export function Markdown({
       }}
       wrapperElement={{ "data-color-mode": theme }}
       rehypeRewrite={rehypeRewriteHandler}
-      remarkPlugins={
-        mathEnabled
-          ? [
-              [remarkMath, { singleDollarTextMath: false }],
-              ...(remarkPlugins ?? []),
-            ]
-          : remarkPlugins
-      }
-      rehypePlugins={
-        mathEnabled ? [rehypeKatex, ...(rehypePlugins ?? [])] : rehypePlugins
-      }
+      pluginsFilter={cjkFriendlyEnabled ? reorderCjkStrikethrough : undefined}
+      remarkPlugins={buildRemarkPlugins({
+        mathEnabled,
+        cjkFriendlyEnabled,
+        remarkPlugins,
+      })}
+      rehypePlugins={buildRehypePlugins({
+        mathEnabled,
+        mermaidScope: mermaidScope ?? pageLifecycleId,
+        rehypePlugins,
+      })}
       components={components}
       source={renderedSource}
       {...rest}

@@ -11,8 +11,9 @@ import {
 /**
  * Hourly model usage rollup used by the public model rankings page.
  *
- * `hourStart` is the UTC hour bucket of usage activity time. Rows are
- * re-aggregated idempotently by the internal cron endpoint.
+ * `hourStart` is the UTC hour bucket of usage activity time. The internal cron
+ * incrementally projects each accepted model usage observation into these
+ * durable rows.
  */
 export const modelStat = pgTable(
   "model_stat",

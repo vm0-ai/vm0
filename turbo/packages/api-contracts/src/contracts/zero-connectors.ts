@@ -2,7 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
   connectorAuthMethodIdSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
 } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import {
@@ -40,28 +40,28 @@ export const zeroConnectorsMainContract = c.router({
 });
 
 /**
- * Zero contract for GET/DELETE /api/zero/connectors/:type
- * Proxies to GET/DELETE /api/connectors/:type
+ * Zero contract for GET/DELETE /api/zero/connectors/:connectorSlug
+ * Proxies to GET/DELETE /api/connectors/:connectorSlug
  */
-export const zeroConnectorsByTypeContract = c.router({
+export const zeroConnectorsBySlugContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/connectors/:type",
+    path: "/api/zero/connectors/:connectorSlug",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorRefSchema }),
+    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     responses: {
       200: connectorResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get connector by type (zero proxy)",
+    summary: "Get connector by slug (zero proxy)",
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/connectors/:type",
+    path: "/api/zero/connectors/:connectorSlug",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorRefSchema }),
+    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
@@ -72,15 +72,15 @@ export const zeroConnectorsByTypeContract = c.router({
 });
 
 /**
- * Zero contract for GET /api/zero/connectors/:type/scope-diff
+ * Zero contract for GET /api/zero/connectors/:connectorSlug/scope-diff
  * App-layer endpoint (direct service call, no proxy)
  */
 export const zeroConnectorScopeDiffContract = c.router({
   getScopeDiff: {
     method: "GET",
-    path: "/api/zero/connectors/:type/scope-diff",
+    path: "/api/zero/connectors/:connectorSlug/scope-diff",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorRefSchema }),
+    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     responses: {
       200: scopeDiffResponseSchema,
       401: apiErrorSchema,
@@ -94,9 +94,9 @@ export const zeroConnectorScopeDiffContract = c.router({
 export const zeroConnectorOauthStartContract = c.router({
   start: {
     method: "POST",
-    path: "/api/zero/connectors/:type/oauth/start",
+    path: "/api/zero/connectors/:connectorSlug/oauth/start",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorRefSchema }),
+    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
@@ -114,27 +114,12 @@ export const zeroConnectorOauthStartContract = c.router({
   },
 });
 
-export const zeroConnectorOauthContinueContract = c.router({
-  continue: {
-    method: "GET",
-    path: "/api/zero/connectors/:type/oauth/continue",
-    pathParams: z.object({ type: connectorRefSchema }),
-    query: z.object({ state: z.string().regex(/^[0-9a-f]{64}$/) }),
-    responses: {
-      307: c.noBody(),
-      400: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Continue connector OAuth in the browser",
-  },
-});
-
 export const zeroConnectorOpenIdStartContract = c.router({
   start: {
     method: "POST",
-    path: "/api/zero/connectors/:type/openid/start",
+    path: "/api/zero/connectors/:connectorSlug/openid/start",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorRefSchema }),
+    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
@@ -154,9 +139,9 @@ export const zeroConnectorOpenIdStartContract = c.router({
 export const zeroConnectorManualGrantContract = c.router({
   connect: {
     method: "POST",
-    path: "/api/zero/connectors/:type/manual-grant",
+    path: "/api/zero/connectors/:connectorSlug/manual-grant",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorRefSchema }),
+    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
@@ -178,9 +163,9 @@ export const zeroConnectorManualGrantContract = c.router({
 export const zeroConnectorNoAuthGrantContract = c.router({
   connect: {
     method: "POST",
-    path: "/api/zero/connectors/:type/no-auth",
+    path: "/api/zero/connectors/:connectorSlug/no-auth",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorRefSchema }),
+    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
@@ -201,9 +186,9 @@ export const zeroConnectorNoAuthGrantContract = c.router({
 export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/connectors/:type/oauth/device/sessions",
+    path: "/api/zero/connectors/:connectorSlug/oauth/device/sessions",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorRefSchema }),
+    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
@@ -221,10 +206,10 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
   },
   poll: {
     method: "POST",
-    path: "/api/zero/connectors/:type/oauth/device/sessions/:sessionId/poll",
+    path: "/api/zero/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
     headers: authHeadersSchema,
     pathParams: z.object({
-      type: connectorRefSchema,
+      connectorSlug: connectorSlugSchema,
       sessionId: z.uuid(),
     }),
     body: connectorOauthDeviceAuthSessionPollRequestSchema,
@@ -243,9 +228,9 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
 export const zeroConnectorExternalCodeSessionContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/connectors/:type/external-code/sessions",
+    path: "/api/zero/connectors/:connectorSlug/external-code/sessions",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorRefSchema }),
+    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
@@ -262,10 +247,10 @@ export const zeroConnectorExternalCodeSessionContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/zero/connectors/:type/external-code/sessions/:sessionId/complete",
+    path: "/api/zero/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
     headers: authHeadersSchema,
     pathParams: z.object({
-      type: connectorRefSchema,
+      connectorSlug: connectorSlugSchema,
       sessionId: z.uuid(),
     }),
     body: connectorExternalCodeSessionCompleteRequestSchema,
@@ -282,7 +267,7 @@ export const zeroConnectorExternalCodeSessionContract = c.router({
 });
 
 const connectorSearchItemSchema = z.object({
-  id: connectorRefSchema,
+  slug: connectorSlugSchema,
   label: z.string(),
   description: z.string(),
   authMethods: z.array(connectorAuthMethodIdSchema),
@@ -299,7 +284,7 @@ export type ConnectorSearchResponse = z.infer<
 
 /**
  * Zero contract for GET /api/zero/connectors/search
- * Returns all available connector type definitions with optional keyword search
+ * Returns all available connectors with optional keyword search
  */
 export const zeroConnectorsSearchContract = c.router({
   search: {
@@ -313,12 +298,12 @@ export const zeroConnectorsSearchContract = c.router({
       403: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Search available connector types",
+    summary: "Search available connectors by slug",
   },
 });
 
 export type ZeroConnectorsMainContract = typeof zeroConnectorsMainContract;
-export type ZeroConnectorsByTypeContract = typeof zeroConnectorsByTypeContract;
+export type ZeroConnectorsBySlugContract = typeof zeroConnectorsBySlugContract;
 export type ZeroConnectorScopeDiffContract =
   typeof zeroConnectorScopeDiffContract;
 export type ZeroConnectorManualGrantContract =

@@ -5,7 +5,8 @@ import {
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
@@ -13,6 +14,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroAgentsRoutes } from "../zero-agents";
 
 const context = testContext();
 const authOrgApi = createAuthOrgAgentsBddApi(context);
@@ -39,11 +41,15 @@ function authHeaders() {
 }
 
 function agentsClient() {
-  return setupApp({ context })(zeroAgentsMainContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsMainContract,
+  );
 }
 
 function agentsByIdClient() {
-  return setupApp({ context })(zeroAgentsByIdContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsByIdContract,
+  );
 }
 
 function currentSecond(): number {

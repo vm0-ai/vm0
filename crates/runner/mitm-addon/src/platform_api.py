@@ -5,10 +5,11 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from mitmproxy import ctx
+from mitmproxy import ctx, http
 
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
+_VERCEL_BYPASS_HEADER = "x-vercel-protection-bypass"
 CLIENT_VERSION_HEADER = "X-Client-Version"
 CLIENT_TYPE_HEADER = "X-Client-Type"
 CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id"
@@ -38,9 +39,15 @@ def build_api_opener() -> urllib.request.OpenerDirector:
 
 
 def configure_client_headers(*, client_session_id: str, client_version: str) -> None:
-    """Snapshot runner-provided client header values for worker-thread requests."""
+    """Snapshot runner-provided client header values for platform API requests."""
     global _CLIENT_HEADERS
     _CLIENT_HEADERS = (client_session_id, client_version)
+
+
+def add_vercel_bypass_header(headers: http.Headers) -> None:
+    """Add the runner-owned preview bypass to an admitted platform API request."""
+    if VERCEL_BYPASS:
+        headers[_VERCEL_BYPASS_HEADER] = VERCEL_BYPASS
 
 
 def get_api_url() -> str:
@@ -53,8 +60,9 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
 
     Centralises User-Agent, Authorization, Content-Type, and the optional
     Vercel bypass header so that callers cannot accidentally omit them. The
-    credentials are unredirected as defense in depth; callers must still use
-    :func:`build_api_opener` so redirects fail before contacting another URL.
+    credentials are unredirected as defense in depth; callers must still reject
+    redirects, using :func:`build_api_opener` or an equivalent transport policy,
+    before contacting another URL.
     """
     parsed_url = urllib.parse.urlsplit(url)
     if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
@@ -78,5 +86,5 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     )
     req.add_unredirected_header("Authorization", f"Bearer {sandbox_token}")
     if VERCEL_BYPASS:
-        req.add_unredirected_header("x-vercel-protection-bypass", VERCEL_BYPASS)
+        req.add_unredirected_header(_VERCEL_BYPASS_HEADER, VERCEL_BYPASS)
     return req

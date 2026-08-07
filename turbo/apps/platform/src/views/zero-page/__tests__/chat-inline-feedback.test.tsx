@@ -9,7 +9,6 @@ import {
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -43,6 +42,16 @@ interface RunCreateCapture {
   modelSelection?: ModelSelectionRequest | null;
   computerUseHostId?: string | null;
   clientEventId?: string;
+}
+
+function findInlineTemplate(): HTMLElement {
+  const inlineTemplate = document.querySelector(
+    "[data-composer-inline-template]",
+  );
+  if (!(inlineTemplate instanceof HTMLElement)) {
+    throw new Error("Inline template not found in the composer");
+  }
+  return inlineTemplate;
 }
 
 function selectTextRangeForInlineFeedback(element: HTMLElement): void {
@@ -231,7 +240,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Template feedback",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-template-feedback-user",
           role: "user",
@@ -255,9 +264,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -315,7 +321,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-user",
           role: "user",
@@ -421,7 +427,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Legacy feedback",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-legacy-feedback-user",
           role: "user",
@@ -472,90 +478,12 @@ describe("chat inline feedback", () => {
     });
   });
 
-  it("restores queued inline feedback as a userMessage draft", async () => {
+  it("restores queued Morning Brief feedback as a userMessage draft", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000706";
     const assistantReply = "The rollout plan needs a clearer owner.";
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    const queuedMessages: RunCreateCapture[] = [];
-    const draftPatches: Record<string, unknown>[] = [];
-
-    context.mocks.data.orgModelPolicies([
-      {
-        id: "00000000-0000-4000-a000-000000000706",
-        model: "claude-sonnet-4-6",
-        modelLabel: "Claude Sonnet 4.6",
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-        routeStatus: "valid",
-        routeStatusReason: null,
-        createdAt: "2026-07-14T00:00:00.000Z",
-        updatedAt: "2026-07-14T00:00:00.000Z",
-      },
-    ]);
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Queued feedback",
-      selectedModel: "claude-sonnet-4-6",
-      chatMessages: [
-        {
-          id: "msg-queued-feedback-user",
-          role: "user",
-          content: "Review this rollout plan",
-          runId: "run-queued-feedback",
-          createdAt: "2026-07-26T10:00:00Z",
-        },
-        {
-          id: "msg-queued-feedback-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-queued-feedback",
-          createdAt: "2026-07-26T10:00:01Z",
-        },
-      ],
-      activeRunIds: ["run-queued-feedback"],
-      onQueuedMessageAppend: (body) => {
-        queuedMessages.push(body);
-      },
-    });
-    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
-      return respond(204);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-    });
-
-    click(await screen.findByLabelText("Template"));
-    click(
-      await screen.findByLabelText(
-        `Preview ${template.title} at current slide`,
-      ),
-    );
-    click(await screen.findByLabelText("Select style Gold Luxe"));
-    click(await screen.findByLabelText(`Select template ${template.title}`));
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
-    });
-
-    selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
-    pastePlainText(
-      await findFeedbackNote(),
-      "Name the owner and explain the complete result.",
-    );
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(queuedMessages).toHaveLength(1);
-    });
-    expect(queuedMessages[0]?.userMessage).toStrictEqual({
+    const recalledUserMessage = {
       version: 1,
       parts: [
         {
@@ -581,15 +509,66 @@ describe("chat inline feedback", () => {
           ],
         },
       ],
+    } satisfies UserMessageDocument;
+    const queuedUserMessage = {
+      version: 1,
+      parts: [
+        ...recalledUserMessage.parts,
+        { type: "morning_brief", briefDate: "2026-07-26" },
+      ],
+    } satisfies UserMessageDocument;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Queued feedback",
+      chatEvents: [
+        {
+          id: "msg-queued-feedback-user",
+          role: "user",
+          content: "Review this rollout plan",
+          runId: "run-queued-feedback",
+          createdAt: "2026-07-26T10:00:00Z",
+        },
+        {
+          id: "msg-queued-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-queued-feedback",
+          createdAt: "2026-07-26T10:00:01Z",
+        },
+        {
+          id: "msg-queued-feedback-pending",
+          role: "user",
+          content: "invalidate",
+          userMessage: queuedUserMessage,
+          runId: undefined,
+          createdAt: "2026-07-26T10:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-queued-feedback"],
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ respond }) => {
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
     });
 
     await user.click(await screen.findByLabelText("Remove queued message"));
 
     const composer = await findComposerEditor();
     await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
+      const inlineTemplate = composer.querySelector(
+        "[data-composer-inline-template]",
+      );
+      expect(inlineTemplate).toBeInTheDocument();
+      expect(inlineTemplate).toHaveTextContent(template.title);
     });
     await waitFor(() => {
       const feedbackItem = composer.querySelector("[data-feedback-item]");
@@ -602,16 +581,6 @@ describe("chat inline feedback", () => {
       "Feedback on this part of your reply:",
     );
     expect(composer).not.toHaveTextContent(`> ${assistantReply}`);
-    await waitFor(() => {
-      expect(draftPatches).toContainEqual({
-        draftContent:
-          "Feedback on this part of your reply:\n\n" +
-          `> ${assistantReply}\n\n` +
-          "Name the owner and explain the complete result.",
-        draftUserMessage: queuedMessages[0]?.userMessage,
-        draftAttachments: null,
-      });
-    });
   });
 
   it.each([
@@ -642,7 +611,7 @@ describe("chat inline feedback", () => {
       mockChatLifecycle(context, {
         threadId,
         threadTitle: "Mail feedback",
-        chatMessages: [
+        chatEvents: [
           {
             id: "msg-mail-feedback-assistant",
             role: "assistant",
@@ -736,7 +705,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-slash-user",
           role: "user",
@@ -785,7 +754,7 @@ describe("chat inline feedback", () => {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
       selectedModel: "claude-sonnet-4-6",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-unavailable-model-user",
           role: "user",
@@ -861,7 +830,7 @@ describe("chat inline feedback", () => {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
       selectedModel: policy.model,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-loading-user",
           role: "user",
@@ -912,7 +881,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-composition-user",
           role: "user",
@@ -966,7 +935,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-ime-send-user",
           role: "user",
@@ -1033,7 +1002,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-mouse-selection-user",
           role: "user",
@@ -1081,7 +1050,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-late-selection-user",
           role: "user",
@@ -1129,7 +1098,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-composer-focus-user",
           role: "user",
@@ -1177,7 +1146,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-copy-shortcut-user",
           role: "user",
@@ -1227,7 +1196,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-shortcut-user",
           role: "user",
@@ -1276,7 +1245,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-multiline-user",
           role: "user",
@@ -1318,7 +1287,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-dismiss-user",
           role: "user",
@@ -1382,7 +1351,7 @@ describe("chat inline feedback", () => {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
       selectedModel: "claude-sonnet-4-6",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-attachment-user",
           role: "user",
@@ -1423,12 +1392,10 @@ describe("chat inline feedback", () => {
         `Preview ${template.title} at current slide`,
       ),
     );
-    click(await screen.findByLabelText("Select style Gold Luxe"));
+    click(await screen.findByLabelText("Select style Award night"));
     click(await screen.findByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${templateChipLabel}`),
-      ).toBeInTheDocument();
+      expect(findInlineTemplate()).toHaveTextContent(templateChipLabel);
     });
 
     const fileInput =
@@ -1458,9 +1425,7 @@ describe("chat inline feedback", () => {
       await findFeedbackNote(),
       "Use the attached brief as supporting context.",
     );
-    expect(
-      screen.getByLabelText(`Remove template ${templateChipLabel}`),
-    ).toBeInTheDocument();
+    expect(findInlineTemplate()).toHaveTextContent(templateChipLabel);
     expect(
       screen.getByLabelText("Remove feedback-brief.txt"),
     ).toBeInTheDocument();
@@ -1477,20 +1442,27 @@ describe("chat inline feedback", () => {
             size: 14,
           },
         ],
-        generationTemplate: {
-          type: "presentation",
-          selection: {
-            colorSystemId: "color-system:gold-luxe",
-            templateId: template.templateId,
-            previewUrl: template.embedUrl,
-          },
-        },
       });
     });
     const sentBody = sentBodies[0];
     if (!sentBody) {
       throw new Error("feedback send body not captured");
     }
+    // Inline templates travel inside the structured userMessage, so the
+    // legacy top-level generationTemplate field stays unset.
+    expect(sentBody.generationTemplate).toBeUndefined();
+    expect(sentBody.userMessage?.parts).toContainEqual({
+      type: "template",
+      titleSnapshot: templateChipLabel,
+      template: {
+        type: "presentation",
+        selection: {
+          colorSystemId: "color-system:gold-luxe",
+          templateId: template.templateId,
+          previewUrl: template.embedUrl,
+        },
+      },
+    });
     expect(sentBody?.prompt).toContain(
       "Use the attached brief as supporting context.",
     );
@@ -1503,7 +1475,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-summary-user",
           role: "user",
@@ -1571,7 +1543,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-edit-user",
           role: "user",

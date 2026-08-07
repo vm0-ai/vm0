@@ -9,7 +9,7 @@ import {
 import { z } from "zod";
 
 import { safeUrlParse } from "../../utils";
-import { connectorRefSchema, privateNameSchema } from "./common";
+import { connectorSlugSchema, privateNameSchema } from "./common";
 
 const TEMPLATE_REFERENCE_PATTERN = /\b(secrets|vars)\.([A-Z][A-Z0-9_]*)\b/gu;
 const DIRECT_TEMPLATE_PATTERN =
@@ -169,7 +169,7 @@ const firewallApiSchema = z
 
 export const firewallConfigSchema = z
   .object({
-    name: connectorRefSchema,
+    name: connectorSlugSchema,
     description: z.string().min(1).optional(),
     placeholders: z.record(privateNameSchema, z.string()).optional(),
     apis: z.array(firewallApiSchema).min(1),
@@ -185,7 +185,6 @@ export const firewallCategoriesSchema = z
 
 const firewallGeneratorResultSchema = z
   .object({
-    connectorRef: connectorRefSchema,
     firewall: firewallConfigSchema,
     categories: firewallCategoriesSchema.nullable(),
     defaultAllowed: z.array(z.string().min(1)).nullable(),
@@ -307,12 +306,12 @@ function assertCanonicalFirewallBaseHostname(normalizedBase: string): void {
 
 export function parseFirewallBaseUrl(
   base: string,
-  connectorRef = "connector-catalog",
+  connectorSlug = "connector-catalog",
 ): URL {
   if (BASE_SECRET_PATTERN.test(base)) {
     throw new Error("Firewall API base URLs must use connector variables");
   }
-  validateBaseUrl(base, connectorRef);
+  validateBaseUrl(base, connectorSlug);
   const normalizedBase = normalizedFirewallBaseUrl(base);
   const parsed = safeUrlParse(normalizedBase);
   if (
@@ -353,14 +352,14 @@ export function firewallAuthInjectsCredentials(auth: {
   );
 }
 
-function validateHostPolicy(connectorRef: string, api: FirewallApi): void {
+function validateHostPolicy(connectorSlug: string, api: FirewallApi): void {
   if (
     firewallAuthInjectsCredentials(api.auth) &&
     firewallBaseUrlTemplateNeedsHostPolicy(api.base)
   ) {
     if (api.hostPolicy === undefined) {
       throw new Error(
-        `Credentialed dynamic base URL requires hostPolicy for ${connectorRef}: ${api.base}`,
+        `Credentialed dynamic base URL requires hostPolicy for ${connectorSlug}: ${api.base}`,
       );
     }
   }
@@ -369,23 +368,19 @@ function validateHostPolicy(connectorRef: string, api: FirewallApi): void {
 export function validateFirewallGeneratorResult(
   result: FirewallGeneratorResult,
 ): void {
-  if (result.connectorRef !== result.firewall.name) {
-    throw new Error(
-      `Firewall result ref mismatch: ${result.connectorRef} != ${result.firewall.name}`,
-    );
-  }
+  const connectorSlug = result.firewall.name;
   const permissionNames = firewallPermissionNames(result.firewall);
   for (const api of result.firewall.apis) {
-    parseFirewallBaseUrl(api.base, result.connectorRef);
+    parseFirewallBaseUrl(api.base, connectorSlug);
     validateBaseUrlHostPolicy({
       base: api.base,
-      serviceName: result.connectorRef,
+      serviceName: connectorSlug,
       hostPolicy: api.hostPolicy,
     });
     if (api.auth.base !== undefined) {
-      validateAuthBaseUrl(api.auth.base, result.connectorRef);
+      validateAuthBaseUrl(api.auth.base, connectorSlug);
     }
-    validateHostPolicy(result.connectorRef, api);
+    validateHostPolicy(connectorSlug, api);
   }
 
   if (result.categories !== null) {
@@ -398,7 +393,7 @@ export function validateFirewallGeneratorResult(
     });
     if (missing.length > 0 || unknown.length > 0) {
       throw new Error(
-        `Firewall categories do not match permissions for ${result.connectorRef}`,
+        `Firewall categories do not match permissions for ${connectorSlug}`,
       );
     }
     const categoryNames = new Set(
@@ -415,7 +410,7 @@ export function validateFirewallGeneratorResult(
       })
     ) {
       throw new Error(
-        `Firewall category order does not match categories for ${result.connectorRef}`,
+        `Firewall category order does not match categories for ${connectorSlug}`,
       );
     }
   }
@@ -427,7 +422,7 @@ export function validateFirewallGeneratorResult(
     });
     if (duplicates.length > 0 || unknown.length > 0) {
       throw new Error(
-        `Firewall default allowlist is invalid for ${result.connectorRef}`,
+        `Firewall default allowlist is invalid for ${connectorSlug}`,
       );
     }
   }

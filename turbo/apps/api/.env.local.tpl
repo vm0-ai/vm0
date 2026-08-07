@@ -11,6 +11,8 @@ FEISHU_CALLBACK_BASE_URL=https://api.vm7.ai:8443
 VM0_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
 
+# CLI_PKG_URL is appended by scripts/sync-env.sh using the local machine identity.
+
 # Optional: Atom redeem service for onboarding codes
 ATOM_URL=https://atom-api.vm7.ai:8442
 VM0_MACHINE_SECRET_KEY=op://Development/clerk/VM0_MACHINE_SECRET_KEY
@@ -20,10 +22,6 @@ ENV=development
 
 # Required: git commit SHA used as OTel service.version and Sentry release
 GIT_COMMIT_SHA=local-dev
-
-# Required: Sandbox Runtime (E2B)
-E2B_API_KEY=op://Development/e2b/E2B_API_KEY
-E2B_TEMPLATE_NAME=vm0-claude-code-dev
 
 # Optional: Sandbox Runtime (Vercel Sandbox access-token auth)
 VERCEL_TEAM_ID=op://Development/vercel/VERCEL_TEAM_ID
@@ -92,6 +90,10 @@ OPENAI_WEBHOOK_SECRET=op://Development/openai/OPENAI_WEBHOOK_SECRET
 # Optional: fal media generation
 FAL_KEY=op://Development/fal/FAL_KEY
 
+# Optional: JoggAI talking-avatar video generation
+JOGGAI_API_KEY=op://Development/joggai/JOGGAI_API_KEY
+JOGGAI_WEBHOOK_SECRET=op://Development/joggai/JOGGAI_WEBHOOK_SECRET
+
 # Optional: BytePlus ModelArk video generation
 BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
 
@@ -125,14 +127,6 @@ GOOGLE_OAUTH_CLIENT_SECRET=op://Development/google/GOOGLE_OAUTH_CLIENT_SECRET
 GMAIL_PUBSUB_TOPIC_NAME=op://Development/gmail/GMAIL_PUBSUB_TOPIC_NAME
 GMAIL_PUBSUB_PUSH_AUDIENCE=op://Development/gmail/GMAIL_PUBSUB_PUSH_AUDIENCE
 GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL=op://Development/gmail/GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL
-
-# Keep disabled until every rollback-eligible API version accepts Gmail
-# new-message event configurations with threadId.
-ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED=false
-
-# Keep disabled until every rollback-eligible API version accepts stored
-# Brazilian Portuguese locale preferences.
-BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED=false
 
 # Optional: Google Ads API (developer token + login customer ID for MCC)
 GOOGLE_ADS_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN
@@ -252,9 +246,16 @@ STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY=op://Development/stripe/STRIPE_VERCEL_GA
 
 # Optional: Stripe Billing (subscription + credits)
 STRIPE_SECRET_KEY=op://Development/stripe/STRIPE_SECRET_KEY
+STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID=op://Development/stripe/STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID
 STRIPE_WEBHOOK_SECRET=op://Development/stripe/STRIPE_WEBHOOK_SECRET
 ZERO_PRICE_PRO=op://Development/stripe/ZERO_PRICE_PRO
 ZERO_PRICE_TEAM=op://Development/stripe/ZERO_PRICE_TEAM
+ZERO_PRICE_USAGE_PACK_PLAN_PRO=op://Development/stripe/ZERO_PRICE_USAGE_PACK_PLAN_PRO
+ZERO_PRICE_USAGE_PACK_PLAN_TEAM=op://Development/stripe/ZERO_PRICE_USAGE_PACK_PLAN_TEAM
+ZERO_PRICE_USAGE_PACK_20=op://Development/stripe/ZERO_PRICE_USAGE_PACK_20
+ZERO_PRICE_USAGE_PACK_50=op://Development/stripe/ZERO_PRICE_USAGE_PACK_50
+ZERO_PRICE_USAGE_PACK_100=op://Development/stripe/ZERO_PRICE_USAGE_PACK_100
+ZERO_PRICE_USAGE_PACK_200=op://Development/stripe/ZERO_PRICE_USAGE_PACK_200
 ATOM_GRANT_PRICE=op://Development/stripe/ATOM_GRANT_PRICE
 ZERO_PRICE_CUSTOM_CREDITS=op://Development/stripe/ZERO_PRICE_CUSTOM_CREDITS
 ZERO_PRICE_CUSTOM_CREDIT_UNIT=op://Development/stripe/ZERO_PRICE_CUSTOM_CREDIT_UNIT

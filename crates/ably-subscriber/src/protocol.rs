@@ -52,6 +52,11 @@ pub mod flags {
 // NOTE: We intentionally omit `skip_serializing_if = "Option::is_none"` on
 // these structs. rmp_serde has a long-standing bug where skipped Option fields
 // cause deserialization failures: https://github.com/3Hren/msgpack-rust/issues/86
+/// Low-level representation of an Ably MessagePack protocol message.
+///
+/// Inbound frame compatibility is defined by [`decode_msg`]. Subscription
+/// consumers observe [`crate::Event`] values; message events carry
+/// [`crate::Message`] instead of this wire representation.
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ProtocolMessage {
@@ -164,6 +169,10 @@ impl fmt::Debug for AuthDetails {
 pub struct AblyMessage {
     pub id: Option<String>,
     pub name: Option<String>,
+    /// MessagePack payload normalized to JSON by [`decode_msg`].
+    ///
+    /// A missing, `nil`, or non-finite root value is `None`. See [`decode_msg`]
+    /// for the complete recursive conversion contract.
     pub data: Option<serde_json::Value>,
     pub client_id: Option<String>,
     pub timestamp: Option<i64>,
@@ -176,16 +185,65 @@ pub struct AblyMessage {
 
 type MsgpackMap = Vec<(rmpv::Value, rmpv::Value)>;
 
+// rmpv's default depth can exhaust a normal Rust thread stack before returning an error.
+// This still permits roughly 128 nested containers, matching serde_json's default limit.
+const MAX_MSGPACK_DECODE_DEPTH: usize = 256;
+
 pub fn encode_msg(msg: &ProtocolMessage) -> Result<Vec<u8>, Error> {
     Ok(rmp_serde::to_vec_named(msg)?)
 }
 
+/// Decode one Ably MessagePack protocol frame.
+///
+/// This is the authoritative inbound compatibility contract for
+/// [`ProtocolMessage`] and [`AblyMessage::data`]. This module contains
+/// low-level wire types; subscription consumers observe [`crate::Event`]
+/// values, with message events carrying [`crate::Message`].
+///
+/// # Frame contract
+///
+/// The input must contain exactly one bounded-depth MessagePack value that
+/// consumes the full frame. Its root must be a map with an `action` integer
+/// representable as an `i32`. Unknown numeric actions remain valid for forward
+/// compatibility.
+///
+/// Known protocol fields, their known nested fields, and converted `params`
+/// keys use last-wins semantics when repeated. Unknown protocol fields are
+/// ignored.
+///
+/// # Message data normalization
+///
+/// A missing, `nil`, or non-finite root [`AblyMessage::data`] value becomes
+/// `None`. Other values are converted recursively to JSON:
+///
+/// - MessagePack `nil` and non-finite values nested inside data become JSON
+///   `null`.
+/// - Booleans, integers, finite floats, and valid UTF-8 strings become their
+///   corresponding JSON values.
+/// - Binary and extension payload bytes become standard-base64 JSON strings;
+///   an extension's type tag is not retained.
+/// - Invalid UTF-8 strings and map keys become empty strings.
+/// - Arrays become JSON arrays. Maps become JSON objects, with non-string keys
+///   formatted as strings and duplicate converted keys using last-wins
+///   semantics.
+///
+/// Channel delivery replaces a missing low-level data value with JSON `null`
+/// and then applies supported Ably `encoding` layers; see
+/// [`crate::Message::data`].
+///
+/// # Errors
+///
+/// Malformed MessagePack, excessive nesting, trailing bytes, an invalid root,
+/// a missing `action`, and invalid field shapes or numeric ranges return
+/// [`Error::Protocol`] with [`error_code::BAD_REQUEST`]. Diagnostic text is not
+/// part of this compatibility contract.
 pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
     let mut cursor = std::io::Cursor::new(data);
-    let value = rmpv::decode::read_value(&mut cursor).map_err(|e| Error::Protocol {
-        code: error_code::BAD_REQUEST,
-        message: format!("msgpack decode error: {e}"),
-    })?;
+    let value = rmpv::decode::read_value_with_max_depth(&mut cursor, MAX_MSGPACK_DECODE_DEPTH)
+        .map_err(|e| Error::Protocol {
+            code: error_code::BAD_REQUEST,
+            message: format!("msgpack decode error: {e}"),
+        })?;
     if cursor.position() != data.len() as u64 {
         return Err(Error::Protocol {
             code: error_code::BAD_REQUEST,

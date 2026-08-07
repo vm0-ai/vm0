@@ -22,6 +22,17 @@ export function conflict(message: string) {
   return httpError(409, "CONFLICT", message);
 }
 
+export const AUTONOMY_BUDGET_EXHAUSTED_MESSAGE =
+  "Maximum autonomous delegation depth reached. Send a new human message or confirm a permission request to continue.";
+
+export function autonomyBudgetExhausted() {
+  return httpError(
+    409,
+    "AUTONOMY_BUDGET_EXHAUSTED",
+    AUTONOMY_BUDGET_EXHAUSTED_MESSAGE,
+  );
+}
+
 export function runNotCancellable(message: string) {
   return httpError(400, "RUN_NOT_CANCELLABLE", message);
 }
@@ -36,6 +47,10 @@ export function notConfigured(message: string) {
 
 export function connectorReadinessTimeout(message: string) {
   return httpError(503, "CONNECTOR_READINESS_TIMEOUT", message);
+}
+
+export function eventDeliveryUnavailable(message: string) {
+  return httpError(503, "EVENT_DELIVERY_UNAVAILABLE", message);
 }
 
 export function payloadTooLarge(message: string) {

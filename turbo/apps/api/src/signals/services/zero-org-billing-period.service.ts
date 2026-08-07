@@ -1,26 +1,80 @@
 import { command } from "ccstate";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
+import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
+import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
+import { and, eq, gt, inArray, isNotNull, lte } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 
 const L = logger("OrgBillingPeriod");
+const ACTIVE_USAGE_ALLOWANCE_STATUSES = [
+  "active",
+  "manual_active",
+  "trialing",
+  "past_due",
+  "unpaid",
+] as const;
 
 interface OrgBillingPeriod {
   readonly start: Date;
   readonly end: Date;
 }
 
+function resolveUsageAllowancePeriod(
+  row:
+    | {
+        readonly allowancePeriodStart: Date | null;
+        readonly allowancePeriodEnd: Date | null;
+      }
+    | undefined,
+): OrgBillingPeriod | null {
+  if (!row?.allowancePeriodStart || !row.allowancePeriodEnd) {
+    return null;
+  }
+
+  return {
+    start: row.allowancePeriodStart,
+    end: row.allowancePeriodEnd,
+  };
+}
+
+interface StoredBillingPeriod {
+  readonly start: Date | null;
+  readonly end: Date | null;
+}
+
+function resolveStoredBillingPeriod(args: {
+  readonly planStart: Date | null;
+  readonly planEnd: Date | null;
+  readonly metadataEnd: Date | null;
+}): StoredBillingPeriod {
+  // Older API versions can update orgMetadata first during a rolling
+  // deployment. Prefer its later end, but let equal entitlement periods
+  // supply the exact start.
+  if (
+    args.planEnd !== null &&
+    (args.metadataEnd === null ||
+      args.planEnd.getTime() >= args.metadataEnd.getTime())
+  ) {
+    return { start: args.planStart, end: args.planEnd };
+  }
+  return { start: null, end: args.metadataEnd };
+}
+
 /**
  * Resolve an org's current billing period `{ start, end }`.
  *
- * Reads `orgMetadata.currentPeriodEnd` first; if missing or expired AND a
- * `stripeSubscriptionId` exists, falls back to `stripe.subscriptions.retrieve`
- * and writes the refreshed value back to orgMetadata. This API service owns the
- * runtime behavior and preserves the Stripe-API rationale and past-dated guard.
+ * Reads the exact period stored for an active usage-allowance subscription
+ * first because that subscription owns the credit-usage billing cycle across
+ * plan tiers. Falls back to `orgPlanEntitlements`, including non-monthly
+ * Custom plan grants, and then to
+ * `orgMetadata.currentPeriodEnd`; if missing or expired AND a
+ * `stripeSubscriptionId` exists, retrieves the Stripe subscription and writes
+ * the refreshed value back to orgMetadata. This API service owns the runtime
+ * behavior and preserves the Stripe-API rationale and past-dated guard.
  *
  * Returns `null` for free-tier orgs (no subscription, no period). Callers
  * MUST short-circuit on null — there is no synthetic period for the free
@@ -42,19 +96,56 @@ export const getOrgBillingPeriod$ = command(
     signal: AbortSignal,
   ): Promise<OrgBillingPeriod | null> => {
     const writeDb = set(writeDb$);
+    const now = nowDate();
 
     const [orgRow] = await writeDb
       .select({
+        allowancePeriodStart: orgUsageAllowanceEntitlements.effectiveAt,
+        allowancePeriodEnd: orgUsageAllowanceEntitlements.expiresAt,
+        planPeriodStart: orgPlanEntitlements.currentPeriodStart,
+        planPeriodEnd: orgPlanEntitlements.currentPeriodEnd,
         currentPeriodEnd: orgMetadata.currentPeriodEnd,
         stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
       })
       .from(orgMetadata)
+      .leftJoin(
+        orgPlanEntitlements,
+        eq(orgPlanEntitlements.orgId, orgMetadata.orgId),
+      )
+      .leftJoin(
+        orgUsageAllowanceEntitlements,
+        and(
+          eq(orgUsageAllowanceEntitlements.orgId, orgMetadata.orgId),
+          inArray(orgUsageAllowanceEntitlements.status, [
+            ...ACTIVE_USAGE_ALLOWANCE_STATUSES,
+          ]),
+          isNotNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
+          lte(orgUsageAllowanceEntitlements.effectiveAt, now),
+          gt(orgUsageAllowanceEntitlements.expiresAt, now),
+        ),
+      )
       .where(eq(orgMetadata.orgId, orgId))
       .limit(1);
     signal.throwIfAborted();
 
-    let periodEnd = orgRow?.currentPeriodEnd ?? null;
-    const now = nowDate();
+    const allowancePeriod = resolveUsageAllowancePeriod(orgRow);
+    if (allowancePeriod) {
+      L.debug("billing period resolved", {
+        orgId,
+        source: "usage_allowance",
+        periodStart: allowancePeriod.start,
+        periodEnd: allowancePeriod.end,
+      });
+      return allowancePeriod;
+    }
+
+    const storedPeriod = resolveStoredBillingPeriod({
+      planStart: orgRow?.planPeriodStart ?? null,
+      planEnd: orgRow?.planPeriodEnd ?? null,
+      metadataEnd: orgRow?.currentPeriodEnd ?? null,
+    });
+    let periodStart = storedPeriod.start;
+    let periodEnd = storedPeriod.end;
 
     if ((!periodEnd || periodEnd < now) && orgRow?.stripeSubscriptionId) {
       if (periodEnd && periodEnd < now) {
@@ -85,6 +176,7 @@ export const getOrgBillingPeriod$ = command(
           });
           return null;
         }
+        periodStart = null;
         periodEnd = refreshed;
         await writeDb
           .update(orgMetadata)
@@ -95,8 +187,10 @@ export const getOrgBillingPeriod$ = command(
     }
 
     if (periodEnd) {
-      const periodStart = new Date(periodEnd);
-      periodStart.setMonth(periodStart.getMonth() - 1);
+      if (!periodStart) {
+        periodStart = new Date(periodEnd);
+        periodStart.setMonth(periodStart.getMonth() - 1);
+      }
       L.debug("billing period resolved", { orgId, periodStart, periodEnd });
       return { start: periodStart, end: periodEnd };
     }

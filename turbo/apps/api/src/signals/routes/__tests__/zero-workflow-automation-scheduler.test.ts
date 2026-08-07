@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { ChatEventResponse } from "@vm0/api-contracts/contracts/chat-threads";
+import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   zeroAgentsByIdContract,
@@ -9,26 +9,44 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { createStore } from "ccstate";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
+import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
+import { chatEventAutomationPart } from "./helpers/chat-event";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-automations";
+import { zeroAgentsRoutes } from "../zero-agents";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { zeroWorkflowsRoutes } from "../zero-workflows";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronExecuteWorkflowAutomationsRoutes,
+  ...testWorkflowAutomationExecutionRoutes,
+  ...zeroAgentsRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+  ...zeroWorkflowsRoutes,
+]);
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
+const runReadsApi = createRunReadsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const chatFilesApi = createChatFilesBddApi(context);
 const computerUseApi = createComputerUseBddApi(context);
@@ -52,11 +70,16 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
-async function readJson<T>(response: Response): Promise<T> {
-  return (await response.json()) as T;
+function workflowAutomationExecutionClient() {
+  return setupApp({
+    context,
+    routes: testWorkflowAutomationExecutionRoutes,
+  })(testWorkflowAutomationExecutionContract);
 }
 
 function expectOk(response: Response, operation: string): void {
@@ -144,23 +167,23 @@ async function disableAutomation(automationId: string): Promise<void> {
 }
 
 async function executeDueWorkflowAutomations(
-  route = CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
+  automationId: string,
 ): Promise<void> {
-  const response = await createApp({ signal: context.signal }).request(route, {
-    headers: { authorization: `Bearer ${CRON_SECRET}` },
-  });
-  await expectOk(response, "execute workflow automations cron");
-  const body = await readJson<{ readonly success: boolean }>(response);
-  expect(body.success).toBeTruthy();
+  const response = await accept(
+    workflowAutomationExecutionClient().execute({
+      body: { automation_id: automationId },
+    }),
+    [200],
+  );
+  expect(response.body.success).toBeTruthy();
 }
 
 interface WorkflowRunMessage {
   readonly runId: string;
-  readonly triggerSource: string | undefined;
-  readonly automationId: string | undefined;
-  readonly hasLegacyTriggerId: boolean;
+  readonly runGroupId?: string;
   readonly triggerBrief: string | null | undefined;
-  readonly workflowSnapshot: ChatEventResponse["workflowSnapshot"];
+  readonly workflowId: string | undefined;
+  readonly workflowName: string;
 }
 
 /**
@@ -172,9 +195,10 @@ async function workflowRunMessages(
 ): Promise<readonly WorkflowRunMessage[]> {
   const messages = await wf.readThreadEvents(threadId);
   return messages.flatMap((message) => {
+    const automationPart = chatEventAutomationPart(message);
     if (
       message.eventType !== "input.prompt" ||
-      message.content !== `/${WORKFLOW_NAME}` ||
+      automationPart?.workflowName !== WORKFLOW_NAME ||
       !message.runId
     ) {
       return [];
@@ -182,14 +206,12 @@ async function workflowRunMessages(
     return [
       {
         runId: message.runId,
-        triggerSource: message.triggerSource,
-        automationId: message.workflowSnapshot?.automationId,
-        hasLegacyTriggerId: Object.hasOwn(
-          message.workflowSnapshot ?? {},
-          "triggerId",
-        ),
-        triggerBrief: message.workflowSnapshot?.triggerBrief,
-        workflowSnapshot: message.workflowSnapshot,
+        ...(message.runGroupId === undefined
+          ? {}
+          : { runGroupId: message.runGroupId }),
+        triggerBrief: automationPart.automationBrief,
+        workflowId: automationPart.workflowId,
+        workflowName: automationPart.workflowName,
       },
     ];
   });
@@ -238,17 +260,63 @@ async function completeRunThroughSandbox(
 }
 
 async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
-  const response = await createApp({ signal: context.signal }).request(
-    `/api/zero/workflows/${scenario.workflowId}`,
-    {
-      method: "DELETE",
-      headers: { authorization: "Bearer clerk-session" },
-    },
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/zero/workflows/${scenario.workflowId}`, {
+    method: "DELETE",
+    headers: { authorization: "Bearer clerk-session" },
+  });
   await expectOk(response, "delete workflow");
 }
 
 describe("zero workflow automation scheduler", () => {
+  it("rejects unauthenticated production cron requests", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+
+    const response = await createApp({
+      signal: context.signal,
+      routes: TEST_APP_ROUTES,
+    }).request(CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("does not expose scoped workflow execution in production", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await accept(
+      workflowAutomationExecutionClient().execute({
+        body: {
+          automation_id: "00000000-0000-4000-8000-000000000001",
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body).toBe("Not found");
+  });
+
+  it("executes only the selected due automation", async () => {
+    const scenario = await setup();
+    const selected = await createDueLoopAutomation(scenario, 3600);
+    const unselected = await createDueLoopAutomation(scenario, 3600);
+
+    await executeDueWorkflowAutomations(selected.automationId);
+
+    await expect(workflowRunMessages(selected.threadId)).resolves.toHaveLength(
+      1,
+    );
+    const untouched = await wf.readAutomation(unselected.automationId);
+    expect(untouched.lastRunAt).toBeNull();
+    expect(untouched.nextRunAt).toBe(unselected.nextRunAt);
+    await disableAutomation(selected.automationId);
+    await disableAutomation(unselected.automationId);
+  });
+
   it("inherits the chat thread computer-use grant for automation runs", async () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 3600);
@@ -261,7 +329,7 @@ describe("zero workflow automation scheduler", () => {
       host.hostId,
     );
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
 
     const run = await onlyWorkflowRunMessage(automation.threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
@@ -281,7 +349,7 @@ describe("zero workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 3600);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
 
     const run = await onlyWorkflowRunMessage(automation.threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
@@ -307,16 +375,18 @@ describe("zero workflow automation scheduler", () => {
     mockGmailConnectorOAuth({ email: "automation-user@example.com" });
     await wf.connectConnector(scenario.actor, "gmail");
     await accept(
-      setupApp({ context })(zeroUserConnectorsContract).update({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroUserConnectorsContract,
+      ).update({
         headers: authHeaders(),
         params: { id: scenario.agentId },
-        body: { enabledTypes: ["gmail"] },
+        body: { enabledConnectorSlugs: ["gmail"] },
       }),
       [200],
     );
     await runsApi.applyUserPermissionGrant(scenario.actor, {
       agentId: scenario.agentId,
-      connectorRef: "gmail",
+      connectorSlug: "gmail",
       permission: "messages.write",
       action: "allow",
     });
@@ -324,7 +394,7 @@ describe("zero workflow automation scheduler", () => {
 
     const automation = await createDueLoopAutomation(scenario, 60);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
 
     const run = await onlyWorkflowRunMessage(automation.threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
@@ -339,7 +409,7 @@ describe("zero workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 60);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
 
     const run = await onlyWorkflowRunMessage(automation.threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
@@ -373,10 +443,17 @@ describe("zero workflow automation scheduler", () => {
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
 
     const run = await onlyWorkflowRunMessage(threadId);
-    expect(run.triggerSource).toBe("workflow-schedule");
+    expect(run.runGroupId).toBeUndefined();
+    const logs = await runReadsApi.requestListLogs(scenario.actor, {}, [200]);
+    expect(logs.body.data).toContainEqual(
+      expect.objectContaining({
+        id: run.runId,
+        triggerSource: "workflow-schedule",
+      }),
+    );
     expect(run.triggerBrief).toMatch(
       new RegExp(
         `^${friendlyTriggeredAtPattern(
@@ -413,14 +490,15 @@ describe("zero workflow automation scheduler", () => {
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
 
+    const onceRun = await onlyWorkflowRunMessage(threadId);
     const emittedCallbacks = await store.set(
       readAgentRunCallbacks$,
       {
         orgId: scenario.orgId,
         userId: scenario.userId,
-        prompt: `/${WORKFLOW_NAME}`,
+        runId: onceRun.runId,
       },
       context.signal,
     );
@@ -455,7 +533,7 @@ describe("zero workflow automation scheduler", () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
     const automation = await createDueLoopAutomation(scenario, 3600);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
 
     const run = await onlyWorkflowRunMessage(automation.threadId);
     expect(run.triggerBrief).toMatch(
@@ -486,7 +564,9 @@ describe("zero workflow automation scheduler", () => {
     mocks.clerk.session(member.userId, scenario.orgId, "org:member");
     const apiKey = await runsApi.createCliToken(member);
     await accept(
-      setupApp({ context })(zeroAgentsMainContract).list({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsMainContract,
+      ).list({
         headers: { authorization: `Bearer ${apiKey.token}` },
       }),
       [200],
@@ -509,7 +589,9 @@ describe("zero workflow automation scheduler", () => {
     // The agent owner flips the agent private, hiding it from the member.
     mocks.clerk.session(scenario.userId, scenario.orgId);
     await accept(
-      setupApp({ context })(zeroAgentsByIdContract).updateMetadata({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsByIdContract,
+      ).updateMetadata({
         headers: authHeaders(),
         params: { id: scenario.agentId },
         body: { visibility: "private" },
@@ -517,12 +599,14 @@ describe("zero workflow automation scheduler", () => {
       [200],
     );
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
 
     // Restore visibility so the member's product reads work again; the skip
     // already happened during the tick above.
     await accept(
-      setupApp({ context })(zeroAgentsByIdContract).updateMetadata({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsByIdContract,
+      ).updateMetadata({
         headers: authHeaders(),
         params: { id: scenario.agentId },
         body: { visibility: "public" },
@@ -565,14 +649,14 @@ describe("zero workflow automation scheduler", () => {
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     const run = await onlyWorkflowRunMessage(threadId);
     const emittedCallbacks = await store.set(
       readAgentRunCallbacks$,
       {
         orgId: scenario.orgId,
         userId: scenario.userId,
-        prompt: `/${WORKFLOW_NAME}`,
+        runId: run.runId,
       },
       context.signal,
     );
@@ -586,16 +670,8 @@ describe("zero workflow automation scheduler", () => {
     });
     expect(cronCallback?.status).toBe("pending");
     expect(run).toMatchObject({
-      automationId: created.body.id,
-      hasLegacyTriggerId: false,
-    });
-    expect(run.workflowSnapshot).toStrictEqual({
-      id: scenario.workflowId,
-      agentId: scenario.agentId,
-      name: WORKFLOW_NAME,
-      displayName: null,
-      description: null,
-      automationId: created.body.id,
+      workflowId: scenario.workflowId,
+      workflowName: WORKFLOW_NAME,
       triggerBrief: expect.any(String),
     });
     await completeRunThroughSandbox(scenario, run.runId, 0);
@@ -613,7 +689,7 @@ describe("zero workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 300);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
     const before = now();
     const run = await onlyWorkflowRunMessage(automation.threadId);
     const emittedCallbacks = await store.set(
@@ -621,7 +697,7 @@ describe("zero workflow automation scheduler", () => {
       {
         orgId: scenario.orgId,
         userId: scenario.userId,
-        prompt: `/${WORKFLOW_NAME}`,
+        runId: run.runId,
       },
       context.signal,
     );
@@ -633,16 +709,8 @@ describe("zero workflow automation scheduler", () => {
     });
     expect(loopCallback?.status).toBe("pending");
     expect(run).toMatchObject({
-      automationId: automation.automationId,
-      hasLegacyTriggerId: false,
-    });
-    expect(run.workflowSnapshot).toStrictEqual({
-      id: scenario.workflowId,
-      agentId: scenario.agentId,
-      name: WORKFLOW_NAME,
-      displayName: null,
-      description: null,
-      automationId: automation.automationId,
+      workflowId: scenario.workflowId,
+      workflowName: WORKFLOW_NAME,
       triggerBrief: expect.any(String),
     });
     await completeRunThroughSandbox(scenario, run.runId, 0);
@@ -660,19 +728,63 @@ describe("zero workflow automation scheduler", () => {
     await disableAutomation(automation.automationId);
   });
 
+  it("recreates workflow thread and run after cleanup leaves lastRunId dangling", async () => {
+    const scenario = await setup();
+    const automation = await createDueLoopAutomation(scenario, 60);
+
+    await executeDueWorkflowAutomations(automation.automationId);
+    const firstRun = await onlyWorkflowRunMessage(automation.threadId);
+    await completeRunThroughSandbox(scenario, firstRun.runId, 0);
+    await expect
+      .poll(async () => {
+        return (await wf.readAutomation(automation.automationId)).nextRunAt;
+      })
+      .not.toBeNull();
+
+    await chatFilesApi.deleteThread(scenario.actor, automation.threadId);
+    await expect(
+      wf.readAutomation(automation.automationId),
+    ).resolves.toMatchObject({ chatThreadId: null });
+
+    // The cleanup route's global sweep is covered separately. Delete exactly
+    // this root so the regression stays focused on the deliberately dangling
+    // lastRunId reader and replacement-thread behavior.
+    await deleteAgentRunRootFixture(firstRun.runId);
+    await expect(
+      runsApi.requestReadRun(scenario.actor, firstRun.runId, [404]),
+    ).resolves.toMatchObject({ status: 404 });
+
+    const dangling = await wf.readAutomation(automation.automationId);
+    if (!dangling.nextRunAt) {
+      throw new Error("Expected the loop automation to remain scheduled");
+    }
+    mockNow(Date.parse(dangling.nextRunAt));
+    await executeDueWorkflowAutomations(automation.automationId);
+    const continued = await wf.readAutomation(automation.automationId);
+    if (!continued.chatThreadId) {
+      throw new Error("Expected the next firing to recreate its chat thread");
+    }
+    expect(continued.chatThreadId).not.toBe(automation.threadId);
+    const secondRun = await onlyWorkflowRunMessage(continued.chatThreadId);
+    expect(secondRun.runId).not.toBe(firstRun.runId);
+
+    await completeRunThroughSandbox(scenario, secondRun.runId, 1);
+    await disableAutomation(automation.automationId);
+  });
+
   it("auto-disables an automation after three consecutive failures", async () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 300);
     const base = now();
     const seenRunIds = new Set<string>();
 
-    // Three fire + failed-completion cycles through the public cron, runner,
+    // Three fire + failed-completion cycles through scoped execution, runner,
     // and sandbox completion surfaces auto-disable the automation.
     for (let failure = 1; failure <= 3; failure += 1) {
       if (failure > 1) {
         mockNow(base + (failure - 1) * 320_000);
       }
-      await executeDueWorkflowAutomations();
+      await executeDueWorkflowAutomations(automation.automationId);
       const messages = await workflowRunMessages(automation.threadId);
       const nextRun = messages.find((message) => {
         return !seenRunIds.has(message.runId);
@@ -704,11 +816,11 @@ describe("zero workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 300);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
     const run = await onlyWorkflowRunMessage(automation.threadId);
-    expect(run.workflowSnapshot).toMatchObject({
-      id: scenario.workflowId,
-      automationId: automation.automationId,
+    expect(run).toMatchObject({
+      workflowId: scenario.workflowId,
+      workflowName: WORKFLOW_NAME,
     });
 
     // Under the hard 1:N model a workflow belongs to exactly one agent; removing
@@ -727,11 +839,9 @@ describe("zero workflow automation scheduler", () => {
     expect(historicalRuns).toStrictEqual([
       {
         runId: run.runId,
-        triggerSource: "workflow-schedule",
-        automationId: undefined,
-        hasLegacyTriggerId: false,
-        triggerBrief: undefined,
-        workflowSnapshot: undefined,
+        triggerBrief: run.triggerBrief,
+        workflowId: scenario.workflowId,
+        workflowName: WORKFLOW_NAME,
       },
     ]);
   });

@@ -8,9 +8,9 @@ use crate::env::{Framework, GuestConfig};
 use crate::error::AgentError;
 use crate::failure_patterns::{
     has_exact_codex_oauth_connector, is_codex_context_window_exceeded_message,
-    is_codex_model_capacity_message, is_generic_codex_failure_diagnostic,
+    is_codex_model_capacity_message,
 };
-use crate::http::HttpClient;
+use crate::http::{HttpAttemptObserver, HttpClient};
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::session_metadata;
@@ -64,7 +64,7 @@ pub async fn send_event_for_config(
     }
 
     let payload = prepare_event_payload_for_run_id(event, seq, masker, &config.run_id);
-    post_event_with_error_flag(http, &payload, paths.event_error_flag()).await
+    post_event(http, &payload).await
 }
 
 pub fn prepare_event_payload_for_run_id(
@@ -142,12 +142,13 @@ impl EventPayloadEnvelope {
     }
 }
 
-/// Extract a secret-masked Codex failure diagnostic from stdout JSONL.
+/// Extract a secret-masked Codex failure diagnostic from a compatibility event.
 ///
-/// Codex reports terminal failures on stdout JSONL (`type=error` or
-/// `type=turn.failed`), while the guest-agent process failure summary is built
-/// from stderr. Logging these events into the system log preserves the real
-/// failure reason when stderr only contains side-channel background-task noise.
+/// The Codex app-server adapter reports terminal failures as compatibility
+/// JSONL (`type=error` or failed/interrupted `type=turn.completed`), while the
+/// guest-agent process failure summary is built from stderr. Logging these
+/// events into the system log preserves the real failure reason when stderr
+/// only contains side-channel background-task noise.
 pub(crate) fn masked_codex_failure_diagnostic(
     event: &Value,
     masker: &SecretMasker,
@@ -183,29 +184,20 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
             Some(CodexFailureDiagnostic {
                 event_type: "error",
                 message: raw_message_from_field(event.get("message"))
-                    .or_else(|| codex_error_message(error))
                     .unwrap_or_else(|| "error".into()),
-                failure_reason: codex_event_failure_reason(event, error),
-            })
-        }
-        "turn.failed" => {
-            let error = event.get("error");
-            let turn_error = codex_structured_turn_error(event);
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: codex_turn_failed_message(error, turn_error),
-                failure_reason: codex_event_failure_reason_from_errors(event, [turn_error, error]),
+                failure_reason: codex_error_failure_reason(error),
             })
         }
         "turn.completed" => {
             let status = codex_turn_completed_failure_status(event)?;
-            let turn_error = codex_structured_turn_error(event);
-            let error = event.get("error");
+            let turn_error = event
+                .pointer("/turn/error")
+                .filter(|error| !error.is_null());
             Some(CodexFailureDiagnostic {
                 event_type: "turn.completed",
-                message: codex_best_error_message([turn_error, error])
+                message: codex_error_message(turn_error)
                     .unwrap_or_else(|| format!("turn {status}")),
-                failure_reason: codex_event_failure_reason_from_errors(event, [turn_error, error]),
+                failure_reason: codex_error_failure_reason(turn_error),
             })
         }
         _ => None,
@@ -235,58 +227,12 @@ fn extract_claude_failure_diagnostic(event: &Value) -> Option<ClaudeFailureDiagn
 }
 
 fn codex_turn_completed_failure_status(event: &Value) -> Option<&'static str> {
-    let status = event
-        .pointer("/turn/status")
-        .or_else(|| event.get("status"))
-        .and_then(Value::as_str)?;
+    let status = event.pointer("/turn/status").and_then(Value::as_str)?;
     match status {
-        "failed" | "Failed" => Some("failed"),
-        "interrupted" | "Interrupted" => Some("interrupted"),
+        "failed" => Some("failed"),
+        "interrupted" => Some("interrupted"),
         _ => None,
     }
-}
-
-fn codex_structured_turn_error(event: &Value) -> Option<&Value> {
-    event
-        .pointer("/turn/error")
-        .filter(|error| !error.is_null())
-}
-
-fn codex_turn_failed_message(error: Option<&Value>, turn_error: Option<&Value>) -> String {
-    let top_level_message = codex_error_message(error);
-    let top_level_primary_message = codex_error_primary_message(error);
-    let turn_error_message = codex_error_message(turn_error);
-    let turn_error_is_specific = turn_error_message
-        .as_deref()
-        .is_some_and(|message| !is_generic_codex_failure_diagnostic(message));
-    let top_level_should_yield = top_level_primary_message
-        .as_deref()
-        .map(is_generic_codex_failure_diagnostic)
-        .unwrap_or(true)
-        && turn_error_is_specific;
-
-    match (top_level_message, turn_error_message) {
-        (Some(_), Some(turn_error_message)) if top_level_should_yield => turn_error_message,
-        (Some(message), _) => message,
-        (None, Some(turn_error_message)) => turn_error_message,
-        (None, None) => "turn failed".into(),
-    }
-}
-
-fn codex_best_error_message<const N: usize>(errors: [Option<&Value>; N]) -> Option<String> {
-    let mut first_generic_message = None;
-    for error in errors {
-        let Some(message) = codex_error_message(error) else {
-            continue;
-        };
-        if !is_generic_codex_failure_diagnostic(&message) {
-            return Some(message);
-        }
-        if first_generic_message.is_none() {
-            first_generic_message = Some(message);
-        }
-    }
-    first_generic_message
 }
 
 fn codex_error_message(error: Option<&Value>) -> Option<String> {
@@ -296,21 +242,8 @@ fn codex_error_message(error: Option<&Value>) -> Option<String> {
     }
 
     let message = error.get("message").and_then(Value::as_str);
-    let details = error
-        .get("additional_details")
-        .or_else(|| error.get("additionalDetails"))
-        .and_then(Value::as_str);
+    let details = error.get("additional_details").and_then(Value::as_str);
     combined_message_and_details(message, details)
-}
-
-fn codex_error_primary_message(error: Option<&Value>) -> Option<String> {
-    let error = error?;
-    raw_message_from_field(Some(error)).or_else(|| {
-        error
-            .get("message")
-            .and_then(Value::as_str)
-            .and_then(trimmed_message)
-    })
 }
 
 fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
@@ -342,23 +275,6 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
     None
 }
 
-fn codex_event_failure_reason(event: &Value, error: Option<&Value>) -> Option<FailureReason> {
-    codex_event_failure_reason_from_errors(event, [error])
-}
-
-fn codex_event_failure_reason_from_errors<const N: usize>(
-    event: &Value,
-    errors: [Option<&Value>; N],
-) -> Option<FailureReason> {
-    for error in errors.into_iter().flatten() {
-        if let Some(failure_reason) = codex_error_failure_reason(Some(error)) {
-            return Some(failure_reason);
-        }
-    }
-
-    codex_error_failure_reason(Some(event))
-}
-
 fn codex_error_info_failure_reason(error: &Value) -> Option<FailureReason> {
     match codex_error_info_variant(error)? {
         "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
@@ -369,9 +285,7 @@ fn codex_error_info_failure_reason(error: &Value) -> Option<FailureReason> {
 }
 
 fn codex_error_info_variant(error: &Value) -> Option<&str> {
-    let error_info = error
-        .get("codex_error_info")
-        .or_else(|| error.get("codexErrorInfo"))?;
+    let error_info = error.get("codex_error_info")?;
 
     match error_info {
         Value::String(variant) => Some(variant.as_str()),
@@ -432,42 +346,21 @@ fn truncate_diagnostic_message(message: &str) -> String {
     format!("{}{}", &message[..end], FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX)
 }
 
-pub async fn post_event_with_error_flag(
-    http: &HttpClient,
-    payload: &Value,
-    event_error_flag: &str,
-) -> Result<(), AgentError> {
+pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentError> {
     let url = http.events_url()?;
-    let result = http
-        .post_json(url, payload, constants::HTTP_MAX_ATTEMPTS)
-        .await;
-    handle_event_post_result(result, event_error_flag)
+    let payload = Bytes::from(serde_json::to_vec(payload)?);
+    http.post_event_bytes(url, payload, constants::HTTP_MAX_ATTEMPTS, None)
+        .await
 }
 
-pub(crate) async fn post_serialized_event_with_error_flag(
+pub(crate) async fn post_serialized_event(
     http: &HttpClient,
     payload: Bytes,
-    event_error_flag: &str,
+    observer: &dyn HttpAttemptObserver,
 ) -> Result<(), AgentError> {
     let url = http.events_url()?;
-    let result = http
-        .post_json_bytes(url, payload, constants::HTTP_MAX_ATTEMPTS)
-        .await;
-    handle_event_post_result(result, event_error_flag)
-}
-
-fn handle_event_post_result(
-    result: Result<Option<Value>, AgentError>,
-    event_error_flag: &str,
-) -> Result<(), AgentError> {
-    match result {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            log_error!(LOG_TAG, "Failed to send event after retries");
-            let _ = paths::write_private(event_error_flag, "1");
-            Err(e)
-        }
-    }
+    http.post_event_bytes(url, payload, constants::HTTP_MAX_ATTEMPTS, Some(observer))
+        .await
 }
 
 /// Tool event extracted from a Claude Code JSONL line.
@@ -826,7 +719,8 @@ mod tests {
     fn codex_error_event_yields_failure_diagnostic() {
         let event = serde_json::json!({
             "type": "error",
-            "message": "server rejected request"
+            "message": "server rejected request",
+            "error": {"message": "server rejected request"}
         });
 
         assert_eq!(
@@ -840,11 +734,14 @@ mod tests {
     }
 
     #[test]
-    fn codex_error_event_top_level_invalid_api_key_code_yields_failure_reason() {
+    fn codex_error_event_nested_invalid_api_key_code_yields_failure_reason() {
         let event = serde_json::json!({
             "type": "error",
-            "code": "invalid_api_key",
-            "message": "Incorrect API key provided"
+            "message": "Incorrect API key provided",
+            "error": {
+                "code": "invalid_api_key",
+                "message": "Incorrect API key provided"
+            }
         });
 
         assert_eq!(
@@ -861,7 +758,10 @@ mod tests {
     fn codex_error_event_model_capacity_yields_failure_reason() {
         let event = serde_json::json!({
             "type": "error",
-            "message": "Selected model is at capacity. Please try a different model."
+            "message": "Selected model is at capacity. Please try a different model.",
+            "error": {
+                "message": "Selected model is at capacity. Please try a different model."
+            }
         });
 
         assert_eq!(
@@ -878,7 +778,10 @@ mod tests {
     fn codex_error_event_context_window_exceeded_yields_failure_reason() {
         let event = serde_json::json!({
             "type": "error",
-            "message": "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
+            "message": "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.",
+            "error": {
+                "message": "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
+            }
         });
 
         assert_eq!(
@@ -895,8 +798,11 @@ mod tests {
     fn codex_error_event_error_string_invalid_api_key_remains_unclassified() {
         let event = serde_json::json!({
             "type": "error",
-            "error": "invalid_api_key",
-            "message": "Provider reported invalid_api_key in an error field"
+            "message": "Provider reported invalid_api_key in an error field",
+            "error": {
+                "error": "invalid_api_key",
+                "message": "Provider reported invalid_api_key in an error field"
+            }
         });
 
         assert_eq!(
@@ -910,13 +816,16 @@ mod tests {
     }
 
     #[test]
-    fn codex_error_event_top_level_reconnect_required_yields_failure_reason() {
+    fn codex_error_event_nested_reconnect_required_yields_failure_reason() {
         let event = serde_json::json!({
             "type": "error",
-            "code": "TOKEN_REFRESH_FAILED",
             "message": "Access token expired and refresh failed for: codex-oauth-token.",
-            "connectors": ["codex-oauth-token"],
-            "failureReason": "reconnect_required"
+            "error": {
+                "code": "TOKEN_REFRESH_FAILED",
+                "message": "Access token expired and refresh failed for: codex-oauth-token.",
+                "connectors": ["codex-oauth-token"],
+                "failureReason": "reconnect_required"
+            }
         });
 
         assert_eq!(
@@ -931,13 +840,16 @@ mod tests {
     }
 
     #[test]
-    fn codex_error_event_top_level_error_string_reconnect_required_yields_failure_reason() {
+    fn codex_error_event_nested_error_string_reconnect_required_yields_failure_reason() {
         let event = serde_json::json!({
             "type": "error",
-            "error": "TOKEN_REFRESH_FAILED",
             "message": "Access token expired and refresh failed for: codex-oauth-token.",
-            "connectors": ["codex-oauth-token"],
-            "failureReason": "reconnect_required"
+            "error": {
+                "error": "TOKEN_REFRESH_FAILED",
+                "message": "Access token expired and refresh failed for: codex-oauth-token.",
+                "connectors": ["codex-oauth-token"],
+                "failureReason": "reconnect_required"
+            }
         });
 
         assert_eq!(
@@ -955,10 +867,13 @@ mod tests {
     fn codex_error_event_upstream_provider_refresh_remains_unclassified() {
         let event = serde_json::json!({
             "type": "error",
-            "code": "TOKEN_REFRESH_FAILED",
             "message": "Access token refresh failed for: codex-oauth-token.",
-            "connectors": ["codex-oauth-token"],
-            "failureReason": "upstream_provider"
+            "error": {
+                "code": "TOKEN_REFRESH_FAILED",
+                "message": "Access token refresh failed for: codex-oauth-token.",
+                "connectors": ["codex-oauth-token"],
+                "failureReason": "upstream_provider"
+            }
         });
 
         assert_eq!(
@@ -975,10 +890,13 @@ mod tests {
     fn codex_error_event_multi_connector_reconnect_remains_unclassified() {
         let event = serde_json::json!({
             "type": "error",
-            "code": "TOKEN_REFRESH_FAILED",
             "message": "Access token expired and refresh failed for: notion, codex-oauth-token.",
-            "connectors": ["notion", "codex-oauth-token"],
-            "failureReason": "reconnect_required"
+            "error": {
+                "code": "TOKEN_REFRESH_FAILED",
+                "message": "Access token expired and refresh failed for: notion, codex-oauth-token.",
+                "connectors": ["notion", "codex-oauth-token"],
+                "failureReason": "reconnect_required"
+            }
         });
 
         assert_eq!(
@@ -993,477 +911,10 @@ mod tests {
     }
 
     #[test]
-    fn codex_turn_failed_event_yields_failure_diagnostic() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {"message": "turn failed from server"}
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "turn failed from server".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_uses_nested_turn_error_for_failure_reason() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": "turn failed",
-            "turn": {
-                "error": {
-                    "code": "invalid_api_key",
-                    "message": "Incorrect API key provided"
-                }
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "Incorrect API key provided".to_string(),
-                failure_reason: Some(FailureReason::InvalidApiKey),
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_keeps_specific_top_level_message_with_nested_reason() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": "request failed before shutdown",
-            "turn": {
-                "error": {
-                    "code": "invalid_api_key",
-                    "message": "Incorrect API key provided"
-                }
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "request failed before shutdown".to_string(),
-                failure_reason: Some(FailureReason::InvalidApiKey),
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_uses_nested_message_when_top_level_is_generic() {
-        for top_level_error in [
-            "turn failed",
-            "Turn failed.",
-            "Unknown error",
-            "codex error",
-        ] {
-            let event = serde_json::json!({
-                "type": "turn.failed",
-                "error": top_level_error,
-                "turn": {
-                    "error": {
-                        "message": "nested turn failure",
-                        "additionalDetails": "quota exhausted"
-                    }
-                }
-            });
-
-            assert_eq!(
-                masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-                Some(CodexFailureDiagnostic {
-                    event_type: "turn.failed",
-                    message: "nested turn failure (quota exhausted)".to_string(),
-                    failure_reason: None,
-                }),
-                "top-level error: {top_level_error}"
-            );
-        }
-    }
-
-    #[test]
-    fn codex_turn_failed_uses_nested_message_when_top_level_object_message_is_generic() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "message": "turn failed",
-                "additionalDetails": "wrapper-level detail"
-            },
-            "turn": {
-                "error": {
-                    "message": "nested turn failure",
-                    "additionalDetails": "quota exhausted"
-                }
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "nested turn failure (quota exhausted)".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_uses_nested_message_when_top_level_object_message_is_absent() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "additionalDetails": "wrapper-level detail"
-            },
-            "turn": {
-                "error": {
-                    "message": "nested turn failure",
-                    "additionalDetails": "quota exhausted"
-                }
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "nested turn failure (quota exhausted)".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_keeps_top_level_details_when_nested_message_is_generic() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "additionalDetails": "wrapper-level detail"
-            },
-            "turn": {
-                "error": {
-                    "message": "turn failed"
-                }
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "wrapper-level detail".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_uses_nested_message_when_top_level_is_missing() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "turn": {
-                "error": {
-                    "message": "nested turn failure",
-                    "additionalDetails": "quota exhausted"
-                }
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "nested turn failure (quota exhausted)".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_null_nested_turn_error_uses_top_level_error() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "code": "invalid_api_key",
-                "message": "Incorrect API key provided"
-            },
-            "turn": {"error": null}
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "Incorrect API key provided".to_string(),
-                failure_reason: Some(FailureReason::InvalidApiKey),
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_model_capacity_yields_failure_reason() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "message": "Selected model is at capacity. Please try a different model."
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "Selected model is at capacity. Please try a different model.".to_string(),
-                failure_reason: Some(FailureReason::ProviderOverloaded),
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_context_window_exceeded_yields_failure_reason() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "message": "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.".to_string(),
-                failure_reason: Some(FailureReason::ContextWindowExceeded),
-            })
-        );
-    }
-
-    #[test]
-    fn codex_error_info_server_overloaded_yields_failure_reason() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "message": "turn failed from server",
-                "codex_error_info": "serverOverloaded"
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "turn failed from server".to_string(),
-                failure_reason: Some(FailureReason::ProviderOverloaded),
-            })
-        );
-    }
-
-    #[test]
-    fn codex_error_info_usage_limit_yields_failure_reason() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "message": "turn failed from server",
-                "codexErrorInfo": "usageLimitExceeded"
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "turn failed from server".to_string(),
-                failure_reason: Some(FailureReason::UsageLimit),
-            })
-        );
-    }
-
-    #[test]
-    fn codex_error_info_object_variant_yields_failure_reason() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "message": "turn failed from server",
-                "codexErrorInfo": {
-                    "serverOverloaded": {
-                        "httpStatusCode": 529
-                    }
-                }
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "turn failed from server".to_string(),
-                failure_reason: Some(FailureReason::ProviderOverloaded),
-            })
-        );
-    }
-
-    #[test]
-    fn codex_error_info_unknown_object_variant_remains_unclassified() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "message": "turn failed from server",
-                "codexErrorInfo": {"badRequest": {}}
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "turn failed from server".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_reconnect_required_yields_failure_reason() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "code": "TOKEN_REFRESH_FAILED",
-                "message": "Access token expired and refresh failed for: codex-oauth-token.",
-                "connectors": ["codex-oauth-token"],
-                "failureReason": "reconnect_required"
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "Access token expired and refresh failed for: codex-oauth-token."
-                    .to_string(),
-                failure_reason: Some(FailureReason::ReconnectRequired),
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_invalid_api_key_code_yields_failure_reason() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "code": "invalid_api_key",
-                "message": "Incorrect API key provided"
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "Incorrect API key provided".to_string(),
-                failure_reason: Some(FailureReason::InvalidApiKey),
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_appends_additional_details() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "message": "turn failed from server",
-                "additional_details": "rate limit exceeded"
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "turn failed from server (rate limit exceeded)".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_appends_camel_case_additional_details() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {
-                "message": "turn failed from server",
-                "additionalDetails": "rate limit exceeded"
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "turn failed from server (rate limit exceeded)".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_legacy_string_error_yields_failure_diagnostic() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": "legacy turn failure"
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "legacy turn failure".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_error_string_invalid_api_key_remains_unclassified() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": "invalid_api_key"
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "invalid_api_key".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_turn_failed_unknown_object_uses_generic_message() {
-        let event = serde_json::json!({
-            "type": "turn.failed",
-            "error": {"code": "internal", "context": "not a public error message"}
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.failed",
-                message: "turn failed".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
     fn codex_error_event_accepts_nested_error_shape() {
         let event = serde_json::json!({
             "type": "error",
+            "message": "server rejected request (policy denied)",
             "error": {
                 "message": "server rejected request",
                 "additional_details": "policy denied"
@@ -1501,10 +952,9 @@ mod tests {
     }
 
     #[test]
-    fn codex_failed_turn_completed_empty_nested_error_uses_top_level_error() {
+    fn codex_failed_turn_completed_without_error_message_uses_status() {
         let event = serde_json::json!({
             "type": "turn.completed",
-            "error": {"message": "top-level completed failure"},
             "turn": {
                 "status": "failed",
                 "error": {}
@@ -1515,28 +965,7 @@ mod tests {
             masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
             Some(CodexFailureDiagnostic {
                 event_type: "turn.completed",
-                message: "top-level completed failure".to_string(),
-                failure_reason: None,
-            })
-        );
-    }
-
-    #[test]
-    fn codex_failed_turn_completed_generic_nested_error_uses_specific_top_level_error() {
-        let event = serde_json::json!({
-            "type": "turn.completed",
-            "error": {"message": "top-level completed failure"},
-            "turn": {
-                "status": "failed",
-                "error": {"message": "turn failed"}
-            }
-        });
-
-        assert_eq!(
-            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(CodexFailureDiagnostic {
-                event_type: "turn.completed",
-                message: "top-level completed failure".to_string(),
+                message: "turn failed".to_string(),
                 failure_reason: None,
             })
         );

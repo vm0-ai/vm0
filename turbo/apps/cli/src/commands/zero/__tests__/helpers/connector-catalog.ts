@@ -72,15 +72,16 @@ function authMethodSummary(
 
 export function catalogItem(
   overrides: Partial<PublicConnectorCatalogItem> & {
-    readonly connectorRef: string;
+    readonly connectorSlug: string;
   },
 ): PublicConnectorCatalogItem {
   return {
-    connectorRef: overrides.connectorRef,
-    label: overrides.label ?? overrides.connectorRef,
-    description: overrides.description ?? `${overrides.connectorRef} connector`,
+    slug: overrides.connectorSlug,
+    label: overrides.label ?? overrides.connectorSlug,
+    description:
+      overrides.description ?? `${overrides.connectorSlug} connector`,
     icon: overrides.icon ?? {
-      url: `https://icons.example.test/${overrides.connectorRef}.svg`,
+      url: `https://icons.example.test/${overrides.connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     category: overrides.category ?? "developer-tools",
@@ -93,18 +94,19 @@ export function catalogItem(
 
 export function catalogStatusItem(
   overrides: Partial<PublicConnectorCatalogStatusItem> & {
-    readonly connectorRef: string;
+    readonly connectorSlug: string;
   },
 ): PublicConnectorCatalogStatusItem {
   const connection = overrides.connection ?? null;
   const connectionStatus =
     overrides.connectionStatus ?? (connection ? "connected" : "not-connected");
   return {
-    connectorRef: overrides.connectorRef,
-    label: overrides.label ?? overrides.connectorRef,
-    description: overrides.description ?? `${overrides.connectorRef} connector`,
+    slug: overrides.connectorSlug,
+    label: overrides.label ?? overrides.connectorSlug,
+    description:
+      overrides.description ?? `${overrides.connectorSlug} connector`,
     icon: overrides.icon ?? {
-      url: `https://icons.example.test/${overrides.connectorRef}.svg`,
+      url: `https://icons.example.test/${overrides.connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     category: overrides.category ?? "developer-tools",
@@ -126,15 +128,15 @@ export function catalogStatusItem(
 
 export function catalogPermissionDetail(
   overrides: Partial<PublicConnectorCatalogPermissionDetail> & {
-    readonly connectorRef: string;
+    readonly connectorSlug: string;
   },
 ): PublicConnectorCatalogPermissionDetail {
   const permissions = overrides.permissions ?? [];
   return {
-    connectorRef: overrides.connectorRef,
-    label: overrides.label ?? overrides.connectorRef,
+    connectorSlug: overrides.connectorSlug,
+    label: overrides.label ?? overrides.connectorSlug,
     icon: overrides.icon ?? {
-      url: `https://icons.example.test/${overrides.connectorRef}.svg`,
+      url: `https://icons.example.test/${overrides.connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     permissionCount: overrides.permissionCount ?? permissions.length,
@@ -168,16 +170,16 @@ export function stubConnectorCatalogPermissions(
   details: readonly PublicConnectorCatalogPermissionDetail[],
   origin = "http://localhost:3000",
 ) {
-  const detailsByRef = new Map(
+  const detailsBySlug = new Map(
     details.map((detail) => {
-      return [detail.connectorRef, detail] as const;
+      return [detail.connectorSlug, detail] as const;
     }),
   );
   return http.get(
-    `${origin}/api/zero/connector-catalog/:connectorRef/permissions`,
+    `${origin}/api/zero/connector-catalog/:connectorSlug/permissions`,
     ({ params }) => {
-      const connectorRef = String(params.connectorRef);
-      const permissions = detailsByRef.get(connectorRef);
+      const connectorSlug = String(params.connectorSlug);
+      const permissions = detailsBySlug.get(connectorSlug);
       if (!permissions) {
         return HttpResponse.json(
           {

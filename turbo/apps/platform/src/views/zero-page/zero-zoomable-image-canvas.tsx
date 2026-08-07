@@ -13,6 +13,7 @@ import {
 } from "../../signals/view-component-state.ts";
 
 const IMAGE_ZOOM_STEP = 0.15;
+const IMAGE_DOUBLE_CLICK_ZOOM_STEP = 1;
 
 type ZoomableArtifactImageSurface =
   | "attachment-lightbox"
@@ -215,7 +216,10 @@ export function ZoomableArtifactImageCanvas({
       key={zoomKey}
       centerZoomedOut
       disablePadding
-      doubleClick={{ disabled: true }}
+      doubleClick={{
+        mode: displayZoom === 1 ? "zoomIn" : "reset",
+        step: IMAGE_DOUBLE_CLICK_ZOOM_STEP,
+      }}
       initialScale={1}
       maxScale={IMAGE_LIGHTBOX_MAX_ZOOM}
       minScale={IMAGE_LIGHTBOX_MIN_ZOOM}
@@ -264,7 +268,7 @@ export function ZoomableArtifactImageCanvas({
               style={{ touchAction: "none" }}
             >
               <TransformComponent
-                contentClass="min-h-full min-w-full"
+                contentStyle={{ height: "100%", width: "100%" }}
                 wrapperClass="h-full min-h-0 w-full"
                 wrapperStyle={{
                   height: "100%",
@@ -274,7 +278,7 @@ export function ZoomableArtifactImageCanvas({
               >
                 <div
                   className={cn(
-                    "flex min-h-full min-w-full items-start justify-center",
+                    "flex h-full w-full items-center justify-center",
                     contentClassName,
                   )}
                   data-testid={`${canvasTestId}-content`}

@@ -1,4 +1,4 @@
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -10,6 +10,7 @@ type WorkflowEventSource =
   | "github"
   | "gmail"
   | "google_calendar"
+  | "google_forms"
   | "google_meet"
   | "webhook";
 

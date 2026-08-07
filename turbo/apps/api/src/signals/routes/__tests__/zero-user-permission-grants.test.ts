@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
-
 import { createStore } from "ccstate";
 import { afterEach, describe, expect, it } from "vitest";
-
 import {
   type ApplyUserPermissionGrant,
   type UserPermissionGrantResponse,
@@ -10,8 +8,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
@@ -22,6 +20,9 @@ import {
   seedUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
+import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
+
+const TEST_APP_ROUTES = Object.freeze([...zeroUserPermissionGrantsRoutes]);
 
 const context = testContext();
 const store = createStore();
@@ -67,12 +68,14 @@ async function seedAgent(args: {
 }
 
 function client() {
-  return setupApp({ context })(zeroUserPermissionGrantsContract);
+  return setupApp({ context, routes: zeroUserPermissionGrantsRoutes })(
+    zeroUserPermissionGrantsContract,
+  );
 }
 
 async function applyPermissionGrants(args: {
   readonly agentId: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly mode?: "patch" | "replace";
   readonly grants: readonly ApplyUserPermissionGrant[];
 }): Promise<readonly UserPermissionGrantResponse[]> {
@@ -80,7 +83,7 @@ async function applyPermissionGrants(args: {
     client().apply({
       body: {
         agentId: args.agentId,
-        connectorRef: args.connectorRef,
+        connectorSlug: args.connectorSlug,
         mode: args.mode ?? "patch",
         grants: [...args.grants],
       },
@@ -106,14 +109,14 @@ async function listPermissionGrants(
 
 type ApplyPermissionGrantRequest = {
   readonly agentId: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
 } & ApplyUserPermissionGrant;
 
 async function applyPermissionGrant(
   body: ApplyPermissionGrantRequest,
 ): Promise<{
   readonly agentId: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly permission: string;
   readonly action: "allow" | "deny";
   readonly expiresAt: string | null;
@@ -122,7 +125,7 @@ async function applyPermissionGrant(
 }> {
   const grants = await applyPermissionGrants({
     agentId: body.agentId,
-    connectorRef: body.connectorRef,
+    connectorSlug: body.connectorSlug,
     grants: [
       body.action === "allow"
         ? {
@@ -186,14 +189,14 @@ describe("zero user permission grants", () => {
 
     const patched = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
     });
 
     expect(patched).toMatchObject({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
     });
@@ -202,7 +205,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
     await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_WRITE_PERMISSION,
       action: "deny",
     });
@@ -213,9 +216,36 @@ describe("zero user permission grants", () => {
     expect(listed).toHaveLength(1);
     expect(listed[0]).toMatchObject({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
+    });
+  });
+
+  it("accepts canonical connector slugs", async () => {
+    const fixture = await createFixture();
+    const agentId = await seedAgent(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const base = {
+      agentId,
+      mode: "patch" as const,
+      grants: [
+        {
+          permission: SLACK_READ_PERMISSION,
+          action: "allow" as const,
+        },
+      ],
+    };
+
+    const canonical = await accept(
+      client().apply({
+        body: { ...base, connectorSlug: SLACK_CONNECTOR },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    expect(canonical.body[0]).toMatchObject({
+      connectorSlug: SLACK_CONNECTOR,
     });
   });
 
@@ -235,12 +265,15 @@ describe("zero user permission grants", () => {
       visibility: "private",
     });
 
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+    const client = setupApp({
+      context,
+      routes: zeroUserPermissionGrantsRoutes,
+    })(zeroUserPermissionGrantsContract);
 
     mocks.clerk.session(owner.userId, owner.orgId, "org:member");
     const ownerResponse = await applyPermissionGrant({
       agentId: privateAgentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
     });
@@ -249,7 +282,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(sameOrgUserId, owner.orgId, "org:member");
     const sameOrgPublicResponse = await applyPermissionGrant({
       agentId: publicAgentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
     });
@@ -259,7 +292,7 @@ describe("zero user permission grants", () => {
       client.apply({
         body: {
           agentId: privateAgentId,
-          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
           mode: "patch",
           grants: [{ permission: SLACK_READ_PERMISSION, action: "allow" }],
         },
@@ -289,17 +322,20 @@ describe("zero user permission grants", () => {
     expect(missingResponse.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("validates connector refs, permission names, ask, and __unknown__", async () => {
+  it("validates connector slugs, permission names, ask, and __unknown__", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+    const client = setupApp({
+      context,
+      routes: zeroUserPermissionGrantsRoutes,
+    })(zeroUserPermissionGrantsContract);
 
     const malformedConnector = await accept(
       client.apply({
         body: {
           agentId,
-          connectorRef: "INVALID_REF",
+          connectorSlug: "INVALID_REF",
           mode: "patch",
           grants: [{ permission: SLACK_READ_PERMISSION, action: "allow" }],
         },
@@ -313,7 +349,7 @@ describe("zero user permission grants", () => {
       client.apply({
         body: {
           agentId,
-          connectorRef: "not-a-real-connector",
+          connectorSlug: "not-a-real-connector",
           mode: "patch",
           grants: [{ permission: SLACK_READ_PERMISSION, action: "allow" }],
         },
@@ -327,7 +363,7 @@ describe("zero user permission grants", () => {
       client.apply({
         body: {
           agentId,
-          connectorRef: "not-a-real-connector",
+          connectorSlug: "not-a-real-connector",
           mode: "patch",
           grants: [{ permission: UNKNOWN_PERMISSION_GRANT, action: "allow" }],
         },
@@ -343,7 +379,7 @@ describe("zero user permission grants", () => {
       client.apply({
         body: {
           agentId,
-          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
           mode: "patch",
           grants: [{ permission: "not-a-real-permission", action: "allow" }],
         },
@@ -355,17 +391,17 @@ describe("zero user permission grants", () => {
 
     const unknownGrant = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: UNKNOWN_PERMISSION_GRANT,
       action: "deny",
     });
     expect(unknownGrant).toMatchObject({
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: UNKNOWN_PERMISSION_GRANT,
       action: "deny",
     });
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const askResponse = await app.request(
       "/api/zero/user-permission-grants/apply",
       {
@@ -376,7 +412,7 @@ describe("zero user permission grants", () => {
         },
         body: JSON.stringify({
           agentId,
-          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
           mode: "patch",
           grants: [
             {
@@ -399,7 +435,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     await applyPermissionGrants({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       grants: [
         { permission: SLACK_READ_PERMISSION, action: "deny" },
         { permission: SLACK_WRITE_PERMISSION, action: "deny" },
@@ -407,13 +443,13 @@ describe("zero user permission grants", () => {
     });
     await applyPermissionGrant({
       agentId,
-      connectorRef: "notion",
+      connectorSlug: "notion",
       permission: "read_content",
       action: "deny",
     });
     await applyPermissionGrant({
       agentId: otherAgentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "deny",
     });
@@ -421,7 +457,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
     await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
     });
@@ -429,7 +465,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const applied = await applyPermissionGrants({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       mode: "replace",
       grants: [],
     });
@@ -437,14 +473,14 @@ describe("zero user permission grants", () => {
 
     await expect(listPermissionGrants(agentId)).resolves.toMatchObject([
       {
-        connectorRef: "notion",
+        connectorSlug: "notion",
         permission: "read_content",
         action: "deny",
       },
     ]);
     await expect(listPermissionGrants(otherAgentId)).resolves.toMatchObject([
       {
-        connectorRef: SLACK_CONNECTOR,
+        connectorSlug: SLACK_CONNECTOR,
         permission: SLACK_READ_PERMISSION,
         action: "deny",
       },
@@ -453,7 +489,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
     await expect(listPermissionGrants(agentId)).resolves.toMatchObject([
       {
-        connectorRef: SLACK_CONNECTOR,
+        connectorSlug: SLACK_CONNECTOR,
         permission: SLACK_READ_PERMISSION,
         action: "allow",
       },
@@ -471,20 +507,20 @@ describe("zero user permission grants", () => {
     mockNow(seededAt);
     const seededRead = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "7d",
     });
     await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_HISTORY_PERMISSION,
       action: "deny",
     });
     await applyPermissionGrant({
       agentId,
-      connectorRef: "notion",
+      connectorSlug: "notion",
       permission: "read_content",
       action: "deny",
     });
@@ -492,7 +528,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
     await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "deny",
     });
@@ -502,7 +538,7 @@ describe("zero user permission grants", () => {
 
     const applied = await applyPermissionGrants({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       grants: [
         {
           permission: SLACK_READ_PERMISSION,
@@ -544,12 +580,12 @@ describe("zero user permission grants", () => {
     await expect(listPermissionGrants(agentId)).resolves.toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
           permission: SLACK_HISTORY_PERMISSION,
           action: "deny",
         }),
         expect.objectContaining({
-          connectorRef: "notion",
+          connectorSlug: "notion",
           permission: "read_content",
           action: "deny",
         }),
@@ -559,7 +595,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
     await expect(listPermissionGrants(agentId)).resolves.toMatchObject([
       {
-        connectorRef: SLACK_CONNECTOR,
+        connectorSlug: SLACK_CONNECTOR,
         permission: SLACK_READ_PERMISSION,
         action: "deny",
       },
@@ -570,13 +606,16 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+    const client = setupApp({
+      context,
+      routes: zeroUserPermissionGrantsRoutes,
+    })(zeroUserPermissionGrantsContract);
 
     const invalidConnector = await accept(
       client.apply({
         body: {
           agentId,
-          connectorRef: "not-a-real-connector",
+          connectorSlug: "not-a-real-connector",
           mode: "patch",
           grants: [],
         },
@@ -590,7 +629,7 @@ describe("zero user permission grants", () => {
       client.apply({
         body: {
           agentId,
-          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
           mode: "patch",
           grants: [
             { permission: SLACK_READ_PERMISSION, action: "allow" },
@@ -607,7 +646,7 @@ describe("zero user permission grants", () => {
       client.apply({
         body: {
           agentId,
-          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
           mode: "patch",
           grants: [{ permission: "not-a-real-permission", action: "allow" }],
         },
@@ -617,7 +656,7 @@ describe("zero user permission grants", () => {
     );
     expect(invalidPermission.body.error.code).toBe("VALIDATION_ERROR");
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const denyExpiration = await app.request(
       "/api/zero/user-permission-grants/apply",
       {
@@ -628,7 +667,7 @@ describe("zero user permission grants", () => {
         },
         body: JSON.stringify({
           agentId,
-          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
           mode: "patch",
           grants: [
             {
@@ -649,7 +688,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     await applyPermissionGrants({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       grants: [
         { permission: SLACK_READ_PERMISSION, action: "allow" },
         { permission: SLACK_HISTORY_PERMISSION, action: "deny" },
@@ -658,7 +697,7 @@ describe("zero user permission grants", () => {
 
     const applied = await applyPermissionGrants({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       mode: "replace",
       grants: [
         {
@@ -686,13 +725,16 @@ describe("zero user permission grants", () => {
       visibility: "private",
     });
     mocks.clerk.session(sameOrgUserId, owner.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+    const client = setupApp({
+      context,
+      routes: zeroUserPermissionGrantsRoutes,
+    })(zeroUserPermissionGrantsContract);
 
     const response = await accept(
       client.apply({
         body: {
           agentId: privateAgentId,
-          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
           mode: "patch",
           grants: [],
         },
@@ -713,7 +755,7 @@ describe("zero user permission grants", () => {
     mockNow(checkedAt - 60 * 60 * 1000 - 1000);
     await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "1h",
@@ -721,7 +763,7 @@ describe("zero user permission grants", () => {
     mockNow(checkedAt - 60 * 60 * 1000);
     await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_HISTORY_PERMISSION,
       action: "allow",
       expiresIn: "1h",
@@ -729,7 +771,7 @@ describe("zero user permission grants", () => {
     mockNow(checkedAt);
     await applyPermissionGrants({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       grants: [
         { permission: SLACK_WRITE_PERMISSION, action: "deny" },
         { permission: UNKNOWN_PERMISSION_GRANT, action: "deny" },
@@ -772,7 +814,7 @@ describe("zero user permission grants", () => {
     mockNow(firstAppliedAt);
     const first = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "7d",
@@ -781,7 +823,7 @@ describe("zero user permission grants", () => {
     mockNow(firstAppliedAt + 60 * 60 * 1000);
     const second = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
     });
@@ -800,7 +842,7 @@ describe("zero user permission grants", () => {
 
     await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "1h",
@@ -808,7 +850,7 @@ describe("zero user permission grants", () => {
 
     const denied = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "deny",
     });
@@ -830,7 +872,7 @@ describe("zero user permission grants", () => {
 
     await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "1h",
@@ -838,7 +880,7 @@ describe("zero user permission grants", () => {
 
     const cleared = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "always",
@@ -861,7 +903,7 @@ describe("zero user permission grants", () => {
     mockNow(Date.parse("2000-01-01T00:00:00.000Z"));
     await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "1h",
@@ -870,7 +912,7 @@ describe("zero user permission grants", () => {
     mockNow(Date.parse("2026-01-01T00:00:00.000Z"));
     const revived = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
     });
@@ -887,7 +929,7 @@ describe("zero user permission grants", () => {
 
     const oneHour = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "1h",
@@ -896,7 +938,7 @@ describe("zero user permission grants", () => {
 
     const oneDay = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "24h",
@@ -905,7 +947,7 @@ describe("zero user permission grants", () => {
 
     const sevenDays = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "7d",
@@ -914,7 +956,7 @@ describe("zero user permission grants", () => {
 
     const always = await applyPermissionGrant({
       agentId,
-      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
       expiresIn: "always",
@@ -933,7 +975,7 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     const response = await app.request(
       "/api/zero/user-permission-grants/apply",
@@ -945,7 +987,7 @@ describe("zero user permission grants", () => {
         },
         body: JSON.stringify({
           agentId,
-          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
           mode: "patch",
           grants: [
             {
@@ -964,7 +1006,7 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     const response = await app.request(
       "/api/zero/user-permission-grants/apply",
@@ -976,7 +1018,7 @@ describe("zero user permission grants", () => {
         },
         body: JSON.stringify({
           agentId,
-          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
           mode: "patch",
           grants: [
             {

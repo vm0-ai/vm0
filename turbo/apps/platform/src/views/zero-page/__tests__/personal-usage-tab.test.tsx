@@ -19,15 +19,23 @@ function usageRows(): UsageRecordRow[] {
       threadId: "thread-planning",
       runId: null,
       title: "Quarterly planning chat",
-      credits: 980,
+      credits: 983,
       tokens: 2200,
       breakdown: [
         {
           kind: "other",
-          credits: 980,
+          credits: 983,
           providers: [
-            { provider: "firecrawl", credits: 180 },
-            { provider: "google-maps", credits: 200 },
+            {
+              provider: "firecrawl",
+              credits: 180,
+              usageKinds: [{ kind: "scrape", credits: 180 }],
+            },
+            {
+              provider: "google-maps",
+              credits: 200,
+              usageKinds: [{ kind: "maps", credits: 200 }],
+            },
             {
               provider: "perplexity",
               credits: 200,
@@ -36,8 +44,26 @@ function usageRows(): UsageRecordRow[] {
                 { kind: "web-search", credits: 120 },
               ],
             },
-            { provider: "apidojo", credits: 200 },
-            { provider: "google-weather", credits: 200 },
+            {
+              provider: "apidojo",
+              credits: 200,
+              usageKinds: [{ kind: "finance", credits: 200 }],
+            },
+            {
+              provider: "google-weather",
+              credits: 200,
+              usageKinds: [{ kind: "weather", credits: 200 }],
+            },
+            {
+              provider: "qwen/qwen-2.5-7b-instruct",
+              credits: 3,
+              usageKinds: [
+                {
+                  kind: "translation/qwen/qwen-2.5-7b-instruct/tokens.output",
+                  credits: 3,
+                },
+              ],
+            },
           ],
         },
       ],
@@ -70,10 +96,10 @@ function usageRows(): UsageRecordRow[] {
       } satisfies UsageRecordRow;
     }),
     {
-      source: "cli",
+      source: "agent",
       threadId: null,
-      runId: "run-cli-audit",
-      title: "Extended CLI audit",
+      runId: "run-agent-audit",
+      title: "Extended agent audit",
       credits: 3100,
       tokens: 7300,
       breakdown: [],
@@ -101,10 +127,12 @@ function usageRow(args: {
   };
 }
 
-function mockBillingStatus(): void {
+function mockBillingStatus(tier: "limited-free-1" | "pro" = "pro"): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, {
-      tier: "pro",
+      tier,
+      supportByok: tier !== "limited-free-1",
+      restrictedVm0Models: tier === "limited-free-1",
       credits: 12_500,
       onboardingPaymentPending: false,
       subscriptionStatus: "active",
@@ -139,16 +167,16 @@ function mockBillingStatus(): void {
 
 function mockPersonalUsageStory(
   rows: UsageRecordRow[] = usageRows(),
+  tier: "limited-free-1" | "pro" = "pro",
 ): string[] {
   const requestedRanges: string[] = [];
 
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "member",
   });
-  mockBillingStatus();
+  mockBillingStatus(tier);
   context.mocks.api(zeroUsageRecordContract.get, ({ query, respond }) => {
     requestedRanges.push(query.range);
     const offset = (query.page - 1) * query.pageSize;
@@ -190,8 +218,8 @@ describe("personal usage settings", () => {
       expect(screen.getByText("Quarterly planning chat")).toBeInTheDocument();
       expect(screen.getByText("Slack customer follow-up")).toBeInTheDocument();
     });
-    expect(screen.getByText("980")).toBeInTheDocument();
-    expect(screen.queryByText("Extended CLI audit")).not.toBeInTheDocument();
+    expect(screen.getByText("983")).toBeInTheDocument();
+    expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
     expect(screen.queryByText("All sources")).not.toBeInTheDocument();
     expect(requestedRanges).toContain("today");
 
@@ -218,17 +246,23 @@ describe("personal usage settings", () => {
       ).toBeTruthy();
       expect(screen.getAllByText("Finance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Weather").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Translation").length).toBeGreaterThanOrEqual(
+        1,
+      );
       expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
       expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();
       expect(screen.queryByText("Perplexity")).not.toBeInTheDocument();
       expect(screen.queryByText("Apidojo")).not.toBeInTheDocument();
       expect(screen.queryByText("Google Weather")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("qwen/qwen-2.5-7b-instruct"),
+      ).not.toBeInTheDocument();
     });
 
     click(screen.getByText("Load more"));
 
     await waitFor(() => {
-      expect(screen.getByText("Extended CLI audit")).toBeInTheDocument();
+      expect(screen.getByText("Extended agent audit")).toBeInTheDocument();
     });
 
     click(screen.getByText("Today"));
@@ -240,33 +274,36 @@ describe("personal usage settings", () => {
     });
   });
 
-  it("shows Auto for VM0 model usage", async () => {
+  it("shows model names for limited-free-1 usage", async () => {
     const user = userEvent.setup();
     const row = usageRow({
-      title: "Auto model usage",
+      title: "Limited free model usage",
       credits: 100,
-      runId: "run-auto-model",
+      runId: "run-limited-free-model",
     });
-    mockPersonalUsageStory([
-      {
-        ...row,
-        breakdown: [
-          {
-            kind: "model",
-            credits: 100,
-            providers: [{ provider: "vm0-model", credits: 100 }],
-          },
-        ],
-      },
-    ]);
+    mockPersonalUsageStory(
+      [
+        {
+          ...row,
+          breakdown: [
+            {
+              kind: "model",
+              credits: 100,
+              providers: [{ provider: "gpt-5.6-luna", credits: 100 }],
+            },
+          ],
+        },
+      ],
+      "limited-free-1",
+    );
     await openUsageSettings();
 
     await user.hover(screen.getByTestId("usage-kind-segment-model"));
 
     await waitFor(() => {
-      expect(screen.getAllByText("Auto").length).toBeGreaterThanOrEqual(1);
-      expect(screen.queryByText("VM0 Model")).not.toBeInTheDocument();
-      expect(screen.queryByText("vm0-model")).not.toBeInTheDocument();
+      expect(screen.getAllByText("GPT 5.6 Luna").length).toBeGreaterThanOrEqual(
+        1,
+      );
     });
   });
 
@@ -288,7 +325,6 @@ describe("personal usage settings", () => {
   it("refreshes personal usage when billing realtime changes", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });

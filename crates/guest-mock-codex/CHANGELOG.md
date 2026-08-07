@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.17](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.16...guest-mock-codex-v0.6.17) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
+## [0.6.16](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.15...guest-mock-codex-v0.6.16) (2026-08-04)
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+
+## [0.6.15](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.14...guest-mock-codex-v0.6.15) (2026-08-01)
+
+
+### Bug Fixes
+
+* **guest-agent:** ignore secondary codex thread events ([#24466](https://github.com/vm0-ai/vm0/issues/24466)) ([20ed365](https://github.com/vm0-ai/vm0/commit/20ed365bf6639fdce6c6b42cb64f5a45ed3d2562))
+
 ## [0.6.14](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.13...guest-mock-codex-v0.6.14) (2026-07-28)
 
 
@@ -89,7 +110,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 
 ## [0.6.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.0...guest-mock-codex-v0.6.1) (2026-07-01)
 

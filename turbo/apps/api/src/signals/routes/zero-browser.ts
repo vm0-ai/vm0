@@ -3,15 +3,17 @@ import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
+import { bodyResultOf, pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
   createZeroBrowser$,
+  closeZeroBrowserForThread$,
   getCurrentZeroBrowser$,
   getZeroBrowser$,
   leaseCurrentZeroBrowser$,
-  leaseZeroBrowserById$,
-  resumeZeroBrowserFromViewer$,
+  leaseZeroBrowserByThread$,
+  openZeroBrowserForThread$,
+  resizeZeroBrowserByThread$,
   useZeroBrowser$,
   type BrowserServiceError,
 } from "../services/zero-browser.service";
@@ -101,22 +103,23 @@ const leaseBrowserInner$ = command(
   },
 );
 
-const leaseByIdParams$ = pathParamsOf(zeroBrowserContract.leaseById);
-const leaseByIdBody$ = bodyResultOf(zeroBrowserContract.leaseById);
-const leaseBrowserByIdInner$ = command(
+const leaseByThreadParams$ = pathParamsOf(zeroBrowserContract.leaseByThread);
+const leaseByThreadBody$ = bodyResultOf(zeroBrowserContract.leaseByThread);
+const leaseBrowserByThreadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const body = await get(leaseByIdBody$);
+    const body = await get(leaseByThreadBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
     const auth = get(organizationAuthContext$);
     const result = await set(
-      leaseZeroBrowserById$,
+      leaseZeroBrowserByThread$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        browserId: get(leaseByIdParams$).browserId,
+        chatThreadId: get(leaseByThreadParams$).threadId,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
       },
       signal,
     );
@@ -126,22 +129,76 @@ const leaseBrowserByIdInner$ = command(
   },
 );
 
-const resumeByIdParams$ = pathParamsOf(zeroBrowserContract.resumeById);
-const resumeByIdBody$ = bodyResultOf(zeroBrowserContract.resumeById);
-const resumeBrowserByIdInner$ = command(
+const openParams$ = pathParamsOf(zeroBrowserContract.open);
+const openBody$ = bodyResultOf(zeroBrowserContract.open);
+const openBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const body = await get(openBody$);
+  signal.throwIfAborted();
+  if (!body.ok) {
+    return body.response;
+  }
+  const auth = get(organizationAuthContext$);
+  const result = await set(
+    openZeroBrowserForThread$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      chatThreadId: get(openParams$).threadId,
+      lifecycleEventId: body.data.eventId,
+      ...("runId" in auth ? { runId: auth.runId } : {}),
+    },
+    signal,
+  );
+  return result.kind === "error"
+    ? errorResponse(result)
+    : { status: 200 as const, body: result.value };
+});
+
+const closeParams$ = pathParamsOf(zeroBrowserContract.close);
+const closeBody$ = bodyResultOf(zeroBrowserContract.close);
+const closeBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const body = await get(resumeByIdBody$);
+    const body = await get(closeBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
     const auth = get(organizationAuthContext$);
     const result = await set(
-      resumeZeroBrowserFromViewer$,
+      closeZeroBrowserForThread$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        browserId: get(resumeByIdParams$).browserId,
+        chatThreadId: get(closeParams$).threadId,
+        lifecycleEventId: body.data.eventId,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
+      },
+      signal,
+    );
+    return result.kind === "error"
+      ? errorResponse(result)
+      : { status: 200 as const, body: result.value };
+  },
+);
+
+const resizeByThreadParams$ = pathParamsOf(zeroBrowserContract.resizeByThread);
+const resizeByThreadBody$ = bodyResultOf(zeroBrowserContract.resizeByThread);
+const resizeBrowserByThreadInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const body = await get(resizeByThreadBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const auth = get(organizationAuthContext$);
+    const result = await set(
+      resizeZeroBrowserByThread$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        chatThreadId: get(resizeByThreadParams$).threadId,
+        aspectRatio: body.data.aspectRatio,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
       },
       signal,
     );
@@ -170,7 +227,6 @@ const currentBrowserInner$ = command(
 );
 
 const getParams$ = pathParamsOf(zeroBrowserContract.get);
-const getQuery$ = queryOf(zeroBrowserContract.get);
 const getBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const result = await set(
@@ -178,8 +234,8 @@ const getBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       orgId: auth.orgId,
       userId: auth.userId,
-      browserId: get(getParams$).browserId,
-      chatThreadId: get(getQuery$).chatThreadId,
+      chatThreadId: get(getParams$).threadId,
+      ...("runId" in auth ? { runId: auth.runId } : {}),
     },
     signal,
   );
@@ -228,20 +284,24 @@ export const zeroBrowserRoutes: readonly RouteEntry[] = [
     handler: authRoute(browserWriteAuth, useBrowserInner$),
   },
   {
-    route: zeroBrowserContract.resume,
-    handler: authRoute(browserWriteAuth, useBrowserInner$),
-  },
-  {
     route: zeroBrowserContract.lease,
     handler: authRoute(browserWriteAuth, leaseBrowserInner$),
   },
   {
-    route: zeroBrowserContract.leaseById,
-    handler: authRoute(browserViewerWriteAuth, leaseBrowserByIdInner$),
+    route: zeroBrowserContract.leaseByThread,
+    handler: authRoute(browserViewerWriteAuth, leaseBrowserByThreadInner$),
   },
   {
-    route: zeroBrowserContract.resumeById,
-    handler: authRoute(browserViewerWriteAuth, resumeBrowserByIdInner$),
+    route: zeroBrowserContract.open,
+    handler: authRoute(browserViewerWriteAuth, openBrowserInner$),
+  },
+  {
+    route: zeroBrowserContract.close,
+    handler: authRoute(browserViewerWriteAuth, closeBrowserInner$),
+  },
+  {
+    route: zeroBrowserContract.resizeByThread,
+    handler: authRoute(browserViewerWriteAuth, resizeBrowserByThreadInner$),
   },
   {
     route: zeroBrowserContract.current,

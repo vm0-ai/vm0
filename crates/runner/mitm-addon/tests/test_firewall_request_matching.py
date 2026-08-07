@@ -1,5 +1,7 @@
 """Raw firewall request matching tests through the production compiled matcher."""
 
+import urllib.parse
+
 import matching
 from tests.firewall_helpers import grant_all, match_request_with_raw_firewalls, wrap_firewalls
 
@@ -51,6 +53,38 @@ class TestFirewallRequestMatching:
         assert result.permission == "repo-read"
         assert result.params == {"owner": "octocat", "repo": "hello"}
         assert result.rule == "GET /repos/{owner}/{repo}"
+
+    def test_runtime_url_does_not_enter_global_parse_cache(self):
+        fw_configs = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "read", "rules": ["GET /items/{id}"]}],
+                }
+            ],
+            name="example",
+        )
+        compiled = matching.compile_firewalls(fw_configs)
+        assert compiled is not None
+
+        urllib.parse.urlsplit.cache_clear()
+        try:
+            assert matching.firewall_base_config_is_valid("https://stable-config.example.com")
+            stable_cache = urllib.parse.urlsplit.cache_info()
+            assert stable_cache.currsize > 0
+
+            result = matching.match_compiled_firewall_request(
+                f"https://api.example.com/items/123?payload={'x' * 200_000}",
+                "GET",
+                compiled,
+                grant_all(fw_configs),
+            )
+
+            assert isinstance(result, matching.FirewallAllow)
+            assert urllib.parse.urlsplit.cache_info() == stable_cache
+        finally:
+            urllib.parse.urlsplit.cache_clear()
 
     def test_aws_sigv4_auth_config_allows_matching(self):
         fw_configs = wrap_firewalls(

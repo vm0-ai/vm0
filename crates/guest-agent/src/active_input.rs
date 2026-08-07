@@ -1,6 +1,6 @@
 //! Guest-agent local active-input state shared by CLI follow-up sinks.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use serde::Deserialize;
@@ -10,13 +10,10 @@ use uuid::Uuid;
 
 const ACTIVE_INPUT_TYPE: &str = "active-input";
 const ACTIVE_INPUT_QUEUE_CAPACITY: usize = 8;
-const ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY: usize = 1024;
 
 /// Accepted follow-up user input waiting for the CLI follow-up sink.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveInputFrame {
-    /// Control-plane message id used for duplicate detection and diagnostics.
-    pub message_id: String,
     /// Deterministic vm0 frame UUID assigned to this active input.
     pub uuid: String,
     /// Follow-up user text to deliver to the running CLI process.
@@ -90,8 +87,6 @@ struct ActiveInputState {
     initial_prompt_replay_seen: bool,
     observed_result: bool,
     next_input_sequence: u64,
-    seen_message_ids: HashSet<String>,
-    seen_message_id_order: VecDeque<String>,
     pending_uuid_order: VecDeque<String>,
     pending_by_uuid: HashMap<String, PendingInput>,
 }
@@ -103,8 +98,6 @@ impl Default for ActiveInputState {
             initial_prompt_replay_seen: false,
             observed_result: false,
             next_input_sequence: 0,
-            seen_message_ids: HashSet::new(),
-            seen_message_id_order: VecDeque::new(),
             pending_uuid_order: VecDeque::new(),
             pending_by_uuid: HashMap::new(),
         }
@@ -112,40 +105,10 @@ impl Default for ActiveInputState {
 }
 
 impl ActiveInputState {
-    fn has_seen_message_id(&self, message_id: &str) -> bool {
-        self.seen_message_ids.contains(message_id)
-    }
-
-    fn remember_message_id(&mut self, message_id: String) {
-        if !self.seen_message_ids.insert(message_id.clone()) {
-            return;
-        }
-        self.seen_message_id_order.push_back(message_id);
-        while self.seen_message_ids.len() > ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY {
-            let Some(oldest) = self.seen_message_id_order.pop_front() else {
-                break;
-            };
-            self.seen_message_ids.remove(&oldest);
-        }
-    }
-
-    fn forget_message_id(&mut self, message_id: &str) {
-        if !self.seen_message_ids.remove(message_id) {
-            return;
-        }
-        if let Some(index) = self
-            .seen_message_id_order
-            .iter()
-            .position(|seen| seen == message_id)
-        {
-            self.seen_message_id_order.remove(index);
-        }
-    }
-
-    fn allocate_active_input_uuid(&mut self, run_id: &str, message_id: &str) -> String {
+    fn allocate_active_input_uuid(&mut self, run_id: &str) -> String {
         let sequence = self.next_input_sequence;
         self.next_input_sequence = self.next_input_sequence.saturating_add(1);
-        claude_active_input_uuid(run_id, sequence, message_id)
+        claude_active_input_uuid(run_id, sequence)
     }
 
     fn insert_pending(&mut self, uuid: String, input: PendingInput) {
@@ -302,10 +265,10 @@ pub fn claude_initial_prompt_uuid(run_id: &str) -> String {
     .to_string()
 }
 
-fn claude_active_input_uuid(run_id: &str, sequence: u64, message_id: &str) -> String {
+fn claude_active_input_uuid(run_id: &str, sequence: u64) -> String {
     Uuid::new_v5(
         &Uuid::NAMESPACE_OID,
-        format!("vm0:{run_id}:claude-active-input:{sequence}:{message_id}").as_bytes(),
+        format!("vm0:{run_id}:claude-active-input:{sequence}").as_bytes(),
     )
     .to_string()
 }
@@ -440,9 +403,6 @@ impl ActiveInputController {
 
     /// Validates and queues one process-control active-input payload.
     ///
-    /// `message_id` is the non-empty control-plane id used to reject duplicate
-    /// requests. It is passed separately and is not part of `payload`.
-    ///
     /// `payload` must be a JSON object with the required string fields `type`
     /// and `text`. `type` must equal `active-input`, and `text` must be non-empty:
     ///
@@ -452,27 +412,17 @@ impl ActiveInputController {
     ///
     /// The method returns [`ActiveInputControlOutcome::Accepted`] only after the
     /// follow-up frame has been queued for the paired writer. Unsupported,
-    /// invalid, duplicate, disabled, or closed inputs are rejected. A bounded
+    /// invalid, disabled, or closed inputs are rejected. A bounded
     /// backlog returns [`ActiveInputControlOutcome::QueueFull`] so callers can
     /// distinguish backpressure from validation rejection. Callers should branch
     /// on the outcome variant rather than treating diagnostic text as a stable
     /// protocol.
-    pub fn handle_control_payload(
-        &self,
-        message_id: &str,
-        payload: &[u8],
-    ) -> ActiveInputControlOutcome {
+    pub fn handle_control_payload(&self, payload: &[u8]) -> ActiveInputControlOutcome {
         if !self.inner.enabled {
             return ActiveInputControlOutcome::Rejected {
                 diagnostic: "active input is not supported for this agent",
             };
         }
-        if message_id.is_empty() {
-            return ActiveInputControlOutcome::Rejected {
-                diagnostic: "active input message id is empty",
-            };
-        }
-
         let payload = match serde_json::from_slice::<ActiveInputPayload>(payload) {
             Ok(payload) => payload,
             Err(_) => {
@@ -500,24 +450,17 @@ impl ActiveInputController {
                 diagnostic: "active input is closed",
             };
         }
-        if state.has_seen_message_id(message_id) {
-            return ActiveInputControlOutcome::Rejected {
-                diagnostic: "active input message id is duplicate",
-            };
-        }
         if state.pending_by_uuid.len() >= ACTIVE_INPUT_QUEUE_CAPACITY {
             return ActiveInputControlOutcome::QueueFull {
                 diagnostic: "active input queue is full",
             };
         }
 
-        let uuid = state.allocate_active_input_uuid(&self.inner.run_id, message_id);
+        let uuid = state.allocate_active_input_uuid(&self.inner.run_id);
         let frame = ActiveInputFrame {
-            message_id: message_id.to_owned(),
             uuid: uuid.clone(),
             text: text.clone(),
         };
-        state.remember_message_id(message_id.to_owned());
         state.insert_pending(
             uuid.clone(),
             PendingInput {
@@ -529,14 +472,12 @@ impl ActiveInputController {
         match self.inner.tx.try_send(frame) {
             Ok(()) => ActiveInputControlOutcome::Accepted,
             Err(mpsc::error::TrySendError::Full(frame)) => {
-                state.forget_message_id(&frame.message_id);
                 state.remove_pending_by_uuid(&frame.uuid);
                 ActiveInputControlOutcome::QueueFull {
                     diagnostic: "active input queue is full",
                 }
             }
             Err(mpsc::error::TrySendError::Closed(frame)) => {
-                state.forget_message_id(&frame.message_id);
                 state.remove_pending_by_uuid(&frame.uuid);
                 state.lifecycle = Lifecycle::Closed;
                 ActiveInputControlOutcome::Rejected {
@@ -643,8 +584,8 @@ impl ActiveInputController {
 
     /// Classifies a CLI stdout user event for replay filtering.
     ///
-    /// [`ReplayUserEventAction::External`] means the event is ordinary CLI
-    /// output and should continue through event delivery.
+    /// [`ReplayUserEventAction::External`] means the event is external Claude
+    /// Code output and should continue through event delivery.
     /// [`ReplayUserEventAction::InternalInitialPrompt`] and
     /// [`ReplayUserEventAction::InternalActiveInput`] mean the event is an
     /// internal echo of input vm0 already delivered and should be filtered.

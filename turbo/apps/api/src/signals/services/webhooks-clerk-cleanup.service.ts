@@ -1,4 +1,4 @@
-import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   agentComposes,
   agentComposeVersions,
@@ -25,6 +25,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { sharedThreads } from "@vm0/db/schema/shared-thread";
 import { storages } from "@vm0/db/schema/storage";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
@@ -35,10 +36,13 @@ import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, count, eq, inArray, isNotNull, sql } from "drizzle-orm";
-
+import { and, count, eq, inArray, isNotNull, like, sql } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import {
+  sharedThreadArtifactAuthorUserId,
+  SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
+} from "../../lib/shared-thread-artifact";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -46,7 +50,7 @@ import {
   listS3Objects,
   listS3ObjectsUnderPrefix,
 } from "../external/s3";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { publishCancelToRunnerGroup } from "../external/realtime";
 import { deleteWebhook } from "../external/telegram-client";
 import { getStripeClient } from "../external/stripe-client";
@@ -71,13 +75,16 @@ async function publishCancelBestEffort(
   if (!runnerGroup) {
     return;
   }
-  await tapError(publishCancelToRunnerGroup(runnerGroup, runId), (error) => {
-    L.warn("failed to publish run cancellation", {
-      runId,
-      runnerGroup,
-      error,
-    });
-  });
+  await tapError(
+    publishCancelToRunnerGroup(runnerGroup, runId, "hard"),
+    (error) => {
+      L.warn("failed to publish run cancellation", {
+        runId,
+        runnerGroup,
+        error,
+      });
+    },
+  );
 }
 
 async function cancelOrgRuns(db: Db, orgId: string): Promise<void> {
@@ -372,24 +379,32 @@ const revokeOrgConnectorTokens$ = command(
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
-      .select({ userId: connectors.userId, type: connectors.type })
+      .select({
+        userId: connectors.userId,
+        connectorSlug: connectors.connectorSlug,
+      })
       .from(connectors)
       .where(eq(connectors.orgId, orgId));
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorRefSchema.safeParse(row.type);
+      const parsed = connectorSlugSchema.safeParse(row.connectorSlug);
       if (!parsed.success) {
-        L.warn("unknown connector type, skipping revocation", {
+        L.warn("unknown connector slug, skipping revocation", {
           orgId,
-          type: row.type,
+          connectorSlug: row.connectorSlug,
         });
         continue;
       }
 
       await set(
         deleteZeroConnectorLocalState$,
-        { orgId, userId: row.userId, type: parsed.data, snapshot },
+        {
+          orgId,
+          userId: row.userId,
+          connectorSlug: parsed.data,
+          snapshot,
+        },
         signal,
       );
     }
@@ -406,24 +421,32 @@ const revokeUserConnectorTokens$ = command(
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
-      .select({ orgId: connectors.orgId, type: connectors.type })
+      .select({
+        orgId: connectors.orgId,
+        connectorSlug: connectors.connectorSlug,
+      })
       .from(connectors)
       .where(eq(connectors.userId, userId));
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorRefSchema.safeParse(row.type);
+      const parsed = connectorSlugSchema.safeParse(row.connectorSlug);
       if (!parsed.success) {
-        L.warn("unknown connector type, skipping revocation", {
+        L.warn("unknown connector slug, skipping revocation", {
           userId,
-          type: row.type,
+          connectorSlug: row.connectorSlug,
         });
         continue;
       }
 
       await set(
         deleteZeroConnectorLocalState$,
-        { orgId: row.orgId, userId, type: parsed.data, snapshot },
+        {
+          orgId: row.orgId,
+          userId,
+          connectorSlug: parsed.data,
+          snapshot,
+        },
         signal,
       );
     }
@@ -735,6 +758,23 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   }
 
   await deleteOrgUsageData(db, orgId);
+  await db.delete(sharedThreads).where(
+    inArray(
+      sharedThreads.id,
+      db
+        .select({ id: artifacts.entityId })
+        .from(artifacts)
+        .where(
+          and(
+            eq(artifacts.orgId, orgId),
+            like(
+              artifacts.logicalKey,
+              `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+            ),
+          ),
+        ),
+    ),
+  );
   await db.delete(artifacts).where(eq(artifacts.orgId, orgId));
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
@@ -783,7 +823,15 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
     .delete(telegramInstallations)
     .where(eq(telegramInstallations.ownerUserId, userId));
   await deleteUserUsageData(db, userId);
-  await db.delete(artifacts).where(eq(artifacts.authorUserId, userId));
+  await db
+    .delete(artifacts)
+    .where(
+      inArray(artifacts.authorUserId, [
+        userId,
+        sharedThreadArtifactAuthorUserId(userId),
+      ]),
+    );
+  await db.delete(sharedThreads).where(eq(sharedThreads.userId, userId));
   await db.delete(agentRuns).where(eq(agentRuns.userId, userId));
 
   const composeRows = await db

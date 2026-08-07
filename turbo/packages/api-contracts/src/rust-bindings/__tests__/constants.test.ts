@@ -26,10 +26,16 @@ import {
   CLIENT_VERSION_HEADER,
 } from "../../contracts/client-headers";
 import {
+  ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
-  NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
+  CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+  NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
+  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
@@ -38,6 +44,10 @@ import {
   SESSION_HISTORY_ENCODING_ZSTD,
   SESSION_HISTORY_GZIP_MIN_BYTES,
 } from "../../contracts/runners";
+import {
+  STORAGE_MANIFEST_MAX_FILES,
+  STORAGE_MANIFEST_MAX_PATH_BYTES,
+} from "../../contracts/storages";
 
 const codexOauthPlaceholders =
   MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"].placeholders!;
@@ -52,13 +62,45 @@ const canonicalWorkingDirDoc = [
   "Rust and TypeScript components use this shared contract value when building runner commands and paths.",
 ] as const;
 
+const storageManifestMaxFilesDoc = [
+  "Maximum file entries accepted in a storage manifest.",
+  "Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.",
+] as const;
+const storageManifestMaxPathBytesDoc = [
+  "Maximum cumulative UTF-8 path bytes accepted in a storage manifest.",
+  "Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.",
+] as const;
+
 const resumeSessionHistoryMaxBytesDoc = [
   "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
   "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
 ] as const;
-const networkPolicyRefreshConnectorRefsMaxDoc = [
-  "Maximum connector refs accepted by the runner network policy refresh endpoint.",
+const activeInputControlPayloadMaxBytesDoc = [
+  "Maximum serialized active-input control payload accepted by runner and guest process control.",
+  "The API validates the materialized prompt against this shared limit before committing claimed chat events.",
+] as const;
+const runnerCancellationRecoveryGraceMsDoc = [
+  "Maximum cooperative user-cancellation recovery window enforced by runners.",
+  "The API stale barrier remains longer than this runner-owned deadline so delivery latency cannot release a healthy recovery early.",
+] as const;
+const cancellationRecoveryStaleAfterMsDoc = [
+  "Maximum API admission hold after public user cancellation when recovery completion is lost.",
+  "The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.",
+] as const;
+const networkPolicyRefreshConnectorSlugsMaxDoc = [
+  "Maximum connector slugs accepted by the runner network policy refresh endpoint.",
   "Rust runners use this shared contract value to split refresh requests before calling the API.",
+] as const;
+const connectorRuntimeSyncTargetsMaxDoc = [
+  "Maximum connector runtime targets accepted by the sync endpoint.",
+  "Rust runners use this shared contract value to split target batches before calling the API.",
+] as const;
+const connectorRuntimeSyncRunTerminalErrorCodeDoc = [
+  "API error code returned when connector runtime synchronization targets a terminal run.",
+] as const;
+const networkPolicyRefreshRunTerminalErrorCodeDoc = [
+  "API error code returned when network policy refresh targets a terminal run.",
+  "Rust runners use this shared contract value to distinguish terminal sync from ambiguous refresh failures.",
 ] as const;
 const runnerPollExcludedRunIdsMaxDoc = [
   "Maximum runner-local claim cooldown exclusions accepted by the poll endpoint.",
@@ -179,15 +221,51 @@ const expectedBindings = [
   },
   {
     rustModulePath: ["runners"],
-    rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",
-    value: rustU64(NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
-    rustDoc: networkPolicyRefreshConnectorRefsMaxDoc,
+    rustConstName: "ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES",
+    value: rustU64(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES),
+    rustDoc: activeInputControlPayloadMaxBytesDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX",
+    value: rustU64(NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX),
+    rustDoc: networkPolicyRefreshConnectorSlugsMaxDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CONNECTOR_RUNTIME_SYNC_TARGETS_MAX",
+    value: rustU64(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX),
+    rustDoc: connectorRuntimeSyncTargetsMaxDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE",
+    value: rustString(CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE),
+    rustDoc: connectorRuntimeSyncRunTerminalErrorCodeDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE",
+    value: rustString(NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE),
+    rustDoc: networkPolicyRefreshRunTerminalErrorCodeDoc,
   },
   {
     rustModulePath: ["runners"],
     rustConstName: "RESUME_SESSION_HISTORY_MAX_BYTES",
     value: rustU64(RESUME_SESSION_HISTORY_MAX_BYTES),
     rustDoc: resumeSessionHistoryMaxBytesDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "RUNNER_CANCELLATION_RECOVERY_GRACE_MS",
+    value: rustU64(RUNNER_CANCELLATION_RECOVERY_GRACE_MS),
+    rustDoc: runnerCancellationRecoveryGraceMsDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CANCELLATION_RECOVERY_STALE_AFTER_MS",
+    value: rustU64(CANCELLATION_RECOVERY_STALE_AFTER_MS),
+    rustDoc: cancellationRecoveryStaleAfterMsDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -244,6 +322,18 @@ const expectedBindings = [
     rustConstName: "CANONICAL_WORKING_DIR",
     value: rustString(CANONICAL_WORKING_DIR),
     rustDoc: canonicalWorkingDirDoc,
+  },
+  {
+    rustModulePath: ["storages"],
+    rustConstName: "STORAGE_MANIFEST_MAX_FILES",
+    value: rustU64(STORAGE_MANIFEST_MAX_FILES),
+    rustDoc: storageManifestMaxFilesDoc,
+  },
+  {
+    rustModulePath: ["storages"],
+    rustConstName: "STORAGE_MANIFEST_MAX_PATH_BYTES",
+    value: rustU64(STORAGE_MANIFEST_MAX_PATH_BYTES),
+    rustDoc: storageManifestMaxPathBytesDoc,
   },
   {
     rustModulePath: ["codex_oauth_token", "placeholders"],
@@ -372,6 +462,7 @@ describe("Rust constant bindings", () => {
     expect(firstRender).toContain("pub mod model_provider_env {");
     expect(firstRender).toContain("pub mod client {");
     expect(firstRender).toContain("pub mod runners {");
+    expect(firstRender).toContain("pub mod storages {");
     expect(firstRender).toContain("pub mod placeholders {");
     expect(firstRender).toContain("pub mod headers {");
     expect(firstRender).toContain(
@@ -405,13 +496,31 @@ describe("Rust constant bindings", () => {
       "/// Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
     );
     expect(firstRender).toContain(
+      `pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = ${ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES};`,
+    );
+    expect(firstRender).toContain(
       `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const RUNNER_CANCELLATION_RECOVERY_GRACE_MS: u64 = ${RUNNER_CANCELLATION_RECOVERY_GRACE_MS};`,
+    );
+    expect(firstRender).toContain(
+      `pub const CANCELLATION_RECOVERY_STALE_AFTER_MS: u64 = ${CANCELLATION_RECOVERY_STALE_AFTER_MS};`,
     );
     expect(firstRender).toContain(
       `pub const RUNNER_POLL_EXCLUDED_RUN_IDS_MAX: u64 = ${RUNNER_POLL_EXCLUDED_RUN_IDS_MAX};`,
     );
     expect(firstRender).toContain(
-      `pub const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX: u64 = ${NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX};`,
+      `pub const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX: u64 = ${NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX};`,
+    );
+    expect(firstRender).toContain(
+      `pub const CONNECTOR_RUNTIME_SYNC_TARGETS_MAX: u64 = ${CONNECTOR_RUNTIME_SYNC_TARGETS_MAX};`,
+    );
+    expect(firstRender).toContain(
+      `pub const CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE: &str = "${CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE: &str = "${NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE}";`,
     );
     expect(firstRender).toContain(
       `pub const SESSION_HISTORY_ENCODING_GZIP: &str = "${SESSION_HISTORY_ENCODING_GZIP}";`,
@@ -436,6 +545,12 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const SESSION_HISTORY_GZIP_MIN_BYTES: u64 = ${SESSION_HISTORY_GZIP_MIN_BYTES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const STORAGE_MANIFEST_MAX_FILES: u64 = ${STORAGE_MANIFEST_MAX_FILES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const STORAGE_MANIFEST_MAX_PATH_BYTES: u64 = ${STORAGE_MANIFEST_MAX_PATH_BYTES};`,
     );
     expect(firstRender).toContain(
       `pub const CLIENT_VERSION_HEADER: &str = "${CLIENT_VERSION_HEADER}";`,

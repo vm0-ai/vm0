@@ -14,6 +14,7 @@ MAX_PENDING_JSONL_WRITES = 4096
 MAX_PENDING_JSONL_BYTES = 32 * 1024 * 1024
 MAX_JSONL_IOVECS = os.sysconf("SC_IOV_MAX")
 SHUTDOWN_JOIN_TIMEOUT_SECONDS = 1.0
+APPEND_FAILURE_WARNING_INTERVAL_SECONDS = 60.0
 
 
 @dataclass(frozen=True)
@@ -37,10 +38,26 @@ _flush_waiters_by_path: defaultdict[str, int] = defaultdict(int)
 _pending_bytes = 0
 _queued_writes = 0
 _drop_warning_logged = False
+_last_append_failure_at: float | None = None
+_last_append_failure_warning_at: float | None = None
 
 
 def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
-    """Queue a JSONL line for best-effort append without blocking hook latency."""
+    """Queue caller-framed bytes for best-effort append without blocking hook latency.
+
+    When accepted, ``line`` is passed to the append worker without transformation.
+    The caller owns JSON serialization and the terminating newline; this function
+    validates neither JSON nor record boundaries.
+
+    The call returns no admission or durability result. An empty ``log_path``,
+    writer shutdown, pending-write or pending-byte saturation, or failure to start
+    the worker can leave the entry unaccepted. ``log_name`` supplies warning context,
+    but not every rejection emits one.
+
+    Flush operations wait only for writes that were accepted, so they can succeed
+    even if this call was rejected. Processing an accepted write, including a failed
+    append attempt, does not guarantee persistence.
+    """
     global _pending_bytes, _queued_writes
 
     if not log_path:
@@ -169,6 +186,7 @@ def reset_for_tests() -> None:
     """Reset writer state between tests."""
     global _queue, _worker, _shutdown, _stop_enqueued, _accepted_by_path, _completed_by_path
     global _flush_waiters_by_path, _pending_bytes, _queued_writes, _drop_warning_logged
+    global _last_append_failure_at, _last_append_failure_warning_at
 
     shutdown_writer(timeout=None)
     with _condition:
@@ -182,6 +200,8 @@ def reset_for_tests() -> None:
         _pending_bytes = 0
         _queued_writes = 0
         _drop_warning_logged = False
+        _last_append_failure_at = None
+        _last_append_failure_warning_at = None
         _condition.notify_all()
 
 
@@ -235,14 +255,49 @@ def _write_batch(items: list[object]) -> None:
         if isinstance(item, _WriteItem):
             batches.setdefault(item.log_path, []).append(item)
 
+    append_succeeded = False
+    append_failed = False
     for log_path, path_items in batches.items():
         if not path_items:
             continue
         try:
             _append_lines(log_path, [item.line for item in path_items])
+            append_succeeded = True
         except Exception as exc:
+            append_failed = True
             log_name = path_items[0].log_name
-            _warn(f"Failed to write {log_name} log: {type(exc).__name__}: {exc}")
+            _report_append_failure(log_name, exc)
+
+    if append_succeeded and not append_failed:
+        _report_append_recovery()
+
+
+def _report_append_failure(log_name: str, exc: Exception) -> None:
+    global _last_append_failure_at, _last_append_failure_warning_at
+
+    now = time.monotonic()
+    _last_append_failure_at = now
+    if (
+        _last_append_failure_warning_at is not None
+        and now - _last_append_failure_warning_at < APPEND_FAILURE_WARNING_INTERVAL_SECONDS
+    ):
+        return
+
+    _last_append_failure_warning_at = now
+    _warn(f"Failed to write {log_name} log: {type(exc).__name__}: {exc}")
+
+
+def _report_append_recovery() -> None:
+    global _last_append_failure_at, _last_append_failure_warning_at
+
+    if _last_append_failure_at is None:
+        return
+    if time.monotonic() - _last_append_failure_at < APPEND_FAILURE_WARNING_INTERVAL_SECONDS:
+        return
+
+    _last_append_failure_at = None
+    _last_append_failure_warning_at = None
+    _warn("JSONL log writes recovered")
 
 
 def _append_lines(log_path: str, lines: list[bytes]) -> None:

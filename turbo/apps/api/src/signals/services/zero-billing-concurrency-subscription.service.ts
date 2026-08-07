@@ -3,13 +3,21 @@ import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subs
 import { and, eq } from "drizzle-orm";
 
 import { getStripeClient } from "../external/stripe-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { activeConcurrencySubscriptions } from "./org-concurrency-entitlements.service";
+import { startConcurrencySubscriptionUpdate$ } from "./zero-billing-checkout.service";
 
 interface CancelConcurrencySubscriptionArgs {
   readonly orgId: string;
   readonly subscriptionId: string;
+}
+
+interface ReduceConcurrencySubscriptionArgs extends CancelConcurrencySubscriptionArgs {
+  readonly quantity: number;
+  readonly portalConfigurationId: string;
+  readonly successUrl: string;
+  readonly cancelUrl: string;
 }
 
 type CancelConcurrencySubscriptionResult =
@@ -20,6 +28,17 @@ type CancelConcurrencySubscriptionResult =
   | {
       readonly ok: false;
       readonly reason: "not_found";
+    };
+
+type ReduceConcurrencySubscriptionResult =
+  | { readonly ok: true; readonly url: string }
+  | {
+      readonly ok: false;
+      readonly reason:
+        | "not_found"
+        | "canceling"
+        | "not_reduction"
+        | "pending_update";
     };
 
 async function findActiveConcurrencySubscription(
@@ -78,6 +97,41 @@ export const cancelConcurrencySubscription$ = command(
       ok: true,
       currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
     };
+  },
+);
+
+export const reduceConcurrencySubscription$ = command(
+  async (
+    { get, set },
+    args: ReduceConcurrencySubscriptionArgs,
+    signal: AbortSignal,
+  ): Promise<ReduceConcurrencySubscriptionResult> => {
+    const subscription = await findActiveConcurrencySubscription(
+      get(db$),
+      args,
+    );
+    signal.throwIfAborted();
+    if (!subscription) {
+      return { ok: false, reason: "not_found" };
+    }
+    if (subscription.cancelAtPeriodEnd) {
+      return { ok: false, reason: "canceling" };
+    }
+    if (args.quantity >= subscription.quantity) {
+      return { ok: false, reason: "not_reduction" };
+    }
+
+    return await set(
+      startConcurrencySubscriptionUpdate$,
+      {
+        subscriptionId: args.subscriptionId,
+        portalConfigurationId: args.portalConfigurationId,
+        update: { type: "reduce", quantity: args.quantity },
+        successUrl: args.successUrl,
+        cancelUrl: args.cancelUrl,
+      },
+      signal,
+    );
   },
 );
 

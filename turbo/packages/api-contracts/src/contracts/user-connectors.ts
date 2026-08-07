@@ -1,27 +1,28 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { connectorRefSchema } from "./connector-identity";
+import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
 /**
- * User connector enabled types schema
- * Sparse model: only connector types explicitly enabled by the user for this
+ * User connector enabled slugs schema
+ * Sparse model: only connector slugs explicitly enabled by the user for this
  * agent.
  */
-export const userConnectorEnabledTypesSchema = z.object({
-  enabledTypes: z.array(connectorRefSchema),
+export const userConnectorEnabledSlugsSchema = z.object({
+  enabledConnectorSlugs: z.array(connectorSlugSchema),
 });
-export type UserConnectorEnabledTypes = z.infer<
-  typeof userConnectorEnabledTypesSchema
+export type UserConnectorEnabledSlugs = z.infer<
+  typeof userConnectorEnabledSlugsSchema
 >;
 
-export const userConnectorUpdateSchema = userConnectorEnabledTypesSchema.extend(
-  {
+export const userConnectorUpdateSchema = z
+  .object({
+    enabledConnectorSlugs: z.array(connectorSlugSchema),
     operation: z.enum(["replace", "add", "remove"]).optional(),
-  },
-);
+  })
+  .strict();
 export type UserConnectorUpdate = z.infer<typeof userConnectorUpdateSchema>;
 
 /**
@@ -34,12 +35,12 @@ export const zeroUserConnectorsContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
-      200: userConnectorEnabledTypesSchema,
+      200: userConnectorEnabledSlugsSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get enabled connector types for user on agent",
+    summary: "Get enabled connector slugs for user on agent",
   },
   update: {
     method: "PUT",
@@ -48,13 +49,13 @@ export const zeroUserConnectorsContract = c.router({
     pathParams: z.object({ id: z.string().uuid() }),
     body: userConnectorUpdateSchema,
     responses: {
-      200: userConnectorEnabledTypesSchema,
+      200: userConnectorEnabledSlugsSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Update enabled connector types for user on agent",
+    summary: "Update enabled connector slugs for user on agent",
   },
 });
 export type ZeroUserConnectorsContract = typeof zeroUserConnectorsContract;

@@ -1,7 +1,14 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastResolved,
+  useLoadable,
+  useSet,
+  type Loadable,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import {
   IconAlertTriangle,
   IconDotsVertical,
@@ -42,13 +49,20 @@ import {
   type ModelProviderResponse,
   type ModelProviderType,
   type OrgModelPolicy,
+  type OrgModelPoliciesResponse,
   type SupportedRunModel,
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
+  getModelProviderTypeForSurfaceProtocol,
+  type ModelProviderConnectionResponse,
+  type ModelProviderSurfaceProtocol,
+} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
+import {
   orgModelPolicies$,
   updateOrgModelPolicies$,
 } from "../../../../signals/external/org-model-policies.ts";
+import { modelProviderConnections$ } from "../../../../signals/external/model-provider-connections.ts";
 import { orgConfiguredProviders$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
 import {
   closeModelPolicyDialog$,
@@ -124,35 +138,14 @@ const ZERO_BORDER = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
 
-function getOAuthRouteCopy(oauthTypes: ModelProviderType[]): {
-  title: string;
-  description: string;
-} {
-  if (oauthTypes.includes("codex-oauth-token")) {
-    return {
-      title: "Codex subscription",
-      description: "Each member connects their own Pro or Team plan.",
-    };
-  }
-  return {
-    title: "Claude subscription",
-    description: "Each member connects their own Pro, Max, or Team plan.",
-  };
+function getOAuthRouteKind(
+  oauthTypes: ModelProviderType[],
+): "codex" | "claude" {
+  return oauthTypes.includes("codex-oauth-token") ? "codex" : "claude";
 }
 
 function getProviderConfig(type: ModelProviderType) {
-  return MODEL_PROVIDER_TYPES[type] as
-    | { secretLabel?: string; helpText?: string }
-    | undefined;
-}
-
-function getProviderSecretLabel(type: ModelProviderType): string {
-  const config = getProviderConfig(type);
-  return config?.secretLabel ?? "API key";
-}
-
-function getProviderSecretPlaceholder(type: ModelProviderType): string {
-  return `Enter your ${getProviderSecretLabel(type)}`;
+  return MODEL_PROVIDER_TYPES[type] as { helpText?: string } | undefined;
 }
 
 function getProviderSignupUrl(type: ModelProviderType): string | null {
@@ -185,6 +178,7 @@ function toUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
     defaultProviderType: policy.defaultProviderType,
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,
+    modelProviderSurfaceId: policy.modelProviderSurfaceId,
   };
 }
 
@@ -198,6 +192,7 @@ function makeDefaultPolicy(
     defaultProviderType: "vm0",
     credentialScope: "org",
     modelProviderId: null,
+    modelProviderSurfaceId: null,
   };
 }
 
@@ -285,9 +280,12 @@ function filterPolicyUpdatesForPlan(
 }
 
 function ProBadge() {
+  const { t } = useTranslation();
   return (
     <span className="shrink-0 rounded bg-primary px-1.5 py-0.5 text-[11px] font-medium leading-none text-primary-foreground">
-      Pro
+      {t(($) => {
+        return $.settings.models.picker.pro;
+      })}
     </span>
   );
 }
@@ -307,6 +305,7 @@ function DefaultModelRow({
   onChange: (model: SupportedRunModel) => void;
   onUpgrade: () => void;
 }) {
+  const { t } = useTranslation();
   const selectItems = policies.filter((policy) => {
     return policy.routeStatus === "valid";
   });
@@ -323,14 +322,22 @@ function DefaultModelRow({
       style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
       <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground">Default model</p>
+        <p className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.settings.models.policies.defaultModel;
+          })}
+        </p>
         <p className="mt-0.5 text-[13px] text-muted-foreground">
-          Used when a task doesn&apos;t choose its own model.
+          {t(($) => {
+            return $.settings.models.policies.defaultModelDescription;
+          })}
         </p>
       </div>
       {selectItems.length === 0 ? (
         <span className="shrink-0 text-sm text-muted-foreground">
-          No available models
+          {t(($) => {
+            return $.settings.models.policies.noAvailableModels;
+          })}
         </span>
       ) : (
         <Select
@@ -355,7 +362,11 @@ function DefaultModelRow({
             className="h-9 w-full shrink-0 rounded-lg bg-card sm:w-[280px]"
             style={{ border: "0.7px solid hsl(var(--gray-400))" }}
           >
-            <SelectValue placeholder="Select a default model" />
+            <SelectValue
+              placeholder={t(($) => {
+                return $.settings.models.policies.selectDefaultModel;
+              })}
+            />
           </SelectTrigger>
           <SelectContent>
             {selectItems.map((policy) => {
@@ -425,14 +436,60 @@ function getSelectedByokProvider(
   );
 }
 
+function findGatewayConnection(
+  connections: ModelProviderConnectionResponse[],
+  surfaceId: string | null,
+): ModelProviderConnectionResponse | null {
+  if (!surfaceId) {
+    return null;
+  }
+  return (
+    connections.find((connection) => {
+      return connection.surfaces.some((surface) => {
+        return surface.id === surfaceId;
+      });
+    }) ?? null
+  );
+}
+
+function gatewaySurfacesForModel(
+  connections: ModelProviderConnectionResponse[],
+  model: SupportedRunModel,
+) {
+  return connections.flatMap((connection) => {
+    return connection.surfaces.flatMap((surface) => {
+      return surface.modelMappings[model] ? [{ connection, surface }] : [];
+    });
+  });
+}
+
+function gatewayProviderType(
+  protocol: ModelProviderSurfaceProtocol,
+): ModelProviderType {
+  return getModelProviderTypeForSurfaceProtocol(protocol);
+}
+
 function getPolicyRouteSummary(
   policy: OrgModelPolicy,
   providers: ModelProviderResponse[],
+  connections: ModelProviderConnectionResponse[],
+  builtInLabel: string,
 ): { label: string; iconType: ModelProviderType } {
   if (policy.defaultProviderType === "vm0") {
     return {
-      label: "Built-in",
+      label: builtInLabel,
       iconType: "vm0",
+    };
+  }
+
+  const gatewayConnection = findGatewayConnection(
+    connections,
+    policy.modelProviderSurfaceId ?? null,
+  );
+  if (gatewayConnection) {
+    return {
+      label: gatewayConnection.displayName,
+      iconType: policy.defaultProviderType,
     };
   }
 
@@ -472,6 +529,7 @@ function PolicyActionsMenu({
   onEdit: (policy: OrgModelPolicy) => void;
   onDelete: (policy: OrgModelPolicy) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -481,7 +539,14 @@ function PolicyActionsMenu({
           size="icon"
           className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
           disabled={disabled}
-          aria-label={`Actions for ${policy.modelLabel}`}
+          aria-label={t(
+            ($) => {
+              return $.settings.models.policies.actionsFor;
+            },
+            {
+              model: policy.modelLabel,
+            },
+          )}
         >
           <IconDotsVertical size={14} stroke={1.5} />
         </Button>
@@ -494,7 +559,9 @@ function PolicyActionsMenu({
           }}
         >
           <IconPencil size={14} stroke={1.5} />
-          Edit model
+          {t(($) => {
+            return $.settings.models.actions.editModel;
+          })}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -505,7 +572,9 @@ function PolicyActionsMenu({
           }}
         >
           <IconTrash size={14} stroke={1.5} />
-          Delete model
+          {t(($) => {
+            return $.settings.models.actions.deleteModel;
+          })}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -521,6 +590,7 @@ function AddModelButton({
   disabled: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   if (!hasModels) {
     return null;
   }
@@ -535,7 +605,9 @@ function AddModelButton({
       onClick={onClick}
     >
       <IconPlus size={14} stroke={2} />
-      Add model
+      {t(($) => {
+        return $.settings.models.actions.addModel;
+      })}
     </Button>
   );
 }
@@ -543,6 +615,7 @@ function AddModelButton({
 function PolicyRow({
   policy,
   providers,
+  connections,
   disabled,
   canDelete,
   onEdit,
@@ -550,13 +623,22 @@ function PolicyRow({
 }: {
   policy: OrgModelPolicy;
   providers: ModelProviderResponse[];
+  connections: ModelProviderConnectionResponse[];
   disabled: boolean;
   canDelete: boolean;
   onEdit: (policy: OrgModelPolicy) => void;
   onDelete: (policy: OrgModelPolicy) => void;
 }) {
+  const { t } = useTranslation();
   const detail = getPolicyDetail(policy);
-  const routeSummary = getPolicyRouteSummary(policy, providers);
+  const routeSummary = getPolicyRouteSummary(
+    policy,
+    providers,
+    connections,
+    t(($) => {
+      return $.settings.models.policies.builtIn;
+    }),
+  );
   const modelIconType = getModelIconType(policy.model);
   const builtInPriceTier =
     policy.defaultProviderType === "vm0"
@@ -581,8 +663,12 @@ function PolicyRow({
             <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
               <IconAlertTriangle size={12} />
               {policy.routeStatus === "missing_provider"
-                ? "Missing provider"
-                : "Invalid route"}
+                ? t(($) => {
+                    return $.settings.models.policies.missingProvider;
+                  })
+                : t(($) => {
+                    return $.settings.models.policies.invalidRoute;
+                  })}
             </span>
           )}
         </div>
@@ -727,9 +813,7 @@ function ApiKeyProviderSection({
   onApiKeyChange: (value: string) => void;
   onApiKeyFocus: () => void;
 }) {
-  const secretLabel = selectedProviderType
-    ? getProviderSecretLabel(selectedProviderType)
-    : "API key";
+  const { t } = useTranslation();
   const secretSignupUrl = selectedProviderType
     ? getProviderSignupUrl(selectedProviderType)
     : null;
@@ -738,24 +822,39 @@ function ApiKeyProviderSection({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-foreground">Provider</label>
+        <label className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.settings.models.policies.provider;
+          })}
+        </label>
         <ProviderTypeSelect
           value={selectedProviderType}
           types={apiTypes}
-          placeholder="Select a provider"
+          placeholder={t(($) => {
+            return $.settings.models.policies.selectProvider;
+          })}
           onChange={onChange}
         />
       </div>
       {selectedProviderType && (
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-foreground">
-            {getUILabel(selectedProviderType)} {secretLabel}
+            {t(
+              ($) => {
+                return $.settings.models.policies.providerApiKey;
+              },
+              {
+                provider: getUILabel(selectedProviderType),
+              },
+            )}
           </label>
           <Input
             type="password"
             autoComplete="off"
             value={displayedKey}
-            placeholder={getProviderSecretPlaceholder(selectedProviderType)}
+            placeholder={t(($) => {
+              return $.settings.models.policies.apiKeyPlaceholder;
+            })}
             onFocus={() => {
               if (showMaskedExistingKey) {
                 onApiKeyFocus();
@@ -770,7 +869,9 @@ function ApiKeyProviderSection({
             <p className="text-xs text-destructive">{apiKeyError}</p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Stored in workspace secrets.{" "}
+              {t(($) => {
+                return $.settings.models.policies.secretStored;
+              })}{" "}
               {secretSignupUrl ? (
                 <a
                   href={secretSignupUrl}
@@ -778,12 +879,82 @@ function ApiKeyProviderSection({
                   rel="noreferrer"
                   className="text-primary underline"
                 >
-                  Get a key
+                  {t(($) => {
+                    return $.settings.models.policies.getKey;
+                  })}
                 </a>
               ) : null}
             </p>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function GatewayProviderSection({
+  model,
+  connections,
+  surfaceId,
+  onChange,
+}: {
+  model: SupportedRunModel;
+  connections: ModelProviderConnectionResponse[];
+  surfaceId: string | null;
+  onChange: (surfaceId: string, providerType: ModelProviderType) => void;
+}) {
+  const { t } = useTranslation();
+  const options = gatewaySurfacesForModel(connections, model);
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.settings.models.policies.gatewayProvider;
+        })}
+      </label>
+      <Select
+        value={surfaceId ?? undefined}
+        onValueChange={(next) => {
+          const selected = options.find((option) => {
+            return option.surface.id === next;
+          });
+          if (selected) {
+            onChange(
+              selected.surface.id,
+              gatewayProviderType(selected.surface.protocol),
+            );
+          }
+        }}
+      >
+        <SelectTrigger className="h-10 rounded-lg" style={ZERO_BORDER}>
+          <SelectValue
+            placeholder={t(($) => {
+              return $.settings.models.policies.selectGateway;
+            })}
+          >
+            {surfaceId
+              ? options.find((option) => {
+                  return option.surface.id === surfaceId;
+                })?.connection.displayName
+              : null}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {options.map(({ connection, surface }) => {
+            return (
+              <SelectItem key={surface.id} value={surface.id}>
+                {connection.displayName}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+      {options.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          {t(($) => {
+            return $.settings.models.policies.noMappedGateway;
+          })}
+        </p>
       )}
     </div>
   );
@@ -795,6 +966,7 @@ function buildPolicyUpdate(params: {
   routeKind: ModelPolicyRouteKind;
   providerType: ModelProviderType | null;
   provider: ModelProviderResponse | null;
+  surfaceId: string | null;
 }): UpdateOrgModelPolicy | null {
   const existing = params.policies.find((policy) => {
     return policy.model === params.model;
@@ -809,6 +981,7 @@ function buildPolicyUpdate(params: {
       defaultProviderType: "vm0",
       credentialScope: "org",
       modelProviderId: null,
+      modelProviderSurfaceId: null,
     };
   }
 
@@ -822,6 +995,20 @@ function buildPolicyUpdate(params: {
       defaultProviderType: params.providerType,
       credentialScope: "member",
       modelProviderId: null,
+      modelProviderSurfaceId: null,
+    };
+  }
+
+  if (params.routeKind === "gateway") {
+    if (!params.surfaceId) {
+      return null;
+    }
+    return {
+      ...base,
+      defaultProviderType: params.providerType,
+      credentialScope: "org",
+      modelProviderId: null,
+      modelProviderSurfaceId: params.surfaceId,
     };
   }
 
@@ -834,6 +1021,7 @@ function buildPolicyUpdate(params: {
     defaultProviderType: params.provider.type,
     credentialScope: "org",
     modelProviderId: params.provider.id,
+    modelProviderSurfaceId: null,
   };
 }
 
@@ -847,11 +1035,14 @@ function modelRequiresProUpgrade(
 function getDialogPrimaryLabel(params: {
   mode: ModelPolicyDialogMode;
   upgradeRequired: boolean;
+  upgradeLabel: string;
+  addLabel: string;
+  saveLabel: string;
 }): string {
   if (params.upgradeRequired) {
-    return "Upgrade to Pro";
+    return params.upgradeLabel;
   }
-  return params.mode === "add" ? "Add model" : "Save changes";
+  return params.mode === "add" ? params.addLabel : params.saveLabel;
 }
 
 function isSubmitDisabled(params: {
@@ -862,6 +1053,7 @@ function isSubmitDisabled(params: {
   upgradeRequired: boolean;
   routeKind: ModelPolicyRouteKind;
   selectedProviderType: ModelProviderType | null;
+  surfaceId: string | null;
 }): boolean {
   if (
     !params.selectedModel ||
@@ -876,6 +1068,9 @@ function isSubmitDisabled(params: {
   }
   if (params.routeKind === "built-in") {
     return false;
+  }
+  if (params.routeKind === "gateway") {
+    return params.surfaceId === null;
   }
   return params.selectedProviderType === null;
 }
@@ -911,6 +1106,9 @@ function getSelectedProviderType(params: {
       ? params.providerType
       : (params.oauthTypes[0] ?? null);
   }
+  if (params.routeKind === "gateway") {
+    return params.providerType;
+  }
   return null;
 }
 
@@ -925,10 +1123,244 @@ function getSelectedRouteProvider(params: {
   return null;
 }
 
+function ModelSelectionField({
+  selectedModel,
+  addableModels,
+  modelCapabilities,
+  disabled,
+  onChange,
+}: {
+  selectedModel: SupportedRunModel | null;
+  addableModels: SupportedRunModel[];
+  modelCapabilities: ModelPlanCapabilities;
+  disabled: boolean;
+  onChange: (model: SupportedRunModel) => void;
+}) {
+  const { t } = useTranslation();
+  const selectedModelIcon = selectedModel
+    ? getModelIconType(selectedModel)
+    : null;
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.settings.models.policies.model;
+        })}
+      </label>
+      <Select
+        value={selectedModel ?? undefined}
+        onValueChange={(next) => {
+          onChange(next as SupportedRunModel);
+        }}
+        disabled={disabled}
+      >
+        <SelectTrigger className="h-10 rounded-lg" style={ZERO_BORDER}>
+          <SelectValue
+            placeholder={t(($) => {
+              return $.settings.models.policies.selectModel;
+            })}
+          >
+            {selectedModel && (
+              <div className="flex items-center gap-2">
+                {selectedModelIcon && (
+                  <ProviderIcon type={selectedModelIcon} size={16} />
+                )}
+                <span>{getCanonicalModelDisplayName(selectedModel)}</span>
+              </div>
+            )}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {addableModels.map((model) => {
+            const iconType = getModelIconType(model);
+            const restricted = !modelAllowedForPlan(model, modelCapabilities);
+            return (
+              <SelectItem key={model} value={model}>
+                <div className="flex w-full min-w-0 items-center gap-2">
+                  {iconType && <ProviderIcon type={iconType} size={16} />}
+                  <span className="min-w-0 flex-1 truncate">
+                    {getCanonicalModelDisplayName(model)}
+                  </span>
+                  {restricted && <ProBadge />}
+                </div>
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function ProviderRouteChoices({
+  routeKind,
+  apiTypes,
+  oauthTypes,
+  gatewayCount,
+  supportByok,
+  onChoose,
+}: {
+  routeKind: ModelPolicyRouteKind;
+  apiTypes: ModelProviderType[];
+  oauthTypes: ModelProviderType[];
+  gatewayCount: number;
+  supportByok: boolean;
+  onChoose: (routeKind: ModelPolicyRouteKind) => void;
+}) {
+  const { t } = useTranslation();
+  const oauthRouteKind = getOAuthRouteKind(oauthTypes);
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.settings.models.policies.providedBy;
+        })}
+      </label>
+      <div
+        role="radiogroup"
+        aria-label={t(($) => {
+          return $.settings.models.policies.providedBy;
+        })}
+        className="grid grid-cols-1 gap-3 md:grid-cols-3"
+      >
+        <RouteChoiceButton
+          active={routeKind === "built-in"}
+          title={t(($) => {
+            return $.settings.models.policies.builtIn;
+          })}
+          description={t(($) => {
+            return $.settings.models.policies.builtInDescription;
+          })}
+          onClick={() => {
+            onChoose("built-in");
+          }}
+        />
+        <RouteChoiceButton
+          active={routeKind === "api-key"}
+          disabled={apiTypes.length === 0}
+          pro={!supportByok}
+          title={t(($) => {
+            return $.settings.models.policies.apiKey;
+          })}
+          description={t(($) => {
+            return $.settings.models.policies.apiKeyDescription;
+          })}
+          onClick={() => {
+            onChoose("api-key");
+          }}
+        />
+        <RouteChoiceButton
+          active={routeKind === "gateway"}
+          disabled={gatewayCount === 0}
+          pro={!supportByok}
+          title={t(($) => {
+            return $.settings.models.policies.gateway;
+          })}
+          description={t(($) => {
+            return $.settings.models.policies.gatewayDescription;
+          })}
+          onClick={() => {
+            onChoose("gateway");
+          }}
+        />
+        {oauthTypes.length > 0 && (
+          <RouteChoiceButton
+            active={routeKind === "oauth"}
+            pro={!supportByok}
+            title={
+              oauthRouteKind === "codex"
+                ? t(($) => {
+                    return $.settings.models.policies.codexSubscription;
+                  })
+                : t(($) => {
+                    return $.settings.models.policies.claudeSubscription;
+                  })
+            }
+            description={
+              oauthRouteKind === "codex"
+                ? t(($) => {
+                    return $.settings.models.policies
+                      .codexSubscriptionDescription;
+                  })
+                : t(($) => {
+                    return $.settings.models.policies
+                      .claudeSubscriptionDescription;
+                  })
+            }
+            onClick={() => {
+              onChoose("oauth");
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProviderRouteConfiguration({
+  routeKind,
+  selectedModel,
+  selectedProviderType,
+  apiTypes,
+  routeProvider,
+  apiKeyValue,
+  apiKeyTouched,
+  apiKeyError,
+  connections,
+  selectedSurfaceId,
+  onApiProviderChange,
+  onApiKeyChange,
+  onApiKeyFocus,
+  onGatewayChange,
+}: {
+  routeKind: ModelPolicyRouteKind;
+  selectedModel: SupportedRunModel | null;
+  selectedProviderType: ModelProviderType | null;
+  apiTypes: ModelProviderType[];
+  routeProvider: ModelProviderResponse | null;
+  apiKeyValue: string;
+  apiKeyTouched: boolean;
+  apiKeyError: string | null;
+  connections: ModelProviderConnectionResponse[];
+  selectedSurfaceId: string | null;
+  onApiProviderChange: (providerType: ModelProviderType) => void;
+  onApiKeyChange: (value: string) => void;
+  onApiKeyFocus: () => void;
+  onGatewayChange: (surfaceId: string, providerType: ModelProviderType) => void;
+}) {
+  if (routeKind === "api-key") {
+    return (
+      <ApiKeyProviderSection
+        selectedProviderType={selectedProviderType}
+        apiTypes={apiTypes}
+        routeProvider={routeProvider}
+        apiKeyValue={apiKeyValue}
+        apiKeyTouched={apiKeyTouched}
+        apiKeyError={apiKeyError}
+        onChange={onApiProviderChange}
+        onApiKeyChange={onApiKeyChange}
+        onApiKeyFocus={onApiKeyFocus}
+      />
+    );
+  }
+  if (routeKind === "gateway" && selectedModel) {
+    return (
+      <GatewayProviderSection
+        model={selectedModel}
+        connections={connections}
+        surfaceId={selectedSurfaceId}
+        onChange={onGatewayChange}
+      />
+    );
+  }
+  return null;
+}
+
 function ModelPolicyRouteDialog({
   policies,
   addableModels,
   providers,
+  connections,
   saving,
   modelCapabilities,
   onUpgrade,
@@ -937,11 +1369,13 @@ function ModelPolicyRouteDialog({
   policies: OrgModelPolicy[];
   addableModels: SupportedRunModel[];
   providers: ModelProviderResponse[];
+  connections: ModelProviderConnectionResponse[];
   saving: boolean;
   modelCapabilities: ModelPlanCapabilities;
   onUpgrade: () => void;
   onSubmit: (next: UpdateOrgModelPolicy[]) => void;
 }) {
+  const { t } = useTranslation();
   const dialog = useGet(modelPolicyDialogState$);
   const close = useSet(closeModelPolicyDialog$);
   const setModel = useSet(updateModelPolicyDialogModel$);
@@ -971,20 +1405,31 @@ function ModelPolicyRouteDialog({
   );
   const apiTypes = selectedModel ? getApiProviderTypes(selectedModel) : [];
   const oauthTypes = selectedModel ? getOAuthProviderTypes(selectedModel) : [];
-  const selectedProviderType = getSelectedProviderType({
-    routeKind: dialog.routeKind,
-    providerType: dialog.providerType,
-    apiTypes,
-    oauthTypes,
-  });
+  const gatewayOptions = selectedModel
+    ? gatewaySurfacesForModel(connections, selectedModel)
+    : [];
+  const selectedGateway =
+    gatewayOptions.find((option) => {
+      return option.surface.id === dialog.surfaceId;
+    }) ?? gatewayOptions[0];
+  const selectedSurfaceId =
+    dialog.routeKind === "gateway"
+      ? (selectedGateway?.surface.id ?? null)
+      : null;
+  const selectedProviderType =
+    dialog.routeKind === "gateway" && selectedGateway
+      ? gatewayProviderType(selectedGateway.surface.protocol)
+      : getSelectedProviderType({
+          routeKind: dialog.routeKind,
+          providerType: dialog.providerType,
+          apiTypes,
+          oauthTypes,
+        });
   const routeProvider = getSelectedRouteProvider({
     routeKind: dialog.routeKind,
     providerType: selectedProviderType,
     providers,
   });
-  const selectedModelIcon = selectedModel
-    ? getModelIconType(selectedModel)
-    : null;
   const isReplacingKey = dialog.routeKind === "api-key" && apiKeyTouched;
   const needsFreshKey =
     dialog.routeKind === "api-key" &&
@@ -996,14 +1441,24 @@ function ModelPolicyRouteDialog({
       onUpgrade();
       return;
     }
-    setRoute({
-      routeKind,
-      providerType: getDefaultProviderTypeForRoute({
+    if (routeKind === "gateway") {
+      setRoute({
         routeKind,
-        apiTypes,
-        oauthTypes,
-      }),
-    });
+        providerType: selectedGateway
+          ? gatewayProviderType(selectedGateway.surface.protocol)
+          : null,
+        surfaceId: selectedGateway?.surface.id ?? null,
+      });
+    } else {
+      setRoute({
+        routeKind,
+        providerType: getDefaultProviderTypeForRoute({
+          routeKind,
+          apiTypes,
+          oauthTypes,
+        }),
+      });
+    }
   };
 
   const handleModelChange = (model: SupportedRunModel) => {
@@ -1030,7 +1485,9 @@ function ModelPolicyRouteDialog({
     ) {
       if (!hasTokenInputValue(apiKeyValue)) {
         setApiKeyError(
-          `${getProviderSecretLabel(selectedProviderType)} is required`,
+          t(($) => {
+            return $.settings.models.policies.apiKeyRequired;
+          }),
         );
         return;
       }
@@ -1054,6 +1511,7 @@ function ModelPolicyRouteDialog({
       routeKind: dialog.routeKind,
       providerType: selectedProviderType,
       provider: routeProvider,
+      surfaceId: selectedSurfaceId,
     });
     if (!update) {
       return;
@@ -1065,6 +1523,15 @@ function ModelPolicyRouteDialog({
   const primaryLabel = getDialogPrimaryLabel({
     mode: dialog.mode,
     upgradeRequired,
+    upgradeLabel: t(($) => {
+      return $.settings.models.actions.upgradeToPro;
+    }),
+    addLabel: t(($) => {
+      return $.settings.models.actions.addModel;
+    }),
+    saveLabel: t(($) => {
+      return $.settings.shared.saveChanges;
+    }),
   });
   const submitDisabled = isSubmitDisabled({
     selectedModel,
@@ -1074,6 +1541,7 @@ function ModelPolicyRouteDialog({
     upgradeRequired,
     routeKind: dialog.routeKind,
     selectedProviderType,
+    surfaceId: selectedSurfaceId,
   });
 
   return (
@@ -1085,122 +1553,76 @@ function ModelPolicyRouteDialog({
         }
       }}
     >
-      <DialogContent className="max-w-3xl">
+      <DialogContent
+        className="max-w-3xl"
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+      >
         <DialogHeader>
           <DialogTitle>
-            {dialog.mode === "add" ? "Add model" : "Edit model"}
+            {dialog.mode === "add"
+              ? t(($) => {
+                  return $.settings.models.actions.addModel;
+                })
+              : t(($) => {
+                  return $.settings.models.actions.editModel;
+                })}
           </DialogTitle>
           <DialogDescription>
-            Decide how members access this model.
+            {t(($) => {
+              return $.settings.models.policies.dialogDescription;
+            })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground">Model</label>
-            <Select
-              value={selectedModel ?? undefined}
-              onValueChange={(next) => {
-                handleModelChange(next as SupportedRunModel);
-              }}
-              disabled={dialog.mode === "edit"}
-            >
-              <SelectTrigger className="h-10 rounded-lg" style={ZERO_BORDER}>
-                <SelectValue placeholder="Select a model">
-                  {selectedModel && (
-                    <div className="flex items-center gap-2">
-                      {selectedModelIcon && (
-                        <ProviderIcon type={selectedModelIcon} size={16} />
-                      )}
-                      <span>{getCanonicalModelDisplayName(selectedModel)}</span>
-                    </div>
-                  )}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {addableModels.map((model) => {
-                  const iconType = getModelIconType(model);
-                  const restricted = !modelAllowedForPlan(
-                    model,
-                    modelCapabilities,
-                  );
-                  return (
-                    <SelectItem key={model} value={model}>
-                      <div className="flex w-full min-w-0 items-center gap-2">
-                        {iconType && <ProviderIcon type={iconType} size={16} />}
-                        <span className="min-w-0 flex-1 truncate">
-                          {getCanonicalModelDisplayName(model)}
-                        </span>
-                        {restricted && <ProBadge />}
-                      </div>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground">
-              Provided by
-            </label>
-            <div
-              role="radiogroup"
-              aria-label="Provided by"
-              className="grid grid-cols-1 gap-3 md:grid-cols-3"
-            >
-              <RouteChoiceButton
-                active={dialog.routeKind === "built-in"}
-                title="Built-in"
-                description="Workspace credits cover usage."
-                onClick={() => {
-                  chooseRoute("built-in");
-                }}
-              />
-              <RouteChoiceButton
-                active={dialog.routeKind === "api-key"}
-                disabled={apiTypes.length === 0}
-                pro={!modelCapabilities.supportByok}
-                title="API key"
-                description="A shared workspace key. Best when the team bills through one account."
-                onClick={() => {
-                  chooseRoute("api-key");
-                }}
-              />
-              {oauthTypes.length > 0 && (
-                <RouteChoiceButton
-                  active={dialog.routeKind === "oauth"}
-                  pro={!modelCapabilities.supportByok}
-                  title={getOAuthRouteCopy(oauthTypes).title}
-                  description={getOAuthRouteCopy(oauthTypes).description}
-                  onClick={() => {
-                    chooseRoute("oauth");
-                  }}
-                />
-              )}
-            </div>
-          </div>
-
-          {dialog.routeKind === "api-key" && (
-            <ApiKeyProviderSection
-              selectedProviderType={selectedProviderType}
-              apiTypes={apiTypes}
-              routeProvider={routeProvider}
-              apiKeyValue={apiKeyValue}
-              apiKeyTouched={apiKeyTouched}
-              apiKeyError={apiKeyError}
-              onChange={(providerType) => {
-                setRoute({ routeKind: "api-key", providerType });
-              }}
-              onApiKeyChange={setApiKey}
-              onApiKeyFocus={markApiKeyTouched}
-            />
-          )}
+          <ModelSelectionField
+            selectedModel={selectedModel}
+            addableModels={addableModels}
+            modelCapabilities={modelCapabilities}
+            disabled={dialog.mode === "edit"}
+            onChange={handleModelChange}
+          />
+          <ProviderRouteChoices
+            routeKind={dialog.routeKind}
+            apiTypes={apiTypes}
+            oauthTypes={oauthTypes}
+            gatewayCount={gatewayOptions.length}
+            supportByok={modelCapabilities.supportByok}
+            onChoose={chooseRoute}
+          />
+          <ProviderRouteConfiguration
+            routeKind={dialog.routeKind}
+            selectedModel={selectedModel}
+            selectedProviderType={selectedProviderType}
+            apiTypes={apiTypes}
+            routeProvider={routeProvider}
+            apiKeyValue={apiKeyValue}
+            apiKeyTouched={apiKeyTouched}
+            apiKeyError={apiKeyError}
+            connections={connections}
+            selectedSurfaceId={selectedSurfaceId}
+            onApiProviderChange={(providerType) => {
+              setRoute({ routeKind: "api-key", providerType });
+            }}
+            onApiKeyChange={setApiKey}
+            onApiKeyFocus={markApiKeyTouched}
+            onGatewayChange={(surfaceId, providerType) => {
+              setRoute({
+                routeKind: "gateway",
+                providerType,
+                surfaceId,
+              });
+            }}
+          />
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={close} disabled={busy}>
-            Cancel
+            {t(($) => {
+              return $.settings.shared.cancel;
+            })}
           </Button>
           <Button
             onClick={(event) => {
@@ -1216,11 +1638,64 @@ function ModelPolicyRouteDialog({
   );
 }
 
+function resolveModelPolicySectionData(params: {
+  policiesLoadable: Loadable<OrgModelPoliciesResponse>;
+  lastPolicies: OrgModelPoliciesResponse | undefined;
+  providersLoadable: Loadable<ModelProviderResponse[]>;
+  lastProviders: ModelProviderResponse[] | undefined;
+  connectionsLoadable: Loadable<ModelProviderConnectionResponse[]>;
+  lastConnections: ModelProviderConnectionResponse[] | undefined;
+  modelCapabilitiesLoadable: Loadable<ModelPlanCapabilities>;
+  lastModelCapabilities: ModelPlanCapabilities | undefined;
+}) {
+  const data =
+    params.policiesLoadable.state === "hasData"
+      ? params.policiesLoadable.data
+      : params.lastPolicies;
+  const providers =
+    params.providersLoadable.state === "hasData"
+      ? params.providersLoadable.data
+      : (params.lastProviders ?? []);
+  const providersReady =
+    params.providersLoadable.state === "hasData" ||
+    params.lastProviders !== undefined;
+  const connections =
+    params.connectionsLoadable.state === "hasData"
+      ? params.connectionsLoadable.data
+      : (params.lastConnections ?? []);
+  const connectionsReady =
+    params.connectionsLoadable.state === "hasData" ||
+    params.lastConnections !== undefined;
+  const modelCapabilities =
+    params.modelCapabilitiesLoadable.state === "hasData"
+      ? params.modelCapabilitiesLoadable.data
+      : (params.lastModelCapabilities ?? DEFAULT_MODEL_PLAN_CAPABILITIES);
+  const modelCapabilitiesReady =
+    params.modelCapabilitiesLoadable.state === "hasData" ||
+    params.lastModelCapabilities !== undefined;
+  const showSkeleton =
+    (!data && params.policiesLoadable.state === "loading") ||
+    (!providersReady && params.providersLoadable.state === "loading") ||
+    (!connectionsReady && params.connectionsLoadable.state === "loading") ||
+    (!modelCapabilitiesReady &&
+      params.modelCapabilitiesLoadable.state === "loading");
+  return {
+    data,
+    providers,
+    connections,
+    modelCapabilities,
+    showSkeleton,
+  };
+}
+
 export function OrgModelPoliciesSection() {
+  const { t } = useTranslation();
   const policiesLoadable = useLoadable(orgModelPolicies$);
   const lastPolicies = useLastResolved(orgModelPolicies$);
   const providersLoadable = useLoadable(orgConfiguredProviders$);
   const lastProviders = useLastResolved(orgConfiguredProviders$);
+  const connectionsLoadable = useLoadable(modelProviderConnections$);
+  const lastConnections = useLastResolved(modelProviderConnections$);
   const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
   const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
   const pageSignal = useGet(pageSignal$);
@@ -1233,27 +1708,19 @@ export function OrgModelPoliciesSection() {
   );
   const saving = updateLoadable.state === "loading";
 
-  const data =
-    policiesLoadable.state === "hasData" ? policiesLoadable.data : lastPolicies;
-  const providers =
-    providersLoadable.state === "hasData"
-      ? providersLoadable.data
-      : (lastProviders ?? []);
-  const providersReady =
-    providersLoadable.state === "hasData" || lastProviders !== undefined;
-  const modelCapabilities =
-    modelCapabilitiesLoadable.state === "hasData"
-      ? modelCapabilitiesLoadable.data
-      : (lastModelCapabilities ?? DEFAULT_MODEL_PLAN_CAPABILITIES);
-  const modelCapabilitiesReady =
-    modelCapabilitiesLoadable.state === "hasData" ||
-    lastModelCapabilities !== undefined;
+  const { data, providers, connections, modelCapabilities, showSkeleton } =
+    resolveModelPolicySectionData({
+      policiesLoadable,
+      lastPolicies,
+      providersLoadable,
+      lastProviders,
+      connectionsLoadable,
+      lastConnections,
+      modelCapabilitiesLoadable,
+      lastModelCapabilities,
+    });
 
-  if (
-    (!data && policiesLoadable.state === "loading") ||
-    (!providersReady && providersLoadable.state === "loading") ||
-    (!modelCapabilitiesReady && modelCapabilitiesLoadable.state === "loading")
-  ) {
+  if (showSkeleton) {
     return <ModelPoliciesSkeleton />;
   }
 
@@ -1271,7 +1738,10 @@ export function OrgModelPoliciesSection() {
     }),
   );
   const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
-    return isOpenAIOrAnthropicModel(model) && !configuredModels.has(model);
+    return (
+      (isOpenAIOrAnthropicModel(model) || model === "deepseek-v4-flash") &&
+      !configuredModels.has(model)
+    );
   });
 
   const submit = (next: UpdateOrgModelPolicy[]) => {
@@ -1324,8 +1794,12 @@ export function OrgModelPoliciesSection() {
   return (
     <section className="flex flex-col gap-4">
       <SettingsSectionHeading
-        title="Workspace"
-        description="Available to everyone in this workspace."
+        title={t(($) => {
+          return $.settings.models.policies.workspaceTitle;
+        })}
+        description={t(($) => {
+          return $.settings.models.policies.workspaceDescription;
+        })}
         action={
           <AddModelButton
             hasModels={addableModels.length > 0}
@@ -1353,6 +1827,7 @@ export function OrgModelPoliciesSection() {
                 key={policy.id}
                 policy={policy}
                 providers={providers}
+                connections={connections}
                 disabled={false}
                 canDelete={policies.length > 1}
                 onEdit={handleEditPolicy}
@@ -1366,6 +1841,7 @@ export function OrgModelPoliciesSection() {
         policies={policies}
         addableModels={addableModels}
         providers={providers}
+        connections={connections}
         saving={saving}
         modelCapabilities={modelCapabilities}
         onUpgrade={openComparePlans}

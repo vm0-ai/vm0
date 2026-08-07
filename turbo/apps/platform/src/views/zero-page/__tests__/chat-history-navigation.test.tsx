@@ -33,7 +33,7 @@ import {
   KEYBOARD_NEXT_THREAD_ID,
   AGENT_CHAT_PATH,
   makeRunGroupMessages,
-  makeMessage,
+  makeEvent,
   mockKeyboardNavigationThreads,
   buttonByText,
   buttonByLabel,
@@ -66,7 +66,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
       if (query.beforeSeqId !== undefined) {
         beforeSeqIds.push(query.beforeSeqId);
-        return respond(200, { events: [], hasHistoryBefore: false });
+        return respond(200, { events: [] });
       }
       if (query.sinceSeqId === initialEvent.seqId) {
         return respond(200, { events: [] });
@@ -74,7 +74,6 @@ describe("chat lifecycle", () => {
       if (query.sinceSeqId === undefined) {
         return respond(200, {
           events: [chatEventResponse(initialEvent)],
-          hasHistoryBefore: true,
         });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
@@ -86,6 +85,44 @@ describe("chat lifecycle", () => {
       screen.findByText(initialEvent.content),
     ).resolves.toBeInTheDocument();
     expect(beforeSeqIds).toStrictEqual([]);
+  });
+
+  it("renders history when deleted events leave a sequence gap", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000734";
+    const initialEvent = {
+      id: "00000000-0000-4000-8000-000000000731",
+      threadId,
+      eventType: "output.message",
+      content: "History remains visible after event cleanup",
+      createdAt: "2026-06-09T10:02:00.000Z",
+      seqId: 3,
+    } satisfies ChatEvent;
+    const beforeSeqIds: number[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Sequence gap",
+    });
+    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
+      if (query.beforeSeqId !== undefined) {
+        beforeSeqIds.push(query.beforeSeqId);
+        return respond(200, { events: [] });
+      }
+      if (query.sinceSeqId === initialEvent.seqId) {
+        return respond(200, { events: [] });
+      }
+      if (query.sinceSeqId === undefined) {
+        return respond(200, { events: [chatEventResponse(initialEvent)] });
+      }
+      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await expect(
+      screen.findByText(initialEvent.content),
+    ).resolves.toBeInTheDocument();
+    expect(beforeSeqIds).toStrictEqual([initialEvent.seqId]);
   });
 
   it("publishes the initial page before batching the remaining history", async () => {
@@ -114,6 +151,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(
@@ -125,12 +163,10 @@ describe("chat lifecycle", () => {
             await beforePageGate.promise;
             return respond(200, {
               events: messages.slice(0, 10).map(chatEventResponse),
-              hasHistoryBefore: false,
             });
           }
           return respond(200, {
             events: messages.slice(10, 20).map(chatEventResponse),
-            hasHistoryBefore: true,
           });
         }
         if (query.sinceSeqId) {
@@ -142,7 +178,6 @@ describe("chat lifecycle", () => {
         await initialPageGate.promise;
         return respond(200, {
           events: messages.slice(20).map(chatEventResponse),
-          hasHistoryBefore: true,
         });
       },
     );
@@ -237,27 +272,26 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
       if (query.sinceSeqId === undefined) {
         return respond(200, {
           events: [chatEventResponse(initialMessage)],
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposeNewMessage) {
           emptyForwardRequests += 1;
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         return respond(200, {
           events: [chatEventResponse(newMessage)],
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === newMessage.seqId) {
-        return respond(200, { events: [], hasHistoryBefore: false });
+        return respond(200, { events: [] });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
     });
@@ -329,24 +363,22 @@ describe("chat lifecycle", () => {
       if (query.sinceSeqId === undefined) {
         return respond(200, {
           events: [chatEventResponse(initialMessage)],
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposePersistedMessage || persistedMessage === null) {
           initialMessagesCaughtUp.resolve();
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         return respond(200, {
           events: [
             chatEventResponse(persistedMessage),
             chatEventResponse(acknowledgement),
           ],
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === acknowledgement.seqId) {
-        return respond(200, { events: [], hasHistoryBefore: false });
+        return respond(200, { events: [] });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
     });
@@ -362,7 +394,7 @@ describe("chat lifecycle", () => {
         id: clientEventId,
         threadId,
         eventType: "input.prompt",
-        content: body.prompt,
+        content: null,
         userMessage: body.userMessage,
         createdAt: "2026-06-09T10:01:00.000Z",
         seqId: 2,
@@ -430,6 +462,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
@@ -440,21 +473,19 @@ describe("chat lifecycle", () => {
             ? [initialMessage, newMessage]
             : [initialMessage]
           ).map(chatEventResponse),
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposeNewMessage) {
           initialMessagesCaughtUp.resolve();
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         return respond(200, {
           events: [chatEventResponse(newMessage)],
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === newMessage.seqId) {
-        return respond(200, { events: [], hasHistoryBefore: false });
+        return respond(200, { events: [] });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
     });
@@ -530,27 +561,25 @@ describe("chat lifecycle", () => {
         if (query.sinceSeqId === undefined) {
           return respond(200, {
             events: [chatEventResponse(initialMessage)],
-            hasHistoryBefore: false,
           });
         }
         if (query.sinceSeqId === initialMessage.seqId) {
           if (params.threadId !== KEYBOARD_NEXT_THREAD_ID) {
-            return respond(200, { events: [], hasHistoryBefore: false });
+            return respond(200, { events: [] });
           }
           if (!exposeSidebarMessage) {
             sidebarMessagesCaughtUp.resolve();
-            return respond(200, { events: [], hasHistoryBefore: false });
+            return respond(200, { events: [] });
           }
           return respond(200, {
             events: [chatEventResponse(sidebarNewMessage)],
-            hasHistoryBefore: false,
           });
         }
         if (
           params.threadId === KEYBOARD_NEXT_THREAD_ID &&
           query.sinceSeqId === sidebarNewMessage.seqId
         ) {
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         throw new Error(
           `Unexpected message cursor: ${JSON.stringify({
@@ -611,7 +640,7 @@ describe("chat lifecycle", () => {
       threadId: HISTORY_THREAD_ID,
       threadTitle: "History review",
       beforeHistoryGate: beforeHistoryGate.promise,
-      afterInitialMessagesList: () => {
+      afterInitialEventsList: () => {
         initialPageReturned = true;
       },
       historyEvents: [
@@ -623,7 +652,7 @@ describe("chat lifecycle", () => {
           createdAt: "2026-06-02T10:00:00Z",
         },
       ],
-      chatMessages: [
+      chatEvents: [
         {
           eventType: "input.prompt" as const,
           role: "user",
@@ -673,8 +702,8 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Scroll history",
-      chatMessages: Array.from({ length: 8 }, (_, index) => {
-        return makeMessage(
+      chatEvents: Array.from({ length: 8 }, (_, index) => {
+        return makeEvent(
           `scroll-message-${index}`,
           `Visible launch update ${index}`,
           threadId,
@@ -718,6 +747,10 @@ describe("chat lifecycle", () => {
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(scrollContainer);
+
+    threadRegion.focus();
     fireEvent.keyDown(threadRegion, { key: "ArrowUp", ctrlKey: true });
     expect(scrollContainer.scrollTop).toBe(0);
     fireEvent.scroll(scrollContainer);
@@ -753,7 +786,7 @@ describe("chat lifecycle", () => {
     mockResizeObserver();
     let markReadCalls = 0;
     const threadId = "render-window-thread";
-    const chatMessages: ChatEvent[] = Array.from({ length: 24 }, (_, index) => {
+    const chatEvents: ChatEvent[] = Array.from({ length: 24 }, (_, index) => {
       return {
         id: `render-window-message-${index}`,
         threadId,
@@ -769,7 +802,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Render window",
-      chatMessages,
+      chatEvents,
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       markReadCalls += 1;
@@ -819,7 +852,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Tail run group window",
-      chatMessages: [
+      chatEvents: [
         ...makeRunGroupMessages({
           label: "A",
           count: 11,
@@ -879,7 +912,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Structured run group label",
-      chatMessages: messages,
+      chatEvents: messages,
     });
 
     detachedSetupPage({
@@ -904,7 +937,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Middle run group window",
-      chatMessages: [
+      chatEvents: [
         ...makeRunGroupMessages({
           label: "A",
           count: 1,
@@ -943,7 +976,7 @@ describe("chat lifecycle", () => {
   });
 
   it("moves between chat threads with keyboard shortcuts", async () => {
-    const resizeObserver = mockResizeObserver();
+    mockResizeObserver();
     mockKeyboardNavigationThreads();
 
     detachedSetupPage({
@@ -960,20 +993,6 @@ describe("chat lifecycle", () => {
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
-    const initialScrollContainer = chatScrollContainer();
-    setScrollMetrics(initialScrollContainer, {
-      scrollHeight: 1200,
-      clientHeight: 300,
-    });
-    initialScrollContainer.scrollTop = 900;
-    fireEvent.scroll(initialScrollContainer);
-    fireEvent.wheel(initialScrollContainer);
-    initialScrollContainer.scrollTop = 480;
-    fireEvent.scroll(initialScrollContainer);
-    await waitFor(() => {
-      expect(screen.getByLabelText("Scroll to bottom")).toBeInTheDocument();
-    });
-
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, {
       key: "ArrowUp",
@@ -1006,15 +1025,6 @@ describe("chat lifecycle", () => {
     expect(context.store.get(pathname$)).toBe(
       `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
     );
-
-    const restoredScrollContainer = chatScrollContainer();
-    setScrollMetrics(restoredScrollContainer, {
-      scrollHeight: 1200,
-      clientHeight: 300,
-    });
-    resizeObserver.automationAll();
-    expect(restoredScrollContainer.scrollTop).toBe(480);
-    expect(screen.getByLabelText("Scroll to bottom")).toBeInTheDocument();
 
     const currentThreadRegion = screen.getByLabelText("Chat thread");
     currentThreadRegion.focus();

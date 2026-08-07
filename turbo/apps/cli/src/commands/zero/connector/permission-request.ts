@@ -1,7 +1,7 @@
 import { Command, Option } from "commander";
-import { findFirewallMetadataPermission } from "@vm0/connectors/firewall-metadata/policy";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
-import { withErrorHandler } from "../../../lib/command";
+import type { ConnectorCheckPolicy } from "@vm0/api-contracts/contracts/zero-connector-check";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
   isComputerUsePermissionTarget,
@@ -11,17 +11,20 @@ import {
   isBrowserPermissionTarget,
   printBrowserPermissionGuidance,
 } from "./browser-guidance";
-import {
-  ApiRequestError,
-  createBrowserAuthorizationRequest,
-  createComputerUseAuthorizationRequest,
-  getZeroConnectorCatalogPermissions,
-} from "../../../lib/api";
+import { ApiRequestError } from "../../../lib/api/core/client-factory";
+import { createBrowserAuthorizationRequest } from "../../../lib/api/domains/zero-browser";
+import { createComputerUseAuthorizationRequest } from "../../../lib/api/domains/zero-computer-use";
+import { diagnoseZeroConnectorCheck } from "../../../lib/api/domains/zero-connectors";
 import {
   addRequestedCallbackSearchParams,
   connectorActionCallbackAvailable,
   printCallbackTurnInstruction,
 } from "./action-url";
+import {
+  buildConnectorUrlDiagnosticRequest,
+  resolveConnectorCheckDiagnostic,
+  type ResolvedDiagnostic,
+} from "./check";
 
 function permissionDescription(permission: string): string {
   return permission === UNKNOWN_PERMISSION_GRANT
@@ -29,12 +32,101 @@ function permissionDescription(permission: string): string {
     : `the "${permission}" permission`;
 }
 
+function permissionPolicyForDiagnostic(args: {
+  readonly result: ResolvedDiagnostic;
+  readonly permission: string;
+  readonly method: string;
+  readonly url: string;
+}): ConnectorCheckPolicy {
+  if (args.result.mode !== "url") {
+    throw new Error(
+      "Connector diagnostic returned an environment result for a URL request.",
+    );
+  }
+
+  if (args.permission === UNKNOWN_PERMISSION_GRANT) {
+    if (args.result.permission.kind === "unknown-endpoint") {
+      return args.result.permission.policy;
+    }
+    throw permissionMismatchError({
+      permission: args.permission,
+      method: args.method,
+      url: args.url,
+      matchedPermissions: args.result.permission.permissions.map(
+        (permission) => {
+          return permission.name;
+        },
+      ),
+    });
+  }
+
+  if (args.result.permission.kind === "unknown-endpoint") {
+    throw permissionMismatchError({
+      permission: args.permission,
+      method: args.method,
+      url: args.url,
+      matchedPermissions: [UNKNOWN_PERMISSION_GRANT],
+    });
+  }
+
+  const matchedPermission = args.result.permission.permissions.find(
+    (permission) => {
+      return permission.name === args.permission;
+    },
+  );
+  if (matchedPermission === undefined) {
+    throw permissionMismatchError({
+      permission: args.permission,
+      method: args.method,
+      url: args.url,
+      matchedPermissions: args.result.permission.permissions.map(
+        (permission) => {
+          return permission.name;
+        },
+      ),
+    });
+  }
+  return matchedPermission.policy;
+}
+
+function permissionMismatchError(args: {
+  readonly permission: string;
+  readonly method: string;
+  readonly url: string;
+  readonly matchedPermissions: readonly string[];
+}): Error {
+  return new Error(
+    `Permission "${args.permission}" does not match ${args.method} ${args.url}. The request maps to: ${args.matchedPermissions.join(", ")}. Use the exact permission-request command printed by zero connector check; provider OAuth scopes and missing_scope/needed values cannot be granted here.`,
+  );
+}
+
+function assertRequestablePolicy(args: {
+  readonly policy: ConnectorCheckPolicy;
+  readonly permission: string;
+  readonly method: string;
+  readonly url: string;
+}): void {
+  switch (args.policy.outcome) {
+    case "deny":
+    case "ask":
+      return;
+    case "allow":
+      throw new Error(
+        `${permissionDescription(args.permission)} is already allowed by Zero for ${args.method} ${args.url}. Provider authorization failures cannot be fixed with a Zero permission request.`,
+      );
+    case "unavailable":
+      throw new Error(
+        `Zero permission policy is unavailable for ${args.method} ${args.url}. Retry zero connector check from an active run before requesting access.`,
+      );
+  }
+}
+
 function printSensitivePermissionGuidance(
-  connectorRef: string,
+  connectorSlug: string,
   permission: string,
 ): void {
   // Slack chat:write: strongly recommend bot-based messaging over user identity
-  if (connectorRef === "slack" && permission === "chat:write") {
+  if (connectorSlug === "slack" && permission === "chat:write") {
     console.log("");
     console.log(
       "IMPORTANT: Granting chat:write allows sending messages AS THE USER's identity, not as a bot.",
@@ -50,7 +142,7 @@ function printSensitivePermissionGuidance(
 
   // Gmail send permissions: strongly recommend draft-based workflow over direct send.
   if (
-    connectorRef === "gmail" &&
+    connectorSlug === "gmail" &&
     (permission === "messages.send" || permission === "drafts.send")
   ) {
     console.log("");
@@ -158,7 +250,7 @@ async function printBrowserPermissionRequestMessage(): Promise<void> {
 }
 
 async function outputPermissionRequestMessage(
-  connectorRef: string,
+  connectorSlug: string,
   label: string,
   permission: string,
   agentId: string | undefined,
@@ -167,7 +259,7 @@ async function outputPermissionRequestMessage(
   const platformOrigin = await getPlatformOrigin();
 
   const urlParams = new URLSearchParams({
-    ref: connectorRef,
+    connectorSlug,
     permission,
     action: "allow",
   });
@@ -176,7 +268,7 @@ async function outputPermissionRequestMessage(
   const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
   const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
 
-  printSensitivePermissionGuidance(connectorRef, permission);
+  printSensitivePermissionGuidance(connectorSlug, permission);
   printPermissionRequestMessage({
     permission,
     label,
@@ -196,7 +288,7 @@ if (!callbackPromptAvailable) {
   callbackPromptOption.hideHelp();
 }
 const callbackPromptExample = callbackPromptAvailable
-  ? '  zero connector permission-request github --permission contents:write --callback-prompt "Re-check the permission, then continue the previous task"\n'
+  ? '  zero connector permission-request github --permission contents:write --url https://api.github.com/repos/vm0-ai/vm0 --method POST --callback-prompt "Re-check the permission, then continue the previous task"\n'
   : "";
 const callbackPromptNotes = callbackPromptAvailable
   ? "  - Use --callback-prompt only when this turn needs exactly one connector or permission action\n  - Callback prompts are included in the URL; keep them concise and do not include secrets\n"
@@ -205,7 +297,7 @@ const callbackPromptNotes = callbackPromptAvailable
 export const permissionRequestCommand = new Command()
   .name("permission-request")
   .description("Request permission to use a connector capability")
-  .argument("<connector-ref>", "The connector type (e.g. github)")
+  .argument("<slug>", "The connector slug (e.g. github)")
   .addOption(
     new Option(
       "--permission <name>",
@@ -218,19 +310,32 @@ export const permissionRequestCommand = new Command()
       "Agent ID whose permission page should be opened (defaults to ZERO_AGENT_ID)",
     ),
   )
+  .addOption(
+    new Option(
+      "--url <URL>",
+      "The failed request URL reported to zero connector check",
+    ),
+  )
+  .addOption(
+    new Option("--method <METHOD>", "The failed request HTTP method").default(
+      "GET",
+    ),
+  )
   .addOption(callbackPromptOption)
   .addHelpText(
     "after",
     `
 Examples:
-  zero connector permission-request github --permission contents:read
-${callbackPromptExample}  zero connector permission-request gmail --permission messages.write --agent <agent-id>
-  zero connector permission-request cloudflare --permission __unknown__
+  zero connector permission-request github --permission contents:read --url https://api.github.com/repos/vm0-ai/vm0 --method GET
+${callbackPromptExample}  zero connector permission-request gmail --permission messages.write --url https://gmail.googleapis.com/gmail/v1/users/me/messages --method POST --agent <agent-id>
+  zero connector permission-request cloudflare --permission __unknown__ --url https://api.cloudflare.com/client/v4/example --method POST
   zero connector permission-request computer-use --permission computer-use:write
   zero connector permission-request browser --permission browser:write
 
 Notes:
-  - Outputs a platform URL for the user to allow the permission
+  - First run zero connector check --url <FAILED_URL> --method <METHOD>
+  - Use the exact permission-request command printed by connector check
+  - A platform URL is output only when that request maps to a denied or approval-required permission
   - Use --permission __unknown__ to request access to unknown endpoints
   - Use --agent to request a permission for another agent; defaults to ZERO_AGENT_ID
   - The user chooses the permission duration on the confirmation page
@@ -239,16 +344,18 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
   .action(
     withErrorHandler(
       async (
-        connectorRef: string,
+        connectorSlug: string,
         opts: {
           permission: string;
           agent?: string;
+          url?: string;
+          method: string;
           callbackPrompt?: string;
         },
       ) => {
         if (
           isBrowserPermissionTarget({
-            connectorRef,
+            connectorSlug,
             permission: opts.permission,
           })
         ) {
@@ -262,7 +369,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
         }
         if (
           isComputerUsePermissionTarget({
-            connectorRef,
+            connectorSlug,
             permission: opts.permission,
           })
         ) {
@@ -276,24 +383,38 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
         }
 
         const agentId = opts.agent ?? process.env.ZERO_AGENT_ID;
-
-        const metadata = await getZeroConnectorCatalogPermissions(connectorRef);
-        if (!metadata) {
-          throw new Error(`Unknown connector type: ${connectorRef}`);
-        }
-
-        if (
-          opts.permission !== UNKNOWN_PERMISSION_GRANT &&
-          !findFirewallMetadataPermission(metadata, opts.permission)
-        ) {
+        if (opts.url === undefined) {
           throw new Error(
-            `Unknown permission "${opts.permission}" for ${connectorRef}`,
+            "--url is required for connector permission requests. Run zero connector check --url <FAILED_URL> --method <METHOD> and use the permission-request command it prints.",
           );
         }
 
+        const diagnosticRequest = buildConnectorUrlDiagnosticRequest({
+          url: opts.url,
+          method: opts.method,
+          connectorSlug,
+        });
+        const diagnostic = await diagnoseZeroConnectorCheck(diagnosticRequest);
+        const result = resolveConnectorCheckDiagnostic(
+          diagnosticRequest,
+          diagnostic,
+        );
+        const policy = permissionPolicyForDiagnostic({
+          result,
+          permission: opts.permission,
+          method: diagnosticRequest.method,
+          url: diagnosticRequest.url,
+        });
+        assertRequestablePolicy({
+          policy,
+          permission: opts.permission,
+          method: diagnosticRequest.method,
+          url: diagnosticRequest.url,
+        });
+
         await outputPermissionRequestMessage(
-          connectorRef,
-          metadata.label,
+          result.connector.connectorSlug,
+          result.connector.label,
           opts.permission,
           agentId,
           opts.callbackPrompt,

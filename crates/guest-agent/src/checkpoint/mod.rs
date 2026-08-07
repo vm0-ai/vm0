@@ -14,8 +14,6 @@ use guest_common::{log_error, log_info, log_warn};
 use std::borrow::Cow;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const CLAUDE_SESSION_PRUNING_FEATURE_FLAG: &str = "claudeSessionPruning";
-const CODEX_SESSION_PRUNING_FEATURE_FLAG: &str = "codexSessionPruning";
 
 #[derive(Clone, Copy)]
 enum CheckpointMode {
@@ -72,8 +70,7 @@ fn record_failure(mode: CheckpointMode, op: &str, start: std::time::Instant, msg
 struct CheckpointInputs<'a> {
     run_id: &'a str,
     framework: env::Framework,
-    claude_session_pruning_enabled: bool,
-    codex_session_pruning_enabled: bool,
+    session_history_limits: session_history::CheckpointSessionHistoryLimits,
     home_dir: &'a str,
     artifact_entries: &'a [env::ArtifactEnv],
     session_id_file: Cow<'a, str>,
@@ -86,18 +83,7 @@ impl<'a> CheckpointInputs<'a> {
         Self {
             run_id: &runtime.config.run_id,
             framework: runtime.config.framework,
-            claude_session_pruning_enabled: runtime
-                .config
-                .feature_flags
-                .get(CLAUDE_SESSION_PRUNING_FEATURE_FLAG)
-                .copied()
-                .unwrap_or(false),
-            codex_session_pruning_enabled: runtime
-                .config
-                .feature_flags
-                .get(CODEX_SESSION_PRUNING_FEATURE_FLAG)
-                .copied()
-                .unwrap_or(false),
+            session_history_limits: session_history::CheckpointSessionHistoryLimits::Production,
             home_dir: &runtime.config.home_dir,
             artifact_entries: &runtime.config.artifacts,
             session_id_file: Cow::Borrowed(runtime.paths.session_id_file()),
@@ -115,11 +101,43 @@ pub async fn create_checkpoint_for_runtime(runtime: &GuestRuntime) -> Result<(),
     create_checkpoint_with_inputs(&runtime.http, &inputs).await
 }
 
+/// Create a checkpoint with bounded session-history limits for integration tests.
+#[doc(hidden)]
+pub async fn create_checkpoint_for_runtime_with_history_limits_for_test(
+    runtime: &GuestRuntime,
+    candidate_max_bytes: u64,
+    checkpoint_max_bytes: u64,
+) -> Result<(), AgentError> {
+    let mut inputs = CheckpointInputs::from_runtime(runtime);
+    inputs.session_history_limits =
+        session_history::CheckpointSessionHistoryLimits::BoundedForTest {
+            candidate_max_bytes,
+            checkpoint_max_bytes,
+        };
+    create_checkpoint_with_inputs(&runtime.http, &inputs).await
+}
+
 /// Create a best-effort recovery checkpoint using the explicit runtime snapshot.
 pub async fn create_recovery_checkpoint_for_runtime(
     runtime: &GuestRuntime,
 ) -> Result<(), AgentError> {
     let inputs = CheckpointInputs::from_runtime(runtime);
+    create_recovery_checkpoint_with_inputs(&runtime.http, &inputs).await
+}
+
+/// Create a recovery checkpoint with bounded session-history limits for integration tests.
+#[doc(hidden)]
+pub async fn create_recovery_checkpoint_for_runtime_with_history_limits_for_test(
+    runtime: &GuestRuntime,
+    candidate_max_bytes: u64,
+    checkpoint_max_bytes: u64,
+) -> Result<(), AgentError> {
+    let mut inputs = CheckpointInputs::from_runtime(runtime);
+    inputs.session_history_limits =
+        session_history::CheckpointSessionHistoryLimits::BoundedForTest {
+            candidate_max_bytes,
+            checkpoint_max_bytes,
+        };
     create_recovery_checkpoint_with_inputs(&runtime.http, &inputs).await
 }
 
@@ -353,8 +371,7 @@ mod tests {
         let inputs = CheckpointInputs {
             run_id: "checkpoint-missing-mount",
             framework: env::Framework::ClaudeCode,
-            claude_session_pruning_enabled: false,
-            codex_session_pruning_enabled: false,
+            session_history_limits: session_history::CheckpointSessionHistoryLimits::Production,
             home_dir: &home_dir,
             artifact_entries: &entries,
             session_id_file: guest_paths.session_id_file().into(),
@@ -378,7 +395,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkpoint_reuses_codex_zstd_session_history_when_pruning_enabled() {
+    async fn checkpoint_reuses_codex_zstd_session_history() {
         let server = MockServer::start();
         let dir = tempfile::tempdir().unwrap();
         let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
@@ -448,8 +465,7 @@ mod tests {
         let inputs = CheckpointInputs {
             run_id: "checkpoint-codex-zstd-reuse",
             framework: env::Framework::Codex,
-            claude_session_pruning_enabled: false,
-            codex_session_pruning_enabled: true,
+            session_history_limits: session_history::CheckpointSessionHistoryLimits::Production,
             home_dir: &home_dir,
             artifact_entries: &[],
             session_id_file: guest_paths.session_id_file().into(),

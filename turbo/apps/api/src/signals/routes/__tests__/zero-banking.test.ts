@@ -6,11 +6,12 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { beforeEach } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
@@ -18,6 +19,7 @@ import {
   readBankingAuditEventsState,
   seedBankingState,
 } from "./helpers/zero-banking-state";
+import { zeroBankingRoutes } from "../zero-banking";
 
 const context = testContext();
 
@@ -197,7 +199,9 @@ describe("POST /api/zero/banking/*", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.accounts({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -248,7 +252,9 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.accounts({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -302,7 +308,9 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.balances({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -348,7 +356,9 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.balances({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -390,7 +400,9 @@ describe("POST /api/zero/banking/*", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.accounts({
         headers: {
@@ -422,7 +434,9 @@ describe("POST /api/zero/banking/*", () => {
         }),
       );
 
-      const client = setupApp({ context })(zeroBankingContract);
+      const client = setupApp({ context, routes: zeroBankingRoutes })(
+        zeroBankingContract,
+      );
       const response = await accept(
         client.accounts({
           headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -462,7 +476,9 @@ describe("POST /api/zero/banking/*", () => {
         ),
       );
 
-      const client = setupApp({ context })(zeroBankingContract);
+      const client = setupApp({ context, routes: zeroBankingRoutes })(
+        zeroBankingContract,
+      );
       const response = await accept(
         client.accounts({
           headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -496,7 +512,9 @@ describe("POST /api/zero/banking/*", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.accounts({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -547,7 +565,9 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.transactions({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },

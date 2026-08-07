@@ -1,5 +1,6 @@
 //! Runtime health diagnostics for all runners on the host.
 
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -54,6 +55,8 @@ const PREPARING_NO_PROCESS_GRACE: Duration = Duration::from_secs(120);
 
 /// A detected anomaly that carries enough context to recheck itself.
 enum Warning {
+    /// status.json is missing or cannot be read as Doctor status.
+    StatusUnavailable { base_dir: PathBuf },
     /// API server not responding to HEAD request.
     ApiUnreachable {
         server_url: String,
@@ -98,7 +101,7 @@ enum Warning {
     /// status.json lists a dns_port but no dnsmasq process found on it.
     NoDnsmasq { port: u16, base_dir: PathBuf },
     /// A network namespace whose pool lock is not held by any process.
-    OrphanNamespace { ns_name: String, pool_idx: u32 },
+    OrphanNamespace { ns_name: String, lock_path: PathBuf },
     /// An NBD device whose recorded owner task has exited and whose lock is free.
     OrphanNbdDevice { device_index: u32, pid: u32 },
     /// The NBD orphan scan task panicked (bug in find_nbd_orphans).
@@ -108,6 +111,7 @@ enum Warning {
 impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::StatusUnavailable { .. } => write!(f, "status.json unavailable"),
             Self::ApiUnreachable { .. } => write!(f, "API unreachable"),
             Self::NoMitmproxy { port, .. } => {
                 write!(f, "no mitmproxy process on port {port}")
@@ -177,15 +181,20 @@ impl Warning {
     /// Targeted recheck: returns `true` if the anomaly still persists.
     ///
     /// Process-related checks use the pre-scanned `fresh` data (a single
-    /// `/proc` scan shared across all warnings). Other checks do their own
-    /// minimal I/O (status.json read, HTTP HEAD, flock).
+    /// `/proc` scan shared across all warnings), and namespace checks use one
+    /// observation shared across the global warning pass. Other checks do
+    /// their own minimal I/O (status.json read, HTTP HEAD, flock).
     async fn persists(
         &self,
         api_client: Option<&Client>,
         fresh: &process::DiscoveredProcesses,
         runner_pids: &[u32],
+        network_namespaces: Option<&HashSet<String>>,
     ) -> bool {
         match self {
+            // Report-level rechecks consume a recovered snapshot before clearing
+            // this warning. A generic recheck must never clear it without that update.
+            Self::StatusUnavailable { .. } => true,
             Self::ApiUnreachable {
                 server_url,
                 server_token,
@@ -278,9 +287,11 @@ impl Warning {
                 // appeared after the initial scan and now owns the process.
                 pid_exists(*pid) && process::is_orphan(*pid, runner_pids).await
             }
-            Self::OrphanNamespace { pool_idx, .. } => {
-                let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
-                is_lock_free(&lock_path).await
+            Self::OrphanNamespace { ns_name, lock_path } => {
+                if network_namespaces.is_some_and(|namespaces| !namespaces.contains(ns_name)) {
+                    return false;
+                }
+                is_lock_free(lock_path).await
             }
             Self::OrphanNbdDevice { device_index, pid } => {
                 let idx = *device_index;
@@ -299,6 +310,11 @@ impl Warning {
             }
         }
     }
+}
+
+struct ObservedNetworkNamespace {
+    ns_name: String,
+    pool_idx: u32,
 }
 
 /// Check if a process is still alive via `/proc/{pid}`.
@@ -331,6 +347,24 @@ struct RunnerReport {
     service_type: ServiceType,
     status: Option<StatusInfo>,
     api_ok: Option<bool>,
+    proxy_pid: Option<u32>,
+    dns_pid: Option<u32>,
+    jobs: Vec<JobReport>,
+    warnings: Vec<Warning>,
+}
+
+impl RunnerReport {
+    fn apply_status_diagnostics(&mut self, diagnostics: StatusDiagnostics) {
+        self.status = Some(diagnostics.status);
+        self.proxy_pid = diagnostics.proxy_pid;
+        self.dns_pid = diagnostics.dns_pid;
+        self.jobs = diagnostics.jobs;
+        self.warnings.extend(diagnostics.warnings);
+    }
+}
+
+struct StatusDiagnostics {
+    status: StatusInfo,
     proxy_pid: Option<u32>,
     dns_pid: Option<u32>,
     jobs: Vec<JobReport>,
@@ -481,10 +515,28 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         } else {
             Vec::new()
         };
+        let network_namespaces: Option<HashSet<String>> = if global_warnings
+            .iter()
+            .any(|warning| matches!(warning, Warning::OrphanNamespace { .. }))
+        {
+            observe_network_namespaces().await.map(|namespaces| {
+                namespaces
+                    .into_iter()
+                    .map(|namespace| namespace.ns_name)
+                    .collect()
+            })
+        } else {
+            None
+        };
         let mut rechecked_global = Vec::new();
         for warning in global_warnings.drain(..) {
             if warning
-                .persists(api_client.as_ref(), &fresh, &fresh_runner_pids)
+                .persists(
+                    api_client.as_ref(),
+                    &fresh,
+                    &fresh_runner_pids,
+                    network_namespaces.as_ref(),
+                )
                 .await
             {
                 rechecked_global.push(warning);
@@ -534,12 +586,33 @@ async fn recheck_current_runner_warnings(
     )
     .map(|report| async move {
         let mut rechecked = Vec::new();
-        for warning in report.warnings.drain(..) {
-            if warning.persists(api_client, fresh, &[]).await {
-                rechecked.push(warning);
+        let mut recovered_status = None;
+        for warning in std::mem::take(&mut report.warnings) {
+            match warning {
+                Warning::StatusUnavailable { base_dir } => {
+                    if let Some(status) = read_status(&base_dir).await {
+                        recovered_status = Some(build_status_diagnostics(
+                            status,
+                            &base_dir,
+                            &fresh.firecrackers,
+                            &fresh.mitmdumps,
+                            &fresh.dnsmasqs,
+                        ));
+                    } else {
+                        rechecked.push(Warning::StatusUnavailable { base_dir });
+                    }
+                }
+                warning => {
+                    if warning.persists(api_client, fresh, &[], None).await {
+                        rechecked.push(warning);
+                    }
+                }
             }
         }
         report.warnings = rechecked;
+        if let Some(diagnostics) = recovered_status {
+            report.apply_status_diagnostics(diagnostics);
+        }
     })
     .buffered(DOCTOR_IO_CONCURRENCY)
     .for_each(|_| async {})
@@ -594,8 +667,13 @@ async fn build_runner_report(
     // Detect service type
     let service_type = detect_service_type(runner.pid, installed).await;
 
-    // Read status.json
-    let status = read_status(&runner.base_dir).await;
+    // Benchmark publishes live identity but intentionally has no status writer.
+    let status_expected = runner.subcommand == "start";
+    let status = if status_expected {
+        read_status(&runner.base_dir).await
+    } else {
+        None
+    };
 
     // API connectivity check (only when server is configured)
     let api_ok = match &config {
@@ -612,22 +690,59 @@ async fn build_runner_report(
         });
     }
 
-    // Base dir for job correlation
-    let base_dir = &runner.base_dir;
+    let mut report = RunnerReport {
+        live_runner: runner.clone(),
+        name,
+        base_dir: Some(runner.base_dir.clone()),
+        pid: runner.pid,
+        config_path: runner.config_path.clone(),
+        subcommand: runner.subcommand.clone(),
+        service_type,
+        status: None,
+        api_ok,
+        proxy_pid: None,
+        dns_pid: None,
+        jobs: Vec::new(),
+        warnings,
+    };
+
+    if let Some(status) = status {
+        report.apply_status_diagnostics(build_status_diagnostics(
+            status,
+            &runner.base_dir,
+            fc_procs,
+            mitm_procs,
+            dns_procs,
+        ));
+    } else if status_expected {
+        report.warnings.push(Warning::StatusUnavailable {
+            base_dir: runner.base_dir.clone(),
+        });
+    }
+
+    report
+}
+
+fn build_status_diagnostics(
+    status: StatusInfo,
+    base_dir: &Path,
+    fc_procs: &[process::FirecrackerProcessInfo],
+    mitm_procs: &[process::MitmproxyProcessInfo],
+    dns_procs: &[process::DnsmasqProcessInfo],
+) -> StatusDiagnostics {
+    let mut warnings = Vec::new();
 
     // Proxy check (match by port from status.json).
     //   running  + proxy missing  → NoMitmproxy warning
     //   stopped  + proxy present  → StaleMitmproxy warning
     //   draining                  → no warning either way
-    let proxy_pid = if let Some(st) = &status
-        && let Some(port) = st.proxy_port
-    {
+    let proxy_pid = if let Some(port) = status.proxy_port {
         let pid = mitm_procs.iter().find(|m| m.port == port).map(|m| m.pid);
-        match (st.mode.as_str(), pid) {
+        match (status.mode.as_str(), pid) {
             ("running", None) => {
                 warnings.push(Warning::NoMitmproxy {
                     port,
-                    base_dir: base_dir.clone(),
+                    base_dir: base_dir.to_path_buf(),
                 });
             }
             ("stopped", Some(_)) => {
@@ -641,14 +756,12 @@ async fn build_runner_report(
     };
 
     // DNS proxy check (same pattern as proxy check).
-    let dns_pid = if let Some(st) = &status
-        && let Some(port) = st.dns_port
-    {
+    let dns_pid = if let Some(port) = status.dns_port {
         let pid = dns_procs.iter().find(|d| d.port == port).map(|d| d.pid);
-        if st.mode == "running" && pid.is_none() {
+        if status.mode == "running" && pid.is_none() {
             warnings.push(Warning::NoDnsmasq {
                 port,
-                base_dir: base_dir.clone(),
+                base_dir: base_dir.to_path_buf(),
             });
         }
         pid
@@ -656,25 +769,11 @@ async fn build_runner_report(
         None
     };
 
-    // Job correlation
-    let jobs = if let Some(st) = &status {
-        let (job_reports, job_warnings) = correlate_jobs(st, base_dir, fc_procs);
-        warnings.extend(job_warnings);
-        job_reports
-    } else {
-        Vec::new()
-    };
+    let (jobs, job_warnings) = correlate_jobs(&status, base_dir, fc_procs);
+    warnings.extend(job_warnings);
 
-    RunnerReport {
-        live_runner: runner.clone(),
-        name,
-        base_dir: Some(runner.base_dir.clone()),
-        pid: runner.pid,
-        config_path: runner.config_path.clone(),
-        subcommand: runner.subcommand.clone(),
-        service_type,
+    StatusDiagnostics {
         status,
-        api_ok,
         proxy_pid,
         dns_pid,
         jobs,
@@ -797,8 +896,8 @@ fn find_stopped_services(
 struct ActiveRun {
     run_id: String,
     sandbox_id: String,
-    phase: Option<String>,
-    phase_started_at: Option<String>,
+    phase: String,
+    phase_started_at: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -809,16 +908,15 @@ enum ActiveRunPhase {
 
 impl ActiveRun {
     fn phase(&self) -> ActiveRunPhase {
-        match self.phase.as_deref() {
-            Some("preparing") => ActiveRunPhase::Preparing,
-            Some("running") | None => ActiveRunPhase::Running,
-            Some(_) => ActiveRunPhase::Running,
+        match self.phase.as_str() {
+            "preparing" => ActiveRunPhase::Preparing,
+            _ => ActiveRunPhase::Running,
         }
     }
 }
 
 struct IdleVm {
-    session_id: String,
+    reuse_key: String,
     sandbox_id: String,
 }
 
@@ -846,7 +944,7 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
         .idle_vms
         .into_iter()
         .map(|vm| IdleVm {
-            session_id: vm.session_id,
+            reuse_key: vm.reuse_key,
             sandbox_id: vm.sandbox_id,
         })
         .collect();
@@ -903,10 +1001,7 @@ async fn probe_api(client: &Client, server_url: &str, server_token: &str) -> boo
 // ---------------------------------------------------------------------------
 
 fn preparing_run_is_stale(active: &ActiveRun, now: DateTime<Utc>) -> bool {
-    let Some(phase_started_at) = active.phase_started_at.as_deref() else {
-        return true;
-    };
-    let Ok(started_at) = DateTime::parse_from_rfc3339(phase_started_at) else {
+    let Ok(started_at) = DateTime::parse_from_rfc3339(&active.phase_started_at) else {
         return true;
     };
     let elapsed = now.signed_duration_since(started_at.with_timezone(&Utc));
@@ -1085,28 +1180,45 @@ async fn detect_orphan_firecrackers(
 async fn detect_orphan_namespaces() -> Vec<Warning> {
     let mut warnings = Vec::new();
 
-    let output = match tokio::process::Command::new("ip")
-        .args(["netns", "list"])
-        .output()
-        .await
-    {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
-        _ => return warnings,
+    let Some(namespaces) = observe_network_namespaces().await else {
+        return warnings;
     };
+    let lock_paths = sandbox_fc::LockPaths::new();
 
-    for line in output.lines() {
-        if let Some((ns_name, pool_idx)) = parse_netns_list_line(line) {
-            let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
-            if is_lock_free(&lock_path).await {
-                warnings.push(Warning::OrphanNamespace {
-                    ns_name: ns_name.to_string(),
-                    pool_idx,
-                });
-            }
+    for namespace in namespaces {
+        let lock_path = lock_paths.netns_pool(namespace.pool_idx);
+        if is_lock_free(&lock_path).await {
+            warnings.push(Warning::OrphanNamespace {
+                ns_name: namespace.ns_name,
+                lock_path,
+            });
         }
     }
 
     warnings
+}
+
+async fn observe_network_namespaces() -> Option<Vec<ObservedNetworkNamespace>> {
+    let output = tokio::process::Command::new("ip")
+        .args(["netns", "list"])
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    Some(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| {
+                parse_netns_list_line(line).map(|(ns_name, pool_idx)| ObservedNetworkNamespace {
+                    ns_name: ns_name.to_string(),
+                    pool_idx,
+                })
+            })
+            .collect(),
+    )
 }
 
 /// Parse `ip netns list` output line and return the namespace plus pool index.
@@ -1134,15 +1246,18 @@ async fn detect_nbd_orphans() -> Vec<Warning> {
 }
 
 /// Try non-blocking flock to check if a lock file is free (not held by anyone).
-async fn is_lock_free(lock_path: &str) -> bool {
-    let lock_path = lock_path.to_string();
+async fn is_lock_free(lock_path: &Path) -> bool {
+    let lock_path = lock_path.to_path_buf();
     tokio::task::spawn_blocking(move || {
         use std::fs::File;
         let file = match File::open(&lock_path) {
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
             Err(e) => {
-                tracing::warn!("cannot open lock file {lock_path}: {e}, assuming held");
+                tracing::warn!(
+                    "cannot open lock file {}: {e}, assuming held",
+                    lock_path.display()
+                );
                 return false;
             }
         };
@@ -1298,8 +1413,8 @@ fn print_report(
 
 fn format_idle_vm_diagnostic_line(vm: &IdleVm) -> String {
     format!(
-        "      - session id {} -> sandbox {}",
-        vm.session_id, vm.sandbox_id
+        "      - reuse key {} -> sandbox {}",
+        vm.reuse_key, vm.sandbox_id
     )
 }
 
@@ -1416,12 +1531,56 @@ mod tests {
             r#"{
                 "mode":"running",
                 "started_at":"2026-01-01T00:00:00.000Z",
-                "active_runs":[{"run_id":"R1"}]
+                "active_runs":[{
+                    "run_id":"R1",
+                    "phase":"running",
+                    "phase_started_at":"2026-01-01T00:00:00.000Z"
+                }]
             }"#,
         )
         .unwrap();
 
         assert!(read_status(dir.path()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_status_missing_active_run_lifecycle_field_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let cases = [
+            (
+                "phase",
+                r#"{
+                    "mode":"running",
+                    "started_at":"2026-01-01T00:00:00.000Z",
+                    "active_runs":[{
+                        "run_id":"R1",
+                        "sandbox_id":"S1",
+                        "phase_started_at":"2026-01-01T00:00:00.000Z"
+                    }]
+                }"#,
+            ),
+            (
+                "phase_started_at",
+                r#"{
+                    "mode":"running",
+                    "started_at":"2026-01-01T00:00:00.000Z",
+                    "active_runs":[{
+                        "run_id":"R1",
+                        "sandbox_id":"S1",
+                        "phase":"running"
+                    }]
+                }"#,
+            ),
+        ];
+
+        for (field, content) in cases {
+            std::fs::write(dir.path().join("status.json"), content).unwrap();
+
+            assert!(
+                read_status(dir.path()).await.is_none(),
+                "status missing {field} must be rejected"
+            );
+        }
     }
 
     #[tokio::test]
@@ -1432,7 +1591,7 @@ mod tests {
             r#"{
                 "mode":"running",
                 "started_at":"2026-01-01T00:00:00.000Z",
-                "idle_vms":[{"session_id":"session-a"}]
+                "idle_vms":[{"reuse_key":"session-a"}]
             }"#,
         )
         .unwrap();
@@ -1445,19 +1604,19 @@ mod tests {
         let active = ActiveRun {
             run_id: "R1".into(),
             sandbox_id: "S1".into(),
-            phase: Some("future-phase".into()),
-            phase_started_at: None,
+            phase: "future-phase".into(),
+            phase_started_at: "2026-01-01T00:00:00.000Z".into(),
         };
 
         assert_eq!(active.phase(), ActiveRunPhase::Running);
     }
 
-    fn legacy_active_run(run_id: &str, sandbox_id: &str) -> ActiveRun {
+    fn running_active_run(run_id: &str, sandbox_id: &str) -> ActiveRun {
         ActiveRun {
             run_id: run_id.into(),
             sandbox_id: sandbox_id.into(),
-            phase: None,
-            phase_started_at: None,
+            phase: "running".into(),
+            phase_started_at: "2026-01-01T00:00:00.000Z".into(),
         }
     }
 
@@ -1465,12 +1624,12 @@ mod tests {
         run_id: &str,
         sandbox_id: &str,
         phase: &str,
-        phase_started_at: Option<String>,
+        phase_started_at: String,
     ) -> ActiveRun {
         ActiveRun {
             run_id: run_id.into(),
             sandbox_id: sandbox_id.into(),
-            phase: Some(phase.into()),
+            phase: phase.into(),
             phase_started_at,
         }
     }
@@ -1486,7 +1645,7 @@ mod tests {
         status_info_with_active_runs(
             active
                 .into_iter()
-                .map(|(run_id, sandbox_id)| legacy_active_run(run_id, sandbox_id))
+                .map(|(run_id, sandbox_id)| running_active_run(run_id, sandbox_id))
                 .collect(),
             idle_sandboxes,
         )
@@ -1501,12 +1660,12 @@ mod tests {
             started_at: "2026-01-01T00:00:00.000Z".into(),
             active_runs,
             // Tests only need sandbox_id lookup for idle VMs; synthesize a
-            // placeholder session_id.
+            // placeholder reuse key.
             idle_vms: idle_sandboxes
                 .into_iter()
                 .enumerate()
                 .map(|(i, sbid)| IdleVm {
-                    session_id: format!("sess-{i}"),
+                    reuse_key: format!("thread:test-{i}"),
                     sandbox_id: sbid.into(),
                 })
                 .collect(),
@@ -1598,7 +1757,7 @@ mod tests {
                 "run-prep",
                 "sandbox-prep",
                 "preparing",
-                Some(phase_started_at_ago(Duration::from_secs(5))),
+                phase_started_at_ago(Duration::from_secs(5)),
             )],
             vec![],
         );
@@ -1621,9 +1780,7 @@ mod tests {
                 "run-stale",
                 "sandbox-stale",
                 "preparing",
-                Some(phase_started_at_ago(
-                    PREPARING_NO_PROCESS_GRACE + Duration::from_secs(1),
-                )),
+                phase_started_at_ago(PREPARING_NO_PROCESS_GRACE + Duration::from_secs(1)),
             )],
             vec![],
         );
@@ -1650,7 +1807,7 @@ mod tests {
                 "run-prep",
                 "sandbox-prep",
                 "preparing",
-                Some(phase_started_at_ago(Duration::from_secs(5))),
+                phase_started_at_ago(Duration::from_secs(5)),
             )],
             vec![],
         );
@@ -1674,9 +1831,7 @@ mod tests {
                 "run-stale-with-fc",
                 "sandbox-stale-with-fc",
                 "preparing",
-                Some(phase_started_at_ago(
-                    PREPARING_NO_PROCESS_GRACE + Duration::from_secs(1),
-                )),
+                phase_started_at_ago(PREPARING_NO_PROCESS_GRACE + Duration::from_secs(1)),
             )],
             vec![],
         );
@@ -1698,13 +1853,13 @@ mod tests {
     }
 
     #[test]
-    fn correlate_preparing_active_without_timestamp_warns() {
+    fn correlate_preparing_active_with_malformed_timestamp_warns() {
         let status = status_info_with_active_runs(
             vec![phased_active_run(
-                "run-missing-ts",
-                "sandbox-missing-ts",
+                "run-malformed-ts",
+                "sandbox-malformed-ts",
                 "preparing",
-                None,
+                "not-a-timestamp".into(),
             )],
             vec![],
         );
@@ -1811,6 +1966,92 @@ mod tests {
         }
     }
 
+    fn observed_network_namespaces(ns_names: &[&str]) -> HashSet<String> {
+        ns_names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    fn orphan_namespace_warning(ns_name: &str, lock_path: PathBuf) -> Warning {
+        Warning::OrphanNamespace {
+            ns_name: ns_name.to_string(),
+            lock_path,
+        }
+    }
+
+    #[tokio::test]
+    async fn orphan_namespace_clears_when_exact_namespace_disappears() {
+        let dir = tempfile::tempdir().unwrap();
+        let free_lock_path = dir.path().join("free.lock");
+        std::fs::File::create(&free_lock_path).unwrap();
+        let missing_lock_path = dir.path().join("missing.lock");
+        let namespaces = observed_network_namespaces(&["vm0-ns-00-0b"]);
+
+        for lock_path in [free_lock_path, missing_lock_path] {
+            let warning = orphan_namespace_warning("vm0-ns-00-0a", lock_path);
+            assert!(
+                !warning
+                    .persists(None, &empty_fresh(), &[], Some(&namespaces))
+                    .await,
+                "a different namespace in the same pool must not retain the warning"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn orphan_namespace_persists_while_exact_namespace_and_free_lock_remain() {
+        let dir = tempfile::tempdir().unwrap();
+        let free_lock_path = dir.path().join("free.lock");
+        std::fs::File::create(&free_lock_path).unwrap();
+        let missing_lock_path = dir.path().join("missing.lock");
+        let namespaces = observed_network_namespaces(&["vm0-ns-00-0a"]);
+
+        for lock_path in [free_lock_path, missing_lock_path] {
+            let warning = orphan_namespace_warning("vm0-ns-00-0a", lock_path);
+            assert!(
+                warning
+                    .persists(None, &empty_fresh(), &[], Some(&namespaces))
+                    .await
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn orphan_namespace_clears_when_its_lock_becomes_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_path = dir.path().join("held.lock");
+        let file = std::fs::File::create(&lock_path).unwrap();
+        let _lock = nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock)
+            .expect("failed to acquire test lock");
+        let namespaces = observed_network_namespaces(&["vm0-ns-00-0a"]);
+        let warning = orphan_namespace_warning("vm0-ns-00-0a", lock_path);
+
+        assert!(
+            !warning
+                .persists(None, &empty_fresh(), &[], Some(&namespaces))
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn orphan_namespace_uses_lock_evidence_when_observation_is_unavailable() {
+        let dir = tempfile::tempdir().unwrap();
+        let free_lock_path = dir.path().join("free.lock");
+        std::fs::File::create(&free_lock_path).unwrap();
+        let missing_lock_path = dir.path().join("missing.lock");
+        let held_lock_path = dir.path().join("held.lock");
+        let held_file = std::fs::File::create(&held_lock_path).unwrap();
+        let _held_lock =
+            nix::fcntl::Flock::lock(held_file, nix::fcntl::FlockArg::LockExclusiveNonblock)
+                .expect("failed to acquire test lock");
+
+        for lock_path in [free_lock_path, missing_lock_path] {
+            let warning = orphan_namespace_warning("vm0-ns-00-0a", lock_path);
+            assert!(warning.persists(None, &empty_fresh(), &[], None).await);
+        }
+
+        let held_warning = orphan_namespace_warning("vm0-ns-00-0a", held_lock_path);
+        assert!(!held_warning.persists(None, &empty_fresh(), &[], None).await);
+    }
+
     #[tokio::test]
     async fn no_firecracker_for_run_resolves_when_run_removed_even_if_sandbox_reused() {
         // Regression: a NoFirecrackerForRun warning for run R1 should clear
@@ -1825,7 +2066,12 @@ mod tests {
                 "mode": "running",
                 "max_concurrent": 4,
                 "active_runs": [
-                    {"run_id": "R2", "sandbox_id": "S1"}
+                    {
+                        "run_id": "R2",
+                        "sandbox_id": "S1",
+                        "phase": "running",
+                        "phase_started_at": "2026-01-01T00:00:00.000Z"
+                    }
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
                 "updated_at": "2026-01-01T00:00:00.000Z"
@@ -1838,7 +2084,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         assert!(
-            !warning.persists(None, &empty_fresh(), &[]).await,
+            !warning.persists(None, &empty_fresh(), &[], None).await,
             "warning about R1 must clear after R1 leaves active_runs even though S1 is reused"
         );
     }
@@ -1853,7 +2099,12 @@ mod tests {
                 "mode": "running",
                 "max_concurrent": 4,
                 "active_runs": [
-                    {"run_id": "R1", "sandbox_id": "S1"}
+                    {
+                        "run_id": "R1",
+                        "sandbox_id": "S1",
+                        "phase": "running",
+                        "phase_started_at": "2026-01-01T00:00:00.000Z"
+                    }
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
                 "updated_at": "2026-01-01T00:00:00.000Z"
@@ -1866,7 +2117,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         // R1 is still active and there's no FC in fresh. Warning persists.
-        assert!(warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -1899,7 +2150,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -1933,7 +2184,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -1967,7 +2218,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -1999,7 +2250,12 @@ mod tests {
         };
         assert!(
             !warning
-                .persists(None, &fresh_with_firecracker(123, "S1", &base_dir), &[])
+                .persists(
+                    None,
+                    &fresh_with_firecracker(123, "S1", &base_dir),
+                    &[],
+                    None,
+                )
                 .await
         );
     }
@@ -2031,7 +2287,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2044,7 +2300,12 @@ mod tests {
                 "mode": "running",
                 "max_concurrent": 4,
                 "active_runs": [
-                    {"run_id": "R1", "sandbox_id": "S2"}
+                    {
+                        "run_id": "R1",
+                        "sandbox_id": "S2",
+                        "phase": "running",
+                        "phase_started_at": "2026-01-01T00:00:00.000Z"
+                    }
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
                 "updated_at": "2026-01-01T00:00:00.000Z"
@@ -2056,7 +2317,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2072,7 +2333,7 @@ mod tests {
                 "max_concurrent": 4,
                 "active_runs": [],
                 "idle_vms": [
-                    {"session_id": "sess-1", "sandbox_id": "S1"}
+                    {"reuse_key": "sess-1", "sandbox_id": "S1"}
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
                 "updated_at": "2026-01-01T00:00:00.000Z"
@@ -2088,7 +2349,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         assert!(
-            !warning.persists(None, &empty_fresh(), &[]).await,
+            !warning.persists(None, &empty_fresh(), &[], None).await,
             "warning must clear once the sandbox is tracked as idle"
         );
     }
@@ -2103,7 +2364,12 @@ mod tests {
                 "mode": "running",
                 "max_concurrent": 4,
                 "active_runs": [
-                    {"run_id": "R1", "sandbox_id": "S1"}
+                    {
+                        "run_id": "R1",
+                        "sandbox_id": "S1",
+                        "phase": "running",
+                        "phase_started_at": "2026-01-01T00:00:00.000Z"
+                    }
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
                 "updated_at": "2026-01-01T00:00:00.000Z"
@@ -2116,7 +2382,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2140,7 +2406,7 @@ mod tests {
             sandbox_id: "S-ghost".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2153,7 +2419,7 @@ mod tests {
             sandbox_id: "S-anything".into(),
             base_dir,
         };
-        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2179,10 +2445,10 @@ mod tests {
             ppid: Some(std::process::id()),
         };
 
-        assert!(warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[], None).await);
         assert!(
             !warning
-                .persists(None, &empty_fresh(), &[std::process::id()])
+                .persists(None, &empty_fresh(), &[std::process::id()], None)
                 .await
         );
     }
@@ -2248,6 +2514,11 @@ mod tests {
 
     #[test]
     fn warning_display() {
+        let w = Warning::StatusUnavailable {
+            base_dir: PathBuf::from("/data/r1"),
+        };
+        assert_eq!(w.to_string(), "status.json unavailable");
+
         let w = Warning::NoFirecrackerForRun {
             run_id: "abc-123".into(),
             sandbox_id: "sbox-abc".into(),
@@ -2333,14 +2604,14 @@ mod tests {
     }
 
     #[test]
-    fn idle_vm_diagnostic_line_includes_session_id() {
-        let raw_session_id = "sess-sensitive-doctor-17975";
+    fn idle_vm_diagnostic_line_includes_reuse_key() {
+        let reuse_key = "thread:doctor-17975";
         let line = format_idle_vm_diagnostic_line(&IdleVm {
-            session_id: raw_session_id.into(),
+            reuse_key: reuse_key.into(),
             sandbox_id: "sandbox-123".into(),
         });
 
-        assert!(line.contains(raw_session_id));
+        assert!(line.contains(reuse_key));
         assert!(line.contains("sandbox-123"));
     }
 
@@ -2356,6 +2627,12 @@ mod tests {
         dns_port: Option<u16>,
     ) -> DoctorReportFixture {
         doctor_report_fixture_for_runner("test-runner", mode, proxy_port, dns_port, None)
+    }
+
+    fn doctor_report_fixture_without_status() -> DoctorReportFixture {
+        let fixture = doctor_report_fixture("starting", None, None);
+        std::fs::remove_file(fixture.base_dir.join("status.json")).unwrap();
+        fixture
     }
 
     fn doctor_report_fixture_for_runner(
@@ -2495,6 +2772,159 @@ mod tests {
             .any(|w| matches!(w, Warning::NoDnsmasq { .. }))
     }
 
+    fn has_status_unavailable_warning(report: &RunnerReport) -> bool {
+        report
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::StatusUnavailable { .. }))
+    }
+
+    #[tokio::test]
+    async fn report_warns_for_each_unavailable_status_form() {
+        enum StatusInput {
+            Missing,
+            Contents(String),
+            Directory,
+        }
+
+        let cases = [
+            ("missing", StatusInput::Missing),
+            ("malformed json", StatusInput::Contents("{".into())),
+            (
+                "oversized",
+                StatusInput::Contents(
+                    "x".repeat(crate::private_fs::PRIVATE_STATUS_FILE_READ_MAX_BYTES as usize + 1),
+                ),
+            ),
+            (
+                "missing required field",
+                StatusInput::Contents(
+                    r#"{"active_runs":[],"started_at":"2026-01-01T00:00:00.000Z"}"#.into(),
+                ),
+            ),
+            (
+                "malformed required entry",
+                StatusInput::Contents(
+                    r#"{
+                        "mode":"running",
+                        "started_at":"2026-01-01T00:00:00.000Z",
+                        "active_runs":[{"run_id":"run-1"}]
+                    }"#
+                    .into(),
+                ),
+            ),
+            ("invalid file type", StatusInput::Directory),
+        ];
+
+        for (name, input) in cases {
+            let fixture = doctor_report_fixture_without_status();
+            let status_path = fixture.base_dir.join("status.json");
+            match input {
+                StatusInput::Missing => {}
+                StatusInput::Contents(contents) => {
+                    std::fs::write(&status_path, contents).unwrap();
+                }
+                StatusInput::Directory => {
+                    std::fs::create_dir(&status_path).unwrap();
+                }
+            }
+            let runner = live_runner_instance(
+                std::process::id(),
+                fixture.config_path.clone(),
+                fixture.base_dir.clone(),
+            );
+
+            let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+
+            assert!(report.status.is_none(), "{name}");
+            assert!(has_status_unavailable_warning(&report), "{name}");
+            assert_eq!(report.warnings.len(), 1, "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn persistent_unavailable_status_survives_recheck_budget() {
+        let fixture = doctor_report_fixture_without_status();
+        let runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
+        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+        let mut reports = [report];
+
+        for _ in 0..RECHECK_MAX_ATTEMPTS {
+            recheck_current_runner_warnings(None, &empty_discovered(), &mut reports).await;
+        }
+
+        assert!(reports[0].status.is_none());
+        assert!(has_status_unavailable_warning(&reports[0]));
+        assert_eq!(print_report(&reports, &[], &[]), 1);
+    }
+
+    #[tokio::test]
+    async fn unavailable_status_recheck_applies_recovered_snapshot() {
+        let fixture = doctor_report_fixture_without_status();
+        let runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
+        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+        std::fs::write(
+            fixture.base_dir.join("status.json"),
+            r#"{
+                "mode":"starting",
+                "started_at":"2026-01-01T00:00:00.000Z",
+                "active_runs":[]
+            }"#,
+        )
+        .unwrap();
+        let mut reports = [report];
+
+        recheck_current_runner_warnings(None, &empty_discovered(), &mut reports).await;
+
+        assert_eq!(
+            reports[0]
+                .status
+                .as_ref()
+                .map(|status| status.mode.as_str()),
+            Some("starting")
+        );
+        assert!(!has_status_unavailable_warning(&reports[0]));
+        assert!(reports[0].warnings.is_empty());
+        assert_eq!(print_report(&reports, &[], &[]), 0);
+    }
+
+    #[tokio::test]
+    async fn unavailable_status_recheck_reports_recovered_proxy_anomaly() {
+        let fixture = doctor_report_fixture_without_status();
+        let runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
+        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+        std::fs::write(
+            fixture.base_dir.join("status.json"),
+            r#"{
+                "mode":"running",
+                "started_at":"2026-01-01T00:00:00.000Z",
+                "active_runs":[],
+                "proxy_port":32821
+            }"#,
+        )
+        .unwrap();
+        let mut reports = [report];
+
+        recheck_current_runner_warnings(None, &empty_discovered(), &mut reports).await;
+
+        assert!(reports[0].status.is_some());
+        assert!(!has_status_unavailable_warning(&reports[0]));
+        assert!(has_proxy_warning(&reports[0]));
+        assert_eq!(print_report(&reports, &[], &[]), 1);
+    }
+
     #[tokio::test]
     async fn recheck_clears_runner_warnings_when_registry_entry_disappears() {
         let dir = tempfile::tempdir().unwrap();
@@ -2518,10 +2948,7 @@ mod tests {
             proxy_pid: None,
             dns_pid: None,
             jobs: vec![],
-            warnings: vec![Warning::NoMitmproxy {
-                port: 32821,
-                base_dir,
-            }],
+            warnings: vec![Warning::StatusUnavailable { base_dir }],
         }];
 
         recheck_per_runner_warnings(&home, None, &empty_discovered(), &mut reports)
@@ -2686,8 +3113,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn report_uses_registry_subcommand() {
-        let fixture = doctor_report_fixture("running", None, None);
+    async fn report_ignores_status_for_benchmark() {
+        let fixture = doctor_report_fixture("stopped", Some(32821), None);
         let mut runner = live_runner_instance(
             std::process::id(),
             fixture.config_path.clone(),
@@ -2695,9 +3122,13 @@ mod tests {
         );
         runner.subcommand = "benchmark".into();
 
-        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+        let report =
+            build_runner_report(&runner, None, &[], &[mitm_proc(123, 32821)], &[], &[]).await;
 
         assert_eq!(report.subcommand, "benchmark");
+        assert!(report.status.is_none());
+        assert!(!has_status_unavailable_warning(&report));
+        assert!(report.warnings.is_empty());
     }
 
     #[tokio::test]
@@ -3198,7 +3629,7 @@ mod tests {
     async fn is_lock_free_returns_true_when_file_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("no-such-file.lock");
-        assert!(super::is_lock_free(path.to_str().unwrap()).await);
+        assert!(super::is_lock_free(&path).await);
     }
 
     #[tokio::test]
@@ -3206,7 +3637,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("free.lock");
         std::fs::File::create(&path).unwrap();
-        assert!(super::is_lock_free(path.to_str().unwrap()).await);
+        assert!(super::is_lock_free(&path).await);
     }
 
     #[tokio::test]
@@ -3217,6 +3648,6 @@ mod tests {
         // Hold an exclusive lock for the duration of the test.
         let _lock = nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock)
             .expect("failed to acquire test lock");
-        assert!(!super::is_lock_free(path.to_str().unwrap()).await);
+        assert!(!super::is_lock_free(&path).await);
     }
 }

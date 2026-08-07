@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { Button } from "@vm0/ui";
 import {
   IconAlertTriangle,
@@ -8,11 +9,11 @@ import {
   IconCheck,
   IconLoader2,
 } from "@tabler/icons-react";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
-  UserPermissionGrantExpiresIn,
-  UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../signals/connector-domain.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
@@ -23,7 +24,7 @@ import {
   permissionAllowAgentId$,
   permissionAllowExpiresIn$,
   permissionAllowPermission$,
-  permissionAllowRef$,
+  permissionAllowConnectorSlug$,
   permissionAllowUserPermissionGrants$,
   permissionAllowFirewallPermissionMetadata$,
   resolveUserPermissionGrantPolicy,
@@ -47,6 +48,7 @@ import {
   runChatActionCallback$,
   type ChatActionCallback,
 } from "../../signals/chat-page/action-callback.ts";
+import { i18n } from "../../i18n/index.ts";
 
 function TargetPill({
   avatarUrl,
@@ -86,7 +88,11 @@ function resolvePermissionGrantTarget({
   agent: PermissionAllowAgent;
 }): { target: PermissionGrantTarget } | { message: string } {
   if (!agent) {
-    return { message: "Agent not found" };
+    return {
+      message: i18n.t(($) => {
+        return $.authorization.permission.errors.agentNotFound;
+      }),
+    };
   }
   return {
     target: {
@@ -103,7 +109,7 @@ function ConnectorPermissionCard({
   permission,
   action,
 }: {
-  icon: PublicConnectorCatalogPermissionDetail["icon"];
+  icon: PlatformConnectorPermissionMetadata["icon"];
   connectorLabel: string;
   permission: Permission;
   action: "allow" | "deny";
@@ -167,21 +173,38 @@ function ResultCard({
   expiresAt?: string | null;
   showExpiry: boolean;
 }) {
+  const { t } = useTranslation();
   const allowed = action === "allow";
   const title = alreadyApplied
     ? allowed
-      ? "Already allowed"
-      : "Already denied"
+      ? t(($) => {
+          return $.authorization.permission.result.alreadyAllowedTitle;
+        })
+      : t(($) => {
+          return $.authorization.permission.result.alreadyDeniedTitle;
+        })
     : allowed
-      ? "Permissions updated"
-      : "Permissions denied";
+      ? t(($) => {
+          return $.authorization.permission.result.updatedTitle;
+        })
+      : t(($) => {
+          return $.authorization.permission.result.deniedTitle;
+        });
   const description = alreadyApplied
     ? allowed
-      ? "Your connector permission grant is already allowed"
-      : "Your connector permission grant is already denied"
+      ? t(($) => {
+          return $.authorization.permission.result.alreadyAllowedDescription;
+        })
+      : t(($) => {
+          return $.authorization.permission.result.alreadyDeniedDescription;
+        })
     : allowed
-      ? "Your connector permission grant has been updated"
-      : "Your connector permission grant has been denied";
+      ? t(($) => {
+          return $.authorization.permission.result.updatedDescription;
+        })
+      : t(($) => {
+          return $.authorization.permission.result.deniedDescription;
+        });
   const expiryText = showExpiry
     ? permissionGrantExpiryText(expiresAt ?? null)
     : null;
@@ -240,7 +263,9 @@ function resolveUserName(
   if (user?.username) {
     return user.username;
   }
-  return "there";
+  return i18n.t(($) => {
+    return $.authorization.permission.userFallback;
+  });
 }
 
 function anyLoadableIsLoading(
@@ -261,29 +286,35 @@ function permissionAllowLoadErrorMessage({
   metadataState: string;
 }): string | null {
   if (targetState === "hasError") {
-    return "Failed to load agent";
+    return i18n.t(($) => {
+      return $.authorization.permission.errors.loadAgent;
+    });
   }
   if (grantsState === "hasError") {
-    return "Failed to load permission grants";
+    return i18n.t(($) => {
+      return $.authorization.permission.errors.loadGrants;
+    });
   }
   if (metadataState === "hasError") {
-    return "Failed to load permission metadata";
+    return i18n.t(($) => {
+      return $.authorization.permission.errors.loadMetadata;
+    });
   }
   return null;
 }
 
 function resolveExistingPermissionGrantResult({
   action,
-  connectorRef,
+  connectorSlug,
   focusedPermission,
   grants,
   metadata,
 }: {
   action: "allow" | "deny";
-  connectorRef: string;
+  connectorSlug: string;
   focusedPermission: Permission;
-  grants: readonly UserPermissionGrantResponse[];
-  metadata: PublicConnectorCatalogPermissionDetail;
+  grants: readonly PlatformUserPermissionGrant[];
+  metadata: PlatformConnectorPermissionMetadata;
 }): { expiresAt?: string | null } | null {
   const effectivePolicy = resolveUserPermissionGrantPolicy(
     grants,
@@ -292,7 +323,7 @@ function resolveExistingPermissionGrantResult({
   );
   const explicitGrant = grants.find((grant) => {
     return (
-      grant.connectorRef === connectorRef &&
+      grant.connectorSlug === connectorSlug &&
       grant.permission === focusedPermission.name &&
       grant.action === action
     );
@@ -311,8 +342,8 @@ function resolveExistingPermissionGrantResult({
 
 interface ConfirmGrantCardProps {
   target: PermissionGrantTarget;
-  icon: PublicConnectorCatalogPermissionDetail["icon"];
-  connectorRef: string;
+  icon: PlatformConnectorPermissionMetadata["icon"];
+  connectorSlug: string;
   connectorLabel: string;
   permission: Permission;
   action: "allow" | "deny";
@@ -322,20 +353,49 @@ interface ConfirmGrantCardProps {
   applyGrant: (
     params: {
       agentId: string;
-      connectorRef: string;
+      connectorSlug: string;
       permission: string;
       action: "allow" | "deny";
       expiresIn?: UserPermissionGrantExpiresIn;
     },
     signal: AbortSignal,
-  ) => Promise<UserPermissionGrantResponse>;
+  ) => Promise<PlatformUserPermissionGrant>;
   actionCallback: ChatActionCallback;
+}
+
+function GrantDurationField({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: UserPermissionGrantExpiresIn;
+  disabled: boolean;
+  onChange: (value: UserPermissionGrantExpiresIn) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2">
+      <span className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.authorization.permission.duration;
+        })}
+      </span>
+      <PermissionGrantDurationSelect
+        value={value}
+        onValueChange={onChange}
+        disabled={disabled}
+        ariaLabel={t(($) => {
+          return $.authorization.permission.durationLabel;
+        })}
+      />
+    </div>
+  );
 }
 
 function ConfirmGrantCard({
   target,
   icon,
-  connectorRef,
+  connectorSlug,
   connectorLabel,
   permission,
   action,
@@ -345,8 +405,9 @@ function ConfirmGrantCard({
   applyGrant,
   actionCallback,
 }: ConfirmGrantCardProps) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const durationScope = `agent\u0000${target.id}\u0000${connectorRef}\u0000${permission.name}\u0000${action}\u0000${initialExpiresIn ?? ""}`;
+  const durationScope = `agent\u0000${target.id}\u0000${connectorSlug}\u0000${permission.name}\u0000${action}\u0000${initialExpiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
   const expiresIn =
@@ -364,7 +425,7 @@ function ConfirmGrantCard({
         await applyGrant(
           {
             agentId: target.id,
-            connectorRef,
+            connectorSlug,
             permission: permission.name,
             action,
             ...(expirationAvailable ? { expiresIn } : {}),
@@ -393,7 +454,12 @@ function ConfirmGrantCard({
 
         <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
-            {`Hey ${userName}, you're updating your permissions for ${target.displayName}.`}
+            {t(
+              ($) => {
+                return $.authorization.permission.greeting;
+              },
+              { userName, targetName: target.displayName },
+            )}
           </p>
 
           <TargetPill
@@ -402,7 +468,11 @@ function ConfirmGrantCard({
           />
 
           <div className="w-full flex flex-col gap-3">
-            <p className="text-sm font-medium text-foreground">Would like to</p>
+            <p className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.authorization.permission.wouldLike;
+              })}
+            </p>
             <ConnectorPermissionCard
               icon={icon}
               connectorLabel={connectorLabel}
@@ -411,19 +481,13 @@ function ConfirmGrantCard({
             />
           </div>
           {expirationAvailable && (
-            <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2">
-              <span className="text-sm font-medium text-foreground">
-                Duration
-              </span>
-              <PermissionGrantDurationSelect
-                value={expiresIn}
-                onValueChange={(value) => {
-                  setExpiresInForScope(durationScope, value);
-                }}
-                disabled={saving}
-                ariaLabel="Permission duration"
-              />
-            </div>
+            <GrantDurationField
+              value={expiresIn}
+              disabled={saving}
+              onChange={(value) => {
+                setExpiresInForScope(durationScope, value);
+              }}
+            />
           )}
         </div>
 
@@ -431,7 +495,11 @@ function ConfirmGrantCard({
           {saveError && (
             <div className="flex items-center justify-center gap-2 text-sm font-medium text-destructive">
               <IconAlertTriangle size={16} />
-              <span>Couldn&apos;t update permissions</span>
+              <span>
+                {t(($) => {
+                  return $.authorization.permission.errors.updateFailed;
+                })}
+              </span>
             </div>
           )}
           <Button
@@ -440,7 +508,13 @@ function ConfirmGrantCard({
             disabled={saving}
             className="h-9 w-full rounded-[10px]"
           >
-            {saving ? "Saving..." : "Confirm"}
+            {saving
+              ? t(($) => {
+                  return $.authorization.permission.saving;
+                })
+              : t(($) => {
+                  return $.authorization.permission.confirm;
+                })}
           </Button>
         </div>
       </div>
@@ -450,14 +524,14 @@ function ConfirmGrantCard({
 
 function PermissionAllowDoctorPage({
   agentId,
-  ref,
+  connectorSlug,
   permission,
   action,
   initialExpiresIn,
   actionCallback,
 }: {
   agentId: string;
-  ref: string;
+  connectorSlug: string;
   permission: string;
   action: "allow" | "deny";
   initialExpiresIn: UserPermissionGrantExpiresIn | null;
@@ -505,12 +579,30 @@ function PermissionAllowDoctorPage({
   const metadata =
     metadataLoadable.state === "hasData" ? metadataLoadable.data : null;
   if (!metadata) {
-    return <ErrorMessage message={`Unknown connector: ${ref}`} />;
+    return (
+      <ErrorMessage
+        message={i18n.t(
+          ($) => {
+            return $.authorization.permission.errors.unknownConnector;
+          },
+          { connector: connectorSlug },
+        )}
+      />
+    );
   }
 
   const focusedPermission = findPermissionInMetadata(metadata, permission);
   if (!focusedPermission) {
-    return <ErrorMessage message={`Unknown permission: ${permission}`} />;
+    return (
+      <ErrorMessage
+        message={i18n.t(
+          ($) => {
+            return $.authorization.permission.errors.unknownPermission;
+          },
+          { permission },
+        )}
+      />
+    );
   }
 
   if (savedGrant && isActiveUserPermissionGrant(savedGrant)) {
@@ -525,7 +617,7 @@ function PermissionAllowDoctorPage({
 
   const existingGrantResult = resolveExistingPermissionGrantResult({
     action,
-    connectorRef: ref,
+    connectorSlug,
     focusedPermission,
     grants,
     metadata,
@@ -547,7 +639,7 @@ function PermissionAllowDoctorPage({
     <ConfirmGrantCard
       target={targetResult.target}
       icon={metadata.icon}
-      connectorRef={ref}
+      connectorSlug={connectorSlug}
       connectorLabel={metadata.label}
       permission={focusedPermission}
       action={action}
@@ -561,8 +653,9 @@ function PermissionAllowDoctorPage({
 }
 
 export function PermissionAllowPage() {
+  const { t } = useTranslation();
   const agentId = useGet(permissionAllowAgentId$);
-  const ref = useGet(permissionAllowRef$);
+  const connectorSlug = useGet(permissionAllowConnectorSlug$);
   const permission = useGet(permissionAllowPermission$);
   const actionParam = useGet(permissionAllowActionParam$);
   const action = useGet(permissionAllowAction$);
@@ -570,23 +663,42 @@ export function PermissionAllowPage() {
   const actionCallback = useGet(routeChatActionCallback$);
 
   if (!agentId) {
-    return <ErrorMessage message="Missing agent ID in URL parameters" />;
+    return (
+      <ErrorMessage
+        message={t(($) => {
+          return $.authorization.permission.errors.missingAgentId;
+        })}
+      />
+    );
   }
 
-  if (!ref || !permission) {
-    return <ErrorMessage message="Missing permission in URL parameters" />;
+  if (!connectorSlug || !permission) {
+    return (
+      <ErrorMessage
+        message={t(($) => {
+          return $.authorization.permission.errors.missingPermission;
+        })}
+      />
+    );
   }
 
   if (actionParam !== null && action === null) {
     return (
-      <ErrorMessage message={`Unknown permission action: ${actionParam}`} />
+      <ErrorMessage
+        message={t(
+          ($) => {
+            return $.authorization.permission.errors.unknownAction;
+          },
+          { action: actionParam },
+        )}
+      />
     );
   }
 
   return (
     <PermissionAllowDoctorPage
       agentId={agentId}
-      ref={ref}
+      connectorSlug={connectorSlug}
       permission={permission}
       action={action ?? "allow"}
       initialExpiresIn={expiresIn}

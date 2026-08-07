@@ -8,7 +8,7 @@ import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   exchangeSlackOAuthCode,
   exchangeSlackOAuthCodeForUser,
@@ -29,7 +29,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
-} from "./oauth-web-origin";
+} from "../../lib/oauth-origin";
 
 const L = logger("SlackOAuth");
 const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";

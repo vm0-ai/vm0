@@ -196,12 +196,16 @@ async function fetchZoomUserInfo(accessToken: string): Promise<ZoomUserInfo> {
     })
     .parse(await response.json());
 
+  if (!data.id) {
+    throw new Error("No user id in Zoom user info response");
+  }
+
   const username =
     data.display_name ??
     [data.first_name, data.last_name].filter(Boolean).join(" ").trim();
 
   return {
-    id: data.id ?? "",
+    id: data.id,
     username: username || null,
     email: data.email ?? null,
   };

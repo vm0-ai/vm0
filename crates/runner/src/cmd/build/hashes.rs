@@ -1,12 +1,13 @@
+use std::net::Ipv4Addr;
 use std::path::Path;
 
+use sandbox_fc::DNS_PROBE_RESOLVER_IPV4;
 use sha2::{Digest, Sha256};
 
 use crate::ca;
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
-use super::ROOTFS_DNS_NAMESERVER;
 use super::scripts::{CUSTOMIZE_SCRIPT, TEMPLATE_BUILD_SCRIPT};
 
 /// Bump to invalidate all shared template images in R2.
@@ -61,10 +62,11 @@ pub(super) fn compute_template_hash(rootfs_disk_mb: u32) -> String {
 ///
 /// This hash is what runner configs use. It includes the shared template hash plus
 /// every rootfs-only input that changes the bootable rootfs content.
-pub(super) async fn compute_rootfs_hash(
+async fn compute_rootfs_hash(
     template_hash: &str,
     guest_bins: &[(&Path, &str)],
     ca_fingerprint: &str,
+    dns_nameserver: Ipv4Addr,
     rootfs_disk_mb: u32,
 ) -> RunnerResult<String> {
     let mut hasher = Sha256::new();
@@ -80,7 +82,8 @@ pub(super) async fn compute_rootfs_hash(
     hasher.update(b"ca_fingerprint:");
     hasher.update(ca_fingerprint.as_bytes());
     hasher.update(b"dns_nameserver:");
-    hasher.update(ROOTFS_DNS_NAMESERVER.as_bytes());
+    let dns_nameserver = dns_nameserver.to_string();
+    hasher.update(dns_nameserver.as_bytes());
 
     for (src, dest) in guest_bins {
         let content = tokio::fs::read(src)
@@ -101,8 +104,14 @@ pub(super) async fn compute_rootfs_build_hashes(
     rootfs_disk_mb: u32,
 ) -> RunnerResult<RootfsBuildHashes> {
     let template_hash = compute_template_hash(rootfs_disk_mb);
-    let rootfs_hash =
-        compute_rootfs_hash(&template_hash, guest_bins, ca_fingerprint, rootfs_disk_mb).await?;
+    let rootfs_hash = compute_rootfs_hash(
+        &template_hash,
+        guest_bins,
+        ca_fingerprint,
+        DNS_PROBE_RESOLVER_IPV4,
+        rootfs_disk_mb,
+    )
+    .await?;
 
     Ok(RootfsBuildHashes {
         template_hash,
@@ -185,12 +194,24 @@ mod tests {
         tokio::fs::write(&bin, b"binary-content").await.unwrap();
         let bins: &[(&Path, &str)] = &[(&bin, "/usr/local/bin/guest-agent")];
 
-        let h1 = compute_rootfs_hash("template-hash", bins, "ca-fingerprint", 16384)
-            .await
-            .unwrap();
-        let h2 = compute_rootfs_hash("template-hash", bins, "ca-fingerprint", 16384)
-            .await
-            .unwrap();
+        let h1 = compute_rootfs_hash(
+            "template-hash",
+            bins,
+            "ca-fingerprint",
+            DNS_PROBE_RESOLVER_IPV4,
+            16384,
+        )
+        .await
+        .unwrap();
+        let h2 = compute_rootfs_hash(
+            "template-hash",
+            bins,
+            "ca-fingerprint",
+            DNS_PROBE_RESOLVER_IPV4,
+            16384,
+        )
+        .await
+        .unwrap();
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 64); // SHA-256 hex
     }
@@ -240,6 +261,7 @@ mod tests {
             "template-a",
             &[(&bin_a, "/usr/local/bin/guest-agent")],
             "ca-a",
+            DNS_PROBE_RESOLVER_IPV4,
             16384,
         )
         .await
@@ -249,6 +271,7 @@ mod tests {
             "template-a",
             &[(&bin_b, "/usr/local/bin/guest-agent")],
             "ca-a",
+            DNS_PROBE_RESOLVER_IPV4,
             16384,
         )
         .await
@@ -262,6 +285,7 @@ mod tests {
             "template-a",
             &[(&bin_a, "/usr/local/bin/guest-agent")],
             "ca-a",
+            DNS_PROBE_RESOLVER_IPV4,
             32768,
         )
         .await
@@ -272,6 +296,7 @@ mod tests {
             "template-a",
             &[(&bin_a, "/usr/local/bin/guest-download")],
             "ca-a",
+            DNS_PROBE_RESOLVER_IPV4,
             16384,
         )
         .await
@@ -282,6 +307,7 @@ mod tests {
             "template-a",
             &[(&bin_a, "/usr/local/bin/guest-agent")],
             "ca-b",
+            DNS_PROBE_RESOLVER_IPV4,
             16384,
         )
         .await
@@ -292,11 +318,23 @@ mod tests {
             "template-b",
             &[(&bin_a, "/usr/local/bin/guest-agent")],
             "ca-a",
+            DNS_PROBE_RESOLVER_IPV4,
             16384,
         )
         .await
         .unwrap();
         assert_ne!(base, different_template, "hash must change with template");
+
+        let different_dns = compute_rootfs_hash(
+            "template-a",
+            &[(&bin_a, "/usr/local/bin/guest-agent")],
+            "ca-a",
+            Ipv4Addr::new(1, 1, 1, 1),
+            16384,
+        )
+        .await
+        .unwrap();
+        assert_ne!(base, different_dns, "hash must change with DNS nameserver");
     }
 
     #[test]

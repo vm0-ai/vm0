@@ -4,8 +4,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::Serialize;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
@@ -14,21 +12,23 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::CONTROL_SOCKET_OVERHEAD_MS;
+use super::exec_response::{ExecResult, write_raw_exec_response};
 use super::protocol::{
-    ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
-    TerminateStatus, read_frame, write_frame,
+    ExecRequest, TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus, read_frame,
+    write_frame,
 };
 use crate::exec_operation_result::{
     captured_exec_output_bytes, exec_termination_from_vsock_termination, reject_stream_overflow,
     validate_exec_capture_timeout,
 };
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
-use crate::park_coordinator::ParkCoordinator;
+use crate::park_coordinator::{ParkCoordinator, RunControlMismatch, TerminateAdmission};
 use crate::runtime_dirs::set_private_runtime_socket_mode;
 
 const RUNNER_EXEC_CAPTURE_LIMIT_BYTES: u32 = 7 * 1024 * 1024;
 const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
+const RUN_CONTROL_MISMATCH_ERROR: &str = "run control target is no longer assigned to this sandbox";
 
 /// Cloneable handle used by the control server to ask the process monitor to
 /// terminate the sandbox process group.
@@ -54,9 +54,14 @@ impl ProcessTerminationHandle {
         }
     }
 
-    async fn request_terminate(&self) -> TerminateStatus {
-        if !self.park_coordinator.begin_terminate() {
-            return TerminateStatus::RefusedIdle;
+    async fn request_terminate(
+        &self,
+        expected_run_id: Option<&str>,
+    ) -> Result<TerminateStatus, RunControlMismatch> {
+        match self.park_coordinator.begin_terminate(expected_run_id) {
+            TerminateAdmission::Accepted => {}
+            TerminateAdmission::RefusedIdle => return Ok(TerminateStatus::RefusedIdle),
+            TerminateAdmission::RunControlMismatch => return Err(RunControlMismatch),
         }
 
         let (ack_tx, ack_rx) = oneshot::channel();
@@ -66,10 +71,10 @@ impl ProcessTerminationHandle {
             .await
         {
             Ok(()) => match ack_rx.await {
-                Ok(()) => TerminateStatus::Accepted,
-                Err(_) => TerminateStatus::AlreadyStopped,
+                Ok(()) => Ok(TerminateStatus::Accepted),
+                Err(_) => Ok(TerminateStatus::AlreadyStopped),
             },
-            Err(_) => TerminateStatus::AlreadyStopped,
+            Err(_) => Ok(TerminateStatus::AlreadyStopped),
         }
     }
 }
@@ -388,16 +393,15 @@ async fn handle_connection(
             () = shutdown.cancelled() => return Ok(()),
             response = execute(request, &guest_operations) => response,
         },
-        Err(e) => ExecResponse::Error {
+        Err(e) => ExecResult::Error {
             error: format!("invalid request: {e}"),
         },
     };
 
-    let response_json = encode_json_frame(&response)?;
     tokio::select! {
         biased;
         () = shutdown.cancelled() => return Ok(()),
-        result = write_frame(&mut stream, &response_json) => result?,
+        result = write_raw_exec_response(&mut stream, &response) => result?,
     }
 
     Ok(())
@@ -408,8 +412,14 @@ async fn terminate(
     termination: &ProcessTerminationHandle,
 ) -> TerminateResponse {
     match request.action {
-        TerminateAction::Terminate => TerminateResponse::Status {
-            status: termination.request_terminate().await,
+        TerminateAction::Terminate => match termination
+            .request_terminate(request.expected_run_id.as_deref())
+            .await
+        {
+            Ok(status) => TerminateResponse::Status { status },
+            Err(RunControlMismatch) => TerminateResponse::Error {
+                error: RUN_CONTROL_MISMATCH_ERROR.into(),
+            },
         },
     }
 }
@@ -427,52 +437,74 @@ fn encode_json_frame<Response: Serialize>(response: &Response) -> io::Result<Vec
 }
 
 /// Execute an [`ExecRequest`] through the sandbox operation start gate.
-async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGate) -> ExecResponse {
+async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGate) -> ExecResult {
     let vsock = match guest_operations.begin_control_operation().await {
         Ok(vsock) => vsock,
         Err(error) => {
-            return ExecResponse::Error {
+            return ExecResult::Error {
                 error: control_start_error(error),
             };
         }
     };
 
-    let timeout_ms = request.timeout_secs.saturating_mul(1000);
+    let ExecRequest {
+        expected_run_id,
+        command,
+        timeout_secs,
+        sudo,
+    } = request;
+    let timeout_ms = timeout_secs.saturating_mul(1000);
     let env: &[(&str, &str)] = &[];
 
     if let Err(e) = validate_exec_capture_timeout(timeout_ms) {
-        return ExecResponse::Error {
+        return ExecResult::Error {
             error: format!("exec failed: {e}"),
         };
     }
 
+    let write_admission = expected_run_id.map_or_else(vsock_host::FrameWriteObserver::default, {
+        let guest_operations = guest_operations.clone();
+        |expected_run_id| {
+            vsock_host::FrameWriteObserver::new(move || {
+                guest_operations
+                    .ensure_run_control_matches(&expected_run_id)
+                    .map_err(|RunControlMismatch| {
+                        io::Error::new(io::ErrorKind::PermissionDenied, RUN_CONTROL_MISMATCH_ERROR)
+                    })
+            })
+        }
+    });
+
     let result = vsock
-        .exec_operation_capture(vsock_host::ExecCaptureRequest {
-            command: &request.command,
-            timeout_ms,
-            env,
-            sudo: request.sudo,
-            label: "runner-exec",
-            stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
-            stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            wait_timeout: Duration::from_millis(timeout_ms as u64 + CONTROL_SOCKET_OVERHEAD_MS),
-        })
+        .exec_operation_capture_with_write_admission(
+            vsock_host::ExecCaptureRequest {
+                command: &command,
+                timeout_ms,
+                env,
+                sudo,
+                label: "runner-exec",
+                stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+                stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+                expected_exit_codes: &[],
+                stdin_bytes: None,
+                wait_timeout: Duration::from_millis(timeout_ms as u64 + CONTROL_SOCKET_OVERHEAD_MS),
+            },
+            write_admission,
+        )
         .await
-        .and_then(exec_response_from_operation_result);
+        .and_then(exec_result_from_operation_result);
 
     match result {
         Ok(response) => response,
-        Err(e) => ExecResponse::Error {
+        Err(e) => ExecResult::Error {
             error: format!("exec failed: {e}"),
         },
     }
 }
 
-fn exec_response_from_operation_result(
+fn exec_result_from_operation_result(
     result: vsock_host::ExecOperationResult,
-) -> io::Result<ExecResponse> {
+) -> io::Result<ExecResult> {
     reject_stream_overflow(&result)?;
 
     let vsock_host::ExecOperationResult {
@@ -486,10 +518,10 @@ fn exec_response_from_operation_result(
     let (stdout, stdout_truncated) = captured_exec_output_bytes("stdout", stdout)?;
     let (stderr, stderr_truncated) = captured_exec_output_bytes("stderr", stderr)?;
 
-    Ok(ExecResponse::Success {
+    Ok(ExecResult::Success {
         termination: exec_termination_from_vsock_termination(termination),
-        stdout: BASE64.encode(stdout),
-        stderr: BASE64.encode(stderr),
+        stdout,
+        stderr,
         stdout_truncated,
         stderr_truncated,
         diagnostic,

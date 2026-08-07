@@ -5,7 +5,12 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import {
+  autonomyBudgetExhausted,
+  badRequestMessage,
+  conflict,
+  notFound,
+} from "../../lib/error";
 import { logger } from "../../lib/log";
 import { tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
@@ -110,6 +115,9 @@ function goalErrorResponse(
     case "conflict": {
       return conflict(result.message);
     }
+    case "autonomy-budget-exhausted": {
+      return autonomyBudgetExhausted();
+    }
   }
 }
 
@@ -136,6 +144,7 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         set(
           bootstrapGoalRun$,
           {
+            db,
             goal: bootstrapGoal,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
           },
@@ -149,7 +158,7 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         },
       );
       signal.throwIfAborted();
-      if (bootstrap && bootstrap.kind !== "ok") {
+      if (bootstrap?.kind === "failed-to-enqueue") {
         log.warn("Goal bootstrap run was not enqueued", {
           goalId: bootstrapGoal.goalId,
           reason: bootstrap.kind,

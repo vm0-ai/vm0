@@ -146,11 +146,6 @@ pub fn session_history_marker_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "session-history-marker")
 }
 
-/// Return the run-root `event-error` file.
-pub fn event_error_file(run_dir: impl AsRef<Path>) -> PathBuf {
-    file(run_dir, "event-error")
-}
-
 /// Return the run-root `checkpoint-error` file.
 pub fn checkpoint_error_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "checkpoint-error")
@@ -899,7 +894,6 @@ mod tests {
         let files = [
             session_id_file(&run_dir),
             session_history_marker_file(&run_dir),
-            event_error_file(&run_dir),
             checkpoint_error_file(&run_dir),
             final_session_history_identity_file(&run_dir),
             failure_diagnostic_file(&run_dir),

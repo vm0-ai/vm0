@@ -9,8 +9,14 @@ import type {
   ModelProviderResponse,
   OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  zeroModelProviderConnectionsByIdContract,
+  zeroModelProviderConnectionsMainContract,
+  type CreateModelProviderConnectionRequest,
+  type ModelProviderConnectionResponse,
+} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -18,9 +24,16 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 function staleCodexProvider(): ModelProviderResponse {
   return {
@@ -154,8 +167,8 @@ function mockApiKeyModelRouteStory(): void {
   context.mocks.data.orgModelPolicies([
     builtInPolicy(
       "00000000-0000-4000-a000-000000000211",
-      "deepseek-v4-pro",
-      "DeepSeek V4 Pro",
+      "deepseek-v4-flash",
+      "DeepSeek V4 Flash",
       true,
     ),
     claudeOpusApiKeyPolicy(),
@@ -165,7 +178,6 @@ function mockApiKeyModelRouteStory(): void {
 function mockAdminOrg(): void {
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
@@ -212,9 +224,94 @@ function mockBillingCapabilities(modelCapabilities: {
 function mockProCheckout(): void {
   context.mocks.api(zeroBillingCheckoutContract.create, ({ body, respond }) => {
     return respond(200, {
-      url: `https://checkout.stripe.com/test-upgrade?tier=${body.tier}`,
+      url: "https://checkout.stripe.com/test-upgrade?tier=" + body.tier,
     });
   });
+}
+
+type GatewayConnectionInput = Pick<
+  CreateModelProviderConnectionRequest,
+  "displayName" | "surfaces"
+>;
+
+function gatewayConnectionResponse(
+  input: GatewayConnectionInput,
+): ModelProviderConnectionResponse {
+  const now = "2026-07-30T00:00:00.000Z";
+  return {
+    id: "00000000-0000-4000-a000-000000000300",
+    displayName: input.displayName,
+    surfaces: input.surfaces.map((surface) => {
+      return {
+        ...surface,
+        id:
+          surface.protocol === "anthropic-messages"
+            ? "00000000-0000-4000-a000-000000000301"
+            : "00000000-0000-4000-a000-000000000302",
+        createdAt: now,
+        updatedAt: now,
+      };
+    }),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function mockGatewayConnectionLifecycle() {
+  let connections: ModelProviderConnectionResponse[] = [];
+  let createSecret: string | null = null;
+  let updateSecret: string | undefined;
+  let updateCount = 0;
+  let deleteCount = 0;
+
+  context.mocks.api(
+    zeroModelProviderConnectionsMainContract.list,
+    ({ respond }) => {
+      return respond(200, { connections });
+    },
+  );
+  context.mocks.api(
+    zeroModelProviderConnectionsMainContract.create,
+    ({ body, respond }) => {
+      createSecret = body.secret;
+      const connection = gatewayConnectionResponse(body);
+      connections = [connection];
+      return respond(201, connection);
+    },
+  );
+  context.mocks.api(
+    zeroModelProviderConnectionsByIdContract.update,
+    ({ body, respond }) => {
+      updateCount += 1;
+      updateSecret = body.secret;
+      const connection = gatewayConnectionResponse(body);
+      connections = [connection];
+      return respond(200, connection);
+    },
+  );
+  context.mocks.api(
+    zeroModelProviderConnectionsByIdContract.delete,
+    ({ respond }) => {
+      deleteCount += 1;
+      connections = [];
+      return respond(204);
+    },
+  );
+
+  return {
+    createSecret: () => {
+      return createSecret;
+    },
+    deleteCount: () => {
+      return deleteCount;
+    },
+    updateCount: () => {
+      return updateCount;
+    },
+    updateSecret: () => {
+      return updateSecret;
+    },
+  };
 }
 
 async function openProvidersTab(): Promise<void> {
@@ -238,6 +335,18 @@ async function openModelSettings(): Promise<void> {
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Models" })).toBeInTheDocument();
   });
+}
+
+async function openSettingsFromAccountMenu(): Promise<HTMLElement> {
+  const accountName = await screen.findByText("Test User");
+  const accountButton = accountName.closest("button");
+  if (!accountButton) {
+    throw new Error("Account menu trigger not found");
+  }
+  click(accountButton);
+  const menu = await screen.findByRole("menu");
+  click(within(menu).getByText("Settings"));
+  return screen.findByRole("dialog", { name: "Settings" });
 }
 
 async function openAddApiKeyModelDialog(): Promise<void> {
@@ -293,7 +402,241 @@ function dialogContaining(element: HTMLElement): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
-  it("only offers OpenAI and Anthropic models when adding a model", async () => {
+  it("hides provider connections from non-admin members", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+
+    await openProvidersTab();
+
+    expect(
+      screen.queryByRole("heading", { name: "Provider connections" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clears a gateway draft when settings closes", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+    mockGatewayConnectionLifecycle();
+
+    await openProvidersTab();
+
+    const connectionsHeading = await screen.findByRole("heading", {
+      name: "Provider connections",
+    });
+    const connectionsSection = connectionsHeading.closest("section");
+    if (!(connectionsSection instanceof HTMLElement)) {
+      throw new Error("Provider connections section not found");
+    }
+    const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
+
+    click(within(connectionsSection).getByText("Add provider"));
+    click(menuItemByText("Vercel AI Gateway"));
+    const addDialog = await screen.findByRole("dialog", {
+      name: "Add model provider",
+    });
+    await fill(
+      within(addDialog).getByLabelText("API key"),
+      "vck-sensitive-draft",
+    );
+
+    click(within(settingsDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: "Add model provider" }),
+      ).not.toBeInTheDocument();
+    });
+
+    const reopenedSettingsDialog = await openSettingsFromAccountMenu();
+    click(buttonByText("Models", reopenedSettingsDialog));
+    await expect(
+      screen.findByRole("heading", { name: "Models" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "Add model provider" }),
+    ).not.toBeInTheDocument();
+
+    const reopenedConnectionsHeading = await screen.findByRole("heading", {
+      name: "Provider connections",
+    });
+    const reopenedConnectionsSection =
+      reopenedConnectionsHeading.closest("section");
+    if (!(reopenedConnectionsSection instanceof HTMLElement)) {
+      throw new Error("Provider connections section not found");
+    }
+    click(within(reopenedConnectionsSection).getByText("Add provider"));
+    click(menuItemByText("Vercel AI Gateway"));
+
+    const reopenedAddDialog = await screen.findByRole("dialog", {
+      name: "Add model provider",
+    });
+    expect(within(reopenedAddDialog).getByLabelText("API key")).toHaveValue("");
+  });
+
+  it("manages a gateway lifecycle and assigns it to a model route", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000211",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
+        true,
+      ),
+    ]);
+    const lifecycle = mockGatewayConnectionLifecycle();
+
+    await openProvidersTab();
+
+    const connectionsHeading = await screen.findByRole("heading", {
+      name: "Provider connections",
+    });
+    const connectionsSection = connectionsHeading.closest("section");
+    if (!(connectionsSection instanceof HTMLElement)) {
+      throw new Error("Provider connections section not found");
+    }
+
+    click(within(connectionsSection).getByText("Add provider"));
+    click(menuItemByText("Vercel AI Gateway"));
+    const addDialog = await screen.findByRole("dialog", {
+      name: "Add model provider",
+    });
+    expect(
+      within(addDialog).getByText(
+        "Requests: https://ai-gateway.vercel.sh/v1/messages",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(addDialog).getByText(
+        "Requests: https://ai-gateway.vercel.sh/v1/responses",
+      ),
+    ).toBeInTheDocument();
+    await fill(within(addDialog).getByLabelText("API key"), "vck-test");
+    click(buttonByText("Save changes", addDialog));
+
+    await expect(
+      within(connectionsSection).findByText("Vercel AI Gateway"),
+    ).resolves.toBeInTheDocument();
+    expect(lifecycle.createSecret()).toBe("vck-test");
+
+    click(within(connectionsSection).getByLabelText("Gateway actions"));
+    click(menuItemByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit model provider",
+    });
+    expect(
+      within(editDialog).getByPlaceholderText(
+        "Leave blank to keep the current key",
+      ),
+    ).toHaveValue("");
+    await fill(
+      within(editDialog).getByLabelText("Name"),
+      "Vercel Edge Gateway",
+    );
+    click(buttonByText("Save changes", editDialog));
+
+    await expect(
+      within(connectionsSection).findByText("Vercel Edge Gateway"),
+    ).resolves.toBeInTheDocument();
+    expect(lifecycle.updateCount()).toBe(1);
+    expect(lifecycle.updateSecret()).toBeUndefined();
+
+    click(buttonByText("Add model"));
+    await selectDialogModel("Claude Sonnet 5");
+    const policyDialog = screen.getByRole("dialog", { name: "Add model" });
+    click(
+      within(policyDialog).getByRole("radio", {
+        name: /Custom gateway/u,
+      }),
+    );
+    expect(
+      within(policyDialog).getByText("Vercel Edge Gateway"),
+    ).toBeInTheDocument();
+    click(buttonByText("Add model", policyDialog));
+
+    const policyRow = await screen.findByTestId(
+      "org-model-policy-row-claude-sonnet-5",
+    );
+    await waitFor(() => {
+      expect(
+        within(policyRow).getByText("Vercel Edge Gateway"),
+      ).toBeInTheDocument();
+    });
+
+    click(within(connectionsSection).getByLabelText("Gateway actions"));
+    click(menuItemByText("Delete"));
+    const deleteDialog = await screen.findByRole("dialog", {
+      name: "Delete Vercel Edge Gateway?",
+    });
+    click(buttonByText("Delete", deleteDialog));
+
+    await waitFor(() => {
+      expect(
+        within(connectionsSection).queryByText("Vercel Edge Gateway"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(connectionsSection).getByText(
+          "No custom model providers configured.",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(lifecycle.deleteCount()).toBe(1);
+  });
+
+  it("localizes built-in model policy updates in Portuguese", async () => {
+    mockAdminOrg();
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000214",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
+        true,
+      ),
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000215",
+        "gpt-5.5",
+        "GPT 5.5",
+        false,
+      ),
+    ]);
+    mockBillingCapabilities({
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=model",
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Modelos" }),
+    ).resolves.toBeInTheDocument();
+    const deepseekRow = await screen.findByTestId(
+      "org-model-policy-row-deepseek-v4-flash",
+    );
+    expect(within(deepseekRow).getByText("Integrado")).toBeInTheDocument();
+
+    const defaultRow = screen.getByTestId("default-model-row");
+    click(within(defaultRow).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: "GPT 5.5" }));
+
+    await expect(
+      screen.findByText("Configurações dos provedores de modelo atualizadas"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("only offers supported workspace models when adding a model", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
@@ -309,18 +652,9 @@ describe("organization model providers settings", () => {
     await expect(
       screen.findByRole("option", { name: "Claude Opus 4.7" }),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Auto" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "GPT-5.4" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "GPT-5.4 Mini" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
-    ).not.toBeInTheDocument();
+    await expect(
+      screen.findByRole("option", { name: "DeepSeek V4 Flash" }),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
     ).not.toBeInTheDocument();
@@ -350,7 +684,7 @@ describe("organization model providers settings", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("lets limited-free-1 workspaces add an allowed Anthropic model", async () => {
+  it("lets limited-free-1 workspaces add DeepSeek V4 Flash", async () => {
     mockAdminOrg();
     mockBillingCapabilities({
       supportByok: false,
@@ -368,17 +702,17 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     click(buttonByText("Add model"));
-    await selectDialogModel("Claude Sonnet 5");
+    await selectDialogModel("DeepSeek V4 Flash");
 
     const dialog = screen.getByRole("dialog", { name: "Add model" });
     expect(within(dialog).queryByText("Upgrade to Pro")).toBeNull();
     click(buttonByText("Add model", dialog));
 
-    const claudeModelRow = await screen.findByTestId(
-      "org-model-policy-row-claude-sonnet-5",
+    const deepseekRow = await screen.findByTestId(
+      "org-model-policy-row-deepseek-v4-flash",
     );
     expect(
-      within(claudeModelRow).getByText("Claude Sonnet 5"),
+      within(deepseekRow).getByText("DeepSeek V4 Flash"),
     ).toBeInTheDocument();
   });
 
@@ -519,21 +853,21 @@ describe("organization model providers settings", () => {
     ).toHaveTextContent("GPT 5.5");
   });
 
-  it("opens compare plans when selecting a limited-free-1 default Pro model", async () => {
+  it("opens compare plans for a limited-free-1 default Pro model", async () => {
     mockAdminOrg();
-    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000221",
-        "claude-opus-4-8",
-        "Claude Opus 4.8",
+        "claude-fable-5",
+        "Claude Fable 5",
         false,
       ),
       builtInPolicy(
         "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
         true,
       ),
     ]);
@@ -541,23 +875,23 @@ describe("organization model providers settings", () => {
 
     const defaultRow = screen.getByTestId("default-model-row");
     click(within(defaultRow).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: /Claude Opus 4\.8 Pro/u }));
+    click(await screen.findByRole("option", { name: /Claude Fable 5.*Pro/u }));
 
     await expect(
       screen.findByRole("heading", { name: "Compare plans" }),
     ).resolves.toBeInTheDocument();
   });
 
-  it("starts pro checkout when adding a limited-free-1 Pro model", async () => {
+  it("starts Pro checkout when adding a limited-free-1 Pro model", async () => {
     mockAdminOrg();
-    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
     mockProCheckout();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
         true,
       ),
     ]);
@@ -570,7 +904,6 @@ describe("organization model providers settings", () => {
     const gptOption = await screen.findByRole("option", {
       name: /GPT 5\.5\s+Pro/u,
     });
-    expect(gptOption).toBeInTheDocument();
     click(gptOption);
 
     expect(screen.queryByRole("heading", { name: "Compare plans" })).toBeNull();
@@ -620,8 +953,8 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
         true,
       ),
     ]);
@@ -633,7 +966,7 @@ describe("organization model providers settings", () => {
     click(await screen.findByRole("option", { name: /GPT 5\.5\s+Pro/u }));
     expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
 
-    await selectDialogModel("Claude Sonnet 5");
+    await selectDialogModel("DeepSeek V4 Flash");
     expect(buttonByText("Add model", dialog)).toBeInTheDocument();
     click(screen.getByRole("radio", { name: /API key\s+Pro/u }));
 
@@ -648,18 +981,18 @@ describe("organization model providers settings", () => {
 
     const defaultRow = screen.getByTestId("default-model-row");
     expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-      "DeepSeek V4 Pro",
+      "DeepSeek V4 Flash",
     );
 
     const deepseekRow = await screen.findByTestId(
-      "org-model-policy-row-deepseek-v4-pro",
+      "org-model-policy-row-deepseek-v4-flash",
     );
-    click(within(deepseekRow).getByLabelText("Actions for DeepSeek V4 Pro"));
+    click(within(deepseekRow).getByLabelText("Actions for DeepSeek V4 Flash"));
     click(menuItemByText("Delete model"));
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId("org-model-policy-row-deepseek-v4-pro"),
+        screen.queryByTestId("org-model-policy-row-deepseek-v4-flash"),
       ).not.toBeInTheDocument();
       expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
         "Claude Opus 4.7",
@@ -673,8 +1006,8 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000211",
-        "deepseek-v4-pro",
-        "DeepSeek V4 Pro",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
         true,
       ),
       claudeOpusApiKeyPolicy(),
@@ -694,7 +1027,7 @@ describe("organization model providers settings", () => {
 
     const defaultRow = screen.getByTestId("default-model-row");
     expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-      "DeepSeek V4 Pro",
+      "DeepSeek V4 Flash",
     );
 
     click(within(defaultRow).getByRole("combobox"));

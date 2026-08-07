@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   chatThreadArtifactsContract,
@@ -6,7 +7,7 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
@@ -22,7 +23,7 @@ import {
   openChatIdb,
 } from "../../../signals/external/chat-idb-store.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
-import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -33,10 +34,70 @@ const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const THREAD_TITLE = "GEO pricing research";
+const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
+const OTHER_THREAD_TITLE = "Other pricing research";
 const USER_MESSAGE = "Summarize the launch plan";
 const ASSISTANT_MESSAGE = "Here is the result";
 const IDB_USER_ID = "zero-chat-thread-idb-user";
 const IDB_ORG_ID = "zero-chat-thread-idb-org";
+const CHAT_VIEWPORT_HEIGHT = 300;
+const CHAT_SCROLL_HEIGHT = 1000;
+const PAGE_LOAD_TIMEOUT_MS = 5000;
+
+function isChatScrollContainer(element: HTMLElement): boolean {
+  return Object.hasOwn(element.dataset, "scrollContainer");
+}
+
+function installChatScrollLayout(): void {
+  const scrollTopByContainer = new WeakMap<HTMLElement, number>();
+
+  vi.spyOn(HTMLElement.prototype, "scrollTop", "get").mockImplementation(
+    function getScrollTop(this: HTMLElement): number {
+      if (!isChatScrollContainer(this)) {
+        return 0;
+      }
+      return scrollTopByContainer.get(this) ?? 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollTop", "set").mockImplementation(
+    function setScrollTop(this: HTMLElement, value: number): void {
+      if (!isChatScrollContainer(this)) {
+        return;
+      }
+      const maxScrollTop = CHAT_SCROLL_HEIGHT - CHAT_VIEWPORT_HEIGHT;
+      scrollTopByContainer.set(
+        this,
+        Math.max(0, Math.min(value, maxScrollTop)),
+      );
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+    function getScrollHeight(this: HTMLElement): number {
+      return isChatScrollContainer(this) ? CHAT_SCROLL_HEIGHT : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+    function getClientHeight(this: HTMLElement): number {
+      return isChatScrollContainer(this) ? CHAT_VIEWPORT_HEIGHT : 0;
+    },
+  );
+}
+
+function chatScrollContainer(): HTMLElement {
+  const container = document.querySelector("[data-scroll-container]");
+  if (!(container instanceof HTMLElement)) {
+    throw new Error("Chat scroll container not found");
+  }
+  return container;
+}
+
+async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
+  const link = (await screen.findByText(title)).closest("a");
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`Thread link not found: ${title}`);
+  }
+  return link;
+}
 
 async function primeRuntimeChatDb(): Promise<
   Awaited<ReturnType<typeof openChatIdb>>
@@ -49,11 +110,7 @@ async function primeRuntimeChatDb(): Promise<
   return await context.store.get(chatIdb$);
 }
 
-function setupChatPage({
-  autoOpenEnabled = false,
-}: {
-  readonly autoOpenEnabled?: boolean;
-} = {}): void {
+function setupChatPage(): void {
   detachedSetupPage({
     context,
     path: `/chats/${THREAD_ID}`,
@@ -61,9 +118,6 @@ function setupChatPage({
     org: {
       activeOrg: { id: IDB_ORG_ID, name: "Default Org" },
       memberships: [{ id: IDB_ORG_ID }],
-    },
-    featureSwitches: {
-      [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
     },
   });
 }
@@ -122,6 +176,7 @@ function mockCurrentThreadDetail(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
+      cancellationRecoveryPending: false,
     });
   });
 }
@@ -170,7 +225,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     await clearCachedChatData();
   });
 
-  it("shows cached messages and their sidebar before remote catch-up", async () => {
+  it("shows cached messages without auto-opening their artifact before remote catch-up", async () => {
     const cachedUrl = "https://cached-initial-deck.sites.vm7.io";
     prepareDefaultAgent();
     mockCurrentThreadDetail();
@@ -208,26 +263,233 @@ describe("zero chat thread IndexedDB fallback", () => {
     context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       catchUpRequested.resolve();
       await releaseCatchUp.promise;
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     });
 
     try {
-      setupChatPage({ autoOpenEnabled: true });
+      setupChatPage();
       await catchUpRequested.promise;
 
-      const sidebar = await screen.findByTestId("artifact-sidebar");
-      expect(sidebar).toBeInTheDocument();
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "src",
-        cachedUrl,
-      );
       await expect(
         screen.findByText("Cached initial deck"),
       ).resolves.toBeInTheDocument();
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     } finally {
       if (!releaseCatchUp.settled()) {
         releaseCatchUp.resolve();
       }
+      runtimeDb.close();
+    }
+  });
+
+  it("shows cached messages when a realtime subscription fails", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000093",
+      threadId: THREAD_ID,
+      eventType: "output.message",
+      content: "Cached while realtime is unavailable",
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:01Z",
+    });
+    const realtimeSubscriptionFailed = context.mocks.ably.rejectSubscribe(
+      `chatThreadDetailChanged:${THREAD_ID}`,
+      "channel attach failed",
+    );
+    let remoteEventRequests = 0;
+    context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
+      remoteEventRequests += 1;
+      return respond(200, { events: [] });
+    });
+
+    try {
+      setupChatPage();
+      await realtimeSubscriptionFailed;
+
+      await expect(
+        screen.findByText("Cached while realtime is unavailable"),
+      ).resolves.toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+      expect(remoteEventRequests).toBe(0);
+    } finally {
+      runtimeDb.close();
+    }
+  });
+
+  it("scrolls cached messages to the bottom while remote catch-up is blocked", async () => {
+    const user = userEvent.setup({ delay: null });
+    prepareDefaultAgent();
+    installChatScrollLayout();
+
+    const runtimeDb = await primeRuntimeChatDb();
+    const initialCatchUpCompleted = context.mocks.deferred<void>();
+    const catchUpRequested = context.mocks.deferred<void>();
+    const releaseCatchUp = context.mocks.deferred<void>();
+    let blockCurrentCatchUp = false;
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      threadTitle: THREAD_TITLE,
+    });
+    lifecycle.setThreadList([
+      {
+        id: THREAD_ID,
+        title: THREAD_TITLE,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:01:00Z",
+      },
+      {
+        id: OTHER_THREAD_ID,
+        title: OTHER_THREAD_TITLE,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    context.mocks.api(
+      chatThreadEventsContract.list,
+      async ({ params, query, respond }) => {
+        if (params.threadId === THREAD_ID) {
+          if (blockCurrentCatchUp) {
+            catchUpRequested.resolve();
+            await releaseCatchUp.promise;
+            return respond(200, { events: [] });
+          }
+          if (query.sinceSeqId) {
+            initialCatchUpCompleted.resolve();
+            return respond(200, { events: [] });
+          }
+          return respond(200, {
+            events: Array.from({ length: 8 }, (_, index) => {
+              return {
+                id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+                threadId: THREAD_ID,
+                eventType: "output.message" as const,
+                content: `Cached scroll message ${index}`,
+                runId: `cached-scroll-run-${index}`,
+                seqId: index + 1,
+                createdAt: new Date(
+                  Date.UTC(2026, 2, 10, 0, index),
+                ).toISOString(),
+              };
+            }),
+          });
+        }
+        if (query.sinceSeqId) {
+          return respond(200, { events: [] });
+        }
+        return respond(200, {
+          events: [
+            {
+              id: "00000000-0000-4000-8000-000000000009",
+              threadId: OTHER_THREAD_ID,
+              eventType: "output.message" as const,
+              content: "Other cached-scroll thread",
+              seqId: 1,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+          ],
+        });
+      },
+    );
+
+    try {
+      setupChatPage();
+      await initialCatchUpCompleted.promise;
+      await expect(
+        screen.findByText("Cached scroll message 7"),
+      ).resolves.toBeInTheDocument();
+
+      await user.click(await findThreadLink(OTHER_THREAD_TITLE));
+      await expect(
+        screen.findByText("Other cached-scroll thread"),
+      ).resolves.toBeInTheDocument();
+
+      blockCurrentCatchUp = true;
+      await user.click(await findThreadLink(THREAD_TITLE));
+      await catchUpRequested.promise;
+      await expect(
+        screen.findByText("Cached scroll message 7"),
+      ).resolves.toBeInTheDocument();
+
+      await waitFor(() => {
+        expect(releaseCatchUp.settled()).toBeFalsy();
+        expect(chatScrollContainer().scrollTop).toBe(
+          CHAT_SCROLL_HEIGHT - CHAT_VIEWPORT_HEIGHT,
+        );
+      });
+    } finally {
+      if (!releaseCatchUp.settled()) {
+        releaseCatchUp.resolve();
+      }
+      runtimeDb.close();
+    }
+  });
+
+  it("keeps a sidebar opened from cached browser state when remote sync later stops it", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "BROWSER_NOT_FOUND",
+          message: "Managed browser not found",
+        },
+      });
+    });
+
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000094",
+      threadId: THREAD_ID,
+      eventType: "browser.open",
+      content: null,
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:00Z",
+    });
+    context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
+      return respond(200, {
+        events: [
+          {
+            id: "00000000-0000-4000-8000-000000000095",
+            threadId: THREAD_ID,
+            eventType: "browser.close",
+            content: null,
+            seqId: 2,
+            createdAt: "2026-03-10T00:00:01Z",
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000096",
+            threadId: THREAD_ID,
+            eventType: "output.message",
+            content: "Browser stopped remotely",
+            seqId: 3,
+            createdAt: "2026-03-10T00:00:02Z",
+          },
+        ],
+      });
+    });
+
+    try {
+      setupChatPage();
+
+      await expect(
+        screen.findByText("Browser stopped remotely", undefined, {
+          timeout: PAGE_LOAD_TIMEOUT_MS,
+        }),
+      ).resolves.toBeInTheDocument();
+      expect(
+        document.querySelector("[data-browser-session-sidebar]"),
+      ).toBeInstanceOf(HTMLElement);
+    } finally {
       runtimeDb.close();
     }
   });
@@ -241,7 +503,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     const messageListRequested = context.mocks.deferred<void>();
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
       messageListRequested.resolve();
-      if (query.sinceSeqId || query.sinceId) {
+      if (query.sinceSeqId) {
         return respond(200, { events: [] });
       }
       return respond(200, {
@@ -250,7 +512,7 @@ describe("zero chat thread IndexedDB fallback", () => {
             id: "00000000-0000-4000-8000-000000000101",
             threadId: THREAD_ID,
             eventType: "input.prompt" as const,
-            content: USER_MESSAGE,
+            content: null,
             userMessage: {
               version: 1,
               parts: [{ type: "text", text: USER_MESSAGE }],
@@ -296,7 +558,117 @@ describe("zero chat thread IndexedDB fallback", () => {
     }
   });
 
-  it("shows the message skeleton until an uncached remote thread is confirmed empty", async () => {
+  it("treats an event type unknown to the client as an IndexedDB cache miss", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000104",
+      threadId: THREAD_ID,
+      eventType: "input.future-budget",
+      content: null,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Unsupported cached input" }],
+      },
+      runId: "run-unsupported-cached-input",
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:01Z",
+    });
+
+    const messageListRequested = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
+      messageListRequested.resolve();
+      return respond(200, {
+        events: [
+          {
+            id: "00000000-0000-4000-8000-000000000105",
+            threadId: THREAD_ID,
+            eventType: "input.prompt",
+            content: null,
+            userMessage: {
+              version: 1,
+              parts: [{ type: "text", text: USER_MESSAGE }],
+            },
+            seqId: 1,
+            createdAt: "2026-03-10T00:00:01Z",
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000106",
+            threadId: THREAD_ID,
+            eventType: "output.message",
+            content: ASSISTANT_MESSAGE,
+            seqId: 2,
+            createdAt: "2026-03-10T00:00:02Z",
+          },
+        ],
+      });
+    });
+
+    try {
+      setupChatPage();
+      await messageListRequested.promise;
+
+      await expect(
+        screen.findByText(USER_MESSAGE),
+      ).resolves.toBeInTheDocument();
+      await expect(
+        screen.findByText(ASSISTANT_MESSAGE),
+      ).resolves.toBeInTheDocument();
+      expect(
+        screen.queryByText("Unsupported cached input"),
+      ).not.toBeInTheDocument();
+    } finally {
+      runtimeDb.close();
+    }
+  });
+
+  it("hides the message skeleton when IndexedDB loads any cached event", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000103",
+      threadId: THREAD_ID,
+      eventType: "usage.recorded",
+      runId: "run-cached-usage",
+      content: null,
+      usage: {
+        version: 1,
+        totalCredits: 1,
+        settledAt: "2026-03-10T00:00:01Z",
+        breakdown: [],
+      },
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:01Z",
+    });
+
+    const initialMessageList = context.mocks.deferred<void>();
+    const messageListRequested = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
+      messageListRequested.resolve();
+      await initialMessageList.promise;
+      return respond(200, { events: [] });
+    });
+
+    try {
+      setupChatPage();
+      await messageListRequested.promise;
+
+      await waitFor(() => {
+        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+      });
+    } finally {
+      if (!initialMessageList.settled()) {
+        initialMessageList.resolve();
+      }
+      runtimeDb.close();
+    }
+  });
+
+  it("shows the message skeleton until the initial remote event request resolves", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
@@ -307,7 +679,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       messageListRequested.resolve();
       await initialMessageList.promise;
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     });
 
     try {
@@ -315,13 +687,8 @@ describe("zero chat thread IndexedDB fallback", () => {
       await messageListRequested.promise;
 
       await waitFor(() => {
-        expect(document.querySelector("[data-chat-skeleton]")).toBeInstanceOf(
-          HTMLElement,
-        );
+        expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
       });
-      expect(
-        screen.queryByText("Send a message to start the conversation"),
-      ).not.toBeInTheDocument();
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
 
       initialMessageList.resolve();

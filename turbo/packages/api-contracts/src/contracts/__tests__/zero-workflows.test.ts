@@ -4,12 +4,18 @@ import {
   googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
+  googleFormsResponseSubmittedEventConfigSchema,
+  googleFormsResponseSubmittedEventCreateConfigSchema,
   googleMeetTranscriptGeneratedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
+  chatThreadWorkflowAutomationSchema,
+  stripeInvoicePaidEventConfigSchema,
+  zeroWorkflowAutomationSummarySchema,
   zeroWorkflowConnectorReadinessResponseSchema,
   zeroWorkflowUpdateRequestSchema,
   zeroWorkflowAutomationCreateRequestSchema,
+  zeroWorkflowAutomationUpdateRequestSchema,
 } from "../zero-workflows";
 
 describe("Gmail new message workflow automation contract", () => {
@@ -172,6 +178,56 @@ describe("Google Calendar event-cancelled workflow automation contract", () => {
   });
 });
 
+describe("Google Forms response-submitted workflow automation contract", () => {
+  it("keeps create and persisted configs separate", () => {
+    expect(
+      googleFormsResponseSubmittedEventCreateConfigSchema.parse({
+        provider: "google-forms",
+        event: "response_submitted",
+        formUrl: "https://docs.google.com/forms/d/1FAIpQLScContractsTest/edit",
+      }),
+    ).toStrictEqual({
+      provider: "google-forms",
+      event: "response_submitted",
+      formUrl: "https://docs.google.com/forms/d/1FAIpQLScContractsTest/edit",
+    });
+
+    const persisted = {
+      provider: "google-forms",
+      event: "response_submitted",
+      connectorId: "55555555-5555-4555-8555-555555555557",
+      form: {
+        id: "1FAIpQLScContractsTest",
+        title: "Customer survey",
+        url: "https://docs.google.com/forms/d/1FAIpQLScContractsTest/edit",
+      },
+    };
+    expect(
+      googleFormsResponseSubmittedEventConfigSchema.parse(persisted),
+    ).toStrictEqual(persisted);
+    expect(
+      googleFormsResponseSubmittedEventConfigSchema.safeParse({
+        ...persisted,
+        formUrl: persisted.form.url,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a response-submitted create request", () => {
+    expect(
+      zeroWorkflowAutomationCreateRequestSchema.safeParse({
+        kind: "event",
+        eventType: "google-forms-response-submitted",
+        eventConfig: {
+          provider: "google-forms",
+          event: "response_submitted",
+          formUrl: "1FAIpQLScContractsTest",
+        },
+      }).success,
+    ).toBe(true);
+  });
+});
+
 describe("Google Meet transcript-generated workflow automation contract", () => {
   it("defaults to organizer-user scope", () => {
     const parsed = googleMeetTranscriptGeneratedEventConfigSchema.parse({
@@ -204,6 +260,128 @@ describe("Google Meet transcript-generated workflow automation contract", () => 
   });
 });
 
+describe("Stripe invoice-paid workflow automation contract", () => {
+  const billingReasons = [
+    "automatic_pending_invoice_item_invoice",
+    "manual",
+    "quote_accept",
+    "subscription",
+    "subscription_create",
+    "subscription_cycle",
+    "subscription_threshold",
+    "subscription_update",
+    "upcoming",
+  ] as const;
+
+  it.each([undefined, [], billingReasons])(
+    "accepts supported billing reason filters %#",
+    (filter) => {
+      expect(
+        zeroWorkflowAutomationCreateRequestSchema.safeParse({
+          kind: "event",
+          eventType: "stripe-invoice-paid",
+          eventConfig: {
+            provider: "stripe",
+            event: "invoice_paid",
+            ...(filter === undefined ? {} : { billingReasons: filter }),
+          },
+        }).success,
+      ).toBe(true);
+    },
+  );
+
+  it("rejects unknown billing reasons and client-owned binding fields", () => {
+    expect(
+      zeroWorkflowAutomationCreateRequestSchema.safeParse({
+        kind: "event",
+        eventType: "stripe-invoice-paid",
+        eventConfig: {
+          provider: "stripe",
+          event: "invoice_paid",
+          billingReasons: ["future_reason"],
+        },
+      }).success,
+    ).toBe(false);
+
+    for (const binding of [
+      { connectorId: "11111111-1111-4111-8111-111111111111" },
+      { stripeAccountId: "acct_client" },
+      { mode: "live" },
+    ]) {
+      expect(
+        zeroWorkflowAutomationCreateRequestSchema.safeParse({
+          kind: "event",
+          eventType: "stripe-invoice-paid",
+          eventConfig: {
+            provider: "stripe",
+            event: "invoice_paid",
+            ...binding,
+          },
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("parses the server-owned binding in persisted summaries", () => {
+    const eventConfig = stripeInvoicePaidEventConfigSchema.parse({
+      provider: "stripe",
+      event: "invoice_paid",
+      billingReasons: ["subscription_cycle"],
+      connectorId: "11111111-1111-4111-8111-111111111111",
+      stripeAccountId: "acct_live",
+      mode: "live",
+    });
+    const summary = {
+      id: "22222222-2222-4222-8222-222222222222",
+      ownerUserId: "user_stripe",
+      enabled: true,
+      chatThreadId: null,
+      nextRunAt: null,
+      lastRunAt: null,
+      kind: "event",
+      eventType: "stripe-invoice-paid",
+      eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+      health: {
+        lastMatchingEventReceivedAt: null,
+        lastDeliveryStatus: null,
+        lastDeliveryStatusAt: null,
+        warning: null,
+      },
+    } as const;
+
+    expect(zeroWorkflowAutomationSummarySchema.parse(summary)).toStrictEqual(
+      summary,
+    );
+    expect(
+      chatThreadWorkflowAutomationSchema.parse({
+        ...summary,
+        chatThreadId: "33333333-3333-4333-8333-333333333333",
+        workflow: {
+          id: "44444444-4444-4444-8444-444444444444",
+          agentId: "55555555-5555-4555-8555-555555555555",
+          name: "stripe-invoice-paid",
+          displayName: "Stripe invoice paid",
+          description: null,
+        },
+      }),
+    ).toMatchObject({ eventConfig });
+  });
+
+  it("keeps Stripe event configuration out of the update contract", () => {
+    expect(
+      zeroWorkflowAutomationUpdateRequestSchema.safeParse({
+        eventConfig: {
+          provider: "stripe",
+          event: "invoice_paid",
+          billingReasons: ["manual"],
+        },
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe("workflow update contract", () => {
   it("accepts slug metadata updates", () => {
     const parsed = zeroWorkflowUpdateRequestSchema.safeParse({
@@ -227,21 +405,21 @@ describe("workflow update contract", () => {
 describe("workflow connector readiness contract", () => {
   it("accepts all readiness states without limiting the connector count", () => {
     const entries = [
-      { connectorRef: "github", status: "connected" },
-      { connectorRef: "gmail", status: "not-connected" },
-      { connectorRef: "notion", status: "scope-mismatch" },
-      { connectorRef: "slack", status: "reconnect-required" },
-      { connectorRef: "linear", status: "not-enabled-for-agent" },
-      { connectorRef: "google-drive", status: "unavailable" },
+      { connectorSlug: "github", status: "connected" },
+      { connectorSlug: "gmail", status: "not-connected" },
+      { connectorSlug: "notion", status: "scope-mismatch" },
+      { connectorSlug: "slack", status: "reconnect-required" },
+      { connectorSlug: "linear", status: "not-enabled-for-agent" },
+      { connectorSlug: "google-drive", status: "unavailable" },
     ] as const;
 
     const parsed = zeroWorkflowConnectorReadinessResponseSchema.parse({
       connectors: entries.map((entry, index) => {
         return {
-          connectorRef: entry.connectorRef,
+          connectorSlug: entry.connectorSlug,
           label: `Connector ${index}`,
           icon: {
-            url: `https://icons.example.test/${entry.connectorRef}.svg`,
+            url: `https://icons.example.test/${entry.connectorSlug}.svg`,
             invertInDarkMode: false,
           },
           reason: "The workflow uses this service.",
@@ -253,12 +431,12 @@ describe("workflow connector readiness contract", () => {
     expect(parsed.connectors).toHaveLength(entries.length);
   });
 
-  it("rejects unknown readiness states and extra fields", () => {
+  it("rejects unknown readiness states", () => {
     expect(
       zeroWorkflowConnectorReadinessResponseSchema.safeParse({
         connectors: [
           {
-            connectorRef: "github",
+            connectorSlug: "github",
             label: "GitHub",
             reason: "The workflow reads issues.",
             status: "unknown",

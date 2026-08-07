@@ -6,6 +6,7 @@ from mitmproxy import connection
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import platform_api
 import request_classification
 import upstream_admission
 import upstream_destination_binding
@@ -63,6 +64,33 @@ async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
     assert binding.host == "api.vm0.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_streamed_api_allow_injects_runner_preview_bypass_before_body(
+    tmp_path, real_flow, mitm_ctx, headers, monkeypatch
+):
+    reg_path = _write_api_registry(tmp_path, capture_network_bodies=True)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="preview-api.vm6.ai",
+        method="POST",
+        path="/api/zero/chat-threads/thread-id/events",
+        request_headers=headers(
+            ("Host", "preview-api.vm6.ai"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(reg_path),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        mitm_addon.requestheaders(flow)
+
+    assert callable(flow.request.stream)
+    assert flow.request.headers["x-vercel-protection-bypass"] == "preview-secret"
 
 
 async def test_capture_enabled_api_allow_blocks_connected_unbound_edge_upstream(

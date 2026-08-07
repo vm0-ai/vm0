@@ -4,23 +4,27 @@ import {
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishChatThreadWorkflowQueueChangedSafely,
-} from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
+import { AUTONOMY_BUDGET_EXHAUSTED_MESSAGE } from "../../lib/error";
 import {
-  decryptWorkflowQueueEventParams,
-  failWorkflowQueueEventAfterRunFailure,
+  childAutonomyBudget,
+  loadRunAutonomyBudget,
+} from "./autonomy-budget.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  rolloutCompatibleWorkflowAutomationColumns,
+} from "./autonomy-budget-schema.service";
+import {
   loadNextWorkflowQueueEvent,
   rejectWorkflowQueueEvent,
   type PendingWorkflowQueueEvent,
-} from "./chat-message-queue.service";
+} from "./workflow-chat-event-queue.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
+import { buildWorkflowAutomationQueuedLaunchMaterial } from "./workflow-automation-queued-launch-context.service";
 import {
   launchQueuedWorkflowAutomation$,
   type RunWorkflowAutomationResult,
@@ -28,25 +32,26 @@ import {
 
 const log = logger("ZeroWorkflowQueueDrain");
 
-// Consecutive stale events (deleted/disabled automations) skipped per drain call
-// before giving up; a successful run creation always stops the loop.
+// Consecutive stale events or claims invalidated by concurrent queue changes
+// are retried per drain call; a successful run creation always stops the loop.
 const MAX_DRAIN_ATTEMPTS = 5;
 
 interface DequeueTarget {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly agentId: string;
-  readonly workflowName: string;
 }
 
 async function loadDequeueTarget(
   db: Db,
   event: PendingWorkflowQueueEvent,
 ): Promise<DequeueTarget | null> {
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(db);
   const [row] = await db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(
+        autonomyBudgetAvailable,
+      ),
       agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
     })
     .from(zeroWorkflowAutomations)
     .innerJoin(
@@ -58,12 +63,55 @@ async function loadDequeueTarget(
   return row ?? null;
 }
 
+type WorkflowRunAutonomyBudget =
+  | { readonly kind: "ok"; readonly autonomyBudget: number }
+  | { readonly kind: "invalid"; readonly message: string };
+
+async function resolveWorkflowRunAutonomyBudget(
+  db: Db,
+  event: PendingWorkflowQueueEvent,
+  automation: typeof zeroWorkflowAutomations.$inferSelect,
+): Promise<WorkflowRunAutonomyBudget> {
+  const sourceRunId =
+    event.workflowAutomationEventType === "chat-run-finished"
+      ? event.workflowAutomationEventPayload?.["runId"]
+      : event.workflowAutomationEventType === "manual"
+        ? event.workflowAutomationEventPayload?.["sourceRunId"]
+        : undefined;
+  if (
+    event.workflowAutomationEventType !== "chat-run-finished" &&
+    sourceRunId === undefined
+  ) {
+    return { kind: "ok", autonomyBudget: automation.autonomyBudget };
+  }
+  if (typeof sourceRunId !== "string") {
+    return {
+      kind: "invalid",
+      message: `${event.workflowAutomationEventType === "manual" ? "Manual automation" : "Chat run finished"} event is missing its source run`,
+    };
+  }
+  const sourceAutonomyBudget = await loadRunAutonomyBudget(db, sourceRunId);
+  if (sourceAutonomyBudget === null) {
+    return {
+      kind: "invalid",
+      message: `${event.workflowAutomationEventType === "manual" ? "Manual automation" : "Chat run finished"} source run no longer exists`,
+    };
+  }
+  const derived = childAutonomyBudget(sourceAutonomyBudget);
+  if (derived.kind === "exhausted") {
+    return { kind: "invalid", message: AUTONOMY_BUDGET_EXHAUSTED_MESSAGE };
+  }
+  return {
+    kind: "ok",
+    autonomyBudget: Math.min(automation.autonomyBudget, derived.autonomyBudget),
+  };
+}
+
 /**
  * Advance the thread's workflow queue: as long as user queued messages always
  * win (enforced inside `loadNextWorkflowQueueEvent`), prepare the oldest event
  * and turn it into a run. The final run persistence transaction consumes the
- * event. Stale events are rejected; a run-creation failure atomically rejects
- * its trigger and pauses later automation intake.
+ * event. Stale events and failed run creations reject only their own trigger.
  */
 export interface WorkflowQueueDrainResult {
   readonly eventId: string;
@@ -77,6 +125,7 @@ interface WorkflowEventLaunch {
 }
 
 interface DrainWorkflowQueueArgs {
+  readonly apiStartTime?: number;
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
@@ -89,15 +138,10 @@ type WorkflowQueueDrainStep =
   | null
   | typeof CONTINUE_DRAIN;
 
-async function publishQueueChanged(
+async function publishQueueEventChanged(
   event: PendingWorkflowQueueEvent,
   signal: AbortSignal,
 ): Promise<void> {
-  await publishChatThreadWorkflowQueueChangedSafely(
-    event.userId,
-    event.chatThreadId,
-  );
-  signal.throwIfAborted();
   await publishChatThreadMessageCreatedSafely(event.userId, event.chatThreadId);
   signal.throwIfAborted();
 }
@@ -118,7 +162,7 @@ async function consumeInvalidWorkflowEvent(
   if (!consumed) {
     return null;
   }
-  await publishQueueChanged(event, signal);
+  await publishQueueEventChanged(event, signal);
   if (launchHint?.eventId !== event.id) {
     return CONTINUE_DRAIN;
   }
@@ -135,9 +179,13 @@ async function handleWorkflowLaunchResult(
   launchHint: WorkflowEventLaunch | undefined,
   signal: AbortSignal,
 ): Promise<WorkflowQueueDrainStep> {
-  if (result.kind === "ok" || result.kind === "enqueued") {
-    await publishQueueChanged(event, signal);
+  if (result.kind === "ok") {
+    await publishQueueEventChanged(event, signal);
     return { eventId: event.id, result };
+  }
+  if (result.kind === "enqueued") {
+    await publishQueueEventChanged(event, signal);
+    return CONTINUE_DRAIN;
   }
   if (result.kind === "conflict") {
     log.debug("Consuming unfireable workflow queue event", {
@@ -154,25 +202,25 @@ async function handleWorkflowLaunchResult(
     if (!consumed) {
       return null;
     }
-    await publishQueueChanged(event, signal);
+    await publishQueueEventChanged(event, signal);
     return launchHint ? { eventId: event.id, result } : CONTINUE_DRAIN;
   }
 
-  const failed = await failWorkflowQueueEventAfterRunFailure(db, {
+  const failed = await rejectWorkflowQueueEvent(db, {
     eventId: event.id,
     chatThreadId: event.chatThreadId,
-    pauseReason: result.response.body.error.message,
+    reason: result.response.body.error.message,
   });
   signal.throwIfAborted();
   if (!failed) {
     return null;
   }
-  log.warn("Workflow queue paused after run creation failure", {
+  log.warn("Workflow queue event rejected after run creation failure", {
     eventId: event.id,
     chatThreadId: event.chatThreadId,
     code: result.response.body.error.code,
   });
-  await publishQueueChanged(event, signal);
+  await publishQueueEventChanged(event, signal);
   return {
     eventId: event.id,
     result,
@@ -218,16 +266,17 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      const params = await decryptWorkflowQueueEventParams(
-        event.encryptedParams,
-        {
-          userId: target.automation.ownerUserId,
-          orgId: target.automation.orgId,
-        },
-      );
+      const launchMaterial = buildWorkflowAutomationQueuedLaunchMaterial({
+        workflowName: event.workflowName,
+        eventType: event.workflowAutomationEventType,
+        eventPayload: event.workflowAutomationEventPayload,
+        automation: target.automation,
+        agentId: target.agentId,
+        chatThreadId: event.chatThreadId,
+      });
       signal.throwIfAborted();
-      if (!params) {
-        log.error("Consuming undecryptable workflow queue event", {
+      if (!launchMaterial) {
+        log.error("Consuming workflow queue event with incomplete context", {
           eventId: event.id,
           automationId: event.automationId,
         });
@@ -235,6 +284,26 @@ export const drainWorkflowQueueForThread$ = command(
           db,
           event,
           "Workflow queue event payload is unreadable",
+          args.workflowEventLaunch,
+          signal,
+        );
+        if (step !== CONTINUE_DRAIN) {
+          return step;
+        }
+        continue;
+      }
+
+      const autonomyBudget = await resolveWorkflowRunAutonomyBudget(
+        db,
+        event,
+        target.automation,
+      );
+      signal.throwIfAborted();
+      if (autonomyBudget.kind === "invalid") {
+        const step = await consumeInvalidWorkflowEvent(
+          db,
+          event,
+          autonomyBudget.message,
           args.workflowEventLaunch,
           signal,
         );
@@ -254,21 +323,21 @@ export const drainWorkflowQueueForThread$ = command(
           due: {
             automation: target.automation,
             agentId: target.agentId,
-            workflowName: target.workflowName,
             chatThreadId: event.chatThreadId,
             allowClaimedOnceScheduleAutomation:
-              params.allowClaimedOnceScheduleAutomation,
+              launchMaterial.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
-          apiStartTime: launchHint?.apiStartTime ?? now(),
-          prompt: params.prompt,
+          apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime ?? now(),
+          prompt: launchMaterial.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: event.triggerSource,
-          appendSystemPrompt: params.appendSystemPrompt,
-          callbacks: params.callbacks,
-          activePreviousRunPolicy: params.activePreviousRunPolicy,
-          recordLastRunId: params.recordLastRunId,
-          recordLastRunAt: params.recordLastRunAt,
+          appendSystemPrompt: launchMaterial.appendSystemPrompt,
+          callbacks: launchMaterial.callbacks,
+          autonomyBudget: autonomyBudget.autonomyBudget,
+          activePreviousRunPolicy: launchMaterial.activePreviousRunPolicy,
+          recordLastRunId: launchMaterial.recordLastRunId,
+          recordLastRunAt: launchMaterial.recordLastRunAt,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
           timing: launchHint?.timing,
         },

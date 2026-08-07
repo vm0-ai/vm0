@@ -14,24 +14,35 @@ describe("zero agent draft contract", () => {
 
     expect(
       zeroAgentDraftResponseSchema.safeParse({
-        draftContent: "Resume agent work",
         draftStructuredPrompt: userMessage,
         draftAttachments: null,
       }).success,
     ).toBe(false);
   });
 
+  it("accepts canonical agent draft responses", () => {
+    const response = {
+      draftUserMessage: {
+        version: 1 as const,
+        parts: [{ type: "text" as const, text: "Resume agent work" }],
+      },
+      draftAttachments: null,
+    };
+
+    expect(zeroAgentDraftResponseSchema.parse(response)).toStrictEqual(
+      response,
+    );
+  });
+
   it("requires userMessage for non-empty agent drafts", () => {
     expect(
       zeroAgentDraftRequestSchema.safeParse({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       }),
     ).toMatchObject({ success: true });
     expect(
       zeroAgentDraftRequestSchema.safeParse({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: [
           {

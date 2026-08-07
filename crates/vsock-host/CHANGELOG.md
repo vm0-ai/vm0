@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.17.75](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.74...vsock-host-v0.17.75) (2026-08-07)
+
+
+### Documentation
+
+* **vsock-host:** document file-write cancellation ([#25616](https://github.com/vm0-ai/vm0/issues/25616)) ([48cb961](https://github.com/vm0-ai/vm0/commit/48cb9610226999ce2389f3e3101b9111a1a49f42))
+
+
+### Performance Improvements
+
+* **rust:** eliminate exec-control payload copies ([#25608](https://github.com/vm0-ai/vm0/issues/25608)) ([3f71e3b](https://github.com/vm0-ai/vm0/commit/3f71e3b491c2fb66e3c964494565aa9a9bcd4166))
+
+## [0.17.74](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.73...vsock-host-v0.17.74) (2026-08-05)
+
+
+### Documentation
+
+* **rust:** document exec-control response abandonment ([#25200](https://github.com/vm0-ai/vm0/issues/25200)) ([d59c859](https://github.com/vm0-ai/vm0/commit/d59c8594277cdbdc6f4217364a0daad0b29534b7))
+
+## [0.17.73](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.72...vsock-host-v0.17.73) (2026-08-04)
+
+
+### Documentation
+
+* **vsock-host:** correct write_files guidance ([#25023](https://github.com/vm0-ai/vm0/issues/25023)) ([0d88534](https://github.com/vm0-ai/vm0/commit/0d885349db652c296bc2f12162987aca61cdff1f))
+
+## [0.17.72](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.71...vsock-host-v0.17.72) (2026-08-04)
+
+
+### Bug Fixes
+
+* **runner:** guard run controls across sandbox reuse ([#24849](https://github.com/vm0-ai/vm0/issues/24849)) ([bb1d90c](https://github.com/vm0-ai/vm0/commit/bb1d90c15df373b43a8653dcd85f9a47e3fb6042))
+
+## [0.17.71](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.70...vsock-host-v0.17.71) (2026-08-03)
+
+## [0.17.70](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.69...vsock-host-v0.17.70) (2026-08-03)
+
+
+### Documentation
+
+* **rust:** clarify read_file non-regular path semantics ([#24600](https://github.com/vm0-ai/vm0/issues/24600)) ([47d9046](https://github.com/vm0-ai/vm0/commit/47d90465e1ed8403d5855e514182b855a4204517))
+
+## [0.17.69](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.68...vsock-host-v0.17.69) (2026-08-02)
+
+
+### Documentation
+
+* **rust:** document quiesce state contract ([#24580](https://github.com/vm0-ai/vm0/issues/24580)) ([6729bc8](https://github.com/vm0-ai/vm0/commit/6729bc83029542cfa12dc6043b219893de09fd67))
+
 ## [0.17.68](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.67...vsock-host-v0.17.68) (2026-07-28)
 
 

@@ -279,16 +279,16 @@ describe("ORG-01: org logo lifecycle through the Clerk boundary", () => {
 });
 
 describe("ORG-01: org update and delete error matrix", () => {
-  it("maps no-org, slug-force, reserved, conflict, admin-leave, and delete failure arms [ORG-UPDATE-B]", async () => {
+  it("maps no-org, legacy slug body, rename, admin-leave, and delete failure arms [ORG-UPDATE-B]", async () => {
     const noOrg = api.user({ orgId: null });
     const noOrgUpdate = await api.requestUpdateOrg(
       noOrg,
-      { force: false },
+      { name: "No Org Rename" },
       [400],
     );
     expectApiError(noOrgUpdate.body);
     expect(noOrgUpdate.body.error.message).toBe(
-      "No org configured. Set your org with: zero org set <slug>",
+      "No organization is selected for this request",
     );
 
     const admin = api.user();
@@ -297,60 +297,41 @@ describe("ORG-01: org update and delete error matrix", () => {
     await onboardAdmin(admin, { slug: baseSlug, name: "BDD R5 Org" });
     api.mockClerkOrg(admin, { slug: baseSlug, name: "BDD R5 Org" });
 
+    // An old CLI still sending the removed slug rename body must fail loudly
+    // instead of silently succeeding as an empty update.
     context.mocks.clerk.organizations.updateOrganization.mockClear();
-    const unforced = await api.requestUpdateOrg(
+    const legacySlugBody = await api.requestRawJson(
       admin,
-      { slug: slug("bdd-r5-next"), force: false },
+      "/api/zero/org",
+      "PUT",
+      { slug: slug("bdd-r5-next"), force: true },
       [400],
     );
-    expectApiError(unforced.body);
-    expect(unforced.body.error.message).toBe(
-      "Changing org slug may break existing references. Use --force to confirm.",
-    );
-    expect(
-      context.mocks.clerk.organizations.updateOrganization,
-    ).not.toHaveBeenCalled();
-
-    const reserved = await api.requestUpdateOrg(
-      admin,
-      { slug: "vm0-team", force: true },
-      [400],
-    );
-    expectApiError(reserved.body);
-    expect(reserved.body.error.message).toBe("Org slug is reserved");
-    expect(
-      context.mocks.clerk.organizations.updateOrganization,
-    ).not.toHaveBeenCalled();
-
-    // A second org caches the taken slug through its own org read; renaming
-    // the first org onto it must conflict.
-    const otherAdmin = api.user();
-    const takenSlug = slug("bdd-r5-taken");
-    api.mockClerkOrg(otherAdmin, { slug: takenSlug, name: "BDD Taken Org" });
-    const otherOrg = await api.readOrg(otherAdmin);
-    expect(otherOrg.slug).toBe(takenSlug);
-    api.mockClerkOrg(admin, { slug: baseSlug, name: "BDD R5 Org" });
-    const conflicted = await api.requestUpdateOrg(
-      admin,
-      { slug: takenSlug, force: true },
-      [409],
-    );
-    expectApiError(conflicted.body);
-    expect(conflicted.body.error.message).toBe(
-      `Org "${takenSlug}" already exists`,
-    );
-
-    // No-op update returns the current org without touching Clerk.
-    context.mocks.clerk.organizations.updateOrganization.mockClear();
-    const noop = await api.requestUpdateOrg(admin, { force: false }, [200]);
-    expect(noop.body).toMatchObject({
-      id: admin.orgId,
-      slug: baseSlug,
-      name: "BDD R5 Org",
+    expect(legacySlugBody.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
     });
     expect(
       context.mocks.clerk.organizations.updateOrganization,
     ).not.toHaveBeenCalled();
+    const unchanged = await api.readOrg(admin);
+    expect(unchanged).toMatchObject({ name: "BDD R5 Org" });
+    expect(unchanged).not.toHaveProperty("slug");
+
+    // A name update reaches Clerk and returns the refreshed org.
+    api.mockClerkOrg(admin, { slug: baseSlug, name: "BDD R5 Org Renamed" });
+    const renamed = await api.requestUpdateOrg(
+      admin,
+      { name: "BDD R5 Org Renamed" },
+      [200],
+    );
+    expect(renamed.body).toMatchObject({
+      id: admin.orgId,
+      name: "BDD R5 Org Renamed",
+    });
+    expect(renamed.body).not.toHaveProperty("slug");
+    expect(
+      context.mocks.clerk.organizations.updateOrganization,
+    ).toHaveBeenCalledWith(admin.orgId, { name: "BDD R5 Org Renamed" });
 
     const adminLeave = await api.requestLeaveOrg(admin, [403]);
     expectApiError(adminLeave.body);
@@ -358,31 +339,37 @@ describe("ORG-01: org update and delete error matrix", () => {
       "Admins cannot leave the organization",
     );
 
-    // Delete failure arms: member caller, slug mismatch, invalid body, and
-    // an org whose identity is gone on the Clerk side.
+    // Delete failure arms: member caller, CLI PAT caller, a confirmation that
+    // is not the literal, and an org whose identity is gone on the Clerk side.
     const memberCaller = api.user({
       orgId: admin.orgId,
       orgRole: "org:member",
     });
-    const memberDelete = await api.requestDeleteOrg(
-      memberCaller,
-      baseSlug,
-      [403],
-    );
+    const memberDelete = await api.requestDeleteOrg(memberCaller, [403]);
     expectApiError(memberDelete.body);
     expect(memberDelete.body.error.message).toBe(
       "Only admins can delete the organization",
     );
 
-    const wrongSlug = await api.requestDeleteOrg(
+    // Deleting a workspace is session-only. A CLI PAT was the one credential
+    // that still reached this route, so an admin's PAT must now be refused
+    // before the handler runs.
+    const adminCliToken = await api.createCliToken(admin);
+    api.mockClerkOrg(admin, { slug: baseSlug, name: "BDD R5 Org" });
+    const patDelete = await api.requestDeleteOrgWithBearer(
+      adminCliToken.token,
+      [403],
+    );
+    expect(patDelete.body).toMatchObject({ error: { code: "FORBIDDEN" } });
+
+    const wrongConfirm = await api.requestRawJson(
       admin,
-      slug("bdd-r5-wrong"),
+      "/api/zero/org/delete",
+      "POST",
+      { confirm: "delete" },
       [400],
     );
-    expectApiError(wrongSlug.body);
-    expect(wrongSlug.body.error.message).toBe(
-      "Organization name does not match",
-    );
+    expect(wrongConfirm.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
 
     const rawDelete = await api.requestRawJson(
       admin,
@@ -393,17 +380,13 @@ describe("ORG-01: org update and delete error matrix", () => {
     );
     expect(rawDelete.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
     const stillThere = await api.readOrg(admin);
-    expect(stillThere.slug).toBe(baseSlug);
+    expect(stillThere.name).toBe("BDD R5 Org Renamed");
 
     const orphanAdmin = api.user();
     context.mocks.clerk.organizations.getOrganization.mockRejectedValue({
       statusCode: 404,
     });
-    const missingIdentity = await api.requestDeleteOrg(
-      orphanAdmin,
-      slug("bdd-r5-missing"),
-      [404],
-    );
+    const missingIdentity = await api.requestDeleteOrg(orphanAdmin, [404]);
     expect(missingIdentity.body).toStrictEqual({
       error: { message: "Resource not found", code: "NOT_FOUND" },
     });
@@ -780,17 +763,16 @@ describe("ORG-02: member cleanup detaches Slack connections", () => {
       [200],
     );
     expect(thirdConnected.body).toMatchObject({ isConnected: true });
-    const deleteSlug = slug("bdd-r5-del");
     api.mockClerkOrg(secondAdmin, {
-      slug: deleteSlug,
+      slug: slug("bdd-r5-del"),
       members: [
         { actor: secondAdmin, role: "org:admin" },
         { actor: thirdMember, role: "org:member" },
       ],
     });
-    await expect(api.deleteOrg(secondAdmin, deleteSlug)).resolves.toStrictEqual(
-      { message: "Organization deleted" },
-    );
+    await expect(api.deleteOrg(secondAdmin)).resolves.toStrictEqual({
+      message: "Organization deleted",
+    });
     const afterDelete = await integrations.requestSlackConnectStatus(
       thirdMember,
       [200],
@@ -891,7 +873,7 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
 });
 
 describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
-  it("serves org and member reads to a claimed run's zero token and rejects org writes [ORG-TOKEN-G]", async () => {
+  it("serves the org read to a claimed run's zero token and rejects member reads and org writes [ORG-TOKEN-G]", async () => {
     const runs = createRunsApi(context);
     const admin = api.user();
     api.acceptAgentStorageWrites();
@@ -927,26 +909,27 @@ describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
     const orgRead = await api.requestReadOrgWithBearer(zeroToken, [200]);
     expect(orgRead.body).toMatchObject({
       id: admin.orgId,
-      slug: orgSlug,
       role: "admin",
     });
 
-    const membersRead = await api.requestListMembersWithBearer(
+    // Member listing is deliberately not an agent surface (#25011): the route
+    // declares no capability, so a sandbox token is rejected like the writes.
+    const membersRejected = await api.requestListMembersWithBearer(
       zeroToken,
-      [200],
+      [403],
     );
-    expect(membersRead.body.role).toBe("admin");
-    expect(
-      membersRead.body.members.some((candidate) => {
-        return candidate.userId === admin.userId;
-      }),
-    ).toBeTruthy();
+    expect(membersRejected.body).toStrictEqual({
+      error: {
+        message: "This endpoint is not available for sandbox tokens",
+        code: "FORBIDDEN",
+      },
+    });
 
     // Representative sandbox-token write rejections (the remaining org
     // routes share the same authRoute statement).
     const updateRejected = await api.requestUpdateOrgWithBearer(
       zeroToken,
-      { name: "Token Rename", force: false },
+      { name: "Token Rename" },
       [403],
     );
     expect(updateRejected.body).toStrictEqual({

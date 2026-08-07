@@ -27,11 +27,14 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
+use super::{RunnerPreferenceContext, parse_runner_preference_context};
+use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
+use crate::pi_standby::{PiStandbyNotifications, PiStandbySignal};
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::RunCancellationRegistry;
-use crate::types::SessionAffinityResource;
+use crate::types::ConnectorRuntimeTarget;
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -170,6 +173,12 @@ impl PollWakeups {
     pub(super) async fn request_deferred_poll_after(&self, delay: Duration) {
         let now = tokio::time::Instant::now();
         self.request_deferred_poll_capped_at(now + delay, now + DEFERRED_POLL_MAX)
+            .await;
+    }
+
+    pub(super) async fn request_deferred_poll_until(&self, deadline: StdInstant) {
+        let now = tokio::time::Instant::now();
+        self.request_deferred_poll_capped_at(deadline.into(), now + DEFERRED_POLL_MAX)
             .await;
     }
 
@@ -428,6 +437,8 @@ pub(super) struct AblySupervisorConfig {
     pub(super) direct_candidates: Arc<DirectCandidateInbox>,
     pub(super) cancel_tokens: RunCancellationRegistry,
     pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
+    pub(super) active_input_notifications: ActiveInputNotifications,
+    pub(super) pi_standby_notifications: PiStandbyNotifications,
     pub(super) provider_cancel: CancellationToken,
 }
 
@@ -439,6 +450,8 @@ struct SupervisorTaskConfig {
     direct_candidates: Arc<DirectCandidateInbox>,
     cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
+    active_input_notifications: ActiveInputNotifications,
+    pi_standby_notifications: PiStandbyNotifications,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
 }
@@ -455,6 +468,8 @@ impl AblySupervisor {
             direct_candidates: config.direct_candidates,
             cancel_tokens: config.cancel_tokens,
             network_policy_refresh: config.network_policy_refresh,
+            active_input_notifications: config.active_input_notifications,
+            pi_standby_notifications: config.pi_standby_notifications,
             provider_cancel: config.provider_cancel,
             shutdown: task_shutdown,
         };
@@ -533,6 +548,14 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
+                        if let Some((run_id, signal)) = parse_pi_standby_notification(&msg) {
+                            config.pi_standby_notifications.notify(run_id, signal);
+                            continue;
+                        }
+                        if let Some(run_id) = parse_active_input_notification(&msg) {
+                            config.active_input_notifications.notify(run_id);
+                            continue;
+                        }
                         handle_ably_message_with_network_policy_refresh(
                             &msg,
                             &config.profiles,
@@ -637,11 +660,20 @@ async fn handle_ably_message_with_network_policy_refresh(
 ) {
     let notification_received_at = StdInstant::now();
 
-    if let Some(run_id) = parse_cancel_notification(msg) {
+    if let Some(notification) = parse_cancel_notification(msg) {
+        let run_id = notification.run_id;
         let handle = cancel_tokens.handle(run_id).await;
         if let Some(handle) = handle {
-            info!(run_id = %run_id, "ably: cancel notification, killing job");
-            handle.cancel().await;
+            match notification.mode {
+                CancelNotificationMode::Cooperative => {
+                    info!(run_id = %run_id, "ably: cancel notification, requesting cooperative cancellation");
+                    handle.request_cooperative_user_cancellation().await;
+                }
+                CancelNotificationMode::Hard => {
+                    info!(run_id = %run_id, "ably: cancel notification, requesting hard cancellation");
+                    handle.request_hard_cancellation().await;
+                }
+            }
         }
         return;
     }
@@ -654,13 +686,33 @@ async fn handle_ably_message_with_network_policy_refresh(
             network_policy_refresh
                 .notify_network_policy_refresh_until_cancelled(
                     notification.run_id,
-                    notification.connector_ref,
+                    notification.connector_slug,
                     cancel,
                 )
                 .await;
         } else {
             network_policy_refresh
-                .notify_network_policy_refresh(notification.run_id, notification.connector_ref)
+                .notify_network_policy_refresh(notification.run_id, notification.connector_slug)
+                .await;
+        }
+        return;
+    }
+
+    if let Some(notification) = parse_connector_runtime_sync_notification(msg) {
+        let Some(network_policy_refresh) = network_policy_refresh else {
+            return;
+        };
+        if let Some(cancel) = network_policy_refresh_cancel {
+            network_policy_refresh
+                .notify_connector_runtime_sync_until_cancelled(
+                    notification.run_id,
+                    notification.target,
+                    cancel,
+                )
+                .await;
+        } else {
+            network_policy_refresh
+                .notify_connector_runtime_sync(notification.run_id, notification.target)
                 .await;
         }
         return;
@@ -678,22 +730,16 @@ async fn handle_ably_message_with_network_policy_refresh(
                     profile = %profile,
                     "ably: job notification, queueing direct candidate"
                 );
-                JobNotificationAction::Direct(
-                    DirectJobCandidate::new_with_affinity_metadata(
+                JobNotificationAction::Direct(Box::new(
+                    DirectJobCandidate::new_with_routing_metadata(
                         notif.run_id,
                         profile.to_owned(),
                         notification_received_at,
-                        notif.cli_agent_session_id.map(str::to_owned),
-                        notif.affinity_protected_until.map(str::to_owned),
+                        notif.reuse_key.map(str::to_owned),
+                        notif.runner_preference_context,
                     )
-                    .with_history_generation_run_id(notif.history_generation_run_id)
-                    .with_session_affinity_resource(notif.session_affinity_resource)
-                    .with_history_generation_affinity_protected_until(
-                        notif
-                            .history_generation_affinity_protected_until
-                            .map(str::to_owned),
-                    ),
-                )
+                    .with_history_generation_run_id(notif.history_generation_run_id),
+                ))
             } else {
                 info!(
                     run_id = %notif.run_id,
@@ -716,14 +762,14 @@ async fn handle_ably_message_with_network_policy_refresh(
             poll_wakeups.request_immediate_poll().await;
         }
         JobNotificationAction::Direct(candidate) => {
-            enqueue_direct_candidate(candidate, direct_candidates, poll_wakeups).await;
+            enqueue_direct_candidate(*candidate, direct_candidates, poll_wakeups).await;
         }
         JobNotificationAction::Ignore => {}
     }
 }
 
 enum JobNotificationAction {
-    Direct(DirectJobCandidate),
+    Direct(Box<DirectJobCandidate>),
     Ignore,
     WakeNow,
 }
@@ -731,16 +777,51 @@ enum JobNotificationAction {
 struct JobNotification<'a> {
     run_id: RunId,
     profile: Option<&'a str>,
-    cli_agent_session_id: Option<&'a str>,
-    session_affinity_resource: Option<SessionAffinityResource>,
+    reuse_key: Option<&'a str>,
     history_generation_run_id: Option<RunId>,
-    history_generation_affinity_protected_until: Option<&'a str>,
-    affinity_protected_until: Option<&'a str>,
+    runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
 struct NetworkPolicyRefreshNotification {
     run_id: RunId,
-    connector_ref: String,
+    connector_slug: String,
+}
+
+struct ConnectorRuntimeSyncNotification {
+    run_id: RunId,
+    target: ConnectorRuntimeTarget,
+}
+
+fn parse_active_input_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
+    if msg.name.as_deref() != Some("active-input") {
+        return None;
+    }
+    let raw = msg.data.get("runId").and_then(|value| value.as_str())?;
+    match raw.parse() {
+        Ok(run_id) => Some(run_id),
+        Err(error) => {
+            warn!(value = %raw, error = %error, "ably: invalid active-input runId");
+            None
+        }
+    }
+}
+
+fn parse_pi_standby_notification(
+    msg: &ably_subscriber::Message,
+) -> Option<(RunId, PiStandbySignal)> {
+    let signal = match msg.name.as_deref()? {
+        "pi-handoff" => PiStandbySignal::Handoff,
+        "pi-standby-release" => PiStandbySignal::Release,
+        _ => return None,
+    };
+    let raw = msg.data.get("runId").and_then(|value| value.as_str())?;
+    match raw.parse() {
+        Ok(run_id) => Some((run_id, signal)),
+        Err(error) => {
+            warn!(value = %raw, error = %error, "ably: invalid Pi standby runId");
+            None
+        }
+    }
 }
 
 fn supports_profile(profiles: &[String], profile: &str) -> bool {
@@ -801,18 +882,48 @@ fn log_direct_candidate_pruned(
     );
 }
 
-fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CancelNotificationMode {
+    Cooperative,
+    Hard,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CancelNotification {
+    run_id: RunId,
+    mode: CancelNotificationMode,
+}
+
+fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<CancelNotification> {
     if msg.name.as_deref() != Some("cancel") {
         return None;
     }
     let raw = msg.data.get("runId").and_then(|v| v.as_str())?;
-    match raw.parse() {
-        Ok(id) => Some(id),
+    let run_id = match raw.parse() {
+        Ok(id) => id,
         Err(e) => {
             warn!(value = %raw, error = %e, "ably: invalid cancel runId");
-            None
+            return None;
         }
-    }
+    };
+    let mode = match msg.data.get("mode") {
+        Some(serde_json::Value::String(mode)) if mode == "cooperative" => {
+            CancelNotificationMode::Cooperative
+        }
+        Some(serde_json::Value::String(mode)) if mode == "hard" => CancelNotificationMode::Hard,
+        Some(mode) => {
+            warn!(
+                run_id = %run_id,
+                mode = %mode,
+                "ably: unknown cancel mode, using hard cancellation"
+            );
+            CancelNotificationMode::Hard
+        }
+        // Default to hard cancellation when the API omits the mode so a
+        // malformed or stale notification still stops the run safely.
+        None => CancelNotificationMode::Hard,
+    };
+    Some(CancelNotification { run_id, mode })
 }
 
 fn parse_network_policy_refresh_notification(
@@ -835,20 +946,55 @@ fn parse_network_policy_refresh_notification(
             return None;
         }
     };
-    let Some(connector_ref) = msg
-        .data
-        .get("connectorRef")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty())
-    else {
-        warn!("ably: network-policy-refresh message missing connectorRef");
-        return None;
+    let connector_slug = match msg.data.get("connectorSlug") {
+        Some(serde_json::Value::String(value)) if !value.is_empty() => value,
+        Some(_) => {
+            warn!("ably: network-policy-refresh message has invalid connectorSlug");
+            return None;
+        }
+        None => {
+            warn!("ably: network-policy-refresh message missing connectorSlug");
+            return None;
+        }
     };
 
     Some(NetworkPolicyRefreshNotification {
         run_id,
-        connector_ref: connector_ref.to_string(),
+        connector_slug: connector_slug.to_string(),
     })
+}
+
+fn parse_connector_runtime_sync_notification(
+    msg: &ably_subscriber::Message,
+) -> Option<ConnectorRuntimeSyncNotification> {
+    if msg.name.as_deref() != Some("connector-runtime-sync") {
+        return None;
+    }
+    let run_id = match msg.data.get("runId").and_then(serde_json::Value::as_str) {
+        Some(value) => match value.parse() {
+            Ok(run_id) => run_id,
+            Err(error) => {
+                warn!(value, error = %error, "ably: invalid connector-runtime-sync runId");
+                return None;
+            }
+        },
+        None => {
+            warn!("ably: connector-runtime-sync message missing runId");
+            return None;
+        }
+    };
+    let target = match msg.data.get("target").cloned().map(serde_json::from_value) {
+        Some(Ok(target)) => target,
+        Some(Err(error)) => {
+            warn!(error = %error, "ably: connector-runtime-sync message has invalid target");
+            return None;
+        }
+        None => {
+            warn!("ably: connector-runtime-sync message missing target");
+            return None;
+        }
+    };
+    Some(ConnectorRuntimeSyncNotification { run_id, target })
 }
 
 fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification<'_>> {
@@ -874,35 +1020,9 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("profile")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
-    let cli_agent_session_id = msg
+    let reuse_key = msg
         .data
-        .get("cliAgentSessionId")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty());
-    let affinity_protected_until = msg
-        .data
-        .get("affinityProtectedUntil")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty());
-    let session_affinity_resource = match msg.data.get("sessionAffinityResource") {
-        Some(value) if value.as_str() == Some("reusableSandbox") => {
-            Some(SessionAffinityResource::ReusableSandbox)
-        }
-        Some(value) if value.as_str() == Some("workspaceCache") => {
-            Some(SessionAffinityResource::WorkspaceCache)
-        }
-        Some(value) => {
-            warn!(
-                value = %value,
-                "ably: invalid session affinity resource, ignoring job notification"
-            );
-            return None;
-        }
-        None => None,
-    };
-    let history_generation_affinity_protected_until = msg
-        .data
-        .get("historyGenerationAffinityProtectedUntil")
+        .get("reuseKey")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
     let history_generation_run_id = msg
@@ -910,14 +1030,38 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("historyGenerationRunId")
         .and_then(|v| v.as_str())
         .and_then(|value| value.parse().ok());
+    let parsed_preference = parse_runner_preference_context(
+        msg.data.get("runnerPreferenceDecision").cloned(),
+        msg.data.get("runnerPreference").cloned(),
+        msg.data.get("runnerPreferenceResolution").cloned(),
+    );
+    if let Some(error) = parsed_preference.decision_error {
+        warn!(
+            run_id = %run_id,
+            error = %error,
+            "ably: invalid runner preference decision, falling back to legacy preference"
+        );
+    }
+    if let Some(error) = parsed_preference.legacy_preference_error {
+        warn!(
+            run_id = %run_id,
+            error = %error,
+            "ably: invalid runner preference, using ordinary admission"
+        );
+    }
+    if let Some(error) = parsed_preference.legacy_resolution_error {
+        warn!(
+            run_id = %run_id,
+            error = %error,
+            "ably: invalid runner preference resolution, omitting telemetry context"
+        );
+    }
     Some(JobNotification {
         run_id,
         profile,
-        cli_agent_session_id,
-        session_affinity_resource,
+        reuse_key,
         history_generation_run_id,
-        history_generation_affinity_protected_until,
-        affinity_protected_until,
+        runner_preference_context: parsed_preference.context,
     })
 }
 
@@ -1065,6 +1209,9 @@ impl AblyDisconnectState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::{
+        RunnerPreferenceAdmission, RunnerPreferenceResolution, RunnerPreferenceTier,
+    };
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
         ably_subscriber::Message {
@@ -1112,32 +1259,40 @@ mod tests {
 
     fn malformed_network_policy_refresh_messages(
         unrelated_name: &'static str,
-    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 5] {
+    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 6] {
         [
             (
                 "invalid runId",
                 Some("network-policy-refresh"),
                 serde_json::json!({
                     "runId": "not-a-uuid",
-                    "connectorRef": "github"
+                    "connectorSlug": "github"
                 }),
             ),
             (
                 "missing runId",
                 Some("network-policy-refresh"),
-                serde_json::json!({ "connectorRef": "github" }),
+                serde_json::json!({ "connectorSlug": "github" }),
             ),
             (
-                "missing connectorRef",
+                "missing connectorSlug",
                 Some("network-policy-refresh"),
                 serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000003" }),
             ),
             (
-                "empty connectorRef",
+                "empty connectorSlug",
                 Some("network-policy-refresh"),
                 serde_json::json!({
                     "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorRef": ""
+                    "connectorSlug": ""
+                }),
+            ),
+            (
+                "invalid connectorSlug",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorSlug": 1
                 }),
             ),
             (
@@ -1145,7 +1300,7 @@ mod tests {
                 Some(unrelated_name),
                 serde_json::json!({
                     "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorRef": "github"
+                    "connectorSlug": "github"
                 }),
             ),
         ]
@@ -1422,6 +1577,19 @@ mod tests {
 
         tokio::time::sleep_until(extended_deadline).await;
         assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Deferred));
+    }
+
+    #[tokio::test]
+    async fn deferred_poll_until_preserves_absolute_deadline() {
+        let wakeups = PollWakeups::new(true);
+        let deadline = StdInstant::now() + Duration::from_secs(2);
+
+        wakeups.request_deferred_poll_until(deadline).await;
+
+        assert_eq!(
+            wakeups.snapshot().await.deferred_poll_at,
+            Some(deadline.into())
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -1731,11 +1899,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancel_notification_cancels_token_without_discovery() {
+    async fn cooperative_cancel_notification_uses_cooperative_signal_without_discovery() {
         let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
         let tokens = RunCancellationRegistry::new();
         let registration = tokens.register(run_id).await.unwrap();
         let token = registration.token();
+        let signals = registration.handle().signals();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let msg = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": run_id, "mode": "cooperative" }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        assert!(token.is_cancelled());
+        assert!(signals.cooperative_user().is_cancelled());
+        assert!(!signals.hard().is_cancelled());
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn hard_cancel_notification_uses_hard_signal_without_discovery() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
+        let tokens = RunCancellationRegistry::new();
+        let registration = tokens.register(run_id).await.unwrap();
+        let signals = registration.handle().signals();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let msg = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": run_id, "mode": "hard" }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        assert!(signals.any().is_cancelled());
+        assert!(signals.hard().is_cancelled());
+        assert!(!signals.cooperative_user().is_cancelled());
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn legacy_cancel_notification_defaults_to_hard_signal() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
+        let tokens = RunCancellationRegistry::new();
+        let registration = tokens.register(run_id).await.unwrap();
+        let signals = registration.handle().signals();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
         let profiles = default_profiles();
@@ -1743,7 +1956,31 @@ mod tests {
 
         handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
 
-        assert!(token.is_cancelled());
+        assert!(signals.any().is_cancelled());
+        assert!(signals.hard().is_cancelled());
+        assert!(!signals.cooperative_user().is_cancelled());
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn unknown_cancel_notification_mode_defaults_to_hard_signal() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
+        let tokens = RunCancellationRegistry::new();
+        let registration = tokens.register(run_id).await.unwrap();
+        let signals = registration.handle().signals();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let msg = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": run_id, "mode": "future-mode" }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        assert!(signals.any().is_cancelled());
+        assert!(signals.hard().is_cancelled());
+        assert!(!signals.cooperative_user().is_cancelled());
         assert_no_direct_candidate(&direct_candidates).await;
     }
 
@@ -1765,11 +2002,26 @@ mod tests {
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/default",
-                "cliAgentSessionId": "sess-ably",
+                "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
-                "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "sessionAffinityResource": "workspaceCache"
+                "runnerPreferenceDecision": {
+                    "kind": "preference",
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 7
+                    },
+                    "tier": "reusableSandbox",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                },
+                "runnerPreferenceResolution": "matching_workspace_cache",
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000099",
+                        "heartbeatGeneration": 9
+                    },
+                    "reason": "exactHistoryGeneration",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                }
             }),
         );
 
@@ -1782,19 +2034,142 @@ mod tests {
         );
         assert_eq!(candidate.profile_name(), "vm0/default");
         let candidate = candidate.into_job_candidate();
-        assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
+        assert_eq!(candidate.reuse_key(), Some("thread:chat-thread"));
         assert_eq!(
             candidate.history_generation_run_id(),
             Some("00000000-0000-0000-0000-000000000098".parse().unwrap())
         );
-        assert!(candidate.is_affinity_protected());
-        assert!(candidate.is_history_generation_affinity_protected());
+        let preference = candidate
+            .runner_preference()
+            .expect("canonical preference should be parsed");
         assert_eq!(
-            candidate.session_affinity_resource(),
-            Some(SessionAffinityResource::WorkspaceCache)
+            preference.admission(),
+            RunnerPreferenceAdmission::Ranked(RunnerPreferenceTier::ReusableSandbox)
+        );
+        assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
+        assert_eq!(
+            candidate.runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,),
+            Some(super::super::RunnerPreferenceClaimTelemetry {
+                resolution: RunnerPreferenceResolution::MatchingReusableSandbox,
+                state: super::super::RunnerPreferenceClaimState::Active,
+                targeted_self: Some(true),
+            })
         );
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn malformed_atomic_and_bridge_preferences_preserve_direct_candidate() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000011",
+                "profile": "vm0/default",
+                "reuseKey": "thread:malformed-preference",
+                "runnerPreferenceDecision": {
+                    "kind": "preference",
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 0
+                    },
+                    "tier": "workspaceCache",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                },
+                "runnerPreferenceResolution": "future_resolution",
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 7
+                    },
+                    "reason": "futureReason",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                }
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates)
+            .await
+            .into_job_candidate();
+        assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
+        assert!(candidate.runner_preference().is_none());
+        assert!(
+            candidate
+                .runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,)
+                .is_none()
+        );
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn malformed_atomic_ably_decision_falls_back_to_valid_bridge() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000012",
+                "profile": "vm0/default",
+                "reuseKey": "thread:bridge-fallback",
+                "runnerPreferenceDecision": {
+                    "kind": "futureDecision"
+                },
+                "runnerPreferenceResolution": "matching_reusable_sandbox",
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 7
+                    },
+                    "reason": "matchingReuseKey",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                }
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates)
+            .await
+            .into_job_candidate();
+        assert_eq!(
+            candidate
+                .runner_preference()
+                .map(crate::provider::RunnerPreference::admission),
+            Some(RunnerPreferenceAdmission::Legacy(
+                crate::provider::RunnerPreferenceReason::MatchingReuseKey
+            ))
+        );
+        assert_eq!(
+            candidate.runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,),
+            Some(super::super::RunnerPreferenceClaimTelemetry {
+                resolution: RunnerPreferenceResolution::MatchingReusableSandbox,
+                state: super::super::RunnerPreferenceClaimState::Active,
+                targeted_self: Some(true),
+            })
+        );
+        assert_no_direct_candidate(&direct_candidates).await;
     }
 
     #[tokio::test]
@@ -2087,26 +2462,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_job_notification_rejects_unknown_session_affinity_resource() {
-        let msg = make_message(
-            Some("job"),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000001",
-                "profile": "vm0/default",
-                "sessionAffinityResource": "futureResource"
-            }),
-        );
-
-        assert!(parse_job_notification(&msg).is_none());
-    }
-
-    #[test]
-    fn parse_network_policy_refresh_notification_valid() {
+    fn parse_network_policy_refresh_notification_ignores_additional_fields() {
         let msg = make_message(
             Some("network-policy-refresh"),
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000003",
-                "connectorRef": "github"
+                "connectorSlug": "github",
+                "additionalField": true
             }),
         );
 
@@ -2116,7 +2478,7 @@ mod tests {
             notification.run_id.to_string(),
             "00000000-0000-0000-0000-000000000003"
         );
-        assert_eq!(notification.connector_ref, "github");
+        assert_eq!(notification.connector_slug, "github");
     }
 
     #[test]
@@ -2132,12 +2494,116 @@ mod tests {
     }
 
     #[test]
+    fn parse_connector_runtime_sync_notification_reads_tagged_target() {
+        let msg = make_message(
+            Some("connector-runtime-sync"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": {
+                    "kind": "custom",
+                    "customConnectorId": "550e8400-e29b-41d4-a716-446655440000"
+                }
+            }),
+        );
+
+        let notification = parse_connector_runtime_sync_notification(&msg)
+            .expect("tagged connector runtime notification should parse");
+
+        assert_eq!(
+            notification.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000003"
+        );
+        assert_eq!(
+            notification.target,
+            ConnectorRuntimeTarget::Custom {
+                custom_connector_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_connector_runtime_sync_notification_rejects_malformed_target() {
+        for data in [
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003"
+            }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": { "kind": "custom" }
+            }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": { "kind": "unknown", "connectorSlug": "slack" }
+            }),
+        ] {
+            let msg = make_message(Some("connector-runtime-sync"), data);
+            assert!(parse_connector_runtime_sync_notification(&msg).is_none());
+        }
+    }
+
+    #[test]
+    fn parse_active_input_notification_reads_run_id() {
+        let msg = make_message(
+            Some("active-input"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000004"
+            }),
+        );
+
+        assert_eq!(
+            parse_active_input_notification(&msg)
+                .expect("active-input notification should parse")
+                .to_string(),
+            "00000000-0000-0000-0000-000000000004"
+        );
+    }
+
+    #[test]
+    fn parse_pi_standby_notifications_keep_handoff_and_release_distinct() {
+        let run_id = "00000000-0000-0000-0000-000000000005";
+        for (name, expected) in [
+            ("pi-handoff", PiStandbySignal::Handoff),
+            ("pi-standby-release", PiStandbySignal::Release),
+        ] {
+            let message = make_message(Some(name), serde_json::json!({ "runId": run_id }));
+
+            let (parsed_run_id, signal) =
+                parse_pi_standby_notification(&message).expect("Pi notification should parse");
+
+            assert_eq!(parsed_run_id.to_string(), run_id);
+            assert_eq!(signal, expected);
+        }
+    }
+
+    #[test]
+    fn parse_pi_standby_notification_rejects_other_names_and_invalid_ids() {
+        let other = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000005" }),
+        );
+        let invalid = make_message(
+            Some("pi-handoff"),
+            serde_json::json!({ "runId": "not-a-run-id" }),
+        );
+
+        assert!(parse_pi_standby_notification(&other).is_none());
+        assert!(parse_pi_standby_notification(&invalid).is_none());
+    }
+
+    #[test]
     fn parse_cancel_notification_valid() {
         let msg = make_message(
             Some("cancel"),
-            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000002" }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000002",
+                "mode": "cooperative"
+            }),
         );
-        let run_id = parse_cancel_notification(&msg).unwrap();
-        assert_eq!(run_id.to_string(), "00000000-0000-0000-0000-000000000002");
+        let notification = parse_cancel_notification(&msg).unwrap();
+        assert_eq!(
+            notification.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000002"
+        );
+        assert_eq!(notification.mode, CancelNotificationMode::Cooperative);
     }
 }

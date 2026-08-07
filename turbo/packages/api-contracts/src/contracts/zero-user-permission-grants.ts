@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { connectorRefSchema } from "./connector-identity";
+import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -24,7 +24,7 @@ const agentPermissionGrantScopeSchema = z.object({
 export const userPermissionGrantScopeSchema = agentPermissionGrantScopeSchema;
 
 const userPermissionGrantResponseBaseSchema = z.object({
-  connectorRef: connectorRefSchema,
+  connectorSlug: connectorSlugSchema,
   permission: permissionSchema,
   action: userPermissionGrantActionSchema,
   expiresAt: z.string().nullable(),
@@ -54,14 +54,14 @@ export const applyUserPermissionGrantSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-export const applyUserPermissionGrantsRequestSchema =
-  userPermissionGrantScopeSchema.and(
-    z.object({
-      connectorRef: connectorRefSchema,
-      mode: userPermissionGrantApplyModeSchema,
-      grants: z.array(applyUserPermissionGrantSchema),
-    }),
-  );
+export const applyUserPermissionGrantsRequestSchema = z
+  .object({
+    agentId: agentIdSchema,
+    connectorSlug: connectorSlugSchema,
+    mode: userPermissionGrantApplyModeSchema,
+    grants: z.array(applyUserPermissionGrantSchema),
+  })
+  .strict();
 
 export const zeroUserPermissionGrantsContract = c.router({
   list: {

@@ -49,7 +49,6 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
     modelProvider: null,
     selectedModel: null,
     triggerSource: "web",
-    triggerAgentName: null,
     status: "running",
     prompt: "Hello",
     appendSystemPrompt: null,
@@ -1761,8 +1760,8 @@ describe("activity detail polling", () => {
     ).not.toHaveLength(0);
     expect(screen.getByText("Initialize")).toBeInTheDocument();
     expect(screen.getByText("2 tools")).toBeInTheDocument();
-    expect(screen.getByText("1 agents")).toBeInTheDocument();
-    expect(screen.getByText("1 commands")).toBeInTheDocument();
+    expect(screen.getByText("1 agent")).toBeInTheDocument();
+    expect(screen.getByText("1 command")).toBeInTheDocument();
     expect(
       screen.getByText("I will inspect the checkout failure."),
     ).toBeInTheDocument();
@@ -2471,8 +2470,8 @@ describe("activity detail polling", () => {
       screen.getByText("add src/billing/retry.test.ts"),
     ).toBeInTheDocument();
     expect(screen.getByText(/Codex unknown_item/u)).toBeInTheDocument();
-    expect(screen.getByText("1 turns")).toBeInTheDocument();
-    expect(screen.getByText("1 models")).toBeInTheDocument();
+    expect(screen.getByText("1 turn")).toBeInTheDocument();
+    expect(screen.getByText("1 model")).toBeInTheDocument();
 
     await fill(
       screen.getByPlaceholderText("Search steps"),
@@ -2545,12 +2544,74 @@ describe("activity detail polling", () => {
     });
   });
 
+  it.each([
+    {
+      runId: "a0000000-0000-4000-a000-000000000406",
+      result: "noReuseKey",
+      description: "No reuse key was available to match an idle sandbox.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000408",
+      result: "noSessionId",
+      description:
+        "Legacy result: the exact reason the sandbox was not reused is unavailable.",
+    },
+  ] as const)(
+    "shows the $result sandbox reuse reason",
+    async ({ runId, result, description }) => {
+      context.mocks.data.composesList([]);
+      context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+        return respond(
+          200,
+          makeLogDetail({
+            id: runId,
+            displayName: "Sandbox Reuse Reason",
+            status: "completed",
+            error: null,
+            completedAt: "2026-03-10T15:00:18Z",
+          }),
+        );
+      });
+      context.mocks.api(
+        zeroRunAgentEventsContract.getAgentEvents,
+        ({ respond }) => {
+          return respond(200, {
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          } satisfies AgentEventsResponse);
+        },
+      );
+      context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
+        return respond(200, { sandboxReuseResult: result });
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/activities/${runId}`,
+        featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Sandbox Reuse Reason" }),
+        ).toBeInTheDocument();
+      });
+      click(getTabByText("Runner"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Not reused")).toBeInTheDocument();
+      });
+      expect(screen.getByText(description)).toBeInTheDocument();
+    },
+  );
+
   it("ignores stale network page responses after changing activity", async () => {
     const firstRunId = "a0000000-0000-4000-a000-000000000501";
     const secondRunId = "a0000000-0000-4000-a000-000000000502";
     const firstCursor = "time:asc:2026-03-10T17%3A00%3A01Z:cursor-first-2";
     const secondCursor = "time:asc:2026-03-10T18%3A00%3A01Z:cursor-second-2";
-    const stalePage = Promise.withResolvers<void>();
+    const stalePage = context.mocks.deferred<void>();
     let firstSecondPageRequested = false;
 
     const logEntry = (timestamp: string, url: string): NetworkLogEntry => {
@@ -2710,8 +2771,8 @@ describe("activity detail polling", () => {
   it("does not render stale context after changing activity", async () => {
     const firstRunId = "a0000000-0000-4000-a000-000000000505";
     const secondRunId = "a0000000-0000-4000-a000-000000000506";
-    const secondContextResponse = Promise.withResolvers<void>();
-    const secondContextRequested = Promise.withResolvers<void>();
+    const secondContextResponse = context.mocks.deferred<void>();
+    const secondContextRequested = context.mocks.deferred<void>();
 
     context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
@@ -2793,8 +2854,8 @@ describe("activity detail polling", () => {
   it("does not render stale step messages after changing activity", async () => {
     const firstRunId = "a0000000-0000-4000-a000-000000000503";
     const secondRunId = "a0000000-0000-4000-a000-000000000504";
-    const secondEventsResponse = Promise.withResolvers<void>();
-    const secondEventsRequested = Promise.withResolvers<void>();
+    const secondEventsResponse = context.mocks.deferred<void>();
+    const secondEventsRequested = context.mocks.deferred<void>();
 
     const assistantTextEvent = (
       sequenceNumber: number,
@@ -3289,7 +3350,7 @@ describe("activity detail polling", () => {
     });
 
     expect(screen.getByText("Initialize")).toBeInTheDocument();
-    expect(screen.getByText("1 agents")).toBeInTheDocument();
+    expect(screen.getByText("1 agent")).toBeInTheDocument();
     expect(screen.getAllByText("Recover malformed todo")).not.toHaveLength(0);
     expect(
       screen.getByText("Survived malformed payloads."),

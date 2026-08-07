@@ -1,2 +1,0 @@
-ALTER TABLE "chat_messages" ADD COLUMN "thinking" text;--> statement-breakpoint
-CREATE UNIQUE INDEX "chat_messages_run_thinking_unique" ON "chat_messages" USING btree ("run_id") WHERE "chat_messages"."thinking" IS NOT NULL;

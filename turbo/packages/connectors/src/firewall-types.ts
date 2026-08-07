@@ -197,9 +197,18 @@ export const executionFirewallBuiltinEntrySchema = z.object({
   baseUrlVars: z.record(z.string(), z.string()).optional(),
 });
 
+const executionFirewallSchema = firewallSchema.extend({
+  apis: z.array(
+    firewallApiSchema.extend({
+      id: z.string().min(1).optional(),
+    }),
+  ),
+});
+
 export const executionFirewallInlineEntrySchema = z.object({
   kind: z.literal("inline"),
-  firewall: firewallSchema,
+  firewall: executionFirewallSchema,
+  customConnectorId: z.uuid().optional(),
 });
 
 export const executionFirewallEntrySchema = z.discriminatedUnion("kind", [
@@ -256,7 +265,7 @@ export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
 /**
  * Per-firewall grant configuration — which permissions are granted and
  * what policy applies to unknown endpoints (not matching any permission rule).
- * Refs absent from the map are fully permissive (all granted + allow unknown).
+ * Firewall names absent from the map are fully permissive (all granted + allow unknown).
  */
 export const networkPolicySchema = z.object({
   allow: z.array(z.string()),

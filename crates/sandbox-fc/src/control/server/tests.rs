@@ -2,18 +2,21 @@ use super::*;
 
 use std::future::Future;
 use std::os::unix::fs::PermissionsExt;
+use std::pin::Pin;
 
-use base64::Engine;
 use sandbox::ExecTermination;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
 use vsock_host::{ExecOwnedCapturedOutput, NormalOperationFenceRejection, VsockHost};
-use vsock_proto::{Decoder, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage};
+use vsock_proto::{
+    Decoder, ExecCapturedOutput, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY,
+    RawMessage,
+};
 
+use crate::control::client::send_exec;
 use crate::control::{
-    ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
-    TerminateStatus, send_exec, send_terminate,
+    TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus, send_terminate,
 };
 use crate::park_coordinator::{
     CoordinatorState, DirtyReason, ParkCoordinator, PrepareParkEvidence,
@@ -21,6 +24,8 @@ use crate::park_coordinator::{
 use crate::runtime_dirs::PRIVATE_RUNTIME_SOCKET_MODE;
 
 type GuestState = Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>;
+
+const TERMINATION_RENDEZVOUS_TIMEOUT: Duration = Duration::from_secs(1);
 
 struct ControlServerFixture {
     _dir: tempfile::TempDir,
@@ -111,6 +116,7 @@ fn empty_guest() -> GuestState {
 
 fn exec_request(command: &str) -> ExecRequest {
     ExecRequest {
+        expected_run_id: None,
         command: command.into(),
         timeout_secs: 5,
         sudo: false,
@@ -140,10 +146,10 @@ fn control_exec_result(
 }
 
 fn expect_exec_success(
-    response: ExecResponse,
+    response: ExecResult,
 ) -> (ExecTermination, Vec<u8>, Vec<u8>, bool, bool, String) {
     match response {
-        ExecResponse::Success {
+        ExecResult::Success {
             termination,
             stdout,
             stderr,
@@ -152,13 +158,13 @@ fn expect_exec_success(
             diagnostic,
         } => (
             termination,
-            BASE64.decode(stdout).expect("stdout should decode"),
-            BASE64.decode(stderr).expect("stderr should decode"),
+            stdout,
+            stderr,
             stdout_truncated,
             stderr_truncated,
             diagnostic,
         ),
-        ExecResponse::Error { error } => panic!("expected success response, got error: {error}"),
+        ExecResult::Error { error } => panic!("expected success response, got error: {error}"),
     }
 }
 
@@ -213,7 +219,7 @@ async fn bind_server_sets_private_socket_mode() {
 
 #[test]
 fn control_exec_result_preserves_ordinary_exit_state() {
-    let response = exec_response_from_operation_result(control_exec_result(
+    let response = exec_result_from_operation_result(control_exec_result(
         vsock_proto::ExecTermination::Exited { exit_code: 7 },
         b"out".to_vec(),
         b"err".to_vec(),
@@ -259,7 +265,7 @@ fn control_exec_result_preserves_structured_terminal_state() {
             b"stderr clue".to_vec(),
         ),
     ] {
-        let response = exec_response_from_operation_result(control_exec_result(
+        let response = exec_result_from_operation_result(control_exec_result(
             termination,
             Vec::new(),
             expected_stderr.clone(),
@@ -276,7 +282,7 @@ fn control_exec_result_preserves_structured_terminal_state() {
 
 #[test]
 fn control_exec_result_rejects_invalid_capture_state() {
-    let overflow = exec_response_from_operation_result(vsock_host::ExecOperationResult {
+    let overflow = exec_result_from_operation_result(vsock_host::ExecOperationResult {
         stream_overflowed: true,
         ..control_exec_result(
             vsock_proto::ExecTermination::Exited { exit_code: 0 },
@@ -289,7 +295,7 @@ fn control_exec_result_rejects_invalid_capture_state() {
     assert_eq!(overflow.kind(), io::ErrorKind::InvalidData);
     assert!(overflow.to_string().contains("overflowed a stream queue"));
 
-    let stdout_discarded = exec_response_from_operation_result(vsock_host::ExecOperationResult {
+    let stdout_discarded = exec_result_from_operation_result(vsock_host::ExecOperationResult {
         stdout: ExecOwnedCapturedOutput::Discarded,
         ..control_exec_result(
             vsock_proto::ExecTermination::Exited { exit_code: 0 },
@@ -302,7 +308,7 @@ fn control_exec_result_rejects_invalid_capture_state() {
     assert_eq!(stdout_discarded.kind(), io::ErrorKind::InvalidData);
     assert!(stdout_discarded.to_string().contains("discarded stdout"));
 
-    let stderr_discarded = exec_response_from_operation_result(vsock_host::ExecOperationResult {
+    let stderr_discarded = exec_result_from_operation_result(vsock_host::ExecOperationResult {
         stderr: ExecOwnedCapturedOutput::Discarded,
         ..control_exec_result(
             vsock_proto::ExecTermination::Exited { exit_code: 0 },
@@ -316,13 +322,71 @@ fn control_exec_result_rejects_invalid_capture_state() {
     assert!(stderr_discarded.to_string().contains("discarded stderr"));
 }
 
-async fn recv_termination_request(
+async fn recv_termination_request_with_timeout<Operation>(
     kill_rx: &mut mpsc::Receiver<ProcessTerminationRequest>,
-) -> ProcessTerminationRequest {
-    kill_rx
-        .recv()
+    mut operation: Pin<&mut Operation>,
+    timeout: Duration,
+) -> Result<ProcessTerminationRequest, tokio::time::error::Elapsed>
+where
+    Operation: Future,
+    Operation::Output: std::fmt::Debug,
+{
+    tokio::time::timeout(timeout, async {
+        tokio::select! {
+            request = kill_rx.recv() => {
+                request.expect("termination request channel closed before notifying process monitor")
+            }
+            outcome = operation.as_mut() => {
+                panic!("terminate operation completed before notifying process monitor: {outcome:?}")
+            }
+        }
+    })
+    .await
+}
+
+async fn recv_termination_request<Operation>(
+    kill_rx: &mut mpsc::Receiver<ProcessTerminationRequest>,
+    operation: Pin<&mut Operation>,
+) -> ProcessTerminationRequest
+where
+    Operation: Future,
+    Operation::Output: std::fmt::Debug,
+{
+    recv_termination_request_with_timeout(kill_rx, operation, TERMINATION_RENDEZVOUS_TIMEOUT)
         .await
-        .expect("terminate request should notify process monitor")
+        .expect("timed out waiting for termination request delivery to process monitor")
+}
+
+async fn complete_termination_operation<Operation>(
+    operation: Pin<&mut Operation>,
+    timeout_message: &str,
+) -> Operation::Output
+where
+    Operation: Future,
+{
+    tokio::time::timeout(TERMINATION_RENDEZVOUS_TIMEOUT, operation)
+        .await
+        .expect(timeout_message)
+}
+
+#[tokio::test]
+async fn termination_request_receive_has_local_deadline_with_live_sender() {
+    let (kill_tx, mut kill_rx) = mpsc::channel(1);
+    let operation = std::future::pending::<()>();
+    tokio::pin!(operation);
+
+    let received = tokio::time::timeout(
+        Duration::from_secs(2),
+        recv_termination_request_with_timeout(&mut kill_rx, operation.as_mut(), Duration::ZERO),
+    )
+    .await
+    .expect("termination request receive exceeded independent regression watchdog");
+    drop(kill_tx);
+
+    assert!(
+        received.is_err(),
+        "termination request receive should honor its local deadline"
+    );
 }
 
 // Basic client/server behavior.
@@ -338,12 +402,32 @@ async fn client_server_no_guest() {
         .unwrap();
 
     match response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert!(error.contains("not running"), "unexpected error: {error}");
         }
-        ExecResponse::Success { .. } => panic!("expected error when guest is None"),
+        ExecResult::Success { .. } => panic!("expected error when guest is None"),
     }
 
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn client_receives_raw_server_error() {
+    let fixture = ControlServerFixture::new();
+    let mut handle = fixture.spawn_default(CancellationToken::new());
+
+    let response = send_exec(
+        &fixture.sock_path,
+        &exec_request("ps aux"),
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+
+    let ExecResult::Error { error } = response else {
+        panic!("server should return a raw error");
+    };
+    assert!(error.contains("not running"), "unexpected error: {error}");
     handle.shutdown().await;
 }
 
@@ -358,17 +442,26 @@ async fn client_server_terminate_accepted() {
         .unwrap()
         .spawn(CancellationToken::new());
 
-    let client = tokio::spawn({
+    let client = {
         let sock_path = fixture.sock_path.clone();
         async move {
             let request = TerminateRequest {
                 action: TerminateAction::Terminate,
+                expected_run_id: None,
             };
             send_terminate(&sock_path, &request, Duration::from_secs(5)).await
         }
-    });
-    recv_termination_request(&mut kill_rx).await.acknowledge();
-    let response = client.await.unwrap().unwrap();
+    };
+    tokio::pin!(client);
+    recv_termination_request(&mut kill_rx, client.as_mut())
+        .await
+        .acknowledge();
+    let response = complete_termination_operation(
+        client.as_mut(),
+        "terminate client/server completion timed out after process monitor acknowledgement",
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         response,
@@ -391,6 +484,7 @@ async fn client_server_terminate_already_stopped() {
 
     let request = TerminateRequest {
         action: TerminateAction::Terminate,
+        expected_run_id: None,
     };
     let response = send_terminate(&fixture.sock_path, &request, Duration::from_secs(5))
         .await
@@ -420,6 +514,7 @@ async fn client_server_terminate_refuses_idle_sandbox() {
 
     let request = TerminateRequest {
         action: TerminateAction::Terminate,
+        expected_run_id: None,
     };
     let response = send_terminate(&fixture.sock_path, &request, Duration::from_secs(5))
         .await
@@ -440,6 +535,75 @@ async fn client_server_terminate_refuses_idle_sandbox() {
 }
 
 #[tokio::test]
+async fn stale_run_terminate_is_rejected_after_sandbox_reassignment() {
+    let fixture = ControlServerFixture::new();
+    let coordinator = ParkCoordinator::new();
+    coordinator.bind_run_control("run-a").unwrap();
+    let attempt = coordinator.begin_prepare_park().unwrap();
+    coordinator
+        .complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced)
+        .unwrap();
+    coordinator.mark_parked(&attempt).unwrap();
+    coordinator.bind_run_control("run-b").unwrap();
+    coordinator.reopen_after_unpark().unwrap();
+
+    let (kill_tx, mut kill_rx) = mpsc::channel(1);
+    let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
+    let mut handle = fixture
+        .bind_with_termination(termination)
+        .unwrap()
+        .spawn(CancellationToken::new());
+
+    let stale_request = TerminateRequest {
+        action: TerminateAction::Terminate,
+        expected_run_id: Some("run-a".into()),
+    };
+    let stale_response = send_terminate(&fixture.sock_path, &stale_request, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        stale_response,
+        TerminateResponse::Error {
+            error: RUN_CONTROL_MISMATCH_ERROR.into()
+        }
+    );
+    assert!(matches!(
+        kill_rx.try_recv(),
+        Err(mpsc::error::TryRecvError::Empty)
+    ));
+    assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+    let matching_client = {
+        let sock_path = fixture.sock_path.clone();
+        async move {
+            let request = TerminateRequest {
+                action: TerminateAction::Terminate,
+                expected_run_id: Some("run-b".into()),
+            };
+            send_terminate(&sock_path, &request, Duration::from_secs(5)).await
+        }
+    };
+    tokio::pin!(matching_client);
+    recv_termination_request(&mut kill_rx, matching_client.as_mut())
+        .await
+        .acknowledge();
+    assert_eq!(
+        complete_termination_operation(
+            matching_client.as_mut(),
+            "terminate client/server completion timed out after process monitor acknowledgement",
+        )
+        .await
+        .unwrap(),
+        TerminateResponse::Status {
+            status: TerminateStatus::Accepted
+        }
+    );
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
 async fn terminate_response_survives_shutdown_after_request_is_queued() {
     let fixture = ControlServerFixture::new();
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
@@ -449,20 +613,27 @@ async fn terminate_response_survives_shutdown_after_request_is_queued() {
         .unwrap()
         .spawn(shutdown.clone());
 
-    let client = tokio::spawn({
+    let client = {
         let sock_path = fixture.sock_path.clone();
         async move {
             let request = TerminateRequest {
                 action: TerminateAction::Terminate,
+                expected_run_id: None,
             };
             send_terminate(&sock_path, &request, Duration::from_secs(5)).await
         }
-    });
-    let request = recv_termination_request(&mut kill_rx).await;
+    };
+    tokio::pin!(client);
+    let request = recv_termination_request(&mut kill_rx, client.as_mut()).await;
 
     shutdown.cancel();
     request.acknowledge();
-    let response = client.await.unwrap().unwrap();
+    let response = complete_termination_operation(
+        client.as_mut(),
+        "terminate client/server completion timed out after process monitor acknowledgement",
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         response,
@@ -482,29 +653,42 @@ async fn termination_handle_waits_behind_full_channel() {
         .try_send(ProcessTerminationRequest::fire_and_forget())
         .unwrap();
     let termination = ProcessTerminationHandle::new(kill_tx);
-    let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+    let terminate = termination.request_terminate(None);
+    tokio::pin!(terminate);
 
-    let queued_request = recv_termination_request(&mut kill_rx).await;
+    let queued_request = recv_termination_request(&mut kill_rx, terminate.as_mut()).await;
 
-    assert!(!terminate_task.is_finished());
     queued_request.acknowledge();
-    let request = recv_termination_request(&mut kill_rx).await;
-    assert!(!terminate_task.is_finished());
+    let request = recv_termination_request(&mut kill_rx, terminate.as_mut()).await;
     request.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    assert_eq!(
+        complete_termination_operation(
+            terminate.as_mut(),
+            "termination handle completion timed out after process monitor acknowledgement",
+        )
+        .await,
+        Ok(TerminateStatus::Accepted)
+    );
 }
 
 #[tokio::test]
 async fn termination_handle_waits_for_monitor_ack_before_accepting() {
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let termination = ProcessTerminationHandle::new(kill_tx);
-    let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+    let terminate = termination.request_terminate(None);
+    tokio::pin!(terminate);
 
-    let request = recv_termination_request(&mut kill_rx).await;
+    let request = recv_termination_request(&mut kill_rx, terminate.as_mut()).await;
 
-    assert!(!terminate_task.is_finished());
     request.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    assert_eq!(
+        complete_termination_operation(
+            terminate.as_mut(),
+            "termination handle completion timed out after process monitor acknowledgement",
+        )
+        .await,
+        Ok(TerminateStatus::Accepted)
+    );
 }
 
 #[tokio::test]
@@ -512,14 +696,21 @@ async fn termination_handle_blocks_future_park_before_queueing_kill() {
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let coordinator = ParkCoordinator::new();
     let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
-    let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+    let terminate = termination.request_terminate(None);
+    tokio::pin!(terminate);
 
-    let request = recv_termination_request(&mut kill_rx).await;
+    let request = recv_termination_request(&mut kill_rx, terminate.as_mut()).await;
     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
     assert!(coordinator.begin_prepare_park().is_err());
-    assert!(!terminate_task.is_finished());
     request.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    assert_eq!(
+        complete_termination_operation(
+            terminate.as_mut(),
+            "termination handle completion timed out after process monitor acknowledgement",
+        )
+        .await,
+        Ok(TerminateStatus::Accepted)
+    );
 }
 
 #[tokio::test]
@@ -528,10 +719,20 @@ async fn termination_handle_accepts_dirty_policy() {
     let coordinator = ParkCoordinator::new();
     coordinator.mark_dirty(DirtyReason::new("transport failed"));
     let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
-    let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+    let terminate = termination.request_terminate(None);
+    tokio::pin!(terminate);
 
-    recv_termination_request(&mut kill_rx).await.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    recv_termination_request(&mut kill_rx, terminate.as_mut())
+        .await
+        .acknowledge();
+    assert_eq!(
+        complete_termination_operation(
+            terminate.as_mut(),
+            "termination handle completion timed out after process monitor acknowledgement",
+        )
+        .await,
+        Ok(TerminateStatus::Accepted)
+    );
     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
 }
 
@@ -540,10 +741,20 @@ async fn termination_handle_accepts_ready_for_park_policy() {
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let coordinator = ready_for_park_coordinator();
     let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
-    let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+    let terminate = termination.request_terminate(None);
+    tokio::pin!(terminate);
 
-    recv_termination_request(&mut kill_rx).await.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    recv_termination_request(&mut kill_rx, terminate.as_mut())
+        .await
+        .acknowledge();
+    assert_eq!(
+        complete_termination_operation(
+            terminate.as_mut(),
+            "termination handle completion timed out after process monitor acknowledgement",
+        )
+        .await,
+        Ok(TerminateStatus::Accepted)
+    );
     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
 }
 
@@ -554,8 +765,8 @@ async fn termination_handle_refuses_when_parked_without_queueing() {
         ProcessTerminationHandle::with_park_coordinator(kill_tx, parked_coordinator());
 
     assert_eq!(
-        termination.request_terminate().await,
-        TerminateStatus::RefusedIdle
+        termination.request_terminate(None).await,
+        Ok(TerminateStatus::RefusedIdle)
     );
     assert_eq!(kill_rx.len(), 0);
 }
@@ -648,6 +859,57 @@ async fn control_server_shutdown_cancels_pending_connection() {
 // Vsock-backed control exec lifecycle.
 
 #[tokio::test]
+async fn control_exec_streams_both_capture_limits() {
+    const CAPTURE_LIMIT: usize = 7 * 1024 * 1024;
+    let stdout = vec![0xa5; CAPTURE_LIMIT];
+    let stderr = vec![0x5a; CAPTURE_LIMIT];
+    let fixture = VsockExecFixture::connect(move |vsock_base| {
+        mock_guest_returns_exec(
+            vsock_base,
+            stdout,
+            stderr,
+            true,
+            false,
+            "boundary diagnostic",
+        )
+    })
+    .await;
+    let mut handle = fixture.spawn_server();
+
+    let response = send_exec(
+        &fixture.sock_path,
+        &exec_request("produce-boundary-output"),
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+
+    let ExecResult::Success {
+        termination,
+        stdout,
+        stderr,
+        stdout_truncated,
+        stderr_truncated,
+        diagnostic,
+    } = response
+    else {
+        panic!("server should return a raw success response");
+    };
+    assert_eq!(termination, ExecTermination::Exited { exit_code: 23 });
+    assert_eq!(stdout.len(), CAPTURE_LIMIT);
+    assert!(stdout.iter().all(|byte| *byte == 0xa5));
+    assert_eq!(stderr.len(), CAPTURE_LIMIT);
+    assert!(stderr.iter().all(|byte| *byte == 0x5a));
+    assert!(stdout_truncated);
+    assert!(!stderr_truncated);
+    assert_eq!(diagnostic, "boundary diagnostic");
+
+    handle.shutdown().await;
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
+}
+
+#[tokio::test]
 async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
     let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
     let fixture =
@@ -658,6 +920,7 @@ async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
         let sock_path = fixture.sock_path.clone();
         async move {
             let request = ExecRequest {
+                expected_run_id: None,
                 command: "sleep 30".into(),
                 timeout_secs: 30,
                 sudo: false,
@@ -709,13 +972,13 @@ async fn control_exec_rejects_when_policy_gate_is_closing() {
         .unwrap();
 
     match response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert!(
                 error.contains("operation gate closed"),
                 "unexpected error: {error}"
             );
         }
-        ExecResponse::Success { .. } => panic!("expected gate-closed error"),
+        ExecResult::Success { .. } => panic!("expected gate-closed error"),
     }
     assert!(
         matches!(exec_seen_rx.try_recv(), Err(TryRecvError::Empty)),
@@ -736,6 +999,7 @@ async fn control_exec_rejects_zero_timeout_without_guest_exec() {
             .await;
     let mut handle = fixture.spawn_server();
     let request = ExecRequest {
+        expected_run_id: None,
         command: "echo should-not-run".into(),
         timeout_secs: 0,
         sudo: false,
@@ -745,13 +1009,13 @@ async fn control_exec_rejects_zero_timeout_without_guest_exec() {
         .unwrap();
 
     match response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert_eq!(
                 error,
                 "exec failed: exec requires a positive timeout; use supervised exec for unbounded commands"
             );
         }
-        ExecResponse::Success { .. } => panic!("expected zero-timeout validation error"),
+        ExecResult::Success { .. } => panic!("expected zero-timeout validation error"),
     }
     assert!(
         matches!(exec_seen_rx.try_recv(), Err(TryRecvError::Empty)),
@@ -776,13 +1040,13 @@ async fn control_exec_terminal_guest_error_completes_vsock_operation() {
         .unwrap();
 
     match response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert!(
                 error.contains("guest refused exec"),
                 "unexpected error: {error}"
             );
         }
-        ExecResponse::Success { .. } => panic!("expected guest error"),
+        ExecResult::Success { .. } => panic!("expected guest error"),
     }
     assert!(fixture.vsock.try_fence_normal_operations().is_ok());
     let attempt = fixture
@@ -790,6 +1054,62 @@ async fn control_exec_terminal_guest_error_completes_vsock_operation() {
         .begin_prepare_park()
         .expect("terminal guest error should leave park policy open");
     fixture.coordinator.abort_prepare_park(&attempt).unwrap();
+
+    handle.shutdown().await;
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
+}
+
+#[tokio::test]
+async fn stale_run_exec_is_rejected_after_sandbox_reassignment() {
+    let fixture = VsockExecFixture::connect(|vsock_base| {
+        mock_guest_errors_exec(vsock_base, "matching run reached guest")
+    })
+    .await;
+    fixture.coordinator.bind_run_control("run-a").unwrap();
+    let attempt = fixture.coordinator.begin_prepare_park().unwrap();
+    let normal_operations_fence = fixture.vsock.try_fence_normal_operations().unwrap();
+    fixture
+        .coordinator
+        .complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced)
+        .unwrap();
+    fixture.coordinator.mark_parked(&attempt).unwrap();
+    fixture.coordinator.bind_run_control("run-b").unwrap();
+    drop(normal_operations_fence);
+    fixture.coordinator.reopen_after_unpark().unwrap();
+    let mut handle = fixture.spawn_server();
+
+    let mut stale_request = exec_request("must-not-reach-guest");
+    stale_request.expected_run_id = Some("run-a".into());
+    let stale_response = send_exec(&fixture.sock_path, &stale_request, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    match stale_response {
+        ExecResult::Error { error } => {
+            assert_eq!(error, format!("exec failed: {RUN_CONTROL_MISMATCH_ERROR}"));
+            assert!(!error.contains("run-b"));
+        }
+        ExecResult::Success { .. } => panic!("stale run exec should fail closed"),
+    }
+    assert_eq!(fixture.coordinator.state(), CoordinatorState::Open);
+    assert!(fixture.vsock.try_fence_normal_operations().is_ok());
+
+    let mut matching_request = exec_request("reach-current-run");
+    matching_request.expected_run_id = Some("run-b".into());
+    let matching_response = send_exec(
+        &fixture.sock_path,
+        &matching_request,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    match matching_response {
+        ExecResult::Error { error } => {
+            assert!(error.contains("matching run reached guest"), "{error}");
+        }
+        ExecResult::Success { .. } => panic!("mock guest should reject exec"),
+    }
 
     handle.shutdown().await;
     fixture.guest_task.abort();
@@ -813,10 +1133,10 @@ async fn control_exec_transport_error_makes_vsock_not_parkable() {
         .unwrap()
         .unwrap();
     match response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert!(error.contains("exec failed"), "unexpected error: {error}");
         }
-        ExecResponse::Success { .. } => panic!("expected transport error"),
+        ExecResult::Success { .. } => panic!("expected transport error"),
     }
     assert_eq!(fixture.coordinator.state(), CoordinatorState::Open);
     assert!(
@@ -923,6 +1243,55 @@ async fn mock_guest_errors_exec(vsock_base: PathBuf, error: &'static str) {
             let frame = vsock_proto::encode(MSG_ERROR, message.seq, &payload).unwrap();
             stream.write_all(&frame).await.unwrap();
             std::future::pending::<()>().await;
+        }
+    }
+}
+
+async fn mock_guest_returns_exec(
+    vsock_base: PathBuf,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
+    diagnostic: &'static str,
+) {
+    let listener_path = PathBuf::from(format!(
+        "{}_{}",
+        vsock_base.display(),
+        vsock_proto::VSOCK_PORT
+    ));
+    wait_for_socket_exists(&listener_path).await;
+
+    let mut stream = UnixStream::connect(&listener_path).await.unwrap();
+    let mut decoder = Decoder::new();
+    mock_vsock_handshake(&mut stream, &mut decoder).await;
+
+    loop {
+        let message = read_vsock_message(&mut stream, &mut decoder).await;
+        if message.msg_type == MSG_EXEC_START {
+            let mut frame = Vec::new();
+            vsock_proto::encode_exec_result_frame_into(
+                &mut frame,
+                message.seq,
+                vsock_proto::ExecTermination::Exited { exit_code: 23 },
+                10,
+                ExecCapturedOutput::Captured {
+                    bytes: &stdout,
+                    truncated: stdout_truncated,
+                },
+                ExecCapturedOutput::Captured {
+                    bytes: &stderr,
+                    truncated: stderr_truncated,
+                },
+                diagnostic,
+            )
+            .unwrap();
+            stream.write_all(&frame).await.unwrap();
+            drop(frame);
+            drop(stdout);
+            drop(stderr);
+            std::future::pending::<()>().await;
+            return;
         }
     }
 }

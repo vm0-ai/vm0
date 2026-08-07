@@ -19,7 +19,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use tokio::sync::{Mutex, Notify, mpsc};
@@ -63,7 +63,7 @@ pub struct MockJobProvider {
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     completions: Arc<StdMutex<Vec<Completion>>>,
     heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
-    deferred_poll_delays: Arc<StdMutex<Vec<Duration>>>,
+    deferred_poll_deadlines: Arc<StdMutex<Vec<Instant>>>,
     cancel: CancellationToken,
     /// Fired each time `discover()` has reached its inner `select!` await
     /// point (lock + optional `poll_delay` complete, about to park on
@@ -90,6 +90,7 @@ pub struct MockJobProvider {
     /// `wait_completion` so a heartbeat that lands mid-check is still observed.
     heartbeat_notify: Arc<Notify>,
     heartbeat_control: Arc<MockHeartbeatControl>,
+    claim_control: Arc<MockClaimControl>,
 }
 
 /// Test-side handle for driving the mock provider.
@@ -100,7 +101,7 @@ pub struct MockProviderHandle {
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
-    deferred_poll_delays: Arc<StdMutex<Vec<Duration>>>,
+    deferred_poll_deadlines: Arc<StdMutex<Vec<Instant>>>,
     /// See [`Self::wait_discover_entered`].
     discover_entered: Arc<Notify>,
     /// See [`MockJobProvider::completion_notify`].
@@ -111,6 +112,7 @@ pub struct MockProviderHandle {
     /// See [`MockJobProvider::heartbeat_notify`].
     heartbeat_notify: Arc<Notify>,
     heartbeat_control: Arc<MockHeartbeatControl>,
+    claim_control: Arc<MockClaimControl>,
 }
 
 #[derive(Clone)]
@@ -137,6 +139,14 @@ struct MockHeartbeatControl {
     state_changed: Notify,
 }
 
+#[derive(Default)]
+struct MockClaimControl {
+    blocked: AtomicBool,
+    in_flight: AtomicUsize,
+    release: Notify,
+    state_changed: Notify,
+}
+
 impl MockHeartbeatControl {
     fn enter(&self) -> MockHeartbeatInFlight<'_> {
         let in_flight = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
@@ -155,11 +165,39 @@ impl MockHeartbeatControl {
     }
 }
 
+impl MockClaimControl {
+    fn enter(&self) -> MockClaimInFlight<'_> {
+        self.in_flight.fetch_add(1, Ordering::SeqCst);
+        self.state_changed.notify_waiters();
+        MockClaimInFlight { control: self }
+    }
+
+    fn block(&self) {
+        self.blocked.store(true, Ordering::SeqCst);
+    }
+
+    fn unblock(&self) {
+        self.blocked.store(false, Ordering::SeqCst);
+        self.release.notify_waiters();
+    }
+}
+
 struct MockHeartbeatInFlight<'a> {
     control: &'a MockHeartbeatControl,
 }
 
+struct MockClaimInFlight<'a> {
+    control: &'a MockClaimControl,
+}
+
 impl Drop for MockHeartbeatInFlight<'_> {
+    fn drop(&mut self) {
+        self.control.in_flight.fetch_sub(1, Ordering::SeqCst);
+        self.control.state_changed.notify_waiters();
+    }
+}
+
+impl Drop for MockClaimInFlight<'_> {
     fn drop(&mut self) {
         self.control.in_flight.fetch_sub(1, Ordering::SeqCst);
         self.control.state_changed.notify_waiters();
@@ -250,7 +288,7 @@ impl MockJobProvider {
         let claim_candidates = Arc::new(StdMutex::new(Vec::new()));
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
-        let deferred_poll_delays = Arc::new(StdMutex::new(Vec::new()));
+        let deferred_poll_deadlines = Arc::new(StdMutex::new(Vec::new()));
         let startup_readiness = Arc::new(MockStartupReadiness::default());
         let discover_entered = Arc::new(Notify::new());
         let completion_notify = Arc::new(Notify::new());
@@ -258,6 +296,7 @@ impl MockJobProvider {
         let discover_started_count = Arc::new(AtomicUsize::new(0));
         let heartbeat_notify = Arc::new(Notify::new());
         let heartbeat_control = Arc::new(MockHeartbeatControl::default());
+        let claim_control = Arc::new(MockClaimControl::default());
         let provider = Arc::new(Self {
             startup_readiness: Arc::clone(&startup_readiness),
             discovery: Mutex::new(rx),
@@ -267,7 +306,7 @@ impl MockJobProvider {
             claim_candidates: Arc::clone(&claim_candidates),
             completions: Arc::clone(&completions),
             heartbeats: Arc::clone(&heartbeats),
-            deferred_poll_delays: Arc::clone(&deferred_poll_delays),
+            deferred_poll_deadlines: Arc::clone(&deferred_poll_deadlines),
             cancel,
             discover_entered: Arc::clone(&discover_entered),
             completion_notify: Arc::clone(&completion_notify),
@@ -275,6 +314,7 @@ impl MockJobProvider {
             discover_started_count: Arc::clone(&discover_started_count),
             heartbeat_notify: Arc::clone(&heartbeat_notify),
             heartbeat_control: Arc::clone(&heartbeat_control),
+            claim_control: Arc::clone(&claim_control),
         });
         let handle = MockProviderHandle {
             startup_readiness,
@@ -283,13 +323,14 @@ impl MockJobProvider {
             claim_candidates,
             completions,
             heartbeats,
-            deferred_poll_delays,
+            deferred_poll_deadlines,
             discover_entered,
             completion_notify,
             discover_poll_started,
             discover_started_count,
             heartbeat_notify,
             heartbeat_control,
+            claim_control,
         };
         (provider, handle)
     }
@@ -446,8 +487,37 @@ impl MockProviderHandle {
             .clone()
     }
 
-    pub fn deferred_poll_delays(&self) -> Vec<Duration> {
-        self.deferred_poll_delays
+    pub fn block_claims(&self) {
+        self.claim_control.block();
+    }
+
+    pub fn unblock_claims(&self) {
+        self.claim_control.unblock();
+    }
+
+    pub async fn wait_claim_in_flight(&self, expected: usize, timeout: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let changed = self.claim_control.state_changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+
+            if self.claim_control.in_flight.load(Ordering::SeqCst) == expected {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, changed).await.is_err() {
+                return false;
+            }
+        }
+    }
+
+    pub fn deferred_poll_deadlines(&self) -> Vec<Instant> {
+        self.deferred_poll_deadlines
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -528,6 +598,13 @@ impl JobProvider for MockJobProvider {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(candidate.clone());
+        let release = self.claim_control.release.notified();
+        tokio::pin!(release);
+        release.as_mut().enable();
+        let _in_flight = self.claim_control.enter();
+        if self.claim_control.blocked.load(Ordering::SeqCst) {
+            release.await;
+        }
         let context = self
             .claim_results
             .lock()
@@ -593,11 +670,11 @@ impl JobProvider for MockJobProvider {
         }
     }
 
-    async fn defer_poll_after(&self, delay: Duration) {
-        self.deferred_poll_delays
+    async fn defer_poll_until(&self, deadline: Instant) {
+        self.deferred_poll_deadlines
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .push(delay);
+            .push(deadline);
     }
 
     /// Acquire the discovery Mutex to preserve the shutdown deadlock regression shape.
@@ -612,7 +689,7 @@ impl JobProvider for MockJobProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_fixtures::execution_context_for_test;
+    use crate::test_fixtures::execution_context::execution_context_for_test;
 
     fn minimal_context(run_id: RunId) -> ExecutionContext {
         execution_context_for_test(run_id)

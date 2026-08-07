@@ -8,10 +8,14 @@ export const featureSwitchesResponseSchema = z.object({
   switches: z.record(z.string(), z.boolean()),
   effectiveSwitches: z.record(z.string(), z.boolean()),
   /**
-   * Optional capability handshake for multiple inline template parts.
-   * Older API deployments omit this field.
+   * Capability handshakes the pre-cleanup Platform bundle still reads to gate
+   * inline templates, image recognition, and avatar templates. Current clients
+   * ignore them. Remove these three together with the deferred schema
+   * contraction, once that frontend release has drained.
    */
   supportsStructuredInlineTemplates: z.boolean().optional(),
+  supportsImageRecognition: z.boolean().optional(),
+  supportsAvatarTemplates: z.boolean().optional(),
 });
 
 export type FeatureSwitchesResponse = z.infer<

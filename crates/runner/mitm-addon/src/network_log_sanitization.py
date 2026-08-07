@@ -2,6 +2,8 @@
 
 import urllib.parse
 
+from runtime_url_parsing import split_runtime_url, strip_url_query_and_fragment
+
 _URLSPLIT_LEADING_STRIP_CHARACTERS = "".join(chr(codepoint) for codepoint in range(0x21))
 _URLSPLIT_REMOVABLE_CHARACTERS = "\t\r\n"
 _SPECIAL_URL_SCHEMES = ("http", "https")
@@ -22,15 +24,7 @@ def _sanitize_netloc_for_network_log(netloc: str) -> str:
     return netloc.rsplit("@", 1)[1]
 
 
-def _strip_query_fragment_for_network_log(value: str) -> str:
-    cut_points = [index for marker in ("?", "#") if (index := value.find(marker)) != -1]
-    if not cut_points:
-        return value
-    return value[: min(cut_points)]
-
-
 def _sanitize_url_text_fallback_for_network_log(value: str) -> str:
-    value = _strip_query_fragment_for_network_log(value)
     scheme, scheme_sep, rest = value.partition("://")
     if scheme_sep:
         netloc, sep, path = rest.partition("/")
@@ -75,18 +69,10 @@ def _sanitize_malformed_authority_for_network_log(
     return urllib.parse.urlunsplit((parts.scheme, netloc, path, "", ""))
 
 
-def sanitize_url_for_network_log(value: str) -> str:
-    """Return a primary request/proxy URL string for persistent logs.
-
-    Runtime metadata can keep raw URLs because firewall/auth and connector
-    billing may need query parameters. Persistent logs do not. This sanitizer
-    also removes userinfo from malformed HTTP(S) authority positions, but it
-    still preserves ordinary paths for request diagnostics. It is not a general
-    sanitizer for arbitrary captured header values or path contents.
-    """
-    normalized_value = _normalize_for_urlsplit(value)
+def _sanitize_retained_url_for_network_log(retained_value: str) -> str:
+    normalized_value = _normalize_for_urlsplit(retained_value)
     try:
-        parts = urllib.parse.urlsplit(normalized_value)
+        parts = split_runtime_url(normalized_value)
     except ValueError:
         return _sanitize_url_text_fallback_for_network_log(normalized_value)
 
@@ -96,3 +82,55 @@ def sanitize_url_for_network_log(value: str) -> str:
 
     netloc = _sanitize_netloc_for_network_log(parts.netloc)
     return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
+def _bounded_retained_url(value: str, max_characters: int) -> str | None:
+    if len(value) <= max_characters:
+        return strip_url_query_and_fragment(value)
+
+    search_end = max_characters + 1
+    query_start = value.find("?", 0, search_end)
+    fragment_start = value.find("#", 0, query_start if query_start >= 0 else search_end)
+    if fragment_start >= 0:
+        return value[:fragment_start]
+    if query_start >= 0:
+        return value[:query_start]
+    return None
+
+
+def sanitize_url_for_network_log(value: str) -> str:
+    """Return a URL string without credentials or query data for diagnostics.
+
+    Runtime metadata can keep raw URLs because firewall/auth and connector
+    billing may need query parameters. Captured URL-bearing headers and proxy
+    diagnostics do not, so this sanitizer discards query and fragment contents
+    before URL preprocessing and parsing. Top-level HTTP network entries instead
+    use ``sanitize_request_url_for_network_log`` to retain the complete request
+    URL. This sanitizer also removes userinfo from malformed HTTP(S) authority
+    positions, but it still preserves ordinary paths for request diagnostics. It
+    is not a general sanitizer for arbitrary captured header values or path
+    contents.
+    """
+    retained_value = strip_url_query_and_fragment(value)
+    return _sanitize_retained_url_for_network_log(retained_value)
+
+
+def sanitize_url_for_network_log_with_retained_limit(value: str, max_characters: int) -> str | None:
+    """Sanitize a URL only when its retained query-free value fits the limit.
+
+    Raw inputs above the limit search for query and fragment delimiters only
+    through the first ``max_characters + 1`` characters.  A delimiter within
+    that window proves the retained value is bounded; otherwise no raw prefix
+    is returned or processed.
+    """
+    retained_value = _bounded_retained_url(value, max_characters)
+    if retained_value is None:
+        return None
+    return _sanitize_retained_url_for_network_log(retained_value)
+
+
+def sanitize_request_url_for_network_log(value: str) -> str:
+    """Preserve a complete request URL while removing URL userinfo."""
+    retained_value = strip_url_query_and_fragment(value)
+    suffix = value[len(retained_value) :]
+    return f"{sanitize_url_for_network_log(retained_value)}{suffix}"

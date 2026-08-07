@@ -64,13 +64,14 @@ interface UsageStorageCounts {
 interface UsageCompactionStorageCounts {
   readonly raw: number;
   readonly processedRaw: number;
-  readonly compactedRaw: number;
   readonly hourly: number;
 }
 
 interface UsageEventState {
   readonly id: string;
   readonly status: string;
+  readonly creditsCharged: number | null;
+  readonly billingError: string | null;
 }
 
 interface UsageAllowanceWindowPair {
@@ -300,31 +301,6 @@ export const insertUsageEvent$ = command(
   },
 );
 
-export const setBrowserUsageHold$ = command(
-  async (
-    _,
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly runId: string;
-      readonly chatThreadId: string;
-      readonly idempotencyKey: string;
-      readonly settled: boolean;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await postAction(signal, {
-      action: "set-browser-usage-hold",
-      org_id: args.orgId,
-      user_id: args.userId,
-      run_id: args.runId,
-      chat_thread_id: args.chatThreadId,
-      idempotency_key: args.idempotencyKey,
-      settled: args.settled,
-    });
-  },
-);
-
 export const attachUsageAllowance$ = command(
   async (
     _,
@@ -397,12 +373,19 @@ export const readUsageEventState$ = command(
       action: "read-usage-event-state",
       idempotency_key: idempotencyKey,
     });
-    if (!response.usage_event_id || !response.usage_event_status) {
+    if (
+      !response.usage_event_id ||
+      !response.usage_event_status ||
+      response.usage_event_credits_charged === undefined ||
+      response.usage_event_billing_error === undefined
+    ) {
       throw new Error("readUsageEventState$: response missing event state");
     }
     return {
       id: response.usage_event_id,
       status: response.usage_event_status,
+      creditsCharged: response.usage_event_credits_charged,
+      billingError: response.usage_event_billing_error,
     };
   },
 );
@@ -501,7 +484,6 @@ export const readUsageCompactionStorageCounts$ = command(
     if (
       response.raw_count === undefined ||
       response.processed_raw_count === undefined ||
-      response.compacted_raw_count === undefined ||
       response.hourly_count === undefined
     ) {
       throw new Error(
@@ -511,9 +493,33 @@ export const readUsageCompactionStorageCounts$ = command(
     return {
       raw: response.raw_count,
       processedRaw: response.processed_raw_count,
-      compactedRaw: response.compacted_raw_count,
       hourly: response.hourly_count,
     };
+  },
+);
+
+export const readInsightsDailyPermissions$ = command(
+  async (
+    _,
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly date: string;
+    },
+    signal: AbortSignal,
+  ): Promise<readonly Record<string, unknown>[]> => {
+    const response = await postAction(signal, {
+      action: "read-insights-daily-permissions",
+      org_id: args.orgId,
+      user_id: args.userId,
+      date: args.date,
+    });
+    if (response.insights_daily_permissions === undefined) {
+      throw new Error(
+        "readInsightsDailyPermissions$: response missing permissions",
+      );
+    }
+    return response.insights_daily_permissions;
   },
 );
 

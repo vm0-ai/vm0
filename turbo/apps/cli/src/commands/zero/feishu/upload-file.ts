@@ -7,8 +7,8 @@ import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/integ
 import {
   completeFeishuFileUpload,
   initFeishuFileUpload,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/integrations-feishu";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   ".csv": "text/csv",
@@ -117,7 +117,10 @@ Notes:
       });
       const uploadResponse = await fetch(prepared.uploadUrl, {
         method: "PUT",
-        headers: { "Content-Type": prepared.contentType },
+        headers: {
+          "Content-Type": prepared.contentType,
+          ...prepared.uploadHeaders,
+        },
         body: new Uint8Array(readFileSync(options.file)),
       });
       if (!uploadResponse.ok) {

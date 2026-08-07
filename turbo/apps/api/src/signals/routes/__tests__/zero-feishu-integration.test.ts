@@ -13,16 +13,32 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  zeroCustomConnectorByIdContract,
+  zeroCustomConnectorOAuth2Contract,
+  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorsContract,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { getCustomConnectorSkillStorageName } from "@vm0/core/storage-names";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { extractFileFromTarGz } from "../../../lib/tar";
 import { server } from "../../../mocks/server";
+import {
+  findPendingChatEventByPromptFixture,
+  readChatEventContextFixture,
+} from "../../../test-fixtures/chat-events";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { createDeferredPromise } from "../../utils";
 import { zeroFeishuBrowserConnectRoutes } from "../zero-feishu-browser-connect";
 import { zeroFeishuEventsRoutes } from "../zero-feishu-events";
@@ -30,15 +46,45 @@ import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
 import { zeroIntegrationsFeishuFileRoutes } from "../zero-integrations-feishu-files";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import type { ApiTestUser } from "./helpers/api-bdd";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  expectCanonicalStorageManifest,
+} from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  readCustomConnectorCredentialStorageParent,
+  readCustomConnectorOAuthStorageState,
+} from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroAgentsRoutes } from "../zero-agents";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
+import { zeroCustomConnectorsDeleteRoutes } from "../zero-custom-connectors-delete";
+import { zeroCustomConnectorsGetRoutes } from "../zero-custom-connectors-get";
+import { zeroCustomConnectorOAuth2Routes } from "../zero-custom-connectors-oauth2";
+import { zeroCustomConnectorSecretDeleteRoutes } from "../zero-custom-connectors-secret-delete";
+import { zeroCustomConnectorsSecretSetRoutes } from "../zero-custom-connectors-secret-set";
+import { zeroCustomConnectorsUpdateRoutes } from "../zero-custom-connectors-update";
+import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
+
+const zeroCustomConnectorByIdTestRoutes = Object.freeze([
+  ...zeroCustomConnectorsDeleteRoutes,
+  ...zeroCustomConnectorsGetRoutes,
+  ...zeroCustomConnectorsUpdateRoutes,
+]);
+
+const zeroCustomConnectorSecretTestRoutes = Object.freeze([
+  ...zeroCustomConnectorSecretDeleteRoutes,
+  ...zeroCustomConnectorsSecretSetRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
+const chatCallbacks = createChatCallbacksApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const APP_ORIGIN = "https://app.vm0.test";
@@ -47,6 +93,46 @@ const VERIFICATION_TOKEN = "feishu-test-verification-token";
 const APP_SECRET = "feishu-test-secret";
 const TENANT_KEY = "tenant_feishu_integration_test";
 const BOT_OPEN_ID = "ou_feishu_bot";
+const EXPECTED_FEISHU_OAUTH_SCOPES = [
+  "offline_access",
+  "contact:contact.base:readonly",
+  "contact:user.base:readonly",
+  "contact:user.id:readonly",
+  "contact:user:search",
+  "im:chat",
+  "im:chat:create_by_user",
+  "im:chat.members:read",
+  "im:chat.members:write_only",
+  "im:message",
+  "im:message.p2p_msg:get_as_user",
+  "im:message.group_msg:get_as_user",
+  "im:message.send_as_user",
+  "im:message.reactions:read",
+  "im:message.reactions:write_only",
+  "im:resource",
+  "drive:drive",
+  "drive:file",
+  "drive:export:readonly",
+  "docx:document",
+  "docx:document.block:convert",
+  "docs:document:import",
+  "docs:document.media:upload",
+  "docs:document.media:download",
+  "docs:document.comment:create",
+  "docs:document.comment:read",
+  "docs:document.comment:write_only",
+  "sheets:spreadsheet",
+  "bitable:app",
+  "wiki:wiki",
+  "search:docs:read",
+  "slides:presentation:read",
+  "slides:presentation:write_only",
+  "board:whiteboard:node:read",
+  "board:whiteboard:node:create",
+  "calendar:calendar",
+  "task:task:write",
+  "task:tasklist:write",
+] as const;
 
 interface CapturedFeishuMessage {
   readonly kind: "reply" | "send";
@@ -54,6 +140,7 @@ interface CapturedFeishuMessage {
   readonly msgType: "interactive" | "text";
   readonly content: Readonly<Record<string, unknown>>;
   readonly replyInThread: boolean;
+  readonly idempotencyKey?: string;
 }
 
 interface FeishuMessageRequestBody {
@@ -61,6 +148,7 @@ interface FeishuMessageRequestBody {
   readonly msg_type: "interactive" | "text";
   readonly content: string;
   readonly reply_in_thread?: boolean;
+  readonly uuid?: string;
 }
 
 interface FeishuRunFixture {
@@ -110,6 +198,36 @@ function feishuConnectBody(connectUrl: string) {
       "Expected signature in Feishu connect URL",
     ),
   };
+}
+
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command === "object" &&
+    command !== null &&
+    "input" in command &&
+    typeof command.input === "object" &&
+    command.input !== null
+  ) {
+    return command.input as Record<string, unknown>;
+  }
+  return {};
+}
+
+function uploadedSkillMarkdown(): string {
+  for (const [command] of context.mocks.s3.send.mock.calls) {
+    const input = commandInput(command);
+    if (
+      !String(input.Key).endsWith("/archive.tar.gz") ||
+      !Buffer.isBuffer(input.Body)
+    ) {
+      continue;
+    }
+    const skillMarkdown = extractFileFromTarGz(input.Body, "SKILL.md");
+    if (skillMarkdown !== null) {
+      return skillMarkdown;
+    }
+  }
+  throw new Error("Expected an uploaded SKILL.md");
 }
 
 function legacyFeishuAppOAuthState(args: {
@@ -319,65 +437,73 @@ async function enableFeishuIntegration(
   );
 }
 
-beforeEach(() => {
-  mockEnv("APP_URL", APP_ORIGIN);
-  mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.test");
-  mockEnv("VM0_WEB_URL", "https://www.vm0.test");
-  mockEnv("FEISHU_CALLBACK_BASE_URL", "https://www.vm0.test");
-  mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  context.mocks.axiom.query.mockResolvedValue([]);
-  context.mocks.ably.publish.mockResolvedValue(undefined);
-
-  server.use(
-    http.post(
-      "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-      () => {
-        return HttpResponse.json({
-          code: 0,
-          tenant_access_token: "tenant-access-token",
-          expire: 7200,
-        });
-      },
-    ),
-    http.get("https://open.feishu.cn/open-apis/bot/v3/info", () => {
-      return HttpResponse.json({
-        code: 0,
-        bot: {
-          open_id: BOT_OPEN_ID,
-          app_name: "Okou Feishu",
-          avatar_url: "https://example.com/okou-feishu.png",
-        },
-      });
-    }),
-    http.get("https://open.feishu.cn/open-apis/authen/v1/user_info", () => {
-      return HttpResponse.json({
-        code: 0,
-        data: {
-          name: "Feishu User",
-          open_id: "ou_oauth_user",
-          tenant_key: TENANT_KEY,
-        },
-      });
-    }),
-  );
-});
-
 describe("Feishu integration", () => {
+  let oauthUserOpenId: string;
   let outboundMessages: CapturedFeishuMessage[];
   let addedReactions: string[];
   let removedReactions: string[];
   let historyMessages: readonly Readonly<Record<string, unknown>>[];
   let failedSendTargets: string[];
+  let failedSendContentFragments: string[];
+  let oauthTokenExpiresInSeconds: number;
+  let oauthTokenGrantTypes: string[];
   let oauthTokenRedirectUris: string[];
+  let oauthRefreshTokens: string[];
 
   beforeEach(() => {
+    oauthUserOpenId = "ou_oauth_user";
+    mockEnv("APP_URL", APP_ORIGIN);
+    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.test");
+    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    mockEnv("FEISHU_CALLBACK_BASE_URL", "https://www.vm0.test");
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    context.mocks.axiom.query.mockResolvedValue([]);
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+
+    server.use(
+      http.post(
+        "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+        () => {
+          return HttpResponse.json({
+            code: 0,
+            tenant_access_token: "tenant-access-token",
+            expire: 7200,
+          });
+        },
+      ),
+      http.get("https://open.feishu.cn/open-apis/bot/v3/info", () => {
+        return HttpResponse.json({
+          code: 0,
+          bot: {
+            open_id: BOT_OPEN_ID,
+            app_name: "Okou Feishu",
+            avatar_url: "https://example.com/okou-feishu.png",
+          },
+        });
+      }),
+      http.get("https://open.feishu.cn/open-apis/authen/v1/user_info", () => {
+        return HttpResponse.json({
+          code: 0,
+          data: {
+            name: "Feishu User",
+            open_id: oauthUserOpenId,
+            tenant_key: TENANT_KEY,
+          },
+        });
+      }),
+    );
+
     outboundMessages = [];
     addedReactions = [];
     removedReactions = [];
     historyMessages = [];
     failedSendTargets = [];
+    failedSendContentFragments = [];
+    oauthTokenExpiresInSeconds = 7200;
+    oauthTokenGrantTypes = [];
     oauthTokenRedirectUris = [];
+    oauthRefreshTokens = [];
     server.use(
       http.post(
         "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
@@ -386,15 +512,43 @@ describe("Feishu integration", () => {
           if (
             typeof body !== "object" ||
             body === null ||
-            !("redirect_uri" in body) ||
-            typeof body.redirect_uri !== "string"
+            !("grant_type" in body) ||
+            typeof body.grant_type !== "string"
           ) {
-            throw new Error("Expected Feishu OAuth redirect URI");
+            throw new Error("Expected Feishu OAuth grant type");
           }
-          oauthTokenRedirectUris.push(body.redirect_uri);
+          oauthTokenGrantTypes.push(body.grant_type);
+          if (body.grant_type === "authorization_code") {
+            if (
+              !("redirect_uri" in body) ||
+              typeof body.redirect_uri !== "string"
+            ) {
+              throw new Error("Expected Feishu OAuth redirect URI");
+            }
+            oauthTokenRedirectUris.push(body.redirect_uri);
+          } else if (body.grant_type === "refresh_token") {
+            if (
+              !("refresh_token" in body) ||
+              typeof body.refresh_token !== "string"
+            ) {
+              throw new Error("Expected Feishu OAuth refresh token");
+            }
+            oauthRefreshTokens.push(body.refresh_token);
+          }
           return HttpResponse.json({
             code: 0,
-            access_token: "feishu-user-access-token",
+            access_token:
+              body.grant_type === "refresh_token"
+                ? "feishu-refreshed-access-token"
+                : "feishu-user-access-token",
+            refresh_token:
+              body.grant_type === "refresh_token"
+                ? "feishu-rotated-refresh-token"
+                : "feishu-user-refresh-token",
+            expires_in:
+              body.grant_type === "refresh_token"
+                ? 7200
+                : oauthTokenExpiresInSeconds,
           });
         },
       ),
@@ -425,6 +579,18 @@ describe("Feishu integration", () => {
         "https://open.feishu.cn/open-apis/im/v1/messages",
         async ({ request }) => {
           const body = (await request.json()) as FeishuMessageRequestBody;
+          const failedContentIndex = failedSendContentFragments.findIndex(
+            (fragment) => {
+              return body.content.includes(fragment);
+            },
+          );
+          if (failedContentIndex !== -1) {
+            failedSendContentFragments.splice(failedContentIndex, 1);
+            return HttpResponse.json({
+              code: 1,
+              msg: "temporary message failure",
+            });
+          }
           const failedTargetIndex = failedSendTargets.indexOf(
             body.receive_id ?? "",
           );
@@ -443,6 +609,7 @@ describe("Feishu integration", () => {
               Record<string, unknown>
             >,
             replyInThread: false,
+            ...(body.uuid ? { idempotencyKey: body.uuid } : {}),
           });
           return HttpResponse.json({
             code: 0,
@@ -518,7 +685,9 @@ describe("Feishu integration", () => {
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -572,6 +741,57 @@ describe("Feishu integration", () => {
     };
   }
 
+  async function feishuAuthorizationUrlFromResponse(
+    response: Response,
+  ): Promise<URL> {
+    expect(response.status).toBe(200);
+    const responseBody: unknown = await response.json();
+    if (
+      typeof responseBody !== "object" ||
+      responseBody === null ||
+      !("openUrl" in responseBody) ||
+      typeof responseBody.openUrl !== "string"
+    ) {
+      throw new Error("Expected Feishu OAuth authorization URL");
+    }
+    const authorizationUrl = new URL(responseBody.openUrl);
+    expect(authorizationUrl.origin).toBe("https://accounts.feishu.cn");
+    return authorizationUrl;
+  }
+
+  async function completeFeishuAuthorization(
+    authorizationUrl: URL,
+    openId: string,
+  ): Promise<URL> {
+    const state = requireValue(
+      authorizationUrl.searchParams.get("state"),
+      "Expected Feishu OAuth state",
+    );
+    oauthUserOpenId = openId;
+    const oauthApp = createAppWithRoutes({
+      signal: context.signal,
+      routes: zeroFeishuOauthRoutes,
+    });
+    const callbackResponse = await oauthApp.request(
+      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+        code: `feishu-oauth-${randomUUID()}`,
+        responseMode: "json",
+        state,
+      })}`,
+    );
+    expect(callbackResponse.status).toBe(200);
+    const responseBody: unknown = await callbackResponse.json();
+    if (
+      typeof responseBody !== "object" ||
+      responseBody === null ||
+      !("redirectUrl" in responseBody) ||
+      typeof responseBody.redirectUrl !== "string"
+    ) {
+      throw new Error("Expected Feishu OAuth completion URL");
+    }
+    return new URL(responseBody.redirectUrl);
+  }
+
   async function connectFixtureUser(
     fixture: FeishuRunFixture,
     actor = fixture.actor,
@@ -601,19 +821,6 @@ describe("Feishu integration", () => {
       signal: context.signal,
       routes: zeroFeishuBrowserConnectRoutes,
     });
-    const previousHistoryMessages = historyMessages;
-    historyMessages = [
-      {
-        message_id: `om_connect_${randomUUID()}`,
-        msg_type: "text",
-        sender: {
-          id: openId,
-          sender_name: "Feishu User",
-          sender_type: "user",
-        },
-        body: { content: JSON.stringify({ text: "connect" }) },
-      },
-    ];
     const response = await connectApp.request("/api/zero/feishu/connect", {
       method: "POST",
       headers: {
@@ -622,8 +829,14 @@ describe("Feishu integration", () => {
       },
       body: JSON.stringify(feishuConnectBody(connectUrl)),
     });
-    historyMessages = previousHistoryMessages;
-    expect(response.status).toBe(200);
+    const authorizationUrl = await feishuAuthorizationUrlFromResponse(response);
+    const completionUrl = await completeFeishuAuthorization(
+      authorizationUrl,
+      openId,
+    );
+    expect(completionUrl.toString()).toBe(
+      `https://applink.feishu.cn/client/bot/open?appId=${fixture.appId}`,
+    );
     const connectBody = feishuConnectBody(connectUrl);
     const statusResponse = await connectApp.request(
       `/api/zero/feishu/connect/status?${new URLSearchParams(
@@ -675,20 +888,23 @@ describe("Feishu integration", () => {
       headers,
       [200],
     );
-    await webhooksApi.requestAgentEvents(
-      {
-        runId: args.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 0,
-            message: {
-              id: `msg_bdd_feishu_${args.runId}`,
-              content: [{ type: "text", text: args.assistantText }],
-            },
-          },
-        ],
+    const assistantEvent = {
+      type: "assistant" as const,
+      sequenceNumber: 0,
+      message: {
+        id: `msg_bdd_feishu_${args.runId}`,
+        content: [{ type: "text" as const, text: args.assistantText }],
       },
+    };
+    chatCallbacks.mockChatOutputEvents([
+      {
+        eventType: assistantEvent.type,
+        sequenceNumber: assistantEvent.sequenceNumber,
+        eventData: { message: assistantEvent.message },
+      },
+    ]);
+    await webhooksApi.requestAgentEvents(
+      { runId: args.runId, events: [assistantEvent] },
       headers,
       [200],
     );
@@ -698,6 +914,7 @@ describe("Feishu integration", () => {
       [200],
     );
     await flushWaitUntilForTest();
+    chatCallbacks.mockChatOutputEvents([]);
   }
 
   async function findRun(
@@ -715,6 +932,36 @@ describe("Feishu integration", () => {
     );
   }
 
+  async function startFeishuDmSession(fixture: FeishuRunFixture): Promise<{
+    readonly firstMessageId: string;
+    readonly mainSessionId: string;
+  }> {
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    const firstMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "start the Feishu DM session", "ou_feishu_user", {
+        messageId: firstMessageId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const initialRun = await findRun(actor, "start the Feishu DM session");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const initialClaim = await runsApi.claimRunnerJob(initialRun.id);
+    expect(initialClaim.resumeSession).toBeNull();
+    const mainSessionId = randomUUID();
+    await completeRunSession({
+      runId: initialRun.id,
+      sandboxToken: initialClaim.sandboxToken,
+      sessionId: mainSessionId,
+      history: `bdd initial feishu history ${initialRun.id}`,
+      assistantText: "Initial Feishu DM answer",
+    });
+    return { firstMessageId, mainSessionId };
+  }
+
   it("rejects configuration API access when the feature switch is disabled", async () => {
     const actor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
@@ -722,7 +969,9 @@ describe("Feishu integration", () => {
       orgRole: "org:admin",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -753,7 +1002,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -815,7 +1066,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
 
     await accept(
       client.setup({
@@ -911,7 +1164,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const bothTokenRequestsStarted = createDeferredPromise<void>(
       context.signal,
     );
@@ -997,7 +1252,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
 
     const configured = await accept(
       client.setup({
@@ -1107,7 +1364,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(admin.userId, admin.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -1137,6 +1396,195 @@ describe("Feishu integration", () => {
       [200],
     );
 
+    const customConnectorClient = setupApp({
+      context,
+      routes: zeroCustomConnectorsRoutes,
+    })(zeroCustomConnectorsContract);
+    const connectorList = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(connectorList.body.connectors).toHaveLength(1);
+    const managedConnector = requireValue(
+      connectorList.body.connectors[0],
+      "Expected setup to create a managed Feishu custom connector",
+    );
+    expect(managedConnector).toMatchObject({
+      slug: `_feishu-${installationId}`,
+      displayName: "Feishu-Okou Feishu",
+      prefixes: ["https://open.feishu.cn/open-apis/"],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      authMode: "oauth",
+      storageVersion: 1,
+      permissionBundleRef: "builtin:feishu@1",
+      connected: false,
+      oauthConfig: {
+        providerAdapter: "feishu",
+        clientId: appId,
+        authorizationUrl:
+          "https://accounts.feishu.cn/open-apis/authen/v1/authorize",
+        tokenUrl: "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        scopes: [...EXPECTED_FEISHU_OAUTH_SCOPES],
+      },
+    });
+    expect(managedConnector.skillMarkdown).toContain("Available capabilities");
+    expect(managedConnector.skillMarkdown).toContain(
+      "Every request runs with the connected user's identity",
+    );
+    expect(managedConnector.skillMarkdown).toContain(
+      "does not grant whiteboard node update or delete scopes",
+    );
+    const skillMarkdown = uploadedSkillMarkdown();
+    expect(skillMarkdown).toContain("---\nname: feishu\n");
+    expect(skillMarkdown).toContain(
+      "description: Feishu OpenAPI for user-authorized messaging, people search, cloud",
+    );
+    expect(skillMarkdown).toContain(
+      "documents, calendars, and tasks. Use when the user asks to work with Feishu.",
+    );
+    expect(skillMarkdown).not.toContain("Okou Feishu");
+    expect(skillMarkdown).not.toContain(managedConnector.id);
+    const permissionBundle = await accept(
+      setupApp({ context, routes: zeroCustomConnectorByIdTestRoutes })(
+        zeroCustomConnectorByIdContract,
+      ).permissions({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: managedConnector.id },
+      }),
+      [200],
+    );
+    expect(permissionBundle.body).toMatchObject({
+      ref: "builtin:feishu@1",
+      defaultPolicies: {
+        "standard:use": "allow",
+        "messages:send-as-user": "deny",
+        "resources:delete": "deny",
+        "sharing:manage": "allow",
+        "chats:manage": "deny",
+        "comments:write": "allow",
+        "calendar:write": "allow",
+        "tasks:write": "allow",
+      },
+    });
+
+    const customConnectorOAuthClient = setupApp({
+      context,
+      routes: zeroCustomConnectorOAuth2Routes,
+    })(zeroCustomConnectorOAuth2Contract);
+    const customConnectorOAuthStart = await accept(
+      customConnectorOAuthClient.start({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: managedConnector.id },
+        body: {},
+      }),
+      [200],
+    );
+    const customAuthorizationUrl = new URL(
+      customConnectorOAuthStart.body.authorizationUrl,
+    );
+    expect(customAuthorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${APP_ORIGIN}/connectors/feishu/callback`,
+    );
+    oauthUserOpenId = "ou_custom_connector_user";
+    const customOAuthState = requireValue(
+      customAuthorizationUrl.searchParams.get("state"),
+      "Expected custom connector Feishu OAuth state",
+    );
+    await expect(
+      readCustomConnectorOAuthStorageState(context, customOAuthState),
+    ).resolves.toMatchObject({
+      custom_oauth_state: {
+        storage_version: 1,
+        context_storage_version: 1,
+      },
+    });
+    const oauthApp = createAppWithRoutes({
+      signal: context.signal,
+      routes: zeroFeishuOauthRoutes,
+    });
+    const customConnectorCallback = await oauthApp.request(
+      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+        code: "feishu-custom-connector-code",
+        responseMode: "json",
+        state: customOAuthState,
+      })}`,
+    );
+    expect(customConnectorCallback.status).toBe(200);
+    await expect(customConnectorCallback.json()).resolves.toStrictEqual({
+      redirectUrl: `${APP_ORIGIN}/connectors/custom/callback/success`,
+    });
+    await flushWaitUntilForTest();
+    const connectedFromCustomConnector = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(connectedFromCustomConnector.body.connectors[0]).toMatchObject({
+      id: managedConnector.id,
+      connected: true,
+    });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requireValue(
+          admin.orgId,
+          "Expected Feishu admin to have an organization",
+        ),
+        userId: admin.userId,
+        customConnectorId: managedConnector.id,
+      }),
+    ).resolves.toMatchObject({
+      connector: { storage_version: 1 },
+    });
+    const adminFeishuStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(adminFeishuStatus.body).toMatchObject({
+      isConnected: true,
+      connectedUserName: "Feishu User",
+    });
+    await accept(
+      setupApp({ context, routes: zeroCustomConnectorSecretTestRoutes })(
+        zeroCustomConnectorSecretContract,
+      ).delete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: managedConnector.id },
+      }),
+      [204],
+    );
+    const disconnectedFromCustomConnector = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(disconnectedFromCustomConnector.body.connectors[0]).toMatchObject({
+      id: managedConnector.id,
+      connected: false,
+    });
+    const disconnectedAdminFeishuStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(disconnectedAdminFeishuStatus.body.isConnected).toBeFalsy();
+    oauthTokenRedirectUris = [];
+    oauthUserOpenId = "ou_oauth_user";
+    outboundMessages = [];
+
     mocks.clerk.session(member.userId, member.orgId, "org:member");
     mockClerkMembership(context, member, "org:member");
     const status = await accept(
@@ -1150,15 +1598,14 @@ describe("Feishu integration", () => {
     expect(status.body.oauthRedirectUrl).toBe(
       `${APP_ORIGIN}/connectors/feishu/callback`,
     );
+    expect(status.body.oauthScopes).toStrictEqual([
+      ...EXPECTED_FEISHU_OAUTH_SCOPES,
+    ]);
     if (!connectUrl) {
       throw new Error("Expected Feishu status to return an OAuth connect URL");
     }
     expect(new URL(connectUrl).origin).toBe("https://api.vm0.test");
 
-    const oauthApp = createAppWithRoutes({
-      signal: context.signal,
-      routes: zeroFeishuOauthRoutes,
-    });
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
@@ -1182,6 +1629,9 @@ describe("Feishu integration", () => {
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       `${APP_ORIGIN}/connectors/feishu/callback`,
     );
+    expect(
+      authorizationUrl.searchParams.get("scope")?.split(" "),
+    ).toStrictEqual([...EXPECTED_FEISHU_OAUTH_SCOPES]);
     const state = authorizationUrl.searchParams.get("state");
     if (!state) {
       throw new Error("Expected Feishu authorization URL to include state");
@@ -1244,6 +1694,19 @@ describe("Feishu integration", () => {
     expect(connected.body.installations?.[0]?.connectedUserName).toBe(
       "Feishu User",
     );
+    const connectedConnectorList = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(connectedConnectorList.body.connectors).toMatchObject([
+      {
+        id: managedConnector.id,
+        connected: true,
+        hasSecret: true,
+      },
+    ]);
     const welcome = outboundMessages.find((message) => {
       return (
         message.kind === "send" &&
@@ -1261,6 +1724,13 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
+    const removedConnectorList = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(removedConnectorList.body.connectors).toStrictEqual([]);
   });
 
   it("verifies and decrypts URL verification callbacks", async () => {
@@ -1277,7 +1747,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -1360,7 +1832,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -1436,7 +1910,9 @@ describe("Feishu integration", () => {
   it("deduplicates unconnected messages, connects, welcomes, and rejects account rebinding", async () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, appId, callbackUrl, defaultAgentId } = fixture;
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
 
     const firstEvent = directMessage(appId, "hello");
     const firstMessage = await postEvent(callbackUrl, firstEvent, {
@@ -1476,18 +1952,6 @@ describe("Feishu integration", () => {
       signal: context.signal,
       routes: zeroFeishuBrowserConnectRoutes,
     });
-    historyMessages = [
-      {
-        message_id: `om_connect_${randomUUID()}`,
-        msg_type: "text",
-        sender: {
-          id: "ou_feishu_user",
-          sender_name: "Feishu User",
-          sender_type: "user",
-        },
-        body: { content: JSON.stringify({ text: "hello" }) },
-      },
-    ];
     failedSendTargets.push("ou_feishu_user");
     context.mocks.ably.publish.mockClear();
     const connectResponse = await connectApp.request(
@@ -1501,13 +1965,18 @@ describe("Feishu integration", () => {
         body: JSON.stringify(feishuConnectBody(connectUrl)),
       },
     );
-    expect(connectResponse.status).toBe(200);
-    await expect(connectResponse.json()).resolves.toMatchObject({
-      success: true,
-      botName: "Okou Feishu",
-      openUrl: `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
-    });
-    historyMessages = [];
+    const authorizationUrl =
+      await feishuAuthorizationUrlFromResponse(connectResponse);
+    expect(
+      authorizationUrl.searchParams.get("scope")?.split(" "),
+    ).toStrictEqual([...EXPECTED_FEISHU_OAUTH_SCOPES]);
+    const completionUrl = await completeFeishuAuthorization(
+      authorizationUrl,
+      "ou_feishu_user",
+    );
+    expect(completionUrl.toString()).toBe(
+      `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "feishu:changed",
       null,
@@ -1541,7 +2010,9 @@ describe("Feishu integration", () => {
         body: JSON.stringify(feishuConnectBody(connectUrl)),
       },
     );
-    expect(retryConnectResponse.status).toBe(200);
+    const retryAuthorizationUrl =
+      await feishuAuthorizationUrlFromResponse(retryConnectResponse);
+    await completeFeishuAuthorization(retryAuthorizationUrl, "ou_feishu_user");
     await flushWaitUntilForTest();
     const welcome = outboundMessages.find((message) => {
       return (
@@ -1572,13 +2043,16 @@ describe("Feishu integration", () => {
         body: JSON.stringify(feishuConnectBody(connectUrl)),
       },
     );
-    expect(rebindResponse.status).toBe(409);
-    await expect(rebindResponse.json()).resolves.toMatchObject({
-      error: {
-        message: "This Feishu account is already connected",
-        code: "CONFLICT",
-      },
-    });
+    const rebindAuthorizationUrl =
+      await feishuAuthorizationUrlFromResponse(rebindResponse);
+    const rebindCompletionUrl = await completeFeishuAuthorization(
+      rebindAuthorizationUrl,
+      "ou_feishu_user",
+    );
+    expect(rebindCompletionUrl.pathname).toBe("/settings/feishu");
+    expect(rebindCompletionUrl.searchParams.get("error")).toBe(
+      "This Feishu account is already connected.",
+    );
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
 
     outboundMessages = [];
@@ -1611,9 +2085,20 @@ describe("Feishu integration", () => {
       },
     );
     expect(replacementResponse.status).toBe(307);
-    expect(replacementResponse.headers.get("location")).toBe(
-      `${APP_ORIGIN}/works?feishu=connected`,
+    const replacementAuthorizationUrl = new URL(
+      requireValue(
+        replacementResponse.headers.get("location"),
+        "Expected replacement Feishu authorization URL",
+      ),
     );
+    expect(replacementAuthorizationUrl.origin).toBe(
+      "https://accounts.feishu.cn",
+    );
+    await completeFeishuAuthorization(
+      replacementAuthorizationUrl,
+      replacementOpenId,
+    );
+    await flushWaitUntilForTest();
 
     outboundMessages = [];
     await postEvent(
@@ -1666,7 +2151,9 @@ describe("Feishu integration", () => {
     const fixture = await setupFeishuRunFixture();
     const { appId, callbackUrl } = fixture;
     await connectFixtureUser(fixture);
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     for (const command of [
       "/help",
       "/connect",
@@ -1751,7 +2238,37 @@ describe("Feishu integration", () => {
   it("runs a Feishu DM file with downloadable resource context", async () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, runnerGroup, appId, callbackUrl, defaultAgentId } = fixture;
+    oauthTokenExpiresInSeconds = 0;
     await connectFixtureUser(fixture);
+    const customConnectorClient = setupApp({
+      context,
+      routes: zeroCustomConnectorsRoutes,
+    })(zeroCustomConnectorsContract);
+    const connectorList = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const managedConnector = requireValue(
+      connectorList.body.connectors[0],
+      "Expected connected Feishu custom connector",
+    );
+    const customConnectorGrants = await accept(
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentCustomConnectorsContract,
+      ).get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+      }),
+      [200],
+    );
+    expect(customConnectorGrants.body.grants).toStrictEqual([
+      {
+        customConnectorId: managedConnector.id,
+        permissionNames: [],
+      },
+    ]);
     const fileKey = `file_v2_${"a".repeat(1400)}`;
     await postEvent(
       callbackUrl,
@@ -1764,29 +2281,165 @@ describe("Feishu integration", () => {
     );
     await flushWaitUntilForTest();
 
-    const canonicalFilePrompt =
-      "[Web file] quarterly-report.pdf (application/pdf)";
+    const feishuFilePrompt = "[Feishu file] quarterly-report.pdf";
     const listed = await runsApi.listAgentRuns(actor, { limit: 20 });
     const run = requireValue(
       listed.runs.find((candidate) => {
-        return candidate.prompt.includes(canonicalFilePrompt);
+        return candidate.prompt.includes(feishuFilePrompt);
       }),
       "Expected Feishu file run",
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
-    expect(claim.prompt).toContain(canonicalFilePrompt);
-    const fileId = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u)?.[1];
+    expect(claim.prompt).toBe(run.prompt);
+    expect(oauthTokenGrantTypes).toStrictEqual([
+      "authorization_code",
+      "refresh_token",
+    ]);
+    expect(oauthRefreshTokens).toStrictEqual(["feishu-user-refresh-token"]);
+    const internalName = `custom_connector_${managedConnector.id.replaceAll(
+      "-",
+      "",
+    )}`;
+    expect(
+      claim.firewalls?.find((entry) => {
+        return entry.kind === "inline"
+          ? entry.firewall.name === internalName
+          : entry.name === internalName;
+      }),
+    ).toMatchObject({
+      kind: "inline",
+      firewall: {
+        name: internalName,
+        apis: [
+          {
+            base: "https://open.feishu.cn/open-apis/",
+            auth: {
+              headers: {
+                Authorization: expect.stringContaining("secrets."),
+              },
+            },
+            permissions: expect.arrayContaining([
+              expect.objectContaining({
+                name: "standard:use",
+                rules: expect.arrayContaining([
+                  "GET /authen/v1/user_info",
+                  "GET /docx/{path*}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "messages:send-as-user",
+                rules: expect.arrayContaining([
+                  "POST /im/v1/messages",
+                  "POST /im/v1/messages/{message_id}/forward",
+                  "DELETE /im/v1/messages/{message_id}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "resources:delete",
+                rules: expect.arrayContaining([
+                  "DELETE /drive/{path*}",
+                  "DELETE /docx/{path*}",
+                  "POST /bitable/v1/apps/{app_token}/tables/batch_delete",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "sharing:manage",
+                rules: expect.arrayContaining([
+                  "PATCH /drive/v2/permissions/{path*}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "chats:manage",
+                rules: expect.arrayContaining([
+                  "POST /im/v1/chats/{chat_id}/members",
+                  "POST /im/v1/chats/{chat_id}/{path*}",
+                  "PATCH /im/v1/chats/{chat_id}/{path*}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "comments:write",
+                rules: expect.arrayContaining([
+                  "POST /drive/v1/files/{file_token}/comments",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "calendar:write",
+                rules: expect.arrayContaining([
+                  "POST /calendar/v4/calendars/{calendar_id}/events",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "tasks:write",
+                rules: expect.arrayContaining(["POST /task/v2/{path*}"]),
+              }),
+            ]),
+          },
+        ],
+      },
+    });
+    expect(claim.networkPolicies?.[internalName]).toStrictEqual({
+      allow: [
+        "standard:use",
+        "sharing:manage",
+        "comments:write",
+        "calendar:write",
+        "tasks:write",
+      ],
+      deny: ["messages:send-as-user", "resources:delete", "chats:manage"],
+      ask: [],
+      unknownPolicy: "deny",
+    });
+    const permissionGrant = await accept(
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentCustomConnectorsContract,
+      ).update({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+        body: {
+          grants: [
+            {
+              customConnectorId: managedConnector.id,
+              permissionNames: ["messages:send-as-user"],
+            },
+          ],
+          operation: "replace",
+        },
+      }),
+      [200],
+    );
+    expect(permissionGrant.body.grants).toStrictEqual([
+      {
+        customConnectorId: managedConnector.id,
+        permissionNames: ["messages:send-as-user"],
+      },
+    ]);
+    expect(
+      expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.some(
+        (storage) => {
+          return (
+            storage.name ===
+            getCustomConnectorSkillStorageName(managedConnector.id)
+          );
+        },
+      ),
+    ).toBeTruthy();
+    expect(claim.prompt).toContain(feishuFilePrompt);
+    expect(claim.prompt).toContain("   [MESSAGE_ID] om_file_message");
+    expect(claim.prompt).toContain("   [TYPE] file");
+    const fileId = claim.prompt.match(/ {3}\[FILE_KEY\] ([^\n]+)/u)?.[1];
     expect(fileId).toMatch(/^feishu_file_[A-Za-z0-9_-]{22}$/u);
     expect(fileId?.length).toBeLessThan(64);
     expect(claim.prompt).not.toContain(fileKey);
-    expect(claim.prompt).toContain(`   [ID] ${fileId}`);
+    expect(claim.prompt).toContain(`   [FILE_KEY] ${fileId}`);
     expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
     expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context })(chatThreadsContract).events({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
         headers: { authorization: "Bearer clerk-session" },
         query: {},
       }),
@@ -1799,7 +2452,9 @@ describe("Feishu integration", () => {
       "Expected the canonical Feishu file chat thread",
     );
     const threadEventsPage = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: chatThreadCreated.chatThreadId },
         query: {},
@@ -1808,12 +2463,7 @@ describe("Feishu integration", () => {
     );
     expect(threadEventsPage.body.events).toContainEqual(
       expect.objectContaining({
-        content: [
-          "[Feishu file] quarterly-report.pdf",
-          "   [MESSAGE_ID] om_file_message",
-          `   [FILE_KEY] ${fileId}`,
-          "   [TYPE] file",
-        ].join("\n"),
+        content: null,
         userMessage: {
           version: 1,
           parts: [
@@ -1822,6 +2472,11 @@ describe("Feishu integration", () => {
               fileId,
               filenameSnapshot: "quarterly-report.pdf",
               contentType: "application/pdf",
+            },
+            {
+              type: "source",
+              kind: "feishu",
+              href: "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
             },
           ],
         },
@@ -1895,6 +2550,38 @@ describe("Feishu integration", () => {
     expect(wrongRunResponse.status).toBe(400);
   });
 
+  it("claims a Feishu message when conversation history loading fails", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    server.use(
+      http.get("https://open.feishu.cn/open-apis/im/v1/messages", () => {
+        return HttpResponse.json(
+          { code: 99_999, msg: "history unavailable" },
+          { status: 500 },
+        );
+      }),
+    );
+
+    const prompt = "continue without Feishu history";
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, prompt, "ou_feishu_user"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+
+    const run = await findRun(actor, prompt);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.id);
+    expect(claim.prompt).toBe(prompt);
+    expect(claim.appendSystemPrompt).toContain("Scope: Direct message");
+    expect(claim.appendSystemPrompt).not.toContain("# Recent Channel Messages");
+    expect(claim.appendSystemPrompt).not.toContain("# Feishu Thread Context");
+    await runsApi.requestCancelRun(actor, run.id, [200]);
+    await flushWaitUntilForTest();
+  });
+
   it("builds Feishu DM context and canonical response metadata", async () => {
     const fixture = await setupFeishuRunFixture({
       useAlternateInstallationDefault: true,
@@ -1961,7 +2648,9 @@ describe("Feishu integration", () => {
     const run = await findRun(actor, "do the Feishu task");
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context })(chatThreadsContract).events({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
         headers: { authorization: "Bearer clerk-session" },
         query: {},
       }),
@@ -1974,7 +2663,9 @@ describe("Feishu integration", () => {
       "Expected the canonical Feishu chat thread",
     );
     const threadMessages = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: chatThreadCreated.chatThreadId },
         query: {},
@@ -1983,13 +2674,23 @@ describe("Feishu integration", () => {
     );
     expect(threadMessages.body.events).toContainEqual(
       expect.objectContaining({
-        content: "do the Feishu task",
-        feishuChatOpenUrl:
-          "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "do the Feishu task" },
+            {
+              type: "source",
+              kind: "feishu",
+              href: "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
+            },
+          ],
+        },
       }),
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
+    expect(claim.prompt).toBe("do the Feishu task");
     expect(claim.environment?.ZERO_AGENT_ID).toBe(alternateAgentId);
     expect(claim.appendSystemPrompt).toContain(
       "You are currently running inside: Feishu",
@@ -2002,6 +2703,7 @@ describe("Feishu integration", () => {
       "Feishu open ID: ou_feishu_user",
     );
     expect(claim.appendSystemPrompt).toContain("Scope: Direct message");
+    expect(claim.appendSystemPrompt).toContain(`Tenant key: ${TENANT_KEY}`);
     expect(claim.appendSystemPrompt).toContain("Chat ID: oc_feishu_dm");
     expect(claim.appendSystemPrompt).not.toContain("Group ID:");
     expect(claim.appendSystemPrompt).toContain(
@@ -2040,6 +2742,70 @@ describe("Feishu integration", () => {
       history: `bdd feishu history ${run.id}`,
       assistantText: "Canonical Feishu answer",
     });
+    const claimedThreadMessages = await accept(
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: chatThreadCreated.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    const claimedFeishuMessage = claimedThreadMessages.body.events.find(
+      (event) => {
+        return (
+          event.eventType === "input.prompt" &&
+          event.revokesEventId !== undefined &&
+          event.userMessage.parts.some((part) => {
+            return (
+              part.type === "source" &&
+              part.kind === "feishu" &&
+              part.href ===
+                "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm"
+            );
+          })
+        );
+      },
+    );
+    if (!claimedFeishuMessage?.revokesEventId) {
+      throw new Error("Expected the claimed Feishu message");
+    }
+    const claimedFeishuContext = await readChatEventContextFixture(
+      claimedFeishuMessage.id,
+    );
+    const pendingFeishuContext = await readChatEventContextFixture(
+      claimedFeishuMessage.revokesEventId,
+    );
+    expect(claimedFeishuContext).toMatchObject({
+      contextType: "feishu",
+      contextId: expect.any(String),
+      feishuMessageText: "do the Feishu task",
+      feishuMessageFiles: [
+        {
+          fileId: expect.any(String),
+          messageId: "om_history_file",
+          fileKey: historyFileKey,
+          type: "file",
+        },
+      ],
+      feishuChatType: "p2p",
+      feishuChatId: "oc_feishu_dm",
+      feishuMessageId: firstMessageId,
+      feishuThreadId: firstMessageId,
+      feishuReplyInThread: false,
+      feishuReactionId: expect.any(String),
+      feishuSenderOpenId: "ou_feishu_user",
+      feishuConnectionId: expect.any(String),
+      feishuInstallationId: fixture.installationId,
+    });
+    expect(claimedFeishuContext?.feishuConversationHistory).toContain(
+      "Earlier Feishu conversation context",
+    );
+    expect(pendingFeishuContext).toMatchObject({
+      contextType: "feishu",
+      contextId: claimedFeishuContext?.contextId,
+    });
     const completedReply = [...outboundMessages].reverse().find((message) => {
       return (
         message.kind === "send" &&
@@ -2058,7 +2824,9 @@ describe("Feishu integration", () => {
     );
     expect(removedReactions).toHaveLength(1);
 
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -2068,32 +2836,11 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("resumes and resets Feishu DM sessions at message and agent boundaries", async () => {
+  it("resumes Feishu DM sessions across messages and quoted replies", async () => {
     const fixture = await setupFeishuRunFixture();
-    const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
-      fixture;
-    await connectFixtureUser(fixture);
-    const firstMessageId = `om_${randomUUID()}`;
-    await postEvent(
-      callbackUrl,
-      directMessage(appId, "start the Feishu DM session", "ou_feishu_user", {
-        messageId: firstMessageId,
-      }),
-      { encrypted: true },
-    );
-    await flushWaitUntilForTest();
-    const initialRun = await findRun(actor, "start the Feishu DM session");
-    await runsApi.heartbeatRunner(runnerGroup);
-    const initialClaim = await runsApi.claimRunnerJob(initialRun.id);
-    expect(initialClaim.resumeSession).toBeNull();
-    const mainSessionId = randomUUID();
-    await completeRunSession({
-      runId: initialRun.id,
-      sandboxToken: initialClaim.sandboxToken,
-      sessionId: mainSessionId,
-      history: `bdd initial feishu history ${initialRun.id}`,
-      assistantText: "Initial Feishu DM answer",
-    });
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    const { firstMessageId, mainSessionId } =
+      await startFeishuDmSession(fixture);
 
     await postEvent(
       callbackUrl,
@@ -2152,6 +2899,24 @@ describe("Feishu integration", () => {
       });
     expect(completedQuotedReply?.replyInThread).toBeFalsy();
 
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("resets Feishu DM sessions when switching agents", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
+      fixture;
+    await startFeishuDmSession(fixture);
+
     await postEvent(
       callbackUrl,
       directMessage(appId, `/switch ${alternateAgentId}`),
@@ -2179,7 +2944,9 @@ describe("Feishu integration", () => {
     await runsApi.requestCancelRun(actor, switchedAgentRun.id, [200]);
     await flushWaitUntilForTest();
 
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -2250,12 +3017,67 @@ describe("Feishu integration", () => {
       });
     expect(completedThreadReply?.replyInThread).toBeTruthy();
 
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "return to the main Feishu DM"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const mainDmRun = await findRun(actor, "return to the main Feishu DM");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const mainDmClaim = await runsApi.claimRunnerJob(mainDmRun.id);
+    expect(mainDmClaim.resumeSession?.sessionId).toBe(mainSessionId);
+    await runsApi.requestCancelRun(actor, mainDmRun.id, [200]);
+    await flushWaitUntilForTest();
+
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("resumes Feishu DM thread sessions and keeps control replies in-thread", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    const rootMessageId = `om_${randomUUID()}`;
+    const feishuThreadId = `omt_${randomUUID()}`;
+    const threadMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "start a Feishu thread session", "ou_feishu_user", {
+        messageId: threadMessageId,
+        rootId: rootMessageId,
+        threadId: feishuThreadId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const threadRun = await findRun(actor, "start a Feishu thread session");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const threadClaim = await runsApi.claimRunnerJob(threadRun.id);
+    expect(threadClaim.resumeSession).toBeNull();
+    const threadSessionId = randomUUID();
+    await completeRunSession({
+      runId: threadRun.id,
+      sandboxToken: threadClaim.sandboxToken,
+      sessionId: threadSessionId,
+      history: `bdd resumed feishu thread history ${threadRun.id}`,
+      assistantText: "Initial resumed Feishu thread answer",
+    });
+
     const threadHelpMessageId = `om_${randomUUID()}`;
     await postEvent(
       callbackUrl,
       directMessage(appId, "/help", "ou_feishu_user", {
         messageId: threadHelpMessageId,
-        rootId: mainMessageId,
+        rootId: rootMessageId,
         threadId: feishuThreadId,
       }),
       { encrypted: true },
@@ -2274,7 +3096,7 @@ describe("Feishu integration", () => {
       callbackUrl,
       directMessage(
         appId,
-        "continue in the original Feishu thread",
+        "continue the Feishu thread session",
         "ou_feishu_user",
         {
           threadId: feishuThreadId,
@@ -2285,7 +3107,7 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
     const threadFollowUpRun = await findRun(
       actor,
-      "continue in the original Feishu thread",
+      "continue the Feishu thread session",
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const threadFollowUpClaim = await runsApi.claimRunnerJob(
@@ -2295,20 +3117,9 @@ describe("Feishu integration", () => {
     await runsApi.requestCancelRun(actor, threadFollowUpRun.id, [200]);
     await flushWaitUntilForTest();
 
-    await postEvent(
-      callbackUrl,
-      directMessage(appId, "return to the main Feishu DM"),
-      { encrypted: true },
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
     );
-    await flushWaitUntilForTest();
-    const mainDmRun = await findRun(actor, "return to the main Feishu DM");
-    await runsApi.heartbeatRunner(runnerGroup);
-    const mainDmClaim = await runsApi.claimRunnerJob(mainDmRun.id);
-    expect(mainDmClaim.resumeSession?.sessionId).toBe(mainSessionId);
-    await runsApi.requestCancelRun(actor, mainDmRun.id, [200]);
-    await flushWaitUntilForTest();
-
-    const client = setupApp({ context })(zeroFeishuConnectContract);
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -2374,7 +3185,9 @@ describe("Feishu integration", () => {
       await runsApi.requestCancelRun(actor, run.id, [200]);
     }
     await flushWaitUntilForTest();
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -2382,6 +3195,299 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
+  });
+
+  it("terminalizes and delivers a queued Feishu admission failure exactly once", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl, defaultAgentId } = fixture;
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped Feishu actor");
+    }
+    await connectFixtureUser(fixture);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [
+        {
+          organization: { id: actor.orgId },
+          role: "org:admin",
+        },
+      ],
+    });
+
+    const firstPrompt = "finish before queued Feishu credit loss";
+    const firstMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, firstPrompt, "ou_feishu_user", {
+        messageId: firstMessageId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const firstRun = await findRun(actor, firstPrompt);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
+
+    const queuedPrompt = `reject this queued Feishu message after credit loss ${randomUUID()}`;
+    const queuedMessageId = `om_${randomUUID()}`;
+    const queuedPayload = directMessage(appId, queuedPrompt, "ou_feishu_user", {
+      messageId: queuedMessageId,
+    });
+    await postEvent(callbackUrl, queuedPayload, { encrypted: true });
+    await flushWaitUntilForTest();
+    const queuedEvent = await findPendingChatEventByPromptFixture(queuedPrompt);
+    if (!queuedEvent) {
+      throw new Error("Expected the queued Feishu input event");
+    }
+    expect(
+      (await runsApi.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: actor.orgId,
+      status: "suspended",
+      canBuyCredits: true,
+    });
+    outboundMessages = [];
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(
+      new Error("Injected queued Feishu admission realtime failure"),
+    );
+    await completeRunSession({
+      runId: firstRun.id,
+      sandboxToken: firstClaim.sandboxToken,
+      sessionId: `bdd-feishu-admission-${firstRun.id}`,
+      history: `bdd Feishu admission history ${firstRun.id}`,
+      assistantText: "First Feishu task completed",
+    });
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const threadEvents = await accept(
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    const thread = requireValue(
+      threadEvents.body.events.find((event) => {
+        return event.kind === "created" && event.agentId === defaultAgentId;
+      }),
+      "Expected the queued Feishu chat thread",
+    );
+    const messages = await accept(
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: thread.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    const original = messages.body.events.find((event) => {
+      return event.id === queuedEvent.eventId;
+    });
+    if (!original || original.eventType !== "input.prompt") {
+      throw new Error("Expected the original queued Feishu prompt");
+    }
+    expect(original.runId).toBeUndefined();
+    expect(original.userMessage.parts).toContainEqual({
+      type: "text",
+      text: queuedPrompt,
+    });
+    const replacements = messages.body.events.filter((event) => {
+      return event.revokesEventId === queuedEvent.eventId;
+    });
+    expect(replacements).toStrictEqual([
+      expect.objectContaining({
+        eventType: "input.rejected",
+        error: "insufficient_credits",
+      }),
+    ]);
+    const errors = messages.body.events.filter((event) => {
+      return (
+        event.eventType === "output.error" &&
+        event.error === "insufficient_credits"
+      );
+    });
+    expect(errors).toHaveLength(1);
+    const errorEvent = requireValue(
+      errors[0],
+      "Expected the queued Feishu output error",
+    );
+    expect(errorEvent.content).toContain("Add credits");
+    const deliveredErrors = outboundMessages.filter((message) => {
+      return messageContent(message).includes("Add credits");
+    });
+    expect(deliveredErrors).toStrictEqual([
+      expect.objectContaining({
+        kind: "send",
+        target: "oc_feishu_dm",
+        idempotencyKey: errorEvent.id,
+      }),
+    ]);
+    expect(
+      removedReactions.filter((messageId) => {
+        return messageId === queuedMessageId;
+      }),
+    ).toHaveLength(1);
+    expect(
+      (await runsApi.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${thread.chatThreadId}`,
+      null,
+    );
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadRunCreated:${thread.chatThreadId}`,
+      null,
+    );
+
+    await postEvent(callbackUrl, queuedPayload, { encrypted: true });
+    await flushWaitUntilForTest();
+    expect(
+      outboundMessages.filter((message) => {
+        return messageContent(message).includes("Add credits");
+      }),
+    ).toHaveLength(1);
+    const afterReplay = await accept(
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: thread.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    expect(
+      afterReplay.body.events.filter((event) => {
+        return event.revokesEventId === queuedEvent.eventId;
+      }),
+    ).toHaveLength(1);
+    expect(
+      afterReplay.body.events.filter((event) => {
+        return (
+          event.eventType === "output.error" &&
+          event.error === "insufficient_credits"
+        );
+      }),
+    ).toHaveLength(1);
+
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro",
+      credits: 20_000,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: actor.orgId,
+      status: "active",
+      canBuyCredits: true,
+    });
+    const failedDeliveryAnchorPrompt =
+      "finish before queued Feishu delivery failure";
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, failedDeliveryAnchorPrompt, "ou_feishu_user", {
+        messageId: `om_${randomUUID()}`,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const failedDeliveryAnchor = await findRun(
+      actor,
+      failedDeliveryAnchorPrompt,
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const failedDeliveryAnchorClaim = await runsApi.claimRunnerJob(
+      failedDeliveryAnchor.id,
+    );
+
+    const failedDeliveryPrompt = `persist this queued Feishu failure before delivery fails ${randomUUID()}`;
+    const failedDeliveryMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, failedDeliveryPrompt, "ou_feishu_user", {
+        messageId: failedDeliveryMessageId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const failedDeliveryEvent =
+      await findPendingChatEventByPromptFixture(failedDeliveryPrompt);
+    if (!failedDeliveryEvent) {
+      throw new Error("Expected the failed-delivery Feishu input event");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: actor.orgId,
+      status: "suspended",
+      canBuyCredits: true,
+    });
+    outboundMessages = [];
+    failedSendContentFragments.push("Add credits");
+    await completeRunSession({
+      runId: failedDeliveryAnchor.id,
+      sandboxToken: failedDeliveryAnchorClaim.sandboxToken,
+      sessionId: `bdd-feishu-delivery-failure-${failedDeliveryAnchor.id}`,
+      history: `bdd Feishu delivery failure history ${failedDeliveryAnchor.id}`,
+      assistantText: "Second Feishu task completed",
+    });
+
+    const afterDeliveryFailure = await accept(
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: thread.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    expect(
+      afterDeliveryFailure.body.events.filter((event) => {
+        return (
+          event.eventType === "input.rejected" &&
+          event.revokesEventId === failedDeliveryEvent.eventId &&
+          event.error === "insufficient_credits"
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      afterDeliveryFailure.body.events.filter((event) => {
+        return (
+          event.eventType === "output.error" &&
+          event.error === "insufficient_credits"
+        );
+      }),
+    ).toHaveLength(2);
+    expect(
+      (await runsApi.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === failedDeliveryPrompt;
+      }),
+    ).toHaveLength(0);
+    expect(
+      removedReactions.filter((messageId) => {
+        return messageId === failedDeliveryMessageId;
+      }),
+    ).toHaveLength(1);
+    expect(failedSendContentFragments).toHaveLength(0);
   });
 
   it("keeps Feishu group control cases out of runs and resumes queued tasks through the canonical session", async () => {
@@ -2420,7 +3526,6 @@ describe("Feishu integration", () => {
         },
       ),
     ).toBeFalsy();
-
     await connectFixtureUser(fixture, secondActor, secondOpenId);
     await postEvent(
       callbackUrl,
@@ -2496,7 +3601,14 @@ describe("Feishu integration", () => {
         },
       ),
     ).toBeFalsy();
-
+    const queuedFeishuParams =
+      await findPendingChatEventByPromptFixture(secondPrompt);
+    expect(queuedFeishuParams).toMatchObject({
+      eventId: expect.any(String),
+    });
+    if (!queuedFeishuParams) {
+      throw new Error("Expected queued canonical Feishu event");
+    }
     await runsApi.heartbeatRunner(runnerGroup);
     const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
     const firstCliSessionId = `bdd-feishu-canonical-group-${firstRun.id}`;
@@ -2511,12 +3623,16 @@ describe("Feishu integration", () => {
     const secondRun = await findRun(secondActor, secondPrompt);
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRun.id);
+    expect(secondClaim.prompt).toBe(secondPrompt);
+    expect(secondClaim.appendSystemPrompt).toContain("Scope: Group mention");
     expect(secondClaim.resumeSession?.sessionId).toBe(firstCliSessionId);
     await runsApi.requestCancelRun(secondActor, secondRun.id, [200]);
     await flushWaitUntilForTest();
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -2607,7 +3723,11 @@ describe("Feishu integration", () => {
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const groupClaim = await runsApi.claimRunnerJob(groupRun.id);
+    expect(groupClaim.prompt).toBe("handle this group task");
     expect(groupClaim.appendSystemPrompt).toContain("Scope: Group mention");
+    expect(groupClaim.appendSystemPrompt).toContain(
+      `Tenant key: ${TENANT_KEY}`,
+    );
     expect(groupClaim.appendSystemPrompt).toContain("Chat ID: oc_feishu_group");
     expect(groupClaim.appendSystemPrompt).toContain(
       "Group ID: oc_feishu_group (same as Chat ID; use it directly as the `--chat` value for `zero feishu message send`)",
@@ -2701,7 +3821,9 @@ describe("Feishu integration", () => {
     expect(groupFollowUpClaim.resumeSession?.sessionId).toBe(groupCliSessionId);
     await runsApi.requestCancelRun(actor, groupFollowUp.id, [200]);
     await flushWaitUntilForTest();
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },

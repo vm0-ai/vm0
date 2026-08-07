@@ -60,7 +60,7 @@ function sensitiveStringValues(): SensitiveStringValues {
         }
       }
     }
-    valuesByConnector.set(connector.connectorRef, values);
+    valuesByConnector.set(connector.slug, values);
   }
 
   return {
@@ -155,8 +155,8 @@ function assertNoSensitiveProperties(
   connectorSensitiveValues: ReadonlySet<string> | undefined,
 ): void {
   const nextConnectorSensitiveValues =
-    "connectorRef" in value && typeof value.connectorRef === "string"
-      ? sensitiveValues.byConnector.get(value.connectorRef)
+    "slug" in value && typeof value.slug === "string"
+      ? sensitiveValues.byConnector.get(value.slug)
       : connectorSensitiveValues;
 
   for (const [key, child] of Object.entries(value)) {

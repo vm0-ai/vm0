@@ -4,12 +4,14 @@ import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
 } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroAgentsRoutes } from "../zero-agents";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -23,7 +25,9 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     context.mocks.s3.send.mockResolvedValue({});
 
     const created = await accept(
-      setupApp({ context })(zeroAgentsMainContract).create({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsMainContract,
+      ).create({
         headers: { authorization: "Bearer clerk-session" },
         body: {},
       }),
@@ -31,7 +35,9 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     );
     const agentId = created.body.agentId;
 
-    const client = setupApp({ context })(zeroUserConnectorsContract);
+    const client = setupApp({ context, routes: zeroAgentsRoutes })(
+      zeroUserConnectorsContract,
+    );
 
     await updateFeatureSwitchesForUser(context, actor, {
       [FeatureSwitchKey.TestOauthConnector]: true,
@@ -39,7 +45,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     await accept(
       client.update({
         params: { id: agentId },
-        body: { enabledTypes: ["test-oauth", "github"] },
+        body: { enabledConnectorSlugs: ["test-oauth", "github"] },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -58,9 +64,58 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
       [200],
     );
 
-    expect(new Set(response.body.enabledTypes)).toStrictEqual(
+    expect(new Set(response.body.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "test-oauth"]),
     );
     await deleteFeatureSwitchesForUser(context, actor);
+  });
+
+  it("updates canonical connector slugs", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+    context.mocks.s3.send.mockResolvedValue({});
+    const headers = { authorization: "Bearer clerk-session" };
+
+    const created = await accept(
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsMainContract,
+      ).create({
+        headers,
+        body: {},
+      }),
+      [201],
+    );
+    const client = setupApp({ context, routes: zeroAgentsRoutes })(
+      zeroUserConnectorsContract,
+    );
+    const params = { id: created.body.agentId };
+
+    const canonical = await accept(
+      client.update({
+        params,
+        body: { enabledConnectorSlugs: ["slack"] },
+        headers,
+      }),
+      [200],
+    );
+    expect(canonical.body).toStrictEqual({
+      enabledConnectorSlugs: ["slack"],
+    });
+
+    const added = await accept(
+      client.update({
+        params,
+        body: {
+          enabledConnectorSlugs: ["github"],
+          operation: "add",
+        },
+        headers,
+      }),
+      [200],
+    );
+    expect(new Set(added.body.enabledConnectorSlugs)).toStrictEqual(
+      new Set(["github", "slack"]),
+    );
   });
 });

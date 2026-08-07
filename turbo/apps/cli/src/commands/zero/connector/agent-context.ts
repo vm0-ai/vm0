@@ -1,9 +1,17 @@
-import { getZeroAgent, getZeroAgentUserConnectors } from "../../../lib/api";
+import {
+  getZeroAgent,
+  getZeroAgentCustomConnectors,
+  getZeroAgentUserConnectors,
+} from "../../../lib/api/domains/zero-agents";
 
 interface AgentContext {
   agentId: string;
   displayName: string;
-  authorizedTypes: Set<string>;
+  authorizedConnectorSlugs: Set<string>;
+}
+
+export interface ConnectorDiscoveryAgentContext extends AgentContext {
+  authorizedCustomConnectorIds: Set<string>;
 }
 
 export async function resolveAgentContext(
@@ -12,7 +20,7 @@ export async function resolveAgentContext(
   const agentId = flagAgentId ?? process.env.ZERO_AGENT_ID;
   if (!agentId) return null;
 
-  const [agent, enabledTypes] = await Promise.all([
+  const [agent, enabledConnectorSlugs] = await Promise.all([
     getZeroAgent(agentId),
     getZeroAgentUserConnectors(agentId),
   ]);
@@ -20,6 +28,27 @@ export async function resolveAgentContext(
   return {
     agentId: agent.agentId,
     displayName: agent.displayName ?? agent.agentId,
-    authorizedTypes: new Set(enabledTypes),
+    authorizedConnectorSlugs: new Set(enabledConnectorSlugs),
+  };
+}
+
+export async function resolveConnectorDiscoveryAgentContext(
+  flagAgentId: string | undefined,
+): Promise<ConnectorDiscoveryAgentContext | null> {
+  const agentId = flagAgentId ?? process.env.ZERO_AGENT_ID;
+  if (!agentId) return null;
+
+  const [agent, enabledConnectorSlugs, enabledCustomConnectorIds] =
+    await Promise.all([
+      getZeroAgent(agentId),
+      getZeroAgentUserConnectors(agentId),
+      getZeroAgentCustomConnectors(agentId),
+    ]);
+
+  return {
+    agentId: agent.agentId,
+    displayName: agent.displayName ?? agent.agentId,
+    authorizedConnectorSlugs: new Set(enabledConnectorSlugs),
+    authorizedCustomConnectorIds: new Set(enabledCustomConnectorIds),
   };
 }

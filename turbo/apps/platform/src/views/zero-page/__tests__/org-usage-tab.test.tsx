@@ -30,7 +30,7 @@ function expectedAllowanceResetText(value: string): string {
 
 function mockUsageStory(): void {
   const orgMembers: OrgMembersResponse = {
-    slug: "test-org",
+    name: "Test Org",
     role: "admin",
     createdAt: "2026-01-01T00:00:00Z",
     members: [
@@ -58,7 +58,6 @@ function mockUsageStory(): void {
   };
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
@@ -210,5 +209,39 @@ describe("organization usage settings", () => {
     });
     expect(screen.getByText("7,500")).toBeInTheDocument();
     expect(screen.getByText("2,100")).toBeInTheDocument();
+  });
+
+  it("localizes credit balances, grants, and team usage in Portuguese", async () => {
+    mockUsageStory();
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=usage",
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(screen.getByText("12.000")).toBeInTheDocument();
+      expect(screen.getByText("Plano Pro")).toBeInTheDocument();
+      expect(screen.getByText("Pagamento conforme o uso")).toBeInTheDocument();
+      expect(screen.getByText("Franquia de uso")).toBeInTheDocument();
+      expect(screen.getByText("3.750 / 5.000 créditos")).toBeInTheDocument();
+    });
+
+    click(screen.getByTestId("credit-grants-toggle"));
+    expect(screen.getByText("March Pro credits")).toBeInTheDocument();
+
+    const teamUsageTab = queryAllByRoleFast("tab").find((element) => {
+      return element.textContent === "Uso da equipe";
+    });
+    if (!teamUsageTab) {
+      throw new Error("Portuguese team usage tab not found");
+    }
+    click(teamUsageTab);
+    await waitFor(() => {
+      expect(screen.getByText("Alice Admin")).toBeInTheDocument();
+      expect(screen.getByText("7.500")).toBeInTheDocument();
+    });
   });
 });

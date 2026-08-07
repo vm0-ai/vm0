@@ -6,13 +6,18 @@ import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { getStripeClient } from "../external/stripe-client";
 import {
   subscriptionScheduleFinalEnd,
   subscriptionScheduleId,
 } from "./stripe-subscription-schedules.service";
-import { activePriceId } from "./zero-billing-checkout.service";
+import {
+  activePriceId,
+  activeUsagePackPlanPriceId,
+  isUsagePackPlanPriceId,
+  knownPlanPriceItem,
+} from "./zero-billing-checkout.service";
 import {
   BILLING_DOWNGRADE_PURPOSE,
   billingDefaultPaymentMethodStatus,
@@ -167,11 +172,19 @@ function phaseWithDiscounts(
 function subscriptionCurrentItem(
   subscription: Stripe.Subscription,
 ): Stripe.SubscriptionItem {
-  const currentItem = subscription.items.data[0];
+  const currentItem = knownPlanPriceItem(subscription.items.data);
   if (!currentItem) {
-    throw new Error("Subscription has no items");
+    throw new Error("Subscription has no known plan item");
   }
   return currentItem;
+}
+
+function subscriptionPhaseItems(
+  subscription: Stripe.Subscription,
+): Stripe.SubscriptionScheduleUpdateParams.Phase.Item[] {
+  return subscription.items.data.map((item) => {
+    return schedulePhaseItem(item.price.id, item.quantity);
+  });
 }
 
 function subscriptionItemPhaseRange(
@@ -235,9 +248,7 @@ async function scheduleCancellationAtPeriodEnd(
             {
               start_date: currentPhaseRange.startDate,
               end_date: currentPhaseRange.endDate,
-              items: [
-                schedulePhaseItem(currentItem.price.id, currentItem.quantity),
-              ],
+              items: subscriptionPhaseItems(subscription),
               proration_behavior: "none",
             },
             discounts,
@@ -310,7 +321,9 @@ async function scheduleDowngradeToPro(
   subscription: Stripe.Subscription,
 ): Promise<string> {
   const currentItem = subscriptionCurrentItem(subscription);
-  const proPriceId = activePriceId("pro");
+  const proPriceId = isUsagePackPlanPriceId(currentItem.price.id)
+    ? activeUsagePackPlanPriceId("pro")
+    : activePriceId("pro");
   if (!proPriceId) {
     throw new Error("Pro plan price ID not configured");
   }
@@ -345,7 +358,7 @@ async function scheduleDowngradeToPro(
         {
           start_date: startDate,
           end_date: endDate,
-          items: [schedulePhaseItem(currentPriceId, quantity)],
+          items: subscriptionPhaseItems(subscription),
           proration_behavior: "none",
         },
         discounts,
@@ -354,7 +367,12 @@ async function scheduleDowngradeToPro(
         {
           start_date: endDate,
           duration: phaseDuration(currentItem.price),
-          items: [schedulePhaseItem(proPriceId, quantity)],
+          items: subscription.items.data.map((item) => {
+            return schedulePhaseItem(
+              item.price.id === currentPriceId ? proPriceId : item.price.id,
+              item.price.id === currentPriceId ? quantity : item.quantity,
+            );
+          }),
           proration_behavior: "none",
         },
         discounts,

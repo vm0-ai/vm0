@@ -1,9 +1,6 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test } from "../fixtures";
-import {
-  refreshClerkSessionToken,
-  signInWithClerkTestingHelper,
-} from "../lib/auth";
+import { signInWithClerkTestingHelper } from "../lib/auth";
 import { completeExploreOnboarding } from "../lib/onboarding";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
@@ -29,8 +26,6 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
     waitUntil: "domcontentloaded",
   });
   expect(page.url()).toMatch(/\/agents\/.*\/chat/);
-
-  await refreshClerkSessionToken(page, { activeOrganizationId: orgId });
 
   // Save storageState for feature tests (use absolute path to match playwright.config.ts)
   await page.context().storageState({ path: STORAGE_STATE });

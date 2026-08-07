@@ -52,11 +52,11 @@ fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
 }
 
 fn validate_timezone_arg(timezone: &str) -> RunnerResult<()> {
-    if !timezone.is_empty() && executor::is_valid_guest_timezone_name(timezone) {
+    if executor::is_shell_safe_guest_timezone_name(timezone) {
         return Ok(());
     }
     Err(RunnerError::Config(format!(
-        "invalid --timezone {timezone:?}: expected a non-empty IANA timezone name"
+        "invalid --timezone {timezone:?}: expected a non-empty guest zoneinfo name containing only ASCII letters, digits, '/', '_', '-', or '+'"
     )))
 }
 
@@ -73,7 +73,7 @@ pub struct BenchmarkArgs {
     /// Environment variables to pass (KEY=VALUE), can be repeated
     #[arg(long, short)]
     env: Vec<String>,
-    /// System timezone to configure in the VM before running the command
+    /// Guest zoneinfo name to configure; benchmark fails if unavailable in the VM
     #[arg(long, default_value = DEFAULT_BENCHMARK_TIMEZONE)]
     timezone: String,
     /// Run the command as root (sudo)
@@ -125,7 +125,7 @@ pub async fn run_benchmark(
 
     // Block until memory.bin is in page cache so benchmark numbers are stable.
     {
-        let path = resource_locks.snapshot_paths().memory_bin();
+        let path = resource_locks.snapshot_paths().memory();
         let _ = tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path)).await;
     }
 
@@ -179,7 +179,6 @@ pub async fn run_benchmark(
         .create_runtime(sandbox::RuntimeConfig {
             proxy_port: Some(mitm.port()),
             dns_port: None, // benchmark does not use custom DNS proxy
-            guest_dns_netfilter_trace: false,
         })
         .await
     {
@@ -226,9 +225,7 @@ pub async fn run_benchmark(
     factory.shutdown().await;
     runtime.shutdown().await;
     drop(resource_locks);
-    if let Err(e) = mitm.stop().await {
-        warn!(error = %e, "proxy stop failed");
-    }
+    let proxy_stop_result = mitm.stop().await;
     remove_benchmark_live_runner_instance(&live_runner_instance_handle, "complete").await;
 
     // 5. Log timing summary (always, even on error)
@@ -238,8 +235,17 @@ pub async fn run_benchmark(
         guest_restore_ms,
         exec_ms,
     } = timing;
-    match &result {
-        Ok(exec_result) => {
+    let proxy_stop_would_be_primary = match &result {
+        Ok(exec_result) => benchmark_exit_code(exec_result) == 0,
+        Err(_) => false,
+    };
+    let primary_proxy_stop_error = if proxy_stop_would_be_primary {
+        proxy_stop_result.as_ref().err()
+    } else {
+        None
+    };
+    match (&result, primary_proxy_stop_error) {
+        (Ok(exec_result), None) => {
             let exit_code = benchmark_exit_code(exec_result);
             info!(
                 proxy_ms,
@@ -254,9 +260,12 @@ pub async fn run_benchmark(
                 "benchmark complete"
             );
         }
-        Err(e) => {
+        (Ok(_), Some(e)) | (Err(e), _) => {
             info!(proxy_ms, factory_ms, boot_ms = ?boot_ms, workspace_mount_ms = ?workspace_mount_ms, guest_restore_ms = ?guest_restore_ms, exec_ms = ?exec_ms, total_ms, error = %e, "benchmark failed");
         }
+    }
+    if !proxy_stop_would_be_primary && let Err(e) = &proxy_stop_result {
+        warn!(error = %e, "proxy stop also failed after benchmark execution failure");
     }
 
     let exec_result = result?;
@@ -266,8 +275,12 @@ pub async fn run_benchmark(
     let stderr = std::io::stderr();
     write_benchmark_exec_output(&mut stdout.lock(), &mut stderr.lock(), &exec_result);
 
-    // 7. Propagate exit code
-    Ok(ExitCode::from(benchmark_exit_code(&exec_result)))
+    // 7. Propagate cleanup failure before a successful guest exit code
+    let exit_code = benchmark_exit_code(&exec_result);
+    if exit_code == 0 {
+        proxy_stop_result?;
+    }
+    Ok(ExitCode::from(exit_code))
 }
 
 fn benchmark_exit_code(exec_result: &ExecResult) -> u8 {
@@ -380,6 +393,7 @@ async fn run_sandbox(
         proxy_log_path: &proxy_log_path,
         firewalls: None,
         network_policies: None,
+        connector_runtime_targets: None,
         encrypted_secrets: None,
         secret_connector_map: None,
         secret_connector_metadata_map: None,
@@ -474,7 +488,23 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use async_trait::async_trait;
+    use clap::CommandFactory;
     use sandbox::{Sandbox, SandboxError, SandboxInitializationPhase};
+
+    #[test]
+    fn benchmark_help_describes_required_guest_zoneinfo() {
+        let mut command = crate::Cli::command();
+        let help = command
+            .find_subcommand_mut("benchmark")
+            .expect("runner CLI should expose benchmark")
+            .render_help()
+            .to_string();
+        let normalized_help = help.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        assert!(normalized_help.contains(
+            "Guest zoneinfo name to configure; benchmark fails if unavailable in the VM"
+        ));
+    }
 
     #[test]
     fn parse_env_args_accepts_key_value_pairs() {
@@ -552,12 +582,13 @@ mod tests {
     }
 
     #[test]
-    fn validate_timezone_arg_accepts_default_and_common_names() {
+    fn validate_timezone_arg_accepts_shell_safe_zoneinfo_name_shapes() {
         for timezone in [
             DEFAULT_BENCHMARK_TIMEZONE,
             "Asia/Shanghai",
             "Etc/GMT+1",
             "America/Argentina/Buenos_Aires",
+            "Mars/Olympus",
         ] {
             validate_timezone_arg(timezone).unwrap();
         }
@@ -567,10 +598,14 @@ mod tests {
     fn validate_timezone_arg_rejects_empty_and_shell_metacharacters() {
         for timezone in ["", "UTC;id", "America/New York", "UTC'", "$(date)"] {
             let err = validate_timezone_arg(timezone).unwrap_err();
+            let message = err.to_string();
             assert!(
-                err.to_string().contains("invalid --timezone"),
+                message.contains("invalid --timezone")
+                    && message.contains("non-empty guest zoneinfo name")
+                    && message.contains("ASCII letters"),
                 "timezone {timezone:?} produced unexpected error: {err}"
             );
+            assert!(!message.contains("IANA"), "got: {message}");
         }
     }
 

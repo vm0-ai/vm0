@@ -27,15 +27,15 @@ beforeEach(() => {
 
 function publicConnectorStatusItem(
   overrides: Partial<PublicConnectorCatalogStatusItem> &
-    Pick<PublicConnectorCatalogStatusItem, "connectorRef" | "label">,
+    Pick<PublicConnectorCatalogStatusItem, "slug" | "label">,
 ): PublicConnectorCatalogStatusItem {
-  const { connectorRef, label, icon, ...rest } = overrides;
+  const { slug: connectorSlug, label, icon, ...rest } = overrides;
   return {
-    connectorRef,
+    slug: connectorSlug,
     label,
     description: `${label} public help text`,
     icon: icon ?? {
-      url: `https://icons.example.test/${connectorRef}.svg`,
+      url: `https://icons.example.test/${connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     category: "data-automation-infrastructure",
@@ -144,49 +144,49 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
         permissions: [
           {
             label: "admin.analytics:read",
-            connectorType: "slack",
+            connectorSlug: "slack",
             allowed: 7,
             denied: 0,
             agentNames: ["Research Bot"],
           },
           {
             label: "channels:read",
-            connectorType: "slack",
+            connectorSlug: "slack",
             allowed: 5,
             denied: 0,
             agentNames: ["Research Bot"],
           },
           {
             label: "chat:write",
-            connectorType: "slack",
+            connectorSlug: "slack",
             allowed: 4,
             denied: 0,
             agentNames: ["Research Bot"],
           },
           {
             label: "repo-read",
-            connectorType: "github",
+            connectorSlug: "github",
             allowed: 3,
             denied: 0,
             agentNames: ["Ops Bot"],
           },
           {
             label: "issues:read",
-            connectorType: "github",
+            connectorSlug: "github",
             allowed: 2,
             denied: 0,
             agentNames: ["Ops Bot"],
           },
           {
             label: "pull-requests:read",
-            connectorType: "github",
+            connectorSlug: "github",
             allowed: 1,
             denied: 0,
             agentNames: ["Ops Bot"],
           },
           {
             label: "admin.apps:write",
-            connectorType: "slack",
+            connectorSlug: "slack",
             allowed: 0,
             denied: 3,
             agentNames: ["Research Bot"],
@@ -294,7 +294,7 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
         permissions: [
           {
             label: "events:read",
-            connectorType: "google-calendar",
+            connectorSlug: "google-calendar",
             allowed: 2,
             denied: 0,
             agentNames: ["Archive Bot"],
@@ -520,15 +520,15 @@ describe("network insights page", () => {
   it("uses connector labels from public catalog metadata", async () => {
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
-        connectorRef: "slack",
+        slug: "slack",
         label: "Catalog Slack",
       }),
       publicConnectorStatusItem({
-        connectorRef: "github",
+        slug: "github",
         label: "Catalog GitHub",
       }),
       publicConnectorStatusItem({
-        connectorRef: "google-calendar",
+        slug: "google-calendar",
         label: "Catalog Calendar",
       }),
     ]);
@@ -547,27 +547,26 @@ describe("network insights page", () => {
     });
   });
 
-  it("uses fallback connector labels when catalog metadata omits a ref", async () => {
+  it("renders canonical-only permissions from a new API response", async () => {
     const data = insightsResponse();
     const day = data.days[0]!;
-    mockConnectorCatalogStatus([]);
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        slug: "github",
+        label: "Catalog GitHub",
+      }),
+    ]);
     context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
       return respond(200, {
         ...data,
         days: [
           {
             ...day,
-            services: [
-              {
-                domain: "github",
-                calls: 2,
-                agentNames: ["Research Bot"],
-              },
-            ],
+            services: [],
             permissions: [
               {
                 label: "repo-read",
-                connectorType: "github",
+                connectorSlug: "github",
                 allowed: 1,
                 denied: 0,
                 agentNames: ["Research Bot"],
@@ -581,12 +580,9 @@ describe("network insights page", () => {
     detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Insights" }),
-      ).toBeInTheDocument();
-      expect(screen.getAllByText("Github").length).toBeGreaterThan(0);
+      expect(screen.getByText("Catalog GitHub")).toBeInTheDocument();
+      expect(screen.getByText("repo-read")).toBeInTheDocument();
     });
-    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
   it("shows a no-activity message when the selected range excludes older data", async () => {
@@ -651,6 +647,35 @@ describe("network insights page", () => {
       expect(
         screen.getByText(/3 runs and 40 service calls today/u),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("localizes insight narratives, ranges, and credit totals in Portuguese", async () => {
+    const data = insightsResponse();
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
+      return respond(200, data);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/insights",
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Insights" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Ontem")).toBeInTheDocument();
+      expect(screen.getByText("Últimos 7 dias")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /3 solicitações foram bloqueadas pelas suas regras de permissão/u,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/1,6\s+mil/u)).toBeInTheDocument();
+      expect(screen.getByText("Research Bot")).toBeInTheDocument();
     });
   });
 });

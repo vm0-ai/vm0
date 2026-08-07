@@ -260,6 +260,24 @@ if run_clean AWS_METAL_RUNNER_HOSTS='Arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/du
 fi
 grep -q "duplicate runner host configured: arm-1" "${TMPDIR}/duplicate-case.err" || fail "expected case-insensitive duplicate host message"
 
+status=0
+HOST_ARCHES='' run_clean AWS_METAL_RUNNER_HOSTS='unreachable' "$HOST_GROUPS" matrix >"${TMPDIR}/unreachable.out" 2>"${TMPDIR}/unreachable.err" || status=$?
+[ "$status" -eq 255 ] || fail "expected unreachable host status 255, got: ${status}"
+[ ! -s "${TMPDIR}/unreachable.out" ] || fail "expected unreachable host not to emit a matrix"
+grep -q "missing mock architecture for unreachable" "${TMPDIR}/unreachable.err" || fail "expected original SSH failure message"
+if grep -q "runner host architecture" "${TMPDIR}/unreachable.err"; then
+  fail "expected SSH failure not to emit an architecture diagnostic"
+fi
+
+status=0
+HOST_ARCHES='empty=' run_clean AWS_METAL_RUNNER_HOSTS='empty' "$HOST_GROUPS" matrix >"${TMPDIR}/empty-host-arch.out" 2>"${TMPDIR}/empty-host-arch.err" || status=$?
+[ "$status" -eq 2 ] || fail "expected empty host architecture status 2, got: ${status}"
+[ ! -s "${TMPDIR}/empty-host-arch.out" ] || fail "expected empty host architecture not to emit a matrix"
+grep -q "missing runner host architecture for empty" "${TMPDIR}/empty-host-arch.err" || fail "expected missing host architecture message"
+if grep -q "unsupported runner host architecture" "${TMPDIR}/empty-host-arch.err"; then
+  fail "expected empty host architecture not to be unsupported"
+fi
+
 if HOST_ARCHES='unsupported=ppc64le' run_clean AWS_METAL_RUNNER_HOSTS='unsupported' "$HOST_GROUPS" matrix >"${TMPDIR}/unsupported-host-arch.out" 2>"${TMPDIR}/unsupported-host-arch.err"; then
   fail "expected unsupported host architecture to fail"
 fi

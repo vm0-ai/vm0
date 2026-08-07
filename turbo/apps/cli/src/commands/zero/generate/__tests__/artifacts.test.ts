@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chalk from "chalk";
 import { generateCommand } from "../index";
 import { reportCommand } from "../artifacts";
-import { selectResourceCandidates } from "../../shared/resource-registry";
+import { selectResourceCandidates } from "@vm0/core/resource-registry";
 
 describe("zero generate source-backed artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -15,7 +15,6 @@ describe("zero generate source-backed artifact commands", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
   });
 
   afterEach(() => {
@@ -32,31 +31,26 @@ describe("zero generate source-backed artifact commands", () => {
     {
       command: "report",
       prompt: "Q2 generation usage report",
-      template: "template:finance-report",
     },
     {
       command: "docs-design",
       prompt: "Docs for adding built-in artifact targets",
-      template: "template:docs-page",
     },
     {
       command: "poster",
       prompt: "A poster for source-backed generation",
-      template: "template:html-ppt-zhangzara-retro-zine",
     },
     {
       command: "dashboard-design",
       prompt: "A dashboard for generation run health",
-      template: "template:dashboard",
     },
     {
       command: "mobile-app-design",
       prompt: "A mobile app design for reviewing generated artifacts",
-      template: "template:mobile-app",
     },
   ])(
     "prints a source selection packet for $command",
-    async ({ command, prompt, template }) => {
+    async ({ command, prompt }) => {
       await generateCommand.parseAsync([
         "node",
         "cli",
@@ -71,9 +65,21 @@ describe("zero generate source-backed artifact commands", () => {
 
       const stdout = output();
       expect(stdout).toContain(`# Zero generate ${command}`);
-      expect(stdout).toContain("federated generation source-selection packet");
+      expect(stdout).toContain("generation source-selection packet");
+      expect(stdout).not.toContain("federated");
       expect(stdout).toContain(prompt);
-      expect(stdout).toContain(template);
+      expect(stdout).toContain(
+        `https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/${command}.json`,
+      );
+      expect(stdout).not.toContain("/website.json");
+      expect(stdout).not.toContain("Sources:");
+      expect(stdout).not.toContain("vm0-ai/vm0-skills");
+      expect(stdout).toContain('"templates": "string[]"');
+      expect(stdout).toContain(
+        "Resolve and download only resources selected from the index.",
+      );
+      expect(stdout).not.toContain("source.pull");
+      expect(stdout).not.toContain("built-in R2 template packages");
       expect(stdout).toContain(`Artifact kind: ${command}`);
       expect(stdout).toContain("## Artifact Output Model");
       expect(stdout).toContain(
@@ -116,7 +122,7 @@ describe("zero generate source-backed artifact commands", () => {
     expect(helpOutput).not.toContain("--site <slug>");
   });
 
-  it("returns every registered skill grouped by kind", () => {
+  it("returns every registered skill when no target is requested", () => {
     const selection = selectResourceCandidates();
 
     expect(selection.candidates.skills).toEqual(
@@ -132,6 +138,61 @@ describe("zero generate source-backed artifact commands", () => {
         }),
       ]),
     );
+  });
+
+  it("filters skill candidates by target when requested", () => {
+    const websiteSkillIds = selectResourceCandidates(
+      "website",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+    const reportSkillIds = selectResourceCandidates(
+      "report",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+    const posterSkillIds = selectResourceCandidates(
+      "poster",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+    const presentationSkillIds = selectResourceCandidates(
+      "presentation",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+    const imageSkillIds = selectResourceCandidates(
+      "image",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+    const videoSkillIds = selectResourceCandidates(
+      "intro-video",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+
+    expect(websiteSkillIds).toHaveLength(23);
+    expect(reportSkillIds).toHaveLength(23);
+    expect(posterSkillIds).toHaveLength(28);
+    expect(presentationSkillIds).toHaveLength(6);
+    expect(imageSkillIds).toHaveLength(5);
+    expect(videoSkillIds).toHaveLength(18);
+
+    expect(websiteSkillIds).toContain("skill:article-magazine");
+    expect(reportSkillIds).toContain("skill:article-magazine");
+    expect(reportSkillIds).not.toContain("skill:design-brief");
+    expect(reportSkillIds).not.toContain("skill:algorithmic-art");
+    expect(reportSkillIds).not.toContain("skill:slides");
+    expect(reportSkillIds).not.toContain("skill:video-hyperframes");
+    expect(reportSkillIds).not.toContain("skill:8-bit-orbit-video-template");
+
+    expect(posterSkillIds).toContain("skill:article-magazine");
+    expect(posterSkillIds).toContain("skill:algorithmic-art");
+    expect(presentationSkillIds).toContain("skill:slides");
+    expect(imageSkillIds).toContain("skill:algorithmic-art");
+    expect(videoSkillIds).toContain("skill:video-hyperframes");
+    expect(videoSkillIds).toContain("skill:8-bit-orbit-video-template");
   });
 
   it("returns every registered template and design system", () => {
@@ -184,19 +245,6 @@ describe("zero generate source-backed artifact commands", () => {
     expect(presentationSelection.candidates.templates).toHaveLength(0);
   });
 
-  it("attributes every vm0 image style to the vm0-skills repo", () => {
-    const selection = selectResourceCandidates();
-    const vm0ImageStyles = selection.candidates.imageStyles.filter((entry) => {
-      return entry.id.startsWith("image-style:");
-    });
-
-    expect(vm0ImageStyles.length).toBeGreaterThan(0);
-    for (const entry of vm0ImageStyles) {
-      expect(entry.source.repo).toBe("vm0-ai/vm0-skills");
-      expect(entry.source.ref).toBe("main");
-    }
-  });
-
   it("annotates every template entry with at least one target", () => {
     const selection = selectResourceCandidates();
     for (const template of selection.candidates.templates) {
@@ -208,6 +256,16 @@ describe("zero generate source-backed artifact commands", () => {
         template.targets?.length,
         `${template.id} has an empty targets array`,
       ).toBeGreaterThan(0);
+    }
+  });
+
+  it("annotates every skill entry with targets", () => {
+    const selection = selectResourceCandidates();
+    for (const skill of selection.candidates.skills) {
+      expect(
+        skill.targets,
+        `${skill.id} is missing the targets field`,
+      ).toBeDefined();
     }
   });
 

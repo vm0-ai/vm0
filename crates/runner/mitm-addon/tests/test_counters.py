@@ -3,8 +3,6 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 import flow_metadata_keys as metadata_keys
 import usage
 from tests.pending_helpers import assert_current_pending, assert_pending
@@ -153,6 +151,30 @@ class TestUsagePendingCounter:
         usage.write_pending_snapshot(flush_request_id="request-2")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
+    def test_buffered_report_lease_composes_with_usage_events(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        usage.counters.set_buffered_usage_events(2)
+        lease = usage.admit_buffered_report()
+
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=3,
+            reports=0,
+            flush_request_id="retained",
+        )
+
+        lease.release()
+
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=0,
+            flush_request_id="released",
+        )
+
     def test_buffered_usage_blocks_pending_until_flush(self, tmp_path, real_flow, mitm_ctx):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
@@ -216,12 +238,6 @@ class TestUsagePendingCounter:
 
         assert usage.read_usage_flush_request_id() is None
 
-    def test_read_usage_flush_request_id_returns_none_when_marker_missing(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
-
-        assert usage.read_usage_flush_request_id() is None
-
     def test_read_usage_flush_request_id_accepts_matching_marker(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
@@ -236,52 +252,6 @@ class TestUsagePendingCounter:
         )
 
         assert usage.read_usage_flush_request_id() == "request-1"
-
-    def test_read_usage_flush_request_id_rejects_stale_marker(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
-        (tmp_path / "usage-flush-request").write_text(
-            json.dumps(
-                {
-                    "usageStateId": "old-state",
-                    "flushRequestId": "request-1",
-                    "requestedAtMs": 1_770_000_000_000,
-                }
-            )
-        )
-
-        assert usage.read_usage_flush_request_id() is None
-
-    def test_read_usage_flush_request_id_ignores_invalid_marker(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
-        (tmp_path / "usage-flush-request").write_text("not-json")
-
-        assert usage.read_usage_flush_request_id() is None
-
-    def test_read_usage_flush_request_id_ignores_invalid_utf8_marker(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
-        (tmp_path / "usage-flush-request").write_bytes(b"\xff")
-
-        assert usage.read_usage_flush_request_id() is None
-
-    @pytest.mark.parametrize(
-        "marker",
-        [
-            [],
-            {},
-            {"usageStateId": "runner-state"},
-            {"usageStateId": "runner-state", "flushRequestId": ""},
-            {"usageStateId": "runner-state", "flushRequestId": 123},
-        ],
-    )
-    def test_read_usage_flush_request_id_rejects_invalid_marker_shape(self, tmp_path, marker):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
-        (tmp_path / "usage-flush-request").write_text(json.dumps(marker))
-
-        assert usage.read_usage_flush_request_id() is None
 
     def test_decrement_underflow_stays_non_negative_and_logs_once_per_counter(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
@@ -325,6 +295,33 @@ class TestUsagePendingCounter:
         )
         assert mock_log.error.call_count == 1
         assert_counter_underflow_message(mock_log.error.call_args[0][0], "reports")
+
+        second.release()
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="all-released"
+        )
+
+    def test_buffered_report_lease_double_release_logs_without_decrementing_other_reports(
+        self, tmp_path
+    ):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        first = usage.admit_buffered_report()
+        second = usage.admit_buffered_report()
+        assert_current_pending(
+            pending_path, flows=0, buffered=2, reports=0, flush_request_id="admitted"
+        )
+
+        mock_log = MagicMock()
+        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
+            first.release()
+            first.release()
+
+        assert_current_pending(
+            pending_path, flows=0, buffered=1, reports=0, flush_request_id="first-released"
+        )
+        assert mock_log.error.call_count == 1
+        assert_counter_underflow_message(mock_log.error.call_args[0][0], "buffered_reports")
 
         second.release()
         assert_current_pending(

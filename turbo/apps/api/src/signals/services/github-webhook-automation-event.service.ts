@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
-
 import {
   githubDeploymentStatusCreatedEventConfigSchema,
   githubIssueCommentCreatedEventConfigSchema,
@@ -23,17 +22,15 @@ import {
   zeroWorkflowGithubProcessedEvents,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-
 import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
-import {
-  buildChatOnlyWorkflowAutomationCallbacks,
-  runWorkflowAutomationNow$,
-  type AutomationRow,
-} from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { AutomationRow } from "./zero-workflow-automation-launch.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import {
   WorkflowEventSourceTiming,
@@ -492,7 +489,7 @@ async function loadGithubWebhookAutomations(args: {
 }): Promise<readonly GithubWebhookAutomationRow[]> {
   const rows = await args.db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(false),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
@@ -765,30 +762,24 @@ function eventPromptMetadata(
   }
 }
 
-function buildGithubWebhookSystemPrompt(args: {
+function githubWebhookTriggerContext(args: {
   readonly automation: GithubWebhookAutomationRow;
   readonly deliveryId: string;
   readonly event: GithubWebhookAutomationEvent;
-}): string {
-  return [
-    "# Current context",
-    `You are running because ${eventPromptSummary(args.event)}.`,
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "This context intentionally includes only GitHub event metadata. User-authored review and comment bodies are not included.",
-    "Use connected GitHub tools or the GitHub API if the workflow needs event content, logs, artifacts, or related details.",
-    "",
-    "# GitHub webhook event",
-    JSON.stringify(
-      {
-        automationId: args.automation.automation.id,
-        deliveryId: args.deliveryId,
-        ...eventPromptMetadata(args.event),
-      },
-      null,
-      2,
-    ),
-  ].join("\n");
+}): WorkflowAutomationContext {
+  return {
+    workflowName: args.automation.workflowName,
+    eventType: args.event.eventType,
+    trigger: `${eventPromptSummary(args.event)} (GitHub webhook delivery ${args.deliveryId}).`,
+    notes: [
+      "Not included below: user-authored review and comment bodies, logs, and artifacts. Connected GitHub tools and the GitHub API return them.",
+    ],
+    event: {
+      automationId: args.automation.automation.id,
+      deliveryId: args.deliveryId,
+      ...eventPromptMetadata(args.event),
+    },
+  };
 }
 
 const startGithubWebhookAutomation$ = command(
@@ -803,25 +794,18 @@ const startGithubWebhookAutomation$ = command(
     },
     signal: AbortSignal,
   ): Promise<"ok" | "error"> => {
+    const context = githubWebhookTriggerContext(args);
     const result = await set(
       runWorkflowAutomationNow$,
       {
         due: {
           automation: args.automation.automation,
           agentId: args.automation.agentId,
-          workflowName: args.automation.workflowName,
           chatThreadId: args.automation.chatThreadId,
         },
+        automationContext: context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        appendSystemPrompt: buildGithubWebhookSystemPrompt(args),
-        callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-          args.automation.chatThreadId,
-          args.automation.agentId,
-        ),
-        activePreviousRunPolicy: "allow",
-        recordLastRunId: false,
-        recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },

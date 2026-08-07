@@ -1,6 +1,10 @@
 import {
+  bigint,
   boolean,
+  check,
+  foreignKey,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -8,13 +12,19 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+
+import { orgCustomConnectors } from "./org-custom-connector";
 
 export const connectorOauthStates = pgTable(
   "connector_oauth_states",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     state: text("state").notNull(),
-    type: varchar("type", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }),
+    customConnectorId: uuid("custom_connector_id"),
+    connectorRevision: integer("connector_revision"),
+    storageVersion: bigint("storage_version", { mode: "number" }),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
@@ -36,6 +46,38 @@ export const connectorOauthStates = pgTable(
         table.orgId,
       ),
       index("idx_connector_oauth_states_expires_at").on(table.expiresAt),
+      foreignKey({
+        name: "fk_connector_oauth_states_custom_connector",
+        columns: [table.customConnectorId, table.orgId],
+        foreignColumns: [orgCustomConnectors.id, orgCustomConnectors.orgId],
+      }).onDelete("cascade"),
+      check(
+        "chk_connector_oauth_states_identity",
+        sql`num_nonnulls(${table.connectorSlug}, ${table.customConnectorId}) = 1`,
+      ),
+      check(
+        "chk_connector_oauth_states_custom_revision",
+        sql`(
+          ${table.customConnectorId} IS NULL
+          AND ${table.connectorRevision} IS NULL
+        ) OR (
+          ${table.customConnectorId} IS NOT NULL
+          AND ${table.connectorRevision} IS NOT NULL
+        )`,
+      ),
+      check(
+        "chk_connector_oauth_states_custom_storage_version",
+        sql`(
+          ${table.customConnectorId} IS NULL
+          AND ${table.storageVersion} IS NULL
+        ) OR (
+          ${table.customConnectorId} IS NOT NULL
+          AND (
+            ${table.storageVersion} IS NULL
+            OR ${table.storageVersion} > 0
+          )
+        )`,
+      ),
     ];
   },
 );

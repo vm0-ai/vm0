@@ -4,7 +4,7 @@ import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 import {
   artifactKeySchema,
   connectorCatalogVersionSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
   privateNameSchema,
 } from "./common";
 import {
@@ -17,7 +17,6 @@ import {
   connectorAccessSourceSchema,
   connectorAuthClientSourceSchema,
   connectorAuthMethodIdSchema,
-  connectorFeatureSwitchKeySchema,
   connectorRevokeSourceSchema,
   connectorStorageSourceSchema,
   connectorValueRefSchema,
@@ -26,9 +25,7 @@ import {
 } from "./source";
 import { isConnectorCatalogIconKey } from "./icon";
 
-export { connectorCatalogVersionSchema } from "./common";
-
-export const SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION = 1;
+export const SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION = 3;
 export const CONNECTOR_CATALOG_ACTIVE_KEY = `connectors/v${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION}/active.json`;
 
 export const CONNECTOR_CATALOG_MAX_RAW_BYTES = 8 * 1024 * 1024;
@@ -142,7 +139,6 @@ export const connectorCatalogAuthMethodSchema = z
     label: z.string().min(1),
     description: z.string().min(1).nullable(),
     visible: z.boolean(),
-    featureSwitch: connectorFeatureSwitchKeySchema.nullable(),
     client: connectorAuthClientSourceSchema.optional(),
     storage: connectorStorageSourceSchema,
     grant: connectorCatalogGrantSchema,
@@ -197,7 +193,7 @@ const connectorCatalogFirewallSchema = z.discriminatedUnion("kind", [
 
 export const connectorCatalogArtifactConnectorSchema = z
   .object({
-    connectorRef: connectorRefSchema,
+    slug: connectorSlugSchema,
     label: z.string().min(1),
     description: z.string().min(1),
     category: z.string().min(1),
@@ -247,16 +243,16 @@ export const connectorCatalogArtifactSchema = z
   })
   .strict()
   .superRefine((artifact, context) => {
-    const connectorRefs = artifact.connectors.map((connector) => {
-      return connector.connectorRef;
+    const connectorSlugs = artifact.connectors.map((connector) => {
+      return connector.slug;
     });
-    const duplicates = connectorRefs.filter((connectorRef, index) => {
-      return connectorRefs.indexOf(connectorRef) !== index;
+    const duplicates = connectorSlugs.filter((connectorSlug, index) => {
+      return connectorSlugs.indexOf(connectorSlug) !== index;
     });
-    for (const connectorRef of new Set(duplicates)) {
+    for (const connectorSlug of new Set(duplicates)) {
       context.addIssue({
         code: "custom",
-        message: `Connector catalog refs must be unique: ${connectorRef}`,
+        message: `Connector catalog slugs must be unique: ${connectorSlug}`,
         path: ["connectors"],
       });
     }

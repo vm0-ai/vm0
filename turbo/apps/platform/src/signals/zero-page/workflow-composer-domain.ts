@@ -3,7 +3,6 @@ import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-work
 export function findWorkflowQueryMatches(
   workflows: readonly ComposerSlashWorkflow[],
   query: string,
-  substringSearchEnabled: boolean,
 ): readonly ComposerSlashWorkflow[] {
   const normalizedQuery = query.toLowerCase();
   const prefixMatches: ComposerSlashWorkflow[] = [];
@@ -13,10 +12,7 @@ export function findWorkflowQueryMatches(
     const normalizedName = workflow.name.toLowerCase();
     if (normalizedName.startsWith(normalizedQuery)) {
       prefixMatches.push(workflow);
-    } else if (
-      substringSearchEnabled &&
-      normalizedName.includes(normalizedQuery)
-    ) {
+    } else if (normalizedName.includes(normalizedQuery)) {
       substringMatches.push(workflow);
     }
   }

@@ -10,6 +10,10 @@ import {
 
 export const i18n = createInstance().use(initReactI18next);
 
+export function currentLocale(): string {
+  return i18n.resolvedLanguage ?? i18n.language ?? DEFAULT_LOCALE;
+}
+
 export async function initializeI18n(
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): Promise<void> {

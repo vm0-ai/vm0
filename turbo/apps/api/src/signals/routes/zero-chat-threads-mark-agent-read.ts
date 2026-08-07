@@ -9,7 +9,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { latestRunFinishMessageSubquery } from "../services/zero-chat-thread-read-state-query";
+import { latestRunFinishEventSubquery } from "../services/zero-chat-thread-read-state-query";
 import type { RouteEntry } from "../route-entry";
 
 const markAgentReadBody$ = bodyResultOf(
@@ -27,7 +27,7 @@ const markAgentReadInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const latestRunFinish = latestRunFinishMessageSubquery(
+    const latestRunFinish = latestRunFinishEventSubquery(
       writeDb,
       chatThreads.id,
     );

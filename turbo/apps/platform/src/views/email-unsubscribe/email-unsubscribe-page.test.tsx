@@ -11,6 +11,17 @@ import { testContext } from "../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
+function usePortugueseLocale(): void {
+  document.documentElement.lang = "pt-BR";
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
 function buttonByText(text: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -22,6 +33,28 @@ function buttonByText(text: string): HTMLElement {
 }
 
 describe("email unsubscribe page", () => {
+  it("confirms an unsubscribe in Brazilian Portuguese", async () => {
+    usePortugueseLocale();
+    context.mocks.api(emailUnsubscribeContract.unsubscribe, ({ respond }) => {
+      return respond(200, { unsubscribed: true });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/email/unsubscribe?token=user_1.pt",
+    });
+
+    await expect(
+      screen.findByText("Cancelar o recebimento de notificações por e-mail?"),
+    ).resolves.toBeInTheDocument();
+    click(buttonByText("Cancelar inscrição"));
+
+    await expect(
+      screen.findByText("Inscrição cancelada"),
+    ).resolves.toBeInTheDocument();
+    expect(document.title).toBe("Cancelar inscrição | VM0");
+  });
+
   it("unsubscribes from system emails after confirmation", async () => {
     context.mocks.api(emailUnsubscribeContract.unsubscribe, ({ respond }) => {
       return respond(200, { unsubscribed: true });

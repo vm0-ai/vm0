@@ -1,9 +1,10 @@
 import { command, computed, type Computed } from "ccstate";
-import type {
-  SendMode,
-  UserLocale,
-  UpdateUserPreferencesRequest,
-  UserPreferencesResponse,
+import {
+  SUPPORTED_USER_LOCALES,
+  type SendMode,
+  type UserLocale,
+  type UpdateUserPreferencesRequest,
+  type UserPreferencesResponse,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import type {
   UpdateUserModelPreferenceRequest,
@@ -12,14 +13,9 @@ import type {
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type {
   SecretResponse,
-  SetSecretRequest,
   SecretType,
 } from "@vm0/api-contracts/contracts/secrets";
-import type {
-  SetVariableRequest,
-  VariableListResponse,
-  VariableResponse,
-} from "@vm0/api-contracts/contracts/variables";
+import type { VariableListResponse } from "@vm0/api-contracts/contracts/variables";
 import { morningBriefSchedules } from "@vm0/db/schema/morning-brief";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { secrets } from "@vm0/db/schema/secret";
@@ -28,18 +24,12 @@ import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
-import { encryptStoredSecretValue } from "./crypto.utils";
-import { userFeatureSwitchContext } from "./feature-switches.service";
 import { syncMorningBriefSchedule } from "./morning-brief-schedule.service";
 import { isValidTimeZone } from "../utils";
 
 interface UserScopedQuery {
   readonly orgId: string;
   readonly userId: string;
-}
-
-interface SetUserSecretArgs extends UserScopedQuery {
-  readonly secret: SetSecretRequest;
 }
 
 function toStringArray(value: unknown): string[] {
@@ -60,12 +50,20 @@ function parseSendMode(value: unknown): SendMode {
 }
 
 function parseUserLocale(value: unknown): UserLocale | null {
-  if (value === null || value === "en-US" || value === "pt-BR") {
+  if (
+    value === null ||
+    value === "en-US" ||
+    value === "pt-BR" ||
+    value === "ja-JP" ||
+    value === "ko-KR" ||
+    value === "id-ID" ||
+    value === "de-DE" ||
+    value === "es-ES" ||
+    value === "it-IT" ||
+    value === "fr-FR" ||
+    value === "hi-IN"
+  ) {
     return value;
-  }
-  // TODO(#23508): remove after persisted legacy values are migrated.
-  if (value === "zh-CN") {
-    return "en-US";
   }
   throw new Error(`Unexpected user locale: ${String(value)}`);
 }
@@ -124,6 +122,7 @@ export function userPreferences({
       return {
         timezone: null,
         locale: null,
+        supportedLocales: [...SUPPORTED_USER_LOCALES],
         pinnedAgentIds: [],
         sendMode: "enter",
         morningBriefEnabled: false,
@@ -135,6 +134,7 @@ export function userPreferences({
     return {
       timezone: row.timezone,
       locale: parseUserLocale(row.locale),
+      supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds: normalizePinnedAgentIds(
         toStringArray(row.pinnedAgentIds),
       ),
@@ -178,7 +178,6 @@ export function userModelPreference({
 
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
-  readonly allowBrazilianPortuguese?: boolean;
 }
 
 type UpdateUserPreferencesResult =
@@ -192,15 +191,6 @@ export const updateUserPreferences$ = command(
     signal: AbortSignal,
   ): Promise<UpdateUserPreferencesResult> => {
     const preferences = args.preferences;
-    if (
-      preferences.locale === "pt-BR" &&
-      args.allowBrazilianPortuguese !== true
-    ) {
-      return {
-        ok: false,
-        message: "Invalid request",
-      };
-    }
     if (
       preferences.timezone !== undefined &&
       !isValidTimeZone(preferences.timezone)
@@ -227,6 +217,7 @@ export const updateUserPreferences$ = command(
         preferences.locale !== undefined
           ? preferences.locale
           : (existing.locale ?? null),
+      supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds:
         preferences.pinnedAgentIds !== undefined
           ? normalizePinnedAgentIds(preferences.pinnedAgentIds)
@@ -402,62 +393,6 @@ export function userVariables({
   });
 }
 
-export const setUserVariable$ = command(
-  async (
-    { set },
-    args: UserScopedQuery & { readonly variable: SetVariableRequest },
-    signal: AbortSignal,
-  ): Promise<VariableResponse> => {
-    const updatedAt = nowDate();
-    const writeDb = set(writeDb$);
-    const [row] = await writeDb
-      .insert(variables)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        name: args.variable.name,
-        value: args.variable.value,
-        description: args.variable.description ?? null,
-        type: "user",
-      })
-      .onConflictDoUpdate({
-        target: [
-          variables.orgId,
-          variables.userId,
-          variables.type,
-          variables.name,
-        ],
-        set: {
-          value: args.variable.value,
-          description: args.variable.description ?? null,
-          updatedAt,
-        },
-      })
-      .returning({
-        id: variables.id,
-        name: variables.name,
-        value: variables.value,
-        description: variables.description,
-        createdAt: variables.createdAt,
-        updatedAt: variables.updatedAt,
-      });
-    signal.throwIfAborted();
-
-    if (!row) {
-      throw new Error("Expected variable upsert to return a row");
-    }
-
-    return {
-      id: row.id,
-      name: row.name,
-      value: row.value,
-      description: row.description,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
-  },
-);
-
 export function userSecrets({ orgId, userId }: UserScopedQuery): Computed<
   Promise<{
     readonly secrets: SecretResponse[];
@@ -499,64 +434,3 @@ export function userSecrets({ orgId, userId }: UserScopedQuery): Computed<
     };
   });
 }
-
-export const setUserSecret$ = command(
-  async (
-    { get, set },
-    args: SetUserSecretArgs,
-    signal: AbortSignal,
-  ): Promise<SecretResponse> => {
-    const writeDb = set(writeDb$);
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
-
-    const encryptedValue = await encryptStoredSecretValue(
-      args.secret.value,
-      featureSwitchContext,
-    );
-    signal.throwIfAborted();
-    const updatedAt = nowDate();
-    const [row] = await writeDb
-      .insert(secrets)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        name: args.secret.name,
-        encryptedValue,
-        description: args.secret.description ?? null,
-        type: "user",
-      })
-      .onConflictDoUpdate({
-        target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
-        set: {
-          encryptedValue,
-          description: args.secret.description ?? null,
-          updatedAt,
-        },
-      })
-      .returning({
-        id: secrets.id,
-        name: secrets.name,
-        description: secrets.description,
-        type: secrets.type,
-        createdAt: secrets.createdAt,
-        updatedAt: secrets.updatedAt,
-      });
-    signal.throwIfAborted();
-
-    if (!row) {
-      throw new Error("Expected user secret upsert to return a row");
-    }
-
-    return {
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      type: parseSecretType(row.type),
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
-  },
-);

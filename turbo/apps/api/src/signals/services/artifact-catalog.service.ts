@@ -1,5 +1,18 @@
 import { command } from "ccstate";
-import { and, asc, desc, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  like,
+  lt,
+  lte,
+  notLike,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type {
   ArtifactCatalogKind,
   ArtifactDetail,
@@ -14,17 +27,23 @@ import {
   type ArtifactKind,
   type ArtifactThumbnail,
 } from "@vm0/db/schema/artifact";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { sharedThreads } from "@vm0/db/schema/shared-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { z } from "zod";
 
 import { nowDate } from "../../lib/time";
+import {
+  isSharedThreadArtifactLogicalKey,
+  sharedThreadArtifactAuthorUserId,
+  SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
+} from "../../lib/shared-thread-artifact";
 import { writeDb$, type Db } from "../external/db";
 import { publishArtifactCatalogChanged } from "./artifact-realtime.service";
-import { inferMimetype } from "./zero-chat-message-shared.service";
+import { inferMimetype } from "./zero-chat-event-shared.service";
 
 const ARTIFACT_CATALOG_DEFAULT_LIMIT = 60;
 
@@ -35,6 +54,7 @@ const ARTIFACT_CATALOG_DEFAULT_LIMIT = 60;
  */
 const OFFICIAL_IMAGE_MARKER = "zero-official-image";
 const OFFICIAL_VIDEO_MARKER = "zero-official-video";
+const AVATAR_VIDEO_MARKER = "zero-joggai-avatar-video";
 
 const artifactCursorSchema = z.object({
   createdAt: z.string(),
@@ -84,10 +104,62 @@ function fileArtifactKind(row: CatalogFileRow): "file" | "image" | "video" {
   if (generatedBy === OFFICIAL_IMAGE_MARKER) {
     return "image";
   }
-  if (generatedBy === OFFICIAL_VIDEO_MARKER) {
+  if (
+    generatedBy === OFFICIAL_VIDEO_MARKER ||
+    generatedBy === AVATAR_VIDEO_MARKER
+  ) {
     return "video";
   }
   return "file";
+}
+
+/**
+ * Avatar is a catalog projection over the existing video storage kind. Keeping
+ * the persisted kind readable as `video` lets the previous API version keep
+ * serving during rollout, while both existing and newly generated JoggAI
+ * videos appear in the dedicated category on the new API.
+ */
+function catalogArtifactKind(
+  kind: ArtifactKind,
+  metadata: Record<string, unknown> | null,
+  logicalKey: string,
+): ArtifactCatalogKind {
+  if (kind === "file" && isSharedThreadArtifactLogicalKey(logicalKey)) {
+    return "shared-thread";
+  }
+  return metadata &&
+    metadataString(metadata, "generatedBy") === AVATAR_VIDEO_MARKER
+    ? "avatar"
+    : kind;
+}
+
+function artifactCatalogKindFilter(kind: ArtifactCatalogKind): SQL | undefined {
+  const generatedBy = sql`${runUploadedFiles.metadata} ->> 'generatedBy'`;
+  if (kind === "shared-thread") {
+    return and(
+      eq(artifacts.kind, "file"),
+      like(
+        artifacts.logicalKey,
+        `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+      ),
+    );
+  }
+  if (kind === "avatar") {
+    return eq(generatedBy, AVATAR_VIDEO_MARKER);
+  }
+  if (kind === "file" || kind === "video") {
+    return and(
+      eq(artifacts.kind, kind),
+      kind === "file"
+        ? notLike(
+            artifacts.logicalKey,
+            `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+          )
+        : undefined,
+      sql`${generatedBy} IS DISTINCT FROM ${AVATAR_VIDEO_MARKER}`,
+    );
+  }
+  return eq(artifacts.kind, kind);
 }
 
 function hostedArtifactKind(
@@ -142,14 +214,14 @@ async function resolveChatThreadId(
     return run.chatThreadId;
   }
 
-  const [message] = await db
-    .select({ chatThreadId: chatMessages.chatThreadId })
-    .from(chatMessages)
-    .where(eq(chatMessages.runId, row.runId))
-    .orderBy(asc(chatMessages.seqId))
+  const [event] = await db
+    .select({ chatThreadId: chatEvents.chatThreadId })
+    .from(chatEvents)
+    .where(eq(chatEvents.runId, row.runId))
+    .orderBy(asc(chatEvents.seqId))
     .limit(1);
   signal.throwIfAborted();
-  return message?.chatThreadId ?? null;
+  return event?.chatThreadId ?? null;
 }
 
 async function resolveAuthorUserId(
@@ -350,6 +422,7 @@ async function syncHostedArtifact(args: {
       .select({
         id: hostedSites.id,
         slug: hostedSites.slug,
+        requestedSlug: hostedSites.requestedSlug,
         createdAt: hostedSites.createdAt,
       })
       .from(hostedSites)
@@ -401,7 +474,7 @@ async function syncHostedArtifact(args: {
       projectionCreatedAt: args.row.createdAt,
       orgId: args.orgId,
       authorUserId: args.authorUserId,
-      title: site.slug,
+      title: site.requestedSlug ?? site.slug,
       thumbnail: args.row.previewImageUrl
         ? { url: args.row.previewImageUrl }
         : null,
@@ -584,20 +657,40 @@ async function syncArtifactCatalogFile(
     return [];
   }
 
-  await upsertArtifact({
-    db,
-    kind,
-    entityId,
-    logicalKey: `file:${row.url}`,
-    projectionFileId: row.id,
-    projectionCreatedAt: row.createdAt,
-    orgId: row.orgId,
-    authorUserId,
-    title: row.filename ?? row.externalId,
-    thumbnail: fileThumbnail(row),
-    createdAt: row.createdAt,
+  const orgId = row.orgId;
+  const logicalKey = `file:${row.url}`;
+  const synced = await db.transaction(async (tx) => {
+    // Serialize retries for one file before touching either artifact key.
+    const [lockedFile] = await tx
+      .select({ id: runUploadedFiles.id })
+      .from(runUploadedFiles)
+      .where(eq(runUploadedFiles.id, row.id))
+      .for("update")
+      .limit(1);
+    signal.throwIfAborted();
+    if (!lockedFile) {
+      return false;
+    }
+
+    await upsertArtifact({
+      db: tx,
+      kind,
+      entityId,
+      logicalKey,
+      projectionFileId: row.id,
+      projectionCreatedAt: row.createdAt,
+      orgId,
+      authorUserId,
+      title: row.filename ?? row.externalId,
+      thumbnail: fileThumbnail(row),
+      createdAt: row.createdAt,
+    });
+    return true;
   });
   signal.throwIfAborted();
+  if (!synced) {
+    return [];
+  }
   await finishPendingArtifactFile(db, fileId, signal);
   return [authorUserId];
 }
@@ -684,6 +777,8 @@ async function reconcilePendingArtifactCatalog(
 function toArtifactSummary(row: {
   readonly id: string;
   readonly kind: ArtifactKind;
+  readonly logicalKey: string;
+  readonly projectionMetadata: Record<string, unknown> | null;
   readonly title: string;
   readonly thumbnail: ArtifactThumbnail | null;
   readonly createdAt: Date;
@@ -691,7 +786,7 @@ function toArtifactSummary(row: {
 }): ArtifactSummary {
   return {
     id: row.id,
-    kind: row.kind,
+    kind: catalogArtifactKind(row.kind, row.projectionMetadata, row.logicalKey),
     title: row.title,
     thumbnail: row.thumbnail,
     createdAt: row.createdAt.toISOString(),
@@ -700,30 +795,57 @@ function toArtifactSummary(row: {
 }
 
 /**
- * The registry has no thread column, so a thread filter resolves through the
- * projection file: a file belongs to a thread either directly or via its run.
- * Files that predate `run_uploaded_files.chat_thread_id` fall back to the run
- * association, matching `resolveChatThreadId`'s first two steps.
+ * The registry has no thread column, so a thread filter resolves through each
+ * artifact kind's source association. File-backed artifacts use the projection
+ * file directly or its run, while shared threads retain their nullable source
+ * thread ID after snapshot creation.
  */
-function chatThreadFilter(db: Db, chatThreadId: string) {
-  return inArray(
-    artifacts.projectionFileId,
-    db
-      .select({ id: runUploadedFiles.id })
-      .from(runUploadedFiles)
-      .where(
-        or(
-          eq(runUploadedFiles.chatThreadId, chatThreadId),
-          inArray(
-            runUploadedFiles.runId,
-            db
-              .select({ id: zeroRuns.id })
-              .from(zeroRuns)
-              .where(eq(zeroRuns.chatThreadId, chatThreadId)),
-          ),
-        ),
+function fileChatThreadFilter(db: Db, chatThreadId: string): SQL {
+  const runIds = db
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.chatThreadId, chatThreadId));
+  const fileIds = db
+    .select({ id: runUploadedFiles.id })
+    .from(runUploadedFiles)
+    .where(
+      or(
+        eq(runUploadedFiles.chatThreadId, chatThreadId),
+        inArray(runUploadedFiles.runId, runIds),
       ),
+    );
+  return inArray(artifacts.projectionFileId, fileIds);
+}
+
+function sharedThreadChatThreadFilter(db: Db, chatThreadId: string): SQL {
+  const sharedThreadIds = db
+    .select({ id: sharedThreads.id })
+    .from(sharedThreads)
+    .where(eq(sharedThreads.sourceChatThreadId, chatThreadId));
+  const filter = and(
+    eq(artifacts.kind, "file"),
+    like(artifacts.logicalKey, `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`),
+    inArray(artifacts.entityId, sharedThreadIds),
   );
+  if (!filter) {
+    throw new Error("Shared-thread catalog filter is unavailable");
+  }
+  return filter;
+}
+
+function chatThreadFilter(db: Db, chatThreadId: string): SQL {
+  const fileFilter = fileChatThreadFilter(db, chatThreadId);
+  return sql`(${fileFilter} OR ${sharedThreadChatThreadFilter(
+    db,
+    chatThreadId,
+  )})`;
+}
+
+function artifactCatalogOwnerFilter(userId: string): SQL {
+  return inArray(artifacts.authorUserId, [
+    userId,
+    sharedThreadArtifactAuthorUserId(userId),
+  ]);
 }
 
 export const listArtifactCatalog$ = command(
@@ -741,17 +863,23 @@ export const listArtifactCatalog$ = command(
       .select({
         id: artifacts.id,
         kind: artifacts.kind,
+        logicalKey: artifacts.logicalKey,
+        projectionMetadata: runUploadedFiles.metadata,
         title: artifacts.title,
         thumbnail: artifacts.thumbnail,
         createdAt: artifacts.createdAt,
         updatedAt: artifacts.updatedAt,
       })
       .from(artifacts)
+      .leftJoin(
+        runUploadedFiles,
+        eq(runUploadedFiles.id, artifacts.projectionFileId),
+      )
       .where(
         and(
           eq(artifacts.orgId, args.orgId),
-          eq(artifacts.authorUserId, args.userId),
-          args.kind ? eq(artifacts.kind, args.kind) : undefined,
+          artifactCatalogOwnerFilter(args.userId),
+          args.kind ? artifactCatalogKindFilter(args.kind) : undefined,
           args.chatThreadId
             ? chatThreadFilter(db, args.chatThreadId)
             : undefined,
@@ -846,6 +974,7 @@ async function hostedSiteDetail(
     .select({
       id: hostedSites.id,
       slug: hostedSites.slug,
+      requestedSlug: hostedSites.requestedSlug,
       publicSlug: hostedSites.publicSlug,
       deploymentVersion: hostedSites.activeDeploymentVersion,
       url: hostedDeployments.url,
@@ -860,7 +989,44 @@ async function hostedSiteDetail(
     .where(eq(hostedSites.id, hostedSiteId))
     .limit(1);
   signal.throwIfAborted();
-  return row ?? null;
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.id,
+    slug: row.requestedSlug ?? row.slug,
+    publicSlug: row.publicSlug,
+    url: row.url,
+    deploymentVersion: row.deploymentVersion,
+    entrypoint: row.entrypoint,
+    spaFallback: row.spaFallback,
+  };
+}
+
+async function avatarDetail(
+  db: Db,
+  summary: ArtifactSummary,
+  projectionFileId: string | null,
+  projectionMetadata: Record<string, unknown> | null,
+  signal: AbortSignal,
+): Promise<ArtifactDetail | null> {
+  if (projectionFileId === null) {
+    return null;
+  }
+  const file = await fileDetail(db, projectionFileId, signal);
+  const durationSeconds = projectionMetadata?.durationSeconds;
+  return file
+    ? {
+        ...summary,
+        kind: "avatar",
+        file,
+        model: metadataString(projectionMetadata ?? {}, "model"),
+        durationSeconds:
+          typeof durationSeconds === "number"
+            ? Math.round(durationSeconds)
+            : null,
+      }
+    : null;
 }
 
 /**
@@ -878,18 +1044,25 @@ export const getArtifactCatalogEntry$ = command(
       .select({
         id: artifacts.id,
         kind: artifacts.kind,
+        logicalKey: artifacts.logicalKey,
         entityId: artifacts.entityId,
+        projectionFileId: artifacts.projectionFileId,
+        projectionMetadata: runUploadedFiles.metadata,
         title: artifacts.title,
         thumbnail: artifacts.thumbnail,
         createdAt: artifacts.createdAt,
         updatedAt: artifacts.updatedAt,
       })
       .from(artifacts)
+      .leftJoin(
+        runUploadedFiles,
+        eq(runUploadedFiles.id, artifacts.projectionFileId),
+      )
       .where(
         and(
           eq(artifacts.id, args.artifactId),
           eq(artifacts.orgId, args.orgId),
-          eq(artifacts.authorUserId, args.userId),
+          artifactCatalogOwnerFilter(args.userId),
         ),
       )
       .limit(1);
@@ -899,6 +1072,26 @@ export const getArtifactCatalogEntry$ = command(
     }
 
     const summary = toArtifactSummary(row);
+    if (
+      row.kind === "file" &&
+      isSharedThreadArtifactLogicalKey(row.logicalKey)
+    ) {
+      return {
+        ...summary,
+        kind: "shared-thread",
+        sharedThread: { id: row.entityId },
+      };
+    }
+    if (summary.kind === "avatar") {
+      return await avatarDetail(
+        db,
+        summary,
+        row.projectionFileId,
+        row.projectionMetadata,
+        signal,
+      );
+    }
+
     if (row.kind === "file") {
       const file = await fileDetail(db, row.entityId, signal);
       return file ? { ...summary, kind: "file", file } : null;

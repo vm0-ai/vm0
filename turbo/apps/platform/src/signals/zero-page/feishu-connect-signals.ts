@@ -13,78 +13,44 @@ interface FeishuConnectParams {
   readonly sig: string;
 }
 
-interface FeishuConnectStatus {
-  readonly botName: string | null;
-  readonly openUrl: string;
-}
-
 export const hasFeishuConnectParams$ = computed((get): boolean => {
   const params = get(searchParams$);
   return params.get("connect") === "account";
 });
 
-export const feishuConnectParams$ = computed(
-  (get): FeishuConnectParams | null => {
-    const params = get(searchParams$);
-    const installationId = params.get("installationId");
-    const openId = params.get("openId");
-    const chatId = params.get("chatId");
-    const timestamp = Number(params.get("ts"));
-    const sig = params.get("sig");
+const feishuConnectParams$ = computed((get): FeishuConnectParams | null => {
+  const params = get(searchParams$);
+  const installationId = params.get("installationId");
+  const openId = params.get("openId");
+  const chatId = params.get("chatId");
+  const timestamp = Number(params.get("ts"));
+  const sig = params.get("sig");
 
-    if (
-      !installationId ||
-      !openId ||
-      !chatId ||
-      !Number.isSafeInteger(timestamp) ||
-      timestamp <= 0 ||
-      !sig
-    ) {
-      return null;
-    }
+  if (
+    !installationId ||
+    !openId ||
+    !chatId ||
+    !Number.isSafeInteger(timestamp) ||
+    timestamp <= 0 ||
+    !sig
+  ) {
+    return null;
+  }
 
-    return {
-      installationId,
-      openId,
-      chatId,
-      ts: timestamp,
-      sig,
-    };
-  },
-);
-
-export const feishuConnectStatus$ = computed(
-  async (get, { signal }): Promise<FeishuConnectStatus | null> => {
-    const params = get(feishuConnectParams$);
-    if (!params) {
-      return null;
-    }
-    const client = get(zeroClient$)(zeroFeishuBrowserConnectContract);
-    const [result] = await Promise.allSettled([
-      accept(
-        client.getStatus({
-          query: params,
-          fetchOptions: { signal },
-        }),
-        [200],
-      ),
-    ]);
-    signal.throwIfAborted();
-    if (result?.status !== "fulfilled" || !result.value.body.isConnected) {
-      return null;
-    }
-    return {
-      botName: result.value.body.botName,
-      openUrl: result.value.body.openUrl,
-    };
-  },
-);
+  return {
+    installationId,
+    openId,
+    chatId,
+    ts: timestamp,
+    sig,
+  };
+});
 
 export const connectFeishuAccount$ = command(
   async ({ get }, signal: AbortSignal) => {
     const params = get(feishuConnectParams$);
     if (!params) {
-      return null;
+      throw new Error("Invalid Feishu connect link");
     }
 
     const client = get(zeroClient$)(zeroFeishuBrowserConnectContract);
@@ -97,7 +63,6 @@ export const connectFeishuAccount$ = command(
     );
     signal.throwIfAborted();
 
-    window.location.href = result.body.openUrl;
-    return result.body;
+    window.location.assign(result.body.openUrl);
   },
 );

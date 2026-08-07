@@ -210,7 +210,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit(self, node: ast.AST) -> None:
         self._record_metadata_merge_key_violations(node)
         super().visit(node)
-        if _is_modeled_implicit_exception_operation(node) and not isinstance(node, ast.Compare):
+        if _is_modeled_implicit_exception_operation(node) and not isinstance(
+            node, (ast.Compare, ast.FormattedValue)
+        ):
             self._record_implicit_exception_aliases()
 
     def _is_metadata_reference(self, node: ast.AST) -> bool:
@@ -800,7 +802,13 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_FormattedValue(self, node: ast.FormattedValue) -> None:
         self._record_metadata_merge_key_violations(node.value)
-        self.generic_visit(node)
+        self.visit(node.value)
+        # Conversion precedes the optional spec; final formatting always follows both.
+        if node.conversion != -1:
+            self._record_implicit_exception_aliases()
+        if node.format_spec is not None:
+            self.visit(node.format_spec)
+        self._record_implicit_exception_aliases()
 
     def visit_Slice(self, node: ast.Slice) -> None:
         self._record_metadata_merge_key_violations(node.lower)

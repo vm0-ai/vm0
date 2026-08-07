@@ -562,6 +562,8 @@ source = { virtual = "." }
 dev = [
     { name = "basedpyright" },
     { name = "brotli" },
+    { name = "cryptography" },
+    { name = "h11" },
     { name = "h2" },
     { name = "mitmproxy" },
     { name = "pytest" },
@@ -572,6 +574,8 @@ dev = [
 ]
 test = [
     { name = "brotli" },
+    { name = "cryptography" },
+    { name = "h11" },
     { name = "h2" },
     { name = "mitmproxy" },
     { name = "pytest" },
@@ -586,6 +590,8 @@ test = [
 dev = [
     { name = "basedpyright", specifier = ">=1.39" },
     { name = "brotli", specifier = ">=1.2.0" },
+    { name = "cryptography", specifier = "==48.0.1" },
+    { name = "h11", specifier = "==0.16.0" },
     { name = "h2", specifier = ">=4.3.0" },
     { name = "mitmproxy", specifier = "==12.2.3" },
     { name = "pytest", specifier = ">=7.0" },
@@ -596,6 +602,8 @@ dev = [
 ]
 test = [
     { name = "brotli", specifier = ">=1.2.0" },
+    { name = "cryptography", specifier = "==48.0.1" },
+    { name = "h11", specifier = "==0.16.0" },
     { name = "h2", specifier = ">=4.3.0" },
     { name = "mitmproxy", specifier = "==12.2.3" },
     { name = "pytest", specifier = ">=7.0" },

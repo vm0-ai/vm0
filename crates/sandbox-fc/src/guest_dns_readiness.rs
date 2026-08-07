@@ -7,7 +7,7 @@ use tokio::time::{Instant, timeout_at};
 use vsock_host::{ExecOperationRequest, ExecOperationResult, ExecOwnedCapturedOutput, VsockHost};
 use vsock_proto::{ExecOutputPolicy, ExecTermination};
 
-use crate::network::{DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4};
+use crate::guest_dns_probe::{DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4};
 
 const RESOLVER_ENV: &[(&str, &str)] = &[("RES_OPTIONS", "attempts:1 timeout:1")];
 const LABEL: &str = "guest-dns-readiness";
@@ -20,8 +20,6 @@ const STDERR_LIMIT_BYTES: u32 = 512;
 const EXPECTED_TRANSIENT_EXIT_CODES: &[i32] = &[2];
 
 pub(crate) const GUEST_DNS_READINESS_MAX_ATTEMPTS: u16 = 3;
-/// IPv4 packet size of the fixed `vm0-readiness.invalid` UDP A query.
-pub(crate) const GUEST_DNS_READINESS_PACKET_BYTES: u64 = 67;
 
 const PRODUCTION_POLICY: ReadinessPolicy = ReadinessPolicy {
     total_timeout: Duration::from_secs(7),
@@ -538,12 +536,38 @@ mod tests {
     }
 
     #[test]
-    fn guest_dns_readiness_retries_only_proven_guest_terminal_failures() {
-        assert!(GuestDnsReadinessFailure::TimedOut.retryable());
-        assert!(GuestDnsReadinessFailure::ExitNonZero(2).retryable());
-        assert!(GuestDnsReadinessFailure::UnexpectedAnswer.retryable());
-        assert!(!GuestDnsReadinessFailure::Deadline.retryable());
-        assert!(!GuestDnsReadinessFailure::Transport(io::ErrorKind::TimedOut).retryable());
+    fn guest_dns_readiness_maps_every_failure_policy() {
+        use GuestDnsReadinessFailure as Failure;
+        use SandboxGuestDnsReadinessReason as Reason;
+
+        for (failure, expected_retryable, expected_reason) in [
+            (Failure::Deadline, false, Reason::Deadline),
+            (
+                Failure::Transport(io::ErrorKind::TimedOut),
+                false,
+                Reason::Other,
+            ),
+            (Failure::TimedOut, true, Reason::ProcessTimeout),
+            (Failure::Cancelled, false, Reason::Other),
+            (Failure::StartFailed, false, Reason::Other),
+            (Failure::WaitFailed, false, Reason::Other),
+            (Failure::ExitNonZero(2), true, Reason::DnsPath),
+            (Failure::ExitNonZero(1), false, Reason::Other),
+            (Failure::OutputTruncated, false, Reason::Other),
+            (Failure::InvalidOutput, false, Reason::Other),
+            (Failure::UnexpectedAnswer, true, Reason::DnsPath),
+        ] {
+            assert_eq!(
+                failure.retryable(),
+                expected_retryable,
+                "unexpected retry policy for {failure:?}",
+            );
+            assert_eq!(
+                failure.sandbox_reason(),
+                expected_reason,
+                "unexpected sandbox reason for {failure:?}",
+            );
+        }
     }
 
     #[tokio::test]

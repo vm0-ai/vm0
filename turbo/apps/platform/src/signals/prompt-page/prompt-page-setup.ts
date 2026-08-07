@@ -7,6 +7,7 @@ import {
   findWebsiteTemplateItem,
   findVideoTemplateItem,
 } from "@vm0/core";
+import { i18n } from "../../i18n/index.ts";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { defaultAgentId$ } from "../agent.ts";
@@ -161,7 +162,12 @@ function generationTemplateFromSearchParam(
  */
 export const setupPromptPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updateDocumentTitle$, "Prompt");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.chat.promptDocumentTitle;
+      }),
+    );
     set(showAppSkeleton$);
 
     const params = get(searchParams$);

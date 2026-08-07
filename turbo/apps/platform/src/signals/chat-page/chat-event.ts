@@ -1,0 +1,222 @@
+import { command } from "ccstate";
+import { detachedNavigateTo$ } from "../route.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { navigateToChat$ } from "../zero-page/zero-nav.ts";
+import { currentChatThreadId$, chatThreads$ } from "../agent-chat.ts";
+import {
+  chatThreadByIdContract,
+  chatThreadPinContract,
+  chatThreadUnpinContract,
+  chatThreadRenameContract,
+  type ChatEventUsagePayload,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { accept } from "../../lib/accept.ts";
+import { zeroClient$ } from "../api-client.ts";
+import type { BodyRenderBlock } from "./parse-body-blocks.ts";
+import { nowDate } from "../../lib/time.ts";
+import { i18n } from "../../i18n/index.ts";
+import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
+import type { ChatEvent } from "./chat-event-types.ts";
+import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
+
+export type EnrichedChatEvent = ChatEvent & {
+  blocks: BodyRenderBlock[];
+  isQueued: boolean;
+  isOptimisticRun: boolean;
+};
+
+/** A group of consecutive events with the same role. */
+export interface ChatEventGroup {
+  beginEventId: string;
+  role: "user" | "assistant";
+  events: EnrichedChatEvent[];
+  usage?: ChatEventUsagePayload;
+}
+
+// ---------------------------------------------------------------------------
+// Delete thread
+// ---------------------------------------------------------------------------
+
+export const deleteChatThread$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const threads = await get(chatThreads$);
+    signal.throwIfAborted();
+    const eventId = crypto.randomUUID();
+    const existingThread = threads.find((thread) => {
+      return thread.id === threadId;
+    });
+    if (existingThread) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: eventId,
+        kind: "deleted",
+        chatThreadId: threadId,
+        agentId: existingThread.agentId,
+        title: null,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
+        cloudBrowserEnabled: false,
+        createdAt: nowDate().toISOString(),
+      } satisfies OptimisticChatThreadEvent);
+    }
+
+    const client = get(zeroClient$)(chatThreadByIdContract);
+    await accept(
+      client.delete({
+        params: { id: threadId },
+        query: { eventId },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
+
+    toast.success(
+      i18n.t(($) => {
+        return $.chat.toasts.deleted;
+      }),
+    );
+
+    if (get(currentChatThreadId$) === threadId) {
+      const idx = threads.findIndex((t) => {
+        return t.id === threadId;
+      });
+      const remaining = threads.filter((t) => {
+        return t.id !== threadId;
+      });
+      if (remaining.length === 0) {
+        set(detachedNavigateTo$, "/");
+      } else {
+        const nextThread = remaining[idx] ?? remaining[remaining.length - 1];
+        set(navigateToChat$, nextThread.id);
+      }
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Pin / unpin thread
+// ---------------------------------------------------------------------------
+
+export const pinChatThread$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const threads = await get(chatThreads$);
+    signal.throwIfAborted();
+    const eventId = crypto.randomUUID();
+    const existingThread = threads.find((thread) => {
+      return thread.id === threadId;
+    });
+    if (existingThread) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: eventId,
+        kind: "pinned",
+        chatThreadId: threadId,
+        agentId: existingThread.agentId,
+        title: null,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
+        cloudBrowserEnabled: false,
+        createdAt: nowDate().toISOString(),
+      } satisfies OptimisticChatThreadEvent);
+    }
+    const client = get(zeroClient$)(chatThreadPinContract);
+    await accept(
+      client.pin({
+        params: { id: threadId },
+        query: { eventId },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
+  },
+);
+
+export const unpinChatThread$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const threads = await get(chatThreads$);
+    signal.throwIfAborted();
+    const eventId = crypto.randomUUID();
+    const existingThread = threads.find((thread) => {
+      return thread.id === threadId;
+    });
+    if (existingThread) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: eventId,
+        kind: "unpinned",
+        chatThreadId: threadId,
+        agentId: existingThread.agentId,
+        title: null,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
+        cloudBrowserEnabled: false,
+        createdAt: nowDate().toISOString(),
+      } satisfies OptimisticChatThreadEvent);
+    }
+    const client = get(zeroClient$)(chatThreadUnpinContract);
+    await accept(
+      client.unpin({
+        params: { id: threadId },
+        query: { eventId },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Rename thread
+// ---------------------------------------------------------------------------
+
+export const renameChatThread$ = command(
+  async (
+    { get, set },
+    {
+      threadId,
+      title,
+      agentId,
+    }: { threadId: string; title: string; agentId?: string | null },
+    signal: AbortSignal,
+  ) => {
+    const eventId = crypto.randomUUID();
+    let optimisticAgentId = agentId?.trim() || null;
+    if (!optimisticAgentId) {
+      const threads = await get(chatThreads$);
+      signal.throwIfAborted();
+      optimisticAgentId =
+        threads.find((thread) => {
+          return thread.id === threadId;
+        })?.agentId ?? null;
+    }
+    if (optimisticAgentId) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: eventId,
+        kind: "renamed",
+        chatThreadId: threadId,
+        agentId: optimisticAgentId,
+        title,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
+        cloudBrowserEnabled: false,
+        createdAt: nowDate().toISOString(),
+      } satisfies OptimisticChatThreadEvent);
+    }
+
+    const client = get(zeroClient$)(chatThreadRenameContract);
+    signal.throwIfAborted();
+    await accept(
+      client.rename({
+        params: { id: threadId },
+        body: { title, eventId },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
+  },
+);

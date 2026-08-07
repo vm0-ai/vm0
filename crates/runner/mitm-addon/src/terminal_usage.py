@@ -46,4 +46,5 @@ def report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
 def release_model_websocket_terminal_state(flow: http.HTTPFlow) -> None:
     if response_streaming.is_model_websocket_usage_enabled(flow):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
+        usage.release_model_provider_usage_tiers(flow)
         response_streaming.release_model_websocket_usage_state(flow)

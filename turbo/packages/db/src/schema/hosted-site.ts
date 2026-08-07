@@ -33,7 +33,13 @@ export const hostedSites = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    // `slug` remains the rolling-deployment compatibility key for API
+    // versions that still identify sites by (org_id, slug).
     slug: varchar("slug", { length: 64 }).notNull(),
+    requestedSlug: varchar("requested_slug", { length: 64 }),
+    // Deliberately denormalized: deleting the originating thread must not
+    // erase the site's ownership boundary.
+    chatThreadId: uuid("chat_thread_id"),
     publicSlug: varchar("public_slug", { length: 96 }).notNull(),
     activeDeploymentId: uuid("active_deployment_id"),
     activeDeploymentVersion: integer("active_deployment_version"),
@@ -49,6 +55,16 @@ export const hostedSites = pgTable(
     return [
       index("idx_hosted_sites_org").on(table.orgId),
       uniqueIndex("idx_hosted_sites_org_slug").on(table.orgId, table.slug),
+      uniqueIndex("idx_hosted_sites_org_chat_thread_requested_slug")
+        .on(table.orgId, table.chatThreadId, table.requestedSlug)
+        .where(
+          sql`${table.chatThreadId} IS NOT NULL AND ${table.requestedSlug} IS NOT NULL`,
+        ),
+      uniqueIndex("idx_hosted_sites_org_requested_slug_non_chat")
+        .on(table.orgId, table.requestedSlug)
+        .where(
+          sql`${table.chatThreadId} IS NULL AND ${table.requestedSlug} IS NOT NULL`,
+        ),
       uniqueIndex("idx_hosted_sites_public_slug").on(table.publicSlug),
     ];
   },

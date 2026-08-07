@@ -1,19 +1,7 @@
-import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
-import { healthContract } from "@vm0/api-contracts/contracts/health";
-
-import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
-import { agentComposesReadRoutes } from "./routes/agent-composes-read";
-import { agentComposesRoutes } from "./routes/agent-composes";
-import { agentRunsCancelRoutes } from "./routes/agent-runs-cancel";
-import { agentRunsCreateRoutes } from "./routes/agent-runs-create";
-import { agentRunsReadRoutes } from "./routes/agent-runs-read";
-import { agentRunTelemetryRoutes } from "./routes/agent-run-telemetry";
-import { agentSessionsRoutes } from "./routes/agent-sessions-id";
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
-import { E2E_ROUTES } from "./e2e-routes";
 import type { RouteEntry } from "./route-entry";
-import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
+import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
@@ -24,8 +12,9 @@ import { cronConnectorOauthStateCleanupRoutes } from "./routes/cron-connector-oa
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-briefs";
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
-import { cronMonitorChatMessageQueueRoutes } from "./routes/cron-monitor-chat-message-queue";
+import { cronMonitorChatEventQueueRoutes } from "./routes/cron-monitor-chat-event-queue";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
+import { cronRenewGoogleFormsWatchesRoutes } from "./routes/cron-renew-google-forms-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
 import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
@@ -40,8 +29,8 @@ import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
 import { zeroMorningBriefRoutes } from "./routes/zero-morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
-import { apiHealth$ } from "./routes/health";
-import { apiBuildInfo$ } from "./routes/build-info";
+import { healthRoutes } from "./routes/health";
+import { buildInfoRoutes } from "./routes/build-info";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { modelStatsRoutes } from "./routes/model-stats";
@@ -54,22 +43,24 @@ import { webhooksAgentCheckpointsRoutes } from "./routes/webhooks-agent-checkpoi
 import { webhooksAgentCompleteRoutes } from "./routes/webhooks-agent-complete";
 import { webhooksAgentEventsRoutes } from "./routes/webhooks-agent-events";
 import { webhooksAgentFirewallAuthRoutes } from "./routes/webhooks-agent-firewall-auth";
+import { webhooksAgentPiTranscriptRoutes } from "./routes/webhooks-agent-pi-transcript";
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
 import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksGmailRoutes } from "./routes/webhooks-gmail";
+import { webhooksGoogleFormsRoutes } from "./routes/webhooks-google-forms";
 import { webhooksGoogleCalendarRoutes } from "./routes/webhooks-google-calendar";
 import { webhooksGoogleWorkspaceEventsRoutes } from "./routes/webhooks-google-workspace-events";
 import { webhooksNotionRoutes } from "./routes/webhooks-notion";
 import { webhooksWorkflowAutomationsRoutes } from "./routes/webhooks-workflow-automations";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
+import { webhooksStripeWorkflowEventsRoutes } from "./routes/webhooks-stripe-workflow-events";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroArtifactCatalogRoutes } from "./routes/zero-artifact-catalog";
-import { zeroArtifactsRoutes } from "./routes/zero-artifacts";
 import { zeroAttributionRoutes } from "./routes/zero-attribution";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
 import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
@@ -86,6 +77,7 @@ import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
 import { zeroBankingRoutes } from "./routes/zero-banking";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroChatEventsRoutes } from "./routes/zero-chat-events";
+import { zeroSharedThreadRoutes } from "./routes/zero-shared-threads";
 import { zeroClaudeCodeDeviceAuthRoutes } from "./routes/zero-claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
@@ -106,13 +98,13 @@ import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
-import { zeroImageIoInterpretMarksRoutes } from "./routes/zero-image-io-interpret-marks";
 import { zeroImageShareXRoutes } from "./routes/zero-image-share-x";
 import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMailRoutes } from "./routes/zero-mail";
 import { zeroMapsRoutes } from "./routes/zero-maps";
 import { zeroWeatherRoutes } from "./routes/zero-weather";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
+import { zeroModelProviderGatewayRoutes } from "./routes/zero-model-provider-gateways";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
 import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
 import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
@@ -125,6 +117,8 @@ import { zeroOrgReadRoutes } from "./routes/zero-org-read";
 import { zeroPushSubscriptionsRoutes } from "./routes/zero-push-subscriptions";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRealtimeTokenRoutes } from "./routes/zero-realtime-token";
+import { zeroRecognitionRoutes } from "./routes/zero-recognition";
+import { zeroTranslationRoutes } from "./routes/zero-translation";
 import { zeroReportErrorRoutes } from "./routes/zero-report-error";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
@@ -133,7 +127,6 @@ import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-provide
 import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
 import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-model-providers-reset-subscription";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
-import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroScrapeRoutes } from "./routes/zero-scrape";
 import { zeroPeopleSearchRoutes } from "./routes/zero-people-search";
 import { zeroWebSearchRoutes } from "./routes/zero-web-search";
@@ -141,7 +134,6 @@ import { zeroBrowserRoutes } from "./routes/zero-browser";
 import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
-import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
 import { zeroStrapiIntegrationsRoutes } from "./routes/zero-strapi-integrations";
 import { zeroStrapiEventsRoutes } from "./routes/zero-strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
@@ -185,7 +177,6 @@ import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
 import { zeroTeamsOauthRoutes } from "./routes/zero-teams-oauth";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
-import { zeroUploadsImportImageRoutes } from "./routes/zero-uploads-import-image";
 import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
@@ -195,6 +186,7 @@ import { zeroUsageRunsRoutes } from "./routes/zero-usage-runs";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
 import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
 import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preference";
+import { zeroAvatarVideoRoutes } from "./routes/zero-avatar-video";
 import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
@@ -202,14 +194,8 @@ import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
 
 export const ROUTES: readonly RouteEntry[] = [
-  {
-    route: healthContract.check,
-    handler: apiHealth$,
-  },
-  {
-    route: buildInfoContract.get,
-    handler: apiBuildInfo$,
-  },
+  ...healthRoutes,
+  ...buildInfoRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...desktopAuthRoutes,
@@ -222,27 +208,22 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksBuiltInGenerationRoutes,
   ...webhooksGithubRoutes,
   ...webhooksGmailRoutes,
+  ...webhooksGoogleFormsRoutes,
   ...webhooksGoogleCalendarRoutes,
   ...webhooksGoogleWorkspaceEventsRoutes,
   ...webhooksNotionRoutes,
   ...webhooksWorkflowAutomationsRoutes,
   ...zeroStrapiEventsRoutes,
   ...webhooksStripeRoutes,
+  ...webhooksStripeWorkflowEventsRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
   ...webhooksAgentCheckpointsRoutes,
   ...webhooksAgentCompleteRoutes,
   ...webhooksAgentEventsRoutes,
   ...webhooksAgentFirewallAuthRoutes,
+  ...webhooksAgentPiTranscriptRoutes,
   ...webhooksAgentStorageRoutes,
-  ...agentComposesReadRoutes,
-  ...agentComposesByIdRoutes,
-  ...agentComposesRoutes,
-  ...agentRunsCreateRoutes,
-  ...agentRunsCancelRoutes,
-  ...agentRunsReadRoutes,
-  ...agentRunTelemetryRoutes,
-  ...agentSessionsRoutes,
-  ...connectorsTypeCallbackRoutes,
+  ...connectorsSlugCallbackRoutes,
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
@@ -253,8 +234,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteMorningBriefsRoutes,
   ...cronExecuteWorkflowAutomationsRoutes,
-  ...cronMonitorChatMessageQueueRoutes,
+  ...cronMonitorChatEventQueueRoutes,
   ...cronRenewGmailWatchesRoutes,
+  ...cronRenewGoogleFormsWatchesRoutes,
   ...cronRenewGoogleCalendarWatchesRoutes,
   ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
   ...cronProcessUsageEventsRoutes,
@@ -271,7 +253,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
   ...zeroArtifactCatalogRoutes,
-  ...zeroArtifactsRoutes,
   ...zeroAttributionRoutes,
   ...zeroBillingAutoRechargeRoutes,
   ...zeroBillingCheckoutRoutes,
@@ -288,6 +269,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBankingRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatEventsRoutes,
+  ...zeroSharedThreadRoutes,
   ...zeroClaudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseAuthorizationRoutes,
@@ -308,8 +290,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBuiltInGenerationRoutes,
   ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,
-  ...zeroImageIoInterpretMarksRoutes,
   ...zeroImageShareXRoutes,
+  ...zeroAvatarVideoRoutes,
   ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
   ...zeroMailRoutes,
@@ -321,6 +303,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBrowserRoutes,
   ...zeroBrowserAuthorizationRoutes,
   ...zeroModelPoliciesRoutes,
+  ...zeroModelProviderGatewayRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
   ...zeroMeModelProvidersListRoutes,
@@ -332,6 +315,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroWebDownloadRoutes,
   ...zeroQueuePositionRoutes,
   ...zeroRealtimeTokenRoutes,
+  ...zeroRecognitionRoutes,
+  ...zeroTranslationRoutes,
   ...zeroReportErrorRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
@@ -348,11 +333,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUserPermissionGrantsRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroUserModelPreferenceRoutes,
-  ...zeroSecretsRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,
   ...zeroStrapiIntegrationsRoutes,
-  ...zeroWorkflowQueueRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackConnectRoutes,
   ...zeroSlackOauthRoutes,
@@ -394,7 +377,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsTelegramUploadInitRoutes,
   ...zeroTeamRoutes,
   ...zeroUploadsCompleteRoutes,
-  ...zeroUploadsImportImageRoutes,
   ...zeroUploadsMultipartRoutes,
   ...zeroUploadsPrepareRoutes,
   ...registryResourceDownloadRoutes,
@@ -405,5 +387,4 @@ export const ROUTES: readonly RouteEntry[] = [
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
   ...runnersRoutes,
-  ...E2E_ROUTES,
 ];

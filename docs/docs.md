@@ -7,6 +7,12 @@ surface; the index does not replace their detailed rules.
 ## Code Review
 
 - [Bad code smells](./bad-smell.md): production-code quality rules.
+- [Fallbacks to avoid](./fallback.md): fallback slop, negative tests against
+  removed code, feature-switched features that need no compatibility, and the
+  narrow cases where a time-boxed fallback is required.
+- [Event sourcing and optimistic events](./event-sourcing.md): authoritative
+  persistent events, optimistic projections, reconciliation, and failure
+  semantics.
 - [React effects and ccstate commands](./effect.md): choosing between computed
   values, semantic commands, route setup, DOM lifecycles, and React effects.
 - [React and ccstate cache and lifecycle practices](./cache.md): render purity,
@@ -22,6 +28,8 @@ surface; the index does not replace their detailed rules.
   commits.
 - [Chat cards](./chat-cards.md): recognizing links in chat messages, creating
   thread-scoped card signals, and rendering rich interactive cards.
-- [Signed model usage pricing protocol](./model-usage-pricing-protocol.md):
-  producer/runner header, signature, validation, fallback, and rollout contract.
+- [Runner host configuration](./runner-host-configuration.md): configure and
+  verify host-local concurrency and I/O capacity overrides.
+- [Runner multi-architecture rollout](./runner-multi-architecture.md): build,
+  deploy, and validate runner artifacts for supported host architectures.
 - [Testing catalog](./testing/anti-patterns.md): detailed testing anti-patterns.

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
+use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{
     self, BorrowedRawMessage, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT,
     MSG_WRITE_FILES_RESULT,
@@ -175,7 +176,7 @@ where
             Err(e) => {
                 cancel.store(true, std::sync::atomic::Ordering::Release);
                 kill_and_reap_child(child);
-                let _ = await_drain_deadline(&done_rx, 1, &cancel);
+                let _ = await_drain_deadline(&done_rx, 1, &cancel, EXEC_OUTPUT_DRAIN_DEADLINE);
                 let _ = stderr_handle.join();
                 return (false, format!("Failed to spawn stdin writer thread: {e}"));
             }
@@ -197,7 +198,7 @@ where
             Err(panic) => std::panic::resume_unwind(panic),
         };
 
-        let _ = await_drain_deadline(&done_rx, 1, &cancel);
+        let _ = await_drain_deadline(&done_rx, 1, &cancel, EXEC_OUTPUT_DRAIN_DEADLINE);
         let stderr = stderr_handle.join().unwrap_or_default();
 
         match outcome {

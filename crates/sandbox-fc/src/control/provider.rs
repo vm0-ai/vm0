@@ -3,15 +3,15 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
-use sandbox::{RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError};
+use sandbox::{
+    RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError, SandboxControlTarget,
+};
 
 use super::CONTROL_SOCKET_OVERHEAD_MS;
 use super::client::{send_exec, send_terminate};
+use super::exec_response::ExecResult;
 use super::protocol::{
-    ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
-    TerminateStatus,
+    ExecRequest, TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus,
 };
 use super::resolver::resolve_control_socket;
 use crate::paths::RuntimePaths;
@@ -19,17 +19,30 @@ use crate::paths::RuntimePaths;
 /// Firecracker-backed sandbox control.
 ///
 /// Stateless - can be created with zero cost and used immediately.
+///
+/// # Remote exec timeouts
+///
+/// Remote exec requires a positive timeout after normalization to whole
+/// seconds. Fractional seconds are truncated, so 1,500 milliseconds becomes
+/// one second, while a positive duration below one second becomes zero and is
+/// rejected before guest execution. The control server's saturating
+/// seconds-to-milliseconds conversion caps the effective command timeout at
+/// `u32::MAX` milliseconds (about 49.7 days).
+///
+/// The control path adds five seconds to its host-side wait budget. That
+/// overhead does not extend the guest command timeout.
 pub struct FirecrackerControl;
 
 #[async_trait]
 impl SandboxControl for FirecrackerControl {
     async fn exec_remote(
         &self,
-        sandbox_id: &str,
+        target: SandboxControlTarget,
         command: &str,
         timeout: Duration,
         sudo: bool,
     ) -> Result<RemoteExecResult, SandboxControlError> {
+        let sandbox_id = target.sandbox_id();
         if sandbox_id.is_empty() {
             return Err(SandboxControlError::NotFound(
                 "sandbox id must not be empty".into(),
@@ -40,6 +53,7 @@ impl SandboxControl for FirecrackerControl {
 
         let timeout_secs = request_timeout_secs(timeout);
         let request = ExecRequest {
+            expected_run_id: target.expected_run_id().map(str::to_owned),
             command: command.to_owned(),
             timeout_secs,
             sudo,
@@ -56,10 +70,14 @@ impl SandboxControl for FirecrackerControl {
                 }
             })?;
 
-        remote_exec_result_from_response(response)
+        remote_exec_result_from_result(response)
     }
 
-    async fn kill_remote(&self, sandbox_id: &str) -> Result<RemoteKillResult, SandboxControlError> {
+    async fn kill_remote(
+        &self,
+        target: SandboxControlTarget,
+    ) -> Result<RemoteKillResult, SandboxControlError> {
+        let sandbox_id = target.sandbox_id();
         if sandbox_id.is_empty() {
             return Err(SandboxControlError::NotFound(
                 "sandbox id must not be empty".into(),
@@ -69,6 +87,7 @@ impl SandboxControl for FirecrackerControl {
         let sock_path = resolve_control_socket(sandbox_id)?;
         let request = TerminateRequest {
             action: TerminateAction::Terminate,
+            expected_run_id: target.expected_run_id().map(str::to_owned),
         };
 
         let response = send_terminate(&sock_path, &request, Duration::from_secs(5))
@@ -100,34 +119,26 @@ impl SandboxControl for FirecrackerControl {
     }
 }
 
-fn remote_exec_result_from_response(
-    response: ExecResponse,
+fn remote_exec_result_from_result(
+    result: ExecResult,
 ) -> Result<RemoteExecResult, SandboxControlError> {
-    match response {
-        ExecResponse::Success {
+    match result {
+        ExecResult::Success {
             termination,
             stdout,
             stderr,
             stdout_truncated,
             stderr_truncated,
             diagnostic,
-        } => {
-            let stdout_bytes = BASE64
-                .decode(&stdout)
-                .map_err(|e| SandboxControlError::Connection(format!("decode stdout: {e}")))?;
-            let stderr_bytes = BASE64
-                .decode(&stderr)
-                .map_err(|e| SandboxControlError::Connection(format!("decode stderr: {e}")))?;
-            Ok(RemoteExecResult {
-                termination,
-                stdout: stdout_bytes,
-                stderr: stderr_bytes,
-                diagnostic,
-                stdout_truncated,
-                stderr_truncated,
-            })
-        }
-        ExecResponse::Error { error } => Err(SandboxControlError::Remote(error)),
+        } => Ok(RemoteExecResult {
+            termination,
+            stdout,
+            stderr,
+            diagnostic,
+            stdout_truncated,
+            stderr_truncated,
+        }),
+        ExecResult::Error { error } => Err(SandboxControlError::Remote(error)),
     }
 }
 
@@ -148,11 +159,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn remote_exec_response_success_decodes_structured_result() {
-        let result = remote_exec_result_from_response(ExecResponse::Success {
+    fn remote_exec_result_maps_structured_result() {
+        let result = remote_exec_result_from_result(ExecResult::Success {
             termination: ExecTermination::Exited { exit_code: 7 },
-            stdout: BASE64.encode(b"out"),
-            stderr: BASE64.encode(b"err"),
+            stdout: b"out".to_vec(),
+            stderr: b"err".to_vec(),
             stdout_truncated: true,
             stderr_truncated: false,
             diagnostic: "diagnostic".into(),
@@ -168,42 +179,8 @@ mod tests {
     }
 
     #[test]
-    fn remote_exec_response_invalid_base64_is_connection_error() {
-        let result = remote_exec_result_from_response(ExecResponse::Success {
-            termination: ExecTermination::Exited { exit_code: 0 },
-            stdout: "not base64".into(),
-            stderr: BASE64.encode(b""),
-            stdout_truncated: false,
-            stderr_truncated: false,
-            diagnostic: String::new(),
-        });
-
-        let Err(SandboxControlError::Connection(message)) = result else {
-            panic!("expected connection error");
-        };
-        assert!(message.contains("decode stdout"));
-    }
-
-    #[test]
-    fn remote_exec_response_invalid_stderr_base64_is_connection_error() {
-        let result = remote_exec_result_from_response(ExecResponse::Success {
-            termination: ExecTermination::Exited { exit_code: 0 },
-            stdout: BASE64.encode(b""),
-            stderr: "not base64".into(),
-            stdout_truncated: false,
-            stderr_truncated: false,
-            diagnostic: String::new(),
-        });
-
-        let Err(SandboxControlError::Connection(message)) = result else {
-            panic!("expected connection error");
-        };
-        assert!(message.contains("decode stderr"));
-    }
-
-    #[test]
-    fn remote_exec_response_error_maps_to_remote_error() {
-        let result = remote_exec_result_from_response(ExecResponse::Error {
+    fn remote_exec_result_error_maps_to_remote_error() {
+        let result = remote_exec_result_from_result(ExecResult::Error {
             error: "sandbox not running".into(),
         });
 
@@ -217,7 +194,12 @@ mod tests {
     async fn exec_remote_empty_id() {
         let control = FirecrackerControl;
         let result = control
-            .exec_remote("", "echo hi", Duration::from_secs(5), false)
+            .exec_remote(
+                SandboxControlTarget::sandbox(""),
+                "echo hi",
+                Duration::from_secs(5),
+                false,
+            )
             .await;
         let Err(e) = result else {
             panic!("expected error");
@@ -228,7 +210,7 @@ mod tests {
     #[tokio::test]
     async fn kill_remote_empty_id() {
         let control = FirecrackerControl;
-        let result = control.kill_remote("").await;
+        let result = control.kill_remote(SandboxControlTarget::sandbox("")).await;
         let Err(e) = result else {
             panic!("expected error");
         };
@@ -248,6 +230,25 @@ mod tests {
 
         assert_eq!(timeout_secs, 5);
         assert_eq!(control_timeout(timeout_secs), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn positive_subsecond_timeout_becomes_zero_second_request() {
+        let timeout_secs = request_timeout_secs(Duration::from_millis(999));
+
+        assert_eq!(timeout_secs, 0);
+        assert_eq!(
+            control_timeout(timeout_secs),
+            Duration::from_millis(CONTROL_SOCKET_OVERHEAD_MS)
+        );
+    }
+
+    #[test]
+    fn fractional_timeout_truncates_to_whole_seconds() {
+        let timeout_secs = request_timeout_secs(Duration::from_millis(1500));
+
+        assert_eq!(timeout_secs, 1);
+        assert_eq!(control_timeout(timeout_secs), Duration::from_secs(6));
     }
 
     #[test]

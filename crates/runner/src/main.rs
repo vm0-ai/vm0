@@ -1,4 +1,4 @@
-// Trigger another runner release on 2026-07-28.
+// Trigger another runner release on 2026-07-31.
 mod active_input;
 mod axiom_layer;
 mod ca;
@@ -10,7 +10,9 @@ mod dns;
 mod duration;
 mod error;
 mod executor;
+mod firewall_hostname_policy;
 mod group;
+mod guest_timezone;
 mod helper_exec;
 mod host;
 mod host_env;
@@ -22,14 +24,17 @@ mod ids;
 mod image_hash;
 mod io_limits;
 mod kmsg_log;
+mod lifecycle;
 mod live_runner_instances;
 mod local_queue;
 mod lock;
 mod log_file;
 mod network_log_drain;
 mod network_log_manager;
+mod network_log_process;
 mod network_logs;
 mod paths;
+mod pi_standby;
 mod prefetch;
 mod private_fs;
 mod process;
@@ -98,7 +103,7 @@ enum Command {
     Kill(cmd::KillArgs),
     /// Clean up unused runner resources, artifacts, logs, and caches
     Gc(cmd::GcArgs),
-    /// Inspect and clean up session workspace image cache entries
+    /// Inspect and clean up workspace image cache entries
     WorkspaceImageCache(cmd::WorkspaceImageCacheArgs),
     /// Runtime health diagnostics for all runners on the host
     Doctor(cmd::DoctorArgs),
@@ -222,12 +227,10 @@ async fn main() -> ExitCode {
     // Disabled (zero overhead) when SENTRY_DSN is not set.
     let _sentry_guard = sentry::init((
         std::env::var("SENTRY_DSN").unwrap_or_default(),
-        sentry::ClientOptions {
-            release: Some(env!("CARGO_PKG_VERSION").into()),
-            default_integrations: false,
-            ..Default::default()
-        }
-        .add_integration(sentry::integrations::panic::PanicIntegration::default()),
+        sentry::ClientOptions::new()
+            .release(env!("CARGO_PKG_VERSION"))
+            .default_integrations(false)
+            .add_integration(sentry::integrations::panic::PanicIntegration::default()),
     ));
 
     if !nix::unistd::getuid().is_root() {
@@ -312,7 +315,9 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
     use clap::CommandFactory;
 
     const HELP_TOKEN_CHILD_SCENARIO_ENV: &str = "VM0_RUNNER_HELP_TOKEN_CHILD_SCENARIO";
@@ -425,6 +430,43 @@ mod tests {
             Cli::try_parse_from(["runner", "workspace-image-cache", "gc", "--dry-run"]).is_ok(),
             "workspace-image-cache gc should be registered"
         );
+    }
+
+    #[test]
+    fn workspace_image_cache_help_documents_locked_entry_semantics() {
+        let info_error = Cli::try_parse_from(["runner", "workspace-image-cache", "info", "--help"])
+            .err()
+            .expect("workspace-image-cache info --help should exit through clap");
+        assert_eq!(info_error.kind(), clap::error::ErrorKind::DisplayHelp);
+        let info_help = info_error
+            .to_string()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(info_help.contains("non-blocking, best-effort"));
+        assert!(info_help.contains(
+            "Locked entries skip metadata, image-size, temporary-path, storage, and artifact inspection."
+        ));
+        assert!(
+            info_help.contains("status-category, temporary-path, and size values are lower bounds")
+        );
+
+        let list_error = Cli::try_parse_from(["runner", "workspace-image-cache", "list", "--help"])
+            .err()
+            .expect("workspace-image-cache list --help should exit through clap");
+        assert_eq!(list_error.kind(), clap::error::ErrorKind::DisplayHelp);
+        let list_help = list_error
+            .to_string()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(list_help.contains("non-blocking, best-effort"));
+        assert!(list_help.contains(
+            "zero measurements and null metadata fields on locked entries mean unavailable rather than measured zero"
+        ));
+        assert!(list_help.contains(
+            "Status-category, temporary-path, and size summary values are lower bounds when `lockedEntries` is greater than zero."
+        ));
     }
 
     #[test]

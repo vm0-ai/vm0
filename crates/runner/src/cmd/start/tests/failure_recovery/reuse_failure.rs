@@ -1,21 +1,15 @@
 use super::super::super::*;
 use super::super::support::{
     context_with_session, mock_run_config_with_overrides, publish_idle_status, push_job,
-    seed_idle_pool_with_overrides, shutdown, status_idle_sessions, test_profiles,
+    seed_idle_pool_with_overrides, shutdown, status_idle_reuse_keys, test_profiles,
     wait_budget_count, wait_idle_pool_len, wait_status_idle_empty_with_active_run,
 };
 
-use crate::types::{SandboxReuseResult, SessionAffinityResource};
-
-const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
+use crate::types::SandboxReuseResult;
 
 fn reusable_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCandidate {
     crate::provider::JobCandidate::new(run_id, "vm0/default".into())
-        .with_affinity_metadata(
-            Some(session_id.to_string()),
-            Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
-        )
-        .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox))
+        .with_reuse_key(Some(session_id.to_string()))
 }
 
 /// When the runner takes a sandbox out of the idle pool for reuse and
@@ -57,7 +51,7 @@ async fn unpark_failure_destroys_idle_entry_and_falls_through() {
 
     let run_handle = tokio::spawn(run(config));
 
-    // Push a job for the same session — runner will try to reuse,
+    // Push a job for the same reuse key — runner will try to reuse,
     // unpark() will fail, idle entry gets destroyed, fresh create runs.
     let run_id = RunId::new_v4();
     env.provider.set_claim_result(
@@ -135,7 +129,7 @@ async fn unpark_failure_status_switches_from_idle_to_active_while_job_runs() {
     .await;
     publish_idle_status(&idle_pool, &status).await;
     assert_eq!(
-        status_idle_sessions(&status_path).await,
+        status_idle_reuse_keys(&status_path).await,
         vec!["sess-unpark-status".to_string()],
         "pre-run status should list the idle VM",
     );

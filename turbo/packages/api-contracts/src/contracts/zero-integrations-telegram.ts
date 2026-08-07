@@ -1,12 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import {
-  internalCallbackBodySchema,
-  internalCallbackErrorSchema,
-  internalCallbackHeadersSchema,
-  internalCallbackSuccessSchema,
-} from "./internal-callbacks-shared";
 
 const c = initContract();
 
@@ -308,21 +302,6 @@ export const zeroIntegrationsTelegramContract = c.router({
       }),
     },
     summary: "Handle Telegram bot webhook updates",
-  },
-  internalCallback: {
-    method: "POST",
-    path: "/api/internal/callbacks/telegram",
-    headers: internalCallbackHeadersSchema,
-    body: internalCallbackBodySchema,
-    responses: {
-      200: internalCallbackSuccessSchema,
-      400: internalCallbackErrorSchema,
-      401: internalCallbackErrorSchema,
-      404: internalCallbackErrorSchema,
-      500: internalCallbackErrorSchema,
-      502: internalCallbackErrorSchema,
-    },
-    summary: "Handle Telegram run completion callbacks",
   },
 });
 

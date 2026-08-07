@@ -1,6 +1,5 @@
-import { command, computed } from "ccstate";
+import { computed } from "ccstate";
 import {
-  zeroRunsMainContract,
   zeroRunRunnerContract,
   zeroRunsByIdContract,
   zeroRunsQueueContract,
@@ -8,8 +7,7 @@ import {
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf, pathParamsOf } from "../context/request";
-import { now } from "../external/time";
+import { pathParamsOf } from "../context/request";
 import { notFound } from "../../lib/error";
 import {
   zeroOrgTier,
@@ -17,11 +15,7 @@ import {
   zeroRunQueueStatus,
   zeroRunRunner,
 } from "../services/zero-runs.service";
-import { createZeroRun$ } from "../services/zero-runs-create.service";
-import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
 import type { RouteEntry } from "../route-entry";
-
-const createRunBody$ = bodyResultOf(zeroRunsMainContract.create);
 
 const runReadAuth = {
   requireOrganization: true,
@@ -72,45 +66,7 @@ const getRunQueueInner$ = computed(async (get) => {
   return { status: 200 as const, body: queue };
 });
 
-const createRunInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const apiStartTime = now();
-  const timing = new ApiDispatchTimingCollector();
-  const body = await timing.measure(
-    "api_dispatch_pre_create_zero_parse_body",
-    "nested",
-    async () => {
-      return await get(createRunBody$);
-    },
-  );
-  signal.throwIfAborted();
-  if (!body.ok) {
-    return body.response;
-  }
-
-  const args = await timing.measure(
-    "api_dispatch_pre_create_zero_prepare_args",
-    "nested",
-    () => {
-      const auth = get(organizationAuthContext$);
-      return { auth, body: body.data, apiStartTime, timing };
-    },
-  );
-  signal.throwIfAborted();
-  return await set(createZeroRun$, args, signal);
-});
-
 export const zeroRunsRoutes: readonly RouteEntry[] = [
-  {
-    route: zeroRunsMainContract.create,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "agent-run:write",
-      },
-      createRunInner$,
-    ),
-  },
   {
     route: zeroRunsQueueContract.getQueue,
     handler: authRoute(runReadAuth, getRunQueueInner$),

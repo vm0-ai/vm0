@@ -1,7 +1,5 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
@@ -57,7 +55,6 @@ import {
 } from "./onboarding/onboarding-page-setup.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
-import { setupCustomConnectorProposalPage$ } from "./connectors-page/custom-connector-proposal-page-setup.ts";
 import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
 import { setupBrowserAuthorizationPage$ } from "./browser-authorization/browser-authorization-page-setup.ts";
 import { setupBrowserSessionPage$ } from "./browser-session/browser-session-page-setup.ts";
@@ -85,13 +82,10 @@ import {
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
+import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
-import {
-  featureSwitch$,
-  reloadFeatureSwitch$,
-} from "./external/feature-switch.ts";
-import { reloadBillingStatus$ } from "./zero-page/billing.ts";
+import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
@@ -144,6 +138,11 @@ function setupAuthSidebarPageWrapper(
 
 const ROUTE_CONFIG = [
   {
+    path: ROUTES.sharedThread,
+    setup: setupSharedThreadPage$,
+    analytics: false,
+  },
+  {
     path: ROUTES.signIn,
     setup: setupSignInPage$,
   },
@@ -180,10 +179,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.ideas,
     setup: setupAuthSidebarPageWrapper(setupIdeationPage$),
-  },
-  {
-    path: ROUTES.customConnectorProposal,
-    setup: setupAuthPageWrapper(setupCustomConnectorProposalPage$),
   },
   {
     path: ROUTES.computerUseAuthorize,
@@ -438,67 +433,9 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
-const setupFeatureSwitches$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    await set(reloadFeatureSwitch$, signal);
-    if (get(featureSwitch$)[FeatureSwitchKey.LanguagePreference] === true) {
-      await set(syncLocalePreference$, signal);
-    }
-  },
-);
-
-function showSuccessToastAfterMount(message: string): void {
-  const showToast = () => {
-    window.setTimeout(() => {
-      toast.success(message);
-    }, 0);
-  };
-
-  if (document.readyState === "complete") {
-    showToast();
-    return;
-  }
-
-  window.addEventListener("load", showToast, { once: true });
-}
-
-const handleBillingRedirect$ = command(({ set }) => {
-  const url = new URL(window.location.href);
-  const billing = url.searchParams.get("billing");
-  const credits = url.searchParams.get("credits");
-  const concurrency = url.searchParams.get("concurrency");
-  if (!billing && !credits && !concurrency) {
-    return;
-  }
-
-  url.searchParams.delete("billing");
-  url.searchParams.delete("billing_session_id");
-  url.searchParams.delete("credits");
-  url.searchParams.delete("credit_checkout_session_id");
-  url.searchParams.delete("concurrency");
-  window.history.replaceState(null, "", url.toString());
-
-  if (billing === "pro" || billing === "team") {
-    const label = billing === "pro" ? "Pro" : "Team";
-    showSuccessToastAfterMount(
-      `${label} checkout completed. Credits will be added after the invoice is paid.`,
-    );
-    set(reloadBillingStatus$);
-  }
-
-  if (credits === "purchased") {
-    showSuccessToastAfterMount(
-      "Credits added. You can continue chatting with Zero.",
-    );
-    set(reloadBillingStatus$);
-  }
-
-  if (concurrency === "purchased") {
-    showSuccessToastAfterMount(
-      "Concurrency added. Your new slots will become available after Stripe confirms the subscription.",
-    );
-    set(reloadBillingStatus$);
-  }
+const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
+  await set(reloadFeatureSwitch$, signal);
+  await set(syncLocalePreference$, signal);
 });
 
 const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
@@ -532,7 +469,6 @@ export const bootstrap$ = command(
 
     render();
 
-    set(handleBillingRedirect$);
     set(handleSlackRedirect$);
 
     await Promise.all([

@@ -20,6 +20,7 @@ import type {
   ServerInferResponses,
 } from "@vm0/api-contracts/contracts/trpc-contract";
 import { http, HttpResponse, type HttpHandler, type PathParams } from "msw";
+import { delay } from "signal-timers";
 import { createDeferredPromise } from "../signals/utils.ts";
 
 export interface SignalContextLike {
@@ -66,33 +67,18 @@ async function withSignal<T>(
   if (signal.aborted) {
     throw getAbortReason(signal);
   }
-  const { promise: aborted, reject } = Promise.withResolvers<never>();
-  const onAbort = () => {
-    reject(getAbortReason(signal));
-  };
-  signal.addEventListener("abort", onAbort, { once: true });
+  const aborted = createDeferredPromise<never>(signal);
   try {
-    return await Promise.race([promise, aborted]);
+    return await Promise.race([promise, aborted.promise]);
   } finally {
-    signal.removeEventListener("abort", onAbort);
+    if (!aborted.settled()) {
+      aborted.reject(getAbortReason(signal));
+    }
   }
 }
 
 function delayWithSignal(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) {
-    return Promise.reject(getAbortReason(signal));
-  }
-  return new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      window.clearTimeout(timer);
-      reject(getAbortReason(signal));
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
+  return delay(ms, { signal });
 }
 
 function neverWithSignal(signal: AbortSignal): Promise<never> {
@@ -135,7 +121,7 @@ function routePattern(route: AppRoute): string | RegExp {
   if (route.path === "/api/zero/chat-threads/:id") {
     // Keep thread detail mocks from swallowing static sibling routes while
     // still accepting the descriptive non-UUID thread ids used by UI tests.
-    return /\/api\/zero\/chat-threads\/(?!snapshot$|events$|active-ids$)([^/]+)$/;
+    return /\/api\/zero\/chat-threads\/(?!snapshot$|events$|active-ids$|unread-ids$)([^/]+)$/;
   }
   return `*${route.path}`;
 }

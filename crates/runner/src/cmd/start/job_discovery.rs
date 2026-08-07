@@ -4,15 +4,18 @@
 //! module owns the body that turns a discovered job into a claimed spawned job.
 
 use std::collections::BTreeMap;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Instant;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use futures_util::FutureExt;
 use sandbox::SandboxId;
+use tokio::sync::OwnedMutexGuard;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
-use super::active_sessions::ActiveCliAgentSessionGuard;
+use super::active_reuse_keys::{ActiveReuseKeyGuard, contains_active_reuse_key};
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
@@ -23,22 +26,31 @@ use super::idle_lifecycle::{
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
 use crate::executor::{
-    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryRestorePlanInput,
-    build_session_history_restore_plan, validate_resume_session_id,
+    ExactReuseSpeculationTiming, RunnerPreSpawnOperationTiming, RunnerPreSpawnPhase,
+    RunnerPreSpawnTiming, SessionHistoryRestorePlanInput, build_session_history_restore_plan,
+    restore_guest_state_with_intent, try_sync_guest_timezone_intent, validate_resume_session_id,
 };
+use crate::guest_timezone::{GuestTimezoneAssumption, GuestTimezoneIntent};
 use crate::idle_pool::{
     DestroyOutcome, IdlePoolSnapshot, IdleUnparkResult, ReservedIdleSandbox,
-    RestoreReservedIdleResult, ReusableIdleSandbox,
+    RestoreReservedIdleResult, ReusableIdleSandbox, SpeculativeIdleSandbox,
+    SpeculativeIdleUnparkResult, SpeculativeReparkResult,
 };
 use crate::ids::RunId;
+use crate::lifecycle::RunnerMode;
 use crate::paths::short_digest;
-use crate::provider::{ClaimedJob, JobCandidate};
+use crate::provider::{
+    ClaimedJob, JobCandidate, RunnerPreferenceAdmission, RunnerPreferenceReason,
+    RunnerPreferenceRemovalReason, RunnerPreferenceTier,
+};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
-use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
-use crate::status::{RunnerMode, StatusTracker};
+use crate::run_cancellation::{
+    RunCancellationHandle, RunCancellationRegistration, RunCancellationRegistry,
+};
+use crate::status::StatusTracker;
 use crate::types::{
-    ExecutionContext, HeldSessionState, SandboxReuseResult, SessionAffinityResource,
-    WORKSPACE_AFFINITY_VERSION,
+    ExecutionContext, HeldWorkspaceState, SandboxReuseResult, WORKSPACE_AFFINITY_VERSION,
+    reuse_key_kind,
 };
 
 pub(super) struct DiscoveredJob {
@@ -46,6 +58,8 @@ pub(super) struct DiscoveredJob {
 }
 
 pub(super) struct DiscoveredJobContext<'a> {
+    pub(super) runner_id: &'a str,
+    pub(super) heartbeat_generation: u64,
     pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
     pub(super) factories: &'a BTreeMap<String, (SharedFactory, bool)>,
     pub(super) budget: &'a Arc<ResourceBudget>,
@@ -58,6 +72,27 @@ pub(super) struct DiscoveredJobContext<'a> {
     pub(super) jobs: &'a mut JoinSet<RunCancellationRegistration>,
 }
 
+pub(super) struct DiscoveredJobResult {
+    pub(super) needs_reuse_state_refresh: bool,
+    pub(super) pending_candidate: Option<JobCandidate>,
+}
+
+impl DiscoveredJobResult {
+    fn completed(needs_reuse_state_refresh: bool) -> Self {
+        Self {
+            needs_reuse_state_refresh,
+            pending_candidate: None,
+        }
+    }
+
+    fn pending(candidate: JobCandidate) -> Self {
+        Self {
+            needs_reuse_state_refresh: false,
+            pending_candidate: Some(candidate),
+        }
+    }
+}
+
 struct LocalAdmission {
     resource: LocalAdmissionResource,
     cancellation: RunCancellationRegistration,
@@ -66,17 +101,57 @@ struct LocalAdmission {
 enum LocalAdmissionResource {
     Fresh(BudgetLease),
     Reusable(Box<ReservedIdleSandbox>),
+    ExactSpeculative(Box<ReservedIdleSandbox>),
+}
+
+enum AdmittedResource {
+    Fresh(BudgetLease),
+    Reusable(Box<ReservedIdleSandbox>),
+    ExactSpeculation(ExactSpeculation),
+}
+
+struct ExactSpeculation {
+    outcome: ExactSpeculationOutcome,
+    preparation_started_at: Instant,
+    preparation_completed_at: Instant,
+    claim_started_at: Instant,
+    claim_returned_at: Instant,
+    unpark: RunnerPreSpawnOperationTiming,
+    guest_restore: Option<RunnerPreSpawnOperationTiming>,
+}
+
+struct ExactSpeculationPreparation {
+    outcome: ExactSpeculationOutcome,
+    started_at: Instant,
+    completed_at: Instant,
+    unpark: RunnerPreSpawnOperationTiming,
+    guest_restore: Option<RunnerPreSpawnOperationTiming>,
+}
+
+enum ExactSpeculationOutcome {
+    Prepared(Box<SpeculativeIdleSandbox>),
+    Failed {
+        destroy_job: Box<crate::idle_pool::IdleDestroyJob>,
+        error: String,
+    },
 }
 
 struct AdmittedClaim {
     claimed: ClaimedJob,
-    resource: LocalAdmissionResource,
+    resource: AdmittedResource,
     cancellation: RunCancellationRegistration,
+    claim_returned_at: Instant,
 }
 
-struct PreparedAffinityCandidate {
+struct PreparedCandidate {
     candidate: JobCandidate,
     resource: Option<LocalAdmissionResource>,
+}
+
+enum PreferencePreparation {
+    Ready(PreparedCandidate),
+    Pending(JobCandidate),
+    Deferred,
 }
 
 struct ReuseAdmissionRequest<'a> {
@@ -84,8 +159,28 @@ struct ReuseAdmissionRequest<'a> {
     device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
     workspace_disk_mb: u32,
     context: &'a ExecutionContext,
-    resume_session_valid: bool,
     job_lease: BudgetLease,
+}
+
+struct ClaimAdmissionRequest<'a> {
+    prepared: PreparedCandidate,
+    run_id: RunId,
+    profile_name: &'a str,
+    job_vcpu: u32,
+    job_memory: u32,
+    workspace_disk_mb: u32,
+    device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
+}
+
+struct PreferenceCandidateRequest<'a> {
+    candidate: JobCandidate,
+    preference: &'a crate::provider::RunnerPreference,
+    reuse_key: &'a str,
+    profile_name: &'a str,
+    job_vcpu: u32,
+    job_memory: u32,
+    device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
+    ctx: &'a DiscoveredJobContext<'a>,
 }
 
 struct ReservedActivationRequest<'a> {
@@ -93,7 +188,6 @@ struct ReservedActivationRequest<'a> {
     profile_name: &'a str,
     workspace_disk_mb: u32,
     context: &'a ExecutionContext,
-    resume_session_valid: bool,
 }
 
 impl LocalAdmission {
@@ -105,20 +199,12 @@ impl LocalAdmission {
         cancellation.unregister().await;
         rollback_untracked_resource(resource, ctx).await;
     }
-
-    fn into_admitted(self, claimed: ClaimedJob) -> AdmittedClaim {
-        AdmittedClaim {
-            claimed,
-            resource: self.resource,
-            cancellation: self.cancellation,
-        }
-    }
 }
 
 pub(super) async fn handle_discovered_job(
     job: DiscoveredJob,
     mut ctx: DiscoveredJobContext<'_>,
-) -> bool {
+) -> DiscoveredJobResult {
     let DiscoveredJob { mut candidate } = job;
     candidate.mark_main_loop_handling_started();
     let run_id = candidate.run_id();
@@ -126,59 +212,117 @@ pub(super) async fn handle_discovered_job(
     // Look up profile config for resource requirements.
     let Some(profile_config) = ctx.profiles.get(&profile_name) else {
         warn!(run_id = %run_id, profile = %profile_name, "unknown profile, skipping");
-        return false;
+        return DiscoveredJobResult::completed(false);
     };
     let job_vcpu = profile_config.vcpu;
     let job_memory = profile_config.memory_mb;
     let job_workspace_disk_mb = profile_config.workspace_disk_mb;
     let device_rate_limits = ctx.spawn_ctx.device_rate_limits.clone();
-    // Look up factory for this profile.
-    let Some((factory, restore_guest_state)) = ctx.factories.get(&profile_name) else {
+    // Look up factory for this profile. Alias profiles share the factory of
+    // the profile they are backed by.
+    let factory_profile = crate::profile::canonical_factory_profile(&profile_name);
+    let Some((factory, restore_guest_state)) = ctx.factories.get(factory_profile) else {
         warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
-        return false;
+        return DiscoveredJobResult::completed(false);
     };
 
-    let Some(admission) = claim_with_local_admission(
+    let prepared = match prepare_preference_candidate(
         candidate,
-        run_id,
         &profile_name,
         job_vcpu,
         job_memory,
         &device_rate_limits,
+        &ctx,
+    )
+    .await
+    {
+        PreferencePreparation::Ready(prepared) => prepared,
+        PreferencePreparation::Pending(candidate) => {
+            return DiscoveredJobResult::pending(candidate);
+        }
+        PreferencePreparation::Deferred => return DiscoveredJobResult::completed(false),
+    };
+    let Some(admission) = claim_with_local_admission(
+        ClaimAdmissionRequest {
+            prepared,
+            run_id,
+            profile_name: &profile_name,
+            job_vcpu,
+            job_memory,
+            workspace_disk_mb: job_workspace_disk_mb,
+            device_rate_limits: &device_rate_limits,
+        },
         &mut ctx,
     )
     .await
     else {
-        return false;
+        return DiscoveredJobResult::completed(false);
     };
     let AdmittedClaim {
         claimed,
         resource,
         cancellation,
+        claim_returned_at,
     } = admission;
-    let mut pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
+    if cancellation.handle().is_cancelled()
+        && matches!(&resource, AdmittedResource::ExactSpeculation(_))
+    {
+        complete_claimed_without_sandbox(
+            claimed,
+            cancellation,
+            resource,
+            job_workspace_disk_mb,
+            None,
+            crate::executor::ExecutionFailure::cancelled(),
+            &mut ctx,
+        )
+        .await;
+        return DiscoveredJobResult::completed(true);
+    }
+    let mut pre_spawn_timing = RunnerPreSpawnTiming::start_at(claim_returned_at);
     let started_at = Instant::now();
-    let resume_session_valid = validate_resume_session_id(claimed.context()).is_ok();
+    let resume_session_error = validate_resume_session_id(claimed.context()).err();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);
+    if let Some(error) = resume_session_error {
+        let needs_reuse_state_refresh = matches!(
+            &resource,
+            AdmittedResource::Reusable(_) | AdmittedResource::ExactSpeculation(_)
+        );
+        complete_claimed_without_sandbox(
+            claimed,
+            cancellation,
+            resource,
+            job_workspace_disk_mb,
+            None,
+            crate::executor::ExecutionFailure::from_error(error),
+            &mut ctx,
+        )
+        .await;
+        return DiscoveredJobResult::completed(needs_reuse_state_refresh);
+    }
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let started_at = Instant::now();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::DeviceRateLimits, started_at);
 
-    // Hide the claimed session from heartbeat affinity before unpark or
-    // fallback cleanup can yield. Otherwise a concurrent heartbeat could
-    // briefly advertise stale workspace-cache affinity for an active session.
-    let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
-        ctx.spawn_ctx.active_cli_agent_sessions.clone(),
-        if resume_session_valid {
-            claimed.context().cli_agent_session_id().map(str::to_owned)
-        } else {
-            None
-        },
+    // Hide the claimed reuse key from heartbeats before unpark or fallback
+    // cleanup can yield. Otherwise a concurrent heartbeat could briefly
+    // advertise stale workspace-cache state for an active run.
+    let active_reuse_key_guard = ActiveReuseKeyGuard::new(
+        ctx.spawn_ctx.active_reuse_keys.clone(),
+        Arc::clone(&ctx.spawn_ctx.reuse_state_notify),
+        claimed.context().reuse_key().map(str::to_owned),
     );
 
-    let (reuse_entry, active_lease, reuse_result, idle_snapshot, needs_session_affinity_refresh) =
-        match resource {
-            LocalAdmissionResource::Fresh(job_lease) => {
+    let (
+        reuse_entry,
+        active_lease,
+        reuse_result,
+        idle_snapshot,
+        needs_reuse_state_refresh,
+        activation_transfer_guard,
+    ) = match resource {
+        AdmittedResource::Fresh(job_lease) => {
+            let (reuse_entry, active_lease, reuse_result, idle_snapshot, refresh) =
                 try_reuse_from_pool(
                     run_id,
                     ReuseAdmissionRequest {
@@ -186,64 +330,144 @@ pub(super) async fn handle_discovered_job(
                         device_rate_limits: &device_rate_limits,
                         workspace_disk_mb: job_workspace_disk_mb,
                         context: claimed.context(),
-                        resume_session_valid,
                         job_lease,
                     },
                     &mut ctx,
                     &mut pre_spawn_timing,
                 )
-                .await
-            }
-            LocalAdmissionResource::Reusable(reservation) => {
-                match activate_reserved_idle(
-                    *reservation,
-                    ReservedActivationRequest {
-                        run_id,
-                        profile_name: &profile_name,
-                        workspace_disk_mb: job_workspace_disk_mb,
-                        context: claimed.context(),
-                        resume_session_valid,
-                    },
-                    &mut ctx,
-                    &mut pre_spawn_timing,
-                )
-                .await
-                {
-                    ReservedActivation::Ready {
-                        reuse_entry,
-                        active_lease,
-                        reuse_result,
-                        idle_snapshot,
-                    } => (
-                        reuse_entry.map(|entry| *entry),
-                        active_lease,
-                        reuse_result,
-                        Some(idle_snapshot),
-                        true,
-                    ),
-                    ReservedActivation::CannotStart {
-                        budget_lease,
-                        reuse_result,
-                        error,
-                    } => {
-                        fail_claimed_without_sandbox(
-                            claimed,
-                            cancellation,
-                            budget_lease,
-                            reuse_result,
-                            error,
-                            &ctx,
-                        )
-                        .await;
-                        return true;
-                    }
+                .await;
+            (
+                reuse_entry,
+                active_lease,
+                reuse_result,
+                idle_snapshot,
+                refresh,
+                None,
+            )
+        }
+        AdmittedResource::Reusable(reservation) => {
+            match activate_reserved_idle(
+                *reservation,
+                ReservedActivationRequest {
+                    run_id,
+                    profile_name: &profile_name,
+                    workspace_disk_mb: job_workspace_disk_mb,
+                    context: claimed.context(),
+                },
+                &mut ctx,
+                &mut pre_spawn_timing,
+            )
+            .await
+            {
+                ReservedActivation::Ready {
+                    reuse_entry,
+                    active_lease,
+                    reuse_result,
+                    idle_snapshot,
+                } => (
+                    reuse_entry.map(|entry| *entry),
+                    active_lease,
+                    reuse_result,
+                    Some(idle_snapshot),
+                    true,
+                    None,
+                ),
+                ReservedActivation::CannotStart {
+                    budget_lease,
+                    reuse_result,
+                    error,
+                } => {
+                    complete_claimed_without_sandbox(
+                        claimed,
+                        cancellation,
+                        AdmittedResource::Fresh(budget_lease),
+                        job_workspace_disk_mb,
+                        Some(reuse_result),
+                        crate::executor::ExecutionFailure::from_error(error),
+                        &mut ctx,
+                    )
+                    .await;
+                    return DiscoveredJobResult::completed(true);
                 }
             }
-        };
+        }
+        AdmittedResource::ExactSpeculation(speculation) => {
+            let pending = activate_speculated_exact(
+                speculation,
+                ReservedActivationRequest {
+                    run_id,
+                    profile_name: &profile_name,
+                    workspace_disk_mb: job_workspace_disk_mb,
+                    context: claimed.context(),
+                },
+                &ctx,
+                &mut pre_spawn_timing,
+            )
+            .await;
+            match finish_exact_activation(pending, &cancellation.handle(), run_id, &ctx).await {
+                ExactActivation::Ready {
+                    reuse_entry,
+                    active_lease,
+                    reuse_result,
+                    idle_snapshot,
+                    transfer_guard,
+                } => (
+                    reuse_entry.map(|entry| *entry),
+                    active_lease,
+                    reuse_result,
+                    Some(idle_snapshot),
+                    true,
+                    Some(transfer_guard),
+                ),
+                ExactActivation::Cancelled {
+                    resource,
+                    reuse_result,
+                } => {
+                    let run_id = complete_claimed_failure(
+                        claimed,
+                        cancellation,
+                        reuse_result,
+                        crate::executor::ExecutionFailure::cancelled(),
+                        &ctx,
+                    )
+                    .await;
+                    match resource {
+                        CancelledExactResource::Prepared(sandbox) => {
+                            rollback_exact_speculation_outcome(
+                                ExactSpeculationOutcome::Prepared(sandbox),
+                                run_id,
+                                job_workspace_disk_mb,
+                                &mut ctx,
+                            )
+                            .await;
+                        }
+                        CancelledExactResource::Fresh(budget_lease) => drop(budget_lease),
+                    }
+                    return DiscoveredJobResult::completed(true);
+                }
+                ExactActivation::CannotStart {
+                    budget_lease,
+                    reuse_result,
+                    error,
+                } => {
+                    complete_claimed_without_sandbox(
+                        claimed,
+                        cancellation,
+                        AdmittedResource::Fresh(budget_lease),
+                        job_workspace_disk_mb,
+                        Some(reuse_result),
+                        crate::executor::ExecutionFailure::from_error(error),
+                        &mut ctx,
+                    )
+                    .await;
+                    return DiscoveredJobResult::completed(true);
+                }
+            }
+        }
+    };
 
     let session_history_restore_plan =
         build_session_history_restore_plan(SessionHistoryRestorePlanInput {
-            resume_session_valid,
             http: &ctx.spawn_ctx.exec_config.http,
             cpu: &ctx.spawn_ctx.exec_config.session_history_cpu,
             context: claimed.context(),
@@ -272,6 +496,10 @@ pub(super) async fn handle_discovered_job(
         idle_snapshot,
     )
     .await;
+    #[cfg(test)]
+    ctx.spawn_ctx
+        .test_observer
+        .notify_active_run_status_published(run_id);
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ActiveStatusPublish, started_at);
 
     let job_profile = JobProfile {
@@ -294,12 +522,13 @@ pub(super) async fn handle_discovered_job(
             reuse_result,
             pre_spawn_timing,
             session_history_restore_plan,
-            active_cli_agent_session_guard,
+            active_reuse_key_guard,
         },
         ctx.spawn_ctx,
         ctx.jobs,
     );
-    needs_session_affinity_refresh
+    drop(activation_transfer_guard);
+    DiscoveredJobResult::completed(needs_reuse_state_refresh)
 }
 
 async fn publish_active_run_status(
@@ -321,26 +550,22 @@ async fn publish_active_run_status(
 }
 
 async fn claim_with_local_admission(
-    candidate: JobCandidate,
-    run_id: RunId,
-    profile_name: &str,
-    job_vcpu: u32,
-    job_memory: u32,
-    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    request: ClaimAdmissionRequest<'_>,
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<AdmittedClaim> {
-    let PreparedAffinityCandidate {
-        mut candidate,
-        resource,
-    } = prepare_affinity_protected_candidate(
-        candidate,
+    let ClaimAdmissionRequest {
+        prepared,
+        run_id,
         profile_name,
         job_vcpu,
         job_memory,
+        workspace_disk_mb,
         device_rate_limits,
-        ctx,
-    )
-    .await?;
+    } = request;
+    let PreparedCandidate {
+        mut candidate,
+        resource,
+    } = prepared;
     candidate.mark_local_admission_started();
 
     // Reserve either the exact reusable sandbox or fresh capacity before
@@ -391,7 +616,7 @@ async fn claim_with_local_admission(
             return None;
         }
         RunnerMode::Stopping => {
-            admission.cancellation.cancel().await;
+            admission.cancellation.request_hard_cancellation().await;
         }
         RunnerMode::Stopped => {
             admission.rollback(ctx).await;
@@ -400,11 +625,57 @@ async fn claim_with_local_admission(
     }
     // claim() runs in the branch handler: non-interruptible, so a valid
     // successful claim is always paired with complete().
-    let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
+    let LocalAdmission {
+        resource,
+        cancellation,
+    } = admission;
+    let claim_started_at = Instant::now();
+    let (claimed, admitted_resource, claim_returned_at) = match resource {
+        LocalAdmissionResource::Fresh(budget_lease) => {
+            let claimed = ctx.spawn_ctx.provider.claim(candidate).await;
+            (
+                claimed,
+                AdmittedResource::Fresh(budget_lease),
+                Instant::now(),
+            )
+        }
+        LocalAdmissionResource::Reusable(reservation) => {
+            let claimed = ctx.spawn_ctx.provider.claim(candidate).await;
+            (
+                claimed,
+                AdmittedResource::Reusable(reservation),
+                Instant::now(),
+            )
+        }
+        LocalAdmissionResource::ExactSpeculative(reservation) => {
+            let claim = async {
+                let claimed = ctx.spawn_ctx.provider.claim(candidate).await;
+                (claimed, Instant::now())
+            };
+            let preparation = prepare_exact_speculation(*reservation, run_id);
+            let ((claimed, claim_returned_at), preparation) = tokio::join!(claim, preparation);
+            let speculation = ExactSpeculation {
+                outcome: preparation.outcome,
+                preparation_started_at: preparation.started_at,
+                preparation_completed_at: preparation.completed_at,
+                claim_started_at,
+                claim_returned_at,
+                unpark: preparation.unpark,
+                guest_restore: preparation.guest_restore,
+            };
+            (
+                claimed,
+                AdmittedResource::ExactSpeculation(speculation),
+                claim_returned_at,
+            )
+        }
+    };
+    let Some(claimed) = claimed else {
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and
         // cancellation registration so the runner can continue.
-        admission.rollback(ctx).await;
+        cancellation.unregister().await;
+        rollback_admitted_resource(admitted_resource, run_id, workspace_disk_mb, ctx).await;
         return None;
     };
     if claimed.context().run_id != run_id {
@@ -413,158 +684,391 @@ async fn claim_with_local_admission(
             context_run_id = %claimed.context().run_id,
             "provider returned claimed job with mismatched run_id"
         );
-        admission.rollback(ctx).await;
+        cancellation.unregister().await;
+        rollback_admitted_resource(admitted_resource, run_id, workspace_disk_mb, ctx).await;
         return None;
     }
 
-    Some(admission.into_admitted(claimed))
+    Some(AdmittedClaim {
+        claimed,
+        resource: admitted_resource,
+        cancellation,
+        claim_returned_at,
+    })
 }
 
-async fn prepare_affinity_protected_candidate(
+async fn prepare_exact_speculation(
+    reservation: ReservedIdleSandbox,
+    run_id: RunId,
+) -> ExactSpeculationPreparation {
+    let preparation_started_at = Instant::now();
+    let predicted_timezone = reservation.guest_timezone_intent().clone();
+    let unpark_started_at = Instant::now();
+    let unpark_result = reservation.try_unpark_for_speculation(run_id).await;
+    let unpark_duration = unpark_started_at.elapsed();
+    let (outcome, unpark_succeeded, guest_restore) = match unpark_result {
+        SpeculativeIdleUnparkResult::Ready(sandbox) => {
+            let restore_started_at = Instant::now();
+            let restored = AssertUnwindSafe(restore_guest_state_with_intent(
+                sandbox.sandbox(),
+                run_id,
+                &predicted_timezone,
+            ))
+            .catch_unwind()
+            .await;
+            let restore_duration = restore_started_at.elapsed();
+            let (outcome, restore_succeeded) = match restored {
+                Ok(Ok(())) => (ExactSpeculationOutcome::Prepared(sandbox), true),
+                Ok(Err(error)) => (
+                    ExactSpeculationOutcome::Failed {
+                        destroy_job: Box::new(
+                            sandbox.into_destroy_job("speculative_guest_restore_failed"),
+                        ),
+                        error: error.to_string(),
+                    },
+                    false,
+                ),
+                Err(_) => (
+                    ExactSpeculationOutcome::Failed {
+                        destroy_job: Box::new(
+                            sandbox.into_destroy_job("speculative_guest_restore_panicked"),
+                        ),
+                        error: "speculative guest restore panicked".into(),
+                    },
+                    false,
+                ),
+            };
+            (
+                outcome,
+                true,
+                Some(RunnerPreSpawnOperationTiming {
+                    duration: restore_duration,
+                    succeeded: restore_succeeded,
+                }),
+            )
+        }
+        SpeculativeIdleUnparkResult::Failed { destroy_job, error } => (
+            ExactSpeculationOutcome::Failed { destroy_job, error },
+            false,
+            None,
+        ),
+    };
+    let preparation_completed_at = Instant::now();
+    ExactSpeculationPreparation {
+        outcome,
+        started_at: preparation_started_at,
+        completed_at: preparation_completed_at,
+        unpark: RunnerPreSpawnOperationTiming {
+            duration: unpark_duration,
+            succeeded: unpark_succeeded,
+        },
+        guest_restore,
+    }
+}
+
+async fn prepare_preference_candidate(
     candidate: JobCandidate,
     profile_name: &str,
     job_vcpu: u32,
     job_memory: u32,
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &DiscoveredJobContext<'_>,
-) -> Option<PreparedAffinityCandidate> {
-    if candidate.is_history_generation_affinity_protected()
-        && let (Some(cli_agent_session_id), Some(history_generation_run_id)) = (
-            candidate.cli_agent_session_id().map(str::to_owned),
-            candidate.history_generation_run_id(),
-        )
-    {
-        if let Some(reservation) = reserve_reusable_idle(
-            &cli_agent_session_id,
+) -> PreferencePreparation {
+    let Some(preference) = candidate.runner_preference().cloned() else {
+        return ordinary_preparation(candidate);
+    };
+    if preference.is_expired() {
+        return ordinary_preparation(
+            candidate.without_runner_preference(RunnerPreferenceRemovalReason::Expired),
+        );
+    }
+    let Some(reuse_key) = candidate.reuse_key().map(str::to_owned) else {
+        return ordinary_preparation(
+            candidate.without_runner_preference(RunnerPreferenceRemovalReason::Cleared),
+        );
+    };
+
+    let request = PreferenceCandidateRequest {
+        candidate,
+        preference: &preference,
+        reuse_key: &reuse_key,
+        profile_name,
+        job_vcpu,
+        job_memory,
+        device_rate_limits,
+        ctx,
+    };
+    match preference.admission() {
+        RunnerPreferenceAdmission::Legacy(reason) => {
+            prepare_legacy_preference_candidate(request, reason).await
+        }
+        RunnerPreferenceAdmission::Ranked(tier) => {
+            prepare_ranked_preference_candidate(request, tier).await
+        }
+    }
+}
+
+async fn prepare_legacy_preference_candidate(
+    request: PreferenceCandidateRequest<'_>,
+    reason: RunnerPreferenceReason,
+) -> PreferencePreparation {
+    let PreferenceCandidateRequest {
+        candidate,
+        preference,
+        reuse_key,
+        profile_name,
+        job_vcpu,
+        job_memory,
+        device_rate_limits,
+        ctx,
+    } = request;
+    match reason {
+        RunnerPreferenceReason::ExactHistoryGeneration => {
+            let Some(history_generation_run_id) = candidate.history_generation_run_id() else {
+                return ordinary_preparation(
+                    candidate.without_runner_preference(RunnerPreferenceRemovalReason::Cleared),
+                );
+            };
+            if let Some(reservation) = reserve_reusable_idle(
+                reuse_key,
+                profile_name,
+                device_rate_limits,
+                Some(history_generation_run_id),
+                ctx,
+            )
+            .await
+            {
+                return if reservation.guest_timezone_intent().is_usable_prediction() {
+                    exact_speculative_preparation(candidate, reservation)
+                } else {
+                    reusable_preparation(candidate, reservation)
+                };
+            }
+        }
+        RunnerPreferenceReason::MatchingReuseKey => {
+            if let Some(reservation) =
+                reserve_reusable_idle(reuse_key, profile_name, device_rate_limits, None, ctx).await
+            {
+                return reusable_preparation(candidate, reservation);
+            }
+
+            let held_workspace_states = current_local_held_workspace_states(ctx);
+            let has_capable_workspace = held_workspace_states
+                .iter()
+                .filter(|state| state.reuse_key == reuse_key)
+                .flat_map(|state| &state.workspace_caches)
+                .any(|workspace| {
+                    workspace.profile == profile_name
+                        && workspace.workspace_affinity_version == WORKSPACE_AFFINITY_VERSION
+                });
+            if has_capable_workspace
+                && let Some(lease) =
+                    ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
+            {
+                return PreferencePreparation::Ready(PreparedCandidate {
+                    candidate,
+                    resource: Some(LocalAdmissionResource::Fresh(lease)),
+                });
+            }
+        }
+        RunnerPreferenceReason::FinalizingPredecessor => {
+            let Some(history_generation_run_id) = candidate.history_generation_run_id() else {
+                return ordinary_preparation(
+                    candidate.without_runner_preference(RunnerPreferenceRemovalReason::Cleared),
+                );
+            };
+            if let Some(reservation) = reserve_reusable_idle(
+                reuse_key,
+                profile_name,
+                device_rate_limits,
+                Some(history_generation_run_id),
+                ctx,
+            )
+            .await
+            {
+                return reusable_preparation(candidate, reservation);
+            }
+
+            if preference.targets(ctx.runner_id, ctx.heartbeat_generation) {
+                if !contains_active_reuse_key(&ctx.spawn_ctx.active_reuse_keys, reuse_key) {
+                    return ordinary_preparation(
+                        candidate.without_runner_preference(RunnerPreferenceRemovalReason::Cleared),
+                    );
+                }
+                return defer_preference_candidate(candidate, preference, reuse_key, ctx, true)
+                    .await;
+            }
+        }
+    }
+
+    defer_preference_candidate(candidate, preference, reuse_key, ctx, false).await
+}
+
+async fn prepare_ranked_preference_candidate(
+    request: PreferenceCandidateRequest<'_>,
+    advertised_tier: RunnerPreferenceTier,
+) -> PreferencePreparation {
+    let PreferenceCandidateRequest {
+        candidate,
+        preference,
+        reuse_key,
+        profile_name,
+        job_vcpu,
+        job_memory,
+        device_rate_limits,
+        ctx,
+    } = request;
+    let selected = preference.targets(ctx.runner_id, ctx.heartbeat_generation);
+    let history_generation_run_id = candidate.history_generation_run_id();
+
+    if ranked_preference_allows(
+        advertised_tier,
+        RunnerPreferenceTier::ExactSandbox,
+        selected,
+    ) && let Some(history_generation_run_id) = history_generation_run_id
+        && let Some(reservation) = reserve_reusable_idle(
+            reuse_key,
             profile_name,
             device_rate_limits,
             Some(history_generation_run_id),
             ctx,
         )
         .await
-        {
-            return Some(PreparedAffinityCandidate {
-                candidate,
-                resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
-            });
-        }
-
-        let delay = candidate
-            .history_generation_affinity_protection_remaining()
-            .unwrap_or_default();
-        let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
-        info!(
-            run_id = %candidate.run_id(),
-            session_fingerprint = %session_fingerprint,
-            delay_ms = delay.as_millis(),
-            "exact session-history generation protected by another runner, deferring claim"
-        );
-        ctx.spawn_ctx.provider.defer_poll_after(delay).await;
-        return None;
+    {
+        return if reservation.guest_timezone_intent().is_usable_prediction() {
+            exact_speculative_preparation(candidate, reservation)
+        } else {
+            reusable_preparation(candidate, reservation)
+        };
     }
 
-    if !candidate.is_affinity_protected() {
-        return Some(PreparedAffinityCandidate {
+    if advertised_tier == RunnerPreferenceTier::FinalizingPredecessor && selected {
+        return defer_preference_candidate(candidate, preference, reuse_key, ctx, true).await;
+    }
+
+    if ranked_preference_allows(
+        advertised_tier,
+        RunnerPreferenceTier::ReusableSandbox,
+        selected,
+    ) && let Some(reservation) =
+        reserve_reusable_idle(reuse_key, profile_name, device_rate_limits, None, ctx).await
+    {
+        return reusable_preparation(candidate, reservation);
+    }
+
+    if ranked_preference_allows(
+        advertised_tier,
+        RunnerPreferenceTier::WorkspaceCache,
+        selected,
+    ) && has_compatible_workspace(reuse_key, profile_name, ctx)
+        && let Some(lease) = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
+    {
+        return PreferencePreparation::Ready(PreparedCandidate {
             candidate,
-            resource: None,
+            resource: Some(LocalAdmissionResource::Fresh(lease)),
         });
     }
-    let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
-        let delay = candidate
-            .affinity_protection_remaining()
-            .unwrap_or_default();
-        info!(
-            run_id = %candidate.run_id(),
-            delay_ms = delay.as_millis(),
-            "affinity-protected candidate missing session metadata, deferring claim"
-        );
-        ctx.spawn_ctx.provider.defer_poll_after(delay).await;
-        return None;
-    };
 
-    match candidate.session_affinity_resource() {
-        Some(SessionAffinityResource::ReusableSandbox) => {
-            if let Some(reservation) = reserve_reusable_idle(
-                &cli_agent_session_id,
-                profile_name,
-                device_rate_limits,
-                None,
-                ctx,
-            )
-            .await
-            {
-                return Some(PreparedAffinityCandidate {
-                    candidate,
-                    resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
-                });
-            }
-        }
-        Some(SessionAffinityResource::WorkspaceCache) => {
-            if let Some(reservation) = reserve_reusable_idle(
-                &cli_agent_session_id,
-                profile_name,
-                device_rate_limits,
-                None,
-                ctx,
-            )
-            .await
-            {
-                return Some(PreparedAffinityCandidate {
-                    candidate,
-                    resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
-                });
-            }
+    defer_preference_candidate(candidate, preference, reuse_key, ctx, false).await
+}
 
-            let held_session_states = current_local_held_session_states(ctx).await;
-            let has_capable_workspace = held_session_states
-                .iter()
-                .filter(|state| state.session_id == cli_agent_session_id)
-                .flat_map(|state| &state.workspace_caches)
-                .any(|workspace| {
-                    workspace.profile == profile_name
-                        && workspace.workspace_affinity_version == Some(WORKSPACE_AFFINITY_VERSION)
-                });
-            if has_capable_workspace
-                && let Some(lease) =
-                    ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
-            {
-                return Some(PreparedAffinityCandidate {
-                    candidate,
-                    resource: Some(LocalAdmissionResource::Fresh(lease)),
-                });
-            }
-        }
-        None => {}
+fn ranked_preference_allows(
+    advertised_tier: RunnerPreferenceTier,
+    local_tier: RunnerPreferenceTier,
+    selected: bool,
+) -> bool {
+    if selected {
+        local_tier.rank() >= advertised_tier.rank()
+    } else {
+        local_tier.rank() > advertised_tier.rank()
     }
+}
 
-    let delay = candidate
-        .affinity_protection_remaining()
-        .unwrap_or_default();
-    let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
+fn has_compatible_workspace(
+    reuse_key: &str,
+    profile_name: &str,
+    ctx: &DiscoveredJobContext<'_>,
+) -> bool {
+    current_local_held_workspace_states(ctx)
+        .iter()
+        .filter(|state| state.reuse_key == reuse_key)
+        .flat_map(|state| &state.workspace_caches)
+        .any(|workspace| {
+            workspace.profile == profile_name
+                && workspace.workspace_affinity_version == WORKSPACE_AFFINITY_VERSION
+        })
+}
+
+fn ordinary_preparation(candidate: JobCandidate) -> PreferencePreparation {
+    PreferencePreparation::Ready(PreparedCandidate {
+        candidate,
+        resource: None,
+    })
+}
+
+fn reusable_preparation(
+    candidate: JobCandidate,
+    reservation: ReservedIdleSandbox,
+) -> PreferencePreparation {
+    PreferencePreparation::Ready(PreparedCandidate {
+        candidate,
+        resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
+    })
+}
+
+fn exact_speculative_preparation(
+    candidate: JobCandidate,
+    reservation: ReservedIdleSandbox,
+) -> PreferencePreparation {
+    PreferencePreparation::Ready(PreparedCandidate {
+        candidate,
+        resource: Some(LocalAdmissionResource::ExactSpeculative(Box::new(
+            reservation,
+        ))),
+    })
+}
+
+async fn defer_preference_candidate(
+    candidate: JobCandidate,
+    preference: &crate::provider::RunnerPreference,
+    reuse_key: &str,
+    ctx: &DiscoveredJobContext<'_>,
+    retain: bool,
+) -> PreferencePreparation {
+    if preference.is_expired() {
+        return ordinary_preparation(
+            candidate.without_runner_preference(RunnerPreferenceRemovalReason::Expired),
+        );
+    }
+    let delay = preference.remaining();
     info!(
         run_id = %candidate.run_id(),
-        session_fingerprint = %session_fingerprint,
+        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+        reuse_key_kind = reuse_key_kind(reuse_key),
+        preference_admission = ?preference.admission(),
         delay_ms = delay.as_millis(),
-        "same-session affinity protected by another runner, deferring claim"
+        retained = retain,
+        "runner preference has no qualifying local resource, deferring claim"
     );
-    ctx.spawn_ctx.provider.defer_poll_after(delay).await;
-    None
-}
-
-fn diagnostic_session_fingerprint(session_id: &str) -> String {
-    short_digest(session_id)
-}
-
-async fn current_local_held_session_states(
-    ctx: &DiscoveredJobContext<'_>,
-) -> Vec<HeldSessionState> {
-    let idle_states = {
-        let pool = ctx.idle_pool.lock().await;
-        pool.held_session_states()
-    };
     ctx.spawn_ctx
-        .held_session_snapshot
-        .current_held_session_states(idle_states, &ctx.spawn_ctx.active_cli_agent_sessions, None)
+        .provider
+        .defer_poll_until(preference.deadline())
+        .await;
+    if retain {
+        PreferencePreparation::Pending(candidate)
+    } else {
+        PreferencePreparation::Deferred
+    }
+}
+
+fn diagnostic_reuse_key_fingerprint(reuse_key: &str) -> String {
+    short_digest(reuse_key)
+}
+
+fn current_local_held_workspace_states(ctx: &DiscoveredJobContext<'_>) -> Vec<HeldWorkspaceState> {
+    ctx.spawn_ctx
+        .workspace_cache_snapshot
+        .current_held_workspace_states(&ctx.spawn_ctx.active_reuse_keys, None)
 }
 
 async fn acquire_local_admission_resource(
@@ -576,9 +1080,9 @@ async fn acquire_local_admission_resource(
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<LocalAdmissionResource> {
     loop {
-        if let Some(session_id) = candidate.cli_agent_session_id()
+        if let Some(reuse_key) = candidate.reuse_key()
             && let Some(reservation) =
-                reserve_reusable_idle(session_id, profile_name, device_rate_limits, None, ctx).await
+                reserve_reusable_idle(reuse_key, profile_name, device_rate_limits, None, ctx).await
         {
             return Some(LocalAdmissionResource::Reusable(Box::new(reservation)));
         }
@@ -595,26 +1099,27 @@ async fn acquire_local_admission_resource(
                 "reclaiming expired idle VMs for candidate admission"
             );
             destroy_idle_jobs_and_wait(expired, "candidate_admission_expired").await;
-            ctx.spawn_ctx.park_notify.notify_one();
+            ctx.spawn_ctx.reuse_state_notify.notify_one();
             continue;
         }
 
         let evicted = evict_oldest_idle_entry(ctx.idle_pool, ctx.status).await?;
         info!(
             run_id = %candidate.run_id(),
-            session_id = %evicted.cli_agent_session_id(),
+            reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(evicted.reuse_key()),
+            reuse_key_kind = reuse_key_kind(evicted.reuse_key()),
             profile = %evicted.profile_name(),
             vcpu = evicted.budget_vcpu(),
             memory_mb = evicted.budget_memory_mb(),
             "evicting idle VM for candidate admission"
         );
         destroy_idle_jobs_and_wait(vec![evicted], "candidate_admission_oldest").await;
-        ctx.spawn_ctx.park_notify.notify_one();
+        ctx.spawn_ctx.reuse_state_notify.notify_one();
     }
 }
 
 async fn reserve_reusable_idle(
-    session_id: &str,
+    reuse_key: &str,
     profile_name: &str,
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     history_generation_run_id: Option<RunId>,
@@ -624,12 +1129,12 @@ async fn reserve_reusable_idle(
         let mut pool = ctx.idle_pool.lock().await;
         let reservation = match history_generation_run_id {
             Some(history_generation_run_id) => pool.reserve_reusable_generation(
-                session_id,
+                reuse_key,
                 profile_name,
                 device_rate_limits,
                 history_generation_run_id,
             )?,
-            None => pool.reserve_reusable(session_id, profile_name, device_rate_limits)?,
+            None => pool.reserve_reusable(reuse_key, profile_name, device_rate_limits)?,
         };
         let snapshot = pool.status_snapshot();
         (reservation, snapshot)
@@ -644,7 +1149,8 @@ async fn rollback_untracked_resource(
 ) {
     match resource {
         LocalAdmissionResource::Fresh(budget_lease) => drop(budget_lease),
-        LocalAdmissionResource::Reusable(reservation) => {
+        LocalAdmissionResource::Reusable(reservation)
+        | LocalAdmissionResource::ExactSpeculative(reservation) => {
             let (restore_result, snapshot) = {
                 let mut pool = ctx.idle_pool.lock().await;
                 let restore_result = pool.restore_reserved(*reservation);
@@ -658,9 +1164,92 @@ async fn rollback_untracked_resource(
                     *destroy_job,
                     "reserved_idle_rollback_rejected",
                 );
-                ctx.spawn_ctx.park_notify.notify_one();
+                ctx.spawn_ctx.reuse_state_notify.notify_one();
             }
         }
+    }
+}
+
+async fn rollback_admitted_resource(
+    resource: AdmittedResource,
+    run_id: RunId,
+    workspace_disk_mb: u32,
+    ctx: &mut DiscoveredJobContext<'_>,
+) {
+    match resource {
+        AdmittedResource::Fresh(budget_lease) => drop(budget_lease),
+        AdmittedResource::Reusable(reservation) => {
+            rollback_untracked_resource(LocalAdmissionResource::Reusable(reservation), ctx).await;
+        }
+        AdmittedResource::ExactSpeculation(speculation) => {
+            rollback_exact_speculation(speculation, run_id, workspace_disk_mb, ctx).await;
+        }
+    }
+}
+
+async fn rollback_exact_speculation(
+    speculation: ExactSpeculation,
+    run_id: RunId,
+    workspace_disk_mb: u32,
+    ctx: &mut DiscoveredJobContext<'_>,
+) {
+    rollback_exact_speculation_outcome(speculation.outcome, run_id, workspace_disk_mb, ctx).await;
+}
+
+async fn rollback_exact_speculation_outcome(
+    outcome: ExactSpeculationOutcome,
+    run_id: RunId,
+    workspace_disk_mb: u32,
+    ctx: &mut DiscoveredJobContext<'_>,
+) {
+    let destroy_job = match outcome {
+        ExactSpeculationOutcome::Prepared(sandbox) => {
+            match sandbox
+                .repark_for_claim_rollback(run_id, u64::from(workspace_disk_mb) * 1024 * 1024)
+                .await
+            {
+                SpeculativeReparkResult::Reparked(reservation) => {
+                    let (restore_result, snapshot) = {
+                        let mut pool = ctx.idle_pool.lock().await;
+                        let restore_result = pool.restore_reserved(*reservation);
+                        let snapshot = pool.status_snapshot();
+                        (restore_result, snapshot)
+                    };
+                    set_idle_status_snapshot(ctx.status, snapshot).await;
+                    ctx.spawn_ctx.reuse_state_notify.notify_one();
+                    match restore_result {
+                        RestoreReservedIdleResult::Restored => None,
+                        RestoreReservedIdleResult::Rejected(destroy_job) => Some(destroy_job),
+                    }
+                }
+                SpeculativeReparkResult::Destroy {
+                    destroy_job,
+                    reason,
+                    error,
+                } => {
+                    warn!(
+                        run_id = %run_id,
+                        reason,
+                        error,
+                        "speculative exact-reuse rollback could not restore idle ownership"
+                    );
+                    Some(destroy_job)
+                }
+            }
+        }
+        ExactSpeculationOutcome::Failed { destroy_job, error } => {
+            warn!(
+                run_id = %run_id,
+                error,
+                "speculative exact-reuse preparation failed before claim resolved"
+            );
+            Some(destroy_job)
+        }
+    };
+    if let Some(destroy_job) = destroy_job {
+        destroy_idle_jobs_and_wait(vec![*destroy_job], "speculative_exact_reuse_claim_rollback")
+            .await;
+        ctx.spawn_ctx.reuse_state_notify.notify_one();
     }
 }
 
@@ -678,6 +1267,350 @@ enum ReservedActivation {
     },
 }
 
+enum FreshFallbackActivation {
+    Ready {
+        active_lease: BudgetLease,
+        reuse_result: SandboxReuseResult,
+        idle_snapshot: IdlePoolSnapshot,
+    },
+    CannotStart {
+        budget_lease: BudgetLease,
+        reuse_result: SandboxReuseResult,
+        error: String,
+    },
+}
+
+impl From<FreshFallbackActivation> for ReservedActivation {
+    fn from(activation: FreshFallbackActivation) -> Self {
+        match activation {
+            FreshFallbackActivation::Ready {
+                active_lease,
+                reuse_result,
+                idle_snapshot,
+            } => Self::Ready {
+                reuse_entry: None,
+                active_lease,
+                reuse_result,
+                idle_snapshot,
+            },
+            FreshFallbackActivation::CannotStart {
+                budget_lease,
+                reuse_result,
+                error,
+            } => Self::CannotStart {
+                budget_lease,
+                reuse_result,
+                error,
+            },
+        }
+    }
+}
+
+enum PendingExactActivation {
+    Prepared {
+        sandbox: Box<SpeculativeIdleSandbox>,
+        guest_state_prepared: bool,
+    },
+    FreshFallback(FreshFallbackActivation),
+}
+
+impl From<FreshFallbackActivation> for PendingExactActivation {
+    fn from(activation: FreshFallbackActivation) -> Self {
+        Self::FreshFallback(activation)
+    }
+}
+
+enum CancelledExactResource {
+    Prepared(Box<SpeculativeIdleSandbox>),
+    Fresh(BudgetLease),
+}
+
+enum ExactActivation {
+    Ready {
+        reuse_entry: Option<Box<ReusableIdleSandbox>>,
+        active_lease: BudgetLease,
+        reuse_result: SandboxReuseResult,
+        idle_snapshot: IdlePoolSnapshot,
+        transfer_guard: OwnedMutexGuard<()>,
+    },
+    Cancelled {
+        resource: CancelledExactResource,
+        reuse_result: Option<SandboxReuseResult>,
+    },
+    CannotStart {
+        budget_lease: BudgetLease,
+        reuse_result: SandboxReuseResult,
+        error: String,
+    },
+}
+
+async fn activate_speculated_exact(
+    speculation: ExactSpeculation,
+    request: ReservedActivationRequest<'_>,
+    ctx: &DiscoveredJobContext<'_>,
+    pre_spawn_timing: &mut RunnerPreSpawnTiming,
+) -> PendingExactActivation {
+    let ReservedActivationRequest {
+        run_id,
+        profile_name,
+        workspace_disk_mb,
+        context,
+    } = request;
+    let ExactSpeculation {
+        outcome,
+        preparation_started_at,
+        preparation_completed_at,
+        claim_started_at,
+        claim_returned_at,
+        unpark,
+        guest_restore,
+    } = speculation;
+    let overlap_started_at = preparation_started_at.max(claim_started_at);
+    let overlap_completed_at = preparation_completed_at.min(claim_returned_at);
+    let claim_overlap = overlap_completed_at.saturating_duration_since(overlap_started_at);
+    let post_claim_remainder =
+        preparation_completed_at.saturating_duration_since(claim_returned_at);
+    let mut speculation_timing = ExactReuseSpeculationTiming {
+        unpark,
+        guest_restore,
+        claim_overlap,
+        post_claim_remainder,
+        timezone_correction: None,
+        timezone_assumption: None,
+    };
+    pre_spawn_timing.record_exact_reuse_speculation(speculation_timing);
+    let sandbox = match outcome {
+        ExactSpeculationOutcome::Prepared(sandbox) => sandbox,
+        ExactSpeculationOutcome::Failed { destroy_job, error } => {
+            warn!(
+                run_id = %run_id,
+                error,
+                "speculative exact-reuse preparation failed, destroying before fresh fallback"
+            );
+            return cleanup_reserved_for_fresh_fallback(
+                *destroy_job,
+                SandboxReuseResult::UnparkFailed,
+                "speculative_exact_reuse_prepare_failed",
+                ctx,
+            )
+            .await
+            .into();
+        }
+    };
+
+    let reserved_reuse_key = sandbox.reuse_key().to_owned();
+    let requested_reuse_key = context.reuse_key();
+    if requested_reuse_key != Some(reserved_reuse_key.as_str()) {
+        warn!(
+            run_id = %run_id,
+            reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+            reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+            "claimed reuse key does not match speculatively prepared idle VM"
+        );
+        return cleanup_reserved_for_fresh_fallback(
+            sandbox.into_destroy_job("speculative_reuse_session_mismatch"),
+            if requested_reuse_key.is_none() {
+                SandboxReuseResult::NoReuseKey
+            } else {
+                SandboxReuseResult::PoolMiss
+            },
+            "speculative_reuse_session_mismatch",
+            ctx,
+        )
+        .await
+        .into();
+    }
+
+    if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
+        let started_at = Instant::now();
+        let validation = sandbox.validate_workspace_promotion_identity(
+            cache,
+            CANONICAL_WORKING_DIR,
+            u64::from(workspace_disk_mb) * 1024 * 1024,
+        );
+        pre_spawn_timing.record_phase_elapsed(
+            RunnerPreSpawnPhase::WorkspacePromotionValidation,
+            started_at,
+        );
+        if let Err(mismatch) = validation {
+            warn!(
+                run_id = %run_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+                profile = %profile_name,
+                mismatch = mismatch.as_str(),
+                "workspace promotion identity mismatch after speculative preparation"
+            );
+            return cleanup_reserved_for_fresh_fallback(
+                sandbox.into_destroy_job("speculative_workspace_promotion_mismatch"),
+                SandboxReuseResult::PoolMiss,
+                "speculative_workspace_promotion_mismatch",
+                ctx,
+            )
+            .await
+            .into();
+        }
+    }
+
+    let claimed_timezone = GuestTimezoneIntent::from_context(context);
+    let assumption = sandbox.guest_timezone_intent().compare(&claimed_timezone);
+    let mut correction_duration = None;
+    let guest_state_prepared = match assumption {
+        GuestTimezoneAssumption::Match => true,
+        GuestTimezoneAssumption::Mismatch => {
+            let correction_started_at = Instant::now();
+            let corrected = AssertUnwindSafe(try_sync_guest_timezone_intent(
+                sandbox.sandbox(),
+                run_id,
+                &claimed_timezone,
+            ))
+            .catch_unwind()
+            .await;
+            correction_duration = Some(correction_started_at.elapsed());
+            match corrected {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    speculation_timing.timezone_correction =
+                        correction_duration.map(|duration| RunnerPreSpawnOperationTiming {
+                            duration,
+                            succeeded: false,
+                        });
+                    speculation_timing.timezone_assumption = Some(assumption);
+                    pre_spawn_timing.record_exact_reuse_speculation(speculation_timing);
+                    warn!(
+                        run_id = %run_id,
+                        error = %error,
+                        "speculative exact-reuse timezone correction transport failed"
+                    );
+                    return cleanup_reserved_for_fresh_fallback(
+                        sandbox.into_destroy_job("speculative_timezone_correction_failed"),
+                        SandboxReuseResult::UnparkFailed,
+                        "speculative_timezone_correction_failed",
+                        ctx,
+                    )
+                    .await
+                    .into();
+                }
+                Err(_) => {
+                    speculation_timing.timezone_correction =
+                        correction_duration.map(|duration| RunnerPreSpawnOperationTiming {
+                            duration,
+                            succeeded: false,
+                        });
+                    speculation_timing.timezone_assumption = Some(assumption);
+                    pre_spawn_timing.record_exact_reuse_speculation(speculation_timing);
+                    warn!(
+                        run_id = %run_id,
+                        "speculative exact-reuse timezone correction panicked"
+                    );
+                    return cleanup_reserved_for_fresh_fallback(
+                        sandbox.into_destroy_job("speculative_timezone_correction_panicked"),
+                        SandboxReuseResult::UnparkFailed,
+                        "speculative_timezone_correction_panicked",
+                        ctx,
+                    )
+                    .await
+                    .into();
+                }
+            }
+            true
+        }
+        GuestTimezoneAssumption::Unknown => false,
+    };
+    speculation_timing.timezone_correction =
+        correction_duration.map(|duration| RunnerPreSpawnOperationTiming {
+            duration,
+            succeeded: true,
+        });
+    speculation_timing.timezone_assumption = Some(assumption);
+    pre_spawn_timing.record_exact_reuse_speculation(speculation_timing);
+
+    PendingExactActivation::Prepared {
+        sandbox,
+        guest_state_prepared,
+    }
+}
+
+async fn finish_exact_activation(
+    activation: PendingExactActivation,
+    cancellation: &RunCancellationHandle,
+    run_id: RunId,
+    ctx: &DiscoveredJobContext<'_>,
+) -> ExactActivation {
+    match activation {
+        PendingExactActivation::Prepared {
+            sandbox,
+            guest_state_prepared,
+        } => {
+            let transfer_guard = cancellation.transfer_guard().await;
+            if cancellation.is_cancelled() {
+                drop(transfer_guard);
+                return ExactActivation::Cancelled {
+                    resource: CancelledExactResource::Prepared(sandbox),
+                    reuse_result: None,
+                };
+            }
+
+            let reuse_key = sandbox.reuse_key().to_owned();
+            let (reuse_entry, active_lease) = sandbox.commit(guest_state_prepared);
+            info!(
+                run_id = %run_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
+                reuse_key_kind = reuse_key_kind(&reuse_key),
+                "committing speculatively prepared exact-reuse VM"
+            );
+            ExactActivation::Ready {
+                reuse_entry: Some(Box::new(reuse_entry)),
+                active_lease,
+                reuse_result: SandboxReuseResult::Reused,
+                idle_snapshot: ctx.idle_pool.lock().await.status_snapshot(),
+                transfer_guard,
+            }
+        }
+        PendingExactActivation::FreshFallback(FreshFallbackActivation::Ready {
+            active_lease,
+            reuse_result,
+            idle_snapshot,
+        }) => {
+            let transfer_guard = cancellation.transfer_guard().await;
+            if cancellation.is_cancelled() {
+                drop(transfer_guard);
+                return ExactActivation::Cancelled {
+                    resource: CancelledExactResource::Fresh(active_lease),
+                    reuse_result: Some(reuse_result),
+                };
+            }
+            ExactActivation::Ready {
+                reuse_entry: None,
+                active_lease,
+                reuse_result,
+                idle_snapshot,
+                transfer_guard,
+            }
+        }
+        PendingExactActivation::FreshFallback(FreshFallbackActivation::CannotStart {
+            budget_lease,
+            reuse_result,
+            error,
+        }) => {
+            let transfer_guard = cancellation.transfer_guard().await;
+            if cancellation.is_cancelled() {
+                drop(transfer_guard);
+                return ExactActivation::Cancelled {
+                    resource: CancelledExactResource::Fresh(budget_lease),
+                    reuse_result: Some(reuse_result),
+                };
+            }
+            drop(transfer_guard);
+            ExactActivation::CannotStart {
+                budget_lease,
+                reuse_result,
+                error,
+            }
+        }
+    }
+}
+
 async fn activate_reserved_idle(
     reservation: ReservedIdleSandbox,
     request: ReservedActivationRequest<'_>,
@@ -689,24 +1622,24 @@ async fn activate_reserved_idle(
         profile_name,
         workspace_disk_mb,
         context,
-        resume_session_valid,
     } = request;
     let started_at = Instant::now();
-    let requested_session_id = context.cli_agent_session_id();
-    let reserved_session_id = reservation.cli_agent_session_id().to_owned();
+    let requested_reuse_key = context.reuse_key();
+    let reserved_reuse_key = reservation.reuse_key().to_owned();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
 
-    if !resume_session_valid || requested_session_id != Some(reserved_session_id.as_str()) {
-        let reuse_result = if requested_session_id.is_none() || !resume_session_valid {
-            SandboxReuseResult::NoSessionId
+    if requested_reuse_key != Some(reserved_reuse_key.as_str()) {
+        let reuse_result = if requested_reuse_key.is_none() {
+            SandboxReuseResult::NoReuseKey
         } else {
             SandboxReuseResult::PoolMiss
         };
+        let reuse_key_fingerprint = diagnostic_reuse_key_fingerprint(&reserved_reuse_key);
         warn!(
             run_id = %run_id,
-            reserved_session_id = %reserved_session_id,
-            claimed_session_id = ?requested_session_id,
-            "claimed session does not match reserved idle VM, destroying before fresh fallback"
+            reuse_key_fingerprint = %reuse_key_fingerprint,
+            reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+            "claimed reuse key does not match reserved idle VM, destroying before fresh fallback"
         );
         return cleanup_reserved_for_fresh_fallback(
             reservation.into_destroy_job(),
@@ -714,7 +1647,8 @@ async fn activate_reserved_idle(
             "reserved_reuse_session_mismatch",
             ctx,
         )
-        .await;
+        .await
+        .into();
     }
 
     if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
@@ -731,7 +1665,8 @@ async fn activate_reserved_idle(
         if let Err(mismatch) = validation {
             warn!(
                 run_id = %run_id,
-                session_id = %reserved_session_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
                 profile = %profile_name,
                 mismatch = mismatch.as_str(),
                 "workspace promotion identity mismatch, destroying reserved idle VM before fresh fallback"
@@ -742,12 +1677,13 @@ async fn activate_reserved_idle(
                 "reserved_reuse_workspace_promotion_mismatch",
                 ctx,
             )
-            .await;
+            .await
+            .into();
         }
     }
 
     let started_at = Instant::now();
-    let unpark_result = reservation.try_unpark().await;
+    let unpark_result = reservation.try_unpark_for_run(run_id).await;
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleUnpark, started_at);
     match unpark_result {
         IdleUnparkResult::Reused {
@@ -756,8 +1692,9 @@ async fn activate_reserved_idle(
         } => {
             info!(
                 run_id = %run_id,
-                session_id = %reserved_session_id,
-                "reusing pre-claim reserved idle VM for session"
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+                "reusing pre-claim reserved idle VM for reuse key"
             );
             let idle_snapshot = ctx.idle_pool.lock().await.status_snapshot();
             ReservedActivation::Ready {
@@ -770,7 +1707,8 @@ async fn activate_reserved_idle(
         IdleUnparkResult::Failed { destroy_job, error } => {
             warn!(
                 run_id = %run_id,
-                session_id = %reserved_session_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
                 error = %error,
                 "reserved idle VM unpark failed, destroying before fresh fallback"
             );
@@ -781,6 +1719,7 @@ async fn activate_reserved_idle(
                 ctx,
             )
             .await
+            .into()
         }
     }
 }
@@ -790,16 +1729,15 @@ async fn cleanup_reserved_for_fresh_fallback(
     reuse_result: SandboxReuseResult,
     cleanup_context: &'static str,
     ctx: &DiscoveredJobContext<'_>,
-) -> ReservedActivation {
+) -> FreshFallbackActivation {
     let cleanup = destroy_job.run_retaining_lease(cleanup_context).await;
     match cleanup.outcome {
-        DestroyOutcome::Completed => ReservedActivation::Ready {
-            reuse_entry: None,
+        DestroyOutcome::Completed => FreshFallbackActivation::Ready {
             active_lease: cleanup.budget_lease,
             reuse_result,
             idle_snapshot: ctx.idle_pool.lock().await.status_snapshot(),
         },
-        DestroyOutcome::Uncertain => ReservedActivation::CannotStart {
+        DestroyOutcome::Uncertain => FreshFallbackActivation::CannotStart {
             budget_lease: cleanup.budget_lease,
             reuse_result,
             error: "reserved idle sandbox cleanup was uncertain; fresh replacement was not started"
@@ -808,17 +1746,28 @@ async fn cleanup_reserved_for_fresh_fallback(
     }
 }
 
-async fn fail_claimed_without_sandbox(
+async fn complete_claimed_without_sandbox(
     claimed: ClaimedJob,
     cancellation: RunCancellationRegistration,
-    budget_lease: BudgetLease,
-    reuse_result: SandboxReuseResult,
-    error: String,
-    ctx: &DiscoveredJobContext<'_>,
+    resource: AdmittedResource,
+    workspace_disk_mb: u32,
+    reuse_result: Option<SandboxReuseResult>,
+    failure: crate::executor::ExecutionFailure,
+    ctx: &mut DiscoveredJobContext<'_>,
 ) {
+    let run_id = complete_claimed_failure(claimed, cancellation, reuse_result, failure, ctx).await;
+    rollback_admitted_resource(resource, run_id, workspace_disk_mb, ctx).await;
+}
+
+async fn complete_claimed_failure(
+    claimed: ClaimedJob,
+    cancellation: RunCancellationRegistration,
+    reuse_result: Option<SandboxReuseResult>,
+    failure: crate::executor::ExecutionFailure,
+    ctx: &DiscoveredJobContext<'_>,
+) -> RunId {
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
-    let failure = crate::executor::ExecutionFailure::from_error(error);
     drop(active_input_source);
     ctx.spawn_ctx
         .provider
@@ -827,12 +1776,12 @@ async fn fail_claimed_without_sandbox(
             failure.exit_code,
             Some(&failure.error),
             None,
-            Some(reuse_result),
+            reuse_result,
             completion_auth,
         )
         .await;
     cancellation.unregister().await;
-    drop(budget_lease);
+    run_id
 }
 
 async fn try_reuse_from_pool(
@@ -852,49 +1801,33 @@ async fn try_reuse_from_pool(
         device_rate_limits,
         workspace_disk_mb,
         context,
-        resume_session_valid,
         job_lease,
     } = request;
 
     let started_at = Instant::now();
-    if !resume_session_valid {
+    let Some(reuse_key) = context.reuse_key() else {
         pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return (
-            None,
-            job_lease,
-            SandboxReuseResult::NoSessionId,
-            None,
-            false,
-        );
-    }
-    let Some(cli_agent_session_id) = context.cli_agent_session_id() else {
-        pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return (
-            None,
-            job_lease,
-            SandboxReuseResult::NoSessionId,
-            None,
-            false,
-        );
+        return (None, job_lease, SandboxReuseResult::NoReuseKey, None, false);
     };
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
     let (taken, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
-        let taken = pool.take(cli_agent_session_id);
+        let taken = pool.take(reuse_key);
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
         (taken, snapshot)
     };
     let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
     let started_at = Instant::now();
-    let claimed_workspace_cache_session = ctx.spawn_ctx.exec_config.workspace_cache.is_some()
+    let claimed_workspace_cache_reuse_key = ctx.spawn_ctx.exec_config.workspace_cache.is_some()
         && ctx
             .spawn_ctx
-            .held_session_snapshot
-            .might_contain_workspace_cache_session(cli_agent_session_id);
-    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
-    let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_session;
+            .workspace_cache_snapshot
+            .might_contain_workspace_cache_reuse_key(reuse_key);
+    pre_spawn_timing
+        .record_phase_elapsed(RunnerPreSpawnPhase::WorkspaceCacheStateLookup, started_at);
+    let needs_reuse_state_refresh = took_idle_session || claimed_workspace_cache_reuse_key;
     match taken {
         Some(entry)
             if entry.profile_name() == profile_name
@@ -914,7 +1847,8 @@ async fn try_reuse_from_pool(
                 if let Err(mismatch) = validation {
                     warn!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                        reuse_key_kind = reuse_key_kind(reuse_key),
                         profile = %profile_name,
                         mismatch = mismatch.as_str(),
                         "workspace promotion identity mismatch, destroying idle VM and falling through to fresh create"
@@ -929,12 +1863,12 @@ async fn try_reuse_from_pool(
                         job_lease,
                         SandboxReuseResult::PoolMiss,
                         snapshot,
-                        needs_session_affinity_refresh,
+                        needs_reuse_state_refresh,
                     );
                 }
             }
             let started_at = Instant::now();
-            let unpark_result = entry.try_unpark().await;
+            let unpark_result = entry.try_unpark_for_run(run_id).await;
             pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleUnpark, started_at);
             match unpark_result {
                 IdleUnparkResult::Reused {
@@ -943,8 +1877,9 @@ async fn try_reuse_from_pool(
                 } => {
                     info!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
-                        "reusing idle VM for session"
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                        reuse_key_kind = reuse_key_kind(reuse_key),
+                        "reusing idle VM for reuse key"
                     );
                     // Idle entry already holds budget. Drop the speculative
                     // fresh-job lease and move the idle lease to the outer job
@@ -955,13 +1890,14 @@ async fn try_reuse_from_pool(
                         budget_lease,
                         SandboxReuseResult::Reused,
                         snapshot,
-                        needs_session_affinity_refresh,
+                        needs_reuse_state_refresh,
                     )
                 }
                 IdleUnparkResult::Failed { destroy_job, error } => {
                     warn!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                        reuse_key_kind = reuse_key_kind(reuse_key),
                         error = %error,
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
@@ -971,7 +1907,7 @@ async fn try_reuse_from_pool(
                         job_lease,
                         SandboxReuseResult::UnparkFailed,
                         snapshot,
-                        needs_session_affinity_refresh,
+                        needs_reuse_state_refresh,
                     )
                 }
             }
@@ -979,7 +1915,8 @@ async fn try_reuse_from_pool(
         Some(stale) if stale.profile_name() == profile_name => {
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                reuse_key_kind = reuse_key_kind(reuse_key),
                 profile = %profile_name,
                 "idle VM device rate limiter mismatch, destroying"
             );
@@ -993,13 +1930,14 @@ async fn try_reuse_from_pool(
                 job_lease,
                 SandboxReuseResult::DeviceLimitMismatch,
                 snapshot,
-                needs_session_affinity_refresh,
+                needs_reuse_state_refresh,
             )
         }
         Some(stale) => {
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                reuse_key_kind = reuse_key_kind(reuse_key),
                 old_profile = %stale.profile_name(),
                 new_profile = %profile_name,
                 "idle VM profile mismatch, destroying"
@@ -1014,21 +1952,22 @@ async fn try_reuse_from_pool(
                 job_lease,
                 SandboxReuseResult::ProfileMismatch,
                 snapshot,
-                needs_session_affinity_refresh,
+                needs_reuse_state_refresh,
             )
         }
         None => {
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
-                "no idle VM found for session"
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                reuse_key_kind = reuse_key_kind(reuse_key),
+                "no idle VM found for reuse key"
             );
             (
                 None,
                 job_lease,
                 SandboxReuseResult::PoolMiss,
                 None,
-                needs_session_affinity_refresh,
+                needs_reuse_state_refresh,
             )
         }
     }
@@ -1053,9 +1992,54 @@ mod tests {
         IdlePoolSnapshot {
             revision: 1,
             idle_vms: vec![IdleVm {
-                session_id: "sess-removed-from-pool".into(),
+                reuse_key: "sess-removed-from-pool".into(),
                 sandbox_id: SandboxId::new_v4(),
             }],
+        }
+    }
+
+    #[test]
+    fn ranked_preference_admission_matrix() {
+        use RunnerPreferenceTier::{
+            ExactSandbox, FinalizingPredecessor, ReusableSandbox, WorkspaceCache,
+        };
+
+        let tiers = [
+            WorkspaceCache,
+            ReusableSandbox,
+            FinalizingPredecessor,
+            ExactSandbox,
+        ];
+        let selected = [
+            [true, true, true, true],
+            [false, true, true, true],
+            [false, false, true, true],
+            [false, false, false, true],
+        ];
+        let unselected = [
+            [false, true, true, true],
+            [false, false, true, true],
+            [false, false, false, true],
+            [false, false, false, false],
+        ];
+
+        for ((advertised_tier, selected_row), unselected_row) in
+            tiers.into_iter().zip(selected).zip(unselected)
+        {
+            for ((local_tier, selected_expected), unselected_expected) in
+                tiers.into_iter().zip(selected_row).zip(unselected_row)
+            {
+                assert_eq!(
+                    ranked_preference_allows(advertised_tier, local_tier, true),
+                    selected_expected,
+                    "selected runner: advertised={advertised_tier:?}, local={local_tier:?}"
+                );
+                assert_eq!(
+                    ranked_preference_allows(advertised_tier, local_tier, false),
+                    unselected_expected,
+                    "unselected runner: advertised={advertised_tier:?}, local={local_tier:?}"
+                );
+            }
         }
     }
 

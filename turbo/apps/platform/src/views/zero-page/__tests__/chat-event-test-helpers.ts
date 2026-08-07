@@ -1,9 +1,8 @@
 import {
-  chatEventResponseSchema,
-  type ChatEventResponse,
+  chatEventSchema,
+  type ChatEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 
 type UnionKeys<T> = T extends unknown ? keyof T : never;
 type UnionValue<T, K extends PropertyKey> = T extends unknown
@@ -16,14 +15,16 @@ type OptionalUnionFields<T> = {
   [K in UnionKeys<T>]?: UnionValue<T, K>;
 };
 
-export type MockChatEventInput = OptionalUnionFields<ChatEventResponse> & {
+export type MockChatEventInput = OptionalUnionFields<ChatEvent> & {
   id?: string;
   role?: "user" | "assistant";
   content: string | null;
   createdAt: string;
 };
 
-function inferredEventType(message: MockChatEventInput): ChatEventType {
+function inferredEventType(
+  message: MockChatEventInput,
+): ChatEvent["eventType"] {
   if (message.eventType !== undefined) {
     return message.eventType;
   }
@@ -78,16 +79,11 @@ function baseEvent(
     content,
     runId: message.runId,
     runGroupId: message.runGroupId,
-    triggerSource: message.triggerSource,
-    slackMessagePermalink: message.slackMessagePermalink,
-    feishuChatOpenUrl: message.feishuChatOpenUrl,
     isGoalRun: message.isGoalRun,
     runEventId: message.runEventId,
-    goalSnapshot: message.goalSnapshot,
     revokesEventId: message.revokesEventId,
     seqId: message.seqId ?? fallbackSeqId,
     sequenceNumber: message.sequenceNumber,
-    workflowSnapshot: message.workflowSnapshot,
     createdAt: message.createdAt,
   };
 }
@@ -125,6 +121,7 @@ function requiredMockUserMessage(
 const mockChatEventOverrides = {
   "input.prompt": (message) => {
     return {
+      content: null,
       userMessage: requiredMockUserMessage(message),
       attachFiles: message.attachFiles,
       generationTemplate: message.generationTemplate,
@@ -133,17 +130,40 @@ const mockChatEventOverrides = {
   "input.automation": (message, id) => {
     return {
       content: null,
-      automationId:
-        message.automationId ?? "00000000-0000-4000-8000-000000000010",
-      triggerSource: message.triggerSource ?? "workflow-event",
-      triggerBrief:
-        message.triggerBrief === undefined
-          ? `Automation event ${id}`
-          : message.triggerBrief,
+      userMessage:
+        message.userMessage ??
+        ({
+          version: 1,
+          parts: [
+            {
+              type: "automation",
+              workflowName: "mock-workflow",
+              automationBrief: `Automation event ${id}`,
+            },
+          ],
+        } satisfies UserMessageDocument),
+    };
+  },
+  "input.goal": (message) => {
+    return {
+      content: null,
+      userMessage:
+        message.userMessage ??
+        ({
+          version: 1,
+          parts: [{ type: "goal", goalBrief: "Mock queued goal" }],
+        } satisfies UserMessageDocument),
+    };
+  },
+  "input.budget": (message) => {
+    return {
+      content: null,
+      userMessage: requiredMockUserMessage(message),
     };
   },
   "input.rejected": (message) => {
     return {
+      content: null,
       error: message.error ?? "Mock input rejected",
       userMessage: requiredMockUserMessage(message),
       attachFiles: message.attachFiles,
@@ -185,7 +205,6 @@ const mockChatEventOverrides = {
   "run.completed": (message, id) => {
     return {
       runId: message.runId ?? `mock-run-${id}`,
-      attachFiles: message.attachFiles,
       runLifecycleEvent: "completed",
     };
   },
@@ -203,15 +222,6 @@ const mockChatEventOverrides = {
       runLifecycleEvent: "cancelled",
     };
   },
-  "queue.automation_paused": (message) => {
-    return {
-      content: null,
-      pauseReason: message.pauseReason ?? null,
-    };
-  },
-  "queue.automation_resumed": () => {
-    return { content: null };
-  },
   "control.interrupt": (message, id) => {
     return {
       content: null,
@@ -224,6 +234,12 @@ const mockChatEventOverrides = {
       content: null,
       revokesEventId,
     };
+  },
+  "browser.open": () => {
+    return { content: null };
+  },
+  "browser.close": () => {
+    return { content: null };
   },
   "goal.changed": (message) => {
     return {
@@ -238,16 +254,16 @@ const mockChatEventOverrides = {
       usage: message.usage,
     };
   },
-} satisfies Record<ChatEventType, MockChatEventOverrides>;
+} satisfies Record<ChatEvent["eventType"], MockChatEventOverrides>;
 
 function normalizeMockChatEvent(
   message: MockChatEventInput,
   fallbackId: string,
   fallbackSeqId = 1,
-): ChatEventResponse {
+): ChatEvent {
   const id = message.id ?? fallbackId;
   const eventType = inferredEventType(message);
-  return chatEventResponseSchema.parse({
+  return chatEventSchema.parse({
     ...baseEvent(message, id, message.content, fallbackSeqId),
     eventType,
     ...mockChatEventOverrides[eventType](message, id),
@@ -256,7 +272,7 @@ function normalizeMockChatEvent(
 
 export function normalizeMockChatEvents(
   messages: readonly MockChatEventInput[],
-): ChatEventResponse[] {
+): ChatEvent[] {
   let nextSeqId = 1;
   return messages.flatMap((message, index) => {
     const fallbackId = `mock-chat-event-${index.toString()}`;

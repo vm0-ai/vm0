@@ -11,10 +11,10 @@ let mockUserPermissionGrants: UserPermissionGrantResponse[] = [];
 function grantKey(
   grant: Pick<
     UserPermissionGrantResponse,
-    "agentId" | "connectorRef" | "permission"
+    "agentId" | "connectorSlug" | "permission"
   >,
 ): string {
-  return `agent:${grant.agentId}:${grant.connectorRef}:${grant.permission}`;
+  return `agent:${grant.agentId}:${grant.connectorSlug}:${grant.permission}`;
 }
 
 function sameScope(
@@ -92,7 +92,8 @@ export const apiUserPermissionGrantsHandlers = [
         ? []
         : mockUserPermissionGrants.filter((grant) => {
             return (
-              sameScope(grant, body) && grant.connectorRef === body.connectorRef
+              sameScope(grant, body) &&
+              grant.connectorSlug === body.connectorSlug
             );
           });
     const existingGrantsByPermission = new Map(
@@ -111,7 +112,7 @@ export const apiUserPermissionGrantsHandlers = [
       });
       return {
         agentId: body.agentId,
-        connectorRef: body.connectorRef,
+        connectorSlug: body.connectorSlug,
         permission: appliedGrant.permission,
         action: appliedGrant.action,
         expiresAt,
@@ -130,7 +131,7 @@ export const apiUserPermissionGrantsHandlers = [
         if (
           body.mode === "replace" &&
           sameScope(grant, body) &&
-          grant.connectorRef === body.connectorRef
+          grant.connectorSlug === body.connectorSlug
         ) {
           return false;
         }

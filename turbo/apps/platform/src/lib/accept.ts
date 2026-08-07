@@ -1,6 +1,8 @@
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { isAbortError, onRejection } from "../signals/utils.ts";
 import { isNetworkRequestError } from "./network-error.ts";
+import { i18n } from "../i18n/index.ts";
 
 class ApiError extends Error {
   readonly code: string;
@@ -33,11 +35,23 @@ function extractError(
         : "UNKNOWN";
     return { message: body.error.message, code };
   }
-  return { message: `HTTP ${status}`, code: "UNKNOWN" };
+  return {
+    message: i18n.t(
+      ($) => {
+        return $.global.errors.httpStatus;
+      },
+      { status },
+    ),
+    code: "UNKNOWN",
+  };
 }
 
 function requestErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Request failed";
+  return error instanceof Error
+    ? error.message
+    : i18n.t(($) => {
+        return $.global.errors.requestFailed;
+      });
 }
 
 interface AcceptOptions {
@@ -47,7 +61,9 @@ interface AcceptOptions {
 /**
  * Awaits a typed API response and returns it if the status code is in `codes`.
  * Otherwise throws an `ApiError` and, by default, shows a toast. A 401 is
- * never toasted because the authenticated clients own sign-in recovery.
+ * never toasted because the authenticated clients own sign-in recovery. A
+ * force-upgrade response is never toasted because the blocking dialog owns
+ * recovery.
  *
  * Browser network failures propagate without showing their raw error message.
  *
@@ -79,7 +95,11 @@ async function accept<
     return result as Extract<T, { status: S }>;
   }
   const { message, code } = extractError(result.body, result.status);
-  if (showErrorToast && result.status !== 401) {
+  if (
+    showErrorToast &&
+    result.status !== 401 &&
+    result.status !== CLIENT_FORCE_UPGRADE_STATUS
+  ) {
     toast.error(message);
   }
   throw new ApiError(message, code, result.status);

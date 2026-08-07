@@ -1,4 +1,5 @@
 import { useLoadable } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import type { MemberUsage } from "@vm0/api-contracts/contracts/zero-usage";
@@ -10,7 +11,8 @@ import {
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
 import { billingStatusAsync$ } from "../../../../signals/zero-page/billing.ts";
-import { formatSubscriptionUsageReset } from "../../subscription-usage-format.ts";
+import { currentLocale, i18n } from "../../../../i18n/index.ts";
+import { formatLocalizedNumber } from "../../../../i18n/format.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -52,14 +54,6 @@ function colorForSegment(seg: CreditSegment): string {
   return CATEGORY_COLORS[seg.category];
 }
 
-const CATEGORY_DESCRIPTIONS: Readonly<
-  Record<Exclude<CreditSegment["category"], "plan">, string>
-> = {
-  free: "Starter credits, use until depleted",
-  promotional: "Campaign credits, expires after a set period",
-  payAsYouGo: "Auto-recharge credits, never expire",
-};
-
 function segmentKey(seg: CreditSegment): string {
   // `buildCreditBreakdown` keys segments by `category:tier`, so the same
   // composite is stable and unique across the array.
@@ -74,17 +68,61 @@ function descriptionForSegment(
   seg: CreditSegment,
   currentTier: string,
 ): string {
-  if (seg.category !== "plan") {
-    return CATEGORY_DESCRIPTIONS[seg.category];
+  if (seg.category === "free") {
+    return i18n.t(($) => {
+      return $.billing.usage.breakdown.freeDescription;
+    });
+  }
+  if (seg.category === "promotional") {
+    return i18n.t(($) => {
+      return $.billing.usage.breakdown.promotionalDescription;
+    });
+  }
+  if (seg.category === "payAsYouGo") {
+    return i18n.t(($) => {
+      return $.billing.usage.breakdown.payAsYouGoDescription;
+    });
   }
   if (seg.tier === currentTier) {
-    return "Monthly plan credits, resets each billing cycle";
+    return i18n.t(($) => {
+      return $.billing.usage.breakdown.currentPlanDescription;
+    });
   }
-  return "Leftover credits from previous plan";
+  return i18n.t(($) => {
+    return $.billing.usage.breakdown.previousPlanDescription;
+  });
+}
+
+function labelForSegment(seg: CreditSegment): string {
+  if (currentLocale() === "en-US") {
+    return seg.label;
+  }
+  if (seg.category === "plan") {
+    return seg.tier === "team"
+      ? i18n.t(($) => {
+          return $.billing.usage.breakdown.teamPlan;
+        })
+      : i18n.t(($) => {
+          return $.billing.usage.breakdown.proPlan;
+        });
+  }
+  if (seg.category === "free") {
+    return i18n.t(($) => {
+      return $.billing.usage.breakdown.freePlan;
+    });
+  }
+  if (seg.category === "promotional") {
+    return i18n.t(($) => {
+      return $.billing.usage.breakdown.promotional;
+    });
+  }
+  return i18n.t(($) => {
+    return $.billing.usage.breakdown.payAsYouGo;
+  });
 }
 
 function formatCreditDate(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(currentLocale(), {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -93,9 +131,16 @@ function formatCreditDate(value: string): string {
 
 function expiresLabel(grant: CreditGrant): string {
   if (grant.source === "auto_recharge") {
-    return "Never expires";
+    return i18n.t(($) => {
+      return $.billing.usage.neverExpires;
+    });
   }
-  return `Expires ${formatCreditDate(grant.expiresAt)}`;
+  return i18n.t(
+    ($) => {
+      return $.billing.usage.expires;
+    },
+    { date: formatCreditDate(grant.expiresAt) },
+  );
 }
 
 function allowanceRemainingPercent(window: UsageAllowanceWindow): number {
@@ -134,32 +179,72 @@ function usageTone(remainingPercent: number | null): {
 function formatAllowanceWindowLabel(window: UsageAllowanceWindow): string {
   if (window.kind === "weekly" || window.windowSeconds % 604_800 === 0) {
     const weeks = Math.max(1, window.windowSeconds / 604_800);
-    return `${weeks}w`;
+    return i18n.t(
+      ($) => {
+        return $.billing.usage.allowance.week;
+      },
+      { value: formatLocalizedNumber(weeks) },
+    );
   }
   if (window.windowSeconds % 86_400 === 0) {
-    return `${window.windowSeconds / 86_400}d`;
+    return i18n.t(
+      ($) => {
+        return $.billing.usage.allowance.day;
+      },
+      { value: formatLocalizedNumber(window.windowSeconds / 86_400) },
+    );
   }
   if (window.windowSeconds % 3600 === 0) {
-    return `${window.windowSeconds / 3600}h`;
+    return i18n.t(
+      ($) => {
+        return $.billing.usage.allowance.hour;
+      },
+      { value: formatLocalizedNumber(window.windowSeconds / 3600) },
+    );
   }
   if (window.windowSeconds % 60 === 0) {
-    return `${window.windowSeconds / 60}m`;
+    return i18n.t(
+      ($) => {
+        return $.billing.usage.allowance.minute;
+      },
+      { value: formatLocalizedNumber(window.windowSeconds / 60) },
+    );
   }
   return window.kind;
 }
 
 function formatAllowanceReset(window: UsageAllowanceWindow): string {
-  const reset = formatSubscriptionUsageReset(window.expiresAt);
-  if (reset === null) {
+  const text = window.expiresAt?.trim();
+  if (!text) {
     return "";
   }
-  if ("fallbackText" in reset) {
-    return reset.fallbackText;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) {
+    return i18n.t(
+      ($) => {
+        return $.billing.usage.allowance.resetsRaw;
+      },
+      { value: text },
+    );
   }
-  return `Resets ${reset.absoluteText}`;
+  const formatted = new Intl.DateTimeFormat(currentLocale(), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+  return i18n.t(
+    ($) => {
+      return $.billing.usage.allowance.resets;
+    },
+    { date: formatted },
+  );
 }
 
 function UsageAllowanceWindowRow({ window }: { window: UsageAllowanceWindow }) {
+  const { t } = useTranslation();
   const remainingPercent = allowanceRemainingPercent(window);
   const tone = usageTone(remainingPercent);
   const label = formatAllowanceWindowLabel(window);
@@ -175,13 +260,25 @@ function UsageAllowanceWindowRow({ window }: { window: UsageAllowanceWindow }) {
           </div>
         </div>
         <div className="shrink-0 text-right text-xs font-medium tabular-nums text-muted-foreground">
-          {window.remainingUnits.toLocaleString()} /{" "}
-          {window.unitLimit.toLocaleString()} credits
+          {t(
+            ($) => {
+              return $.billing.usage.allowance.remaining;
+            },
+            {
+              remaining: formatLocalizedNumber(window.remainingUnits),
+              total: formatLocalizedNumber(window.unitLimit),
+            },
+          )}
         </div>
       </div>
       <div
         role="progressbar"
-        aria-label={`Usage allowance ${label} remaining`}
+        aria-label={t(
+          ($) => {
+            return $.billing.usage.allowance.remainingAria;
+          },
+          { label },
+        )}
         aria-valuemin={0}
         aria-valuemax={window.unitLimit}
         aria-valuenow={window.remainingUnits}
@@ -201,6 +298,7 @@ function UsageAllowanceCard({
 }: {
   allowance: UsageAllowance | null | undefined;
 }) {
+  const { t } = useTranslation();
   const windows = allowance?.windows.filter((window) => {
     return window.unitLimit > 0;
   });
@@ -213,7 +311,11 @@ function UsageAllowanceCard({
       data-testid="usage-allowance-section"
       className="overflow-hidden rounded-xl bg-card px-5 py-4 zero-border"
     >
-      <p className="text-sm font-medium text-foreground">Usage allowance</p>
+      <p className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.billing.usage.allowance.title;
+        })}
+      </p>
       <div className="mt-3 flex flex-col gap-4">
         {windows.map((window) => {
           return <UsageAllowanceWindowRow key={window.kind} window={window} />;
@@ -224,6 +326,7 @@ function UsageAllowanceCard({
 }
 
 function CreditGrantRow({ grant }: { grant: CreditGrant }) {
+  const { t } = useTranslation();
   const hasPartialBalance = grant.remaining !== grant.amount;
 
   return (
@@ -239,16 +342,26 @@ function CreditGrantRow({ grant }: { grant: CreditGrant }) {
               {grant.label}
             </div>
             <div className="text-xs text-muted-foreground">
-              Added {formatCreditDate(grant.createdAt)}
+              {t(
+                ($) => {
+                  return $.billing.usage.added;
+                },
+                { date: formatCreditDate(grant.createdAt) },
+              )}
             </div>
           </div>
           <div className="shrink-0 text-right">
             <div className="text-[13px] font-medium tabular-nums text-foreground">
-              {grant.amount.toLocaleString()}
+              {formatLocalizedNumber(grant.amount)}
             </div>
             {hasPartialBalance ? (
               <div className="text-xs tabular-nums text-muted-foreground">
-                {grant.remaining.toLocaleString()} left
+                {t(
+                  ($) => {
+                    return $.billing.usage.left;
+                  },
+                  { value: formatLocalizedNumber(grant.remaining) },
+                )}
               </div>
             ) : null}
           </div>
@@ -265,7 +378,15 @@ function CreditGrantRow({ grant }: { grant: CreditGrant }) {
       >
         <div className="font-medium text-foreground">{expiresLabel(grant)}</div>
         <div className="mt-0.5 text-muted-foreground">
-          {grant.remaining.toLocaleString()} credits remaining
+          {t(
+            ($) => {
+              return $.billing.usage.creditsRemaining;
+            },
+            {
+              count: grant.remaining,
+              value: formatLocalizedNumber(grant.remaining),
+            },
+          )}
         </div>
       </TooltipContent>
     </Tooltip>
@@ -273,6 +394,7 @@ function CreditGrantRow({ grant }: { grant: CreditGrant }) {
 }
 
 function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
+  const { t } = useTranslation();
   if (grants.length === 0) {
     return null;
   }
@@ -292,7 +414,11 @@ function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
             stroke={2}
             className="shrink-0 transition-transform group-open:rotate-90"
           />
-          <span>Credit additions</span>
+          <span>
+            {t(($) => {
+              return $.billing.usage.creditAdditions;
+            })}
+          </span>
           <span className="tabular-nums">({grants.length})</span>
         </div>
       </summary>
@@ -314,6 +440,7 @@ function CreditBalanceChart({
   billing: BillingStatusResponse;
   onComparePlans: () => void;
 }) {
+  const { t } = useTranslation();
   const segments = billing.creditBreakdown.filter((s) => {
     return s.credits > 0;
   });
@@ -326,7 +453,7 @@ function CreditBalanceChart({
   return (
     <div className="px-5 py-4" data-testid="credit-balance-info">
       <p className="text-sm font-medium tabular-nums text-foreground">
-        {total.toLocaleString()}
+        {formatLocalizedNumber(total)}
       </p>
 
       {showFreeEmptyPrompt ? (
@@ -335,10 +462,14 @@ function CreditBalanceChart({
           data-testid="free-empty-credit-prompt"
         >
           <p className="text-sm font-medium text-foreground">
-            Upgrade to Pro to get more credits
+            {t(($) => {
+              return $.billing.usage.upgradeTitle;
+            })}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Pro includes monthly credits and unlocks additional credit options.
+            {t(($) => {
+              return $.billing.usage.upgradeDescription;
+            })}
           </p>
           <button
             type="button"
@@ -347,7 +478,9 @@ function CreditBalanceChart({
               onComparePlans();
             }}
           >
-            Compare plans
+            {t(($) => {
+              return $.billing.plans.compare;
+            })}
           </button>
         </div>
       ) : null}
@@ -381,7 +514,8 @@ function CreditBalanceChart({
                       className="border shadow-md"
                     >
                       <div className="font-medium text-foreground">
-                        {s.label} — {s.credits.toLocaleString()}
+                        {labelForSegment(s)} —{" "}
+                        {formatLocalizedNumber(s.credits)}
                       </div>
                       <div className="text-muted-foreground mt-0.5">{desc}</div>
                     </TooltipContent>
@@ -403,9 +537,9 @@ function CreditBalanceChart({
                   <span
                     className={`inline-block h-2 w-2 shrink-0 rounded-full ${color}`}
                   />
-                  <span>{s.label}</span>
+                  <span>{labelForSegment(s)}</span>
                   <span className="tabular-nums">
-                    {s.credits.toLocaleString()}
+                    {formatLocalizedNumber(s.credits)}
                   </span>
                 </div>
               );
@@ -432,6 +566,7 @@ export function CreditBalanceCard({
 }: {
   onComparePlans: () => void;
 }) {
+  const { t } = useTranslation();
   const billingLoadable = useLoadable(billingStatusAsync$);
   const billing =
     billingLoadable.state === "hasData" ? billingLoadable.data : null;
@@ -456,7 +591,9 @@ export function CreditBalanceCard({
         ) : (
           <div className="px-5 py-4">
             <p className="text-sm text-muted-foreground">
-              Credit balance unavailable.
+              {t(($) => {
+                return $.billing.usage.unavailable;
+              })}
             </p>
           </div>
         )}
@@ -499,12 +636,21 @@ export function MemberUsageTable({
   members: MemberUsage[];
   memberMap: Map<string, OrgMember>;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="overflow-hidden rounded-xl bg-card zero-border">
       {/* Header */}
       <div className="grid grid-cols-[1fr_7rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
-        <span>Member</span>
-        <span>Used</span>
+        <span>
+          {t(($) => {
+            return $.billing.usage.member;
+          })}
+        </span>
+        <span>
+          {t(($) => {
+            return $.billing.usage.used;
+          })}
+        </span>
       </div>
       {members.map((member) => {
         const orgMember = memberMap.get(member.userId);
@@ -540,7 +686,7 @@ export function MemberUsageTable({
                 </div>
               </div>
               <span className="text-[13px] tabular-nums text-foreground whitespace-nowrap">
-                {member.creditsCharged.toLocaleString()}
+                {formatLocalizedNumber(member.creditsCharged)}
               </span>
             </div>
           </div>

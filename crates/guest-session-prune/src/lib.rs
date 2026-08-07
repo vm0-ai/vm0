@@ -17,6 +17,7 @@ use uuid::Uuid;
 pub use codex::{
     CODEX_COMPACT_GENERATION_MAX_BYTES, CODEX_JSONL_RECORD_MAX_BYTES, CodexHistoryCandidate,
     CodexHistoryIneligibleReason, CodexHistorySelection, select_codex_compact_generation,
+    select_codex_compact_generation_with_candidate_limit_for_test,
 };
 
 /// Maximum decoded size of an accepted Claude compact generation.
@@ -254,6 +255,35 @@ impl CandidateState {
 /// The source is never modified. Files at or below 64 MiB are left unchanged.
 /// For larger files, only the final 64 MiB can contain an eligible candidate,
 /// so the older prefix is neither parsed nor retained.
+///
+/// # Selection contract
+///
+/// An eligible candidate contains the exact raw records from the newest
+/// recognized native compact boundary through the EOF observed during
+/// selection. The record immediately following the boundary must be a linked,
+/// nonempty native compact-summary user message. Every retained later record is
+/// included without rewriting.
+///
+/// Every newer recognized compact boundary supersedes the preceding candidate.
+/// If the newest boundary or its retained generation is invalid, selection
+/// fails closed instead of falling back to an older generation. The retained
+/// generation must preserve the expected native session identity, supported
+/// boundary, summary, and message shapes and relationships, unique UUID
+/// ancestry with retained parent links resolving to earlier candidate records,
+/// and complete, unambiguous tool-use/tool-result pairs whose results follow
+/// their uses. Malformed or oversized retained records, candidate size
+/// violations, and changes to the observed EOF or source length likewise make
+/// the source [`ClaudeHistorySelection::Ineligible`].
+///
+/// `Ineligible` is an expected eligibility or compatibility outcome that lets
+/// the caller use its ordinary checkpoint path. The selector only chooses an
+/// in-memory candidate: staging, checkpoint commit, and live-file reconciliation
+/// remain the caller's responsibility.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] when an underlying source open, metadata, seek, or
+/// read operation fails.
 pub fn select_claude_compact_generation(
     source_path: impl AsRef<Path>,
     expected_session_id: &str,
@@ -262,6 +292,24 @@ pub fn select_claude_compact_generation(
         source_path.as_ref(),
         expected_session_id,
         SelectionLimits::PRODUCTION,
+        || {},
+    )
+}
+
+/// Select a Claude compact generation with a bounded integration-test window.
+#[doc(hidden)]
+pub fn select_claude_compact_generation_with_candidate_limit_for_test(
+    source_path: impl AsRef<Path>,
+    expected_session_id: &str,
+    candidate_max_bytes: u64,
+) -> io::Result<ClaudeHistorySelection> {
+    select_with_limits_and_hook(
+        source_path.as_ref(),
+        expected_session_id,
+        SelectionLimits {
+            candidate_max_bytes,
+            ..SelectionLimits::PRODUCTION
+        },
         || {},
     )
 }

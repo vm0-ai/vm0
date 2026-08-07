@@ -65,6 +65,7 @@ const NETWORK_COMMANDS: &[&str] = &[
     "iptables",
     "iptables-save",
     "iptables-restore",
+    "conntrack",
     "sysctl",
 ];
 const DNS_INPUT_FILTER_COMMANDS: &[&str] = &["ip6tables", "ip6tables-save", "ip6tables-restore"];
@@ -551,6 +552,7 @@ mod tests {
                 "iptables",
                 "iptables-save",
                 "iptables-restore",
+                "conntrack",
                 "sysctl",
                 "mkfs.ext4"
             ]
@@ -569,6 +571,7 @@ mod tests {
                 "iptables",
                 "iptables-save",
                 "iptables-restore",
+                "conntrack",
                 "sysctl",
                 "cp",
                 "mkfs.ext4",
@@ -592,6 +595,7 @@ mod tests {
                 "iptables",
                 "iptables-save",
                 "iptables-restore",
+                "conntrack",
                 "sysctl",
                 "mkfs.ext4",
                 "unshare",
@@ -619,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn conntrack_is_optional_not_hard_required() {
+    fn conntrack_is_required_for_network_modes() {
         let snapshot = snapshot_config();
         let modes = [
             PrerequisiteMode::FactoryFresh,
@@ -629,7 +633,7 @@ mod tests {
 
         for mode in modes {
             let commands = required_commands(&mode);
-            assert!(!commands.contains(&"conntrack"), "mode: {mode:?}");
+            assert!(commands.contains(&"conntrack"), "mode: {mode:?}");
         }
     }
 
@@ -642,6 +646,7 @@ mod tests {
                 "iptables",
                 "iptables-save",
                 "iptables-restore",
+                "conntrack",
                 "sysctl"
             ]
         );
@@ -652,6 +657,7 @@ mod tests {
                 "iptables",
                 "iptables-save",
                 "iptables-restore",
+                "conntrack",
                 "sysctl",
                 "ip6tables",
                 "ip6tables-save",

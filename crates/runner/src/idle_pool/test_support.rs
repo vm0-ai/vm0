@@ -3,13 +3,15 @@ use std::sync::Arc;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
+use crate::guest_timezone::GuestTimezoneIntent;
 use crate::ids::RunId;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::WorkspaceImagePromotionContext;
 
-use super::{IdleSandboxMetadata, IdleSandboxResources, ParkedIdleCandidate};
+use super::ParkedIdleCandidate;
+use super::entry::{IdleSandboxMetadata, IdleSandboxResources};
 
 const DEFAULT_PROFILE_NAME: &str = "vm0/default";
 const DEFAULT_SOURCE_IP: &str = "10.0.0.1";
@@ -18,7 +20,7 @@ const DEFAULT_SANDBOX_NAME: &str = "idle-test";
 pub(crate) struct ParkedIdleCandidateBuilder {
     sandbox: Box<dyn Sandbox>,
     factory: Arc<Box<dyn SandboxFactory>>,
-    cli_agent_session_id: String,
+    reuse_key: String,
     sandbox_id: SandboxId,
     profile_name: String,
     device_rate_limits: Option<DeviceRateLimits>,
@@ -27,19 +29,20 @@ pub(crate) struct ParkedIdleCandidateBuilder {
     storage_fingerprints: StorageFingerprints,
     restored_session_identity: Option<RestoredSessionIdentity>,
     history_generation_run_id: Option<RunId>,
+    guest_timezone_intent: GuestTimezoneIntent,
     last_completed_at: Option<String>,
     workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
 
 impl ParkedIdleCandidateBuilder {
     pub(crate) fn new(
-        session_id: impl Into<String>,
+        reuse_key: impl Into<String>,
         budget_lease: BudgetLease,
     ) -> ParkedIdleCandidateBuilder {
         Self {
             sandbox: Box::new(MockSandbox::new(DEFAULT_SANDBOX_NAME)),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            cli_agent_session_id: session_id.into(),
+            reuse_key: reuse_key.into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: DEFAULT_PROFILE_NAME.into(),
             device_rate_limits: None,
@@ -48,6 +51,7 @@ impl ParkedIdleCandidateBuilder {
             storage_fingerprints: StorageFingerprints::default(),
             restored_session_identity: None,
             history_generation_run_id: None,
+            guest_timezone_intent: GuestTimezoneIntent::Unknown,
             last_completed_at: None,
             workspace_promotion: None,
         }
@@ -96,6 +100,14 @@ impl ParkedIdleCandidateBuilder {
         self
     }
 
+    pub(crate) fn with_guest_timezone_intent(
+        mut self,
+        guest_timezone_intent: GuestTimezoneIntent,
+    ) -> Self {
+        self.guest_timezone_intent = guest_timezone_intent;
+        self
+    }
+
     pub(crate) fn with_workspace_promotion(
         mut self,
         workspace_promotion: WorkspaceImagePromotionContext,
@@ -108,7 +120,7 @@ impl ParkedIdleCandidateBuilder {
         let Self {
             sandbox,
             factory,
-            cli_agent_session_id,
+            reuse_key,
             sandbox_id,
             profile_name,
             device_rate_limits,
@@ -117,11 +129,12 @@ impl ParkedIdleCandidateBuilder {
             storage_fingerprints,
             restored_session_identity,
             history_generation_run_id,
+            guest_timezone_intent,
             last_completed_at,
             workspace_promotion,
         } = self;
         let metadata = IdleSandboxMetadata {
-            cli_agent_session_id,
+            reuse_key,
             sandbox_id,
             profile_name,
             device_rate_limits,
@@ -129,6 +142,7 @@ impl ParkedIdleCandidateBuilder {
             storage_fingerprints,
             restored_session_identity,
             history_generation_run_id,
+            guest_timezone_intent,
             last_completed_at,
         };
         ParkedIdleCandidate {

@@ -6,6 +6,7 @@ import {
   DialogTitle,
   getShortcutParts,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 interface ShortcutEntry {
   key: string;
@@ -29,14 +30,25 @@ export function ShortcutHelpDialog({
   open,
   onOpenChange,
   sections,
-  title = "Keyboard Shortcuts",
+  title,
   description,
 }: ShortcutHelpDialogProps) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent
+        className="max-w-sm"
+        closeLabel={t(($) => {
+          return $.appShell.shortcutHelp.close;
+        })}
+      >
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle>
+            {title ??
+              t(($) => {
+                return $.appShell.shortcutHelp.title;
+              })}
+          </DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         <div className="space-y-4">

@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.19.40](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.39...sandbox-v0.19.40) (2026-08-07)
+
+
+### Performance Improvements
+
+* **rust:** eliminate exec-control payload copies ([#25608](https://github.com/vm0-ai/vm0/issues/25608)) ([3f71e3b](https://github.com/vm0-ai/vm0/commit/3f71e3b491c2fb66e3c964494565aa9a9bcd4166))
+
+## [0.19.39](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.38...sandbox-v0.19.39) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** remove resolved dns diagnostics ([#25426](https://github.com/vm0-ai/vm0/issues/25426)) ([a301c42](https://github.com/vm0-ai/vm0/commit/a301c42affa3da95dc3cec1b0c456acf16af2a5c))
+
+## [0.19.38](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.37...sandbox-v0.19.38) (2026-08-05)
+
+
+### Documentation
+
+* **sandbox:** document remote exec timeout normalization ([#25214](https://github.com/vm0-ai/vm0/issues/25214)) ([6138e94](https://github.com/vm0-ai/vm0/commit/6138e94533b3a0d23ccb7fb040b9ff6621c0db29))
+
+## [0.19.37](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.36...sandbox-v0.19.37) (2026-08-04)
+
+
+### Performance Improvements
+
+* measure pre-park successor handoff ([#24938](https://github.com/vm0-ai/vm0/issues/24938)) ([6e7c0aa](https://github.com/vm0-ai/vm0/commit/6e7c0aa73c51d7916efaa354f6ce1ba32b83090f))
+
+## [0.19.36](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.35...sandbox-v0.19.36) (2026-08-04)
+
+
+### Bug Fixes
+
+* **runner:** guard run controls across sandbox reuse ([#24849](https://github.com/vm0-ai/vm0/issues/24849)) ([bb1d90c](https://github.com/vm0-ai/vm0/commit/bb1d90c15df373b43a8653dcd85f9a47e3fb6042))
+
+## [0.19.35](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.34...sandbox-v0.19.35) (2026-08-03)
+
+
+### Documentation
+
+* **rust:** clarify read_file non-regular path semantics ([#24600](https://github.com/vm0-ai/vm0/issues/24600)) ([47d9046](https://github.com/vm0-ai/vm0/commit/47d90465e1ed8403d5855e514182b855a4204517))
+
+## [0.19.34](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.33...sandbox-v0.19.34) (2026-07-31)
+
+
+### Documentation
+
+* **rust:** correct run and sandbox identity contract ([#24250](https://github.com/vm0-ai/vm0/issues/24250)) ([49ab7e5](https://github.com/vm0-ai/vm0/commit/49ab7e5c1ef9ba45957a68a159c7ad45cffddf47))
+
+## [0.19.33](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.32...sandbox-v0.19.33) (2026-07-31)
+
+
+### Documentation
+
+* **sandbox:** clarify workspace seed ownership ([#24210](https://github.com/vm0-ai/vm0/issues/24210)) ([0c38adc](https://github.com/vm0-ai/vm0/commit/0c38adc08bbedcb7e18bb93f061df83446971b17))
+
 ## [0.19.32](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.31...sandbox-v0.19.32) (2026-07-27)
 
 

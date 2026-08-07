@@ -1,7 +1,6 @@
 import { computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { EventDrivenChatThread } from "@vm0/core/chat-thread-event-replay";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import { i18n } from "../../i18n/index.ts";
 import {
   eventDrivenChatThreads$,
   sidebarActiveThreadIds$,
@@ -25,24 +24,20 @@ export interface AgentListDialogChatThreadResult {
   readonly chatThreads: readonly AgentListDialogChatThread[];
 }
 
-export const chatThreadUnifiedSearchEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.ChatThreadUnifiedSearch] ?? false;
-});
-
 export const agentListDialogChatThreads$ = computed(
   async (get): Promise<AgentListDialogChatThreadResult> => {
     const query = get(chatListQuery$).trim().toLowerCase();
-    if (!get(chatThreadUnifiedSearchEnabled$)) {
-      return { query, chatThreads: [] };
-    }
-
     const threads = await get(eventDrivenChatThreads$);
     const matchingThreads: {
       readonly thread: EventDrivenChatThread;
       readonly title: string;
     }[] = [];
     for (const thread of threads) {
-      const title = thread.title ?? "New chat";
+      const title =
+        thread.title ??
+        i18n.t(($) => {
+          return $.chat.newChat;
+        });
       if (query && !title.toLowerCase().includes(query)) {
         continue;
       }

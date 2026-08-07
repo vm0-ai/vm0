@@ -11,7 +11,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -31,7 +31,7 @@ const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 const SECOND_AGENT_ID = "00000000-0000-0000-0000-000000000002";
 
 function publicStatusItem(args: {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly description?: string;
   readonly category?: string;
@@ -42,11 +42,11 @@ function publicStatusItem(args: {
 }): PublicConnectorCatalogStatusItem {
   const connected = args.connected ?? false;
   return {
-    connectorRef: args.connectorRef,
+    slug: args.connectorSlug,
     label: args.label,
     description: args.description ?? `${args.label} public description`,
     icon: {
-      url: `https://icons.example.test/${args.connectorRef}.svg`,
+      url: `https://icons.example.test/${args.connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     category: args.category ?? "data-automation-infrastructure",
@@ -78,10 +78,10 @@ function mockPublicConnectorStatus(
   });
 }
 
-function connectorResponse(type: ConnectorRef): ConnectorResponse {
+function connectorResponse(connectorSlug: ConnectorSlug): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
-    type,
+    slug: connectorSlug,
     authMethod: "oauth",
     externalId: null,
     externalUsername: null,
@@ -95,8 +95,8 @@ function connectorResponse(type: ConnectorRef): ConnectorResponse {
   };
 }
 
-function mockConnectedConnector(type: ConnectorRef): void {
-  context.mocks.data.connectors([connectorResponse(type)]);
+function mockConnectedConnector(connectorSlug: ConnectorSlug): void {
+  context.mocks.data.connectors([connectorResponse(connectorSlug)]);
 }
 
 function getButtonByText(text: string): HTMLElement {
@@ -126,7 +126,7 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
         callbackTarget: "app",
       });
       return respond(200, {
-        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+        authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
       });
     },
   );
@@ -154,7 +154,7 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
       });
       args?.onStart?.();
       return respond(200, {
-        authorizationUrl: `https://openid.test/${params.type}/authorize`,
+        authorizationUrl: `https://openid.test/${params.connectorSlug}/authorize`,
       });
     },
   );
@@ -208,7 +208,7 @@ describe("directed connector authorize page", () => {
   it("does not reuse optimistic authorization across agents", async () => {
     mockConnectedConnector("gmail");
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [] });
+      return respond(200, { enabledConnectorSlugs: [] });
     });
 
     detachedSetupPage({
@@ -228,7 +228,7 @@ describe("directed connector authorize page", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
-      pathParams: { type: "gmail" },
+      pathParams: { connectorSlug: "gmail" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 
@@ -243,7 +243,7 @@ describe("directed connector authorize page", () => {
 
   it("does not reuse stale loaded authorization across agents", async () => {
     mockConnectedConnector("gmail");
-    const secondAgentResponse = Promise.withResolvers<void>();
+    const secondAgentResponse = context.mocks.deferred<void>();
     let secondAgentRequested = false;
     context.mocks.api(
       zeroUserConnectorsContract.get,
@@ -251,9 +251,9 @@ describe("directed connector authorize page", () => {
         if (params.id === SECOND_AGENT_ID) {
           secondAgentRequested = true;
           await secondAgentResponse.promise;
-          return respond(200, { enabledTypes: [] });
+          return respond(200, { enabledConnectorSlugs: [] });
         }
-        return respond(200, { enabledTypes: ["gmail"] });
+        return respond(200, { enabledConnectorSlugs: ["gmail"] });
       },
     );
 
@@ -268,7 +268,7 @@ describe("directed connector authorize page", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
-      pathParams: { type: "gmail" },
+      pathParams: { connectorSlug: "gmail" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 
@@ -312,7 +312,7 @@ describe("directed connector authorize page", () => {
   it("connects a manual-token connector before authorizing the agent", async () => {
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         label: "Public Axiom",
         authMethods: [
           {
@@ -338,20 +338,20 @@ describe("directed connector authorize page", () => {
     let authorized = false;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledTypes: authorized ? ["axiom"] : [],
+        enabledConnectorSlugs: authorized ? ["axiom"] : [],
       });
     });
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("axiom");
+        expect(params.connectorSlug).toBe("axiom");
         expect(body.agentId).toBe(AGENT_ID);
         expect(body.authorizeAgent).toBeTruthy();
         submittedValues = body.values;
         authorized = true;
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "axiom",
+          slug: "axiom",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -404,13 +404,13 @@ describe("directed connector authorize page", () => {
       ({ params, respond }) => {
         startCalls += 1;
         return respond(200, {
-          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+          authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
         });
       },
     );
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "github",
+        connectorSlug: "github",
         label: "Public GitHub",
         authMethods: [
           {
@@ -438,7 +438,7 @@ describe("directed connector authorize page", () => {
     expect(startCalls).toBe(0);
 
     context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
-      pathParams: { type: "github" },
+      pathParams: { connectorSlug: "github" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 
@@ -458,7 +458,7 @@ describe("directed connector authorize page", () => {
         context.mocks.data.connectors([
           {
             id: crypto.randomUUID(),
-            type: "steam",
+            slug: "steam",
             authMethod: "openid",
             externalId: null,
             externalUsername: null,
@@ -474,11 +474,13 @@ describe("directed connector authorize page", () => {
       },
     });
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: authorized ? ["steam"] : [] });
+      return respond(200, {
+        enabledConnectorSlugs: authorized ? ["steam"] : [],
+      });
     });
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "steam",
+        connectorSlug: "steam",
         label: "Steam",
         authMethods: [
           {
@@ -522,7 +524,7 @@ describe("directed connector authorize page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
           authMethod: "api",
           agentId: AGENT_ID,
@@ -531,7 +533,7 @@ describe("directed connector authorize page", () => {
         authorized = true;
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "stripe",
+          slug: "stripe",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -546,11 +548,13 @@ describe("directed connector authorize page", () => {
       },
     );
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: authorized ? ["stripe"] : [] });
+      return respond(200, {
+        enabledConnectorSlugs: authorized ? ["stripe"] : [],
+      });
     });
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Public Stripe",
         authMethods: [
           {
@@ -587,14 +591,16 @@ describe("directed connector authorize page", () => {
     const { authWindow } = mockConnectorOauthStart();
     let updateCalls = 0;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [] });
+      return respond(200, { enabledConnectorSlugs: [] });
     });
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ body, respond }) => {
         updateCalls += 1;
+        const enabledConnectorSlugs =
+          body.operation === "remove" ? [] : body.enabledConnectorSlugs;
         return respond(200, {
-          enabledTypes: body.operation === "remove" ? [] : body.enabledTypes,
+          enabledConnectorSlugs,
         });
       },
     );

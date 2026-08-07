@@ -7,11 +7,11 @@ export async function lockConnectorState(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: string;
+    readonly connectorSlug: string;
   },
 ): Promise<void> {
   await db.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext('connector_state:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.type}))`,
+    sql`SELECT pg_advisory_xact_lock(hashtext('connector_state:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.connectorSlug}))`,
   );
 }
 

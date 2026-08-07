@@ -1,12 +1,10 @@
 import { command, computed, state } from "ccstate";
-import { talkDraft$ } from "./chat-draft.ts";
-import { createWorkflowComposerSignals } from "./tiptap-workflow-composer.ts";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
 } from "../external/feature-switch.ts";
-import { connectorCatalogStatusByRef$ } from "../external/connectors.ts";
+import { connectorCatalogStatusBySlug$ } from "../external/connectors.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
@@ -23,27 +21,6 @@ import {
 import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
-import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { createComposerConnectorSignals } from "./zero-connectors.ts";
-export const setChatPageInput$ = command(({ get, set }, value: string) => {
-  set(get(talkDraft$).setInput$, value);
-});
-
-export const chatPageWorkflowComposer$ = computed((get) => {
-  const features = get(featureSwitch$);
-  const inlineTemplatesEnabled =
-    features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
-  return createWorkflowComposerSignals(
-    get(talkDraft$),
-    undefined,
-    currentChatAgentRecordId$,
-    inlineTemplatesEnabled,
-  );
-});
-
-export const chatPageComposerConnectors = createComposerConnectorSignals(
-  currentChatAgentRecordId$,
-);
 
 const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));
 export const reloadTagline$ = command(({ set }) => {
@@ -65,10 +42,10 @@ export const unfilteredSuggestedPrompts$ = computed((get) => {
 
 export const suggestedPrompts$ = computed(async (get) => {
   const features = await get(featureSwitch$);
-  const connectorStatusByRef = await get(connectorCatalogStatusByRef$);
+  const connectorStatusBySlug = await get(connectorCatalogStatusBySlug$);
   return getRandomPrompts(2, {
     features,
-    visibleConnectorRefs: new Set(connectorStatusByRef.keys()),
+    visibleConnectorSlugs: new Set(connectorStatusBySlug.keys()),
   });
 });
 

@@ -1,10 +1,6 @@
 import { z } from "zod";
 import { firewallsSchema } from "@vm0/connectors/firewall-types";
-import { authHeadersSchema, initContract } from "./base";
-import { apiErrorSchema } from "./errors";
 import { CANONICAL_WORKING_DIR } from "./runners";
-
-const c = initContract();
 
 export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";
 
@@ -14,19 +10,6 @@ export function expandMountPath(mountPath: string | undefined): string {
   }
   return mountPath;
 }
-
-/**
- * Version query parameter schema for compose versions
- *
- * Accepts: "latest" tag or 8-64 hex character version hash
- */
-const composeVersionQuerySchema = z
-  .string()
-  .min(1, "Missing version query parameter")
-  .regex(
-    /^[a-f0-9]{8,64}$|^latest$/i,
-    "Version must be 8-64 hex characters or 'latest'",
-  );
 
 /**
  * Agent name regex: 3-64 chars, letters/numbers/hyphens, start and end with alphanumeric.
@@ -42,7 +25,6 @@ export const ZERO_CAPABILITIES = [
   "agent:write",
   "agent:delete",
   "agent-run:read",
-  "agent-run:write",
   "goal:read",
   "goal:agent-result:write",
   "goal:user-control:write",
@@ -55,10 +37,12 @@ export const ZERO_CAPABILITIES = [
   "phone:write",
   "telegram:read",
   "telegram:write",
-  "chat-message:read",
+  "chat-event:read",
+  "chat-event:write",
   "chat-thread:read",
   "chat-thread:write",
   "connector:read",
+  "connector:write",
   "billing:read",
   "billing:write",
   "banking:read",
@@ -67,6 +51,8 @@ export const ZERO_CAPABILITIES = [
   "scrape:read",
   "people-search:read",
   "web-search:read",
+  "image-recognition:write",
+  "translation:write",
   "finance:read",
   "computer-use:write",
   "browser:read",
@@ -97,7 +83,6 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "agent:write": { group: "Agent", label: "Create & update agents" },
     "agent:delete": { group: "Agent", label: "Delete agents" },
     "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
-    "agent-run:write": { group: "Agent Runs", label: "Create & cancel runs" },
     "goal:read": { group: "Goals", label: "Read thread goals" },
     "goal:agent-result:write": {
       group: "Goals",
@@ -140,9 +125,13 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       group: "Integrations",
       label: "Send Telegram messages and files",
     },
-    "chat-message:read": {
+    "chat-event:read": {
       group: "Integrations",
       label: "Read chat messages",
+    },
+    "chat-event:write": {
+      group: "Integrations",
+      label: "Send & cancel chat messages",
     },
     "chat-thread:read": {
       group: "Chat Threads",
@@ -153,6 +142,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Update chat thread metadata",
     },
     "connector:read": { group: "Connectors", label: "View connected services" },
+    "connector:write": {
+      group: "Connectors",
+      label: "Create and configure custom connectors",
+    },
     "billing:read": { group: "Billing", label: "View billing and credits" },
     "billing:write": {
       group: "Billing",
@@ -178,6 +171,14 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "web-search:read": {
       group: "Web Search",
       label: "Use managed web search",
+    },
+    "image-recognition:write": {
+      group: "Image Recognition",
+      label: "Recognize uploaded images",
+    },
+    "translation:write": {
+      group: "Translation",
+      label: "Translate text",
     },
     "finance:read": {
       group: "Finance",
@@ -299,8 +300,7 @@ const agentDefinitionSchema = z.object({
    */
   skills: z.array(z.string()).optional(),
   /**
-   * Route this agent to a self-hosted runner instead of E2B.
-   * When specified, runs will be queued for the specified runner group.
+   * Route this agent to the specified runner group instead of the default.
    */
   experimental_runner: z
     .object({
@@ -386,114 +386,6 @@ const createComposeResponseSchema = z.object({
 });
 
 /**
- * Composes main route contract (/api/agent/composes)
- * Handles GET by name and POST create/update
- */
-export const composesMainContract = c.router({
-  /**
-   * GET /api/agent/composes?name={name}&org={org}
-   * Get agent compose by name with HEAD version content
-   * If org is not provided, uses the authenticated user's default org
-   */
-  getByName: {
-    method: "GET",
-    path: "/api/agent/composes",
-    headers: authHeadersSchema,
-    query: z.object({
-      name: z.string().min(1, "Missing name query parameter"),
-    }),
-    responses: {
-      200: composeResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get agent compose by name",
-  },
-
-  /**
-   * POST /api/agent/composes
-   * Create or update an agent compose version
-   *
-   * Returns 201 when a new compose is created, 200 when updating an existing compose.
-   * The action field indicates whether a new version was created or an existing one reused.
-   */
-  create: {
-    method: "POST",
-    path: "/api/agent/composes",
-    headers: authHeadersSchema,
-    body: z.object({
-      content: agentComposeApiContentSchema,
-    }),
-    responses: {
-      200: createComposeResponseSchema,
-      201: createComposeResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary: "Create or update agent compose version",
-  },
-});
-
-/**
- * Composes by ID route contract (/api/agent/composes/[id])
- */
-export const composesByIdContract = c.router({
-  /**
-   * GET /api/agent/composes/:id
-   * Get agent compose by ID with HEAD version content
-   */
-  getById: {
-    method: "GET",
-    path: "/api/agent/composes/:id",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid("Compose ID must be a valid UUID"),
-    }),
-    responses: {
-      200: composeResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get agent compose by ID",
-  },
-});
-
-/**
- * Composes versions route contract (/api/agent/composes/versions)
- */
-export const composesVersionsContract = c.router({
-  /**
-   * GET /api/agent/composes/versions?composeId={id}&version={hash|tag}
-   * Resolve a version specifier to a full version ID
-   */
-  resolveVersion: {
-    method: "GET",
-    path: "/api/agent/composes/versions",
-    headers: authHeadersSchema,
-    query: z.object({
-      composeId: z.string().min(1, "Missing composeId query parameter"),
-      version: composeVersionQuerySchema,
-    }),
-    responses: {
-      200: z.object({
-        versionId: z.string(),
-        tag: z.string().optional(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Resolve version specifier to full version ID",
-  },
-});
-
-/**
  * Compose list item schema (used in list response)
  */
 const composeListItemSchema = z.object({
@@ -506,10 +398,6 @@ const composeListItemSchema = z.object({
   updatedAt: z.string(),
 });
 
-export type ComposesMainContract = typeof composesMainContract;
-export type ComposesByIdContract = typeof composesByIdContract;
-export type ComposesVersionsContract = typeof composesVersionsContract;
-
 // Export schemas for reuse
 export {
   agentNameSchema,
@@ -520,6 +408,7 @@ export {
   agentComposeContentSchema,
   agentComposeApiContentSchema,
   composeResponseSchema,
+  createComposeResponseSchema,
   composeListItemSchema,
 };
 

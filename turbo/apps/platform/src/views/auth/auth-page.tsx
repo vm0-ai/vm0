@@ -1,6 +1,7 @@
 import { GoogleOneTap, SignIn, SignUp } from "@clerk/react";
 import { IconLoader2 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import {
   buildSignInRedirectUrl,
@@ -19,6 +20,7 @@ interface AuthPageProps {
 }
 
 function AuthLoadingFallback() {
+  const { t } = useTranslation();
   return (
     <div
       className="flex w-full max-w-md items-center justify-center py-16 text-muted-foreground"
@@ -26,7 +28,11 @@ function AuthLoadingFallback() {
       role="status"
     >
       <IconLoader2 className="animate-spin" size={20} aria-hidden="true" />
-      <span className="sr-only">Loading authentication</span>
+      <span className="sr-only">
+        {t(($) => {
+          return $.auth.loading;
+        })}
+      </span>
     </div>
   );
 }

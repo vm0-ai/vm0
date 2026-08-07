@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 use std::ffi::OsString;
+use std::future::Future;
 use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::time::SystemTime;
 
 use nix::fcntl::Flock;
@@ -14,6 +16,13 @@ use super::GC_MIN_AGE;
 use super::filesystem::{GcDirStatus, dir_stats, gc_path_dir_status};
 use super::lock_file::{ExistingLockProbe, probe_existing_lock, remove_unused_lock_after_probe};
 use super::report::{GcReport, human_bytes};
+
+type RemoveDirAllFuture<'a> = Pin<Box<dyn Future<Output = std::io::Result<()>> + 'a>>;
+type RemoveDirAllFn = for<'a> fn(&'a Path) -> RemoveDirAllFuture<'a>;
+
+fn real_remove_dir_all(path: &Path) -> RemoveDirAllFuture<'_> {
+    Box::pin(tokio::fs::remove_dir_all(path))
+}
 
 #[derive(Default)]
 pub(super) struct WorkspaceGcSummary {
@@ -289,6 +298,27 @@ async fn gc_workspace_orphans_with_candidates(
     workspace_age_reference: SystemTime,
     dry_run: bool,
 ) -> RunnerResult<WorkspaceGcSummary> {
+    gc_workspace_orphans_with_candidates_and_remove(
+        candidates,
+        firecrackers,
+        live_runner_base_dirs,
+        process_discovery_uncertain,
+        workspace_age_reference,
+        dry_run,
+        real_remove_dir_all,
+    )
+    .await
+}
+
+async fn gc_workspace_orphans_with_candidates_and_remove(
+    candidates: Vec<DeadRunnerBaseDirLockCandidate>,
+    firecrackers: &[crate::process::FirecrackerProcessInfo],
+    live_runner_base_dirs: &HashSet<PathBuf>,
+    process_discovery_uncertain: bool,
+    workspace_age_reference: SystemTime,
+    dry_run: bool,
+    remove_dir_all: RemoveDirAllFn,
+) -> RunnerResult<WorkspaceGcSummary> {
     if process_discovery_uncertain {
         warn!("workspace gc: process discovery is incomplete; skipping workspace orphan cleanup");
         return Ok(WorkspaceGcSummary::default());
@@ -331,9 +361,14 @@ async fn gc_workspace_orphans_with_candidates(
             continue;
         }
 
-        let (cleaned, freed, lock_decision) =
-            gc_workspace_orphans_in_base_dir(base_dir, &active, workspace_age_reference, dry_run)
-                .await;
+        let (cleaned, freed, lock_decision) = gc_workspace_orphans_in_base_dir(
+            base_dir,
+            &active,
+            workspace_age_reference,
+            dry_run,
+            remove_dir_all,
+        )
+        .await;
         summary.workspaces_cleaned += cleaned;
         summary.bytes_freed += freed;
 
@@ -371,6 +406,7 @@ async fn gc_workspace_orphans_in_base_dir(
     active: &HashSet<PathBuf>,
     workspace_age_reference: SystemTime,
     dry_run: bool,
+    remove_dir_all: RemoveDirAllFn,
 ) -> (u32, u64, BaseDirLockDecision) {
     match gc_path_dir_status(base_dir).await {
         Ok(GcDirStatus::RealDir(_)) => {}
@@ -480,7 +516,7 @@ async fn gc_workspace_orphans_in_base_dir(
                 human_bytes(size)
             );
         } else {
-            match tokio::fs::remove_dir_all(&path).await {
+            match remove_dir_all(&path).await {
                 Ok(()) => {
                     info!(
                         "removed orphaned workspace {} ({})",

@@ -1,17 +1,27 @@
 //! Shared CLI event delivery worker and acknowledgement state.
 //!
-//! Event schema transformation and HTTP retry details stay in `events` and
-//! `http`; this module owns bounded non-blocking admission and serial FIFO
-//! backlog batching shared by CLI backends. A batch is one retry/failure unit,
-//! and acknowledgement remains the highest contiguous successful sequence.
+//! Event schema transformation stays in `events`, while HTTP retry policy stays
+//! in `http`. This module owns bounded non-blocking admission, serial FIFO
+//! batching, and the bounded progress snapshot shared by CLI backends. A batch
+//! is one retry/failure unit, and acknowledgement remains the highest
+//! contiguous successful sequence.
 
 use crate::error::AgentError;
 use crate::events;
-use crate::http::HttpClient;
+use crate::http::{
+    HttpAttemptFailureKind, HttpAttemptFinished, HttpAttemptObserver, HttpAttemptOutcome,
+    HttpAttemptStarted, HttpClient,
+};
 use bytes::Bytes;
 use guest_common::{log_info, log_warn};
-use std::sync::Arc;
+use guest_contracts::diagnostics::{
+    EventDeliveryAcceptanceOutcome, EventDeliveryActiveAttemptDiagnostic,
+    EventDeliveryActiveBatchDiagnostic, EventDeliveryAttemptFailureKind,
+    EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
+    EventDeliveryDrainTimeoutDiagnostic, EventDeliveryFailedBatchDiagnostic,
+};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::task::JoinHandle;
@@ -93,20 +103,24 @@ impl EventDeliverySender {
     }
 }
 
+#[derive(Debug)]
+pub(super) struct EventDeliveryReport {
+    pub(super) last_acknowledged_sequence: Option<u32>,
+    pub(super) diagnostic: Option<EventDeliveryDiagnostic>,
+}
+
 pub(super) struct EventDeliveryRuntime {
     sender: EventDeliverySender,
-    worker: JoinHandle<Option<u32>>,
+    worker: JoinHandle<Result<(), AgentError>>,
     pressure: Arc<DeliveryPressure>,
+    progress: Arc<Mutex<DeliveryProgress>>,
 }
 
 impl EventDeliveryRuntime {
-    pub(super) fn start(
-        http: HttpClient,
-        event_error_flag: String,
-        run_id: &str,
-    ) -> Result<Self, AgentError> {
+    pub(super) fn start(http: HttpClient, run_id: &str) -> Result<Self, AgentError> {
         let (tx, event_rx) = mpsc::channel(EVENT_DELIVERY_QUEUE_CAPACITY);
         let pressure = Arc::new(DeliveryPressure::default());
+        let progress = Arc::new(Mutex::new(DeliveryProgress::default()));
         let payload_envelope = Arc::new(events::EventPayloadEnvelope::new(run_id)?);
         let sender = EventDeliverySender {
             tx,
@@ -117,14 +131,15 @@ impl EventDeliveryRuntime {
         let worker = tokio::spawn(run_event_sender(
             event_rx,
             http,
-            event_error_flag,
             payload_envelope,
             Arc::clone(&pressure),
+            Arc::clone(&progress),
         ));
         Ok(Self {
             sender,
             worker,
             pressure,
+            progress,
         })
     }
 
@@ -132,49 +147,63 @@ impl EventDeliveryRuntime {
         &self.sender
     }
 
-    pub(super) async fn finish(self) -> Result<Option<u32>, AgentError> {
+    pub(super) async fn finish(self) -> Result<EventDeliveryReport, AgentError> {
         let Self {
             sender,
             mut worker,
             pressure,
+            progress,
         } = self;
         drop(sender);
         let drain_start = pressure.snapshot();
         log_info!(
             LOG_TAG,
-            "Event delivery drain started: pending_events={} buffered_bytes={}",
+            "Event delivery drain started: pending_events={} queued_bytes={} buffered_bytes={}",
             drain_start.pending_events,
+            drain_start.queued_bytes,
             drain_start.buffered_bytes
         );
 
         match tokio::time::timeout(EVENT_DELIVERY_DRAIN_TIMEOUT, &mut worker).await {
-            Ok(Ok(sequence)) => Ok(sequence),
+            Ok(Ok(Ok(()))) => Ok(progress_report(&progress, None)),
+            Ok(Ok(Err(error))) => Err(AgentError::Execution(format!(
+                "CLI event delivery worker failed: {error}"
+            ))),
             Ok(Err(error)) => Err(AgentError::Execution(format!(
                 "CLI event delivery worker failed: {error}"
             ))),
             Err(_) => {
+                // Freeze both independently updated state holders before
+                // composing one deadline snapshot. The active request context
+                // lives in shared progress and survives cancellation.
                 worker.abort();
                 let _ = worker.await;
-                let snapshot = pressure.snapshot();
-                Err(AgentError::Execution(format!(
-                    "CLI event delivery did not drain within {} seconds: {} events pending, {} bytes buffered",
+                let pressure_snapshot = pressure.snapshot();
+                let report = progress_report(&progress, Some(pressure_snapshot));
+                log_warn!(
+                    LOG_TAG,
+                    "CLI event delivery did not drain within {} seconds: {} events queued, {} queued bytes, {} bytes buffered",
                     EVENT_DELIVERY_DRAIN_TIMEOUT.as_secs(),
-                    snapshot.pending_events,
-                    snapshot.buffered_bytes
-                )))
+                    pressure_snapshot.pending_events,
+                    pressure_snapshot.queued_bytes,
+                    pressure_snapshot.buffered_bytes
+                );
+                Ok(report)
             }
         }
     }
 
-    pub(super) async fn abort(self) {
+    pub(super) async fn abort(self) -> EventDeliveryReport {
         let Self {
             sender,
             worker,
             pressure: _,
+            progress,
         } = self;
         drop(sender);
         worker.abort();
         let _ = worker.await;
+        progress_report(&progress, None)
     }
 }
 
@@ -187,6 +216,7 @@ struct AdmissionPressure {
 #[derive(Clone, Copy)]
 struct DeliveryPressureSnapshot {
     pending_events: usize,
+    queued_bytes: usize,
     buffered_bytes: usize,
     max_pending_events: usize,
     max_buffered_bytes: usize,
@@ -195,6 +225,7 @@ struct DeliveryPressureSnapshot {
 #[derive(Default)]
 struct DeliveryPressure {
     pending_events: AtomicUsize,
+    queued_bytes: AtomicUsize,
     buffered_bytes: AtomicUsize,
     max_pending_events: AtomicUsize,
     max_buffered_bytes: AtomicUsize,
@@ -202,6 +233,7 @@ struct DeliveryPressure {
 
 impl DeliveryPressure {
     fn begin_admission(&self, bytes: usize) -> AdmissionPressure {
+        self.queued_bytes.fetch_add(bytes, Ordering::Relaxed);
         AdmissionPressure {
             pending_events: self.pending_events.fetch_add(1, Ordering::Relaxed) + 1,
             buffered_bytes: self.buffered_bytes.fetch_add(bytes, Ordering::Relaxed) + bytes,
@@ -217,11 +249,13 @@ impl DeliveryPressure {
 
     fn reject_admission(&self, bytes: usize) {
         self.pending_events.fetch_sub(1, Ordering::Relaxed);
+        self.queued_bytes.fetch_sub(bytes, Ordering::Relaxed);
         self.buffered_bytes.fetch_sub(bytes, Ordering::Relaxed);
     }
 
-    fn mark_dequeued(&self) {
+    fn mark_dequeued(&self, bytes: usize) {
         self.pending_events.fetch_sub(1, Ordering::Relaxed);
+        self.queued_bytes.fetch_sub(bytes, Ordering::Relaxed);
     }
 
     fn release_bytes(&self, bytes: usize) {
@@ -239,6 +273,7 @@ impl DeliveryPressure {
     fn snapshot(&self) -> DeliveryPressureSnapshot {
         DeliveryPressureSnapshot {
             pending_events: self.pending_events(),
+            queued_bytes: self.queued_bytes.load(Ordering::Relaxed),
             buffered_bytes: self.buffered_bytes(),
             max_pending_events: self.max_pending_events.load(Ordering::Relaxed),
             max_buffered_bytes: self.max_buffered_bytes.load(Ordering::Relaxed),
@@ -278,16 +313,137 @@ impl AckedEventPrefix {
     }
 }
 
+#[derive(Default)]
+struct DeliveryProgress {
+    acked_prefix: AckedEventPrefix,
+    total_events: u64,
+    total_batches: u64,
+    failed_batches: u64,
+    max_batch_events: usize,
+    max_batch_bytes: usize,
+    first_failed_batch: Option<EventDeliveryFailedBatchDiagnostic>,
+    active_batch: Option<ActiveBatchProgress>,
+    carried_event_bytes: Option<usize>,
+}
+
+impl DeliveryProgress {
+    fn begin_batch(
+        &mut self,
+        sequences: Vec<u32>,
+        first_sequence: u32,
+        last_sequence: u32,
+        conservative_bytes: usize,
+        carried_event_bytes: Option<usize>,
+    ) {
+        let event_count = sequences.len();
+        self.total_events = self.total_events.saturating_add(usize_to_u64(event_count));
+        self.total_batches = self.total_batches.saturating_add(1);
+        self.max_batch_events = self.max_batch_events.max(event_count);
+        self.max_batch_bytes = self.max_batch_bytes.max(conservative_bytes);
+        self.active_batch = Some(ActiveBatchProgress {
+            sequences,
+            first_sequence,
+            last_sequence,
+            conservative_bytes,
+            completed_attempts: Vec::new(),
+            active_attempt: None,
+        });
+        self.carried_event_bytes = carried_event_bytes;
+    }
+
+    fn finish_batch(&mut self, succeeded: bool) -> Result<(), AgentError> {
+        let active_batch = self.active_batch.take().ok_or_else(|| {
+            AgentError::Execution(
+                "event delivery batch state disappeared before completion".to_string(),
+            )
+        })?;
+        if succeeded {
+            for sequence in active_batch.sequences {
+                self.acked_prefix.record_success(sequence);
+            }
+            return Ok(());
+        }
+
+        self.acked_prefix
+            .record_failure(active_batch.first_sequence);
+        self.failed_batches = self.failed_batches.saturating_add(1);
+        if self.first_failed_batch.is_none() {
+            let event_count = usize_to_u32(active_batch.sequences.len());
+            let conservative_bytes = usize_to_u64(active_batch.conservative_bytes);
+            let attempts = active_batch.completed_attempts;
+            let outcome = acceptance_outcome(&attempts);
+            self.first_failed_batch = Some(EventDeliveryFailedBatchDiagnostic {
+                first_sequence: active_batch.first_sequence,
+                last_sequence: active_batch.last_sequence,
+                event_count,
+                conservative_bytes,
+                outcome,
+                attempts,
+            });
+        }
+        Ok(())
+    }
+}
+
+struct ActiveBatchProgress {
+    sequences: Vec<u32>,
+    first_sequence: u32,
+    last_sequence: u32,
+    conservative_bytes: usize,
+    completed_attempts: Vec<EventDeliveryCompletedAttemptDiagnostic>,
+    active_attempt: Option<HttpAttemptStarted>,
+}
+
+struct DeliveryAttemptObserver {
+    progress: Arc<Mutex<DeliveryProgress>>,
+}
+
+impl HttpAttemptObserver for DeliveryAttemptObserver {
+    fn attempt_started(&self, attempt: HttpAttemptStarted) -> Result<(), AgentError> {
+        let mut progress = progress_guard(&self.progress);
+        let active_batch = progress.active_batch.as_mut().ok_or_else(|| {
+            AgentError::Execution(
+                "event delivery batch state missing before HTTP attempt".to_string(),
+            )
+        })?;
+        active_batch.active_attempt = Some(attempt);
+        Ok(())
+    }
+
+    fn attempt_finished(&self, attempt: HttpAttemptFinished) -> Result<(), AgentError> {
+        let mut progress = progress_guard(&self.progress);
+        let active_batch = progress.active_batch.as_mut().ok_or_else(|| {
+            AgentError::Execution(
+                "event delivery batch state missing after HTTP attempt".to_string(),
+            )
+        })?;
+        active_batch.active_attempt = None;
+        if let HttpAttemptOutcome::Failure { kind, http_status } = attempt.outcome {
+            active_batch
+                .completed_attempts
+                .push(EventDeliveryCompletedAttemptDiagnostic {
+                    attempt: attempt.attempt,
+                    client_request_id: attempt.client_request_id,
+                    elapsed_ms: attempt.elapsed_ms,
+                    failure_kind: event_attempt_failure_kind(kind),
+                    http_status,
+                });
+        }
+        Ok(())
+    }
+}
+
 async fn run_event_sender(
     mut event_rx: mpsc::Receiver<PreparedEvent>,
     http: HttpClient,
-    event_error_flag: String,
     payload_envelope: Arc<events::EventPayloadEnvelope>,
     pressure: Arc<DeliveryPressure>,
-) -> Option<u32> {
-    let mut acked_prefix = AckedEventPrefix::default();
+    progress: Arc<Mutex<DeliveryProgress>>,
+) -> Result<(), AgentError> {
+    let observer = DeliveryAttemptObserver {
+        progress: Arc::clone(&progress),
+    };
     let mut carried_event = None;
-    let mut stats = DeliveryStats::default();
 
     loop {
         let first_event = match carried_event.take() {
@@ -296,7 +452,7 @@ async fn run_event_sender(
                 let Some(event) = event_rx.recv().await else {
                     break;
                 };
-                pressure.mark_dequeued();
+                pressure.mark_dequeued(event.conservative_bytes);
                 event
             }
         };
@@ -311,13 +467,20 @@ async fn run_event_sender(
             byte_budgets,
         } = EventBatch::new(batch, &payload_envelope);
         let event_count = sequences.len();
-        let send_result =
-            events::post_serialized_event_with_error_flag(&http, payload, &event_error_flag).await;
+        progress_guard(&progress).begin_batch(
+            sequences.clone(),
+            first_sequence,
+            last_sequence,
+            conservative_bytes,
+            carried_event.as_ref().map(|event| event.conservative_bytes),
+        );
+
+        let send_result = events::post_serialized_event(&http, payload, &observer).await;
         drop(byte_budgets);
         pressure.release_bytes(conservative_bytes);
+        progress_guard(&progress).finish_batch(send_result.is_ok())?;
 
         let succeeded = send_result.is_ok();
-        stats.record_request(event_count, conservative_bytes, succeeded);
         log_info!(
             LOG_TAG,
             "Event delivery request: first_sequence={first_sequence} last_sequence={last_sequence} events={event_count} conservative_bytes={conservative_bytes} result={} queued_events_remaining={}",
@@ -325,36 +488,29 @@ async fn run_event_sender(
             pressure.pending_events() + usize::from(carried_event.is_some())
         );
 
-        match send_result {
-            Ok(()) => {
-                for sequence in sequences {
-                    acked_prefix.record_success(sequence);
-                }
-            }
-            Err(e) => {
-                acked_prefix.record_failure(first_sequence);
-                log_warn!(
-                    LOG_TAG,
-                    "Event send failed for sequences {first_sequence}-{last_sequence}: {e}"
-                );
-            }
+        if let Err(error) = send_result {
+            log_warn!(
+                LOG_TAG,
+                "Event send failed for sequences {first_sequence}-{last_sequence}: {error}"
+            );
         }
     }
 
-    let last_contiguous = acked_prefix.last_contiguous();
     let pressure = pressure.snapshot();
+    let progress = progress_guard(&progress);
     log_info!(
         LOG_TAG,
-        "Event delivery complete: events={} requests={} failed_requests={} max_batch_events={} max_batch_bytes={} max_pending_events={} max_buffered_bytes={} last_contiguous_sequence={last_contiguous:?}",
-        stats.total_events,
-        stats.total_requests,
-        stats.failed_requests,
-        stats.max_batch_events,
-        stats.max_batch_bytes,
+        "Event delivery complete: events={} requests={} failed_requests={} max_batch_events={} max_batch_bytes={} max_pending_events={} max_buffered_bytes={} last_contiguous_sequence={:?}",
+        progress.total_events,
+        progress.total_batches,
+        progress.failed_batches,
+        progress.max_batch_events,
+        progress.max_batch_bytes,
         pressure.max_pending_events,
-        pressure.max_buffered_bytes
+        pressure.max_buffered_bytes,
+        progress.acked_prefix.last_contiguous()
     );
-    last_contiguous
+    Ok(())
 }
 
 fn collect_batch(
@@ -369,7 +525,7 @@ fn collect_batch(
     while batch.len() < EVENT_DELIVERY_MAX_REQUEST_EVENTS {
         let next_event = match event_rx.try_recv() {
             Ok(event) => {
-                pressure.mark_dequeued();
+                pressure.mark_dequeued(event.conservative_bytes);
                 event
             }
             Err(mpsc::error::TryRecvError::Empty | mpsc::error::TryRecvError::Disconnected) => {
@@ -416,23 +572,90 @@ impl EventBatch {
     }
 }
 
-#[derive(Default)]
-struct DeliveryStats {
-    total_events: usize,
-    total_requests: usize,
-    failed_requests: usize,
-    max_batch_events: usize,
-    max_batch_bytes: usize,
+fn progress_report(
+    progress: &Arc<Mutex<DeliveryProgress>>,
+    drain_pressure: Option<DeliveryPressureSnapshot>,
+) -> EventDeliveryReport {
+    let progress = progress_guard(progress);
+    let last_acknowledged_sequence = progress.acked_prefix.last_contiguous();
+    let drain_timeout = drain_pressure.map(|pressure| EventDeliveryDrainTimeoutDiagnostic {
+        queued_events: usize_to_u32(pressure.pending_events),
+        queued_bytes: usize_to_u64(pressure.queued_bytes),
+        carried_events: u32::from(progress.carried_event_bytes.is_some()),
+        carried_bytes: progress.carried_event_bytes.map_or(0, usize_to_u64),
+        active_batch: progress.active_batch.as_ref().map(active_batch_diagnostic),
+    });
+    let has_failure = progress.first_failed_batch.is_some() || drain_timeout.is_some();
+    let diagnostic = has_failure.then(|| EventDeliveryDiagnostic {
+        total_events: progress.total_events,
+        total_batches: progress.total_batches,
+        failed_batches: progress.failed_batches,
+        last_acknowledged_sequence,
+        first_failed_batch: progress.first_failed_batch.clone(),
+        drain_timeout,
+    });
+    EventDeliveryReport {
+        last_acknowledged_sequence,
+        diagnostic,
+    }
 }
 
-impl DeliveryStats {
-    fn record_request(&mut self, events: usize, bytes: usize, succeeded: bool) {
-        self.total_events += events;
-        self.total_requests += 1;
-        self.failed_requests += usize::from(!succeeded);
-        self.max_batch_events = self.max_batch_events.max(events);
-        self.max_batch_bytes = self.max_batch_bytes.max(bytes);
+fn active_batch_diagnostic(active: &ActiveBatchProgress) -> EventDeliveryActiveBatchDiagnostic {
+    EventDeliveryActiveBatchDiagnostic {
+        first_sequence: active.first_sequence,
+        last_sequence: active.last_sequence,
+        event_count: usize_to_u32(active.sequences.len()),
+        conservative_bytes: usize_to_u64(active.conservative_bytes),
+        completed_attempts: active.completed_attempts.clone(),
+        active_attempt: active.active_attempt.as_ref().map(|attempt| {
+            EventDeliveryActiveAttemptDiagnostic {
+                attempt: attempt.attempt,
+                client_request_id: attempt.client_request_id.clone(),
+                elapsed_ms: u64::try_from(attempt.started_at.elapsed().as_millis())
+                    .unwrap_or(u64::MAX),
+            }
+        }),
+        outcome: EventDeliveryAcceptanceOutcome::OutcomeUnknown,
     }
+}
+
+fn acceptance_outcome(
+    attempts: &[EventDeliveryCompletedAttemptDiagnostic],
+) -> EventDeliveryAcceptanceOutcome {
+    if !attempts.is_empty()
+        && attempts
+            .iter()
+            .all(|attempt| attempt.failure_kind == EventDeliveryAttemptFailureKind::HttpStatus)
+    {
+        EventDeliveryAcceptanceOutcome::ConfirmedRejection
+    } else {
+        EventDeliveryAcceptanceOutcome::OutcomeUnknown
+    }
+}
+
+fn event_attempt_failure_kind(kind: HttpAttemptFailureKind) -> EventDeliveryAttemptFailureKind {
+    match kind {
+        HttpAttemptFailureKind::Timeout => EventDeliveryAttemptFailureKind::Timeout,
+        HttpAttemptFailureKind::Connect => EventDeliveryAttemptFailureKind::Connect,
+        HttpAttemptFailureKind::HttpStatus => EventDeliveryAttemptFailureKind::HttpStatus,
+        HttpAttemptFailureKind::Transport => EventDeliveryAttemptFailureKind::Transport,
+    }
+}
+
+fn progress_guard(
+    progress: &Arc<Mutex<DeliveryProgress>>,
+) -> std::sync::MutexGuard<'_, DeliveryProgress> {
+    progress
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn usize_to_u32(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+fn usize_to_u64(value: usize) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

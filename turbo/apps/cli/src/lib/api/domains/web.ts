@@ -8,6 +8,18 @@ import type {
   ZeroBuiltInGenerationAcceptedResponse,
   ZeroBuiltInGenerationResponse,
 } from "@vm0/api-contracts/contracts/zero-built-in-generation";
+import type {
+  ZeroAvatarVideoAvatar,
+  ZeroAvatarVideoAvatarsQuery,
+  ZeroAvatarVideoGenerateRequest,
+  ZeroAvatarVideoGenerateResponse,
+  ZeroAvatarVideoVoice,
+  ZeroAvatarVideoVoicesQuery,
+} from "@vm0/api-contracts/contracts/zero-avatar-video";
+import {
+  zeroAvatarVideoAvatarsResponseSchema,
+  zeroAvatarVideoVoicesResponseSchema,
+} from "@vm0/api-contracts/contracts/zero-avatar-video";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
@@ -304,6 +316,15 @@ interface GenerateWebVideoResult {
   requestId?: string;
 }
 
+interface ListWebAvatarVideoAvatarsResult {
+  readonly avatars: readonly ZeroAvatarVideoAvatar[];
+}
+
+interface ListWebAvatarVideoVoicesResult {
+  readonly voices: readonly ZeroAvatarVideoVoice[];
+  readonly hasMore: boolean;
+}
+
 function shouldIncludePayloadValue(value: unknown): boolean {
   if (value === undefined) {
     return false;
@@ -349,6 +370,7 @@ interface PrepareUploadResponse {
   contentType: string;
   size: number;
   uploadUrl: string;
+  uploadHeaders?: Record<string, string>;
   url: string;
 }
 
@@ -723,7 +745,11 @@ export async function uploadWebFile(
   const prepareRes = await fetch(prepareUrl, {
     method: "POST",
     headers: headersWithCliClientHeaders(prepareHeaders),
-    body: JSON.stringify({ filename, contentType, size: stats.size }),
+    body: JSON.stringify({
+      filename,
+      contentType,
+      size: stats.size,
+    }),
   });
 
   if (!prepareRes.ok) {
@@ -739,7 +765,10 @@ export async function uploadWebFile(
   const bytes = readFileSync(localPath);
   const putRes = await fetch(prepared.uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": prepared.contentType },
+    headers: {
+      "Content-Type": prepared.contentType,
+      ...prepared.uploadHeaders,
+    },
     body: new Uint8Array(bytes),
   });
 
@@ -934,6 +963,101 @@ export async function generateWebVideo(
     token,
     fallback: "Failed to generate video",
   });
+}
+
+/**
+ * Generate a billed JoggAI talking-avatar video and receive its public CDN URL.
+ */
+export async function generateWebAvatarVideo(
+  options: ZeroAvatarVideoGenerateRequest,
+): Promise<ZeroAvatarVideoGenerateResponse> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(
+    new URL("/api/zero/avatar-video/generate", baseUrl),
+    {
+      method: "POST",
+      headers: headersWithCliClientHeaders({
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify(options),
+    },
+  );
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate avatar video",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return readBuiltInGenerationResponse<ZeroAvatarVideoGenerateResponse>({
+    response,
+    baseUrl,
+    token,
+    fallback: "Failed to generate avatar video",
+  });
+}
+
+function avatarVideoCollectionUrl(
+  baseUrl: string,
+  collection: "avatars" | "voices",
+  query: Record<string, string | number | undefined>,
+): URL {
+  const url = new URL(`/api/zero/avatar-video/${collection}`, baseUrl);
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  return url;
+}
+
+async function getAvatarVideoCollection(
+  url: URL,
+  fallback: string,
+): Promise<unknown> {
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(url, {
+    headers: headersWithCliClientHeaders({
+      Authorization: `Bearer ${token}`,
+    }),
+  });
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(response, fallback);
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return await response.json();
+}
+
+export async function listWebAvatarVideoAvatars(
+  query: ZeroAvatarVideoAvatarsQuery,
+): Promise<ListWebAvatarVideoAvatarsResult> {
+  const baseUrl = await getBaseUrl();
+  return zeroAvatarVideoAvatarsResponseSchema.parse(
+    await getAvatarVideoCollection(
+      avatarVideoCollectionUrl(baseUrl, "avatars", query),
+      "Failed to list JoggAI avatars",
+    ),
+  );
+}
+
+export async function listWebAvatarVideoVoices(
+  query: ZeroAvatarVideoVoicesQuery,
+): Promise<ListWebAvatarVideoVoicesResult> {
+  const baseUrl = await getBaseUrl();
+  return zeroAvatarVideoVoicesResponseSchema.parse(
+    await getAvatarVideoCollection(
+      avatarVideoCollectionUrl(baseUrl, "voices", query),
+      "Failed to list JoggAI voices",
+    ),
+  );
 }
 
 export interface TranscribeAudioSegment {

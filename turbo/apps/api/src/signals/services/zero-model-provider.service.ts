@@ -7,21 +7,21 @@ import {
   getSecretsForAuthMethod,
   hasAuthMethods,
   MODEL_PROVIDER_TYPES,
-  type ModelProviderFramework,
   type ModelProviderListResponse,
   type ModelProviderResponse,
-  type ModelProviderType,
   modelProviderTypeSchema,
+  type ModelProviderFramework,
+  type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { modelProviderConnections } from "@vm0/db/schema/model-provider-gateway";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq, inArray, sql } from "drizzle-orm";
-
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db$, writeDb$, type Db } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { encryptStoredSecretValue } from "./crypto.utils";
 import { lockModelProviderState } from "./auth-state-lock.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
@@ -139,8 +139,10 @@ type NotFoundResponse = ReturnType<typeof notFound>;
  * Delete a user-level model provider and cascade-delete its secrets.
  *
  * Delete behavior:
- *   - Legacy single-secret providers: deleting the secret cascades the
- *     model_provider row via FK (`onDelete: "cascade"` at the schema).
+ *   - Legacy single-secret providers: deleting an unshared secret cascades the
+ *     model_provider row via FK (`onDelete: "cascade"` at the schema). During
+ *     gateway migration, a shared secret is retained and only the old provider
+ *     row is deleted.
  *   - Multi-auth providers: deletes the per-auth-method secrets by name,
  *     then deletes the model_provider row explicitly.
  *
@@ -190,7 +192,18 @@ export const deleteUserModelProvider$ = command(
       }
 
       if (provider.secretId) {
-        await tx.delete(secrets).where(eq(secrets.id, provider.secretId));
+        const [gatewayReference] = await tx
+          .select({ id: modelProviderConnections.id })
+          .from(modelProviderConnections)
+          .where(eq(modelProviderConnections.secretId, provider.secretId))
+          .limit(1);
+        if (gatewayReference) {
+          await tx
+            .delete(modelProviders)
+            .where(eq(modelProviders.id, provider.id));
+        } else {
+          await tx.delete(secrets).where(eq(secrets.id, provider.secretId));
+        }
         signal.throwIfAborted();
       } else {
         if (provider.authMethod) {
@@ -544,6 +557,7 @@ async function upsertMultiAuthSecret(
     })
     .onConflictDoUpdate({
       target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+      targetWhere: isNull(secrets.connectorId),
       set: {
         encryptedValue: args.encryptedValue,
         description: args.description,
@@ -625,6 +639,7 @@ export const upsertUserModelProvider$ = command(
       })
       .onConflictDoUpdate({
         target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+        targetWhere: isNull(secrets.connectorId),
         set: { encryptedValue, updatedAt: nowDate() },
       })
       .returning();

@@ -7,6 +7,7 @@ import {
   TableRow,
 } from "@vm0/ui";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
+import { useTranslation } from "react-i18next";
 
 function SectionHeader({ title }: { title: string }) {
   return (
@@ -24,23 +25,40 @@ function CodeBlock({ value }: { value: string }) {
 
 function KeyValueTable({
   data,
-  keyLabel = "Name",
-  valueLabel = "Value",
+  keyLabel,
+  valueLabel,
 }: {
   data: Record<string, string>;
   keyLabel?: string;
   valueLabel?: string;
 }) {
+  const { t } = useTranslation();
   const entries = Object.entries(data);
   if (entries.length === 0) {
-    return <p className="text-sm text-muted-foreground">None</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t(($) => {
+          return $.activity.context.none;
+        })}
+      </p>
+    );
   }
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-1/3">{keyLabel}</TableHead>
-          <TableHead>{valueLabel}</TableHead>
+          <TableHead className="w-1/3">
+            {keyLabel ??
+              t(($) => {
+                return $.activity.context.name;
+              })}
+          </TableHead>
+          <TableHead>
+            {valueLabel ??
+              t(($) => {
+                return $.activity.context.value;
+              })}
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -71,8 +89,15 @@ function StorageTable({
   }[];
   columns: string[];
 }) {
+  const { t } = useTranslation();
   if (items.length === 0) {
-    return <p className="text-sm text-muted-foreground">None</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t(($) => {
+          return $.activity.context.none;
+        })}
+      </p>
+    );
   }
   return (
     <Table className="table-fixed">
@@ -112,6 +137,7 @@ function FeatureFlagsSection({
 }: {
   flags: Record<string, boolean> | null | undefined;
 }) {
+  const { t } = useTranslation();
   if (!flags || Object.keys(flags).length === 0) {
     return null;
   }
@@ -120,7 +146,11 @@ function FeatureFlagsSection({
   });
   return (
     <section>
-      <SectionHeader title="Feature Flags" />
+      <SectionHeader
+        title={t(($) => {
+          return $.activity.context.featureFlags;
+        })}
+      />
       <div className="flex flex-wrap gap-1.5">
         {sorted.map(([name, enabled]) => {
           return (
@@ -141,35 +171,114 @@ function FeatureFlagsSection({
   );
 }
 
+function StorageSections({ context }: { context: RunContextResponse }) {
+  const { t } = useTranslation();
+  const none = t(($) => {
+    return $.activity.context.none;
+  });
+
+  return (
+    <>
+      <section>
+        <SectionHeader
+          title={t(($) => {
+            return $.activity.context.volumes;
+          })}
+        />
+        <StorageTable
+          items={context.volumes}
+          columns={[
+            t(($) => {
+              return $.activity.context.name;
+            }),
+            t(($) => {
+              return $.activity.context.mountPath;
+            }),
+            t(($) => {
+              return $.activity.context.storageName;
+            }),
+            t(($) => {
+              return $.activity.context.version;
+            }),
+          ]}
+        />
+      </section>
+
+      <section>
+        <SectionHeader
+          title={t(($) => {
+            return $.activity.context.artifact;
+          })}
+        />
+        {context.artifact ? (
+          <StorageTable
+            items={[context.artifact]}
+            columns={[
+              t(($) => {
+                return $.activity.context.mountPath;
+              }),
+              t(($) => {
+                return $.activity.context.storageName;
+              }),
+              t(($) => {
+                return $.activity.context.version;
+              }),
+            ]}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">{none}</p>
+        )}
+      </section>
+    </>
+  );
+}
+
 export function ContextContent({ context }: { context: RunContextResponse }) {
+  const { t } = useTranslation();
+  const none = t(($) => {
+    return $.activity.context.none;
+  });
+
   return (
     <div className="flex flex-col gap-6 pb-8">
-      {/* Prompt */}
       <section>
-        <SectionHeader title="Prompt" />
+        <SectionHeader
+          title={t(($) => {
+            return $.activity.context.prompt;
+          })}
+        />
         <CodeBlock value={context.prompt} />
       </section>
 
-      {/* System Prompt */}
       {context.appendSystemPrompt && (
         <section>
-          <SectionHeader title="System Prompt" />
+          <SectionHeader
+            title={t(($) => {
+              return $.activity.context.systemPrompt;
+            })}
+          />
           <CodeBlock value={context.appendSystemPrompt} />
         </section>
       )}
 
-      {/* Run ID */}
       <section>
-        <SectionHeader title="Run ID" />
+        <SectionHeader
+          title={t(($) => {
+            return $.activity.context.runId;
+          })}
+        />
         <p className="text-sm font-mono text-muted-foreground">
           {context.runId}
         </p>
       </section>
 
-      {/* Session */}
       {context.sessionId && (
         <section>
-          <SectionHeader title="Session" />
+          <SectionHeader
+            title={t(($) => {
+              return $.activity.context.session;
+            })}
+          />
           <p className="text-sm font-mono text-muted-foreground">
             {context.sessionId}
           </p>
@@ -181,7 +290,11 @@ export function ContextContent({ context }: { context: RunContextResponse }) {
 
       {/* Secrets */}
       <section>
-        <SectionHeader title="Secrets" />
+        <SectionHeader
+          title={t(($) => {
+            return $.activity.context.secrets;
+          })}
+        />
         {context.secretNames.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {context.secretNames.map((name) => {
@@ -196,33 +309,45 @@ export function ContextContent({ context }: { context: RunContextResponse }) {
             })}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">None</p>
+          <p className="text-sm text-muted-foreground">{none}</p>
         )}
       </section>
 
       {/* Variables */}
       <section>
-        <SectionHeader title="Variables" />
+        <SectionHeader
+          title={t(($) => {
+            return $.activity.context.variables;
+          })}
+        />
         {context.vars ? (
           <KeyValueTable data={context.vars} />
         ) : (
-          <p className="text-sm text-muted-foreground">None</p>
+          <p className="text-sm text-muted-foreground">{none}</p>
         )}
       </section>
 
       {/* Environment Mapping */}
       <section>
-        <SectionHeader title="Environment Mapping" />
+        <SectionHeader
+          title={t(($) => {
+            return $.activity.context.environmentMapping;
+          })}
+        />
         <KeyValueTable data={context.environment} />
       </section>
 
       {/* Firewalls */}
       <section>
-        <SectionHeader title="Firewalls" />
+        <SectionHeader
+          title={t(($) => {
+            return $.activity.context.firewalls;
+          })}
+        />
         {context.firewalls.length > 0 ? (
           <CodeBlock value={JSON.stringify(context.firewalls, null, 2)} />
         ) : (
-          <p className="text-sm text-muted-foreground">None</p>
+          <p className="text-sm text-muted-foreground">{none}</p>
         )}
       </section>
 
@@ -230,34 +355,18 @@ export function ContextContent({ context }: { context: RunContextResponse }) {
       {context.networkPolicies &&
         Object.keys(context.networkPolicies).length > 0 && (
           <section>
-            <SectionHeader title="Network Policies" />
+            <SectionHeader
+              title={t(($) => {
+                return $.activity.context.networkPolicies;
+              })}
+            />
             <CodeBlock
               value={JSON.stringify(context.networkPolicies, null, 2)}
             />
           </section>
         )}
 
-      {/* Volumes */}
-      <section>
-        <SectionHeader title="Volumes" />
-        <StorageTable
-          items={context.volumes}
-          columns={["Name", "Mount Path", "Storage Name", "Version"]}
-        />
-      </section>
-
-      {/* Artifact */}
-      <section>
-        <SectionHeader title="Artifact" />
-        {context.artifact ? (
-          <StorageTable
-            items={[context.artifact]}
-            columns={["Mount Path", "Storage Name", "Version"]}
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground">None</p>
-        )}
-      </section>
+      <StorageSections context={context} />
     </div>
   );
 }

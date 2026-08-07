@@ -3,17 +3,25 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
   generationTemplateRequestSchema,
   userMessageDocumentSchema,
+  userMessageInputDocumentSchema,
   type FeedbackNotePart,
   type GenerationTemplateRequest,
-  type GenerationTemplateType,
   type PersistedAttachment,
   type UserMessageDocument,
+  type UserMessageInputDocument,
   type UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
+import { i18n } from "../../i18n/index.ts";
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
+import { avatarTemplateSelection } from "./avatar-template-selection.ts";
+import {
+  serializeAgentMention,
+  splitAgentMentionSegments,
+} from "./composer-agent-suggestion-domain.ts";
 
+export const AGENT_MENTION_NODE_NAME = "agentMention";
 export const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
 export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
@@ -28,7 +36,7 @@ export interface EditorDocumentSnapshot {
   readonly toEditorDocument: () => JSONContent;
   readonly toMessageDocument: (
     context?: EditorDocumentContext,
-  ) => UserMessageDocument | null;
+  ) => UserMessageInputDocument | null;
 }
 
 export function shouldUseUserMessage(
@@ -72,6 +80,21 @@ function chatThreadPart(
   };
 }
 
+function agentPart(
+  node: ProseMirrorNode,
+): Extract<UserMessagePart, { type: "agent" }> | null {
+  const agentId: unknown = node.attrs.agentId;
+  const name: unknown = node.attrs.name;
+  if (typeof agentId !== "string" || typeof name !== "string") {
+    return null;
+  }
+  return {
+    type: "agent",
+    agentId,
+    nameSnapshot: name,
+  };
+}
+
 function legacyTemplatePart(
   node: ProseMirrorNode,
   generationTemplate: GenerationTemplateRequest | undefined,
@@ -80,7 +103,7 @@ function legacyTemplatePart(
   const title: unknown = node.attrs.title;
   if (
     generationTemplate === undefined ||
-    templateType !== generationTemplate.type ||
+    templateType !== templateAttachmentType(generationTemplate) ||
     typeof title !== "string"
   ) {
     return null;
@@ -124,6 +147,14 @@ function appendParagraphParts(
     }
     if (node.type.name === "hardBreak") {
       appendTextPart(parts, "\n");
+      continue;
+    }
+    if (node.type.name === AGENT_MENTION_NODE_NAME) {
+      const part = agentPart(node);
+      if (!part) {
+        return false;
+      }
+      parts.push(part);
       continue;
     }
     if (node.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
@@ -216,6 +247,7 @@ function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
       return (
         part.type === "text" ||
         part.type === "chat_thread" ||
+        part.type === "agent" ||
         part.type === "template"
       );
     })
@@ -278,7 +310,7 @@ function appendFeedbackGroup(
 export function editorDocToMessageDocument(
   document: ProseMirrorNode,
   context: EditorDocumentContext = {},
-): UserMessageDocument | null {
+): UserMessageInputDocument | null {
   if (document.type.name !== "doc") {
     return null;
   }
@@ -332,7 +364,10 @@ export function editorDocToMessageDocument(
     return null;
   }
 
-  const parsed = userMessageDocumentSchema.safeParse({ version: 1, parts });
+  const parsed = userMessageInputDocumentSchema.safeParse({
+    version: 1,
+    parts,
+  });
   return parsed.success ? parsed.data : null;
 }
 
@@ -359,7 +394,7 @@ export function textToMessageDocument(
   text: string,
   template?: TextMessageTemplateSnapshot,
   attachments: readonly PersistedAttachment[] = [],
-): UserMessageDocument | null {
+): UserMessageInputDocument | null {
   const parts: UserMessagePart[] = [];
   if (template) {
     parts.push({
@@ -370,47 +405,68 @@ export function textToMessageDocument(
   }
   appendFileParts(parts, attachments);
   appendTextPart(parts, text);
-  const parsed = userMessageDocumentSchema.safeParse({ version: 1, parts });
+  const parsed = userMessageInputDocumentSchema.safeParse({
+    version: 1,
+    parts,
+  });
   return parsed.success ? parsed.data : null;
 }
 
-function templateCategory(type: GenerationTemplateType): string {
+function templateAttachmentType(template: GenerationTemplateRequest): string {
+  return avatarTemplateSelection(template) ? "avatar" : template.type;
+}
+
+function templateCategory(template: GenerationTemplateRequest): string {
+  const type = templateAttachmentType(template);
   return type === "presentation" ? "slides" : type;
 }
 
 function templatePreviewImageUrl(
   template: GenerationTemplateRequest,
 ): string | null {
-  return template.type === "presentation"
-    ? (template.selection.previewUrl ?? null)
-    : null;
+  if (template.type === "presentation") {
+    return template.selection.previewUrl ?? null;
+  }
+  return avatarTemplateSelection(template)?.previewUrl ?? null;
 }
 
 function templateNode(part: Extract<UserMessagePart, { type: "template" }>) {
   return {
     type: INLINE_TEMPLATE_NODE_NAME,
     attrs: {
-      templateType: part.template.type,
+      templateType: templateAttachmentType(part.template),
       template: part.template,
       title: part.titleSnapshot,
-      category: templateCategory(part.template.type),
+      category: templateCategory(part.template),
       previewImageUrl: templatePreviewImageUrl(part.template),
     },
   } satisfies JSONContent;
 }
 
-function legacyTemplateNode(
-  part: Extract<UserMessagePart, { type: "template" }>,
-) {
+function agentMentionNode(part: Extract<UserMessagePart, { type: "agent" }>) {
   return {
-    type: TEMPLATE_ATTACHMENT_NODE_NAME,
+    type: AGENT_MENTION_NODE_NAME,
     attrs: {
-      templateType: part.template.type,
-      title: part.titleSnapshot,
-      category: templateCategory(part.template.type),
-      previewImageUrl: templatePreviewImageUrl(part.template),
+      agentId: part.agentId,
+      name: part.nameSnapshot,
+      avatarUrl: null,
     },
   } satisfies JSONContent;
+}
+
+function agentMentionInlineContent(line: string): JSONContent[] {
+  return splitAgentMentionSegments(line).map((segment): JSONContent => {
+    return segment.type === "text"
+      ? { type: "text", text: segment.text }
+      : {
+          type: AGENT_MENTION_NODE_NAME,
+          attrs: {
+            agentId: segment.agentId,
+            name: segment.name,
+            avatarUrl: null,
+          },
+        };
+  });
 }
 
 function feedbackNoteToPrompt(note: readonly FeedbackNotePart[]): string {
@@ -421,6 +477,9 @@ function feedbackNoteToPrompt(note: readonly FeedbackNotePart[]): string {
       }
       if (part.type === "chat_thread") {
         return serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      }
+      if (part.type === "agent") {
+        return serializeAgentMention(part.agentId, part.nameSnapshot);
       }
       return `Select ${part.titleSnapshot} ${part.template.type} template`;
     })
@@ -458,10 +517,15 @@ function feedbackNoteContent(note: readonly FeedbackNotePart[]): JSONContent[] {
       trailingParagraph = false;
       continue;
     }
+    if (part.type === "agent") {
+      paragraphContent.push(agentMentionNode(part));
+      trailingParagraph = false;
+      continue;
+    }
     const lines = part.text.split("\n");
     for (const [index, line] of lines.entries()) {
       if (line.length > 0) {
-        paragraphContent.push({ type: "text", text: line });
+        paragraphContent.push(...agentMentionInlineContent(line));
         trailingParagraph = false;
       }
       if (index < lines.length - 1) {
@@ -511,7 +575,7 @@ function appendRestoredText(state: RestoredEditorState, text: string): void {
   const lines = text.split("\n");
   for (const [index, line] of lines.entries()) {
     if (line.length > 0) {
-      state.paragraphContent.push({ type: "text", text: line });
+      state.paragraphContent.push(...agentMentionInlineContent(line));
       state.trailingParagraph = false;
     }
     if (index < lines.length - 1) {
@@ -526,10 +590,7 @@ function appendRestoredText(state: RestoredEditorState, text: string): void {
  * the existing external attachment state and therefore do not become Tiptap
  * nodes. Newlines are canonically restored as paragraph boundaries.
  */
-export function messageDocumentToEditorDoc(
-  value: unknown,
-  options: { readonly inlineTemplates?: boolean } = {},
-): JSONContent | null {
+export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -540,7 +601,6 @@ export function messageDocumentToEditorDoc(
     paragraphContent: [],
     trailingParagraph: false,
   };
-  let legacyTemplateCount = 0;
   let feedbackIndex = 0;
   const feedbackCount = parsed.data.parts.filter((part) => {
     return part.type === "feedback";
@@ -559,6 +619,11 @@ export function messageDocumentToEditorDoc(
           title: part.titleSnapshot,
         },
       });
+      state.trailingParagraph = false;
+      continue;
+    }
+    if (part.type === "agent") {
+      state.paragraphContent.push(agentMentionNode(part));
       state.trailingParagraph = false;
       continue;
     }
@@ -588,19 +653,8 @@ export function messageDocumentToEditorDoc(
       continue;
     }
     if (part.type === "template") {
-      if (options.inlineTemplates === true) {
-        state.paragraphContent.push(templateNode(part));
-        state.trailingParagraph = false;
-        continue;
-      }
-      legacyTemplateCount += 1;
-      if (legacyTemplateCount > 1) {
-        return null;
-      }
-      if (state.paragraphContent.length > 0) {
-        flushRestoredParagraph(state);
-      }
-      state.content.push(legacyTemplateNode(part));
+      state.paragraphContent.push(templateNode(part));
+      state.trailingParagraph = false;
     }
   }
 
@@ -614,10 +668,7 @@ export function messageDocumentToEditorDoc(
 }
 
 /** Serializes the business document to the same plain prompt representation. */
-export function messageDocumentToPrompt(
-  value: unknown,
-  options: { readonly inlineTemplates?: boolean } = {},
-): string | null {
+export function messageDocumentToPrompt(value: unknown): string | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -653,7 +704,9 @@ export function messageDocumentToPrompt(
         part.threadId,
         part.titleSnapshot,
       );
-    } else if (part.type === "template" && options.inlineTemplates === true) {
+    } else if (part.type === "agent") {
+      inlineText += serializeAgentMention(part.agentId, part.nameSnapshot);
+    } else if (part.type === "template") {
       inlineText += `Select ${part.titleSnapshot} ${part.template.type} template`;
     }
   }
@@ -663,10 +716,7 @@ export function messageDocumentToPrompt(
 }
 
 /** Serializes the business document into a compact human-readable label. */
-export function messageDocumentToDisplayText(
-  value: unknown,
-  options: { readonly inlineTemplates?: boolean } = {},
-): string | null {
+export function messageDocumentToDisplayText(value: unknown): string | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -700,21 +750,52 @@ export function messageDocumentToDisplayText(
       continue;
     }
     if (part.type === "chat_thread") {
-      inlineText += `[Chat thread: ${part.titleSnapshot}]`;
+      inlineText += i18n.t(
+        ($) => {
+          return $.chat.messageDocument.chatThread;
+        },
+        { title: part.titleSnapshot },
+      );
+      continue;
+    }
+    if (part.type === "agent") {
+      inlineText += i18n.t(
+        ($) => {
+          return $.chat.messageDocument.agent;
+        },
+        { name: part.nameSnapshot },
+      );
+      continue;
+    }
+    if (
+      part.type === "source" ||
+      part.type === "automation" ||
+      part.type === "goal" ||
+      part.type === "morning_brief" ||
+      part.type === "model"
+    ) {
       continue;
     }
     if (part.type === "template") {
-      if (options.inlineTemplates === true) {
-        inlineText += `[Template: ${part.titleSnapshot}]`;
-      } else {
-        flushInlineText();
-        blocks.push(`[Template: ${part.titleSnapshot}]`);
-      }
+      const templateLabel = i18n.t(
+        ($) => {
+          return $.chat.messageDocument.template;
+        },
+        { title: part.titleSnapshot },
+      );
+      inlineText += templateLabel;
       continue;
     }
 
     flushInlineText();
-    blocks.push(`[File: ${part.filenameSnapshot}]`);
+    blocks.push(
+      i18n.t(
+        ($) => {
+          return $.chat.messageDocument.file;
+        },
+        { filename: part.filenameSnapshot },
+      ),
+    );
   }
   flushFeedback();
   flushInlineText();

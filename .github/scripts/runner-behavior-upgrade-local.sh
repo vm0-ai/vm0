@@ -116,7 +116,7 @@ SUBMIT2_PID=""
 # an inactive-but-enabled installed unit.
 wait_for_exit "$SVC_A"
 echo "--- Re-enable inactive runner A, then drain again ---"
-sudo systemctl enable "vm0-runner-${SVC_A}.service"
+sudo systemctl enable --no-reload "vm0-runner-${SVC_A}.service"
 sudo systemctl is-enabled --quiet "vm0-runner-${SVC_A}.service" \
   || fail "runner A should be enabled before inactive drain"
 sudo "$BIN_DIR/runner" service drain --name "$SVC_A" \

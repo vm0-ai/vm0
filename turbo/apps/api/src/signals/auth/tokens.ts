@@ -5,14 +5,11 @@ import {
   ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import {
-  isFeatureEnabled,
-  isUserOverridableFeatureSwitch,
-} from "@vm0/core/feature-switch";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { safeJsonParse } from "../utils";
 import {
   CliAuth,
@@ -30,15 +27,17 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
-  ["finance:read", FeatureSwitchKey.ZeroFinance],
-  ["browser:read", FeatureSwitchKey.ZeroBrowser],
-  ["browser:write", FeatureSwitchKey.ZeroBrowser],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
-  "agent-run:write",
   "agent:delete",
 ] as const satisfies readonly ZeroCapability[];
+
+interface ZeroTokenOptions {
+  readonly computerUseHostId?: string;
+  readonly cloudBrowserEnabled?: boolean;
+  readonly imageRecognitionAvailable?: boolean;
+}
 
 const jwtBaseSchema = z.object({
   userId: z.string().min(1),
@@ -74,7 +73,6 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: zeroCapabilitiesSchema,
-  featureSwitchOverrides: z.record(z.string(), z.boolean()).optional(),
   computerUseHostId: z.string().uuid().optional(),
   cloudBrowserEnabled: z.literal(true).optional(),
 });
@@ -135,12 +133,30 @@ function isZeroCapabilityEnabled(
     return true;
   }
 
-  return isFeatureEnabled(
-    featureSwitch,
-    isUserOverridableFeatureSwitch(featureSwitch)
-      ? { userId, orgId, overrides }
-      : { userId, orgId },
-  );
+  return isFeatureEnabled(featureSwitch, { userId, orgId, overrides });
+}
+
+function isCapabilityAvailableToAgent(
+  capability: ZeroCapability,
+  options: ZeroTokenOptions | undefined,
+): boolean {
+  if (
+    AGENT_EXCLUDED_CAPABILITIES.some((excludedCapability) => {
+      return excludedCapability === capability;
+    })
+  ) {
+    return false;
+  }
+  if (capability === "computer-use:write") {
+    return options?.computerUseHostId !== undefined;
+  }
+  if (capability === "browser:read" || capability === "browser:write") {
+    return options?.cloudBrowserEnabled === true;
+  }
+  if (capability === "image-recognition:write") {
+    return options?.imageRecognitionAvailable === true;
+  }
+  return true;
 }
 
 const getJwtKey = singleton((): Buffer => {
@@ -301,42 +317,24 @@ export function generateZeroToken(
   runId: string,
   orgId: string,
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
-  options?: {
-    readonly computerUseHostId?: string;
-    readonly cloudBrowserEnabled?: boolean;
-  },
+  options?: ZeroTokenOptions,
 ): string {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: ZeroCapability[] = [];
   for (const capability of ZERO_CAPABILITIES) {
-    if (capability === "computer-use:write" && !options?.computerUseHostId) {
-      continue;
-    }
-    if (
-      (capability === "browser:read" || capability === "browser:write") &&
-      options?.cloudBrowserEnabled !== true
-    ) {
-      continue;
-    }
-    if (
-      AGENT_EXCLUDED_CAPABILITIES.some((excludedCapability) => {
-        return excludedCapability === capability;
-      })
-    ) {
+    if (!isCapabilityAvailableToAgent(capability, options)) {
       continue;
     }
     if (isZeroCapabilityEnabled(capability, userId, orgId, overrides)) {
       capabilities.push(capability);
     }
   }
-
   const payload: z.infer<typeof zeroTokenPayloadSchema> = {
     scope: "zero",
     userId,
     runId,
     orgId,
     capabilities,
-    ...(overrides === undefined ? {} : { featureSwitchOverrides: overrides }),
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }

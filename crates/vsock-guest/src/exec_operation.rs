@@ -49,11 +49,16 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+#[cfg(test)]
+use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{
     self, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecLifecyclePolicy,
     ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR,
-    MSG_EXEC_RESULT, MSG_EXEC_STARTED,
+    MSG_EXEC_STARTED,
 };
+
+#[cfg(test)]
+use vsock_proto::MSG_EXEC_RESULT;
 
 use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancellable};
 use crate::error::to_io_error;
@@ -70,10 +75,7 @@ use crate::shell_command::{
     truncate_command_preview,
 };
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
-use crate::wait::{
-    DRAIN_DEADLINE_SECS, WaitOutcome, await_drain_deadline,
-    wait_with_kill_timeout_or_cancelled_either,
-};
+use crate::wait::{WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_cancelled_either};
 use crate::writer::GuestWriter;
 
 const THREAD_EXEC_OPERATION_WORKER: &str = "vsock-exec-operation-worker";
@@ -220,6 +222,7 @@ pub(crate) struct ExecOperationWorkerRequest {
     exec_control_guard: Option<ExecControlGuard>,
     exec_control_bootstrap_endpoint: Option<String>,
     process_containment_mode: ProcessContainmentMode,
+    drain_deadline: Duration,
 }
 
 impl ExecOperationWorkerRequest {
@@ -227,6 +230,7 @@ impl ExecOperationWorkerRequest {
         seq: u32,
         decoded: vsock_proto::DecodedExecStart<'_>,
         process_containment_mode: ProcessContainmentMode,
+        drain_deadline: Duration,
     ) -> io::Result<Self> {
         let lifecycle = match decoded.lifecycle {
             ExecLifecyclePolicy::OneShot => ExecOperationLifecycle::OneShot,
@@ -281,6 +285,7 @@ impl ExecOperationWorkerRequest {
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
             process_containment_mode,
+            drain_deadline,
         })
     }
 
@@ -717,14 +722,16 @@ impl RunningExec {
             drain_cancel.store(true, Ordering::Release);
         }
 
-        let completed = await_drain_deadline(&drain_done_rx, 2, &drain_cancel);
+        let completed =
+            await_drain_deadline(&drain_done_rx, 2, &drain_cancel, request.drain_deadline);
         if completed < 2 {
             log(
                 "WARN",
                 &format!(
-                    "exec operation: drain deadline reached seq={} label={} after {DRAIN_DEADLINE_SECS}s",
+                    "exec operation: drain deadline reached seq={} label={} after {:?}",
                     request.seq,
-                    truncate_command_preview(&request.label)
+                    truncate_command_preview(&request.label),
+                    request.drain_deadline,
                 ),
             );
         }
@@ -1545,7 +1552,10 @@ fn send_exec_result_after_lock<F>(
 where
     F: FnOnce(),
 {
-    let payload = vsock_proto::encode_exec_result(
+    let mut encoded = Vec::new();
+    vsock_proto::encode_exec_result_frame_into(
+        &mut encoded,
+        frame.seq,
         frame.termination,
         frame.duration_ms,
         frame.stdout,
@@ -1553,7 +1563,6 @@ where
         frame.diagnostic,
     )
     .map_err(to_io_error)?;
-    let encoded = vsock_proto::encode(MSG_EXEC_RESULT, frame.seq, &payload).map_err(to_io_error)?;
     writer.write_frame_after_lock(&encoded, after_lock)
 }
 
@@ -1713,6 +1722,7 @@ mod tests {
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
             process_containment_mode: ProcessContainmentMode::BuildConfigured,
+            drain_deadline: EXEC_OUTPUT_DRAIN_DEADLINE,
         }
     }
 

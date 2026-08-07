@@ -216,6 +216,49 @@ fn decode_msg_rejects_trailing_bytes() -> TestResult {
 }
 
 #[test]
+fn decode_msg_rejects_values_above_msgpack_recursion_limit() -> TestResult {
+    // This value mirrors the private application limit; both sides of the boundary verify it.
+    const MAX_MSGPACK_DECODE_DEPTH: usize = 256;
+
+    let maximum_nested_arrays = (MAX_MSGPACK_DECODE_DEPTH - 1) / 2;
+    let mut within_limit = vec![0x91; maximum_nested_arrays];
+    within_limit.push(0xc0);
+
+    match decode_msg(&within_limit) {
+        Err(AblyError::Protocol { code, message }) => {
+            assert_eq!(code, error_code::BAD_REQUEST);
+            assert!(message.contains("protocol message must be a map"));
+        }
+        Err(err) => {
+            return Err(io::Error::other(format!(
+                "expected BAD_REQUEST protocol error, got {err}"
+            ))
+            .into());
+        }
+        Ok(_) => return Err(io::Error::other("expected BAD_REQUEST protocol error").into()),
+    }
+
+    let mut above_limit = vec![0x91; maximum_nested_arrays + 1];
+    above_limit.push(0xc0);
+
+    match decode_msg(&above_limit) {
+        Err(AblyError::Protocol { code, message }) => {
+            assert_eq!(code, error_code::BAD_REQUEST);
+            assert!(message.contains("depth limit exceeded"));
+        }
+        Err(err) => {
+            return Err(io::Error::other(format!(
+                "expected BAD_REQUEST protocol error, got {err}"
+            ))
+            .into());
+        }
+        Ok(_) => return Err(io::Error::other("expected BAD_REQUEST protocol error").into()),
+    }
+
+    Ok(())
+}
+
+#[test]
 fn decode_msg_accepts_unknown_numeric_action() -> TestResult {
     let payload = rmpv::Value::Map(vec![field("action", rmpv::Value::from(123_456))]);
     let encoded = encode_value(payload)?;
@@ -515,6 +558,33 @@ fn decode_msg_preserves_nested_data_maps_and_arrays() -> TestResult {
             "items": [1, true, "three"],
             "nested": {"ok": "yes"}
         }))
+    );
+    Ok(())
+}
+
+#[test]
+fn decode_msg_stringifies_non_string_data_map_keys_before_last_wins() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field(
+            "messages",
+            rmpv::Value::Array(vec![rmpv::Value::Map(vec![field(
+                "data",
+                rmpv::Value::Map(vec![
+                    (rmpv::Value::from(7), str_value("integer key")),
+                    field("7", str_value("string key")),
+                ]),
+            )])]),
+        ),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    let message = single_message(&decoded)?;
+    assert_eq!(
+        message.data.as_ref(),
+        Some(&serde_json::json!({"7": "string key"}))
     );
     Ok(())
 }

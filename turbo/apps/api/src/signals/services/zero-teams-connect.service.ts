@@ -5,7 +5,6 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
-import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
@@ -25,7 +24,7 @@ import {
   sendTeamsMessageReply,
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
 
@@ -400,7 +399,6 @@ type ConnectorProvidedBindings = Parameters<
 
 interface ConnectedTeamsStatusFields {
   readonly defaultAgentName: string | null;
-  readonly agentOrgSlug: string | null;
   readonly environment: TeamsEnvironment;
 }
 
@@ -415,7 +413,6 @@ interface TeamsConnectStatus {
   readonly teamId?: string | null;
   readonly teamName?: string | null;
   readonly defaultAgentName?: string | null;
-  readonly agentOrgSlug?: string | null;
   readonly permissionMismatch?: boolean | null;
   readonly reinstallUrl?: string | null;
   readonly environment?: TeamsEnvironment;
@@ -428,18 +425,6 @@ function emptyTeamsEnvironment(): TeamsEnvironment {
     missingSecrets: [],
     missingVars: [],
   };
-}
-
-async function getTeamsAgentOrgSlug(
-  db: ReadonlyDb,
-  orgId: string,
-): Promise<string | null> {
-  const [orgCacheRow] = await db
-    .select({ slug: orgCache.slug })
-    .from(orgCache)
-    .where(eq(orgCache.orgId, orgId))
-    .limit(1);
-  return orgCacheRow?.slug ?? null;
 }
 
 async function resolveTeamsEnvironment(args: {
@@ -531,15 +516,11 @@ async function resolveConnectedStatusFields(args: {
     args.userId,
     args.orgId,
   );
-  const [agentOrgSlug, environment] = await Promise.all([
-    getTeamsAgentOrgSlug(args.db, args.orgId),
-    resolveTeamsEnvironment(args),
-  ]);
+  const environment = await resolveTeamsEnvironment(args);
   return {
     defaultAgentName: composeId
       ? ((await getTeamsAgentName(args.db, composeId)) ?? null)
       : null,
-    agentOrgSlug,
     environment,
   };
 }
@@ -643,7 +624,6 @@ function activeTeamsStatus(args: {
   }
   return {
     ...status,
-    agentOrgSlug: args.connectedFields.agentOrgSlug,
     environment: args.connectedFields.environment,
   };
 }

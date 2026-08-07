@@ -7,6 +7,7 @@ import {
   SelectValue,
   cn,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import {
   parseUserPermissionGrantExpiresIn,
   USER_PERMISSION_GRANT_EXPIRES_IN_OPTIONS,
@@ -25,6 +26,7 @@ export function PermissionGrantDurationSelect({
   ariaLabel: string;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <Select
       value={value}
@@ -44,9 +46,27 @@ export function PermissionGrantDurationSelect({
       </SelectTrigger>
       <SelectContent>
         {USER_PERMISSION_GRANT_EXPIRES_IN_OPTIONS.map((option) => {
+          const label =
+            option === "1h"
+              ? t(($) => {
+                  return $.authorization.permission.durationOptions.oneHour;
+                })
+              : option === "24h"
+                ? t(($) => {
+                    return $.authorization.permission.durationOptions
+                      .twentyFourHours;
+                  })
+                : option === "7d"
+                  ? t(($) => {
+                      return $.authorization.permission.durationOptions
+                        .sevenDays;
+                    })
+                  : t(($) => {
+                      return $.authorization.permission.durationOptions.always;
+                    });
           return (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
+            <SelectItem key={option} value={option}>
+              {label}
             </SelectItem>
           );
         })}

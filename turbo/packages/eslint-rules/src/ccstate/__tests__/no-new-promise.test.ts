@@ -31,5 +31,11 @@ ruleTester.run("no-new-promise", rule, {
       `,
       errors: [{ messageId: "noNewPromise" }],
     },
+    {
+      code: `
+        const deferred = Promise.withResolvers<void>();
+      `,
+      errors: [{ messageId: "noPromiseWithResolvers" }],
+    },
   ],
 });

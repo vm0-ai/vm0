@@ -6,25 +6,24 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import { animationFrame, delay } from "signal-timers";
+import { delay, timeout } from "signal-timers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { IN_VITEST } from "../../env.ts";
-import {
-  onRef,
-  onRejection,
-  resetSignal,
-  settle,
-  setLoop,
-  withCleanup,
-} from "../utils.ts";
+import { i18n } from "../../i18n/index.ts";
+import { onRef, onRejection, resetSignal, setLoop } from "../utils.ts";
 import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
 import { createThreadSidebarSignals } from "./thread-sidebar.ts";
-import { createThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
-import { createWorkflowQueueSignals } from "./workflow-queue.ts";
 import {
-  createScrollSignals,
-  type PrependScrollCompensationToken,
-} from "../auto-scroll.ts";
+  createThreadSidebarAutoOpenCandidate,
+  threadSidebarAutoOpenCandidateKey,
+} from "./thread-sidebar-auto-open.ts";
+import { activeThreadSidebar$ } from "./thread-sidebar-coordinator.ts";
+import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "./chat-thread-sidebar-layout.ts";
+import {
+  createChatThreadScrollSignals,
+  type ThreadScrollPosition,
+} from "./chat-thread-scroll.ts";
 import {
   createDraftSignals,
   createRestoredAttachment,
@@ -36,44 +35,37 @@ import {
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
-import {
-  appendOptimisticChatMessage$,
-  createOptimisticChatMessageEntry,
-  createOptimisticChatMessagesForThread,
-  reconcileOptimisticChatMessages$,
-  type OptimisticChatMessageEntry,
-  type OptimisticChatMessageInput,
-} from "./optimistic-chat-messages.ts";
-import type { ChatMessage } from "./chat-message-types.ts";
+import type {
+  ChatEvent,
+  OptimisticChatEvent,
+  OptimisticUserMessageAssociation,
+} from "./chat-event-types.ts";
 import {
   chatThreadArtifactsContract,
   type AttachFile,
   type GenerationTemplateRequest,
-  type ChatThreadArtifactRun,
-  type ChatEvent,
+  type ChatEvent as PersistedChatEvent,
   type ChatPromptEvent,
-  type ChatUserMessageEvent,
-  type UserMessageDocument,
+  type ChatThreadArtifactRun,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import {
   chatEventCompatibilityRole,
-  foldActiveChatGoalObjective,
   foldLatestChatUsageByRunId,
   isChatRunTerminalEventType,
   revokedChatEventIds,
-  terminatedChatRunIds,
 } from "@vm0/api-contracts/contracts/chat-events";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
-import { nowDate } from "../../lib/time.ts";
-import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
+  imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
@@ -81,37 +73,53 @@ import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
 } from "../zero-page/clipboard.ts";
-import type {
-  EnrichedChatMessage,
-  GroupedChatMessageGroup,
-} from "./chat-message.ts";
+import type { EnrichedChatEvent, ChatEventGroup } from "./chat-event.ts";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
+import {
+  deriveRunIndicatorStateFromChatEvents,
+  groupSemanticChatEvents,
+  isGoalMarkerEvent,
+  isGoalQueueEvent,
+  isInterruptControlEvent,
+  isInterruptedAssistantCancellation,
+  isQueueMarkerEvent,
+  isRecallControlEvent,
+  isUsageEvent,
+  liveRunIdsFromChatEvents,
+  queuedEventsFromChatEvents,
+  semanticChatEventsFromChatEvents,
+  type RunIndicatorState,
+  type SemanticChatEventState,
+  type SemanticChatGroups as GenericSemanticChatGroups,
+} from "./chat-event-state.ts";
 import { logger } from "../log.ts";
 import {
-  CHAT_MESSAGES_PAGE_LIMIT,
-  createRemoteChatThreadDataSource,
-} from "./remote-chat-thread-data-source.ts";
-import {
-  loadIndexedDbChatEvents$,
-  writeIndexedDbChatEvents$,
-} from "./chat-event-indexed-db.ts";
-import { sendChatEvent } from "./chat-event-api.ts";
+  createCancellationRecoverySignals,
+  createRemoteChatThreadDraft,
+  patchChatThreadComputerUseHost$,
+  patchChatThreadDraft$,
+  patchChatThreadModelSelection$,
+  subscribeChatThreadRealtime$,
+} from "./chat-thread-remote-signals.ts";
+import { markChatThreadRead$ } from "./remote-chat-event-data-source.ts";
 import {
   classifyChatAttachment,
   type BodyRenderBlock,
   type ParsedBodyBlock,
 } from "./parse-body-blocks.ts";
-import { parseMessageBodyBlocks } from "./chat-message-body-blocks.ts";
+import { parseChatEventBodyBlocks } from "./chat-event-body-blocks.ts";
 import {
   createArtifactCardSignalsRegistry,
   type ArtifactCardSignalsRegistry,
   type ArtifactSignals,
 } from "./artifact-card-signals.ts";
 import {
+  createAgentReferenceSignalsRegistry,
+  type AgentReferenceSignalsRegistry,
+} from "./agent-reference-signals.ts";
+import {
   createConnectorCardSignalsRegistry,
-  createCustomConnectorCardSignalsRegistry,
   type ConnectorCardSignalsRegistry,
-  type CustomConnectorCardSignalsRegistry,
 } from "./connector-action-block.ts";
 import {
   createPermissionCardSignalsRegistry,
@@ -129,161 +137,83 @@ import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   optimisticChatThreadCreateUnsettled,
   threadMeta,
-  touchOptimisticChatThreadSort$,
   type ThreadMeta,
 } from "./chat-thread-event-sourcing.ts";
 import {
   previousRunGroupVisualWindowStartIndex,
   runGroupVisualWindowStartIndex,
 } from "./run-group-folding.ts";
-import { reloadBillingStatus$ } from "../zero-page/billing.ts";
-import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
+import {
+  computerUseHosts$,
+  selectedComputerUseHostId,
+  subscribeComputerUseHostsChanged$,
+} from "../zero-page/computer-use-hosts.ts";
 import { isCodexFastModeAvailableForSelection } from "../zero-page/model-default-selection.ts";
 import { personalModelProvider$ } from "../zero-page/model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "../zero-page/settings/codex-device-auth.ts";
 import type {
-  ChatThreadSignals,
-  ComposerSendButtonStatus,
-  MessageImageGroupProjection,
+  MessageListSignals,
+  ChatPanelSignals,
+  EventImageGroupProjection,
   QueueMessageOptions,
-  QueuedChatMessageItem,
   RecommendedFollowupSource,
   SendMessageOptions,
   ThinkingIndicatorMode,
-} from "./chat-thread-signals.ts";
-import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
+} from "./chat-panel-signals.ts";
+import { reloadMountedComposerWorkflows$ } from "../zero-page/tiptap-workflow-composer.ts";
 import {
   createMailDraftCardSignalsRegistry,
   type MailDraftCardSignalsRegistry,
   type MailDraftSignals,
 } from "./mail-draft.ts";
 import {
-  createBrowserSessionCardSignalsRegistry,
-  type BrowserSessionCardSignalsRegistry,
+  createBrowserSessionSignals,
+  type BrowserLifecycleOptimisticEvents,
   type BrowserSessionSignals,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
+import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.ts";
 import {
-  createComposerConnectorSignals,
-  type ComposerConnectorAuthorizationSignals,
-} from "../zero-page/zero-connectors.ts";
-import {
-  messageDocumentToDisplayText,
   messageDocumentToPrompt,
   textToMessageDocument,
 } from "../zero-page/user-message-document-codec.ts";
-
-type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
-
-export type { DraftSignals } from "../zero-page/chat-draft.ts";
+import { locale$ } from "../locale.ts";
+import {
+  createComposerSignals,
+  type ComposerSignals,
+  type ComposerSubmission,
+} from "../zero-page/composer-signals.ts";
+import {
+  openChatThreadGoalDialog$,
+  pauseChatThreadGoal$,
+} from "./chat-goal.ts";
+import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
+import { createChatThreadSharingSignals } from "./chat-thread-sharing.ts";
+import type {
+  ChatEventSignals,
+  SendChatEventInput,
+  SendChatEventResult,
+} from "./chat-event-signals.ts";
+import { registerChatEventChangeHandler$ } from "./chat-event-change-registry.ts";
 
 const L = logger("ChatThread");
 
-function createChatThreadScrollSignals(threadId: string) {
-  return createScrollSignals(threadId, {
-    observeViewportResizeOnMobile: true,
-  });
-}
-
-type RecallControlEvent = Extract<
-  ChatMessage,
-  { eventType: "control.revoke" | "run.dequeued" }
->;
-
-function isRecallControlMessage(msg: ChatMessage): msg is RecallControlEvent {
-  return msg.eventType === "control.revoke" || msg.eventType === "run.dequeued";
-}
-
-function isQueueMarkerMessage(
-  msg: ChatMessage,
-): msg is Extract<ChatMessage, { eventType: "run.queued" }> {
-  return msg.eventType === "run.queued";
-}
-
-function isGoalMarkerMessage(
-  msg: ChatMessage,
-): msg is Extract<ChatMessage, { eventType: "goal.changed" }> {
-  return msg.eventType === "goal.changed";
-}
-
-function isUsageMessage(
-  msg: ChatMessage,
-): msg is Extract<ChatMessage, { eventType: "usage.recorded" }> {
-  return msg.eventType === "usage.recorded";
-}
-
-function isAutomationQueueStateMessage(msg: ChatMessage): msg is Extract<
-  ChatMessage,
-  {
-    eventType: "queue.automation_paused" | "queue.automation_resumed";
-  }
+function isInputChatEvent(
+  event: ChatEvent,
+): event is Extract<
+  ChatEvent,
+  { eventType: "input.prompt" | "input.rejected" }
 > {
   return (
-    msg.eventType === "queue.automation_paused" ||
-    msg.eventType === "queue.automation_resumed"
+    event.eventType === "input.prompt" || event.eventType === "input.rejected"
   );
-}
-
-function isInterruptControlMessage(
-  msg: ChatMessage,
-): msg is Extract<ChatMessage, { eventType: "control.interrupt" }> {
-  return msg.eventType === "control.interrupt";
-}
-
-function isInputChatEvent(
-  msg: ChatMessage,
-): msg is Extract<
-  ChatMessage,
-  { eventType: ChatUserMessageEvent["eventType"] }
-> {
-  return msg.eventType === "input.prompt" || msg.eventType === "input.rejected";
 }
 
 function chatEventAttachFiles(
-  message: ChatMessage,
+  event: ChatEvent,
 ): ChatPromptEvent["attachFiles"] {
-  return isInputChatEvent(message) ? message.attachFiles : undefined;
-}
-
-function createInterruptedAssistantProjection(
-  message: Extract<ChatMessage, { eventType: "control.interrupt" }>,
-  runId: string,
-): ChatMessage {
-  const { interruptsRunId, ...event } = message;
-  void interruptsRunId;
-  return {
-    ...event,
-    eventType: "run.cancelled" as const,
-    content: "Run cancelled",
-    runId,
-    error: "Run cancelled",
-    runLifecycleEvent: "cancelled",
-  };
-}
-
-function completedRunIdsFromMessages(
-  messages: readonly ChatMessage[],
-): string[] {
-  const ids = new Set<string>();
-  for (const message of messages) {
-    if (message.eventType === "run.completed" && message.runId !== undefined) {
-      ids.add(message.runId);
-    }
-  }
-  return Array.from(ids);
-}
-
-function isInterruptedAssistantCancellation(
-  message: ChatMessage,
-  interruptedRunIds: Set<string>,
-): boolean {
-  const runId = message.runId;
-  return (
-    runId !== undefined &&
-    isCancelledRunEvent(message) &&
-    interruptedRunIds.has(runId)
-  );
+  return isInputChatEvent(event) ? event.attachFiles : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -310,280 +240,149 @@ function shuffleBlockColors(): [string, string, string] {
   return [shuffled[0]!, shuffled[1]!, shuffled[2]!];
 }
 
-const THINKING_PHRASES = [
-  "Brewing...",
-  "Piecing together...",
-  "Spinning up...",
-  "On it...",
-  "Assembling...",
-  "Sketching out...",
-  "Mapping it...",
-  "Wiring up...",
-  "Shaping...",
-  "Tuning in...",
-] as const;
+const THINKING_PHRASE_COUNT = 10;
+const DONE_PHRASE_COUNT = 8;
 
-const DONE_PHRASES = [
-  (t: string) => {
-    return `Wrapped up at ${t}`;
-  },
-  (t: string) => {
-    return `All done — ${t}`;
-  },
-  (t: string) => {
-    return `Delivered at ${t}`;
-  },
-  (t: string) => {
-    return `Finished at ${t}, at your service`;
-  },
-  (t: string) => {
-    return `That was a wrap — ${t}`;
-  },
-  (t: string) => {
-    return `Mission complete, ${t}`;
-  },
-  (t: string) => {
-    return `Signed off at ${t}`;
-  },
-  (t: string) => {
-    return `Done and dusted — ${t}`;
-  },
-] as const;
+function thinkingPhrase(index: number): string {
+  switch (index) {
+    case 0: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.brewing;
+      });
+    }
+    case 1: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.piecingTogether;
+      });
+    }
+    case 2: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.spinningUp;
+      });
+    }
+    case 3: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.onIt;
+      });
+    }
+    case 4: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.assembling;
+      });
+    }
+    case 5: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.sketching;
+      });
+    }
+    case 6: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.mapping;
+      });
+    }
+    case 7: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.wiring;
+      });
+    }
+    case 8: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.shaping;
+      });
+    }
+    default: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.tuningIn;
+      });
+    }
+  }
+}
 
-function formatDonePhrase(lastMsg: ChatMessage | undefined): string {
-  const time = lastMsg
-    ? new Date(lastMsg.createdAt).toLocaleString("en-US", {
+function formatDonePhrase(lastEvent: ChatEvent | undefined): string {
+  const time = lastEvent
+    ? new Date(lastEvent.createdAt).toLocaleString(i18n.resolvedLanguage, {
         month: "short",
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
       })
-    : "just now";
-  const phraseIndex = lastMsg?.id
-    ? lastMsg.id.charCodeAt(lastMsg.id.length - 1) % DONE_PHRASES.length
+    : i18n.t(($) => {
+        return $.chat.run.justNow;
+      });
+  const phraseIndex = lastEvent?.id
+    ? lastEvent.id.charCodeAt(lastEvent.id.length - 1) % DONE_PHRASE_COUNT
     : 0;
-  const pick = DONE_PHRASES[phraseIndex]!;
-  return pick(time);
-}
-
-function revokedMessageIdsFromRawMessages(
-  raw: readonly ChatMessageProjectionEntry[],
-): Set<string> {
-  return revokedChatEventIds(
-    raw.map((entry) => {
-      return entry.message;
-    }),
-  );
-}
-
-function isRawOptimisticRunMessage(entry: ChatMessageProjectionEntry): boolean {
-  const { message } = entry;
-  return (
-    message.eventType === "input.prompt" &&
-    message.runId === undefined &&
-    entry.optimisticUserMessageAssociation === "run"
-  );
-}
-
-function terminatedRunIdsFromRawMessages(
-  raw: readonly ChatMessageProjectionEntry[],
-): Set<string> {
-  return terminatedChatRunIds(
-    raw.map((entry) => {
-      return entry.message;
-    }),
-  );
-}
-
-type RunIndicatorState = "running" | "queued" | null;
-
-function runActivityIndicatorState(
-  terminatedRunIds: ReadonlySet<string>,
-  runId: string,
-): RunIndicatorState | undefined {
-  if (terminatedRunIds.has(runId)) {
-    return undefined;
-  }
-  return "running";
-}
-
-function assistantRunIndicatorState(
-  terminatedRunIds: ReadonlySet<string>,
-  message: ChatMessage,
-): RunIndicatorState | undefined {
-  const runId = message.runId;
-  if (isQueueMarkerMessage(message)) {
-    if (runId !== undefined && terminatedRunIds.has(runId)) {
-      return undefined;
+  switch (phraseIndex) {
+    case 0: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.wrappedUp;
+        },
+        { time },
+      );
     }
-    return "queued";
-  }
-  if (runId !== undefined && isChatRunTerminalEventType(message.eventType)) {
-    return null;
-  }
-  if (runId === undefined) {
-    return undefined;
-  }
-  return runActivityIndicatorState(terminatedRunIds, runId);
-}
-
-function nonAssistantRunIndicatorState(
-  terminatedRunIds: ReadonlySet<string>,
-  entry: ChatMessageProjectionEntry,
-): RunIndicatorState | undefined {
-  if (isRawOptimisticRunMessage(entry)) {
-    return "running";
-  }
-  const { runId } = entry.message;
-  return runId === undefined
-    ? undefined
-    : runActivityIndicatorState(terminatedRunIds, runId);
-}
-
-function visibleRunStartIndexByRunId(
-  raw: readonly ChatMessageProjectionEntry[],
-  revokedMessageIds: ReadonlySet<string>,
-): ReadonlyMap<string, number> {
-  // Only a user message proves that a run started inside the loaded window;
-  // the first visible assistant message may be mid-run after pagination.
-  const runStartIndexByRunId = new Map<string, number>();
-  for (let index = 0; index < raw.length; index++) {
-    const message = raw[index]!.message;
-    const runId = message.runId;
-    if (
-      (message.eventType !== "input.prompt" &&
-        message.eventType !== "input.rejected") ||
-      runId === undefined ||
-      runStartIndexByRunId.has(runId) ||
-      revokedMessageIds.has(message.id)
-    ) {
-      continue;
+    case 1: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.allDone;
+        },
+        { time },
+      );
     }
-    runStartIndexByRunId.set(runId, index);
-  }
-  return runStartIndexByRunId;
-}
-
-function laterStartedRunIndicatorState(
-  raw: readonly ChatMessageProjectionEntry[],
-  terminatedRunId: string,
-  terminatedRunIds: ReadonlySet<string>,
-  revokedMessageIds: ReadonlySet<string>,
-  runStartIndexByRunId: ReadonlyMap<string, number>,
-): RunIndicatorState | undefined {
-  const terminatedRunStartIndex = runStartIndexByRunId.get(terminatedRunId);
-  if (terminatedRunStartIndex === undefined) {
-    return undefined;
-  }
-
-  for (let index = raw.length - 1; index >= 0; index--) {
-    const entry = raw[index]!;
-    const { message } = entry;
-    const runId = message.runId;
-    if (
-      runId === undefined ||
-      (runStartIndexByRunId.get(runId) ?? -1) <= terminatedRunStartIndex ||
-      revokedMessageIds.has(message.id) ||
-      isUsageMessage(message) ||
-      isGoalMarkerMessage(message)
-    ) {
-      continue;
+    case 2: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.delivered;
+        },
+        { time },
+      );
     }
-    const state =
-      chatEventCompatibilityRole(message.eventType) === "assistant"
-        ? assistantRunIndicatorState(terminatedRunIds, message)
-        : nonAssistantRunIndicatorState(terminatedRunIds, entry);
-    if (state === "running" || state === "queued") {
-      return state;
+    case 3: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.finished;
+        },
+        { time },
+      );
+    }
+    case 4: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.wrap;
+        },
+        { time },
+      );
+    }
+    case 5: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.missionComplete;
+        },
+        { time },
+      );
+    }
+    case 6: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.signedOff;
+        },
+        { time },
+      );
+    }
+    default: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.doneAndDusted;
+        },
+        { time },
+      );
     }
   }
-  return undefined;
-}
-
-function deriveRunIndicatorStateFromRawMessages(
-  raw: readonly ChatMessageProjectionEntry[],
-): RunIndicatorState {
-  const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
-  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
-  const runStartIndexByRunId = visibleRunStartIndexByRunId(
-    raw,
-    revokedMessageIds,
-  );
-
-  for (let index = raw.length - 1; index >= 0; index--) {
-    const entry = raw[index]!;
-    const { message } = entry;
-    if (revokedMessageIds.has(message.id)) {
-      continue;
-    }
-    if (isUsageMessage(message) || isGoalMarkerMessage(message)) {
-      continue;
-    }
-    if (chatEventCompatibilityRole(message.eventType) === "assistant") {
-      const state = assistantRunIndicatorState(terminatedRunIds, message);
-      if (state === null && message.runId !== undefined) {
-        const laterRunState = laterStartedRunIndicatorState(
-          raw,
-          message.runId,
-          terminatedRunIds,
-          revokedMessageIds,
-          runStartIndexByRunId,
-        );
-        if (laterRunState !== undefined) {
-          return laterRunState;
-        }
-      }
-      if (state !== undefined) {
-        return state;
-      }
-      continue;
-    }
-    const state = nonAssistantRunIndicatorState(terminatedRunIds, entry);
-    if (state !== undefined) {
-      return state;
-    }
-  }
-  return null;
-}
-
-function liveRunIdsFromRawMessages(
-  raw: readonly ChatMessageProjectionEntry[],
-): string[] {
-  const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
-  const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
-  const liveRunIds: string[] = [];
-  const seenRunIds = new Set<string>();
-  for (const { message } of raw) {
-    const runId = message.runId;
-    if (
-      runId !== undefined &&
-      !revokedMessageIds.has(message.id) &&
-      !terminatedRunIds.has(runId) &&
-      !isQueueMarkerMessage(message) &&
-      !isUsageMessage(message) &&
-      !isGoalMarkerMessage(message) &&
-      !seenRunIds.has(runId)
-    ) {
-      liveRunIds.push(runId);
-      seenRunIds.add(runId);
-    }
-  }
-  return liveRunIds;
-}
-
-function cancellableRunIdsFromRawMessages(
-  raw: readonly ChatMessageProjectionEntry[],
-): string[] {
-  return liveRunIdsFromRawMessages(raw);
 }
 
 // ---------------------------------------------------------------------------
 // Sub-factory: remote thread draft fetching
 // ---------------------------------------------------------------------------
-
-function createRemoteThreadDraft(dataSource: ChatThreadRemote) {
-  return dataSource.threadDraft$;
-}
 
 function createThreadMeta(threadId: string) {
   return threadMeta(threadId);
@@ -620,7 +419,6 @@ function createThreadSettledInServer(threadId: string) {
 function createModelSelection(
   threadId: string,
   threadMeta$: Computed<ThreadMeta | null>,
-  dataSource: ChatThreadRemote,
 ) {
   const selectedModel$ = computed((get): string | null => {
     const threadMeta = get(threadMeta$);
@@ -634,7 +432,7 @@ function createModelSelection(
       signal: AbortSignal,
     ) => {
       await set(
-        dataSource.patchModelSelection$,
+        patchChatThreadModelSelection$,
         { threadId, modelSelection: value },
         signal,
       );
@@ -716,7 +514,7 @@ function createModelSelectionForSend({
     ): Promise<ModelProviderSelection | null> => {
       const selectedModel = await get(selectedModel$);
       signal.throwIfAborted();
-      if (!selectedModel) {
+      if (!isSupportedRunModel(selectedModel)) {
         return null;
       }
       const codexFastModeActive = await get(codexFastModeActive$);
@@ -735,7 +533,6 @@ function createModelSelectionForSend({
 function createComputerUseHostSelection(
   threadId: string,
   threadMeta$: Computed<ThreadMeta | null>,
-  dataSource: ChatThreadRemote,
 ) {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -794,7 +591,7 @@ function createComputerUseHostSelection(
 
       await onRejection(
         set(
-          dataSource.patchComputerUseHost$,
+          patchChatThreadComputerUseHost$,
           { threadId, ...selection },
           signal,
         ),
@@ -867,26 +664,6 @@ function createComputerUseHostSelection(
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: composer file input
-// ---------------------------------------------------------------------------
-
-function createComposerFileInput() {
-  const internal$ = state<HTMLElement | null>(null);
-  const composerFileInput$ = computed((get) => {
-    return get(internal$);
-  });
-  const setComposerFileInput$ = onRef(
-    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
-      signal.addEventListener("abort", () => {
-        set(internal$, null);
-      });
-      set(internal$, el);
-    }),
-  );
-  return { composerFileInput$, setComposerFileInput$ };
-}
-
-// ---------------------------------------------------------------------------
 // Sub-factory: agent info
 // ---------------------------------------------------------------------------
 
@@ -899,13 +676,16 @@ function createAgentInfoSignals(threadMeta$: Computed<ThreadMeta | null>) {
     return get(threadMeta$)?.agentId ?? null;
   });
 
-  const agentDisplayName$ = computed(async (get): Promise<string | null> => {
-    const agentId = await get(agentId$);
+  const agent$ = computed(async (get): Promise<ZeroAgentResponse> => {
+    const agentId = get(agentId$);
     if (!agentId) {
-      return null;
+      throw new Error("Chat thread requires an active agent");
     }
-    const agent = await get(agentById(agentId));
-    return agent?.displayName ?? null;
+    return await get(agentById(agentId));
+  });
+
+  const agentDisplayName$ = computed(async (get): Promise<string | null> => {
+    return (await get(agent$)).displayName ?? null;
   });
 
   const agentPinned$ = computed(async (get): Promise<boolean | null> => {
@@ -917,7 +697,7 @@ function createAgentInfoSignals(threadMeta$: Computed<ThreadMeta | null>) {
     return ids.includes(agentId);
   });
 
-  return { agentId$, agentDisplayName$, agentPinned$ };
+  return { agent$, agentId$, agentDisplayName$, agentPinned$ };
 }
 
 function createThreadOwnedSignals(
@@ -927,8 +707,6 @@ function createThreadOwnedSignals(
   return {
     ...createAgentInfoSignals(threadMeta$),
     headerAutomations: createHeaderAutomationSignals(threadId),
-    workflowQueue: createWorkflowQueueSignals(threadId),
-    sidebar: createThreadSidebarSignals(threadId),
     ...createThreadUIState(),
   };
 }
@@ -945,29 +723,29 @@ function createThreadUIState() {
     return get(internalExpandedIds$);
   });
 
-  const toggleTimelineExpanded$ = command(({ get, set }, messageId: string) => {
+  const toggleTimelineExpanded$ = command(({ get, set }, eventId: string) => {
     const current = get(internalExpandedIds$);
     const next = new Set(current);
-    if (next.has(messageId)) {
-      next.delete(messageId);
+    if (next.has(eventId)) {
+      next.delete(eventId);
     } else {
-      next.add(messageId);
+      next.add(eventId);
     }
     set(internalExpandedIds$, next);
   });
 
   // Copy state with 2s auto-clear
   const internalCopiedId$ = state<string | null>(null);
-  const internalCopiedTimerId$ = state<number | null>(null);
+  const resetCopiedSignal$ = resetSignal();
 
-  const copiedMessageId$ = computed((get) => {
+  const copiedEventId$ = computed((get) => {
     return get(internalCopiedId$);
   });
 
-  const copyMessage$ = command(
+  const copyEvent$ = command(
     async (
       { get, set },
-      messageId: string,
+      eventId: string,
       payload: ChatClipboardPayload,
       signal: AbortSignal,
     ) => {
@@ -976,24 +754,30 @@ function createThreadUIState() {
       if (!ok) {
         return;
       }
-      const existingTimerId = get(internalCopiedTimerId$);
-      if (existingTimerId !== null) {
-        window.clearTimeout(existingTimerId);
-      }
-      set(internalCopiedId$, messageId);
-      const timerId = window.setTimeout(() => {
-        set(internalCopiedId$, null);
-        set(internalCopiedTimerId$, null);
-      }, 2000);
-      set(internalCopiedTimerId$, timerId);
+      const copiedSignal = set(resetCopiedSignal$, signal);
+      set(internalCopiedId$, eventId);
+      const clearCopiedId = () => {
+        if (get(internalCopiedId$) === eventId) {
+          set(internalCopiedId$, null);
+        }
+      };
+      copiedSignal.addEventListener("abort", clearCopiedId, { once: true });
+      timeout(
+        () => {
+          copiedSignal.removeEventListener("abort", clearCopiedId);
+          clearCopiedId();
+        },
+        2000,
+        { signal: copiedSignal },
+      );
     },
   );
 
   return {
     timelineExpandedIds$,
     toggleTimelineExpanded$,
-    copiedMessageId$,
-    copyMessage$,
+    copiedEventId$,
+    copyEvent$,
   };
 }
 
@@ -1004,11 +788,7 @@ function createThreadUIState() {
 /** Milliseconds to wait before persisting a draft change to the server. */
 const DRAFT_SYNC_DEBOUNCE_MS = 500;
 
-function createDraftSync(
-  threadId: string,
-  draft: DraftSignals,
-  dataSource: ChatThreadRemote,
-) {
+function createDraftSync(threadId: string, draft: DraftSignals) {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
   // A reset signal is used to abort any in-flight debounced sync when a new
@@ -1054,7 +834,7 @@ function createDraftSync(
       });
 
       await set(
-        dataSource.patchDraft$,
+        patchChatThreadDraft$,
         {
           threadId,
           ...payload,
@@ -1084,10 +864,9 @@ function createDraftSync(
         return;
       }
       await set(
-        dataSource.patchDraft$,
+        patchChatThreadDraft$,
         {
           threadId,
-          content: null,
           userMessage: null,
           attachments: null,
         },
@@ -1100,73 +879,71 @@ function createDraftSync(
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: paginated chat messages
+// Sub-factory: paginated chat events
 // ---------------------------------------------------------------------------
 
 /**
- * Merge new messages into existing groups.
+ * Merge new events into existing groups.
  *
- * Upsert semantics by `id`: if an incoming message's id already exists in
+ * Upsert semantics by `id`: if an incoming event's id already exists in
  * the groups, its fields are replaced in place — this lets an optimistic
  * user row reconcile with the server-pushed row without React unmounting
- * and remounting the message (the React key stays the same).
+ * and remounting the event (the React key stays the same).
  */
 function mergeIntoGroups(
-  groups: GroupedChatMessageGroup[],
-  messages: EnrichedChatMessage[],
-): GroupedChatMessageGroup[] {
+  groups: ChatEventGroup[],
+  events: EnrichedChatEvent[],
+): ChatEventGroup[] {
   const result = groups.map((g) => {
-    return { ...g, messages: [...g.messages] };
+    return { ...g, events: [...g.events] };
   });
 
   const positionById = new Map<string, { groupIdx: number; msgIdx: number }>();
   for (let gi = 0; gi < result.length; gi++) {
     const group = result[gi]!;
-    for (let mi = 0; mi < group.messages.length; mi++) {
-      positionById.set(group.messages[mi]!.id, { groupIdx: gi, msgIdx: mi });
+    for (let mi = 0; mi < group.events.length; mi++) {
+      positionById.set(group.events[mi]!.id, { groupIdx: gi, msgIdx: mi });
     }
   }
 
-  for (const msg of messages) {
-    const existing = positionById.get(msg.id);
+  for (const event of events) {
+    const existing = positionById.get(event.id);
     if (existing) {
-      result[existing.groupIdx]!.messages[existing.msgIdx] = msg;
+      result[existing.groupIdx]!.events[existing.msgIdx] = event;
       continue;
     }
 
     const last = result[result.length - 1];
-    if (last && shouldMergeIntoGroup(last, msg)) {
-      last.messages.push(msg);
-      positionById.set(msg.id, {
+    if (last && shouldMergeIntoGroup(last, event)) {
+      last.events.push(event);
+      positionById.set(event.id, {
         groupIdx: result.length - 1,
-        msgIdx: last.messages.length - 1,
+        msgIdx: last.events.length - 1,
       });
     } else {
-      const role = chatEventCompatibilityRole(msg.eventType);
+      const role = chatEventCompatibilityRole(event.eventType);
       result.push({
-        beginMessageId: msg.id,
+        beginEventId: event.id,
         role,
-        messages: [msg],
+        events: [event],
       });
-      positionById.set(msg.id, { groupIdx: result.length - 1, msgIdx: 0 });
+      positionById.set(event.id, { groupIdx: result.length - 1, msgIdx: 0 });
     }
   }
   return result;
 }
 
-function firstRunIdForGroup(
-  group: GroupedChatMessageGroup,
-): string | undefined {
-  return group.messages.find((message) => {
-    return message.runId !== undefined;
+function firstRunIdForGroup(group: ChatEventGroup): string | undefined {
+  return group.events.find((event) => {
+    return event.runId !== undefined;
   })?.runId;
 }
 
 function shouldMergeIntoGroup(
-  group: GroupedChatMessageGroup,
-  msg: EnrichedChatMessage,
+  group: ChatEventGroup,
+  event: EnrichedChatEvent,
 ): boolean {
-  if (group.role !== chatEventCompatibilityRole(msg.eventType)) {
+  if (group.role !== chatEventCompatibilityRole(event.eventType)) {
     return false;
   }
   if (group.role !== "assistant") {
@@ -1174,35 +951,35 @@ function shouldMergeIntoGroup(
   }
 
   const groupRunId = firstRunIdForGroup(group);
-  if (groupRunId === undefined || msg.runId === undefined) {
+  if (groupRunId === undefined || event.runId === undefined) {
     return true;
   }
-  return groupRunId === msg.runId;
+  return groupRunId === event.runId;
 }
 
-function orderMessagesByRunTurn(
-  messages: readonly EnrichedChatMessage[],
-): EnrichedChatMessage[] {
+function orderEventsByRunTurn(
+  events: readonly EnrichedChatEvent[],
+): EnrichedChatEvent[] {
   const items: {
     order: number;
-    messages: EnrichedChatMessage[];
+    events: EnrichedChatEvent[];
   }[] = [];
   const itemByRunId = new Map<string, (typeof items)[number]>();
 
-  for (const message of messages) {
-    const runId = message.runId;
+  for (const event of events) {
+    const runId = event.runId;
     if (runId === undefined) {
-      items.push({ order: items.length, messages: [message] });
+      items.push({ order: items.length, events: [event] });
       continue;
     }
 
     const existing = itemByRunId.get(runId);
     if (existing) {
-      existing.messages.push(message);
+      existing.events.push(event);
       continue;
     }
 
-    const item = { order: items.length, messages: [message] };
+    const item = { order: items.length, events: [event] };
     itemByRunId.set(runId, item);
     items.push(item);
   }
@@ -1212,30 +989,31 @@ function orderMessagesByRunTurn(
       return a.order - b.order;
     })
     .flatMap((item) => {
-      return item.messages;
+      return item.events;
     });
 }
 
-function groupMessagesForDisplay(
-  messages: EnrichedChatMessage[],
-): GroupedChatMessageGroup[] {
-  const activeMessages: EnrichedChatMessage[] = [];
-  const queuedMessages: EnrichedChatMessage[] = [];
-  const usageByRunId = foldLatestChatUsageByRunId(messages);
-  for (const msg of messages) {
-    if (isUsageMessage(msg)) {
+function groupEventsForDisplay(events: EnrichedChatEvent[]): ChatEventGroup[] {
+  const activeEvents: EnrichedChatEvent[] = [];
+  const queuedEvents: EnrichedChatEvent[] = [];
+  const usageByRunId = foldLatestChatUsageByRunId(events);
+  for (const event of events) {
+    if (isUsageEvent(event)) {
       continue;
     }
-    if (chatEventCompatibilityRole(msg.eventType) === "user" && msg.isQueued) {
-      queuedMessages.push(msg);
+    if (
+      chatEventCompatibilityRole(event.eventType) === "user" &&
+      event.isQueued
+    ) {
+      queuedEvents.push(event);
       continue;
     }
-    activeMessages.push(msg);
+    activeEvents.push(event);
   }
 
   const groups = [
-    ...mergeIntoGroups([], orderMessagesByRunTurn(activeMessages)),
-    ...mergeIntoGroups([], queuedMessages),
+    ...mergeIntoGroups([], orderEventsByRunTurn(activeEvents)),
+    ...mergeIntoGroups([], queuedEvents),
   ];
   return groups.map((group) => {
     if (group.role !== "assistant") {
@@ -1248,29 +1026,25 @@ function groupMessagesForDisplay(
 }
 
 function createRenderedChatGroups(
-  semanticMessages$: Computed<SemanticChatMessage[]>,
+  semanticEvents$: Computed<SemanticChatEvent[]>,
 ) {
-  const transcriptMessages$ =
-    createTranscriptMessagesComputed(semanticMessages$);
+  const transcriptEvents$ = createTranscriptEventsComputed(semanticEvents$);
 
   const allRenderedChatGroups$ = computed(
-    async (get): Promise<GroupedChatMessageGroup[]> => {
-      const messages = await get(transcriptMessages$);
-      return groupMessagesForDisplay(messages);
+    async (get): Promise<ChatEventGroup[]> => {
+      const events = await get(transcriptEvents$);
+      return groupEventsForDisplay(events);
     },
   );
-  const sidebarAutoOpenCandidate$ = createThreadSidebarAutoOpenCandidate(
-    allRenderedChatGroups$,
-  );
-
-  const messageImageGroups$ = computed(
-    async (get): Promise<MessageImageGroupProjection[]> => {
+  const eventImageGroups$ = computed(
+    async (get): Promise<EventImageGroupProjection[]> => {
       return (await get(allRenderedChatGroups$)).map((group) => {
         return {
-          messages: group.messages.map((message) => {
+          role: group.role,
+          events: group.events.map((event) => {
             return {
-              attachFiles: chatEventAttachFiles(message),
-              blocks: message.blocks,
+              attachFiles: chatEventAttachFiles(event),
+              blocks: event.blocks,
             };
           }),
         };
@@ -1280,17 +1054,14 @@ function createRenderedChatGroups(
 
   return {
     allRenderedChatGroups$,
-    sidebarAutoOpenCandidate$,
-    messageImageGroups$,
+    eventImageGroups$,
   };
 }
 
-interface RegisteredChatMessage {
-  readonly message: ChatEvent;
+interface RegisteredChatEvent {
+  readonly event: ChatEvent;
   readonly blocks: BodyRenderBlock[];
 }
-
-type PersistentChatMessages$ = State<RegisteredChatMessage[]>;
 
 type BodyBlocksRenderer = (
   blocks: readonly ParsedBodyBlock[],
@@ -1318,35 +1089,21 @@ function compareCreatedAt(left: string, right: string): number {
   return leftTime - rightTime;
 }
 
-function mergeRegisteredMessages(
-  messageSets: readonly (readonly RegisteredChatMessage[])[],
-): RegisteredChatMessage[] {
-  const byId = new Map<string, RegisteredChatMessage>();
-  for (const entries of messageSets) {
-    for (const entry of entries) {
-      byId.set(entry.message.id, entry);
-    }
-  }
-  return Array.from(byId.values()).sort((left, right) => {
-    return left.message.seqId - right.message.seqId;
-  });
-}
-
-function skipsMessageBodyRendering(message: ChatEvent): boolean {
+function skipsEventBodyRendering(event: ChatEvent): boolean {
   return (
-    isInterruptControlMessage(message) ||
-    isRecallControlMessage(message) ||
-    isQueueMarkerMessage(message) ||
-    isGoalMarkerMessage(message) ||
-    isAutomationQueueStateMessage(message)
+    isInterruptControlEvent(event) ||
+    isRecallControlEvent(event) ||
+    isQueueMarkerEvent(event) ||
+    isGoalQueueEvent(event) ||
+    isGoalMarkerEvent(event)
   );
 }
 
-function registerMessageAttachments(
-  message: ChatMessage,
+function registerEventAttachments(
+  event: ChatEvent,
   artifactCardSignals: ArtifactCardSignalsRegistry,
 ): void {
-  for (const attachment of chatEventAttachFiles(message) ?? []) {
+  for (const attachment of chatEventAttachFiles(event) ?? []) {
     artifactCardSignals.register({
       filename: attachment.filename,
       url: attachment.url,
@@ -1355,146 +1112,108 @@ function registerMessageAttachments(
   }
 }
 
-function registerChatMessage(
-  message: ChatEvent,
-  registerBodyBlocks: BodyBlocksRenderer,
-  artifactCardSignals: ArtifactCardSignalsRegistry,
-): RegisteredChatMessage {
-  registerMessageAttachments(message, artifactCardSignals);
-  const blocks = skipsMessageBodyRendering(message)
-    ? []
-    : registerBodyBlocks(parseMessageBodyBlocks(message));
-  return { message, blocks };
+function registerEventAgentReferences(
+  event: ChatEvent,
+  agentReferenceSignals: AgentReferenceSignalsRegistry,
+): void {
+  if (!isInputChatEvent(event)) {
+    return;
+  }
+  for (const part of event.userMessage.parts) {
+    if (part.type === "agent") {
+      agentReferenceSignals.register(part.agentId);
+      continue;
+    }
+    if (part.type === "source" && part.kind === "agent") {
+      agentReferenceSignals.register(part.agentId);
+      continue;
+    }
+    if (part.type !== "feedback") {
+      continue;
+    }
+    for (const notePart of part.note) {
+      if (notePart.type === "agent") {
+        agentReferenceSignals.register(notePart.agentId);
+      }
+    }
+  }
 }
 
-function createMergePersistentMessages(
+function registerChatEvent(
   threadId: string,
-  persistentMessages$: PersistentChatMessages$,
+  event: ChatEvent,
   registerBodyBlocks: BodyBlocksRenderer,
   artifactCardSignals: ArtifactCardSignalsRegistry,
-) {
-  return command(({ get, set }, msgs: ChatEvent[]): void => {
-    if (msgs.length === 0) {
-      return;
-    }
-    const reportedCompletedRunIds = new Set(
-      completedRunIdsFromMessages(
-        get(persistentMessages$).map((entry) => {
-          return entry.message;
-        }),
-      ),
-    );
-    const newlyCompletedRunIds = completedRunIdsFromMessages(msgs).filter(
-      (runId) => {
-        return !reportedCompletedRunIds.has(runId);
-      },
-    );
-    for (const _ of newlyCompletedRunIds) {
-      captureTaskCompletedSuccessfully();
-    }
-    const registeredMessages = msgs.map((message) => {
-      return registerChatMessage(
-        message,
-        registerBodyBlocks,
-        artifactCardSignals,
-      );
-    });
-    set(persistentMessages$, (prev) => {
-      return mergeRegisteredMessages([prev, registeredMessages]);
-    });
-    set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
-  });
+  agentReferenceSignals: AgentReferenceSignalsRegistry,
+): RegisteredChatEvent {
+  registerEventAttachments(event, artifactCardSignals);
+  registerEventAgentReferences(event, agentReferenceSignals);
+  const blocks = skipsEventBodyRendering(event)
+    ? []
+    : registerBodyBlocks(parseChatEventBodyBlocks(event, threadId));
+  return { event, blocks };
 }
 
-interface ServerChatMessageProjectionEntry {
-  message: ChatEvent;
+interface ServerChatEventProjectionEntry {
+  event: PersistedChatEvent;
   source: "server";
   blocks: BodyRenderBlock[];
   optimisticUserMessageAssociation?: never;
 }
 
-interface OptimisticChatMessageProjectionEntry {
-  message: OptimisticChatMessageEntry["message"];
+interface OptimisticChatEventProjectionEntry {
+  event: OptimisticChatEvent;
   source: "optimistic";
   blocks: BodyRenderBlock[];
-  optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
+  optimisticUserMessageAssociation?: OptimisticUserMessageAssociation;
 }
 
-type ChatMessageProjectionEntry =
-  | ServerChatMessageProjectionEntry
-  | OptimisticChatMessageProjectionEntry;
+type ChatEventProjectionEntry =
+  | ServerChatEventProjectionEntry
+  | OptimisticChatEventProjectionEntry;
 
-function projectRawMessages({
-  persistentMessages,
-  optimisticEntries,
-  resolveBodyBlocks,
-}: {
-  persistentMessages: readonly RegisteredChatMessage[];
-  optimisticEntries: readonly OptimisticChatMessageEntry[];
-  resolveBodyBlocks: BodyBlocksRenderer;
-}): ChatMessageProjectionEntry[] {
-  const serverIds = new Set(
-    persistentMessages.map((entry) => {
-      return entry.message.id;
-    }),
-  );
-  const optimistic = optimisticEntries.filter((entry) => {
-    return !serverIds.has(entry.message.id);
-  });
-  // Optimistic messages do not have a server sequence yet. Keep their array
-  // order and append them after every persistent message.
-  return [
-    ...persistentMessages.map((entry) => {
-      return { ...entry, source: "server" as const };
-    }),
-    ...optimistic.map((entry) => {
+function isPersistedChatEvent(event: ChatEvent): event is PersistedChatEvent {
+  return event.seqId !== undefined;
+}
+
+function createRawEventsComputed(
+  registeredEvents$: State<RegisteredChatEvent[]>,
+): Computed<ChatEventProjectionEntry[]> {
+  return computed((get): ChatEventProjectionEntry[] => {
+    return get(registeredEvents$).map((entry) => {
+      const { event } = entry;
+      if (isPersistedChatEvent(event)) {
+        return { ...entry, event, source: "server" };
+      }
       return {
-        message: entry.message,
-        blocks: resolveBodyBlocks(entry.parsedBodyBlocks),
-        source: "optimistic" as const,
+        ...entry,
+        event,
+        source: "optimistic",
         optimisticUserMessageAssociation:
-          entry.optimisticUserMessageAssociation,
+          event.optimisticUserMessageAssociation,
       };
-    }),
-  ];
-}
-
-function createRawMessagesComputed({
-  persistentMessages$,
-  optimisticMessages$,
-  resolveBodyBlocks,
-}: {
-  persistentMessages$: PersistentChatMessages$;
-  optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
-  resolveBodyBlocks: BodyBlocksRenderer;
-}): Computed<ChatMessageProjectionEntry[]> {
-  return computed((get): ChatMessageProjectionEntry[] => {
-    return projectRawMessages({
-      persistentMessages: get(persistentMessages$),
-      optimisticEntries: get(optimisticMessages$),
-      resolveBodyBlocks,
     });
   });
 }
 
-function createTranscriptMessagesComputed(
-  semanticMessages$: Computed<SemanticChatMessage[]>,
-): Computed<Promise<EnrichedChatMessage[]>> {
-  return computed((get): Promise<EnrichedChatMessage[]> => {
+function createTranscriptEventsComputed(
+  semanticEvents$: Computed<SemanticChatEvent[]>,
+): Computed<Promise<EnrichedChatEvent[]>> {
+  return computed((get): Promise<EnrichedChatEvent[]> => {
     return Promise.resolve(
-      get(semanticMessages$).map((entry) => {
-        const { message, isQueued, isOptimisticRun } = entry;
-        const role = chatEventCompatibilityRole(message.eventType);
+      get(semanticEvents$).map((entry) => {
+        const { event, isQueued, isOptimisticRun } = entry;
+        const role = chatEventCompatibilityRole(event.eventType);
         if (role !== "assistant") {
           return {
-            ...message,
+            ...event,
             blocks: entry.blocks,
             isQueued,
             isOptimisticRun,
           };
         }
         return {
-          ...message,
+          ...event,
           blocks: entry.blocks,
           isQueued,
           isOptimisticRun: false,
@@ -1504,277 +1223,82 @@ function createTranscriptMessagesComputed(
   });
 }
 
-interface SemanticChatMessage {
-  readonly message: ChatMessage;
+interface SemanticChatEvent extends SemanticChatEventState {
   readonly blocks: BodyRenderBlock[];
-  readonly isQueued: boolean;
-  readonly isOptimisticRun: boolean;
 }
 
-interface SemanticChatMessageGroup {
-  readonly role: "user" | "assistant";
-  readonly messages: SemanticChatMessage[];
-}
+type SemanticChatGroups = GenericSemanticChatGroups<SemanticChatEvent>;
+type SemanticChatEventGroup = SemanticChatGroups["activeGroups"][number];
 
-interface SemanticChatGroups {
-  readonly activeGroups: SemanticChatMessageGroup[];
-  readonly allGroups: SemanticChatMessageGroup[];
-}
-
-function semanticTranscriptMessagesFromRaw(
-  raw: readonly ChatMessageProjectionEntry[],
-): SemanticChatMessage[] {
-  const interruptedRunIds = new Set(
-    raw.flatMap((entry) => {
-      const { message } = entry;
-      return isInterruptControlMessage(message) && message.interruptsRunId
-        ? [message.interruptsRunId]
-        : [];
+function semanticTranscriptEventsFromRaw(
+  raw: readonly ChatEventProjectionEntry[],
+  chatEvents: readonly ChatEvent[],
+): SemanticChatEvent[] {
+  const blocksByEventId = new Map(
+    raw.map((entry) => {
+      return [entry.event.id, entry.blocks] as const;
     }),
   );
-  const recalledIds = new Set(
-    raw.flatMap((entry) => {
-      const { message } = entry;
-      return isRecallControlMessage(message) && message.revokesEventId
-        ? [message.revokesEventId]
-        : [];
-    }),
-  );
-  const replacedIds = new Set(
-    raw.flatMap((entry) => {
-      const { message } = entry;
-      return !isRecallControlMessage(message) && message.revokesEventId
-        ? [message.revokesEventId]
-        : [];
-    }),
-  );
-
-  return raw.flatMap((entry): SemanticChatMessage[] => {
-    const { message } = entry;
-    if (
-      isRecallControlMessage(message) ||
-      isQueueMarkerMessage(message) ||
-      isGoalMarkerMessage(message) ||
-      isAutomationQueueStateMessage(message) ||
-      isInterruptedAssistantCancellation(message, interruptedRunIds) ||
-      recalledIds.has(message.id) ||
-      replacedIds.has(message.id)
-    ) {
-      return [];
-    }
-    if (isInterruptControlMessage(message) && message.interruptsRunId) {
-      return [
-        {
-          message: createInterruptedAssistantProjection(
-            message,
-            message.interruptsRunId,
-          ),
-          blocks: [],
-          isQueued: false,
-          isOptimisticRun: false,
-        },
-      ];
-    }
-
-    const isUnassociatedUser =
-      chatEventCompatibilityRole(message.eventType) === "user" &&
-      message.runId === undefined;
-    const optimisticAssociation = entry.optimisticUserMessageAssociation;
-    const isOptimisticRun =
-      isUnassociatedUser && optimisticAssociation === "run";
-    const isQueued =
-      isUnassociatedUser &&
-      optimisticAssociation !== "run" &&
-      (message.eventType === "input.prompt" ||
-        message.eventType === "input.automation");
-    return [{ message, blocks: entry.blocks, isQueued, isOptimisticRun }];
+  return semanticChatEventsFromChatEvents(chatEvents).map((entry) => {
+    return {
+      ...entry,
+      blocks: blocksByEventId.get(entry.event.id) ?? [],
+    };
   });
 }
 
-function orderSemanticMessagesByRunTurn(
-  messages: readonly SemanticChatMessage[],
-): SemanticChatMessage[] {
-  const items: {
-    order: number;
-    messages: SemanticChatMessage[];
-  }[] = [];
-  const itemByRunId = new Map<string, (typeof items)[number]>();
-
-  for (const semanticMessage of messages) {
-    const runId = semanticMessage.message.runId;
-    if (runId === undefined) {
-      items.push({ order: items.length, messages: [semanticMessage] });
-      continue;
-    }
-    const existing = itemByRunId.get(runId);
-    if (existing) {
-      existing.messages.push(semanticMessage);
-      continue;
-    }
-    const item = { order: items.length, messages: [semanticMessage] };
-    itemByRunId.set(runId, item);
-    items.push(item);
-  }
-
-  return items
-    .sort((left, right) => {
-      return left.order - right.order;
-    })
-    .flatMap((item) => {
-      return item.messages;
-    });
-}
-
-function shouldMergeSemanticMessage(
-  group: SemanticChatMessageGroup,
-  semanticMessage: SemanticChatMessage,
-): boolean {
-  if (
-    group.role !== chatEventCompatibilityRole(semanticMessage.message.eventType)
-  ) {
-    return false;
-  }
-  if (group.role !== "assistant") {
-    return true;
-  }
-  const groupRunId = group.messages.find((entry) => {
-    return entry.message.runId !== undefined;
-  })?.message.runId;
-  const messageRunId = semanticMessage.message.runId;
+function isRenderableAssistantSemanticEvent(entry: SemanticChatEvent): boolean {
+  const { event } = entry;
   return (
-    groupRunId === undefined ||
-    messageRunId === undefined ||
-    groupRunId === messageRunId
+    chatEventCompatibilityRole(event.eventType) === "assistant" &&
+    (Boolean(event.content) || ("error" in event && Boolean(event.error)))
   );
 }
 
-function groupSemanticMessages(
-  messages: readonly SemanticChatMessage[],
-): SemanticChatMessageGroup[] {
-  const groups: SemanticChatMessageGroup[] = [];
-  for (const semanticMessage of messages) {
-    const lastGroup = groups.at(-1);
-    if (lastGroup && shouldMergeSemanticMessage(lastGroup, semanticMessage)) {
-      lastGroup.messages.push(semanticMessage);
-      continue;
-    }
-    groups.push({
-      role: chatEventCompatibilityRole(semanticMessage.message.eventType),
-      messages: [semanticMessage],
-    });
-  }
-  return groups;
-}
-
-function groupSemanticChatMessages(
-  semanticMessages: readonly SemanticChatMessage[],
-): SemanticChatGroups {
-  const activeMessages: SemanticChatMessage[] = [];
-  const queuedMessages: SemanticChatMessage[] = [];
-  for (const semanticMessage of semanticMessages) {
-    if (isUsageMessage(semanticMessage.message)) {
-      continue;
-    }
-    if (
-      chatEventCompatibilityRole(semanticMessage.message.eventType) ===
-        "user" &&
-      semanticMessage.isQueued
-    ) {
-      queuedMessages.push(semanticMessage);
-      continue;
-    }
-    activeMessages.push(semanticMessage);
-  }
-  const activeGroups = groupSemanticMessages(
-    orderSemanticMessagesByRunTurn(activeMessages),
+function isThinkingMarkerSemanticEvent(entry: SemanticChatEvent): boolean {
+  const { event } = entry;
+  return (
+    event.eventType === "output.thinking" &&
+    event.content === null &&
+    event.thinking.trim().length > 0 &&
+    event.runId !== undefined
   );
-  return {
-    activeGroups,
-    allGroups: [...activeGroups, ...groupSemanticMessages(queuedMessages)],
-  };
 }
 
-function queuedMessagesFromSemanticMessages(
-  semanticMessages: readonly SemanticChatMessage[],
-): ChatMessage[] {
-  return semanticMessages.flatMap((entry) => {
-    const { message } = entry;
-    return chatEventCompatibilityRole(message.eventType) === "user" &&
-      entry.isQueued
-      ? [message]
-      : [];
+function lastRunThinkingEvent(
+  groups: readonly SemanticChatEventGroup[],
+): SemanticChatEvent | undefined {
+  const events = groups.flatMap((group) => {
+    return group.events;
   });
-}
-
-function queuedMessagesFromRaw(
-  raw: readonly ChatMessageProjectionEntry[],
-): ChatMessage[] {
-  return queuedMessagesFromSemanticMessages(
-    semanticTranscriptMessagesFromRaw(raw),
-  );
-}
-
-function lastAssistantCancelledFromGroups(groups: SemanticChatGroups): boolean {
-  const lastGroup = groups.allGroups.at(-1);
-  const lastMessage = lastGroup?.messages.at(-1)?.message;
-  return lastMessage ? isCancelledRunEvent(lastMessage) : false;
-}
-
-function isRenderableAssistantSemanticMessage(
-  entry: SemanticChatMessage,
-): boolean {
-  const { message } = entry;
-  return (
-    chatEventCompatibilityRole(message.eventType) === "assistant" &&
-    (Boolean(message.content) || ("error" in message && Boolean(message.error)))
-  );
-}
-
-function isThinkingMarkerSemanticMessage(entry: SemanticChatMessage): boolean {
-  const { message } = entry;
-  return (
-    message.eventType === "output.thinking" &&
-    message.content === null &&
-    message.thinking.trim().length > 0 &&
-    message.runId !== undefined
-  );
-}
-
-function lastRunThinkingMessage(
-  groups: readonly SemanticChatMessageGroup[],
-): SemanticChatMessage | undefined {
-  const messages = groups.flatMap((group) => {
-    return group.messages;
-  });
-  const lastMessage = messages.at(-1);
-  if (!lastMessage || !isThinkingMarkerSemanticMessage(lastMessage)) {
+  const lastEvent = events.at(-1);
+  if (!lastEvent || !isThinkingMarkerSemanticEvent(lastEvent)) {
     return undefined;
   }
-  const runId = lastMessage.message.runId;
-  const runHasAssistantText = messages.some((entry) => {
+  const runId = lastEvent.event.runId;
+  const runHasAssistantText = events.some((entry) => {
     return (
-      entry.message.runId === runId &&
-      isRenderableAssistantSemanticMessage(entry)
+      entry.event.runId === runId && isRenderableAssistantSemanticEvent(entry)
     );
   });
-  return runHasAssistantText ? undefined : lastMessage;
+  return runHasAssistantText ? undefined : lastEvent;
 }
 
 interface ThinkingIndicatorProjection {
   readonly mode: ThinkingIndicatorMode;
-  readonly thinkingMessageId: string | null;
+  readonly thinkingEventId: string | null;
   readonly thinkingText: string | null;
 }
 
 function assistantGroupOnlyHasThinking(
-  group: SemanticChatMessageGroup,
-  thinkingMessage: SemanticChatMessage | undefined,
+  group: SemanticChatEventGroup,
+  thinkingEvent: SemanticChatEvent | undefined,
 ): boolean {
-  if (group.role !== "assistant" || thinkingMessage === undefined) {
+  if (group.role !== "assistant" || thinkingEvent === undefined) {
     return false;
   }
-  return !group.messages.some((entry) => {
-    return isRenderableAssistantSemanticMessage(entry);
+  return !group.events.some((entry) => {
+    return isRenderableAssistantSemanticEvent(entry);
   });
 }
 
@@ -1824,19 +1348,19 @@ function thinkingIndicatorProjectionFromGroups(
   const { activeGroups } = groups;
   const lastGroup = activeGroups.at(-1);
   if (!lastGroup) {
-    return { mode: null, thinkingMessageId: null, thinkingText: null };
+    return { mode: null, thinkingEventId: null, thinkingText: null };
   }
   const lastIsAssistant = lastGroup.role === "assistant";
-  const lastAssistantMessage = lastIsAssistant
-    ? lastGroup.messages.at(-1)?.message
+  const lastAssistantEvent = lastIsAssistant
+    ? lastGroup.events.at(-1)?.event
     : undefined;
-  const rawThinkingMessage = lastRunThinkingMessage(activeGroups);
+  const rawThinkingEvent = lastRunThinkingEvent(activeGroups);
   const lastAssistantOnlyThinking = assistantGroupOnlyHasThinking(
     lastGroup,
-    rawThinkingMessage,
+    rawThinkingEvent,
   );
-  const lastAssistantCancelled = lastAssistantMessage
-    ? isCancelledRunEvent(lastAssistantMessage)
+  const lastAssistantCancelled = lastAssistantEvent
+    ? isCancelledRunEvent(lastAssistantEvent)
     : false;
   const queued = runState === "queued";
   const running = runState !== null && !lastAssistantCancelled;
@@ -1849,7 +1373,7 @@ function thinkingIndicatorProjectionFromGroups(
       running,
     })
   ) {
-    return { mode: null, thinkingMessageId: null, thinkingText: null };
+    return { mode: null, thinkingEventId: null, thinkingText: null };
   }
 
   const mode = resolveThinkingIndicatorMode({
@@ -1861,14 +1385,12 @@ function thinkingIndicatorProjectionFromGroups(
   const thinkingText =
     !queued &&
     running &&
-    rawThinkingMessage?.message.eventType === "output.thinking"
-      ? rawThinkingMessage.message.thinking?.trim() || null
+    rawThinkingEvent?.event.eventType === "output.thinking"
+      ? rawThinkingEvent.event.thinking?.trim() || null
       : null;
   return {
     mode,
-    thinkingMessageId: thinkingText
-      ? (rawThinkingMessage?.message.id ?? null)
-      : null,
+    thinkingEventId: thinkingText ? (rawThinkingEvent?.event.id ?? null) : null,
     thinkingText,
   };
 }
@@ -1890,90 +1412,54 @@ function latestRecommendedFollowupsFromGroups(
       return null;
     }
     for (
-      let messageIndex = group.messages.length - 1;
-      messageIndex >= 0;
-      messageIndex--
+      let eventIndex = group.events.length - 1;
+      eventIndex >= 0;
+      eventIndex--
     ) {
-      const message = group.messages[messageIndex]?.message;
+      const event = group.events[eventIndex]?.event;
       if (
-        !message ||
-        chatEventCompatibilityRole(message.eventType) !== "assistant"
+        !event ||
+        chatEventCompatibilityRole(event.eventType) !== "assistant"
       ) {
         continue;
       }
-      if (message.content?.trim()) {
+      if (event.content?.trim()) {
         return null;
       }
-      if (message.eventType !== "output.followups") {
+      if (event.eventType !== "output.followups") {
         continue;
       }
-      const followups = message.recommendedFollowups;
+      const followups = event.recommendedFollowups;
       if (followups.length > 0) {
-        return { messageId: message.id, followups };
+        return { eventId: event.id, followups };
       }
     }
   }
   return null;
 }
 
-function createMessageSemanticSignals(
-  semanticMessages$: Computed<SemanticChatMessage[]>,
-  messageRunIndicatorState$: Computed<Promise<RunIndicatorState>>,
+function createEventSemanticSignals(
+  semanticEvents$: Computed<SemanticChatEvent[]>,
+  eventRunIndicatorState$: Computed<Promise<RunIndicatorState>>,
 ) {
   const semanticGroups$ = computed((get): SemanticChatGroups => {
-    return groupSemanticChatMessages(get(semanticMessages$));
-  });
-  const queuedMessages$ = computed((get): ChatMessage[] => {
-    return queuedMessagesFromSemanticMessages(get(semanticMessages$));
+    return groupSemanticChatEvents(get(semanticEvents$));
   });
   const thinkingIndicatorProjection$ = computed(
     async (get): Promise<ThinkingIndicatorProjection> => {
-      const runState = await get(messageRunIndicatorState$);
+      const runState = await get(eventRunIndicatorState$);
       return thinkingIndicatorProjectionFromGroups(
         get(semanticGroups$),
         runState,
       );
     },
   );
-  const hasMessages$ = computed((get): Promise<boolean> => {
+  const hasEvents$ = computed((get): Promise<boolean> => {
     return Promise.resolve(
-      get(semanticMessages$).some((entry) => {
-        return !isUsageMessage(entry.message);
+      get(semanticEvents$).some((entry) => {
+        return !isUsageEvent(entry.event);
       }),
     );
-  });
-  const hasQueuedMessages$ = computed((get): Promise<boolean> => {
-    return Promise.resolve(get(queuedMessages$).length > 0);
-  });
-  const queuedMessageItems$ = computed(
-    (get): Promise<readonly QueuedChatMessageItem[]> => {
-      return Promise.resolve(
-        get(queuedMessages$).map((message) => {
-          const text =
-            message.eventType === "input.automation"
-              ? message.triggerBrief
-              : message.eventType === "input.prompt" ||
-                  message.eventType === "input.rejected"
-                ? messageDocumentToDisplayText(message.userMessage)
-                : null;
-          return { id: message.id, text: (text ?? "").trim() };
-        }),
-      );
-    },
-  );
-  const emptyQueuedMessageItems = Promise.resolve(
-    [] as readonly QueuedChatMessageItem[],
-  );
-  const emptyQueuedMessageItems$ = computed(() => {
-    return emptyQueuedMessageItems;
-  });
-  const lastAssistantCancelled$ = computed((get): Promise<boolean> => {
-    return Promise.resolve(
-      lastAssistantCancelledFromGroups(get(semanticGroups$)),
-    );
-  });
-  const allFinished$ = computed(async (get): Promise<boolean> => {
-    return (await get(messageRunIndicatorState$)) === null;
   });
   const thinkingIndicatorMode$ = computed(
     async (get): Promise<ThinkingIndicatorMode> => {
@@ -1983,8 +1469,8 @@ function createMessageSemanticSignals(
   const thinkingText$ = computed(async (get): Promise<string | null> => {
     return (await get(thinkingIndicatorProjection$)).thinkingText;
   });
-  const thinkingMessageId$ = computed(async (get): Promise<string | null> => {
-    return (await get(thinkingIndicatorProjection$)).thinkingMessageId;
+  const thinkingEventId$ = computed(async (get): Promise<string | null> => {
+    return (await get(thinkingIndicatorProjection$)).thinkingEventId;
   });
   const recommendedFollowupSource$ = computed(
     (get): Promise<RecommendedFollowupSource | null> => {
@@ -1994,126 +1480,93 @@ function createMessageSemanticSignals(
     },
   );
   const donePhrase$ = computed((get): Promise<string> => {
-    const lastMessage = get(semanticGroups$)
+    get(locale$);
+    const lastEvent = get(semanticGroups$)
       .allGroups.at(-1)
-      ?.messages.at(-1)?.message;
-    return Promise.resolve(formatDonePhrase(lastMessage));
+      ?.events.at(-1)?.event;
+    return Promise.resolve(formatDonePhrase(lastEvent));
   });
 
   return {
-    hasMessages$,
-    hasQueuedMessages$,
-    queuedMessageItems$,
-    emptyQueuedMessageItems$,
-    lastAssistantCancelled$,
-    allFinished$,
+    hasEvents$,
     thinkingIndicatorMode$,
-    thinkingMessageId$,
+    thinkingEventId$,
     thinkingText$,
     recommendedFollowupSource$,
     donePhrase$,
   };
 }
 
-function createMessageSyncSignals(hasMessages$: Computed<Promise<boolean>>) {
-  const initialSyncStarted = Promise.withResolvers<void>();
-  const internalMessageSyncPromise$ = state<Promise<void> | null>(null);
-  const hasNewMessages$ = computed(async (get): Promise<boolean> => {
-    await initialSyncStarted.promise;
-    await get(internalMessageSyncPromise$);
-    return await get(hasMessages$);
-  });
-  const trackMessageSync$ = command(({ set }, promise: Promise<void>): void => {
-    set(internalMessageSyncPromise$, promise);
-    initialSyncStarted.resolve(undefined);
-  });
-  const settleMessageSync$ = command(({ set }): Promise<void> => {
-    const promise = Promise.resolve();
-    set(trackMessageSync$, promise);
-    return promise;
-  });
-  return { hasNewMessages$, trackMessageSync$, settleMessageSync$ };
-}
-
-function createTrackedMessageSyncCommand(
-  runSyncRemoteMessages$: Command<Promise<void>, [AbortSignal]>,
-  trackMessageSync$: Command<void, [Promise<void>]>,
-): Command<Promise<void>, [AbortSignal]> {
-  return command(({ set }, signal: AbortSignal): Promise<void> => {
-    const promise = set(runSyncRemoteMessages$, signal);
-    set(trackMessageSync$, promise);
-    return promise;
-  });
-}
-
-function isServerProjectionEntry(entry: ChatMessageProjectionEntry): boolean {
+function isServerProjectionEntry(entry: ChatEventProjectionEntry): boolean {
   return entry.source === "server";
 }
 
 function latestRunFinishCreatedAtFromRaw(
-  raw: readonly ChatMessageProjectionEntry[],
+  raw: readonly ChatEventProjectionEntry[],
 ): string | undefined {
   for (let index = raw.length - 1; index >= 0; index--) {
     const entry = raw[index]!;
     if (!isServerProjectionEntry(entry)) {
       continue;
     }
-    const { message } = entry;
-    if (isChatRunTerminalEventType(message.eventType)) {
-      return message.createdAt;
+    const { event } = entry;
+    if (isChatRunTerminalEventType(event.eventType)) {
+      return event.createdAt;
     }
   }
   return undefined;
 }
 
 function latestAssistantTextCreatedAtFromRaw(
-  raw: readonly ChatMessageProjectionEntry[],
+  raw: readonly ChatEventProjectionEntry[],
 ): string | undefined {
-  const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
+  const revokedEventIds = revokedChatEventIds(
+    raw.map((entry) => {
+      return entry.event;
+    }),
+  );
   const interruptedRunIds = new Set(
     raw.flatMap((entry) => {
-      const { message } = entry;
-      return isInterruptControlMessage(message) && message.interruptsRunId
-        ? [message.interruptsRunId]
+      const { event } = entry;
+      return isInterruptControlEvent(event) && event.interruptsRunId
+        ? [event.interruptsRunId]
         : [];
     }),
   );
   for (let index = raw.length - 1; index >= 0; index--) {
-    const message = raw[index]!.message;
-    if (revokedMessageIds.has(message.id)) {
+    const event = raw[index]!.event;
+    if (revokedEventIds.has(event.id)) {
       continue;
     }
-    if (isInterruptControlMessage(message)) {
-      return message.createdAt;
+    if (isInterruptControlEvent(event)) {
+      return event.createdAt;
     }
     if (
-      chatEventCompatibilityRole(message.eventType) === "assistant" &&
-      !isUsageMessage(message) &&
-      !isQueueMarkerMessage(message) &&
-      !isGoalMarkerMessage(message) &&
-      !isInterruptedAssistantCancellation(message, interruptedRunIds) &&
-      (message.content?.trim().length ?? 0) > 0
+      chatEventCompatibilityRole(event.eventType) === "assistant" &&
+      !isUsageEvent(event) &&
+      !isQueueMarkerEvent(event) &&
+      !isGoalMarkerEvent(event) &&
+      !isInterruptedAssistantCancellation(event, interruptedRunIds) &&
+      (event.content?.trim().length ?? 0) > 0
     ) {
-      return message.createdAt;
+      return event.createdAt;
     }
   }
   return undefined;
 }
 
-function createLatestMessageSignals(
-  rawMessages$: Computed<ChatMessageProjectionEntry[]>,
+function createLatestEventSignals(
+  rawEvents$: Computed<ChatEventProjectionEntry[]>,
 ) {
   const latestRunFinishCreatedAt$ = computed(
     (get): Promise<string | undefined> => {
-      return Promise.resolve(
-        latestRunFinishCreatedAtFromRaw(get(rawMessages$)),
-      );
+      return Promise.resolve(latestRunFinishCreatedAtFromRaw(get(rawEvents$)));
     },
   );
   const latestAssistantTextCreatedAt$ = computed(
     (get): Promise<string | undefined> => {
       return Promise.resolve(
-        latestAssistantTextCreatedAtFromRaw(get(rawMessages$)),
+        latestAssistantTextCreatedAtFromRaw(get(rawEvents$)),
       );
     },
   );
@@ -2123,186 +1576,29 @@ function createLatestMessageSignals(
   };
 }
 
-const HISTORY_BACKFILL_MERGE_BATCH_SIZE = 300;
-
-function createSyncRemoteMessagesCommand({
-  threadId,
-  persistentMessages$,
-  hasReachedOldestMessage$,
-  hasServerConfirmedOldestMessage$,
-  mergePersistentMessages$,
-  dataSource,
-}: {
-  threadId: string;
-  persistentMessages$: PersistentChatMessages$;
-  hasReachedOldestMessage$: Computed<boolean>;
-  hasServerConfirmedOldestMessage$: State<boolean>;
-  mergePersistentMessages$: Command<void, [ChatEvent[]]>;
-  dataSource: ChatThreadRemote;
-}): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    const persistentMessages = get(persistentMessages$);
-    const accumulatedMessages: ChatEvent[] = [];
-    let mergedMessageCount = 0;
-    const latestPersistentMessage = persistentMessages.at(-1);
-    let sinceSeqId = latestPersistentMessage?.message.seqId;
-    const startedWithoutCursor = latestPersistentMessage === undefined;
-    let initialPageOldestMessage: ChatEvent | undefined;
-    let initialHasHistoryBefore: boolean | undefined;
-
-    async function syncMessagesAfter(): Promise<void> {
-      const requestedSinceSeqId = sinceSeqId;
-      const isInitialPage = requestedSinceSeqId === undefined;
-      const result = await set(
-        dataSource.listEventsAfter$,
-        { threadId, sinceSeqId: requestedSinceSeqId },
-        signal,
-      );
-      signal.throwIfAborted();
-      L.debug("syncRemoteMessages$ listEventsAfter result", {
-        threadId,
-        sinceSeqId: requestedSinceSeqId ?? null,
-        gotCount: result.events.length,
-      });
-
-      if (isInitialPage) {
-        initialHasHistoryBefore = result.hasHistoryBefore;
-      }
-
-      if (result.events.length === 0) {
-        return;
-      }
-
-      await set(writeIndexedDbChatEvents$, threadId, result.events, signal);
-      signal.throwIfAborted();
-      if (isInitialPage) {
-        initialPageOldestMessage = result.events[0]!;
-        set(mergePersistentMessages$, result.events);
-      } else {
-        accumulatedMessages.push(...result.events);
-      }
-      sinceSeqId = result.events.at(-1)!.seqId;
-
-      if (
-        requestedSinceSeqId !== undefined &&
-        result.events.length < CHAT_MESSAGES_PAGE_LIMIT
-      ) {
-        return;
-      }
-      return syncMessagesAfter();
-    }
-    await syncMessagesAfter();
-    signal.throwIfAborted();
-
-    if (!get(hasReachedOldestMessage$)) {
-      const oldestMessage =
-        persistentMessages[0]?.message ??
-        initialPageOldestMessage ??
-        accumulatedMessages[0];
-      if (
-        (startedWithoutCursor && initialHasHistoryBefore === false) ||
-        oldestMessage === undefined
-      ) {
-        if (initialHasHistoryBefore === false) {
-          set(hasServerConfirmedOldestMessage$, true);
-        }
-      } else {
-        let beforeSeqId = oldestMessage.seqId;
-        async function syncMessagesBefore(): Promise<void> {
-          const result = await set(
-            dataSource.listEventsBefore$,
-            { threadId, beforeSeqId },
-            signal,
-          );
-          signal.throwIfAborted();
-          L.debug("syncRemoteMessages$ listEventsBefore result", {
-            threadId,
-            beforeSeqId,
-            gotCount: result.events.length,
-            hasHistoryBefore: result.hasHistoryBefore,
-          });
-
-          if (result.events.length > 0) {
-            accumulatedMessages.push(...result.events);
-            await set(
-              writeIndexedDbChatEvents$,
-              threadId,
-              result.events,
-              signal,
-            );
-            signal.throwIfAborted();
-            // Flush periodically so long backfills surface incrementally
-            // (e.g. the history backfill progress bar) instead of appearing
-            // only after every page has been fetched.
-            if (
-              accumulatedMessages.length - mergedMessageCount >=
-              HISTORY_BACKFILL_MERGE_BATCH_SIZE
-            ) {
-              set(
-                mergePersistentMessages$,
-                accumulatedMessages.slice(mergedMessageCount),
-              );
-              mergedMessageCount = accumulatedMessages.length;
-            }
-          }
-
-          if (!result.hasHistoryBefore) {
-            set(hasServerConfirmedOldestMessage$, true);
-            return;
-          }
-
-          beforeSeqId = result.events[0]!.seqId;
-
-          return syncMessagesBefore();
-        }
-        await syncMessagesBefore();
-      }
-    }
-    signal.throwIfAborted();
-    set(
-      mergePersistentMessages$,
-      accumulatedMessages.slice(mergedMessageCount),
-    );
-  });
-}
-
-function createActiveGoalObjectiveComputed(
-  rawMessages$: Computed<ChatMessageProjectionEntry[]>,
-): Computed<Promise<string | null>> {
-  return computed((get): Promise<string | null> => {
-    const raw = get(rawMessages$);
-    return Promise.resolve(
-      foldActiveChatGoalObjective(
-        raw.map((entry) => {
-          return entry.message;
-        }),
-      ),
-    );
-  });
-}
+/** Per-thread chat event sequences start at 1, so this marks the oldest event. */
+const FIRST_CHAT_EVENT_SEQ_ID = 1;
 
 interface BodyBlockRegistries {
   readonly artifactCardSignals: ArtifactCardSignalsRegistry;
   readonly connectorCardSignals: ConnectorCardSignalsRegistry;
-  readonly customConnectorCardSignals: CustomConnectorCardSignalsRegistry;
   readonly permissionCardSignals: PermissionCardSignalsRegistry;
   readonly computerUseAuthorizationCardSignals: ComputerUseAuthorizationCardSignalsRegistry;
   readonly planUpgradeCardSignals: PlanUpgradeCardSignalsRegistry;
   readonly mailDraftCardSignals: ReturnType<
     typeof createMailDraftCardSignalsRegistry
   >;
-  readonly browserSessionCardSignals: BrowserSessionCardSignalsRegistry;
+  readonly browserSessionSignals: BrowserSessionSignals;
 }
 
 function createBodyBlocksRenderer({
   artifactCardSignals,
   connectorCardSignals,
-  customConnectorCardSignals,
   permissionCardSignals,
   computerUseAuthorizationCardSignals,
   planUpgradeCardSignals,
   mailDraftCardSignals,
-  browserSessionCardSignals,
+  browserSessionSignals,
 }: BodyBlockRegistries): (
   resolution: "register" | "resolve",
 ) => BodyBlocksRenderer {
@@ -2331,16 +1627,6 @@ function createBodyBlocksRenderer({
                 resolution === "register"
                   ? connectorCardSignals.register(block.descriptor)
                   : connectorCardSignals.resolve(block.resourceKey),
-            };
-          }
-          case "custom-connector-action": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? customConnectorCardSignals.register(block.descriptor)
-                  : customConnectorCardSignals.resolve(block.resourceKey),
             };
           }
           case "permission-action": {
@@ -2391,10 +1677,7 @@ function createBodyBlocksRenderer({
             return {
               type: block.type,
               resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? browserSessionCardSignals.register(block.descriptor)
-                  : browserSessionCardSignals.resolve(block.resourceKey),
+              signals: browserSessionSignals,
             };
           }
         }
@@ -2405,286 +1688,23 @@ function createBodyBlocksRenderer({
   };
 }
 
-function createInitializeIndexedDbMessages({
-  artifactCardSignals,
-  threadId,
-  persistentMessages$,
-  registerBodyBlocks,
-}: {
-  artifactCardSignals: ArtifactCardSignalsRegistry;
-  threadId: string;
-  persistentMessages$: PersistentChatMessages$;
-  registerBodyBlocks: BodyBlocksRenderer;
-}) {
-  const initialized = Promise.withResolvers<void>();
-  const mergeIndexedDbMessages$ = command(
-    ({ set }, messages: ChatEvent[]): void => {
-      const registeredMessages = messages.map((message) => {
-        return registerChatMessage(
-          message,
-          registerBodyBlocks,
-          artifactCardSignals,
-        );
-      });
-      set(persistentMessages$, (previous) => {
-        return mergeRegisteredMessages([previous, registeredMessages]);
-      });
-    },
-  );
-
-  const initializeIndexedDbMessages$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      const result = await settle(
-        set(loadIndexedDbChatEvents$, threadId, signal),
-        signal,
-      );
-      if (result.ok) {
-        set(mergeIndexedDbMessages$, result.value);
-      }
-      initialized.resolve(undefined);
-      if (!result.ok) {
-        throw result.error;
-      }
-    },
-  );
-
-  return {
-    indexedDbMessagesInitialized$: computed(() => {
-      return initialized.promise;
-    }),
-    initializeIndexedDbMessages$,
-  };
-}
-
 function createMailDraftCardSignalsById(
-  rawMessages$: Computed<ChatMessageProjectionEntry[]>,
+  rawEvents$: Computed<ChatEventProjectionEntry[]>,
   mailDraftCardSignals: MailDraftCardSignalsRegistry,
 ): Computed<ReadonlyMap<string, MailDraftSignals>> {
   return computed((get) => {
-    get(rawMessages$);
+    get(rawEvents$);
     return new Map(mailDraftCardSignals.entries());
   });
 }
 
-function createBrowserSessionCardSignalsById(
-  rawMessages$: Computed<ChatMessageProjectionEntry[]>,
-  browserSessionCardSignals: BrowserSessionCardSignalsRegistry,
-): Computed<ReadonlyMap<string, BrowserSessionSignals>> {
-  return computed((get) => {
-    get(rawMessages$);
-    return new Map(browserSessionCardSignals.entries());
+function createEventHistoryBackfillPending(
+  rawEvents$: Computed<ChatEventProjectionEntry[]>,
+): Computed<boolean> {
+  return computed((get): boolean => {
+    const first = get(rawEvents$).find(isServerProjectionEntry);
+    return first !== undefined && first.event.seqId !== FIRST_CHAT_EVENT_SEQ_ID;
   });
-}
-
-function createHistoryBackfillProgress(
-  hasReachedOldestMessage$: Computed<boolean>,
-  persistentMessages$: PersistentChatMessages$,
-): Computed<Promise<number | null>> {
-  // Approximate backfill progress from the loaded seqId range. The thread's
-  // true max seqId is not exposed to the client, so the newest loaded message
-  // stands in for it. The reached-oldest computed hides progress once the
-  // first persistent seqId is 1. Null hides the loading skeleton.
-  return computed((get): Promise<number | null> => {
-    if (get(hasReachedOldestMessage$)) {
-      return Promise.resolve(null);
-    }
-    const messages = get(persistentMessages$);
-    const first = messages[0];
-    const last = messages.at(-1);
-    if (first === undefined || last === undefined) {
-      return Promise.resolve(null);
-    }
-    return Promise.resolve(
-      (last.message.seqId - first.message.seqId) / last.message.seqId,
-    );
-  });
-}
-
-function createPagedMessages(
-  threadId: string,
-  dataSource: ChatThreadRemote,
-  initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
-  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
-) {
-  const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
-  const browserSessionCardSignals =
-    createBrowserSessionCardSignalsRegistry(threadId);
-  const artifactCardSignals = createArtifactCardSignalsRegistry(
-    previewImageUrlsByUrl$,
-  );
-  const connectorCardSignals = createConnectorCardSignalsRegistry();
-  const customConnectorCardSignals = createCustomConnectorCardSignalsRegistry();
-  const permissionCardSignals = createPermissionCardSignalsRegistry();
-  const computerUseAuthorizationCardSignals =
-    createComputerUseAuthorizationCardSignalsRegistry();
-  const planUpgradeCardSignals = createPlanUpgradeCardSignalsRegistry();
-  const bodyBlocksRenderer = createBodyBlocksRenderer({
-    artifactCardSignals,
-    connectorCardSignals,
-    customConnectorCardSignals,
-    permissionCardSignals,
-    computerUseAuthorizationCardSignals,
-    planUpgradeCardSignals,
-    mailDraftCardSignals,
-    browserSessionCardSignals,
-  });
-  const registerBodyBlocks = bodyBlocksRenderer("register");
-  const resolveBodyBlocks = bodyBlocksRenderer("resolve");
-
-  for (const entry of initialOptimisticEntries) {
-    registerBodyBlocks(entry.parsedBodyBlocks);
-    registerMessageAttachments(entry.message, artifactCardSignals);
-  }
-  const persistentChatMessages$ = state<RegisteredChatMessage[]>([]);
-  const hasServerConfirmedOldestMessage$ = state(false);
-  const hasReachedOldestMessage$ = computed((get): boolean => {
-    return (
-      get(hasServerConfirmedOldestMessage$) ||
-      get(persistentChatMessages$)[0]?.message.seqId === 1
-    );
-  });
-  const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
-  const appendOptimisticMessage$ = command(
-    ({ set }, input: OptimisticChatMessageInput): void => {
-      const entry = createOptimisticChatMessageEntry(input);
-      registerBodyBlocks(entry.parsedBodyBlocks);
-      registerMessageAttachments(entry.message, artifactCardSignals);
-      set(appendOptimisticChatMessage$, entry);
-    },
-  );
-
-  const rawMessages$ = createRawMessagesComputed({
-    persistentMessages$: persistentChatMessages$,
-    optimisticMessages$,
-    resolveBodyBlocks,
-  });
-  const historyBackfillProgress$ = createHistoryBackfillProgress(
-    hasReachedOldestMessage$,
-    persistentChatMessages$,
-  );
-  const semanticMessages$ = computed((get): SemanticChatMessage[] => {
-    return semanticTranscriptMessagesFromRaw(get(rawMessages$));
-  });
-  const messageRunIndicatorState$ =
-    createMessageRunIndicatorState(rawMessages$);
-  const semanticSignals = createMessageSemanticSignals(
-    semanticMessages$,
-    messageRunIndicatorState$,
-  );
-  const messageSync = createMessageSyncSignals(semanticSignals.hasMessages$);
-
-  // The thread's active goal, folded from the (goal-marker) message stream so
-  // the composer reads it without polling a separate resource. Reads rawMessages$
-  // because goal markers are control rows, not transcript rows.
-  const activeGoalObjective$ = createActiveGoalObjectiveComputed(rawMessages$);
-
-  const renderedMessages = createRenderedChatGroups(semanticMessages$);
-
-  const mailDraftCardSignalsById$ = createMailDraftCardSignalsById(
-    rawMessages$,
-    mailDraftCardSignals,
-  );
-  const browserSessionCardSignalsById$ = createBrowserSessionCardSignalsById(
-    rawMessages$,
-    browserSessionCardSignals,
-  );
-
-  const mergePersistentMessages$ = createMergePersistentMessages(
-    threadId,
-    persistentChatMessages$,
-    registerBodyBlocks,
-    artifactCardSignals,
-  );
-  const indexedDbMessages = createInitializeIndexedDbMessages({
-    artifactCardSignals,
-    threadId,
-    persistentMessages$: persistentChatMessages$,
-    registerBodyBlocks,
-  });
-
-  const latestMessageSignals = createLatestMessageSignals(rawMessages$);
-
-  const runSyncRemoteMessages$ = createSyncRemoteMessagesCommand({
-    threadId,
-    persistentMessages$: persistentChatMessages$,
-    hasReachedOldestMessage$,
-    hasServerConfirmedOldestMessage$,
-    mergePersistentMessages$,
-    dataSource,
-  });
-  const syncRemoteMessages$ = createTrackedMessageSyncCommand(
-    runSyncRemoteMessages$,
-    messageSync.trackMessageSync$,
-  );
-
-  return {
-    ...indexedDbMessages,
-    mergePersistentMessages$,
-    ...latestMessageSignals,
-    appendOptimisticMessage$,
-    ...semanticSignals,
-    ...messageSync,
-    ...renderedMessages,
-    rawMessages$,
-    historyBackfillProgress$,
-    messageRunIndicatorState$,
-    activeGoalObjective$,
-    mailDraftCardSignalsById$,
-    reloadMailDrafts$: mailDraftCardSignals.reload$,
-    browserSessionCardSignalsById$,
-    artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
-      return artifactCardSignals.find(url);
-    },
-    syncRemoteMessages$,
-  };
-}
-
-function createChatThreadMessagePipeline({
-  threadId,
-  dataSource,
-  initialOptimisticEntries,
-  recordScrollHeightForPrepend$,
-  clearScrollHeightForPrepend$,
-  awayFromBottom$,
-  previewImageUrlsByUrl$,
-}: {
-  threadId: string;
-  dataSource: ChatThreadRemote;
-  initialOptimisticEntries: readonly OptimisticChatMessageEntry[];
-  recordScrollHeightForPrepend$: Command<
-    PrependScrollCompensationToken | null,
-    []
-  >;
-  clearScrollHeightForPrepend$: Command<
-    void,
-    [PrependScrollCompensationToken | null | undefined]
-  >;
-  awayFromBottom$: Computed<boolean>;
-  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
-}) {
-  const pagedMessages = createPagedMessages(
-    threadId,
-    dataSource,
-    initialOptimisticEntries,
-    previewImageUrlsByUrl$,
-  );
-  const renderWindow = createChatRenderWindow({
-    threadId,
-    allRenderedChatGroups$: pagedMessages.allRenderedChatGroups$,
-    awayFromBottom$,
-  });
-
-  const loadMoreRenderedChatGroups$ =
-    createLoadMoreRenderedChatGroupsWithPrependScroll(
-      recordScrollHeightForPrepend$,
-      clearScrollHeightForPrepend$,
-      renderWindow.loadMoreRenderedChatGroups$,
-    );
-  return {
-    ...pagedMessages,
-    ...renderWindow,
-    loadMoreRenderedChatGroups$,
-  };
 }
 
 function createArtifacts(threadId: string) {
@@ -2726,6 +1746,323 @@ function createArtifactPreviewImageUrls(
   });
 }
 
+function createPagedEventResources(
+  threadId: string,
+  chatEvents$: Computed<ChatEvent[]>,
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
+  browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents,
+) {
+  const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
+  const browserSessionSignals = createBrowserSessionSignals(
+    threadId,
+    browserLifecycleOptimisticEvents,
+  );
+  const artifactCardSignals = createArtifactCardSignalsRegistry(
+    previewImageUrlsByUrl$,
+  );
+  const agentReferenceSignals = createAgentReferenceSignalsRegistry();
+  const bodyBlocksRenderer = createBodyBlocksRenderer({
+    artifactCardSignals,
+    connectorCardSignals: createConnectorCardSignalsRegistry(),
+    permissionCardSignals: createPermissionCardSignalsRegistry(),
+    computerUseAuthorizationCardSignals:
+      createComputerUseAuthorizationCardSignalsRegistry(),
+    planUpgradeCardSignals: createPlanUpgradeCardSignalsRegistry(),
+    mailDraftCardSignals,
+    browserSessionSignals,
+  });
+  const registerBodyBlocks = bodyBlocksRenderer("register");
+  const registeredEvents$ = state<RegisteredChatEvent[]>([]);
+  const syncRegisteredEvents$ = command(
+    ({ get, set }, signal: AbortSignal): void => {
+      signal.throwIfAborted();
+      const events = get(chatEvents$);
+      set(registeredEvents$, (previous) => {
+        const previousById = new Map(
+          previous.map((entry) => {
+            return [entry.event.id, entry] as const;
+          }),
+        );
+        return events.map((event) => {
+          const existing = previousById.get(event.id);
+          if (existing?.event === event) {
+            return existing;
+          }
+          return registerChatEvent(
+            threadId,
+            event,
+            registerBodyBlocks,
+            artifactCardSignals,
+            agentReferenceSignals,
+          );
+        });
+      });
+    },
+  );
+  return {
+    agentReferenceSignals,
+    artifactCardSignals,
+    mailDraftCardSignals,
+    publicSignals: {
+      browserSessionSignals,
+      subscribeBrowserSessions$: browserSessionSignals.subscribe$,
+      artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
+        return artifactCardSignals.find(url);
+      },
+      agentReferenceSignalsForId: (agentId: string) => {
+        return agentReferenceSignals.resolve(agentId);
+      },
+    },
+    registeredEvents$,
+    syncRegisteredEvents$,
+  };
+}
+
+interface BrowserLifecycleOptimisticEvent {
+  readonly eventId: string;
+  readonly eventType: "browser.open" | "browser.close";
+}
+
+function createPagedEventProjections({
+  chatEvents$,
+  registeredEvents$,
+  mailDraftCardSignals,
+}: {
+  chatEvents$: Computed<ChatEvent[]>;
+  registeredEvents$: State<RegisteredChatEvent[]>;
+  mailDraftCardSignals: MailDraftCardSignalsRegistry;
+}) {
+  const rawEvents$ = createRawEventsComputed(registeredEvents$);
+  const historyBackfillPending$ = createEventHistoryBackfillPending(rawEvents$);
+  const semanticEvents$ = computed((get): SemanticChatEvent[] => {
+    return semanticTranscriptEventsFromRaw(get(rawEvents$), get(chatEvents$));
+  });
+  const eventRunIndicatorState$ = createEventRunIndicatorState(chatEvents$);
+  return {
+    rawEvents$,
+    chatEvents$,
+    historyBackfillPending$,
+    eventRunIndicatorState$,
+    mailDraftCardSignalsById$: createMailDraftCardSignalsById(
+      rawEvents$,
+      mailDraftCardSignals,
+    ),
+    ...createLatestEventSignals(rawEvents$),
+    ...createEventSemanticSignals(semanticEvents$, eventRunIndicatorState$),
+    ...createRenderedChatGroups(semanticEvents$),
+  };
+}
+
+interface MarkThreadReadDeps {
+  threadId: string;
+  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  locallyMarkedReadAt$: State<string | undefined>;
+}
+
+function createMarkThreadReadIfNeeded({
+  threadId,
+  latestRunFinishCreatedAt$,
+  locallyMarkedReadAt$,
+}: MarkThreadReadDeps) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
+  return command(async ({ get, set }, sig: AbortSignal) => {
+    const latestRunFinishCreatedAt = await get(latestRunFinishCreatedAt$);
+    sig.throwIfAborted();
+    if (!latestRunFinishCreatedAt) {
+      return;
+    }
+    if (get(optimisticCreateUnsettled$)) {
+      L.debug("markRead$ optimistic thread create unsettled, skip", {
+        threadId,
+        latestRunFinishCreatedAt,
+      });
+      return;
+    }
+
+    const lastReadAt = get(locallyMarkedReadAt$);
+    if (
+      lastReadAt !== undefined &&
+      compareCreatedAt(lastReadAt, latestRunFinishCreatedAt) >= 0
+    ) {
+      return;
+    }
+
+    const newLastReadAt = await set(markChatThreadRead$, { threadId }, sig);
+    sig.throwIfAborted();
+    if (newLastReadAt !== null) {
+      set(locallyMarkedReadAt$, newLastReadAt);
+    }
+    // No sidebar reload needed: markRead$ records an optimistic read mark
+    // and applies the response's unread snapshot, so the unread dot clears
+    // without refetching the thread list.
+  });
+}
+
+function createEventChangeEffects(
+  threadId: string,
+  chatEvents: ChatEventSignals,
+  projections: Pick<
+    ReturnType<typeof createPagedEventProjections>,
+    "rawEvents$" | "latestRunFinishCreatedAt$"
+  >,
+  syncRegisteredEvents$: Command<void, [AbortSignal]>,
+) {
+  const scroll = createChatThreadScrollSignals(threadId);
+  const sidebar = createThreadSidebarSignals(threadId);
+  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
+  const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
+    threadId,
+    latestRunFinishCreatedAt$: projections.latestRunFinishCreatedAt$,
+    locallyMarkedReadAt$,
+  });
+  const sidebarAutoOpenCandidate$ = createThreadSidebarAutoOpenCandidate(
+    projections.rawEvents$,
+  );
+  const autoOpenSidebar$ = command(
+    ({ get, set }, signal: AbortSignal): void => {
+      signal.throwIfAborted();
+      if (
+        typeof window === "undefined" ||
+        !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
+      ) {
+        return;
+      }
+      const candidate = get(sidebarAutoOpenCandidate$);
+      if (
+        !candidate ||
+        get(sidebar.target$) !== null ||
+        get(activeThreadSidebar$) !== null
+      ) {
+        return;
+      }
+      const candidateKey = threadSidebarAutoOpenCandidateKey(candidate);
+      if (!set(sidebar.claimAutoOpenCandidate$, candidateKey)) {
+        return;
+      }
+      set(sidebar.open$, { type: "browser" });
+    },
+  );
+  const afterEventsChange$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const scrollPosition = get(chatEvents.hasOptimisticUserMessage$)
+        ? null
+        : set(scroll.readRenderedThreadScrollPosition$);
+      await Promise.all([
+        set(syncRegisteredEvents$, signal),
+        set(autoOpenSidebar$, signal),
+        set(scroll.autoScroll$, scrollPosition, signal),
+        set(markThreadReadIfNeeded$, signal),
+      ]);
+      signal.throwIfAborted();
+    },
+  );
+  return { scroll, sidebar, afterEventsChange$ };
+}
+
+function createChatThreadMessagePipeline({
+  threadId,
+  chatEvents,
+  previewImageUrlsByUrl$,
+}: {
+  threadId: string;
+  chatEvents: ChatEventSignals;
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
+}) {
+  const browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents = {
+    append$: command(
+      async (
+        { set },
+        event: BrowserLifecycleOptimisticEvent,
+        signal: AbortSignal,
+      ): Promise<void> => {
+        await set(
+          chatEvents.sendEvent$,
+          { kind: "browser-lifecycle", ...event },
+          signal,
+        );
+      },
+    ),
+  };
+  const resources = createPagedEventResources(
+    threadId,
+    chatEvents.chatEvents$,
+    previewImageUrlsByUrl$,
+    browserLifecycleOptimisticEvents,
+  );
+  const projections = createPagedEventProjections({
+    chatEvents$: chatEvents.chatEvents$,
+    registeredEvents$: resources.registeredEvents$,
+    mailDraftCardSignals: resources.mailDraftCardSignals,
+  });
+  const effects = createEventChangeEffects(
+    threadId,
+    chatEvents,
+    projections,
+    resources.syncRegisteredEvents$,
+  );
+  const chatSkeletonVisible$ = computed((get): boolean => {
+    return (
+      !get(chatEvents.initialRemoteEventsResolved$) &&
+      get(projections.rawEvents$).length === 0
+    );
+  });
+  const setup$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      set(
+        registerChatEventChangeHandler$,
+        chatEvents.chatEvents$,
+        effects.afterEventsChange$,
+        signal,
+      );
+      set(resources.syncRegisteredEvents$, signal);
+      set(effects.sidebar.enableEntryAnimations$);
+      await set(chatEvents.setup$, signal);
+      signal.throwIfAborted();
+    },
+  );
+  const renderWindow = createChatRenderWindow({
+    threadId,
+    allRenderedChatGroups$: projections.allRenderedChatGroups$,
+    threadScrollPosition$: effects.scroll.threadScrollPosition$,
+    awayFromBottom$: effects.scroll.awayFromBottom$,
+  });
+  const assistantErrorRecovery = createAssistantErrorRecoverySignals({
+    threadId,
+    chatEvents,
+    visibleRenderedChatGroups$: renderWindow.visibleRenderedChatGroups$,
+  });
+
+  const loadMoreRenderedChatGroups$ = command(
+    async ({ set }, signal: AbortSignal): Promise<boolean> => {
+      const scrollPosition = set(
+        effects.scroll.readRenderedThreadScrollPosition$,
+      );
+      const didPrepend = await set(
+        renderWindow.loadMoreRenderedChatGroups$,
+        signal,
+      );
+      signal.throwIfAborted();
+      if (didPrepend) {
+        await set(effects.scroll.autoScroll$, scrollPosition, signal);
+        signal.throwIfAborted();
+      }
+      return didPrepend;
+    },
+  );
+  return {
+    scroll: effects.scroll,
+    sidebar: effects.sidebar,
+    setup$,
+    chatSkeletonVisible$,
+    ...assistantErrorRecovery,
+    ...projections,
+    ...resources.publicSignals,
+    ...renderWindow,
+    loadMoreRenderedChatGroups$,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Draft cache
 // ---------------------------------------------------------------------------
@@ -2747,33 +2084,11 @@ export const ensureDraft$ = command(
   },
 );
 
-function createMessageRunIndicatorState(
-  rawMessages$: Computed<ChatMessageProjectionEntry[]>,
-) {
+function createEventRunIndicatorState(chatEvents$: Computed<ChatEvent[]>) {
   return computed((get): Promise<RunIndicatorState> => {
-    const raw = get(rawMessages$);
-    return Promise.resolve(deriveRunIndicatorStateFromRawMessages(raw));
-  });
-}
-
-function createLoadMoreRenderedChatGroupsWithPrependScroll(
-  recordScrollHeightForPrepend$: Command<
-    PrependScrollCompensationToken | null,
-    []
-  >,
-  clearScrollHeightForPrepend$: Command<
-    void,
-    [PrependScrollCompensationToken | null | undefined]
-  >,
-  loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>,
-) {
-  return command(async ({ set }, signal: AbortSignal) => {
-    const compensationToken = set(recordScrollHeightForPrepend$);
-    const didPrepend = await set(loadMoreRenderedChatGroups$, signal);
-    if (!didPrepend) {
-      set(clearScrollHeightForPrepend$, compensationToken);
-    }
-    return didPrepend;
+    return Promise.resolve(
+      deriveRunIndicatorStateFromChatEvents(get(chatEvents$)),
+    );
   });
 }
 
@@ -2783,28 +2098,12 @@ function createLoadMoreRenderedChatGroupsWithPrependScroll(
 
 interface RunTrackingDeps {
   threadId: string;
-  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
-  initialAutoOpenDecisionCompleted$: Computed<Promise<void>>;
-  initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
-  mergePersistentMessages$: Command<void, [ChatEvent[]]>;
-  syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
-  settleMessageSync$: Command<Promise<void>, []>;
+  setupChatEvents$: Command<Promise<void>, [AbortSignal]>;
+  catchUpChatEvents$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
-  reloadMailDrafts$: Command<void, []>;
-  reloadComposerWorkflows$: Command<Promise<void>, [AbortSignal]>;
-  autoScroll$: Command<void, []>;
-  automationSignals: Pick<
-    ChatThreadSignals,
-    "headerAutomations" | "workflowQueue"
-  >;
-  dataSource: ChatThreadRemote;
-}
-
-interface MarkThreadReadDeps {
-  threadId: string;
-  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
-  locallyMarkedReadAt$: State<string | undefined>;
-  dataSource: ChatThreadRemote;
+  subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
+  automationSignals: Pick<ChatPanelSignals, "headerAutomations">;
+  cancellationRecovery: ReturnType<typeof createCancellationRecoverySignals>;
 }
 
 interface ChatRenderWindowState {
@@ -2819,7 +2118,7 @@ const renderWindowStateByThreadId$ = state(
 );
 
 function renderWindowStartIndex(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
   cursorGroupId: string | null,
 ): number {
   return runGroupVisualWindowStartIndex(
@@ -2830,7 +2129,7 @@ function renderWindowStartIndex(
 }
 
 function previousRenderWindowStartIndex(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
   currentStartGroupIndex: number,
 ): number {
   return previousRunGroupVisualWindowStartIndex(
@@ -2857,23 +2156,67 @@ function setThreadRenderWindowState(
   return next;
 }
 
+function scrollTargetStartIndex(
+  groups: readonly ChatEventGroup[],
+  targetEventId: string | null,
+): number | null {
+  if (targetEventId === null) {
+    return null;
+  }
+  const targetGroupIndex = groups.findIndex((group) => {
+    return group.events.some((event) => {
+      return event.id === targetEventId;
+    });
+  });
+  if (targetGroupIndex === -1) {
+    return null;
+  }
+  const targetRunId = groups[targetGroupIndex]?.events.find((event) => {
+    return event.id === targetEventId;
+  })?.runId;
+  if (targetRunId === undefined) {
+    return targetGroupIndex;
+  }
+  let startIndex = targetGroupIndex;
+  while (
+    startIndex > 0 &&
+    groups[startIndex - 1]?.events.some((event) => {
+      return event.runId === targetRunId;
+    })
+  ) {
+    startIndex--;
+  }
+  return startIndex;
+}
+
 function createChatRenderWindow({
   threadId,
   allRenderedChatGroups$,
+  threadScrollPosition$,
   awayFromBottom$,
 }: {
   threadId: string;
-  allRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  allRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   awayFromBottom$: Computed<boolean>;
 }) {
   const visibleRenderedChatGroups$ = computed(
-    async (get): Promise<GroupedChatMessageGroup[]> => {
+    async (get): Promise<ChatEventGroup[]> => {
       const groups = await get(allRenderedChatGroups$);
       const { cursorGroupId } = renderWindowStateForThread(
         get(renderWindowStateByThreadId$),
         threadId,
       );
-      return groups.slice(renderWindowStartIndex(groups, cursorGroupId));
+      const requestedStartIndex = renderWindowStartIndex(groups, cursorGroupId);
+      const targetStartIndex = scrollTargetStartIndex(
+        groups,
+        get(threadScrollPosition$)?.targetEventId ?? null,
+      );
+      return groups.slice(
+        targetStartIndex === null
+          ? requestedStartIndex
+          : Math.min(requestedStartIndex, targetStartIndex),
+      );
     },
   );
   const visibleRenderedChatGroupsReady$ = computed(
@@ -2891,14 +2234,25 @@ function createChatRenderWindow({
       );
       const groups = await get(allRenderedChatGroups$);
       signal.throwIfAborted();
-      const startIndex = renderWindowStartIndex(groups, current.cursorGroupId);
+      const requestedStartIndex = renderWindowStartIndex(
+        groups,
+        current.cursorGroupId,
+      );
+      const targetStartIndex = scrollTargetStartIndex(
+        groups,
+        get(threadScrollPosition$)?.targetEventId ?? null,
+      );
+      const startIndex =
+        targetStartIndex === null
+          ? requestedStartIndex
+          : Math.min(requestedStartIndex, targetStartIndex);
       const nextStartIndex = previousRenderWindowStartIndex(groups, startIndex);
       if (nextStartIndex === startIndex) {
         return false;
       }
       set(renderWindowStateByThreadId$, (prev) => {
         return setThreadRenderWindowState(prev, threadId, {
-          cursorGroupId: groups[nextStartIndex]?.beginMessageId ?? null,
+          cursorGroupId: groups[nextStartIndex]?.beginEventId ?? null,
         });
       });
       return true;
@@ -2932,179 +2286,61 @@ function createChatRenderWindow({
   };
 }
 
-function createMarkThreadReadIfNeeded({
-  threadId,
-  latestRunFinishCreatedAt$,
-  locallyMarkedReadAt$,
-  dataSource,
-}: MarkThreadReadDeps) {
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
-  return command(async ({ get, set }, sig: AbortSignal) => {
-    const latestRunFinishCreatedAt = await get(latestRunFinishCreatedAt$);
-    sig.throwIfAborted();
-    if (!latestRunFinishCreatedAt) {
-      return;
-    }
-    if (get(optimisticCreateUnsettled$)) {
-      L.debug("markRead$ optimistic thread create unsettled, skip", {
-        threadId,
-        latestRunFinishCreatedAt,
-      });
-      return;
-    }
-
-    const lastReadAt = get(locallyMarkedReadAt$);
-    if (
-      lastReadAt !== undefined &&
-      compareCreatedAt(lastReadAt, latestRunFinishCreatedAt) >= 0
-    ) {
-      return;
-    }
-
-    const newLastReadAt = await set(dataSource.markRead$, { threadId }, sig);
-    sig.throwIfAborted();
-    if (newLastReadAt !== null) {
-      set(locallyMarkedReadAt$, newLastReadAt);
-    }
-    // No sidebar reload needed: markRead$ records an optimistic read mark
-    // and applies the response's unread snapshot, so the unread dot clears
-    // without refetching the thread list.
-  });
-}
-
 function createOnSubscribedCommand({
   threadId,
-  initialAutoOpenDecisionCompleted$,
-  syncRemoteMessages$,
-  settleMessageSync$,
+  catchUpChatEvents$,
   reloadArtifacts$,
-  reloadMailDrafts$,
-  reloadComposerWorkflows$,
-  markThreadReadIfNeeded$,
+  cancellationRecovery,
 }: Pick<
   RunTrackingDeps,
   | "threadId"
-  | "initialAutoOpenDecisionCompleted$"
-  | "syncRemoteMessages$"
-  | "settleMessageSync$"
+  | "catchUpChatEvents$"
   | "reloadArtifacts$"
-  | "reloadMailDrafts$"
-  | "reloadComposerWorkflows$"
-> & {
-  markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
-}): Command<Promise<void>, [AbortSignal]> {
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
-  const hasSubscribed$ = state(false);
+  | "cancellationRecovery"
+>): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
-    await get(initialAutoOpenDecisionCompleted$);
-    signal.throwIfAborted();
+    set(cancellationRecovery.reload$);
     set(reloadArtifacts$);
-    if (get(hasSubscribed$)) {
-      set(reloadMailDrafts$);
-    } else {
-      set(hasSubscribed$, true);
-    }
     await Promise.all([
-      set(reloadComposerWorkflows$, signal),
-      get(optimisticCreateUnsettled$)
-        ? set(settleMessageSync$)
-        : set(syncRemoteMessages$, signal),
+      get(cancellationRecovery.pending$),
+      set(reloadMountedComposerWorkflows$, signal),
+      set(catchUpChatEvents$, signal),
     ]);
-    signal.throwIfAborted();
-    await set(markThreadReadIfNeeded$, signal);
     signal.throwIfAborted();
     L.debug("subscribeChatThread$ catchup done", { threadId });
   });
 }
 
-function createReceiveSyncedEventsCommand({
-  threadId,
-  mergePersistentMessages$,
-  markThreadReadIfNeeded$,
-  autoScroll$,
-}: Pick<
-  RunTrackingDeps,
-  "threadId" | "mergePersistentMessages$" | "autoScroll$"
-> & {
-  markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
-}): Command<Promise<void>, [ChatEvent[], AbortSignal]> {
-  return command(
-    async (
-      { set },
-      events: ChatEvent[],
-      signal: AbortSignal,
-    ): Promise<void> => {
-      signal.throwIfAborted();
-      L.debug("receiveSyncedEvents$ fired", {
-        threadId,
-        count: events.length,
-      });
-      set(mergePersistentMessages$, events);
-      await set(markThreadReadIfNeeded$, signal);
-      signal.throwIfAborted();
-      animationFrame(
-        () => {
-          set(autoScroll$);
-        },
-        { signal },
-      );
-    },
-  );
-}
-
 function createRunTracking({
   threadId,
-  latestRunFinishCreatedAt$,
-  initialAutoOpenDecisionCompleted$,
-  initializeIndexedDbMessages$,
-  mergePersistentMessages$,
-  syncRemoteMessages$,
-  settleMessageSync$,
+  setupChatEvents$,
+  catchUpChatEvents$,
   reloadArtifacts$,
-  reloadMailDrafts$,
-  reloadComposerWorkflows$,
-  autoScroll$,
+  subscribeBrowserSessions$,
   automationSignals,
-  dataSource,
+  cancellationRecovery,
 }: RunTrackingDeps) {
-  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
-
-  const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
-    threadId,
-    latestRunFinishCreatedAt$,
-    locallyMarkedReadAt$,
-    dataSource,
-  });
-
-  const receiveSyncedEvents$ = createReceiveSyncedEventsCommand({
-    threadId,
-    mergePersistentMessages$,
-    markThreadReadIfNeeded$,
-    autoScroll$,
-  });
-
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
-    initialAutoOpenDecisionCompleted$,
-    syncRemoteMessages$,
-    settleMessageSync$,
+    catchUpChatEvents$,
     reloadArtifacts$,
-    reloadMailDrafts$,
-    reloadComposerWorkflows$,
-    markThreadReadIfNeeded$,
+    cancellationRecovery,
   });
 
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
-    await set(initializeIndexedDbMessages$, signal);
+    await set(setupChatEvents$, signal);
     signal.throwIfAborted();
+
+    const onThreadDetailChanged$ = command(({ set }) => {
+      L.debug("onThreadDetailChanged$ fired", { threadId });
+      set(cancellationRecovery.reload$);
+      return false;
+    });
 
     const onAutomationsChanged$ = command(({ set }) => {
       set(automationSignals.headerAutomations.reload$);
-      set(reloadMailDrafts$);
       return false;
     });
 
@@ -3117,24 +2353,23 @@ function createRunTracking({
     const onWorkflowsChanged$ = command(
       async ({ set }, signal: AbortSignal): Promise<boolean> => {
         L.debug("onWorkflowsChanged$ fired", { threadId });
-        await set(reloadComposerWorkflows$, signal);
+        await set(reloadMountedComposerWorkflows$, signal);
         return false;
       },
     );
 
     await Promise.all([
-      set(markThreadReadIfNeeded$, signal),
       set(subscribeComputerUseHostsChanged$, signal),
+      set(subscribeBrowserSessions$, signal),
       set(
-        dataSource.subscribeRealtime$,
+        subscribeChatThreadRealtime$,
         {
           threadId,
           handlers: {
+            onThreadDetailChanged$,
             onAutomationsChanged$,
             onArtifactsChanged$,
             onWorkflowsChanged$,
-            onWorkflowQueueChanged$:
-              automationSignals.workflowQueue.handleChanged$,
             onSubscribed$,
           },
         },
@@ -3143,7 +2378,7 @@ function createRunTracking({
     ]);
   });
 
-  return { receiveSyncedEvents$, subscribeChatThread$ };
+  return { subscribeChatThread$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -3182,7 +2417,7 @@ function userMessageForSend({
   readonly editorDocument: SendMessageOptions["editorDocument"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: ChatPromptEvent["attachFiles"];
-}): UserMessageDocument {
+}): UserMessageInputDocument {
   const userMessage = editorDocument
     ? editorDocument.toMessageDocument({
         generationTemplate,
@@ -3198,7 +2433,7 @@ function userMessageForSend({
 function queueUserMessage(
   options: QueueMessageOptions,
   result: PreparedSendMessageResult,
-): UserMessageDocument {
+): UserMessageInputDocument {
   return userMessageForSend({
     prompt: result.prompt,
     editorDocument: options.editorDocument,
@@ -3207,7 +2442,7 @@ function queueUserMessage(
   });
 }
 
-function queueRuntimeOptions(
+function sendRuntimeOptions(
   features: Partial<Record<FeatureSwitchKey, boolean>>,
   modelSelection: ModelProviderSelection | null,
 ) {
@@ -3221,150 +2456,8 @@ function queueRuntimeOptions(
   };
 }
 
-function createSendOptimisticMessageEntry({
-  threadId,
-  clientEventId,
-  createdAt,
-  result,
-  generationTemplate,
-  userMessage,
-  options,
-}: {
-  threadId: string;
-  clientEventId: string;
-  createdAt: string;
-  result: PreparedSendMessageResult;
-  generationTemplate: GenerationTemplateRequest | undefined;
-  userMessage: UserMessageDocument;
-  options: SendMessageOptions | undefined;
-}): OptimisticChatMessageInput {
-  return {
-    threadId,
-    optimisticUserMessageAssociation: "run",
-    message: {
-      id: clientEventId,
-      threadId,
-      eventType: "input.prompt",
-      content: result.prompt,
-      attachFiles: result.attachments,
-      generationTemplate,
-      userMessage,
-      ...sendMessageRevocationPatch(options),
-      createdAt,
-    },
-  };
-}
-
-function sendMessageRevocationPatch(options: SendMessageOptions | undefined): {
-  readonly revokesEventId?: string;
-} {
-  return options?.revokesEventId
-    ? { revokesEventId: options.revokesEventId }
-    : {};
-}
-
-function sendMessageRequestBody(params: {
-  readonly agentId: string;
-  readonly threadId: string;
-  readonly clientEventId: string;
-  readonly chatThreadSortEventId: string;
-  readonly result: PreparedSendMessageResult;
-  readonly modelSelection: ModelProviderSelection | null;
-  readonly codexFastModeEnabled: boolean;
-  readonly realAgentInPreviewEnabled: boolean;
-  readonly generationTemplate: GenerationTemplateRequest | undefined;
-  readonly userMessage: UserMessageDocument;
-  readonly options: SendMessageOptions | undefined;
-}) {
-  const runOptions = runOptionsFromModelProviderSelection(
-    params.modelSelection,
-    params.codexFastModeEnabled,
-  );
-  return {
-    agentId: params.agentId,
-    prompt: params.result.prompt,
-    threadId: params.threadId,
-    hasTextContent: params.result.hasTextContent,
-    clientEventId: params.clientEventId,
-    chatThreadSortEventId: params.chatThreadSortEventId,
-    ...(runOptions ? { runOptions } : {}),
-    ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
-    generationTemplate: params.generationTemplate,
-    userMessage: params.userMessage,
-    ...(params.options && "computerUseHostId" in params.options
-      ? { computerUseHostId: params.options.computerUseHostId ?? null }
-      : {}),
-    ...(params.options && "cloudBrowserEnabled" in params.options
-      ? { cloudBrowserEnabled: params.options.cloudBrowserEnabled ?? false }
-      : {}),
-    attachFiles: params.result.attachFiles,
-    ...sendMessageRevocationPatch(params.options),
-  };
-}
-
-function createAppendOptimisticSendMessage(
-  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>,
-) {
-  return command(
-    (
-      { set },
-      args: {
-        readonly threadId: string;
-        readonly agentId: string;
-        readonly clientEventId: string;
-        readonly chatThreadSortEventId: string;
-        readonly createdAt: string;
-        readonly result: PreparedSendMessageResult;
-        readonly generationTemplate: GenerationTemplateRequest | undefined;
-        readonly userMessage: UserMessageDocument;
-        readonly options: SendMessageOptions | undefined;
-      },
-    ) => {
-      set(touchOptimisticChatThreadSort$, {
-        id: args.chatThreadSortEventId,
-        threadId: args.threadId,
-        agentId: args.agentId,
-        createdAt: args.createdAt,
-      });
-      set(
-        appendOptimisticMessage$,
-        createSendOptimisticMessageEntry({
-          threadId: args.threadId,
-          clientEventId: args.clientEventId,
-          createdAt: args.createdAt,
-          result: args.result,
-          generationTemplate: args.generationTemplate,
-          userMessage: args.userMessage,
-          options: args.options,
-        }),
-      );
-    },
-  );
-}
-
-function createComposerSendButtonSignals(messages: {
-  allFinished$: Computed<Promise<boolean>>;
-  lastAssistantCancelled$: Computed<Promise<boolean>>;
-}) {
-  const pendingSendCount$ = state(0);
-  const composerSendButtonStatus$ = computed(
-    async (get): Promise<ComposerSendButtonStatus> => {
-      const sendPending = get(pendingSendCount$) > 0;
-      const [allFinished, lastAssistantCancelled] = await Promise.all([
-        get(messages.allFinished$),
-        get(messages.lastAssistantCancelled$),
-      ]);
-      return (sendPending || !allFinished) && !lastAssistantCancelled
-        ? "sending"
-        : "idle";
-    },
-  );
-  return { pendingSendCount$, composerSendButtonStatus$ };
-}
-
 interface SendMessageDeps {
   threadId: string;
-  pendingSendCount$: State<number>;
   agentId$: Computed<string | null>;
   modelSelectionForSend$: Command<
     Promise<ModelProviderSelection | null>,
@@ -3373,9 +2466,10 @@ interface SendMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  scrollToBottom$: Command<void, []>;
-  syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
-  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
+  sendEvent$: Command<
+    Promise<SendChatEventResult>,
+    [SendChatEventInput, AbortSignal]
+  >;
 }
 
 interface ValidatedSendMessageRequest {
@@ -3385,66 +2479,9 @@ interface ValidatedSendMessageRequest {
   readonly modelSelection: ModelProviderSelection | null;
 }
 
-const postSendMessage$ = command(
-  async (
-    { get, set },
-    args: {
-      readonly agentId: string;
-      readonly threadId: string;
-      readonly clientEventId: string;
-      readonly chatThreadSortEventId: string;
-      readonly result: PreparedSendMessageResult;
-      readonly modelSelection: ModelProviderSelection | null;
-      readonly generationTemplate: GenerationTemplateRequest | undefined;
-      readonly userMessage: UserMessageDocument;
-      readonly options: SendMessageOptions | undefined;
-      readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-    },
-    signal: AbortSignal,
-  ): Promise<string | null> => {
-    const features = get(featureSwitch$);
-    const codexFastModeEnabled =
-      features[FeatureSwitchKey.CodexFastMode] ?? false;
-    const realAgentInPreviewEnabled =
-      features[FeatureSwitchKey.RealAgentInPreview] ?? false;
-    const [, sendResult] = await Promise.all([
-      set(args.flushDraftClear$, signal),
-      sendChatEvent(
-        get(zeroClient$),
-        sendMessageRequestBody({
-          agentId: args.agentId,
-          clientEventId: args.clientEventId,
-          chatThreadSortEventId: args.chatThreadSortEventId,
-          threadId: args.threadId,
-          result: args.result,
-          modelSelection: args.modelSelection,
-          codexFastModeEnabled,
-          realAgentInPreviewEnabled,
-          generationTemplate: args.generationTemplate,
-          userMessage: args.userMessage,
-          options: args.options,
-        }),
-        signal,
-      ),
-    ]);
-    signal.throwIfAborted();
-    return sendResult.runId;
-  },
-);
-
 function createPerformSendMessage(deps: SendMessageDeps) {
-  const {
-    threadId,
-    draft,
-    cancelDraftSync$,
-    flushDraftClear$,
-    scrollToBottom$,
-    syncRemoteMessages$,
-    appendOptimisticMessage$,
-  } = deps;
-  const appendOptimisticSendMessage$ = createAppendOptimisticSendMessage(
-    appendOptimisticMessage$,
-  );
+  const { threadId, draft, cancelDraftSync$, flushDraftClear$, sendEvent$ } =
+    deps;
   return command(
     async (
       { get, set },
@@ -3465,6 +2502,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
                 excludeVisualAttachments:
                   shouldExcludeVisualAttachmentsForModel(
                     request.modelSelection?.selectedModel,
+                    get(imageRecognitionAvailable$),
                   ),
               },
               signal,
@@ -3482,60 +2520,54 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       });
       set(cancelDraftSync$);
       set(draft.clear$);
-      const clientEventId = crypto.randomUUID();
-      const chatThreadSortEventId = crypto.randomUUID();
-      const createdAt = nowDate().toISOString();
-      set(appendOptimisticSendMessage$, {
-        threadId,
-        agentId: request.agentId,
-        clientEventId,
-        chatThreadSortEventId,
-        createdAt,
-        result,
-        generationTemplate,
-        userMessage,
-        options: request.options,
-      });
-      animationFrame(
-        () => {
-          set(scrollToBottom$);
-        },
-        { signal },
+      const { runOptions, realAgentInPreviewEnabled } = sendRuntimeOptions(
+        get(featureSwitch$),
+        request.modelSelection,
       );
-      const runId = await set(
-        postSendMessage$,
-        {
-          agentId: request.agentId,
-          threadId,
-          clientEventId,
-          chatThreadSortEventId,
-          result,
-          modelSelection: request.modelSelection,
-          generationTemplate,
-          userMessage,
-          options: request.options,
-          flushDraftClear$,
-        },
-        signal,
-      );
+      const [, sendResult] = await Promise.all([
+        set(flushDraftClear$, signal),
+        set(
+          sendEvent$,
+          {
+            kind: "input",
+            delivery: "run",
+            agentId: request.agentId,
+            prompt: result.prompt,
+            hasTextContent: result.hasTextContent,
+            attachFiles: result.attachFiles,
+            attachments: result.attachments,
+            generationTemplate,
+            userMessage,
+            ...(runOptions === undefined ? {} : { runOptions }),
+            ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
+            ...(request.options && "computerUseHostId" in request.options
+              ? { computerUseHostId: request.options.computerUseHostId ?? null }
+              : {}),
+            ...(request.options && "cloudBrowserEnabled" in request.options
+              ? {
+                  cloudBrowserEnabled:
+                    request.options.cloudBrowserEnabled ?? false,
+                }
+              : {}),
+            ...(request.options?.revokesEventId === undefined
+              ? {}
+              : { revokesEventId: request.options.revokesEventId }),
+          },
+          signal,
+        ),
+      ]);
+      signal.throwIfAborted();
       L.debug("sendMessage$ POST accepted", {
         threadId,
-        runId,
+        runId: sendResult.runId,
       });
-      if (runId === null) {
-        set(reloadBillingStatus$);
-        await set(syncRemoteMessages$, signal);
-        signal.throwIfAborted();
-        set(scrollToBottom$);
-      }
       return true;
     },
   );
 }
 
 function createSendMessage(deps: SendMessageDeps) {
-  const { threadId, pendingSendCount$, agentId$, modelSelectionForSend$ } =
-    deps;
+  const { threadId, agentId$, modelSelectionForSend$ } = deps;
   const performSendMessage$ = createPerformSendMessage(deps);
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -3557,25 +2589,15 @@ function createSendMessage(deps: SendMessageDeps) {
       }
       const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
-      set(pendingSendCount$, (count) => {
-        return count + 1;
-      });
-      return await withCleanup(
-        set(
-          performSendMessage$,
-          {
-            prompt,
-            options,
-            agentId,
-            modelSelection,
-          },
-          signal,
-        ),
-        () => {
-          set(pendingSendCount$, (count) => {
-            return count - 1;
-          });
+      return await set(
+        performSendMessage$,
+        {
+          prompt,
+          options,
+          agentId,
+          modelSelection,
         },
+        signal,
       );
     },
   );
@@ -3591,9 +2613,10 @@ interface QueueMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  scrollToBottom$: Command<void, []>;
-  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
-  dataSource: ChatThreadRemote;
+  sendEvent$: Command<
+    Promise<SendChatEventResult>,
+    [SendChatEventInput, AbortSignal]
+  >;
 }
 
 function createQueueMessage(deps: QueueMessageDeps) {
@@ -3604,9 +2627,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
     draft,
     cancelDraftSync$,
     flushDraftClear$,
-    scrollToBottom$,
-    appendOptimisticMessage$,
-    dataSource,
+    sendEvent$,
   } = deps;
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -3639,6 +2660,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         {
           excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
             modelSelection?.selectedModel,
+            get(imageRecognitionAvailable$),
           ),
         },
         signal,
@@ -3647,63 +2669,32 @@ function createQueueMessage(deps: QueueMessageDeps) {
         return false;
       }
       signal.throwIfAborted();
-
       const features = get(featureSwitch$);
       const userMessage = queueUserMessage(options, result);
 
       set(cancelDraftSync$);
       set(draft.clear$);
 
-      const clientEventId = crypto.randomUUID();
-      const chatThreadSortEventId = crypto.randomUUID();
-      const nowIso = nowDate().toISOString();
-      set(touchOptimisticChatThreadSort$, {
-        id: chatThreadSortEventId,
-        threadId,
-        agentId,
-        createdAt: nowIso,
-      });
-      set(appendOptimisticMessage$, {
-        threadId,
-        optimisticUserMessageAssociation: "queue",
-        message: {
-          id: clientEventId,
-          threadId,
-          eventType: "input.prompt",
-          content: result.prompt,
-          attachFiles: result.attachments,
-          generationTemplate,
-          userMessage,
-          createdAt: nowIso,
-        },
-      });
-      animationFrame(
-        () => {
-          set(scrollToBottom$);
-        },
-        { signal },
-      );
-
-      const { runOptions, realAgentInPreviewEnabled } = queueRuntimeOptions(
+      const { runOptions, realAgentInPreviewEnabled } = sendRuntimeOptions(
         features,
         modelSelection,
       );
       await Promise.all([
         set(flushDraftClear$, signal),
         set(
-          dataSource.appendQueuedEvent$,
+          sendEvent$,
           {
-            threadId,
+            kind: "input",
+            delivery: "queue",
             agentId,
-            content: result.prompt,
-            attachments: result.attachments ?? null,
-            clientEventId,
-            chatThreadSortEventId,
+            prompt: result.prompt,
             hasTextContent: result.hasTextContent,
-            ...(runOptions ? { runOptions } : {}),
-            ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
+            attachFiles: result.attachments,
+            attachments: result.attachments,
             generationTemplate,
             userMessage,
+            ...(runOptions === undefined ? {} : { runOptions }),
+            ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
             ...(options.computerUseHostId === undefined
               ? {}
               : { computerUseHostId: options.computerUseHostId }),
@@ -3724,88 +2715,101 @@ function createQueueMessage(deps: QueueMessageDeps) {
 interface RecallMessageDeps {
   threadId: string;
   agentId$: Computed<string | null>;
-  rawMessages$: Computed<ChatMessageProjectionEntry[]>;
+  chatEvents$: Computed<ChatEvent[]>;
   draft: DraftSignals;
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
-  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
-  dataSource: ChatThreadRemote;
+  sendEvent$: Command<
+    Promise<SendChatEventResult>,
+    [SendChatEventInput, AbortSignal]
+  >;
 }
 
 function createRecallMessage(deps: RecallMessageDeps) {
-  const {
-    threadId,
-    agentId$,
-    rawMessages$,
-    draft,
-    queueDraftSync$,
-    appendOptimisticMessage$,
-    dataSource,
-  } = deps;
+  const { agentId$, chatEvents$, draft, queueDraftSync$, sendEvent$ } = deps;
 
+  return command(async ({ get, set }, eventId: string, signal: AbortSignal) => {
+    const event = queuedEventsFromChatEvents(get(chatEvents$)).find(
+      (candidate) => {
+        return candidate.id === eventId;
+      },
+    );
+    if (!event || event.eventType !== "input.prompt") {
+      return;
+    }
+    const agentId = get(agentId$);
+    if (!agentId) {
+      return;
+    }
+
+    const userMessage = event.userMessage;
+    const templatePart = userMessage.parts.find((part) => {
+      return part.type === "template";
+    });
+    const fileIds = new Set(
+      userMessage.parts.flatMap((part) => {
+        return part.type === "file" ? [part.fileId] : [];
+      }),
+    );
+    set(draft.seed$, {
+      content: messageDocumentToPrompt(userMessage) ?? "",
+      userMessage,
+      generationTemplate:
+        templatePart?.type === "template" ? templatePart.template : undefined,
+      attachments: (event.attachFiles ?? [])
+        .filter((attachment) => {
+          return fileIds.has(attachment.id);
+        })
+        .map(createRestoredAttachment),
+    });
+
+    await set(
+      sendEvent$,
+      {
+        kind: "revoke",
+        agentId,
+        revokesEventId: event.id,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    await set(queueDraftSync$, signal);
+    signal.throwIfAborted();
+  });
+}
+
+function createSkipAutomationEvent({
+  agentId$,
+  chatEvents$,
+  sendEvent$,
+}: RecallMessageDeps) {
   return command(
-    async ({ get, set }, messageId: string, signal: AbortSignal) => {
-      const message = queuedMessagesFromRaw(get(rawMessages$)).find(
+    async (
+      { get, set },
+      eventId: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const event = queuedEventsFromChatEvents(get(chatEvents$)).find(
         (candidate) => {
-          return candidate.id === messageId;
+          return (
+            candidate.id === eventId &&
+            candidate.eventType === "input.automation"
+          );
         },
       );
-      if (
-        !message ||
-        (message.eventType !== "input.prompt" &&
-          message.eventType !== "input.rejected")
-      ) {
-        return;
-      }
       const agentId = get(agentId$);
-      if (!agentId) {
+      if (!event || !agentId) {
         return;
       }
-
-      const clientEventId = crypto.randomUUID();
-      set(appendOptimisticMessage$, {
-        threadId,
-        message: {
-          id: clientEventId,
-          threadId,
-          eventType: "control.revoke",
-          content: null,
-          revokesEventId: message.id,
-          createdAt: nowDate().toISOString(),
-        },
-      });
-      const userMessage = message.userMessage;
-      const templatePart = userMessage.parts.find((part) => {
-        return part.type === "template";
-      });
-      const fileIds = new Set(
-        userMessage.parts.flatMap((part) => {
-          return part.type === "file" ? [part.fileId] : [];
-        }),
-      );
-      set(draft.seed$, {
-        content: messageDocumentToPrompt(userMessage) ?? "",
-        userMessage,
-        generationTemplate:
-          templatePart?.type === "template" ? templatePart.template : undefined,
-        attachments: (message.attachFiles ?? [])
-          .filter((attachment) => {
-            return fileIds.has(attachment.id);
-          })
-          .map(createRestoredAttachment),
-      });
 
       await set(
-        dataSource.recallEvent$,
+        sendEvent$,
         {
-          threadId,
+          kind: "revoke",
           agentId,
-          revokesEventId: message.id,
-          clientEventId,
+          revokesEventId: event.id,
         },
         signal,
       );
-      signal.throwIfAborted();
-      await set(queueDraftSync$, signal);
       signal.throwIfAborted();
     },
   );
@@ -3822,13 +2826,10 @@ function createMessageCommands(deps: MessageCommandsDeps) {
   };
 }
 
-interface ThreadMessageActionsDeps extends MessageCommandsDeps {
-  rawMessages$: Computed<ChatMessageProjectionEntry[]>;
-}
-
-function createThreadMessageActions(deps: ThreadMessageActionsDeps) {
+function createThreadMessageActions(deps: MessageCommandsDeps) {
   return {
     ...createMessageCommands(deps),
+    skipAutomationEvent$: createSkipAutomationEvent(deps),
     cancelRun$: createCancelRunWithQueuedRecall(deps),
   };
 }
@@ -3836,15 +2837,16 @@ function createThreadMessageActions(deps: ThreadMessageActionsDeps) {
 function createCancelRunWithQueuedRecall({
   threadId,
   agentId$,
-  rawMessages$,
-  appendOptimisticMessage$,
-  dataSource,
+  chatEvents$,
+  sendEvent$,
 }: {
   threadId: string;
   agentId$: Computed<string | null>;
-  rawMessages$: Computed<ChatMessageProjectionEntry[]>;
-  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
-  dataSource: ChatThreadRemote;
+  chatEvents$: Computed<ChatEvent[]>;
+  sendEvent$: Command<
+    Promise<SendChatEventResult>,
+    [SendChatEventInput, AbortSignal]
+  >;
 }) {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -3860,63 +2862,35 @@ function createCancelRunWithQueuedRecall({
       return;
     }
 
-    const raw = get(rawMessages$);
-    const queuedMessages = queuedMessagesFromRaw(raw);
-
-    const interruptRequests = cancellableRunIdsFromRawMessages(raw).map(
-      (runId) => {
-        const clientEventId = crypto.randomUUID();
-        set(appendOptimisticMessage$, {
-          threadId,
-          message: {
-            id: clientEventId,
-            threadId,
-            eventType: "control.interrupt",
-            content: null,
-            interruptsRunId: runId,
-            createdAt: nowDate().toISOString(),
-          },
-        });
-        return { runId, clientEventId };
+    const chatEvents = get(chatEvents$);
+    const queuedEvents = queuedEventsFromChatEvents(chatEvents).filter(
+      (event) => {
+        return event.eventType === "input.prompt";
       },
     );
-
-    const recallRequests = queuedMessages.map((message) => {
-      const clientEventId = crypto.randomUUID();
-      set(appendOptimisticMessage$, {
-        threadId,
-        message: {
-          id: clientEventId,
-          threadId,
-          eventType: "control.revoke",
-          content: null,
-          revokesEventId: message.id,
-          createdAt: nowDate().toISOString(),
-        },
-      });
-      return {
-        threadId,
-        agentId,
-        revokesEventId: message.id,
-        clientEventId,
-      };
-    });
-
     await Promise.all([
-      set(
-        dataSource.cancelRuns$,
-        {
-          threadId,
-          agentId,
-          interrupts: interruptRequests,
-        },
-        signal,
-      ),
-      Promise.all(
-        recallRequests.map((request) => {
-          return set(dataSource.recallEvent$, request, signal);
-        }),
-      ),
+      ...liveRunIdsFromChatEvents(chatEvents).map((runId) => {
+        return set(
+          sendEvent$,
+          {
+            kind: "interrupt",
+            agentId,
+            interruptsRunId: runId,
+          },
+          signal,
+        );
+      }),
+      ...queuedEvents.map((event) => {
+        return set(
+          sendEvent$,
+          {
+            kind: "revoke",
+            agentId,
+            revokesEventId: event.id,
+          },
+          signal,
+        );
+      }),
     ]);
     signal.throwIfAborted();
   });
@@ -3926,15 +2900,25 @@ function createCancelRunWithQueuedRecall({
 // Sub-factory: thinking phrases
 // ---------------------------------------------------------------------------
 
-const THINKING_TYPEWRITER_INTERVAL_MS = 100;
-const THINKING_TYPEWRITER_LINE_PAUSE_MS = 1000;
-const THINKING_TYPEWRITER_LINE_PAUSE_TICKS = IN_VITEST
+const THINKING_TYPEWRITER_INTERVAL_MS = IN_VITEST ? 10 : 100;
+const THINKING_TYPEWRITER_CHUNK_HOLD_MS = 700;
+const THINKING_TYPEWRITER_CHUNK_HOLD_TICKS = IN_VITEST
   ? 1
   : Math.ceil(
-      THINKING_TYPEWRITER_LINE_PAUSE_MS / THINKING_TYPEWRITER_INTERVAL_MS,
+      THINKING_TYPEWRITER_CHUNK_HOLD_MS / THINKING_TYPEWRITER_INTERVAL_MS,
     );
+/** Keep in sync with the opacity transition on the thinking label. */
+const THINKING_TYPEWRITER_FADE_MS = 200;
+const THINKING_TYPEWRITER_FADE_TICKS = IN_VITEST
+  ? 1
+  : Math.ceil(THINKING_TYPEWRITER_FADE_MS / THINKING_TYPEWRITER_INTERVAL_MS);
 const THINKING_TYPEWRITER_WIDTH_GUARD_PX = 8;
-const THINKING_TYPEWRITER_OVERFLOW_PREFIX = "...";
+/** Fallback glyph advance used only when text measurement is unavailable. */
+const THINKING_TYPEWRITER_FALLBACK_GLYPH_PX = 14;
+/** Clause terminators that always end a chunk. */
+const THINKING_TYPEWRITER_BREAKS = "，、；：。！？…";
+/** Clause terminators that only end a chunk when followed by a space. */
+const THINKING_TYPEWRITER_SPACED_BREAKS = ",;:.!?";
 
 interface ThinkingTypewriterLine {
   readonly startIndex: number;
@@ -3943,24 +2927,28 @@ interface ThinkingTypewriterLine {
 }
 
 interface ThinkingTypewriterFrame {
-  readonly messageId: string | undefined;
+  readonly eventId: string | undefined;
   readonly text: string;
   readonly width: number;
   readonly lineIndex: number;
   readonly charIndex: number;
   readonly pauseTicksRemaining: number;
+  readonly fadeTicksRemaining: number;
+  readonly fadingOut: boolean;
   readonly displayedText: string;
   readonly complete: boolean;
 }
 
 function emptyThinkingTypewriterFrame(): ThinkingTypewriterFrame {
   return {
-    messageId: undefined,
+    eventId: undefined,
     text: "",
     width: 0,
     lineIndex: 0,
     charIndex: 0,
     pauseTicksRemaining: 0,
+    fadeTicksRemaining: 0,
+    fadingOut: false,
     displayedText: "",
     complete: false,
   };
@@ -4046,42 +3034,127 @@ function wrapThinkingTextForWidth(args: {
   if (args.graphemes.length === 0) {
     return [];
   }
+
+  const hardLines: ThinkingTypewriterLine[] = [];
+  let startIndex = 0;
+
+  for (let index = 0; index <= args.graphemes.length; index++) {
+    const grapheme = args.graphemes[index]!;
+    const isHardBreak =
+      index === args.graphemes.length || grapheme === "\n" || grapheme === "\r";
+    if (!isHardBreak) {
+      continue;
+    }
+
+    const text = args.graphemes.slice(startIndex, index).join("");
+    if (text.trim().length > 0) {
+      hardLines.push({
+        startIndex,
+        endIndex: index,
+        text,
+      });
+    }
+    startIndex = index + 1;
+  }
+
   if (!Number.isFinite(args.width) || args.width <= 0) {
-    return [
-      {
-        startIndex: 0,
-        endIndex: args.graphemes.length,
-        text: args.graphemes.join(""),
-      },
-    ];
+    return hardLines;
   }
 
   const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
   const lines: ThinkingTypewriterLine[] = [];
-  let startIndex = 0;
-  let current: string[] = [];
 
-  for (let index = 0; index < args.graphemes.length; index++) {
-    const grapheme = args.graphemes[index]!;
-    const candidate = [...current, grapheme];
-    const candidateText = candidate.join("");
-    const measured = args.measureText(candidateText);
-    if (measured === undefined) {
-      return [
-        {
-          startIndex: 0,
-          endIndex: args.graphemes.length,
-          text: args.graphemes.join(""),
-        },
-      ];
-    }
+  for (const hardLine of hardLines) {
+    lines.push(
+      ...packThinkingClauses({
+        graphemes: args.graphemes,
+        line: hardLine,
+        maxWidth,
+        measureText: args.measureText,
+      }),
+    );
+  }
 
-    if (measured <= maxWidth || current.length === 0) {
-      current = candidate;
+  return lines.length > 0 ? lines : hardLines;
+}
+
+/**
+ * Split a line at clause terminators. The terminator and any whitespace that
+ * follows it stay with the clause they close, so the next clause never starts
+ * with a stray space.
+ */
+function thinkingClauseSegments(
+  graphemes: readonly string[],
+  line: ThinkingTypewriterLine,
+): ThinkingTypewriterLine[] {
+  const segments: ThinkingTypewriterLine[] = [];
+  let startIndex = line.startIndex;
+
+  for (let index = line.startIndex; index < line.endIndex; index++) {
+    const grapheme = graphemes[index]!;
+    const next = index + 1 < line.endIndex ? graphemes[index + 1] : undefined;
+    const breaksHere =
+      THINKING_TYPEWRITER_BREAKS.includes(grapheme) ||
+      (THINKING_TYPEWRITER_SPACED_BREAKS.includes(grapheme) &&
+        (next === undefined || next.trim().length === 0));
+    if (!breaksHere) {
       continue;
     }
 
-    lines.push({
+    let endIndex = index + 1;
+    while (
+      endIndex < line.endIndex &&
+      graphemes[endIndex]!.trim().length === 0
+    ) {
+      endIndex++;
+    }
+    segments.push({
+      startIndex,
+      endIndex,
+      text: graphemes.slice(startIndex, endIndex).join(""),
+    });
+    startIndex = endIndex;
+    index = endIndex - 1;
+  }
+
+  if (startIndex < line.endIndex) {
+    segments.push({
+      startIndex,
+      endIndex: line.endIndex,
+      text: graphemes.slice(startIndex, line.endIndex).join(""),
+    });
+  }
+
+  return segments.length > 0 ? segments : [line];
+}
+
+/** Split a segment that is too wide to show at once, one grapheme at a time. */
+function splitThinkingSegmentByWidth(args: {
+  readonly graphemes: readonly string[];
+  readonly segment: ThinkingTypewriterLine;
+  readonly maxWidth: number;
+  readonly measureText: (value: string) => number | undefined;
+}): ThinkingTypewriterLine[] {
+  const parts: ThinkingTypewriterLine[] = [];
+  let startIndex = args.segment.startIndex;
+  let current: string[] = [];
+
+  for (
+    let index = args.segment.startIndex;
+    index < args.segment.endIndex;
+    index++
+  ) {
+    const grapheme = args.graphemes[index]!;
+    const candidate = [...current, grapheme];
+    const measured = args.measureText(candidate.join(""));
+    if (measured === undefined) {
+      return [];
+    }
+    if (measured <= args.maxWidth || current.length === 0) {
+      current = candidate;
+      continue;
+    }
+    parts.push({
       startIndex,
       endIndex: index,
       text: current.join(""),
@@ -4091,64 +3164,109 @@ function wrapThinkingTextForWidth(args: {
   }
 
   if (current.length > 0) {
-    lines.push({
+    parts.push({
       startIndex,
-      endIndex: args.graphemes.length,
+      endIndex: args.segment.endIndex,
       text: current.join(""),
     });
   }
+  return parts;
+}
 
+/** Last resort when the canvas measurer is unavailable: split by glyph count. */
+function splitThinkingSegmentByCount(
+  graphemes: readonly string[],
+  segment: ThinkingTypewriterLine,
+  maxGraphemes: number,
+): ThinkingTypewriterLine[] {
+  const parts: ThinkingTypewriterLine[] = [];
+  for (
+    let startIndex = segment.startIndex;
+    startIndex < segment.endIndex;
+    startIndex += maxGraphemes
+  ) {
+    const endIndex = Math.min(startIndex + maxGraphemes, segment.endIndex);
+    parts.push({
+      startIndex,
+      endIndex,
+      text: graphemes.slice(startIndex, endIndex).join(""),
+    });
+  }
+  return parts;
+}
+
+/**
+ * Greedily merge neighbouring clauses while they still fit the label, so every
+ * emitted line is short enough to display whole and never has to scroll.
+ */
+function packThinkingClauses(args: {
+  readonly graphemes: readonly string[];
+  readonly line: ThinkingTypewriterLine;
+  readonly maxWidth: number;
+  readonly measureText: (value: string) => number | undefined;
+}): ThinkingTypewriterLine[] {
+  const segments = thinkingClauseSegments(args.graphemes, args.line);
+  const lines: ThinkingTypewriterLine[] = [];
+  let pending: ThinkingTypewriterLine | undefined;
+
+  for (const segment of segments) {
+    const merged: ThinkingTypewriterLine = pending
+      ? {
+          startIndex: pending.startIndex,
+          endIndex: segment.endIndex,
+          text: args.graphemes
+            .slice(pending.startIndex, segment.endIndex)
+            .join(""),
+        }
+      : segment;
+    const mergedWidth = args.measureText(merged.text);
+    if (mergedWidth !== undefined && mergedWidth <= args.maxWidth) {
+      pending = merged;
+      continue;
+    }
+
+    if (pending) {
+      lines.push(pending);
+      pending = undefined;
+    }
+
+    const segmentWidth = args.measureText(segment.text);
+    if (segmentWidth !== undefined && segmentWidth <= args.maxWidth) {
+      pending = segment;
+      continue;
+    }
+
+    const byWidth =
+      segmentWidth === undefined
+        ? []
+        : splitThinkingSegmentByWidth({
+            graphemes: args.graphemes,
+            segment,
+            maxWidth: args.maxWidth,
+            measureText: args.measureText,
+          });
+    lines.push(
+      ...(byWidth.length > 0
+        ? byWidth
+        : splitThinkingSegmentByCount(
+            args.graphemes,
+            segment,
+            Math.max(
+              1,
+              Math.floor(args.maxWidth / THINKING_TYPEWRITER_FALLBACK_GLYPH_PX),
+            ),
+          )),
+    );
+  }
+
+  if (pending) {
+    lines.push(pending);
+  }
   return lines;
 }
 
-function displayedSlidingThinkingText(args: {
-  readonly graphemes: readonly string[];
-  readonly startIndex: number;
-  readonly charIndex: number;
-  readonly width: number;
-  readonly measureText: (value: string) => number | undefined;
-}): string {
-  const visibleGraphemes = args.graphemes.slice(
-    args.startIndex,
-    args.charIndex,
-  );
-  const visibleText = visibleGraphemes.join("");
-  if (visibleText.length === 0) {
-    return "";
-  }
-  if (!Number.isFinite(args.width) || args.width <= 0) {
-    return visibleText;
-  }
-
-  const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
-  const visibleWidth = args.measureText(visibleText);
-  if (visibleWidth === undefined || visibleWidth <= maxWidth) {
-    return visibleText;
-  }
-
-  let displayedText: string | undefined;
-  for (let start = visibleGraphemes.length - 1; start >= 0; start--) {
-    const candidate = `${THINKING_TYPEWRITER_OVERFLOW_PREFIX}${visibleGraphemes
-      .slice(start)
-      .join("")}`;
-    const measured = args.measureText(candidate);
-    if (measured === undefined) {
-      return visibleText;
-    }
-    if (measured <= maxWidth) {
-      displayedText = candidate;
-      continue;
-    }
-    if (displayedText) {
-      break;
-    }
-  }
-
-  return displayedText ?? visibleGraphemes[visibleGraphemes.length - 1] ?? "";
-}
-
 function nextThinkingTypewriterFrame(args: {
-  readonly messageId: string;
+  readonly eventId: string;
   readonly text: string;
   readonly currentFrame: ThinkingTypewriterFrame;
   readonly width: number;
@@ -4169,13 +3287,13 @@ function nextThinkingTypewriterFrame(args: {
   }
 
   const currentFrame =
-    args.currentFrame.messageId === args.messageId &&
+    args.currentFrame.eventId === args.eventId &&
     args.currentFrame.text === args.text &&
     args.currentFrame.width === width
       ? args.currentFrame
       : {
           ...emptyThinkingTypewriterFrame(),
-          messageId: args.messageId,
+          eventId: args.eventId,
           text: args.text,
           width,
         };
@@ -4183,23 +3301,17 @@ function nextThinkingTypewriterFrame(args: {
   const currentLine = lines[lineIndex]!;
   const nextLine = lines[lineIndex + 1];
 
-  if (currentFrame.pauseTicksRemaining > 0) {
-    return {
-      ...currentFrame,
-      lineIndex,
-      pauseTicksRemaining: currentFrame.pauseTicksRemaining - 1,
-      displayedText: currentLine.text,
-      complete: false,
-    };
-  }
-
-  if (currentFrame.charIndex >= currentLine.endIndex) {
-    if (!nextLine) {
+  // Fading out the finished chunk before the next one types in.
+  if (currentFrame.fadeTicksRemaining > 0) {
+    const fadeTicksRemaining = currentFrame.fadeTicksRemaining - 1;
+    if (fadeTicksRemaining > 0 || !nextLine) {
       return {
         ...currentFrame,
         lineIndex,
+        fadeTicksRemaining,
+        fadingOut: fadeTicksRemaining > 0,
         displayedText: currentLine.text,
-        complete: true,
+        complete: false,
       };
     }
 
@@ -4212,15 +3324,37 @@ function nextThinkingTypewriterFrame(args: {
       lineIndex: lineIndex + 1,
       charIndex: nextCharIndex,
       pauseTicksRemaining: 0,
-      displayedText: displayedSlidingThinkingText({
-        graphemes,
-        startIndex: nextLine.startIndex,
-        charIndex: nextCharIndex,
-        width,
-        measureText: args.measureText,
-      }),
-      complete:
-        lineIndex + 1 >= lines.length - 1 && nextCharIndex >= graphemes.length,
+      fadeTicksRemaining: 0,
+      fadingOut: false,
+      displayedText: graphemes
+        .slice(nextLine.startIndex, nextCharIndex)
+        .join(""),
+      complete: false,
+    };
+  }
+
+  // Holding on a fully typed chunk so it can be read before it is replaced.
+  if (currentFrame.pauseTicksRemaining > 0) {
+    const pauseTicksRemaining = currentFrame.pauseTicksRemaining - 1;
+    const startFade = pauseTicksRemaining === 0 && nextLine !== undefined;
+    return {
+      ...currentFrame,
+      lineIndex,
+      pauseTicksRemaining,
+      fadeTicksRemaining: startFade ? THINKING_TYPEWRITER_FADE_TICKS : 0,
+      fadingOut: startFade,
+      displayedText: currentLine.text,
+      complete: false,
+    };
+  }
+
+  if (currentFrame.charIndex >= currentLine.endIndex) {
+    return {
+      ...currentFrame,
+      lineIndex,
+      pauseTicksRemaining: nextLine ? THINKING_TYPEWRITER_CHUNK_HOLD_TICKS : 0,
+      displayedText: currentLine.text,
+      complete: !nextLine,
     };
   }
 
@@ -4235,15 +3369,11 @@ function nextThinkingTypewriterFrame(args: {
     charIndex: nextCharIndex,
     pauseTicksRemaining:
       nextCharIndex >= currentLine.endIndex && nextLine !== undefined
-        ? THINKING_TYPEWRITER_LINE_PAUSE_TICKS
+        ? THINKING_TYPEWRITER_CHUNK_HOLD_TICKS
         : 0,
-    displayedText: displayedSlidingThinkingText({
-      graphemes,
-      startIndex: currentLine.startIndex,
-      charIndex: nextCharIndex,
-      width,
-      measureText: args.measureText,
-    }),
+    displayedText: graphemes
+      .slice(currentLine.startIndex, nextCharIndex)
+      .join(""),
     complete: nextCharIndex >= graphemes.length,
   };
 }
@@ -4256,22 +3386,25 @@ function thinkingTypewriterFrameComplete(
 
 function createThinkingIndicatorSignals(
   thinkingText$: Computed<Promise<string | null>>,
-  thinkingMessageId$: Computed<Promise<string | null>>,
+  thinkingEventId$: Computed<Promise<string | null>>,
 ) {
   const blockColors = shuffleBlockColors();
   const blockColors$ = computed(() => {
     return blockColors;
   });
-  const thinkingPhrase =
-    THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)]!;
-  const thinkingPhrase$ = computed(() => {
-    return thinkingPhrase;
+  const thinkingPhraseIndex = Math.floor(Math.random() * THINKING_PHRASE_COUNT);
+  const thinkingPhrase$ = computed((get) => {
+    get(locale$);
+    return thinkingPhrase(thinkingPhraseIndex);
   });
   const thinkingTypewriterFrame$ = state<ThinkingTypewriterFrame>(
     emptyThinkingTypewriterFrame(),
   );
   const displayedThinkingText$ = computed((get): Promise<string> => {
     return Promise.resolve(get(thinkingTypewriterFrame$).displayedText);
+  });
+  const thinkingTextFadingOut$ = computed((get): Promise<boolean> => {
+    return Promise.resolve(get(thinkingTypewriterFrame$).fadingOut);
   });
   const resetThinkingTypewriterLoopSignal$ = resetSignal();
 
@@ -4283,14 +3416,14 @@ function createThinkingIndicatorSignals(
 
       await setLoop(
         async (sig) => {
-          const [thinkingText, thinkingMessageId] = await Promise.all([
+          const [thinkingText, thinkingEventId] = await Promise.all([
             get(thinkingText$),
-            get(thinkingMessageId$),
+            get(thinkingEventId$),
           ]);
           sig.throwIfAborted();
 
           const text = thinkingText?.trim() ?? "";
-          if (!thinkingMessageId || text.length === 0) {
+          if (!thinkingEventId || text.length === 0) {
             set(thinkingTypewriterFrame$, emptyThinkingTypewriterFrame());
             return true;
           }
@@ -4300,7 +3433,7 @@ function createThinkingIndicatorSignals(
             return false;
           }
           const nextFrame = nextThinkingTypewriterFrame({
-            messageId: thinkingMessageId,
+            eventId: thinkingEventId,
             text,
             currentFrame: get(thinkingTypewriterFrame$),
             width,
@@ -4319,186 +3452,347 @@ function createThinkingIndicatorSignals(
     blockColors$,
     thinkingPhrase$,
     displayedThinkingText$,
+    thinkingTextFadingOut$,
     setThinkingIndicatorTextRef$,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Factory: createChatThreadSignals
+// Factory: createChatPanelSignals
 // ---------------------------------------------------------------------------
 
-function publicChatThreadMessageSignals(
-  messages: ReturnType<typeof createChatThreadMessagePipeline>,
-) {
+function publicChatThreadEventSignals(events: MessageListSignals) {
   return {
-    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
-    latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
-    visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
-    visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
-    indexedDbMessagesInitialized$: messages.indexedDbMessagesInitialized$,
-    sidebarAutoOpenCandidate$: messages.sidebarAutoOpenCandidate$,
-    messageImageGroups$: messages.messageImageGroups$,
-    artifactSignalsForUrl: messages.artifactSignalsForUrl,
-    mailDraftCardSignalsById$: messages.mailDraftCardSignalsById$,
-    browserSessionCardSignalsById$: messages.browserSessionCardSignalsById$,
-    hasMessages$: messages.hasMessages$,
-    hasNewMessages$: messages.hasNewMessages$,
-    hasQueuedMessages$: messages.hasQueuedMessages$,
-    queuedMessageItems$: messages.queuedMessageItems$,
-    emptyQueuedMessageItems$: messages.emptyQueuedMessageItems$,
-    thinkingIndicatorMode$: messages.thinkingIndicatorMode$,
-    thinkingMessageId$: messages.thinkingMessageId$,
-    thinkingText$: messages.thinkingText$,
-    recommendedFollowupSource$: messages.recommendedFollowupSource$,
-    historyBackfillProgress$: messages.historyBackfillProgress$,
-    activeGoalObjective$: messages.activeGoalObjective$,
-    donePhrase$: messages.donePhrase$,
-    loadMoreRenderedChatGroups$: messages.loadMoreRenderedChatGroups$,
+    latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
+    latestAssistantTextCreatedAt$: events.latestAssistantTextCreatedAt$,
+    visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
+    visibleRenderedChatGroupsReady$: events.visibleRenderedChatGroupsReady$,
+    chatSkeletonVisible$: events.chatSkeletonVisible$,
+    assistantErrorRecovery$: events.assistantErrorRecovery$,
+    retryAssistantError$: events.retryAssistantError$,
+    resetCodexSubscriptionAndRetry$: events.resetCodexSubscriptionAndRetry$,
+    eventImageGroups$: events.eventImageGroups$,
+    artifactSignalsForUrl: events.artifactSignalsForUrl,
+    agentReferenceSignalsForId: events.agentReferenceSignalsForId,
+    mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
+    browserSessionSignals: events.browserSessionSignals,
+    hasEvents$: events.hasEvents$,
+    thinkingIndicatorMode$: events.thinkingIndicatorMode$,
+    thinkingEventId$: events.thinkingEventId$,
+    thinkingText$: events.thinkingText$,
+    recommendedFollowupSource$: events.recommendedFollowupSource$,
+    historyBackfillPending$: events.historyBackfillPending$,
+    donePhrase$: events.donePhrase$,
+    loadMoreRenderedChatGroups$: events.loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$:
-      messages.resetRenderedChatGroupsIfAtBottom$,
+      events.resetRenderedChatGroupsIfAtBottom$,
   };
 }
 
-function createThreadComposer(
-  draft: DraftSignals,
-  threadId: string,
-  agentId$: Computed<string | null>,
-  inlineTemplatesEnabled: boolean,
-  connectorAuthorization?: ComposerConnectorAuthorizationSignals,
+interface CreateChatThreadComposerSignalsOptions {
+  readonly chatEvents: ChatEventSignals;
+  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
+  readonly draft: DraftSignals;
+  readonly queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
+  readonly modelSelection: ReturnType<typeof createModelSelection>;
+  readonly computerUseHostSelection: ReturnType<
+    typeof createComputerUseHostSelection
+  >;
+  readonly messageActions: ReturnType<typeof createThreadMessageActions>;
+  readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
+}
+
+interface ChatThreadComposerContext {
+  readonly threadMeta$: Computed<ThreadMeta | null>;
+  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
+  readonly agentId$: Computed<string | null>;
+  readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
+}
+
+function createThreadSubmitMessageSignal(
+  options: CreateChatThreadComposerSignalsOptions,
 ) {
-  const workflowComposer = createWorkflowComposerSignals(
-    draft,
-    threadId,
-    agentId$,
-    inlineTemplatesEnabled,
+  const { computerUseHostSelection, messageActions } = options;
+  return command(
+    async (
+      { get, set },
+      action: "send" | "queue",
+      submission: ComposerSubmission,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      const explicit = get(computerUseHostSelection.computerUseHostIdExplicit$);
+      const storedHostId = get(computerUseHostSelection.computerUseHostId$);
+      const hosts = await get(computerUseHosts$);
+      signal.throwIfAborted();
+      const computerUseHostId = selectedComputerUseHostId(hosts, storedHostId);
+      const cloudBrowserEnabled = get(
+        computerUseHostSelection.cloudBrowserEnabled$,
+      );
+      const submitted =
+        action === "queue"
+          ? await set(
+              messageActions.queueMessage$,
+              submission.prompt,
+              {
+                computerUseHostId: explicit ? computerUseHostId : undefined,
+                cloudBrowserEnabled: explicit ? cloudBrowserEnabled : undefined,
+                generationTemplate: submission.generationTemplate,
+                editorDocument: submission.editorDocument,
+              },
+              signal,
+            )
+          : await set(
+              messageActions.sendMessage$,
+              submission.prompt,
+              {
+                ...(explicit ? { computerUseHostId } : {}),
+                ...(explicit ? { cloudBrowserEnabled } : {}),
+                generationTemplate: submission.generationTemplate,
+                editorDocument: submission.editorDocument,
+              },
+              signal,
+            );
+      if (submitted) {
+        set(computerUseHostSelection.clearComputerUseHostIdOverride$);
+      }
+      return submitted;
+    },
   );
+}
+
+function createThreadPendingActionSignals(
+  options: CreateChatThreadComposerSignalsOptions,
+) {
+  const { messageActions } = options;
+  const threadId = options.chatEvents.threadId;
+  const removeQueuedMessage$ = command(
+    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
+      await set(messageActions.recallMessage$, eventId, signal);
+    },
+  );
+  const removeWorkflowEvent$ = command(
+    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
+      await set(messageActions.skipAutomationEvent$, eventId, signal);
+    },
+  );
+  const cancelActiveGoal$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      await set(pauseChatThreadGoal$, threadId, signal);
+    },
+  );
+  const openActiveGoal$ = command(({ set }): void => {
+    set(openChatThreadGoalDialog$, threadId);
+  });
   return {
-    workflowComposer,
-    composerConnectors: createComposerConnectorSignals(
-      agentId$,
-      connectorAuthorization,
-    ),
-    focusInput$: workflowComposer.focus$,
+    removeQueuedMessage$,
+    removeWorkflowEvent$,
+    cancelActiveGoal$,
+    openActiveGoal$,
   };
 }
 
-export function createChatThreadSignals(
-  threadId: string,
-  draft: DraftSignals,
-  dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
-  options: {
-    readonly initialOptimisticEntries?: readonly OptimisticChatMessageEntry[];
-    readonly inlineTemplatesEnabled?: boolean;
-    readonly connectorAuthorization?: ComposerConnectorAuthorizationSignals;
-  } = {},
-): ChatThreadSignals {
-  const initialOptimisticEntries = options.initialOptimisticEntries ?? [];
-  const inlineTemplatesEnabled = options.inlineTemplatesEnabled ?? false;
-  const threadDraft$ = createRemoteThreadDraft(dataSource);
-  const threadMeta$ = createThreadMeta(threadId);
-  const threadTitle = createThreadTitleParts(threadMeta$);
-  const threadSettledInServer$ = createThreadSettledInServer(threadId);
-  const modelSelection = createModelSelection(
-    threadId,
-    threadMeta$,
-    dataSource,
+function createChatThreadComposerSignals(
+  options: CreateChatThreadComposerSignalsOptions,
+): ComposerSignals {
+  const { modelSelection, computerUseHostSelection, messageActions } = options;
+  const composerModelSelection$ = computed(
+    async (get): Promise<ModelProviderSelection | null> => {
+      const selectedModel = get(modelSelection.selectedModel$);
+      if (!isSupportedRunModel(selectedModel)) {
+        return null;
+      }
+      return (await get(modelSelection.codexFastModeActive$))
+        ? { selectedModel, codexServiceTier: "fast" }
+        : { selectedModel };
+    },
   );
+  return createComposerSignals({
+    agent$: options.agent$,
+    draft: {
+      signals: options.draft,
+      save$: options.queueDraftSync$,
+    },
+    chatEvents$: options.chatEvents.chatEvents$,
+    threadId: options.chatEvents.threadId,
+    singleLineOnMobile: true,
+    modelSelection$: composerModelSelection$,
+    selectedModelOauthAvailable$: modelSelection.selectedModelOauthAvailable$,
+    setModelSelection$: modelSelection.setModelSelection$,
+    configureSelectedModel$: modelSelection.configureSelectedModel$,
+    computerUseHostId$: computerUseHostSelection.computerUseHostId$,
+    cloudBrowserEnabled$: computerUseHostSelection.cloudBrowserEnabled$,
+    setComputerUseHostId$: computerUseHostSelection.setComputerUseHostId$,
+    setCloudBrowserEnabled$: computerUseHostSelection.setCloudBrowserEnabled$,
+    submitMessage$: createThreadSubmitMessageSignal(options),
+    cancelRun$: messageActions.cancelRun$,
+    cancellationRecoveryPending$: options.cancellationRecoveryPending$,
+    ...createThreadPendingActionSignals(options),
+  });
+}
+
+function createThreadComposerSignalsWithContext(
+  threadId: string,
+  chatEvents: ChatEventSignals,
+  context: ChatThreadComposerContext,
+  draft: DraftSignals,
+): ComposerSignals {
+  const modelSelection = createModelSelection(threadId, context.threadMeta$);
   const modelSelectionForSend$ = createModelSelectionForSend(modelSelection);
   const computerUseHostSelection = createComputerUseHostSelection(
     threadId,
-    threadMeta$,
-    dataSource,
+    context.threadMeta$,
   );
-  const {
-    recordScrollHeightForPrepend$,
-    clearScrollHeightForPrepend$,
-    awayFromBottom$,
-    ...scrollSignals
-  } = createChatThreadScrollSignals(threadId);
-  const container = createChatThreadContainerSignals();
-  const { composerFileInput$, setComposerFileInput$ } =
-    createComposerFileInput();
-  const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
-  const composer = createThreadComposer(
-    draft,
-    threadId,
-    threadOwned.agentId$,
-    inlineTemplatesEnabled,
-    options.connectorAuthorization,
-  );
-  const artifact = createArtifacts(threadId);
-  const previewImageUrlsByUrl$ = createArtifactPreviewImageUrls(
-    artifact.artifacts$,
-  );
-  const messages = createChatThreadMessagePipeline({
-    threadId,
-    dataSource,
-    initialOptimisticEntries,
-    recordScrollHeightForPrepend$,
-    clearScrollHeightForPrepend$,
-    awayFromBottom$,
-    previewImageUrlsByUrl$,
-  });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
-    createDraftSync(threadId, draft, dataSource);
-  const composerSendButton = createComposerSendButtonSignals(messages);
-  const runTracking = createRunTracking({
-    threadId,
-    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
-    initialAutoOpenDecisionCompleted$:
-      threadOwned.sidebar.initialAutoOpenDecisionCompleted$,
-    initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
-    mergePersistentMessages$: messages.mergePersistentMessages$,
-    syncRemoteMessages$: messages.syncRemoteMessages$,
-    settleMessageSync$: messages.settleMessageSync$,
-    reloadArtifacts$: artifact.reloadArtifacts$,
-    reloadMailDrafts$: messages.reloadMailDrafts$,
-    reloadComposerWorkflows$: composer.workflowComposer.reloadWorkflows$,
-    autoScroll$: scrollSignals.autoScroll$,
-    automationSignals: threadOwned,
-    dataSource,
-  });
+    createDraftSync(threadId, draft);
   const messageActions = createThreadMessageActions({
     threadId,
-    pendingSendCount$: composerSendButton.pendingSendCount$,
-    agentId$: threadOwned.agentId$,
+    agentId$: context.agentId$,
     modelSelectionForSend$,
-    rawMessages$: messages.rawMessages$,
+    chatEvents$: chatEvents.chatEvents$,
     draft,
     queueDraftSync$,
     cancelDraftSync$,
     flushDraftClear$,
-    scrollToBottom$: scrollSignals.scrollToBottom$,
-    syncRemoteMessages$: messages.syncRemoteMessages$,
-    appendOptimisticMessage$: messages.appendOptimisticMessage$,
-    dataSource,
+    sendEvent$: chatEvents.sendEvent$,
+  });
+  return createChatThreadComposerSignals({
+    chatEvents,
+    agent$: context.agent$,
+    draft,
+    queueDraftSync$,
+    modelSelection,
+    computerUseHostSelection,
+    messageActions,
+    cancellationRecoveryPending$: context.cancellationRecoveryPending$,
+  });
+}
+
+/**
+ * Creates the public composer signals for a chat thread.
+ *
+ * @public
+ */
+export function createThreadComposerSignals(
+  threadId: string,
+  chatEvents: ChatEventSignals,
+): ComposerSignals {
+  const threadMeta$ = createThreadMeta(threadId);
+  const agent = createAgentInfoSignals(threadMeta$);
+  const cancellationRecovery = createCancellationRecoverySignals(threadId);
+  return createThreadComposerSignalsWithContext(
+    threadId,
+    chatEvents,
+    {
+      threadMeta$,
+      agent$: agent.agent$,
+      agentId$: agent.agentId$,
+      cancellationRecoveryPending$: cancellationRecovery.pending$,
+    },
+    createDraftSignals(),
+  );
+}
+
+function createChatPanelSignalsWithDraft(
+  chatEvents: ChatEventSignals,
+  draft: DraftSignals,
+  signal: AbortSignal,
+): ChatPanelSignals {
+  const threadId = chatEvents.threadId;
+  const lifecycleId = crypto.randomUUID();
+  const artifact = createArtifacts(threadId);
+  const threadDraft$ = createRemoteChatThreadDraft(threadId);
+  const threadMeta$ = createThreadMeta(threadId);
+  const threadTitle = createThreadTitleParts(threadMeta$);
+  const threadSettledInServer$ = createThreadSettledInServer(threadId);
+  const container = createChatThreadContainerSignals();
+  const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
+  const cancellationRecovery = createCancellationRecoverySignals(threadId);
+  const composer = createThreadComposerSignalsWithContext(
+    threadId,
+    chatEvents,
+    {
+      threadMeta$,
+      agent$: threadOwned.agent$,
+      agentId$: threadOwned.agentId$,
+      cancellationRecoveryPending$: cancellationRecovery.pending$,
+    },
+    draft,
+  );
+  const feedback = createChatThreadFeedbackSignals(threadId, composer.feedback);
+  const messages: MessageListSignals = {
+    ...createChatThreadMessagePipeline({
+      threadId,
+      chatEvents,
+      previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
+        artifact.artifacts$,
+      ),
+    }),
+    ...artifact,
+  };
+  const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
+  const runTracking = createRunTracking({
+    threadId,
+    setupChatEvents$: messages.setup$,
+    catchUpChatEvents$: chatEvents.catchUp$,
+    reloadArtifacts$: messages.reloadArtifacts$,
+    subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
+    automationSignals: threadOwned,
+    cancellationRecovery,
   });
   return {
     threadId,
+    lifecycleId,
+    signal,
     threadDraft$,
     threadMeta$,
     ...threadTitle,
     threadSettledInServer$,
-    ...modelSelection,
-    ...computerUseHostSelection,
-    ...messageActions,
-    composerSendButtonStatus$: composerSendButton.composerSendButtonStatus$,
-    ...scrollSignals,
+    scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
+    scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
+    threadScrollPosition$: messages.scroll.threadScrollPosition$,
+    awayFromBottom$: messages.scroll.awayFromBottom$,
+    scrollTo$: messages.scroll.scrollTo$,
+    scrollToTop$: messages.scroll.scrollToTop$,
+    scrollToBottom$: messages.scroll.scrollToBottom$,
     ...container,
-    awayFromBottom$,
-    draft,
-    ...composer,
-    composerFileInput$,
-    setComposerFileInput$,
+    composer,
+    feedback,
+    sharing,
     ...threadOwned,
-    queueDraftSync$,
-    ...publicChatThreadMessageSignals(messages),
-    receiveSyncedEvents$: runTracking.receiveSyncedEvents$,
+    sidebar: messages.sidebar,
+    ...publicChatThreadEventSignals(messages),
     subscribeChatThread$: runTracking.subscribeChatThread$,
     ...createThinkingIndicatorSignals(
       messages.thinkingText$,
-      messages.thinkingMessageId$,
+      messages.thinkingEventId$,
     ),
-    ...artifact,
+    artifacts$: messages.artifacts$,
+    reloadArtifacts$: messages.reloadArtifacts$,
   };
 }
+
+/**
+ * Creates the public panel signals for a chat thread.
+ *
+ * @public
+ */
+export function createChatPanelSignals(
+  chatEvents: ChatEventSignals,
+  signal: AbortSignal,
+): ChatPanelSignals {
+  return createChatPanelSignalsWithDraft(
+    chatEvents,
+    createDraftSignals(),
+    signal,
+  );
+}
+
+export const createCachedChatPanelSignals$ = command(
+  ({ set }, chatEvents: ChatEventSignals, signal: AbortSignal) => {
+    const { draft, isNew } = set(ensureDraft$, chatEvents.threadId);
+    return {
+      thread: createChatPanelSignalsWithDraft(chatEvents, draft, signal),
+      isNew,
+    };
+  },
+);

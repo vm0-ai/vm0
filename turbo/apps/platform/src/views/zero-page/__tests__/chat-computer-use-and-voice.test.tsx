@@ -4,7 +4,6 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -26,6 +25,16 @@ import {
   queryLinkByText,
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
+
+function computerUseRow(switchName: string): HTMLElement {
+  const row = screen
+    .getByRole("switch", { name: switchName })
+    .closest("div.cursor-pointer");
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`No computer use row found for switch: ${switchName}`);
+  }
+  return row;
+}
 
 describe("chat lifecycle", () => {
   it("keeps Cloud browser and Computer Use mutually exclusive", async () => {
@@ -75,7 +84,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await waitFor(() => {
@@ -120,6 +128,109 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps enabled Cloud browser and host rows untinted", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000720";
+    const hostId = "11111111-1111-4111-8111-111111111112";
+    const lifecycle = mockChatLifecycle(context, {
+      threadId,
+      computerUseHostId: hostId,
+    });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: null,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: hostId,
+        cloudBrowserEnabled: false,
+      },
+    ]);
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: hostId,
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: computerUsePermissions(),
+            status: "online",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
+    await user.click(await screen.findByLabelText("Connectors"));
+
+    // Declared exception to the "no CSS class assertions" rule in
+    // docs/testing/testing-external-behavior.md and AP-7 of
+    // docs/testing/anti-patterns.md. jsdom loads no Tailwind stylesheet, so row
+    // colour has no observable page surface and getComputedStyle cannot tell a
+    // tinted row from an untinted one. The class assertion is the only way to
+    // keep the selected-state tint from being reintroduced here.
+    expect(computerUseRow("Disconnect Studio Mac")).not.toHaveClass(
+      "bg-primary/5",
+    );
+
+    await user.click(
+      screen.getByRole("switch", { name: "Enable Cloud browser" }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "Disable Cloud browser" }),
+      ).toHaveAttribute("aria-checked", "true");
+    });
+
+    expect(computerUseRow("Disable Cloud browser")).not.toHaveClass(
+      "bg-primary/5",
+    );
+  });
+
+  it("keeps Cloud browser out of the Your computer group", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+    });
+
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await screen.findByLabelText("Connectors"));
+
+    const cloudBrowserSwitch = await screen.findByRole("switch", {
+      name: "Disable Cloud browser",
+    });
+    expect(screen.getByText("No online computers")).toBeInTheDocument();
+
+    // Cloud browser is a Zero-hosted remote browser, not one of the user's own
+    // machines, so its toggle must stay above the "Your computer" heading
+    // instead of being listed under it. That heading labels the rows after it
+    // rather than wrapping them, so document order is the only page-visible
+    // expression of the grouping.
+    expect(
+      cloudBrowserSwitch.compareDocumentPosition(
+        screen.getByText("Your computer"),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("creates a new chat thread with Cloud browser on by default", async () => {
     const user = userEvent.setup({ delay: null });
     let sentCloudBrowserEnabled: boolean | undefined;
@@ -137,7 +248,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -170,7 +280,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -186,38 +295,6 @@ describe("chat lifecycle", () => {
     await user.keyboard("{Escape}");
 
     await sendMessageInUI(user, textarea, "Keep the cloud browser closed");
-
-    await waitFor(() => {
-      expect(sentCloudBrowserEnabled).toBeUndefined();
-    });
-  });
-
-  it("hides Cloud browser from a new chat thread when the feature is disabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    let sentCloudBrowserEnabled: boolean | undefined;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
-      },
-    });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
-      return respond(200, { hosts: [] });
-    });
-
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
-
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(await screen.findByLabelText("Connectors"));
-    expect(screen.getByText("Your computer")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("switch", { name: "Disable Cloud browser" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("switch", { name: "Enable Cloud browser" }),
-    ).not.toBeInTheDocument();
-    await user.keyboard("{Escape}");
-
-    await sendMessageInUI(user, textarea, "No cloud browser here");
 
     await waitFor(() => {
       expect(sentCloudBrowserEnabled).toBeUndefined();
@@ -256,7 +333,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -843,7 +919,6 @@ describe("chat lifecycle", () => {
       });
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
-          draftContent: "Summarize the standup",
           draftUserMessage: {
             version: 1,
             parts: [{ type: "text", text: "Summarize the standup" }],
@@ -856,6 +931,140 @@ describe("chat lifecycle", () => {
       expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
     } finally {
       toastError.mockRestore();
+    }
+  });
+
+  it("waits for active voice input before sending", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000778";
+    const transcriptionRequested = context.mocks.deferred<void>();
+    const transcriptionReady = context.mocks.deferred<void>();
+    const submissionRequested = context.mocks.deferred<void>();
+    const sentPrompts: string[] = [];
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        if (body.prompt !== undefined) {
+          sentPrompts.push(body.prompt);
+        }
+        submissionRequested.resolve(undefined);
+      },
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+      transcriptionRequested.resolve(undefined);
+      await transcriptionReady.promise;
+      return new Response(JSON.stringify({ text: "completed voice input" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      const composer = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER);
+      });
+      await fill(composer, "Typed introduction");
+      const sendButton = screen.getByLabelText("Send");
+      await waitFor(() => {
+        expect(sendButton).toBeEnabled();
+      });
+      await user.click(await screen.findByLabelText("Voice input"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+      });
+
+      const firstRequest = Promise.race([
+        (async () => {
+          await transcriptionRequested.promise;
+          return "transcription" as const;
+        })(),
+        (async () => {
+          await submissionRequested.promise;
+          return "submission" as const;
+        })(),
+      ]);
+      await user.click(sendButton);
+
+      await expect(firstRequest).resolves.toBe("transcription");
+      expect(sentPrompts).toStrictEqual([]);
+
+      await user.click(screen.getByLabelText("Send"));
+      expect(submissionRequested.settled()).toBeFalsy();
+
+      transcriptionReady.resolve(undefined);
+
+      await waitFor(() => {
+        expect(sentPrompts).toHaveLength(1);
+      });
+      expect(sentPrompts[0]).toContain("Typed introduction");
+      expect(sentPrompts[0]).toContain("completed voice input");
+      expect(sentPrompts[0]?.match(/completed voice input/g)).toHaveLength(1);
+      await waitFor(() => {
+        expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+      });
+    } finally {
+      if (!transcriptionReady.settled()) {
+        transcriptionReady.resolve(undefined);
+      }
+    }
+  });
+
+  it("waits for voice input to finish starting before sending", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000779";
+    const microphoneReady = context.mocks.deferred<void>();
+    const submissionRequested = context.mocks.deferred<void>();
+    const sentPrompts: string[] = [];
+    context.mocks.browser.voiceInput({
+      getUserMediaReady: microphoneReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        if (body.prompt !== undefined) {
+          sentPrompts.push(body.prompt);
+        }
+        submissionRequested.resolve(undefined);
+      },
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      return new Response(JSON.stringify({ text: "startup voice input" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      const composer = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER);
+      });
+      await fill(composer, "Typed introduction");
+      await user.click(await screen.findByLabelText("Voice input"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("Starting voice input")).toBeDisabled();
+      });
+
+      await user.click(screen.getByLabelText("Send"));
+
+      expect(submissionRequested.settled()).toBeFalsy();
+      microphoneReady.resolve(undefined);
+
+      await waitFor(() => {
+        expect(sentPrompts).toHaveLength(1);
+      });
+      expect(sentPrompts[0]).toContain("Typed introduction");
+      expect(sentPrompts[0]).toContain("startup voice input");
+      await waitFor(() => {
+        expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+      });
+    } finally {
+      if (!microphoneReady.settled()) {
+        microphoneReady.resolve(undefined);
+      }
     }
   });
 
@@ -876,6 +1085,7 @@ describe("chat lifecycle", () => {
       },
     );
     context.mocks.http.post("*/api/zero/voice-io/stt", async ({ request }) => {
+      transcriptionRequested.resolve(undefined);
       const form = await request.formData();
       const file = form.get("file");
       if (!(file instanceof File)) {
@@ -883,7 +1093,6 @@ describe("chat lifecycle", () => {
       }
       uploadedAudio.push(await file.text());
       transcriptionCalls += 1;
-      transcriptionRequested.resolve(undefined);
       return new Response(JSON.stringify({ text: "First sentence" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -913,7 +1122,6 @@ describe("chat lifecycle", () => {
     expect(uploadedAudio).toStrictEqual(["voice-1"]);
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: "First sentence",
         draftUserMessage: {
           version: 1,
           parts: [{ type: "text", text: "First sentence" }],
@@ -926,6 +1134,89 @@ describe("chat lifecycle", () => {
       expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
     });
     expect(transcriptionCalls).toBe(1);
+  });
+
+  it("uploads voice input segments one at a time", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-serialized-segments-thread";
+    const firstRequestStarted = context.mocks.deferred<void>();
+    const releaseFirstRequest = context.mocks.deferred<void>();
+    const speechResumed = context.mocks.deferred<void>();
+    const finalRecorderStopped = context.mocks.deferred<void>();
+    let currentRms = 0.1;
+    let recorderStopCount = 0;
+    let requestCount = 0;
+    let activeRequestCount = 0;
+    let maxActiveRequestCount = 0;
+    context.mocks.browser.voiceInput({
+      onRecorderStop: () => {
+        recorderStopCount += 1;
+        if (recorderStopCount === 2) {
+          finalRecorderStopped.resolve(undefined);
+        }
+      },
+      rms: () => {
+        if (
+          currentRms > 0 &&
+          firstRequestStarted.settled() &&
+          !speechResumed.settled()
+        ) {
+          speechResumed.resolve(undefined);
+        }
+        return currentRms;
+      },
+    });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: true, count: 0, limit: null });
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+      const requestIndex = requestCount;
+      requestCount += 1;
+      activeRequestCount += 1;
+      maxActiveRequestCount = Math.max(
+        maxActiveRequestCount,
+        activeRequestCount,
+      );
+      if (requestIndex === 0) {
+        firstRequestStarted.resolve(undefined);
+        await releaseFirstRequest.promise;
+      }
+      activeRequestCount -= 1;
+      return new Response(
+        JSON.stringify({
+          text: requestIndex === 0 ? "First sentence" : "Second sentence",
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    currentRms = 0;
+    await firstRequestStarted.promise;
+    currentRms = 0.1;
+    await speechResumed.promise;
+    await user.click(screen.getByLabelText("Stop recording"));
+    await finalRecorderStopped.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(requestCount).toBe(1);
+
+    releaseFirstRequest.resolve(undefined);
+    await waitFor(() => {
+      expect(composer).toHaveTextContent("First sentence Second sentence");
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+    expect(requestCount).toBe(2);
+    expect(maxActiveRequestCount).toBe(1);
   });
 
   it("automatically stops voice input after extended silence", async () => {
@@ -1149,6 +1440,12 @@ describe("chat lifecycle", () => {
           screen.getByText("Upgrade or downgrade anytime."),
         ).toBeInTheDocument();
       });
+      await waitFor(() => {
+        expect(screen.queryByLabelText("Stop recording")).toBeNull();
+      });
+      expect(toastError).not.toHaveBeenCalledWith(
+        "Voice transcription failed. Try again.",
+      );
     } finally {
       toastError.mockRestore();
     }

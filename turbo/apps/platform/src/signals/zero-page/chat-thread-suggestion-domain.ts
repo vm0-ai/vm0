@@ -7,6 +7,7 @@ export interface ChatThreadSuggestionRange {
 export interface ComposerChatThreadSuggestion {
   readonly id: string;
   readonly title: string;
+  readonly avatarUrl: string | null;
 }
 
 interface ChatThreadMentionTextSegment {

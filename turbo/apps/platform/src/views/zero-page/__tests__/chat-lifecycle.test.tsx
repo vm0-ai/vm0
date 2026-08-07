@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
@@ -18,9 +19,100 @@ import {
   mockPushBrowserSupport,
   expectTextBefore,
   linkByText,
+  chatScrollContainer,
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
 import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
+
+interface TouchPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+function dispatchTouch(
+  target: Element,
+  type: "touchstart" | "touchmove",
+  point: TouchPoint,
+): Event {
+  const event = new Event(type, {
+    bubbles: true,
+    cancelable: type === "touchmove",
+  });
+  Object.defineProperty(event, "touches", {
+    configurable: true,
+    value: [{ clientX: point.x, clientY: point.y }],
+  });
+  target.dispatchEvent(event);
+  return event;
+}
+
+function openSoftwareKeyboard(): void {
+  document.documentElement.dataset.keyboardOpen = "true";
+  onTestFinished(() => {
+    delete document.documentElement.dataset.keyboardOpen;
+  });
+}
+
+function makeVerticallyScrollable(
+  element: HTMLElement,
+  {
+    clientHeight,
+    scrollHeight,
+    scrollTop,
+  }: {
+    readonly clientHeight: number;
+    readonly scrollHeight: number;
+    readonly scrollTop: number;
+  },
+): void {
+  element.style.overflowY = "auto";
+  Object.defineProperties(element, {
+    clientHeight: { configurable: true, value: clientHeight },
+    scrollHeight: { configurable: true, value: scrollHeight },
+    scrollTop: { configurable: true, value: scrollTop, writable: true },
+  });
+}
+
+async function setupKeyboardGestureChat({
+  standalone,
+  threadId,
+}: {
+  readonly standalone: boolean;
+  readonly threadId: string;
+}): Promise<{
+  readonly composerEditor: HTMLElement;
+  readonly composerScrollSurface: HTMLElement;
+  readonly history: HTMLElement;
+}> {
+  context.mocks.browser.standaloneDisplayMode(standalone);
+  mockChatLifecycle(context, {
+    threadId,
+    chatEvents: [
+      {
+        id: `message-${threadId}`,
+        role: "assistant",
+        runId: `run-${threadId}`,
+        content: "Existing thread",
+        createdAt: "2026-07-30T00:00:00Z",
+      },
+    ],
+  });
+  detachedSetupPage({
+    context,
+    path: `/chats/${threadId}`,
+  });
+
+  return await waitFor(() => {
+    const composerEditor = chatComposerTextarea();
+    const history = chatScrollContainer();
+    const composer = composerEditor.closest("[data-chat-composer]");
+    const composerScrollSurface = composer?.children.item(1);
+    if (!(composerScrollSurface instanceof HTMLElement)) {
+      throw new Error("Chat composer scroll surface not found");
+    }
+    return { composerEditor, composerScrollSurface, history };
+  });
+}
 
 describe("chat lifecycle", () => {
   it("links Slack-origin user messages back to the original message", async () => {
@@ -29,14 +121,19 @@ describe("chat lifecycle", () => {
       "https://vm0.slack.com/archives/C12345678/p1753257600000100";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-slack-origin",
           role: "user",
           content: "Check the production rollout",
           runId: "run-slack-origin",
-          triggerSource: "slack",
-          slackMessagePermalink: permalink,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Check the production rollout" },
+              { type: "source", kind: "slack", href: permalink },
+            ],
+          },
           createdAt: "2026-07-23T01:00:00Z",
         },
         {
@@ -51,7 +148,13 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "This source link was unavailable",
           runId: "run-slack-origin-without-link",
-          triggerSource: "slack",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "This source link was unavailable" },
+              { type: "source", kind: "slack" },
+            ],
+          },
           createdAt: "2026-07-23T01:02:00Z",
         },
       ],
@@ -74,6 +177,7 @@ describe("chat lifecycle", () => {
     expect(originLink).toHaveTextContent("Slack");
     expect(originLink).toHaveTextContent("Open message");
     expect(originLinks).toHaveLength(1);
+    expect(screen.getAllByText("Slack")).toHaveLength(2);
   });
 
   it("links Feishu-origin user messages back to the original chat", async () => {
@@ -82,14 +186,19 @@ describe("chat lifecycle", () => {
       "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_chat";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feishu-origin",
           role: "user",
           content: "Check the Feishu conversation",
           runId: "run-feishu-origin",
-          triggerSource: "feishu",
-          feishuChatOpenUrl: chatOpenUrl,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Check the Feishu conversation" },
+              { type: "source", kind: "feishu", href: chatOpenUrl },
+            ],
+          },
           createdAt: "2026-07-23T01:00:00Z",
         },
         {
@@ -104,7 +213,13 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "This source link was unavailable",
           runId: "run-feishu-origin-without-link",
-          triggerSource: "feishu",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "This source link was unavailable" },
+              { type: "source", kind: "feishu" },
+            ],
+          },
           createdAt: "2026-07-23T01:02:00Z",
         },
       ],
@@ -125,6 +240,110 @@ describe("chat lifecycle", () => {
     expect(originLink).toHaveTextContent("Feishu");
     expect(originLink).toHaveTextContent("Open chat");
     expect(originLinks).toHaveLength(1);
+    expect(screen.getAllByText("Feishu")).toHaveLength(2);
+  });
+
+  it("renders generic source annotations with precise link behavior", async () => {
+    const threadId = "thread-generic-message-annotations";
+    const teamsHref =
+      "https://teams.microsoft.com/l/message/19%3Achannel%40thread.tacv2/activity-1?tenantId=tenant-1";
+    const githubHref =
+      "https://github.com/vm0-ai/vm0/issues/24218#issuecomment-123";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-teams-annotation",
+          role: "user",
+          content: "Teams source",
+          runId: "run-teams-annotation",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Teams source" },
+              { type: "source", kind: "teams", href: teamsHref },
+            ],
+          },
+          createdAt: "2026-07-23T01:00:00Z",
+        },
+        {
+          id: "msg-telegram-annotation",
+          role: "user",
+          content: "Telegram source",
+          runId: "run-telegram-annotation",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Telegram source" },
+              { type: "source", kind: "telegram" },
+            ],
+          },
+          createdAt: "2026-07-23T01:01:00Z",
+        },
+        {
+          id: "msg-github-annotation",
+          role: "user",
+          content: "GitHub source",
+          runId: "run-github-annotation",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "GitHub source" },
+              { type: "source", kind: "github", href: githubHref },
+            ],
+          },
+          createdAt: "2026-07-23T01:02:00Z",
+        },
+        {
+          id: "msg-agentphone-annotation",
+          role: "user",
+          content: "AgentPhone source",
+          runId: "run-agentphone-annotation",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "AgentPhone source" },
+              { type: "source", kind: "agentphone" },
+            ],
+          },
+          createdAt: "2026-07-23T01:03:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Telegram")).toBeInTheDocument();
+    });
+    const annotationLinks = queryAllByRoleFast("link");
+    const teamsLink = annotationLinks.find((link) => {
+      return (
+        link.getAttribute("aria-label") ===
+        "Open original message in Microsoft Teams"
+      );
+    });
+    expect(teamsLink).toBeDefined();
+    expect(teamsLink).toHaveAttribute("href", teamsHref);
+    expect(teamsLink).toHaveTextContent("Microsoft Teams");
+    const githubLink = annotationLinks.find((link) => {
+      return (
+        link.getAttribute("aria-label") ===
+        "Open original issue or pull request in GitHub"
+      );
+    });
+    expect(githubLink).toBeDefined();
+    expect(githubLink).toHaveAttribute("href", githubHref);
+    expect(githubLink).toHaveTextContent("GitHub");
+    expect(
+      annotationLinks.find((link) => {
+        return (
+          link.getAttribute("aria-label") ===
+          "Open original message in Telegram"
+        );
+      }),
+    ).toBeUndefined();
+    expect(screen.getByText("AgentPhone").closest("a")).toBeNull();
   });
 
   it("keeps an existing thread composer in its footer while idle and working", async () => {
@@ -132,7 +351,7 @@ describe("chat lifecycle", () => {
     const threadId = "b0000000-0000-4000-a000-000000000990";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "message-pwa-keyboard-layout",
           role: "assistant",
@@ -163,6 +382,78 @@ describe("chat lifecycle", () => {
         workingComposerCard?.closest("[data-chat-composer]"),
       ).not.toBeNull();
     });
+  });
+
+  it("contains keyboard gestures on the rendered standalone-PWA chat page", async () => {
+    const { composerEditor, composerScrollSurface, history } =
+      await setupKeyboardGestureChat({
+        standalone: true,
+        threadId: "b0000000-0000-4000-a000-000000000991",
+      });
+
+    expect(history).toHaveClass("overscroll-contain");
+    expect(composerScrollSurface).toHaveClass("overscroll-contain");
+    openSoftwareKeyboard();
+
+    composerEditor.focus();
+    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
+    const upwardMove = dispatchTouch(composerEditor, "touchmove", {
+      x: 100,
+      y: 460,
+    });
+    expect(upwardMove.defaultPrevented).toBeTruthy();
+    expect(composerEditor).toHaveFocus();
+
+    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
+    const composerDismissMove = dispatchTouch(composerEditor, "touchmove", {
+      x: 100,
+      y: 540,
+    });
+    expect(composerDismissMove.defaultPrevented).toBeTruthy();
+    expect(composerEditor).not.toHaveFocus();
+
+    composerEditor.focus();
+    dispatchTouch(history, "touchstart", { x: 100, y: 200 });
+    const historyMove = dispatchTouch(history, "touchmove", {
+      x: 102,
+      y: 240,
+    });
+    expect(historyMove.defaultPrevented).toBeFalsy();
+    expect(composerEditor).not.toHaveFocus();
+
+    makeVerticallyScrollable(composerEditor, {
+      clientHeight: 80,
+      scrollHeight: 300,
+      scrollTop: 100,
+    });
+    composerEditor.focus();
+    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
+    const draftScrollMove = dispatchTouch(composerEditor, "touchmove", {
+      x: 100,
+      y: 540,
+    });
+    expect(draftScrollMove.defaultPrevented).toBeFalsy();
+    expect(composerEditor).toHaveFocus();
+  });
+
+  it("leaves mobile-browser chat gestures unchanged outside standalone mode", async () => {
+    const { composerEditor, composerScrollSurface, history } =
+      await setupKeyboardGestureChat({
+        standalone: false,
+        threadId: "b0000000-0000-4000-a000-000000000992",
+      });
+
+    expect(history).not.toHaveClass("overscroll-contain");
+    expect(composerScrollSurface).not.toHaveClass("overscroll-contain");
+    openSoftwareKeyboard();
+    composerEditor.focus();
+    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
+    const move = dispatchTouch(composerEditor, "touchmove", {
+      x: 100,
+      y: 460,
+    });
+    expect(move.defaultPrevented).toBeFalsy();
+    expect(composerEditor).toHaveFocus();
   });
 
   it("subscribes the browser for push notifications after a visible chat send", async () => {
@@ -205,17 +496,25 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("starts a new chat with a visual attachment", async () => {
+  it("starts a new fallback-enabled text-only chat with an image above the direct recognition limit", async () => {
     const user = userEvent.setup({ delay: null });
+    let sentAttachFiles:
+      | {
+          id: string;
+          filename: string;
+          contentType: string;
+          size: number;
+        }[]
+      | undefined;
     context.mocks.data.userModelPreference({
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "glm-5.1",
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
       {
         id: "00000000-0000-4000-a000-000000000719",
-        model: "claude-sonnet-4-6",
-        modelLabel: "Claude Sonnet 4.6",
+        model: "glm-5.1",
+        modelLabel: "GLM-5.1",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -226,16 +525,116 @@ describe("chat lifecycle", () => {
         updatedAt: "2026-07-14T00:00:00.000Z",
       },
     ]);
-    mockChatLifecycle(context);
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentAttachFiles = body.attachFiles;
+      },
+    });
     context.mocks.upload.success({
       id: "upload-visual-brief",
       filename: "brief.png",
       contentType: "image/png",
-      size: 128,
+      size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
       url: "https://cdn.vm7.io/artifacts/test/upload-visual-brief/brief.png",
     });
 
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+
+    const brief = new File(["image"], "brief.png", { type: "image/png" });
+    Object.defineProperty(brief, "size", {
+      configurable: true,
+      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+    });
+    await user.upload(fileInput, brief);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "GLM-5.1" }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove brief.png")).toBeInTheDocument();
+    });
+    await screen.findByLabelText("Send");
+
+    const textarea = screen.getByPlaceholderText(PLACEHOLDER);
+    await sendMessageInUI(user, textarea, "Summarize this visual brief");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize this visual brief"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(sentAttachFiles).toStrictEqual([
+        {
+          id: "upload-visual-brief",
+          filename: "brief.png",
+          contentType: "image/png",
+          size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+        },
+      ]);
+    });
+  });
+
+  it("sends a video attachment in an existing fallback-enabled text-only chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000994";
+    let sentAttachFiles:
+      | {
+          id: string;
+          filename: string;
+          contentType: string;
+          size: number;
+        }[]
+      | undefined;
+    context.mocks.data.userModelPreference({
+      selectedModel: "glm-5.1",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000720",
+        model: "glm-5.1",
+        modelLabel: "GLM-5.1",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "glm-5.1",
+      onRunCreate: (body) => {
+        sentAttachFiles = body.attachFiles;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-existing-visual",
+      filename: "existing.mov",
+      contentType: "video/quicktime",
+      size: 64,
+      url: "https://cdn.vm7.io/artifacts/test/upload-existing-visual/existing.mov",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -245,23 +644,28 @@ describe("chat lifecycle", () => {
     if (!fileInput) {
       throw new Error("file input not found");
     }
-
     await user.upload(
       fileInput,
-      new File(["image-bytes"], "brief.png", { type: "image/png" }),
+      new File([new Uint8Array(64)], "existing.mov", {
+        type: "video/quicktime",
+      }),
     );
 
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove brief.png")).toBeInTheDocument();
-    });
+    await expect(
+      screen.findByLabelText("Remove existing.mov"),
+    ).resolves.toBeInTheDocument();
 
-    await sendMessageInUI(user, textarea, "Summarize this visual brief");
+    await sendMessageInUI(user, textarea, "Inspect this existing video");
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Summarize this visual brief"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(sentAttachFiles).toStrictEqual([
+        {
+          id: "upload-existing-visual",
+          filename: "existing.mov",
+          contentType: "video/quicktime",
+          size: 64,
+        },
+      ]);
     });
   });
 
@@ -325,7 +729,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context);
     context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       await initialMessageList.promise;
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     });
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
@@ -351,7 +755,7 @@ describe("chat lifecycle", () => {
       threadId,
       threadTitle: "Long thread",
       sendGate: sendGate.promise,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-existing-user",
           role: "user",
@@ -413,7 +817,6 @@ describe("chat lifecycle", () => {
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ]),
-            hasHistoryBefore: false,
           });
         }
         return respond(200, {
@@ -437,7 +840,6 @@ describe("chat lifecycle", () => {
               createdAt: "2026-03-10T00:00:01Z",
             },
           ]),
-          hasHistoryBefore: false,
         });
       },
     );
@@ -543,7 +945,7 @@ describe("chat lifecycle", () => {
     const threadId = "thread-user-html-like-text";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "<span> 123 </span>",
@@ -569,7 +971,7 @@ describe("chat lifecycle", () => {
   it("ignores usage-only pages for rendering and thinking state", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-usage-only",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-usage-only",
           role: "assistant",
@@ -607,7 +1009,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-thinking",
       activeRunIds: [],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-message-list-assistant",
           role: "assistant",
@@ -638,7 +1040,7 @@ describe("chat lifecycle", () => {
       threadId: "thread-message-list-thinking-pending-metadata",
       activeRunIds: ["run-message-list-thinking-pending-metadata"],
       threadGate: threadGate.promise,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-message-list-assistant-pending-metadata",
           role: "assistant",
@@ -669,7 +1071,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-completed",
       activeRunIds: ["run-message-list-completed"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-message-list-completed-assistant",
           role: "assistant",
@@ -704,7 +1106,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-run-before-completed-latest-run",
       activeRunIds: [],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-stale-run-user",
           role: "user",
@@ -772,7 +1174,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking",
       activeRunIds: ["run-r2"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-stale-usage-r1",
           role: "assistant",
@@ -842,7 +1244,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking-active-later",
       activeRunIds: ["run-r2"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-stale-active-later-usage-r1",
           role: "assistant",
@@ -922,7 +1324,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: COMPLETED_MARKER_ONLY_THREAD_ID,
       activeRunIds: [],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-marker-only-stale-user",
           role: "user",
@@ -976,7 +1378,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       activeRunIds: ["run-window-older-active"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-window-completed-activity",
           role: "assistant",
@@ -1022,7 +1424,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-concurrent-run-completed-later",
       activeRunIds: ["run-concurrent-active"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-concurrent-active-user",
           role: "user",
@@ -1082,7 +1484,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-concurrent-run-active-later",
       activeRunIds: ["run-concurrent-active"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-concurrent-active-later-user",
           role: "user",
@@ -1152,7 +1554,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-active-run-outside-loaded-window",
       activeRunIds: ["run-active-outside-window"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-window-completed-marker",
           role: "assistant",
@@ -1178,7 +1580,7 @@ describe("chat lifecycle", () => {
   it("keeps interleaved run messages grouped by run turn", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-interleaved-run-turns",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-run-a-user",
           role: "user",
@@ -1255,7 +1657,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-latest-user",
       activeRunIds: [],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-message-list-latest-user",
           role: "user",
@@ -1283,7 +1685,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-cancelled",
       activeRunIds: ["run-message-list-cancelled"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-message-list-cancelled-assistant",
           role: "assistant",

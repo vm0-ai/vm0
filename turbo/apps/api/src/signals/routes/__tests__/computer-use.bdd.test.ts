@@ -27,7 +27,7 @@ import {
   createComputerUseBddApi,
   zeroComputerUseToken,
 } from "./helpers/api-bdd-computer-use";
-import { mockClerkMembership } from "./helpers/api-bdd-github";
+import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
@@ -119,7 +119,7 @@ const trackComputerUseRun = createFixtureTracker(deleteComputerUseRunFixture);
 
 async function seedZeroRun(args: {
   readonly actor: ApiTestUser;
-  readonly triggerSource: "web" | "slack";
+  readonly triggerSource: "web" | "slack" | "teams";
   readonly canonicalThread?: boolean;
 }): Promise<ComputerUseRunFixture> {
   const response = await requestComputerUseState(COMPUTER_USE_STATE_ROUTE, {
@@ -349,6 +349,64 @@ describe("FILE-03 desktop computer-use runtime", () => {
     await expect(readComputerUseRunState(run.runId)).resolves.toStrictEqual({
       source: "slack",
       computer_use_host_id: host.hostId,
+    });
+  });
+
+  it("uses chat-thread authorization for a canonical Teams run", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const actor = bdd.user({ orgId });
+    const run = await seedZeroRun({
+      actor,
+      triggerSource: "teams",
+      canonicalThread: true,
+    });
+    if (!run.threadId) {
+      throw new Error("Expected canonical Teams run to use a chat thread");
+    }
+
+    const host = await api.startComputerUseHost(actor, {
+      hostName: "Canonical Teams Desktop",
+    });
+    mockClerkMembership(context, actor, "org:admin");
+    const token = zeroComputerUseToken({
+      userId: actor.userId,
+      orgId,
+      runId: run.runId,
+      capabilities: ["connector:read"],
+    }).token;
+
+    const created = await api.createComputerUseAuthorizationRequest({
+      bearer: token,
+    });
+    expect(created.source).toBe("chat");
+
+    const requestToken = requestTokenFromUrl(created.authorizationUrl);
+    const applied = await api.applyComputerUseAuthorizationRequest(
+      actor,
+      requestToken,
+      host.hostId,
+    );
+    expect(applied).toStrictEqual({
+      ok: true,
+      source: "chat",
+      computerUseHostId: host.hostId,
+    });
+    await expect(readComputerUseRunState(run.runId)).resolves.toStrictEqual({
+      source: "teams",
+      computer_use_host_id: host.hostId,
+    });
+
+    const completed = await api.readComputerUseAuthorizationRequest(
+      actor,
+      requestToken,
+    );
+    expect(completed.completedAt).not.toBeNull();
+    expect(completed.computerUseHostId).toBe(host.hostId);
+
+    await api.stopComputerUseHost(host.hostToken);
+    await expect(readComputerUseRunState(run.runId)).resolves.toStrictEqual({
+      source: "teams",
+      computer_use_host_id: null,
     });
   });
 

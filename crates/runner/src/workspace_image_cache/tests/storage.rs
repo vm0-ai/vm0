@@ -4,7 +4,7 @@ use super::super::fs::{
     allocated_bytes, has_copy_headroom, sparse_copy_with_timeout,
     workspace_cache_path_allocated_bytes,
 };
-use super::super::{CacheBudget, FsStats, GIB, SessionWorkspaceCache};
+use super::super::{CacheBudget, FsStats, GIB, WorkspaceImageCache};
 use crate::paths::RunnerPaths;
 
 #[test]
@@ -36,7 +36,7 @@ fn fs_stats_path_prefers_existing_cache_dir() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     std::fs::create_dir_all(paths.workspace_image_cache_dir()).unwrap();
-    let cache = SessionWorkspaceCache::new(paths.clone());
+    let cache = WorkspaceImageCache::new(paths.clone());
 
     assert_eq!(
         cache.workspace_image_cache_fs_stats_path(),
@@ -49,7 +49,7 @@ fn fs_stats_path_falls_back_to_existing_parent_when_cache_dir_is_missing() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     std::fs::create_dir_all(paths.base_dir()).unwrap();
-    let cache = SessionWorkspaceCache::new(paths.clone());
+    let cache = WorkspaceImageCache::new(paths.clone());
 
     assert_eq!(
         cache.workspace_image_cache_fs_stats_path(),

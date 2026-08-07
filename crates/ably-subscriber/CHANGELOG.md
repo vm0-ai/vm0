@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.0.15](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.14...ably-subscriber-v1.0.15) (2026-08-07)
+
+
+### Documentation
+
+* **ably-subscriber:** document messagepack decoder contract ([#25658](https://github.com/vm0-ai/vm0/issues/25658)) ([876bf2e](https://github.com/vm0-ai/vm0/commit/876bf2e5a3e7f9e8da9fc00492c77f4afe8a570e))
+
+## [1.0.14](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.13...ably-subscriber-v1.0.14) (2026-08-07)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** treat cleanup broken pipe as closed ([#25578](https://github.com/vm0-ai/vm0/issues/25578)) ([a5be4a4](https://github.com/vm0-ai/vm0/commit/a5be4a4cdbd69135984aade0d44111ed21c66ca4))
+
+## [1.0.13](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.12...ably-subscriber-v1.0.13) (2026-08-06)
+
+
+### Documentation
+
+* **ably-subscriber:** clarify reconnect timeout scope ([#25481](https://github.com/vm0-ai/vm0/issues/25481)) ([c8fb351](https://github.com/vm0-ai/vm0/commit/c8fb35128b7ed786657e3d5a2489e9adf190153f))
+
+## [1.0.12](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.11...ably-subscriber-v1.0.12) (2026-08-05)
+
+
+### Documentation
+
+* **ably-subscriber:** document status event backpressure ([#25243](https://github.com/vm0-ai/vm0/issues/25243)) ([06e5e9c](https://github.com/vm0-ai/vm0/commit/06e5e9cd4b1f8e2293d5266aa11b33c8a769dd5c))
+
+## [1.0.11](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.10...ably-subscriber-v1.0.11) (2026-08-05)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** await graceful shutdown completion ([#25155](https://github.com/vm0-ai/vm0/issues/25155)) ([a54deb6](https://github.com/vm0-ai/vm0/commit/a54deb69811cc546fc94d8c1be547eef16784256))
+
+## [1.0.10](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.9...ably-subscriber-v1.0.10) (2026-08-02)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** bound messagepack decoder depth ([#24536](https://github.com/vm0-ai/vm0/issues/24536)) ([ca77d14](https://github.com/vm0-ai/vm0/commit/ca77d14a70968ab0704cf1b17f1d833f7b412fa9))
+
 ## [1.0.9](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.8...ably-subscriber-v1.0.9) (2026-07-17)
 
 

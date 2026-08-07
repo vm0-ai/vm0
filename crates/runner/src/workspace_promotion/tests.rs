@@ -1,6 +1,8 @@
 use super::test_support::{TEST_WORKSPACE_IMAGE_SIZE_BYTES, WorkspacePromotionFixture};
 use super::*;
 
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,6 +29,10 @@ use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
 };
+
+fn mode(path: &Path) -> u32 {
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
 
 async fn mock_sandbox_with_overrides(
     sandbox_id: SandboxId,
@@ -286,25 +292,26 @@ async fn parked_workspace_promotion_unparks_and_freezes_before_publish() {
     assert!(!freeze_command.contains("pkill"));
     assert!(!freeze_command.contains("killall"));
     assert!(
-        fixture.cache.held_session_states().await.is_empty(),
+        fixture.cache.held_workspace_states().await.is_empty(),
         "a frozen image must not be published before the caller stops the sandbox"
     );
 
     let promoted = prepared.publish().await;
 
     assert!(promoted);
-    let states = fixture.cache.held_session_states().await;
+    let states = fixture.cache.held_workspace_states().await;
     assert_eq!(states.len(), 1);
-    assert_eq!(states[0].session_id, fixture.session_id);
+    assert_eq!(states[0].reuse_key, fixture.reuse_key);
 }
 
 #[tokio::test]
 async fn active_workspace_promotion_exports_session_history_sidecar() {
+    let reuse_key = "thread:active-sidecar-promote";
     let session_id = "sess-active-sidecar-promote";
     let history = br#"{"type":"message","content":"cached"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
     let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
-        session_id,
+        reuse_key,
         Some(&restored_identity),
     )
     .await;
@@ -331,6 +338,30 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     .await;
 
     assert!(promoted);
+    let promotion_event = captured_event(&events, "workspace image cache promoted");
+    assert_eq!(
+        promotion_event
+            .fields
+            .get("transfer_mode")
+            .map(String::as_str),
+        Some("rename")
+    );
+    assert_eq!(
+        promotion_event.fields.get("outcome").map(String::as_str),
+        Some("promoted")
+    );
+    assert_eq!(
+        promotion_event
+            .fields
+            .get("logical_image_size_bytes")
+            .and_then(|value| value.parse::<u64>().ok()),
+        Some(TEST_WORKSPACE_IMAGE_SIZE_BYTES)
+    );
+    for field in ["transfer_ms", "promotion_ms"] {
+        promotion_event.fields[field]
+            .parse::<u64>()
+            .unwrap_or_else(|error| panic!("invalid {field}: {error}; event={promotion_event:#?}"));
+    }
     let exec_calls = sandbox.exec_calls();
     assert_eq!(exec_calls.len(), 3);
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
@@ -358,7 +389,7 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default",
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(reuse_key),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
             },
@@ -373,13 +404,46 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     assert_eq!(tokio::fs::read(sidecar.path).await.unwrap(), history);
 }
 
+#[tokio::test]
+async fn active_workspace_permission_failure_skips_cache_publication() {
+    let fixture = WorkspacePromotionFixture::new("sess-active-permission-failure").await;
+    let paths = crate::paths::RunnerPaths::new(fixture._dir.path().join("runner"));
+    let active_image = paths.active_workspace_image(&fixture.sandbox_id);
+    tokio::fs::set_permissions(&active_image, std::fs::Permissions::from_mode(0o660))
+        .await
+        .unwrap();
+    let cache = fixture.cache.clone();
+    let reuse_key = fixture.reuse_key.clone();
+    let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+
+    let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
+        &sandbox,
+        fixture.promotion,
+    ))
+    .await;
+
+    assert!(!promoted);
+    let event = captured_event(&events, "workspace image cache promotion failed");
+    assert!(
+        event
+            .fields
+            .get("error")
+            .is_some_and(|error| error.contains("group/other writable"))
+    );
+    assert_eq!(
+        WorkspacePromotionFixture::checkout_result(&cache, &reuse_key).await,
+        WorkspaceCacheCheckoutResult::Miss
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn active_workspace_promotion_keeps_history_read_failure_warning() {
+    let reuse_key = "thread:active-sidecar-read-failure";
     let session_id = "sess-active-sidecar-read-failure";
     let history = br#"{"type":"message","content":"read failure"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
     let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
-        session_id,
+        reuse_key,
         Some(&restored_identity),
     )
     .await;
@@ -408,13 +472,14 @@ async fn active_workspace_promotion_keeps_history_read_failure_warning() {
 }
 
 #[tokio::test]
-async fn late_session_sidecar_staging_is_protected_from_gc() {
+async fn session_history_sidecar_staging_is_protected_from_gc() {
+    let reuse_key = "thread:late-sidecar-gc";
     let session_id = "sess-late-sidecar-gc";
     let history = br#"{"type":"message","content":"late cached"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
-    let fixture = WorkspacePromotionFixture::new_late_session_with_restored_session_identity(
-        session_id,
-        &restored_identity,
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        reuse_key,
+        Some(&restored_identity),
     )
     .await;
     let cache = fixture.cache.clone();
@@ -441,6 +506,9 @@ async fn late_session_sidecar_staging_is_protected_from_gc() {
                 let entry_dir = tmp_path.parent().unwrap();
                 assert!(tmp_path.is_file());
                 assert!(entry_dir.is_dir());
+                assert_eq!(mode(entry_dir.parent().unwrap()), 0o700);
+                assert_eq!(mode(entry_dir), 0o700);
+                assert_eq!(mode(tmp_path), 0o600);
 
                 let freed = cache.gc(false).await.unwrap();
 
@@ -461,7 +529,7 @@ async fn late_session_sidecar_staging_is_protected_from_gc() {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default",
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(reuse_key),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
             },
@@ -477,13 +545,14 @@ async fn late_session_sidecar_staging_is_protected_from_gc() {
 }
 
 #[tokio::test]
-async fn late_session_sidecar_staging_cleans_source_and_unlocks_when_cancelled() {
+async fn session_history_sidecar_staging_cleans_source_and_unlocks_when_cancelled() {
+    let reuse_key = "thread:late-sidecar-cancelled";
     let session_id = "sess-late-sidecar-cancelled";
     let history = br#"{"type":"message","content":"cancelled"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
-    let fixture = WorkspacePromotionFixture::new_late_session_with_restored_session_identity(
-        session_id,
-        &restored_identity,
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        reuse_key,
+        Some(&restored_identity),
     )
     .await;
     let cache = fixture.cache.clone();
@@ -525,7 +594,7 @@ async fn late_session_sidecar_staging_cleans_source_and_unlocks_when_cancelled()
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default",
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(reuse_key),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
             },
@@ -536,68 +605,14 @@ async fn late_session_sidecar_staging_cleans_source_and_unlocks_when_cancelled()
 }
 
 #[tokio::test]
-async fn late_session_sidecar_staging_skips_copy_when_entry_lock_is_busy() {
-    let session_id = "sess-late-sidecar-lock-busy";
-    let history = br#"{"type":"message","content":"busy"}"#;
-    let restored_identity = test_restored_session_identity(session_id, history);
-    let fixture = WorkspacePromotionFixture::new_late_session_with_restored_session_identity(
-        session_id,
-        &restored_identity,
-    )
-    .await;
-    let held_lease = fixture
-        .cache
-        .prepare(WorkspaceImagePrepareRequest {
-            identity: WorkspaceImageLeaseIdentity {
-                run_id: RunId::new_v4(),
-                sandbox_id: SandboxId::new_v4(),
-                profile_name: "vm0/default",
-                cli_agent_session_id: Some(session_id),
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
-            },
-            workspace_drive_required: true,
-        })
-        .await;
-    assert_eq!(held_lease.result(), WorkspaceCacheCheckoutResult::Miss);
-    let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
-    let export_metadata = SessionHistorySidecarExportMetadata {
-        representation: SessionHistorySidecarRepresentation::Raw,
-        encoded_size: history.len() as u64,
-    };
-    sandbox.push_exec_result(Ok(ExecResult::new(
-        0,
-        serde_json::to_vec(&export_metadata).unwrap(),
-        Vec::new(),
-    )));
-
-    let promoted = tokio::time::timeout(
-        Duration::from_secs(1),
-        prepare_and_publish_workspace_image(&sandbox, fixture.promotion),
-    )
-    .await
-    .expect("late sidecar lock contention must not block");
-
-    assert!(!promoted);
-    assert!(sandbox.copy_file_calls().is_empty());
-    let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 3);
-    assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
-    assert!(exec_calls[1].cmd.contains("rm -f --"));
-    assert!(exec_calls[1].cmd.contains("/session-history-sidecar"));
-    assert!(exec_calls[2].sudo);
-    drop(held_lease);
-    assert!(fixture.cache.held_session_states().await.is_empty());
-}
-
-#[tokio::test]
-async fn late_session_sidecar_staging_cleans_source_and_unlocks_after_freeze_failure() {
+async fn session_history_sidecar_staging_cleans_source_and_unlocks_after_freeze_failure() {
+    let reuse_key = "thread:late-sidecar-freeze-failure";
     let session_id = "sess-late-sidecar-freeze-failure";
     let history = br#"{"type":"message","content":"freeze"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
-    let fixture = WorkspacePromotionFixture::new_late_session_with_restored_session_identity(
-        session_id,
-        &restored_identity,
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        reuse_key,
+        Some(&restored_identity),
     )
     .await;
     let cache = fixture.cache.clone();
@@ -633,7 +648,7 @@ async fn late_session_sidecar_staging_cleans_source_and_unlocks_after_freeze_fai
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default",
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(reuse_key),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
             },
@@ -663,14 +678,14 @@ async fn parked_workspace_promotion_unpark_error_skips_cache() {
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
-    assert!(fixture.cache.held_session_states().await.is_empty());
+    assert!(fixture.cache.held_workspace_states().await.is_empty());
 }
 
 #[tokio::test]
 async fn parked_workspace_promotion_unpark_error_abandons_consumed_cache_hit() {
     let fixture = WorkspacePromotionFixture::new_from_cache_hit("sess-hit-unpark-error").await;
     let cache = fixture.cache.clone();
-    let session_id = fixture.session_id.clone();
+    let reuse_key = fixture.reuse_key.clone();
     let overrides = Arc::new(MockSandboxOverrides::new());
     overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
         transition: sandbox::SandboxIdleTransition::Unpark,
@@ -688,38 +703,58 @@ async fn parked_workspace_promotion_unpark_error_abandons_consumed_cache_hit() {
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(
-        WorkspacePromotionFixture::checkout_result(&cache, &session_id).await,
+        WorkspacePromotionFixture::checkout_result(&cache, &reuse_key).await,
         WorkspaceCacheCheckoutResult::Miss
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn parked_workspace_promotion_warning_uses_session_id() {
-    let raw_session_id = "sess-sensitive-promotion-17975";
-    let fixture = WorkspacePromotionFixture::new(raw_session_id).await;
-    let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
-        transition: sandbox::SandboxIdleTransition::Unpark,
-        message: "simulated unpark failure".into(),
-    }));
-    let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
+async fn parked_workspace_promotion_warning_hashes_and_classifies_reuse_key() {
+    for (reuse_key, expected_kind) in [
+        ("thread:sensitive-promotion-17975", "thread"),
+        ("opaque-sensitive-promotion-17975", "other"),
+    ] {
+        let fixture = WorkspacePromotionFixture::new(reuse_key).await;
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+            transition: sandbox::SandboxIdleTransition::Unpark,
+            message: "simulated unpark failure".into(),
+        }));
+        let mut sandbox =
+            mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
 
-    let (prepared, events) = capture_promotion_events(prepare_workspace_image_from_parked_sandbox(
-        sandbox.as_mut(),
-        Some(fixture.promotion),
-        "test",
-    ))
-    .await;
+        let (prepared, events) =
+            capture_promotion_events(prepare_workspace_image_from_parked_sandbox(
+                sandbox.as_mut(),
+                Some(fixture.promotion),
+                "test",
+            ))
+            .await;
 
-    assert!(prepared.is_none());
-    let event = captured_event(
-        &events,
-        "workspace image cache promotion skipped because idle sandbox unpark failed",
-    );
-    assert_eq!(
-        event.fields.get("session_id").map(String::as_str),
-        Some(raw_session_id)
-    );
+        assert!(prepared.is_none());
+        let event = captured_event(
+            &events,
+            "workspace image cache promotion skipped because idle sandbox unpark failed",
+        );
+        assert_eq!(
+            event
+                .fields
+                .get("reuse_key_fingerprint")
+                .map(String::as_str),
+            Some(crate::paths::short_digest(reuse_key).as_str())
+        );
+        assert_eq!(
+            event.fields.get("reuse_key_kind").map(String::as_str),
+            Some(expected_kind)
+        );
+        assert!(
+            event
+                .fields
+                .values()
+                .all(|value| !value.contains(reuse_key)),
+            "workspace promotion logs must not contain the raw reuse key"
+        );
+    }
 }
 
 #[tokio::test]
@@ -739,7 +774,7 @@ async fn parked_workspace_promotion_unpark_panic_skips_cache() {
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
-    assert!(fixture.cache.held_session_states().await.is_empty());
+    assert!(fixture.cache.held_workspace_states().await.is_empty());
 }
 
 #[tokio::test]
@@ -764,7 +799,7 @@ async fn parked_workspace_promotion_guest_freeze_failure_skips_cache() {
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(overrides.exec_calls().len(), 1);
-    assert!(fixture.cache.held_session_states().await.is_empty());
+    assert!(fixture.cache.held_workspace_states().await.is_empty());
     let event = captured_event(
         &events,
         "workspace image cache promotion skipped because guest freeze failed",
@@ -787,7 +822,7 @@ async fn parked_workspace_promotion_guest_exec_panic_skips_cache() {
             .await;
 
     assert!(prepared.is_none());
-    assert!(fixture.cache.held_session_states().await.is_empty());
+    assert!(fixture.cache.held_workspace_states().await.is_empty());
 }
 
 async fn capture_promotion_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)

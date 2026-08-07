@@ -2,8 +2,7 @@
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { zeroTranslateCommand } from "./commands/zero/translate";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import {
   decodeZeroTokenPayload,
@@ -27,10 +26,11 @@ const COMMAND_CAPABILITY_MAP: Record<
   string,
   string | readonly string[] | null
 > = {
+  "__agent-loop": null,
   agent: "agent:read",
   workflow: "agent:read",
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
-  connector: "connector:read",
+  connector: ["connector:read", "connector:write"],
   mail: "connector:read",
   doctor: null,
   credit: ["billing:read", "billing:write"],
@@ -38,8 +38,13 @@ const COMMAND_CAPABILITY_MAP: Record<
   model: null,
   "model-provider": null,
   logs: "agent-run:read",
-  search: "chat-message:read",
-  chat: ["chat-thread:read", "chat-thread:write"],
+  search: "chat-event:read",
+  chat: [
+    "chat-event:read",
+    "chat-event:write",
+    "chat-thread:read",
+    "chat-thread:write",
+  ],
   resource: null,
   github: ["github:read", "github:write"],
   slack: "slack:write",
@@ -61,24 +66,21 @@ const COMMAND_CAPABILITY_MAP: Record<
   scrape: "scrape:read",
   "people-search": "people-search:read",
   "web-search": "web-search:read",
+  recognize: "image-recognition:write",
+  translate: "translation:write",
   finance: "finance:read",
   banking: "banking:read",
 };
 
-const COMMAND_FEATURE_SWITCH_MAP: Readonly<
-  Partial<Record<string, FeatureSwitchKey>>
-> = {
-  browser: FeatureSwitchKey.ZeroBrowser,
-};
-
-type FeatureSwitchOverrides = Partial<Record<FeatureSwitchKey, boolean>>;
+const RUN_ONLY_COMMANDS = new Set(["recognize", "translate"]);
 
 const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
-    name: "org",
-    description: "Manage organization settings, members, and providers",
+    name: "__agent-loop",
+    description: "Internal sandbox agent loop",
     load: async () => {
-      return (await import("./commands/zero/org")).zeroOrgCommand;
+      return (await import("./commands/zero/__agent-loop"))
+        .zeroAgentLoopCommand;
     },
   },
   {
@@ -140,20 +142,6 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
-    name: "preference",
-    description: "View or update user preferences (timezone, notifications)",
-    load: async () => {
-      return (await import("./commands/zero/preference")).zeroPreferenceCommand;
-    },
-  },
-  {
-    name: "secret",
-    description: "Read or write secrets (API keys, tokens)",
-    load: async () => {
-      return (await import("./commands/zero/secret")).zeroSecretCommand;
-    },
-  },
-  {
     name: "github",
     description: "Upload and download GitHub files",
     load: async () => {
@@ -196,13 +184,6 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Send AgentPhone messages, upload files, and download media",
     load: async () => {
       return (await import("./commands/zero/phone")).zeroPhoneCommand;
-    },
-  },
-  {
-    name: "variable",
-    description: "Read or write non-sensitive configuration values",
-    load: async () => {
-      return (await import("./commands/zero/variable")).zeroVariableCommand;
     },
   },
   {
@@ -350,6 +331,20 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "recognize",
+    description: "Recognize one image through a managed multimodal model",
+    load: async () => {
+      return (await import("./commands/zero/recognize")).zeroRecognizeCommand;
+    },
+  },
+  {
+    name: "translate",
+    description: "Translate text through a managed translation model",
+    load: async () => {
+      return zeroTranslateCommand;
+    },
+  },
+  {
     name: "finance",
     description: "Query financial instruments through managed zero finance",
     load: async () => {
@@ -382,12 +377,9 @@ function buildDefaultCommands(): Command[] {
 function shouldHideCommand(
   name: string,
   payload: ZeroTokenPayload | undefined,
-  featureSwitchOverrides?: FeatureSwitchOverrides,
 ): boolean {
-  if (!isCommandFeatureEnabled(name, payload, featureSwitchOverrides)) {
-    return true;
-  }
-  if (!payload) return false;
+  if (name.startsWith("__")) return true;
+  if (!payload) return RUN_ONLY_COMMANDS.has(name);
   const requiredCap = COMMAND_CAPABILITY_MAP[name];
   if (requiredCap === undefined) return true;
   if (requiredCap === null) return false;
@@ -399,30 +391,12 @@ function shouldHideCommand(
   return !payload.capabilities.includes(requiredCap);
 }
 
-function isCommandFeatureEnabled(
-  name: string,
-  payload: ZeroTokenPayload | undefined,
-  featureSwitchOverrides?: FeatureSwitchOverrides,
-): boolean {
-  const featureSwitch = COMMAND_FEATURE_SWITCH_MAP[name];
-  const overrides = featureSwitchOverrides ?? payload?.featureSwitchOverrides;
-  return (
-    !featureSwitch ||
-    isFeatureEnabled(featureSwitch, {
-      userId: payload?.userId,
-      orgId: payload?.orgId,
-      overrides,
-    })
-  );
-}
-
 function addZeroCommand(
   prog: Command,
   cmd: Command,
   payload: ZeroTokenPayload | undefined,
-  featureSwitchOverrides?: FeatureSwitchOverrides,
 ): void {
-  const hidden = shouldHideCommand(cmd.name(), payload, featureSwitchOverrides);
+  const hidden = shouldHideCommand(cmd.name(), payload);
   prog.addCommand(cmd, hidden ? { hidden: true } : {});
 }
 
@@ -470,16 +444,12 @@ function commandExampleIfVisible(
   name: string,
   example: string,
   payload: ZeroTokenPayload | undefined,
-  featureSwitchOverrides?: FeatureSwitchOverrides,
 ): string[] {
-  return shouldHideCommand(name, payload, featureSwitchOverrides)
-    ? []
-    : [example];
+  return shouldHideCommand(name, payload) ? [] : [example];
 }
 
 export function buildZeroHelpText(
   payload: ZeroTokenPayload | undefined = decodeZeroTokenPayload(),
-  featureSwitchOverrides?: FeatureSwitchOverrides,
 ): string {
   const canReadHost = !payload || payload.capabilities.includes("host:read");
   const canWriteHost = !payload || payload.capabilities.includes("host:write");
@@ -495,20 +465,17 @@ export function buildZeroHelpText(
       "upgrade",
       "  Upgrade plan?         zero upgrade pro",
       payload,
-      featureSwitchOverrides,
     ),
     "  Send a Slack message?  zero slack message send --help",
     ...commandExampleIfVisible(
       "feishu",
       "  Send Feishu?          zero feishu message send --help",
       payload,
-      featureSwitchOverrides,
     ),
     ...commandExampleIfVisible(
       "mail",
       "  Link Gmail draft?     zero mail link --help",
       payload,
-      featureSwitchOverrides,
     ),
     "  Send Teams?           zero teams message send --help",
     "  Upload Teams?         zero teams upload-file --help",
@@ -530,7 +497,6 @@ export function buildZeroHelpText(
       "chat",
       '  Rename this chat?     zero chat rename "New title"',
       payload,
-      featureSwitchOverrides,
     ),
     "  Introduce Zero?       zero intro",
     "  List generators?       zero generate --help",
@@ -547,43 +513,46 @@ export function buildZeroHelpText(
       "maps",
       '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
       payload,
-      featureSwitchOverrides,
     ),
     ...commandExampleIfVisible(
       "weather",
       "  Check weather?        zero weather current --lat 39.9042 --lng 116.4074 --json",
       payload,
-      featureSwitchOverrides,
     ),
     ...commandExampleIfVisible(
       "scrape",
       "  Scrape a web page?    zero scrape https://example.com --json",
       payload,
-      featureSwitchOverrides,
     ),
     ...commandExampleIfVisible(
       "web-search",
       '  Search the public web? zero web-search "latest news" --json',
       payload,
-      featureSwitchOverrides,
+    ),
+    ...commandExampleIfVisible(
+      "recognize",
+      '  Recognize an image?    zero recognize --file ./image.png --prompt "Describe it"',
+      payload,
+    ),
+    ...commandExampleIfVisible(
+      "translate",
+      '  Translate text?        zero translate "Hello" --to Chinese',
+      payload,
     ),
     ...commandExampleIfVisible(
       "finance",
       "  Get a market quote?   zero finance quote AAPL --json",
       payload,
-      featureSwitchOverrides,
     ),
     ...commandExampleIfVisible(
       "people-search",
       '  Find a professional?   zero people-search "platform engineering leaders" --json',
       payload,
-      featureSwitchOverrides,
     ),
     ...commandExampleIfVisible(
       "banking",
       "  Read bank data?       zero banking accounts --json",
       payload,
-      featureSwitchOverrides,
     ),
     "  Check your identity?   zero whoami",
   ];
@@ -595,23 +564,20 @@ export function buildZeroHelpText(
  * Register commands with visibility based on ZERO_TOKEN capabilities.
  * Commands not granted by the token are registered as hidden via
  * Commander's public `addCommand(cmd, { hidden: true })` API.
- * When no ZERO_TOKEN is present, all commands remain visible.
+ * Without ZERO_TOKEN, globally available commands stay visible while
+ * run-only commands remain hidden.
  *
  * @param commands - override default commands (used in tests)
  */
 export function registerZeroCommands(
   prog: Command,
   commands?: Command[],
-  featureSwitchOverrides?: FeatureSwitchOverrides,
 ): void {
   const token = process.env.ZERO_TOKEN;
   const payload = token ? decodeZeroTokenPayload(token) : undefined;
 
   for (const cmd of commands ?? buildDefaultCommands()) {
-    if (!isCommandFeatureEnabled(cmd.name(), payload, featureSwitchOverrides)) {
-      continue;
-    }
-    addZeroCommand(prog, cmd, payload, featureSwitchOverrides);
+    addZeroCommand(prog, cmd, payload);
   }
 }
 

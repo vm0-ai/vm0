@@ -26,6 +26,7 @@ import {
   zeroChatThreadEventsPage,
   zeroChatThreadDraftIds,
   zeroChatThreadUnreadAgentIds,
+  zeroChatThreadUnreadThreadIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
 import {
@@ -101,7 +102,6 @@ const listChatThreadLifecycleEventsInner$ = computed(async (get) => {
     userId: auth.userId,
     orgId: auth.orgId,
     sinceSeqId: query.sinceSeqId,
-    sinceEventId: query.sinceEventId,
   });
 
   if (result.kind === "expired") {
@@ -141,35 +141,28 @@ const listChatEventsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.list));
   const query = get(queryOf(chatThreadEventsContract.list));
-
-  const page = await get(
+  const events = await get(
     zeroChatThreadEventsPage({
       threadId: params.threadId,
       userId: auth.userId,
       sinceSeqId: query.sinceSeqId,
       beforeSeqId: query.beforeSeqId,
-      sinceId: query.sinceId,
-      beforeId: query.beforeId,
       limit: query.limit,
     }),
   );
-  if (!page) {
+  if (!events) {
     return chatThreadNotFound();
   }
 
   return {
     status: 200 as const,
-    body: {
-      events: [...page.events],
-      hasHistoryBefore: page.hasHistoryBefore,
-    },
+    body: { events },
   };
 });
 
 const getChatThreadEventInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.get));
-
   const event = await get(
     zeroChatThreadEventById({
       threadId: params.threadId,
@@ -181,7 +174,10 @@ const getChatThreadEventInner$ = computed(async (get) => {
     return chatThreadNotFound();
   }
 
-  return { status: 200 as const, body: event };
+  return {
+    status: 200 as const,
+    body: event,
+  };
 });
 
 const listChatThreadDraftsInner$ = computed(async (get) => {
@@ -223,6 +219,18 @@ const listChatThreadUnreadAgentsInner$ = computed(async (get) => {
   );
 
   return { status: 200 as const, body: { agentIds: [...agentIds] } };
+});
+
+const listChatThreadUnreadIdsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const threadIds = await get(
+    zeroChatThreadUnreadThreadIds({
+      userId: auth.userId,
+      orgId: auth.orgId,
+    }),
+  );
+
+  return { status: 200 as const, body: { threadIds: [...threadIds] } };
 });
 
 const listChatThreadArtifactsInner$ = computed(async (get) => {
@@ -306,6 +314,13 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     ),
   },
   {
+    route: chatThreadsContract.unreadIds,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listChatThreadUnreadIdsInner$,
+    ),
+  },
+  {
     route: chatThreadsContract.drafts,
     handler: authRoute({}, listChatThreadDraftsInner$),
   },
@@ -330,7 +345,10 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   },
   {
     route: chatThreadEventsContract.list,
-    handler: authRoute({}, listChatEventsInner$),
+    handler: authRoute(
+      { requiredCapability: "chat-event:read" },
+      listChatEventsInner$,
+    ),
   },
   {
     route: chatThreadEventsContract.get,
@@ -342,7 +360,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
+        requiredCapability: "chat-event:read",
       },
       searchChatInner$,
     ),

@@ -6,10 +6,11 @@ import {
   text,
   index,
   timestamp,
+  integer,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
-import { agentComposes } from "./agent-compose";
 import { chatThreads } from "./chat-thread";
 import { zeroWorkflowAutomations } from "./zero-workflow";
 import { threadGoals } from "./thread-goal";
@@ -31,6 +32,7 @@ export const zeroRuns = pgTable(
         { onDelete: "cascade" },
       ),
     triggerSource: varchar("trigger_source", { length: 20 }).notNull(),
+    autonomyBudget: integer("autonomy_budget").notNull().default(10),
     // Canonical run provenance for the Automation that started this run.
     workflowAutomationId: uuid("workflow_automation_id").references(
       (): AnyPgColumn => {
@@ -38,20 +40,12 @@ export const zeroRuns = pgTable(
       },
       { onDelete: "set null" },
     ),
-    // Stable grouping key copied from workflow automations/goals for chat
-    // rendering of repeated automated runs.
+    // Stable grouping key for autonomous goal continuations rendered in chat.
     runGroupId: uuid("run_group_id"),
     // Run provenance for autonomous thread-goal continuation.
     goalId: uuid("goal_id").references(
       (): AnyPgColumn => {
         return threadGoals.id;
-      },
-      { onDelete: "set null" },
-    ),
-    // References agent_composes.id of the agent that triggered this run (agent-to-agent delegation)
-    triggerAgentId: uuid("trigger_agent_id").references(
-      () => {
-        return agentComposes.id;
       },
       { onDelete: "set null" },
     ),
@@ -72,8 +66,8 @@ export const zeroRuns = pgTable(
     // First-assistant timing origin. Concurrency-queued runs leave this null
     // until promotion supplies the same start used by runner telemetry.
     apiStartedAt: timestamp("api_started_at"),
-    firstAssistantMessageAcknowledgedAt: timestamp(
-      "first_assistant_message_acknowledged_at",
+    firstAssistantEventAcknowledgedAt: timestamp(
+      "first_assistant_event_acknowledged_at",
     ),
     // Brief AI-generated summary of what the run did (≤50 words)
     summary: text("summary"),
@@ -94,6 +88,10 @@ export const zeroRuns = pgTable(
       index("idx_zero_runs_goal")
         .on(table.goalId)
         .where(sql`goal_id IS NOT NULL`),
+      check(
+        "zero_runs_autonomy_budget_check",
+        sql`${table.autonomyBudget} BETWEEN 0 AND 10`,
+      ),
     ];
   },
 );

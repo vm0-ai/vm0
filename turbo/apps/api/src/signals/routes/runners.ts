@@ -1,9 +1,14 @@
 import { command } from "ccstate";
-import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   compatibleStoredExecutionContextSchema,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
+  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  PI_STANDBY_PROFILE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  runnersActiveInputsContract,
+  runnersConnectorRuntimeSyncContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -11,20 +16,36 @@ import {
   runnersPollContract,
   storedConnectorPermissionBaselineSchema,
   type CompatibleStoredExecutionContext,
+  type ConnectorRuntimeTarget,
   type ExecutionContext,
-  type HeldSessionState,
+  type HeldSandboxState,
+  type HeldWorkspaceState,
+  type RunnerPreferenceClaimState,
+  type RunnerPreferenceDecision,
+  type RunnerPreferenceResolution,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
+import {
+  runStatusSchema,
+  type RunStatus,
+} from "@vm0/api-contracts/contracts/runs";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { runnerState } from "@vm0/db/schema/runner-state";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import {
+  runnerState,
+  type RunnerHeldSandboxState as PersistedRunnerHeldSandboxState,
+  type RunnerHeldWorkspaceState as PersistedRunnerHeldWorkspaceState,
+} from "@vm0/db/schema/runner-state";
 import {
   and,
+  asc,
   desc,
   eq,
   gt,
@@ -38,11 +59,13 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 
+import { authContext$ } from "../auth/auth-context";
+import { authRoute } from "../auth/auth-route";
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
-import { db$, writeDb$, type Db } from "../external/db";
+import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   generatePresignedGetUrl,
   publicS3DownloadSource,
@@ -51,12 +74,13 @@ import {
 } from "../external/s3";
 import {
   createRunnerGroupRealtimeToken,
+  publishChatThreadMessageCreatedSafely,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { env } from "../../lib/env";
-import { badRequestMessage, notFound } from "../../lib/error";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import {
@@ -67,12 +91,23 @@ import {
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
+import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
+import {
+  activeInputPromptFitsControlPayload,
+  materializeActiveInputPrompt,
+} from "../services/active-input-prompt.service";
+import {
+  lockChatQueueThread,
+  pendingActiveInputCondition,
+} from "../services/chat-event-queue.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
+import { resolveConnectorRuntimeTargets } from "../services/connector-runtime-sync.service";
+import { replaceLoadedChatEvent } from "../services/zero-chat-event.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
-  networkPolicyRefreshConnectorRefs,
+  networkPolicyRefreshConnectorSlugs,
   resolveActiveNetworkPolicyRefreshes,
   resolveActiveNetworkPolicyRefreshesFromBaseline,
 } from "../services/zero-user-permission-grants.service";
@@ -84,11 +119,13 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
-  runnerSessionAffinityPollPriority,
-  runnerSessionAffinityLookupError,
-  runnerSessionAffinityProtection,
-  runnerSessionAffinityTelemetryResource,
-} from "../services/runner-session-affinity";
+  runnerPreferenceDecisionTelemetryDimensions,
+  runnerPreferenceDeliveryFields,
+  runnerReuseKeyTelemetryKind,
+  runnerReusePreferenceLookupErrorDecision,
+  runnerReusePreferencePollPriority,
+  resolveRunnerReusePreference,
+} from "../services/runner-reuse-preference";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 
@@ -97,6 +134,9 @@ const L = logger("Runners");
 type SandboxOperationAttrs = Parameters<
   typeof recordSandboxOperations
 >[0][number];
+type RunnerClaimIdentity = NonNullable<
+  z.infer<(typeof runnersJobClaimContract.claim)["body"]>["runnerIdentity"]
+>;
 
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
@@ -146,7 +186,7 @@ function isResumeSessionHistoryLoadError(
   return error instanceof ResumeSessionHistoryLoadError;
 }
 
-type ClaimRouteTimingSpanKind = "top_level" | "nested";
+type ClaimRouteTimingSpanKind = "parent" | "top_level" | "nested";
 type ClaimNetworkPolicyRefreshPath =
   | "baseline"
   | "baseline_empty"
@@ -154,12 +194,15 @@ type ClaimNetworkPolicyRefreshPath =
   | "full_invalid_baseline"
   | "full_incompatible_baseline";
 type ClaimRouteTimingActionType =
+  | "claim_route_request_to_transition_start"
+  | "claim_route_request_to_response_ready"
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
   | "claim_route_context_parse"
   | "claim_route_secret_materialization"
   | "claim_route_response_assembly"
   | "claim_route_response_network_policy_refresh"
+  | "claim_route_response_network_policy_refresh_baseline_database"
   | "claim_route_response_resume_session"
   | "claim_route_transition_running"
   | "claim_route_transition_execute";
@@ -360,42 +403,51 @@ function isOfficialRunnerGroup(group: string): boolean {
   return group.split("/")[0] === "vm0";
 }
 
-function canonicalizeHeldSessionStates(
-  states: readonly HeldSessionState[] | undefined,
-): HeldSessionState[] | undefined {
-  return states?.map((state) => {
-    const cliAgentSessionId = state.sessionId;
+function canonicalizeHeldSandboxStates(
+  states: readonly HeldSandboxState[],
+): PersistedRunnerHeldSandboxState[] {
+  return states.map((state) => {
     return {
-      sessionId: cliAgentSessionId,
+      reuseKey: state.reuseKey,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
-      ...(state.reusableSandbox
-        ? {
-            reusableSandbox: {
-              profile: state.reusableSandbox.profile,
-              ...(state.reusableSandbox.historyGenerationRunId
-                ? {
-                    historyGenerationRunId:
-                      state.reusableSandbox.historyGenerationRunId,
-                  }
-                : {}),
-            },
-          }
-        : {}),
-      ...(state.workspaceCaches
-        ? {
-            workspaceCaches: state.workspaceCaches.map((workspaceCache) => {
-              return {
-                profile: workspaceCache.profile,
-                ...(workspaceCache.workspaceAffinityVersion
-                  ? {
-                      workspaceAffinityVersion:
-                        workspaceCache.workspaceAffinityVersion,
-                    }
-                  : {}),
-              };
-            }),
-          }
-        : {}),
+      reusableSandbox: {
+        profile: state.reusableSandbox.profile,
+        ...(state.reusableSandbox.historyGenerationRunId
+          ? {
+              historyGenerationRunId:
+                state.reusableSandbox.historyGenerationRunId,
+            }
+          : {}),
+      },
+    };
+  });
+}
+
+function canonicalizeHeldWorkspaceStates(
+  states: readonly HeldWorkspaceState[],
+): PersistedRunnerHeldWorkspaceState[] {
+  return states.map((state) => {
+    const [firstWorkspaceCache, ...remainingWorkspaceCaches] =
+      state.workspaceCaches;
+    if (!firstWorkspaceCache) {
+      throw new Error("Held workspace state requires a workspace cache");
+    }
+    return {
+      reuseKey: state.reuseKey,
+      lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
+      workspaceCaches: [
+        {
+          profile: firstWorkspaceCache.profile,
+          workspaceAffinityVersion:
+            firstWorkspaceCache.workspaceAffinityVersion,
+        },
+        ...remainingWorkspaceCaches.map((workspaceCache) => {
+          return {
+            profile: workspaceCache.profile,
+            workspaceAffinityVersion: workspaceCache.workspaceAffinityVersion,
+          };
+        }),
+      ],
     };
   });
 }
@@ -419,8 +471,12 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage("Invalid runner group");
   }
 
-  const heldSessionStates =
-    canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
+  const heldSandboxStates = canonicalizeHeldSandboxStates(
+    body.data.heldSandboxStates,
+  );
+  const heldWorkspaceStates = canonicalizeHeldWorkspaceStates(
+    body.data.heldWorkspaceStates,
+  );
   const admittableProfiles = body.data.admittableProfiles;
   const currentDate = nowDate();
   const snapshotOrder = {
@@ -443,7 +499,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
       admittableProfiles,
-      heldSessionStates,
+      heldSandboxStates,
+      heldWorkspaceStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
     })
@@ -461,7 +518,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
         admittableProfiles,
-        heldSessionStates,
+        heldSandboxStates,
+        heldWorkspaceStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,
       },
@@ -496,9 +554,9 @@ function recordPollTimingMetrics(args: {
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
-  readonly sessionAffinity: string;
-  readonly sessionAffinityResource: string;
-  readonly historyGenerationAffinity: string;
+  readonly runnerPreferenceDecision: RunnerPreferenceDecision;
+  readonly reuseKeyKind: "thread" | "session" | "none";
+  readonly historyGenerationRunId: string | undefined;
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
   readonly pendingJobLookupStartedAtMs: number;
@@ -509,12 +567,16 @@ function recordPollTimingMetrics(args: {
     runner_group: args.runnerGroup,
     profile: args.profile,
     auth_type: args.authType,
-    session_affinity: args.sessionAffinity,
-    session_affinity_resource: args.sessionAffinityResource,
-    history_generation_affinity: args.historyGenerationAffinity,
+    reuse_key_kind: args.reuseKeyKind,
+    ...runnerPreferenceDecisionTelemetryDimensions(
+      args.runnerPreferenceDecision,
+    ),
   };
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
+  }
+  if (args.historyGenerationRunId) {
+    dimensions.history_generation_run_id = args.historyGenerationRunId;
   }
 
   recordSandboxOperations([
@@ -564,7 +626,7 @@ function runnerPollPriorityOrder(
   }
   return [
     desc(
-      runnerSessionAffinityPollPriority({
+      runnerReusePreferencePollPriority({
         db,
         runnerId: args.runnerId,
         runnerGroup: args.runnerGroup,
@@ -572,6 +634,32 @@ function runnerPollPriorityOrder(
       }),
     ),
   ];
+}
+
+async function resolvePollRunnerReusePreference(
+  db: Pick<Db, "select">,
+  args: {
+    readonly runId: string;
+    readonly runnerGroup: string;
+    readonly profile: string;
+    readonly reuseKey: string | null;
+    readonly historyGenerationRunId: string | undefined;
+    readonly createdAt: Date;
+    readonly currentDate: Date;
+  },
+) {
+  const resolution = await tapError(
+    resolveRunnerReusePreference({ db, ...args }),
+    (error) => {
+      L.warn("Failed to resolve runner reuse preference for poll response", {
+        runId: args.runId,
+        runnerGroup: args.runnerGroup,
+        profile: args.profile,
+        error,
+      });
+    },
+  );
+  return resolution ?? runnerReusePreferenceLookupErrorDecision();
 }
 
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -613,7 +701,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
   const currentDate = nowDate();
-  const sessionAffinityPriorityOrder = runnerPollPriorityOrder(db, {
+  const reusePreferencePriorityOrder = runnerPollPriorityOrder(db, {
     runnerId: body.data.runnerId,
     runnerGroup: group,
     currentDate,
@@ -627,6 +715,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       vars: agentRuns.vars,
       profile: runnerJobQueue.profile,
       cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
+      reuseKey: runnerJobQueue.reuseKey,
       historyGenerationRunId:
         sql`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`.mapWith(
           nullableDriverValueDecoder(pgTextDecoder),
@@ -637,7 +726,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(and(...whereConditions))
     .orderBy(
-      ...sessionAffinityPriorityOrder,
+      ...reusePreferencePriorityOrder,
       runnerJobQueue.createdAt,
       runnerJobQueue.runId,
     )
@@ -648,43 +737,33 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!pendingJob) {
     return { status: 200 as const, body: { job: null } };
   }
-
-  const affinity =
-    (await tapError(
-      runnerSessionAffinityProtection({
-        db,
-        runnerGroup: group,
-        profile: pendingJob.profile,
-        cliAgentSessionId: pendingJob.cliAgentSessionId,
-        historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
-        createdAt: pendingJob.createdAt,
-        currentDate,
-      }),
-      (error) => {
-        L.warn("Failed to resolve runner session affinity for poll response", {
-          runId: pendingJob.runId,
-          runnerGroup: group,
-          profile: pendingJob.profile,
-          error,
-        });
-      },
-    )) ?? runnerSessionAffinityLookupError();
+  const runnerPreferenceDecision = await resolvePollRunnerReusePreference(db, {
+    runId: pendingJob.runId,
+    runnerGroup: group,
+    profile: pendingJob.profile,
+    reuseKey: pendingJob.reuseKey,
+    historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
+    createdAt: pendingJob.createdAt,
+    currentDate,
+  });
   signal.throwIfAborted();
-  const pollResponseAtMs = now();
+  const runnerPreferenceFields = runnerPreferenceDeliveryFields(
+    runnerPreferenceDecision,
+  );
   recordPollTimingMetrics({
     runId: pendingJob.runId,
     runnerGroup: group,
     profile: pendingJob.profile,
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
-    sessionAffinity: affinity.status,
-    sessionAffinityResource: runnerSessionAffinityTelemetryResource(affinity),
-    historyGenerationAffinity: affinity.historyGenerationStatus,
+    runnerPreferenceDecision,
+    reuseKeyKind: runnerReuseKeyTelemetryKind(pendingJob.reuseKey),
+    historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
     pendingJobLookupStartedAtMs,
     pendingJobLookupFinishedAtMs,
-    pollResponseAtMs,
+    pollResponseAtMs: now(),
   });
 
   return {
@@ -698,11 +777,9 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         vars: (pendingJob.vars as Record<string, string>) ?? null,
         experimentalProfile: pendingJob.profile,
         cliAgentSessionId: pendingJob.cliAgentSessionId,
+        reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
-        historyGenerationAffinityProtectedUntil:
-          affinity.historyGenerationProtectedUntil?.toISOString() ?? null,
-        affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
-        sessionAffinityResource: affinity.resource ?? undefined,
+        ...runnerPreferenceFields,
       },
     },
   };
@@ -712,6 +789,9 @@ const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
 const networkPolicyRefreshBody$ = bodyResultOf(
   runnersNetworkPolicyRefreshContract.refresh,
 );
+const connectorRuntimeSyncBody$ = bodyResultOf(
+  runnersConnectorRuntimeSyncContract.sync,
+);
 const builtinFirewallsResolveBody$ = bodyResultOf(
   runnersBuiltinFirewallsResolveContract.resolve,
 );
@@ -719,7 +799,7 @@ const builtinFirewallsResolveBody$ = bodyResultOf(
 interface ClaimableJob {
   readonly job: Pick<
     typeof runnerJobQueue.$inferSelect,
-    "runnerGroup" | "profile" | "executionContext" | "createdAt"
+    "runnerGroup" | "profile" | "reuseKey" | "executionContext" | "createdAt"
   >;
   readonly run: ClaimedRun;
 }
@@ -735,11 +815,12 @@ interface ClaimedRun {
   readonly vars: unknown;
 }
 
-interface ActiveRunNetworkPolicyScope {
+interface RunNetworkPolicyScope {
   readonly runId: string;
   readonly userId: string;
   readonly orgId: string;
   readonly agentId: string;
+  readonly status: RunStatus;
 }
 
 type ClaimLookupResult = ClaimableJob | ReturnType<typeof notFound>;
@@ -748,29 +829,35 @@ function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
   return "job" in value;
 }
 
-async function getActiveRunNetworkPolicyScope(
+async function getRunNetworkPolicyScope(
   db: Db,
   runId: string,
   signal: AbortSignal,
-): Promise<ActiveRunNetworkPolicyScope | undefined> {
+): Promise<RunNetworkPolicyScope | undefined> {
   const [row] = await db
     .select({
       runId: agentRuns.id,
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       agentId: agentSessions.agentComposeId,
+      status: agentRuns.status,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
+    .where(eq(agentRuns.id, runId))
     .limit(1);
   signal.throwIfAborted();
-  return row;
+  return row
+    ? {
+        ...row,
+        status: runStatusSchema.parse(row.status),
+      }
+    : undefined;
 }
 
 function runnerRunAuthorizationError(
   auth: RunnerAuthContext,
-  run: Pick<ActiveRunNetworkPolicyScope, "userId">,
+  run: Pick<RunNetworkPolicyScope, "userId">,
 ) {
   if (auth.type === "official-runner") {
     return null;
@@ -778,6 +865,15 @@ function runnerRunAuthorizationError(
   return run.userId === auth.userId
     ? null
     : forbidden("Run does not belong to user");
+}
+
+function isTerminalRunStatus(status: RunStatus): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "timeout" ||
+    status === "cancelled"
+  );
 }
 
 async function getClaimableJob(
@@ -790,6 +886,7 @@ async function getClaimableJob(
       job: {
         runnerGroup: runnerJobQueue.runnerGroup,
         profile: runnerJobQueue.profile,
+        reuseKey: runnerJobQueue.reuseKey,
         executionContext: runnerJobQueue.executionContext,
         createdAt: runnerJobQueue.createdAt,
       },
@@ -870,6 +967,22 @@ const claimTransitionSqlRowSchema = z.object({
   claimedAtMs: z.number().nullable(),
 });
 
+function decodeClaimTransitionResult(
+  rows: readonly z.infer<typeof claimTransitionSqlRowSchema>[],
+): ClaimTransitionResult {
+  const row = rows[0];
+  if (!row || row.status === "invariant-error") {
+    throw new Error("Runner job claim transition violated its invariant");
+  }
+  if (row.status === "claimed") {
+    if (row.claimedAtMs === null) {
+      throw new Error("Claimed runner job is missing its transition time");
+    }
+    return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
+  }
+  return { status: row.status };
+}
+
 async function lockClaimRun(
   db: Pick<Db, "select">,
   runId: string,
@@ -904,21 +1017,13 @@ async function lockRunnerJob(
   return row;
 }
 
-async function transitionClaimedJobToRunning(
-  db: Db,
+function buildClaimTransitionSql(
   runId: string,
-  signal: AbortSignal,
-  timing: ClaimRouteTimingCollector,
-): Promise<ClaimTransitionResult> {
-  return await db.transaction(async (tx) => {
-    const result = await timing.measure(
-      "claim_route_transition_execute",
-      "nested",
-      async () => {
-        // Materialized outputs make the row locks depend on run, then queue.
-        return await executeRawRows(
-          tx,
-          sql`
+  runnerId: string | null,
+  runnerHeartbeatGeneration: number | null,
+): SQL {
+  // Materialized outputs make the row locks depend on run, then queue.
+  return sql`
           WITH locked_run AS MATERIALIZED (
             SELECT
               ${agentRuns.id} AS "id",
@@ -930,6 +1035,7 @@ async function transitionClaimedJobToRunning(
           locked_job AS MATERIALIZED (
             SELECT
               ${runnerJobQueue.runId} AS "runId",
+              ${runnerJobQueue.profile} AS "profile",
               ${lte(runnerJobQueue.expiresAt, sql`now()`)} AS "isExpired"
             FROM ${runnerJobQueue}
             INNER JOIN locked_run
@@ -954,7 +1060,10 @@ async function transitionClaimedJobToRunning(
             SET
               status = 'running',
               started_at = claim_clock."claimedAt",
-              last_heartbeat_at = claim_clock."claimedAt"
+              last_heartbeat_at = claim_clock."claimedAt",
+              cancellation_recovery_completed = false,
+              runner_id = ${runnerId},
+              runner_heartbeat_generation = ${runnerHeartbeatGeneration}
             FROM locked_run
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
@@ -963,9 +1072,7 @@ async function transitionClaimedJobToRunning(
               eq(agentRuns.id, sql`locked_run."id"`),
               eq(agentRuns.status, sql`'pending'`),
             )}
-            RETURNING
-              ${agentRuns.id} AS "id",
-              ${agentRuns.startedAt} AS "claimedAt"
+            RETURNING ${agentRuns.id} AS "id", ${agentRuns.startedAt} AS "claimedAt"
           ),
           deleted_job AS (
             DELETE FROM ${runnerJobQueue}
@@ -973,6 +1080,10 @@ async function transitionClaimedJobToRunning(
             WHERE ${and(
               eq(runnerJobQueue.runId, sql`locked_job."runId"`),
               sql`locked_job."runId" = locked_run."id"`,
+              sql`(
+                locked_run."status" <> 'pending'
+                OR locked_job."profile" <> ${PI_STANDBY_PROFILE}
+              )`,
               sql`(
                 locked_run."status" <> 'pending'
                 OR EXISTS (
@@ -983,6 +1094,17 @@ async function transitionClaimedJobToRunning(
               )`,
             )}
             RETURNING ${runnerJobQueue.runId} AS "runId"
+          ),
+          retained_pi_job AS (
+            SELECT locked_job."runId" AS "runId"
+            FROM locked_job
+            WHERE
+              locked_job."profile" = ${PI_STANDBY_PROFILE}
+              AND EXISTS (
+                SELECT 1
+                FROM updated_run
+                WHERE updated_run."id" = locked_job."runId"
+              )
           )
           SELECT
             CASE
@@ -1002,7 +1124,10 @@ async function transitionClaimedJobToRunning(
                 )
                 THEN 'job-not-found'
               WHEN EXISTS (SELECT 1 FROM updated_run)
-                AND EXISTS (SELECT 1 FROM deleted_job)
+                AND (
+                  EXISTS (SELECT 1 FROM deleted_job)
+                  OR EXISTS (SELECT 1 FROM retained_pi_job)
+                )
                 THEN 'claimed'
               ELSE 'invariant-error'
             END AS "status",
@@ -1013,23 +1138,31 @@ async function transitionClaimedJobToRunning(
                 )::double precision
               FROM updated_run
             ) AS "claimedAtMs"
-          `,
-          claimTransitionSqlRowSchema,
-        );
+          `;
+}
+
+async function transitionClaimedJobToRunning(
+  db: Db,
+  runId: string,
+  runnerIdentity: RunnerClaimIdentity | undefined,
+  signal: AbortSignal,
+  timing: ClaimRouteTimingCollector,
+): Promise<ClaimTransitionResult> {
+  const query = buildClaimTransitionSql(
+    runId,
+    runnerIdentity?.runnerId ?? null,
+    runnerIdentity?.heartbeatGeneration ?? null,
+  );
+  return await db.transaction(async (tx) => {
+    const result = await timing.measure(
+      "claim_route_transition_execute",
+      "nested",
+      async () => {
+        return await executeRawRows(tx, query, claimTransitionSqlRowSchema);
       },
     );
     signal.throwIfAborted();
-    const row = result[0];
-    if (!row || row.status === "invariant-error") {
-      throw new Error("Runner job claim transition violated its invariant");
-    }
-    if (row.status === "claimed") {
-      if (row.claimedAtMs === null) {
-        throw new Error("Claimed runner job is missing its transition time");
-      }
-      return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
-    }
-    return { status: row.status };
+    return decodeClaimTransitionResult(result);
   });
 }
 
@@ -1205,25 +1338,55 @@ function connectorPermissionBaselineMatchesStoredContext(
   storedContext: StoredExecutionContext,
   baseline: StoredConnectorPermissionBaseline,
 ): boolean {
-  const baselineConnectorRefs = Object.keys(baseline.connectors);
-  const storedBuiltinConnectorRefs = new Set(
+  const baselineConnectorSlugs = Object.keys(baseline.connectors);
+  const storedBuiltinConnectorSlugs = new Set(
     (storedContext.firewalls ?? []).flatMap((firewall) => {
       return firewall.kind === "builtin" &&
-        connectorRefSchema.safeParse(firewall.name).success
+        connectorSlugSchema.safeParse(firewall.name).success
         ? [firewall.name]
         : [];
     }),
   );
   const storedNetworkPolicies = storedContext.networkPolicies ?? {};
   return (
-    baselineConnectorRefs.length === storedBuiltinConnectorRefs.size &&
-    baselineConnectorRefs.every((connectorRef) => {
+    baselineConnectorSlugs.length === storedBuiltinConnectorSlugs.size &&
+    baselineConnectorSlugs.every((connectorSlug) => {
       return (
-        storedBuiltinConnectorRefs.has(connectorRef) &&
-        Object.hasOwn(storedNetworkPolicies, connectorRef)
+        storedBuiltinConnectorSlugs.has(connectorSlug) &&
+        Object.hasOwn(storedNetworkPolicies, connectorSlug)
       );
     })
   );
+}
+
+function connectorRuntimeTargetsForClaim(
+  storedContext: StoredExecutionContext,
+): ConnectorRuntimeTarget[] | undefined {
+  if (storedContext.connectorRuntimeTargets !== undefined) {
+    return storedContext.connectorRuntimeTargets;
+  }
+  const networkPolicies = storedContext.networkPolicies ?? {};
+  const seenConnectorSlugs = new Set<string>();
+  const targets = (storedContext.firewalls ?? []).flatMap((firewall) => {
+    if (
+      firewall.kind !== "builtin" ||
+      !Object.hasOwn(networkPolicies, firewall.name)
+    ) {
+      return [];
+    }
+    const connectorSlug = connectorSlugSchema.safeParse(firewall.name);
+    if (!connectorSlug.success || seenConnectorSlugs.has(connectorSlug.data)) {
+      return [];
+    }
+    seenConnectorSlugs.add(connectorSlug.data);
+    return [
+      {
+        kind: "builtin" as const,
+        connectorSlug: connectorSlug.data,
+      },
+    ];
+  });
+  return targets.length > 0 ? targets : undefined;
 }
 
 async function refreshClaimNetworkPolicies(args: {
@@ -1236,8 +1399,8 @@ async function refreshClaimNetworkPolicies(args: {
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
   const storedNetworkPolicies = args.storedContext.networkPolicies ?? {};
-  const networkPolicyConnectorRefs = Object.keys(storedNetworkPolicies);
-  if (networkPolicyConnectorRefs.length === 0) {
+  const networkPolicyConnectorSlugs = Object.keys(storedNetworkPolicies);
+  if (networkPolicyConnectorSlugs.length === 0) {
     return {
       networkPolicies: args.storedContext.networkPolicies,
       networkPolicyRefreshes: undefined,
@@ -1256,17 +1419,17 @@ async function refreshClaimNetworkPolicies(args: {
       const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(
         args.db,
       );
-      const connectorRefs = networkPolicyRefreshConnectorRefs(
+      const connectorSlugs = networkPolicyRefreshConnectorSlugs(
         connectorCatalogSnapshot.serverFirewalls,
-        networkPolicyConnectorRefs,
+        networkPolicyConnectorSlugs,
       );
       const refreshes =
-        connectorRefs.length === 0
+        connectorSlugs.length === 0
           ? []
           : await resolveActiveNetworkPolicyRefreshes(
               args.db,
               scope,
-              connectorRefs,
+              connectorSlugs,
               connectorCatalogSnapshot,
             );
       return { refreshes, path };
@@ -1292,6 +1455,13 @@ async function refreshClaimNetworkPolicies(args: {
         args.db,
         scope,
         baseline,
+        async <T>(operation: () => Promise<T>): Promise<T> => {
+          return await args.timing.measure(
+            "claim_route_response_network_policy_refresh_baseline_database",
+            "nested",
+            operation,
+          );
+        },
       );
       if (resolution.kind === "incompatible") {
         return await fullRefresh("full_incompatible_baseline");
@@ -1629,6 +1799,7 @@ async function resolveResumeSessionForClaim(args: {
 async function buildClaimResponseBody(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
+  readonly reuseKey: string | null;
   readonly storedContext: StoredExecutionContext;
   readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
   readonly timing: ClaimRouteTimingCollector;
@@ -1707,6 +1878,7 @@ async function buildClaimResponseBody(args: {
       return {
         ...runnerStoredContext,
         runId: args.run.id,
+        reuseKey: args.reuseKey,
         prompt: args.run.prompt,
         appendSystemPrompt: args.run.appendSystemPrompt,
         agentComposeVersionId: args.run.agentComposeVersionId,
@@ -1723,6 +1895,9 @@ async function buildClaimResponseBody(args: {
         resumeSession,
         sandboxToken,
         secretValues,
+        connectorRuntimeTargets: connectorRuntimeTargetsForClaim(
+          args.storedContext,
+        ),
         networkPolicies: refreshedPolicies.networkPolicies,
         networkPolicyRefreshes: refreshedPolicies.networkPolicyRefreshes,
       };
@@ -1736,6 +1911,7 @@ const buildClaimResponseBodyForClaim$ = command(
     args: {
       readonly db: Db;
       readonly run: ClaimedRun;
+      readonly reuseKey: string | null;
       readonly storedContext: StoredExecutionContext;
       readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
       readonly timing: ClaimRouteTimingCollector;
@@ -1745,6 +1921,7 @@ const buildClaimResponseBodyForClaim$ = command(
     return await buildClaimResponseBody({
       db: args.db,
       run: args.run,
+      reuseKey: args.reuseKey,
       storedContext: args.storedContext,
       connectorPermissionBaseline: args.connectorPermissionBaseline,
       timing: args.timing,
@@ -1786,6 +1963,9 @@ interface ClaimTimingTelemetry {
   readonly pollDueToJobDiscoveredMs?: number;
   readonly pollHttpRequestMs?: number;
   readonly pollReason?: string;
+  readonly runnerPreferenceResolution?: RunnerPreferenceResolution;
+  readonly runnerPreferenceClaimState?: RunnerPreferenceClaimState;
+  readonly runnerPreferenceTargetedSelf?: boolean;
 }
 
 function scheduleSuccessfulClaimSideEffects(args: {
@@ -1823,6 +2003,8 @@ function scheduleSuccessfulClaimSideEffects(args: {
     ),
     claimRequestToRunningMs: Math.max(
       0,
+      // This historical state boundary ends at PostgreSQL's in-transaction
+      // claimedAt, not at an application-clock route parent.
       args.claimResult.claimedAt.getTime() - args.claimRequestStartedAtMs,
     ),
     jobDiscoveredToClaimRequestMs:
@@ -1839,6 +2021,12 @@ function scheduleSuccessfulClaimSideEffects(args: {
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
     pollReason: args.telemetry?.pollReason,
+    runnerPreferenceResolution: args.telemetry?.runnerPreferenceResolution,
+    runnerPreferenceClaimState: args.telemetry?.runnerPreferenceClaimState,
+    runnerPreferenceTargetedSelf: args.telemetry?.runnerPreferenceTargetedSelf,
+    historyGenerationRunId: historyGenerationRunIdForStoredExecutionContext(
+      args.storedContext,
+    ),
     claimRouteTiming: args.claimRouteTiming,
   });
 }
@@ -1864,6 +2052,10 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolution | undefined;
+  readonly runnerPreferenceClaimState: RunnerPreferenceClaimState | undefined;
+  readonly runnerPreferenceTargetedSelf: boolean | undefined;
+  readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
   waitUntil(
@@ -1899,6 +2091,10 @@ interface ClaimTimingMetricArgs {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolution | undefined;
+  readonly runnerPreferenceClaimState: RunnerPreferenceClaimState | undefined;
+  readonly runnerPreferenceTargetedSelf: boolean | undefined;
+  readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }
 
@@ -1993,6 +2189,9 @@ function claimTimingDimensions(
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
   }
+  if (args.historyGenerationRunId) {
+    dimensions.history_generation_run_id = args.historyGenerationRunId;
+  }
   return dimensions;
 }
 
@@ -2000,16 +2199,54 @@ function claimTimingOperations(
   args: ClaimTimingMetricArgs,
   dimensions: Record<string, string>,
 ): SandboxOperationAttrs[] {
+  const successfulClaimDimensions = claimSuccessfulPreferenceDimensions(
+    args,
+    dimensions,
+  );
   return CLAIM_TIMING_METRIC_FIELDS.map(({ actionType, valueKey }) => {
     return claimTimingOperation(
       args.runId,
       actionType,
       args[valueKey],
-      dimensions,
+      actionType === "claim_request_to_running"
+        ? successfulClaimDimensions
+        : dimensions,
     );
   }).filter((operation): operation is SandboxOperationAttrs => {
     return operation !== undefined;
   });
+}
+
+function claimSuccessfulPreferenceDimensions(
+  args: ClaimTimingMetricArgs,
+  dimensions: Record<string, string>,
+): Record<string, string> {
+  if (
+    args.runnerPreferenceResolution === undefined &&
+    args.runnerPreferenceClaimState === undefined &&
+    args.runnerPreferenceTargetedSelf === undefined
+  ) {
+    return dimensions;
+  }
+
+  return {
+    ...dimensions,
+    ...(args.runnerPreferenceResolution
+      ? {
+          runner_preference_resolution: args.runnerPreferenceResolution,
+        }
+      : {}),
+    ...(args.runnerPreferenceClaimState
+      ? { runner_preference_claim_state: args.runnerPreferenceClaimState }
+      : {}),
+    ...(args.runnerPreferenceTargetedSelf !== undefined
+      ? {
+          runner_preference_targeted_self: String(
+            args.runnerPreferenceTargetedSelf,
+          ),
+        }
+      : {}),
+  };
 }
 
 function claimTimingOperation(
@@ -2044,6 +2281,7 @@ const scheduleClaimFailedSideEffects$ = command(
         set(
           dispatchCompleteSideEffects$,
           {
+            kind: "terminal",
             runId: args.runId,
             orgId: args.orgId,
             status: "failed",
@@ -2154,6 +2392,7 @@ const claimAuthorizedJob$ = command(
       readonly db: Db;
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
+      readonly runnerIdentity: RunnerClaimIdentity | undefined;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
@@ -2198,6 +2437,7 @@ const claimAuthorizedJob$ = command(
       set(buildClaimResponseBodyForClaim$, {
         db,
         run,
+        reuseKey: jobWithRun.job.reuseKey,
         storedContext,
         connectorPermissionBaseline,
         timing: claimRouteTiming,
@@ -2219,6 +2459,11 @@ const claimAuthorizedJob$ = command(
     }
     signal.throwIfAborted();
 
+    claimRouteTiming.recordElapsed(
+      "claim_route_request_to_transition_start",
+      "parent",
+      args.claimRequestStartedAtMs,
+    );
     const claimResult = await claimRouteTiming.measure(
       "claim_route_transition_running",
       "top_level",
@@ -2226,6 +2471,7 @@ const claimAuthorizedJob$ = command(
         return await transitionClaimedJobToRunning(
           db,
           runId,
+          args.runnerIdentity,
           signal,
           claimRouteTiming,
         );
@@ -2236,6 +2482,12 @@ const claimAuthorizedJob$ = command(
       return claimTransitionErrorResponse(claimResult);
     }
 
+    const response = { status: 200 as const, body: responseBodyResult.value };
+    claimRouteTiming.recordElapsed(
+      "claim_route_request_to_response_ready",
+      "parent",
+      args.claimRequestStartedAtMs,
+    );
     scheduleSuccessfulClaimSideEffects({
       jobWithRun,
       authType: args.authType,
@@ -2246,7 +2498,7 @@ const claimAuthorizedJob$ = command(
       claimRouteTiming,
     });
 
-    return { status: 200 as const, body: responseBodyResult.value };
+    return response;
   },
 );
 
@@ -2263,6 +2515,9 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if (!body.ok) {
     return body.response;
+  }
+  if (auth.type === "official-runner" && !body.data.runnerIdentity) {
+    return badRequestMessage("Official runner claim requires runnerIdentity");
   }
 
   const runId = get(pathParamsOf(runnersJobClaimContract.claim)).id;
@@ -2292,6 +2547,8 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     db,
     runId,
     authType: auth.type,
+    runnerIdentity:
+      auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
     jobWithRun,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,
@@ -2322,17 +2579,31 @@ const networkPolicyRefreshInner$ = command(
       pathParamsOf(runnersNetworkPolicyRefreshContract.refresh),
     ).runId;
     const db = set(writeDb$);
-    const run = await getActiveRunNetworkPolicyScope(db, runId, signal);
+    const run = await getRunNetworkPolicyScope(db, runId, signal);
     if (!run) {
       return notFound("Run not found");
     }
 
     const authError = runnerRunAuthorizationError(auth, run);
+    if (run.status !== "running") {
+      if (authError || !isTerminalRunStatus(run.status)) {
+        return notFound("Run not found");
+      }
+      return {
+        status: 409 as const,
+        body: {
+          error: {
+            code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+            message: "Run is terminal",
+          },
+        },
+      };
+    }
     if (authError) {
       return authError;
     }
 
-    const connectorRefs = [...new Set(body.data.connectorRefs)];
+    const { connectorSlugs } = body.data;
     const refreshes = await resolveActiveNetworkPolicyRefreshes(
       db,
       {
@@ -2340,11 +2611,11 @@ const networkPolicyRefreshInner$ = command(
         userId: run.userId,
         agentId: run.agentId,
       },
-      connectorRefs,
+      connectorSlugs,
     );
     signal.throwIfAborted();
     if (refreshes.length === 0) {
-      return notFound(`Connectors not found: ${connectorRefs.join(", ")}`);
+      return notFound(`Connectors not found: ${connectorSlugs.join(", ")}`);
     }
 
     return {
@@ -2352,10 +2623,73 @@ const networkPolicyRefreshInner$ = command(
       body: {
         refreshes: refreshes.map((refresh) => {
           return {
-            connectorRef: refresh.connectorRef,
+            connectorSlug: refresh.connectorSlug,
             networkPolicy: refresh.networkPolicy,
             nextRefreshAt: refresh.nextRefreshAt,
           };
+        }),
+      },
+    };
+  },
+);
+
+const connectorRuntimeSyncInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = await set(runnerAuth$, get(authorization$), signal);
+    signal.throwIfAborted();
+    if (!auth) {
+      return unauthorizedAuthenticationRequired;
+    }
+
+    const body = await get(connectorRuntimeSyncBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const runId = get(
+      pathParamsOf(runnersConnectorRuntimeSyncContract.sync),
+    ).runId;
+    const db = set(writeDb$);
+    const run = await getRunNetworkPolicyScope(db, runId, signal);
+    if (!run) {
+      return notFound("Run not found");
+    }
+
+    const authError = runnerRunAuthorizationError(auth, run);
+    if (run.status !== "running") {
+      if (authError || !isTerminalRunStatus(run.status)) {
+        return notFound("Run not found");
+      }
+      return {
+        status: 409 as const,
+        body: {
+          error: {
+            code: CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+            message: "Run is terminal",
+          },
+        },
+      };
+    }
+    if (authError) {
+      return authError;
+    }
+
+    const resolutions = await resolveConnectorRuntimeTargets({
+      db,
+      scope: {
+        orgId: run.orgId,
+        userId: run.userId,
+        agentId: run.agentId,
+      },
+      targets: body.data.targets,
+    });
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: {
+        results: resolutions.map((resolution) => {
+          return resolution.result;
         }),
       },
     };
@@ -2434,6 +2768,288 @@ const builtinFirewallsResolveInner$ = command(
   },
 );
 
+async function loadRunningActiveInputRun(
+  db: ReadonlyDb,
+  args: {
+    readonly runId: string;
+    readonly userId: string;
+    readonly orgId: string;
+  },
+) {
+  const [run] = await db
+    .select({ chatThreadId: zeroRuns.chatThreadId })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.id, args.runId),
+        eq(agentRuns.userId, args.userId),
+        eq(agentRuns.orgId, args.orgId),
+        eq(agentRuns.status, "running"),
+      ),
+    )
+    .limit(1);
+  if (!run?.chatThreadId) {
+    return null;
+  }
+  return { chatThreadId: run.chatThreadId };
+}
+
+function pendingActiveInputRows(
+  db: Pick<Db, "select">,
+  chatThreadId: string,
+  runId: string,
+  eventIds?: readonly string[],
+) {
+  return db
+    .select({
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      createdAt: chatEvents.createdAt,
+      eventType: chatEvents.eventType,
+      contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
+      userMessage: chatEvents.userMessage,
+      attachFiles: chatEvents.attachFiles,
+      generationTemplate: chatEvents.generationTemplate,
+      seqId: chatEvents.seqId,
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, chatThreadId),
+        pendingActiveInputCondition(db, runId),
+        eventIds ? inArray(chatEvents.id, eventIds) : undefined,
+      ),
+    )
+    .orderBy(asc(chatEvents.seqId));
+}
+
+type PendingActiveInputRow = Awaited<
+  ReturnType<typeof pendingActiveInputRows>
+>[number];
+type ActiveInputClaimTransaction = Parameters<
+  Parameters<Db["transaction"]>[0]
+>[0];
+
+async function claimPendingActiveInputEvent(
+  tx: ActiveInputClaimTransaction,
+  event: PendingActiveInputRow,
+  runId: string,
+): Promise<void> {
+  if (!event.userMessage) {
+    throw new Error("Pending active input has invalid prompt data");
+  }
+  if (
+    event.eventType !== "input.prompt" &&
+    event.eventType !== "input.budget"
+  ) {
+    throw new Error("Pending active input has invalid event type");
+  }
+  const target = {
+    id: event.id,
+    chatThreadId: event.chatThreadId,
+    createdAt: event.createdAt,
+    eventType: event.eventType,
+    contextType: event.contextType,
+    contextId: event.contextId,
+  };
+  const replacement =
+    event.eventType === "input.budget"
+      ? await replaceLoadedChatEvent(tx, target, {
+          chatThreadId: event.chatThreadId,
+          eventType: "input.budget",
+          runId,
+          userMessage: event.userMessage,
+        })
+      : await replaceLoadedChatEvent(tx, target, {
+          chatThreadId: event.chatThreadId,
+          eventType: "input.prompt",
+          runId,
+          userMessage: event.userMessage,
+          attachFiles: event.attachFiles,
+          generationTemplate: event.generationTemplate,
+        });
+  if (!replacement) {
+    throw new Error("Active input claim lost after locking the thread");
+  }
+}
+
+async function materializePendingActiveInputPrompts(
+  db: Db,
+  candidates: readonly PendingActiveInputRow[],
+  auth: { readonly orgId: string; readonly userId: string },
+  signal: AbortSignal,
+): Promise<Map<string, string> | null> {
+  const prompts = new Map<string, string>();
+  for (const event of candidates) {
+    if (
+      !event.userMessage ||
+      (event.eventType !== "input.prompt" && event.eventType !== "input.budget")
+    ) {
+      return null;
+    }
+    if (event.contextType === null) {
+      throw new Error("Pending active input is missing its context type");
+    }
+    prompts.set(
+      event.id,
+      await materializeActiveInputPrompt(db, {
+        event: {
+          id: event.id,
+          chatThreadId: event.chatThreadId,
+          eventType: event.eventType,
+          contextType: event.contextType,
+          userMessage: event.userMessage,
+          generationTemplate: event.generationTemplate,
+        },
+        orgId: auth.orgId,
+        userId: auth.userId,
+      }),
+    );
+    signal.throwIfAborted();
+  }
+  return prompts;
+}
+
+const activeInputClaimBody$ = bodyResultOf(runnersActiveInputsContract.claim);
+
+const listActiveInputsInner$ = command(async ({ get }, signal: AbortSignal) => {
+  const auth = get(authContext$);
+  const { runId } = get(pathParamsOf(runnersActiveInputsContract.list));
+  if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
+    return notFound("Run not found");
+  }
+  const db = get(db$);
+  const run = await loadRunningActiveInputRun(db, {
+    runId,
+    userId: auth.userId,
+    orgId: auth.orgId,
+  });
+  signal.throwIfAborted();
+  if (!run) {
+    return notFound("Run not found");
+  }
+  const rows = await pendingActiveInputRows(db, run.chatThreadId, runId);
+  signal.throwIfAborted();
+  return {
+    status: 200 as const,
+    body: {
+      eventIds: rows.map((row) => {
+        return row.id;
+      }),
+    },
+  };
+});
+
+const claimActiveInputsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const { runId } = get(pathParamsOf(runnersActiveInputsContract.claim));
+    if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
+      return notFound("Run not found");
+    }
+    const body = await get(activeInputClaimBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const uniqueEventIds = [...new Set(body.data.eventIds)];
+    if (uniqueEventIds.length !== body.data.eventIds.length) {
+      return badRequestMessage("Active input event IDs must be unique");
+    }
+
+    const db = set(writeDb$);
+    const run = await loadRunningActiveInputRun(db, {
+      runId,
+      userId: auth.userId,
+      orgId: auth.orgId,
+    });
+    signal.throwIfAborted();
+    if (!run) {
+      return notFound("Run not found");
+    }
+    const candidates = await pendingActiveInputRows(
+      db,
+      run.chatThreadId,
+      runId,
+      uniqueEventIds,
+    );
+    signal.throwIfAborted();
+    if (candidates.length !== uniqueEventIds.length) {
+      return conflict("One or more active inputs are no longer pending");
+    }
+    const materializedPrompts = await materializePendingActiveInputPrompts(
+      db,
+      candidates,
+      auth,
+      signal,
+    );
+    if (!materializedPrompts) {
+      return conflict("One or more active inputs cannot be materialized");
+    }
+    const promptParts: string[] = [];
+    for (const candidate of candidates) {
+      const prompt = materializedPrompts.get(candidate.id);
+      if (prompt === undefined) {
+        throw new Error("Active input prompt materialization is missing");
+      }
+      promptParts.push(prompt);
+    }
+    const materializedPrompt = promptParts.join("\n\n");
+    if (!activeInputPromptFitsControlPayload(materializedPrompt)) {
+      return conflict(
+        "Active input batch exceeds runner control payload limit",
+      );
+    }
+
+    const result = await db.transaction(async (tx) => {
+      if (!(await lockChatQueueThread(tx, run.chatThreadId))) {
+        return null;
+      }
+      const [lockedRun] = await tx
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.id, runId),
+            eq(agentRuns.userId, auth.userId),
+            eq(agentRuns.orgId, auth.orgId),
+            eq(agentRuns.status, "running"),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!lockedRun) {
+        return null;
+      }
+      const events = await pendingActiveInputRows(
+        tx,
+        run.chatThreadId,
+        runId,
+        uniqueEventIds,
+      );
+      if (events.length !== uniqueEventIds.length) {
+        return null;
+      }
+      for (const event of events) {
+        await claimPendingActiveInputEvent(tx, event, runId);
+      }
+      return true;
+    });
+    signal.throwIfAborted();
+    if (!result) {
+      return conflict("One or more active inputs are no longer pending");
+    }
+    await publishChatThreadMessageCreatedSafely(auth.userId, run.chatThreadId);
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: { prompt: materializedPrompt },
+    };
+  },
+);
+
 export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersHeartbeatContract.heartbeat,
@@ -2448,8 +3064,26 @@ export const runnersRoutes: readonly RouteEntry[] = [
     handler: claimInner$,
   },
   {
+    route: runnersActiveInputsContract.list,
+    handler: authRoute(
+      { accept: ["sandbox"], acceptAnySandboxCapability: true },
+      listActiveInputsInner$,
+    ),
+  },
+  {
+    route: runnersActiveInputsContract.claim,
+    handler: authRoute(
+      { accept: ["sandbox"], acceptAnySandboxCapability: true },
+      claimActiveInputsInner$,
+    ),
+  },
+  {
     route: runnersNetworkPolicyRefreshContract.refresh,
     handler: networkPolicyRefreshInner$,
+  },
+  {
+    route: runnersConnectorRuntimeSyncContract.sync,
+    handler: connectorRuntimeSyncInner$,
   },
   {
     route: runnersBuiltinFirewallsResolveContract.resolve,

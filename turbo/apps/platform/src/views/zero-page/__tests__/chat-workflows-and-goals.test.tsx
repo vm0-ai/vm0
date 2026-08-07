@@ -21,9 +21,8 @@ import { click, fill } from "../../../__tests__/page-helper.ts";
 import {
   expectQueuedMessages,
   mockChatLifecycle,
-  sendQueuedMessage,
 } from "./chat-test-helpers.ts";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../workflow-chat-prompts.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../../signals/chat-page/workflow-prompt-action";
 import {
   context,
   detachedSetupPage,
@@ -44,6 +43,46 @@ import {
 } from "./chat-lifecycle-test-helpers.ts";
 
 describe("chat lifecycle", () => {
+  it("does not render a rejected goal continuation after an assistant response", async () => {
+    const threadId = "thread-rejected-goal-artifact";
+    const objectiveBrief = "Keep the launch moving";
+    const machineReason = "internal provider credential id abc123 is invalid";
+    const assistantResponse = "The active goal has been stopped.";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Rejected goal artifact",
+      chatEvents: [
+        {
+          id: "msg-assistant-response",
+          role: "assistant",
+          content: assistantResponse,
+          createdAt: "2026-07-29T10:00:00Z",
+        },
+        {
+          id: "msg-rejected-goal",
+          role: "user",
+          eventType: "input.rejected",
+          content: objectiveBrief,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief: objectiveBrief }],
+          },
+          error: machineReason,
+          createdAt: "2026-07-29T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const renderedAssistantResponse =
+      await screen.findByText(assistantResponse);
+    expect(renderedAssistantResponse).toBeInTheDocument();
+    expect(screen.queryByLabelText("Goal")).not.toBeInTheDocument();
+    expect(screen.queryByText(objectiveBrief)).not.toBeInTheDocument();
+    expect(screen.queryByText(machineReason)).not.toBeInTheDocument();
+  });
+
   it("opens run logs from assistant message actions", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "message-run-logs-thread";
@@ -53,7 +92,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Run logs message",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-run-logs-user",
           role: "user",
@@ -93,7 +132,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Assistant copy",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-assistant-copy-user",
           role: "user",
@@ -138,7 +177,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Assistant workflow",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-workflow-empty-user",
           role: "user",
@@ -161,8 +200,8 @@ describe("chat lifecycle", () => {
       path: `/chats/${threadId}`,
     });
 
-    const assistantMessage = await screen.findByText(assistantReply);
-    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
+    const assistantEvent = await screen.findByText(assistantReply);
+    const assistantGroup = assistantEvent.closest('[data-role="assistant"]');
     if (!(assistantGroup instanceof HTMLElement)) {
       throw new Error("assistant message group not found");
     }
@@ -204,7 +243,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Assistant workflow draft",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-workflow-draft-user",
           role: "user",
@@ -549,12 +588,42 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("does not use a goal queue event as composer goal state", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000722";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-goal-queued",
+          eventType: "input.goal",
+          runId: undefined,
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief: "Finish the queued goal" }],
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Active goal")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Finish the queued goal"),
+    ).not.toBeInTheDocument();
+  });
+
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000723";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-goal-user",
           role: "user",
@@ -582,6 +651,21 @@ describe("chat lifecycle", () => {
             objectiveBrief: "Drive the release to merge",
           },
           createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-goal-morning-brief",
+          eventType: "input.prompt",
+          role: "user",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "First queued follow-up" },
+              { type: "morning_brief", briefDate: "2026-06-09" },
+            ],
+          },
+          runId: undefined,
+          createdAt: "2026-06-09T10:00:03Z",
         },
       ],
       activeRunIds: ["run-active"],
@@ -615,7 +699,6 @@ describe("chat lifecycle", () => {
     expect(screen.getAllByText("Drive the release to merge")).toHaveLength(1);
 
     // The goal is the lowest-priority row: it sits after every queued message.
-    await sendQueuedMessage(user, "First queued follow-up");
     await expectQueuedMessages(["First queued follow-up"]);
     const goalRow = screen.getByLabelText("Active goal");
     const strip = goalRow.closest('[role="list"]');
@@ -640,7 +723,7 @@ describe("chat lifecycle", () => {
     const threadId = "thread-goal-dialog";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-goal-dialog-user",
           role: "user",
@@ -700,7 +783,7 @@ describe("chat lifecycle", () => {
     const threadId = "thread-goal-complete";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-goalc-active",
           runId: undefined,
@@ -733,6 +816,75 @@ describe("chat lifecycle", () => {
     expect(screen.queryByLabelText("Active goal")).not.toBeInTheDocument();
   });
 
+  it("folds non-goal runs that share a run group id", async () => {
+    const threadId = "thread-non-goal-run-group-folding";
+    const runGroupId = "f0000001-0000-4000-a000-00000000071b";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Non-goal run group folding",
+      chatEvents: [
+        {
+          id: "msg-non-goal-run-group-user-1",
+          role: "user",
+          content: "First non-goal prompt",
+          runId: "f0000001-0000-4000-a000-00000000071c",
+          runGroupId,
+          isGoalRun: false,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-non-goal-run-group-assistant-1",
+          role: "assistant",
+          content: "First non-goal result",
+          runId: "f0000001-0000-4000-a000-00000000071c",
+          runGroupId,
+          isGoalRun: false,
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-non-goal-run-group-user-2",
+          role: "user",
+          content: "Latest non-goal prompt",
+          runId: "f0000001-0000-4000-a000-00000000071d",
+          runGroupId,
+          isGoalRun: false,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-non-goal-run-group-assistant-2",
+          role: "assistant",
+          content: "Latest non-goal result",
+          runId: "f0000001-0000-4000-a000-00000000071d",
+          runGroupId,
+          isGoalRun: false,
+          createdAt: "2026-06-09T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latest non-goal prompt")).toBeInTheDocument();
+      expect(screen.getByText("Latest non-goal result")).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toBeInTheDocument();
+      expect(
+        screen.queryByText("First non-goal prompt"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("First non-goal result"),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(buttonByLabel("Expand grouped run history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("First non-goal prompt")).toBeInTheDocument();
+      expect(screen.getByText("First non-goal result")).toBeInTheDocument();
+    });
+  });
+
   it("surfaces archived goal history in the latest assistant row", async () => {
     const threadId = "thread-goal-run-group-folding";
     const runGroupId = "f0000001-0000-4000-a000-00000000072b";
@@ -744,12 +896,15 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Goal run group folding",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-goal-run-group-user-1",
           role: "user",
           content: goalPrompt,
-          goalSnapshot: { objectiveBrief: goalBrief },
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
           runId: "f0000001-0000-4000-a000-00000000072c",
           runGroupId,
           isGoalRun: true,
@@ -768,7 +923,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-goal-run-group-user-2",
           role: "user",
           content: goalPrompt,
-          goalSnapshot: { objectiveBrief: goalBrief },
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
           runId: "f0000001-0000-4000-a000-00000000072d",
           runGroupId,
           isGoalRun: true,
@@ -854,12 +1012,15 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Active goal run group folding",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-goal-run-group-active-user-1",
           role: "user",
           content: goalPrompt,
-          goalSnapshot: { objectiveBrief: goalBrief },
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
           runId: "f0000001-0000-4000-a000-00000000082c",
           runGroupId,
           isGoalRun: true,
@@ -879,7 +1040,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-goal-run-group-active-user-2",
           role: "user",
           content: goalPrompt,
-          goalSnapshot: { objectiveBrief: goalBrief },
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
           runId: "f0000001-0000-4000-a000-00000000082d",
           runGroupId,
           isGoalRun: true,
@@ -905,7 +1069,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       ).not.toBeNull();
     });
 
-    const goalMessage = screen.getByText(goalBrief);
+    const goalEvent = screen.getByText(goalBrief);
     const foldButton = buttonByLabel("Expand grouped run history");
     const thinkingIndicator = document.querySelector(
       "[data-thinking-indicator]",
@@ -913,7 +1077,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     expect(thinkingIndicator).not.toBeNull();
     expect(
-      goalMessage.compareDocumentPosition(foldButton) &
+      goalEvent.compareDocumentPosition(foldButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
@@ -926,24 +1090,28 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const threadId = "thread-workflow-run-group-folding";
     const runGroupId = "f0000001-0000-4000-a000-00000000073b";
     const workflowPrompt = "/daily-workflow";
-    const workflowSnapshot = {
-      name: "daily-workflow",
-      displayName: "Daily workflow",
-      description: "Daily workflow summary",
+    const workflowUserMessage = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "automation" as const,
+          workflowName: "daily-workflow",
+          automationBrief: "Daily workflow summary",
+        },
+      ],
     };
 
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Workflow run group folding",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-workflow-run-group-user-1",
           role: "user",
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
-          triggerSource: "workflow-event",
-          workflowSnapshot,
+          userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
@@ -952,8 +1120,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "First workflow result",
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
-          triggerSource: "workflow-event",
-          workflowSnapshot,
           createdAt: "2026-06-09T10:00:30Z",
         },
         {
@@ -962,8 +1128,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
-          triggerSource: "workflow-event",
-          workflowSnapshot,
+          userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:02:00Z",
         },
         {
@@ -972,8 +1137,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "Latest workflow result",
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
-          triggerSource: "workflow-event",
-          workflowSnapshot,
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -1001,24 +1164,28 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const threadId = "thread-paused-workflow-run-group";
     const runGroupId = "f0000001-0000-4000-a000-00000000074b";
     const workflowPrompt = "/daily-workflow";
-    const workflowSnapshot = {
-      name: "daily-workflow",
-      displayName: "Daily workflow",
-      description: "Daily workflow summary",
+    const workflowUserMessage = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "automation" as const,
+          workflowName: "daily-workflow",
+          automationBrief: "Daily workflow summary",
+        },
+      ],
     };
 
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Paused workflow run group",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-paused-workflow-user-1",
           role: "user",
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000074c",
           runGroupId,
-          triggerSource: "workflow-event",
-          workflowSnapshot,
+          userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
@@ -1027,8 +1194,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "First workflow result",
           runId: "f0000001-0000-4000-a000-00000000074c",
           runGroupId,
-          triggerSource: "workflow-event",
-          workflowSnapshot,
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:00:30Z",
         },
@@ -1038,8 +1203,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000074d",
           runGroupId,
-          triggerSource: "workflow-event",
-          workflowSnapshot,
+          userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:02:00Z",
         },
         {
@@ -1049,8 +1213,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           error: "Run cancelled",
           runId: "f0000001-0000-4000-a000-00000000074d",
           runGroupId,
-          triggerSource: "workflow-event",
-          workflowSnapshot,
           runLifecycleEvent: "cancelled",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -1087,28 +1249,29 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("renders workflow automation user messages with the workflow title and brief", async () => {
+  it("keeps rendering legacy workflow automation briefs without text", async () => {
     const threadId = "thread-workflow-user-message-marker";
     const workflowPrompt = "/daily-workflow";
 
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Workflow user message marker",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-workflow-marker-user",
-          role: "user",
-          content: workflowPrompt,
+          eventType: "input.automation",
+          content: null,
           runId: "f0000001-0000-4000-a000-00000000083c",
-          triggerSource: "workflow-event",
-          workflowSnapshot: {
-            id: "f0000001-0000-4000-a000-000000000831",
-            agentId: "c0000000-0000-4000-a000-000000000001",
-            name: "daily-workflow",
-            displayName: "Daily workflow",
-            description: "Daily workflow summary",
-            automationId: "f0000001-0000-4000-a000-000000000832",
-            triggerBrief: "Gmail label applied",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "Daily workflow",
+                workflowId: "f0000001-0000-4000-a000-000000000831",
+                automationBrief: "Gmail label applied",
+              },
+            ],
           },
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -1117,7 +1280,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "assistant",
           content: "Workflow result",
           runId: "f0000001-0000-4000-a000-00000000083c",
-          triggerSource: "workflow-event",
           createdAt: "2026-06-09T10:00:30Z",
         },
       ],
@@ -1140,20 +1302,118 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("renders automation trigger briefs and folds queue status events", async () => {
+  it("renders the persisted workflow prompt instead of its brief", async () => {
+    const threadId = "thread-workflow-user-message-prompt";
+    const workflowPrompt =
+      '/daily-workflow\nTrigger: Gmail applied label "todo" to message msg-123.';
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Workflow user message prompt",
+      chatEvents: [
+        {
+          id: "msg-workflow-prompt-user",
+          eventType: "input.automation",
+          content: null,
+          runId: "f0000001-0000-4000-a000-00000000084c",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: workflowPrompt },
+              {
+                type: "automation",
+                workflowName: "Daily workflow",
+                workflowId: "f0000001-0000-4000-a000-000000000841",
+                automationBrief: "Gmail label applied",
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const annotation = await screen.findByLabelText("Workflow Daily workflow");
+    const userTurn = annotation.closest('[data-role="user"]');
+    expect(userTurn).not.toBeNull();
+    expect(userTurn).toHaveTextContent("/daily-workflow");
+    expect(userTurn).toHaveTextContent(
+      'Trigger: Gmail applied label "todo" to message msg-123.',
+    );
+    expect(userTurn).not.toHaveTextContent("Gmail label applied");
+  });
+
+  it("renders persisted workflow prompts without a trigger brief", async () => {
+    const threadId = "thread-workflow-user-message-no-brief";
+    const workflowPrompt =
+      '/turbo-flaky-test-repair\nTrigger: GitHub Actions workflow "Turbo" completed with conclusion "failure".';
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Workflow user message without brief",
+      chatEvents: [
+        {
+          id: "msg-workflow-no-brief-user",
+          eventType: "input.automation",
+          content: null,
+          runId: "f0000001-0000-4000-a000-00000000085c",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: workflowPrompt },
+              {
+                type: "automation",
+                workflowName: "turbo-flaky-test-repair",
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const annotation = await screen.findByLabelText(
+      "Workflow turbo-flaky-test-repair",
+    );
+    const userTurn = annotation.closest('[data-role="user"]');
+    expect(userTurn).not.toBeNull();
+    expect(userTurn).toHaveTextContent("/turbo-flaky-test-repair");
+    expect(userTurn).toHaveTextContent(
+      'Trigger: GitHub Actions workflow "Turbo" completed with conclusion "failure".',
+    );
+  });
+
+  it("renders a pending automation only as an automation event", async () => {
     const threadId = "thread-pending-automation-event";
 
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Pending automation event",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-claimed-automation",
           eventType: "input.automation",
           content: null,
-          automationId: "f0000001-0000-4000-a000-000000000931",
-          triggerSource: "workflow-event",
-          triggerBrief: "Scheduled digest due",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "daily-workflow",
+                automationBrief: "Scheduled digest due",
+              },
+            ],
+          },
           runId: "f0000001-0000-4000-a000-000000000933",
           createdAt: "2026-06-09T09:59:00Z",
         },
@@ -1161,24 +1421,18 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-pending-automation",
           eventType: "input.automation",
           content: null,
-          automationId: "f0000001-0000-4000-a000-000000000932",
-          triggerSource: "workflow-event",
-          triggerBrief: "Gmail label applied",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "daily-workflow",
+                automationBrief: "Gmail label applied",
+              },
+            ],
+          },
           runId: undefined,
           createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-automation-paused",
-          eventType: "queue.automation_paused",
-          content: null,
-          pauseReason: "Provider unavailable",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-        {
-          id: "msg-automation-resumed",
-          eventType: "queue.automation_resumed",
-          content: null,
-          createdAt: "2026-06-09T10:02:00Z",
         },
       ],
     });
@@ -1192,8 +1446,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       "Scheduled digest due",
     );
     expect(claimedAutomationBrief).toBeInTheDocument();
-    await expectQueuedMessages(["Gmail label applied"]);
-    expect(screen.queryByText("Provider unavailable")).not.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Pending automation event"),
+    ).resolves.toHaveTextContent("Gmail label applied");
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
   });
 
   it("shows template labels on historical user messages", async () => {
@@ -1206,7 +1462,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Template labels",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-template-presentation",
           role: "user",
@@ -1390,7 +1646,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     ];
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-rich-attachments",
           role: "user",
@@ -1467,7 +1723,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const imageUrl = "https://cdn.vm7.io/artifacts/test/photo/photo.png";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-image-attachment-copy",
           role: "user",
@@ -1590,7 +1846,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     };
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-structured-copy",
           role: "user",
@@ -1617,7 +1873,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const item = await readSingleRichClipboardWrite(clipboard);
     const html = await readClipboardItemText(item, "text/html");
     expect(parseChatClipboardPayload(html)).toStrictEqual({
+      // The template part renders inline into the copied prompt text.
       text:
+        `Select ${style.title} illustration template` +
         `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` +
         "Feedback on this part of your reply:\n\n" +
         "> The roadmap lacks dates\n\nAdd the launch milestones",
@@ -1657,7 +1915,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     };
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-structured-template-copy-paste",
           role: "user",
@@ -1698,8 +1956,8 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     await waitFor(() => {
       expect(composer).toHaveTextContent(messageText);
       expect(
-        screen.getByLabelText(`Remove template ${style.title}`),
-      ).toBeInTheDocument();
+        composer.querySelector("[data-composer-inline-template]"),
+      ).toHaveTextContent(style.title);
       const feedbackItem = composer.querySelector("[data-feedback-item]");
       expect(feedbackItem).toHaveTextContent(feedbackQuote);
       expect(feedbackItem).toHaveTextContent(feedbackNote);
@@ -1730,7 +1988,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     };
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-structured-feedback-copy-fallback",
           role: "user",

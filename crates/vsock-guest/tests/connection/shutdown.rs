@@ -7,8 +7,9 @@ use vsock_guest::run;
 use vsock_proto::{self, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE};
 
 use super::support::{
-    finish_guest_connection, join_guest_connection, read_and_discard_message, read_error_response,
-    read_message, start_guest_connection, unique_socket_path, unique_tmp_path,
+    accept_guest_connection, finish_guest_connection, join_guest_connection, read_error_response,
+    read_guest_ready, read_message, start_guest_connection, unique_socket_path, unique_tmp_path,
+    wait_for_guest_connection,
 };
 
 #[test]
@@ -22,9 +23,9 @@ fn run_exits_after_shutdown_even_when_ack_write_fails() {
     let guest_socket_path = socket_path.as_str().to_owned();
     let handle = thread::spawn(move || run(Some(&guest_socket_path)));
 
-    let (mut host_stream, _) = listener.accept().unwrap();
+    let mut host_stream = accept_guest_connection(&listener);
     drop(listener);
-    read_and_discard_message(&mut host_stream);
+    read_guest_ready(&mut host_stream);
 
     host_stream.shutdown(Shutdown::Read).unwrap();
     let msg = vsock_proto::encode(MSG_SHUTDOWN, 1, &[]).unwrap();
@@ -35,7 +36,7 @@ fn run_exits_after_shutdown_even_when_ack_write_fails() {
     // ACK write fails with EPIPE/BrokenPipe.
     drop(host_stream);
 
-    let result = handle.join().unwrap();
+    let result = wait_for_guest_connection(handle);
     assert!(
         result.is_ok(),
         "shutdown should stop run() cleanly even if ACK write fails: {result:?}",
@@ -43,7 +44,7 @@ fn run_exits_after_shutdown_even_when_ack_write_fails() {
 }
 
 #[test]
-fn run_sends_shutdown_ack_and_exits_without_waiting_for_disconnect() {
+fn run_sends_shutdown_ack_and_waits_for_disconnect() {
     use std::os::unix::net::UnixListener;
     use std::sync::mpsc;
 
@@ -58,9 +59,9 @@ fn run_sends_shutdown_ack_and_exits_without_waiting_for_disconnect() {
         result
     });
 
-    let (mut host_stream, _) = listener.accept().unwrap();
+    let mut host_stream = accept_guest_connection(&listener);
     drop(listener);
-    read_and_discard_message(&mut host_stream);
+    read_guest_ready(&mut host_stream);
 
     let msg = vsock_proto::encode(MSG_SHUTDOWN, 42, &[]).unwrap();
     host_stream.write_all(&msg).unwrap();
@@ -69,14 +70,17 @@ fn run_sends_shutdown_ack_and_exits_without_waiting_for_disconnect() {
     assert_eq!(ack.msg_type, MSG_SHUTDOWN_ACK);
     assert_eq!(ack.seq, 42);
 
-    let finished_before_disconnect = done_rx.recv_timeout(Duration::from_secs(1)).is_ok();
+    assert_eq!(
+        done_rx.recv_timeout(Duration::from_secs(1)),
+        Err(mpsc::RecvTimeoutError::Timeout),
+        "run() should retain the connection after MSG_SHUTDOWN_ACK",
+    );
     drop(host_stream);
 
-    let result = handle.join().unwrap();
-    assert!(
-        finished_before_disconnect,
-        "run() should exit after MSG_SHUTDOWN without waiting for host disconnect",
-    );
+    done_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("run() should exit after host disconnect");
+    let result = wait_for_guest_connection(handle);
     assert!(
         result.is_ok(),
         "shutdown should stop run() cleanly: {result:?}"
@@ -103,12 +107,16 @@ fn shutdown_rejects_non_empty_payload_without_exiting() {
 }
 
 #[test]
-fn shutdown_ignores_later_frames_in_same_read_buffer() {
+fn shutdown_ignores_same_buffer_and_later_frames() {
     let (handle, mut host_stream) = start_guest_connection();
     let path = unique_tmp_path("shutdown-followed-by-write-file", ".txt");
+    let later_path = unique_tmp_path("shutdown-followed-by-later-write-file", ".txt");
     let write_payload =
         vsock_proto::encode_write_file(path.as_str(), b"should-not-write", false, false)
             .expect("encode write_file");
+    let later_write_payload =
+        vsock_proto::encode_write_file(later_path.as_str(), b"should-not-write", false, false)
+            .expect("encode later write_file");
 
     let mut batch = vsock_proto::encode(MSG_SHUTDOWN, 50, &[]).unwrap();
     batch.extend_from_slice(&vsock_proto::encode(MSG_WRITE_FILE, 51, &write_payload).unwrap());
@@ -118,7 +126,11 @@ fn shutdown_ignores_later_frames_in_same_read_buffer() {
     assert_eq!(ack.msg_type, MSG_SHUTDOWN_ACK);
     assert_eq!(ack.seq, 50);
 
+    host_stream
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE, 52, &later_write_payload).unwrap())
+        .unwrap();
     drop(host_stream);
     join_guest_connection(handle);
     assert!(!Path::new(path.as_str()).exists());
+    assert!(!Path::new(later_path.as_str()).exists());
 }

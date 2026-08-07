@@ -6,14 +6,19 @@
 mod common;
 
 use guest_contracts::diagnostics::{FailureClass, FailureDiagnostic};
+use serde_json::Value;
 use shell_quote::quote_shell_arg;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
+use std::time::Duration;
+use tokio::process::Command;
+
+const GUEST_AGENT_TIMEOUT: Duration = Duration::from_secs(20);
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-#[test]
-fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
+#[tokio::test]
+async fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let tmp = tempfile::tempdir()?;
@@ -37,7 +42,8 @@ fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
         run_payload_path: &run_payload_path,
         home: tmp.path(),
         run_id: "codex-auth-setup-fail-closed",
-    })?;
+    })
+    .await?;
 
     assert!(
         !output.status.success(),
@@ -60,12 +66,31 @@ fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
     let diagnostic: FailureDiagnostic = serde_json::from_slice(&std::fs::read(diagnostic_path)?)?;
     assert_eq!(diagnostic.failure_class, FailureClass::CliExecutionError);
 
+    let sandbox_ops_path = guest_contracts::runtime_paths::sandbox_ops_log_file(&runtime_dir);
+    let sandbox_ops = std::fs::read_to_string(sandbox_ops_path)?;
+    let startup = sandbox_ops
+        .lines()
+        .map(serde_json::from_str::<Value>)
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|operation| {
+            operation.get("action_type").and_then(Value::as_str) == Some("codex_startup")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(startup.len(), 1);
+    let startup = startup
+        .first()
+        .ok_or(std::io::Error::other("missing Codex startup operation"))?;
+    assert_eq!(startup.get("success").and_then(Value::as_bool), Some(false));
+    assert!(startup.get("duration_ms").and_then(Value::as_u64).is_some());
+    assert!(startup.get("error").is_none());
+
     Ok(())
 }
 
 #[cfg(unix)]
-#[test]
-fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult {
+#[tokio::test]
+async fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let tmp = tempfile::tempdir()?;
@@ -81,14 +106,14 @@ fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult
         &guest_contracts::env::RunPayload {
             prompt: "should not reach codex".to_string(),
             codex_runtime_config: serde_json::json!({
-                "providerId": "minimax",
-                "name": "MiniMax",
-                "baseUrl": "https://api.minimax.io/v1",
+                "providerId": "deepseek",
+                "name": "DeepSeek",
+                "baseUrl": "https://api.deepseek.com/",
                 "envKey": "OPENAI_API_KEY",
                 "wireApi": "responses",
                 "supportsWebsockets": false,
                 "modelCatalog": {
-                    "models": [{ "slug": "MiniMax-M3" }],
+                    "models": [{ "slug": "deepseek-v4-flash" }],
                 },
             })
             .to_string(),
@@ -102,7 +127,8 @@ fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult
         run_payload_path: &run_payload_path,
         home: tmp.path(),
         run_id: "codex-auth-setup-symlink-fail-closed",
-    })?;
+    })
+    .await?;
 
     assert!(
         !output.status.success(),
@@ -114,7 +140,7 @@ fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult
         "guest-agent must not launch Codex after setup fails"
     );
     assert!(
-        !target_codex_home.join("vm0-model-catalog.json").exists(),
+        !target_codex_home.join("models.json").exists(),
         "Codex setup must not write model catalog through symlinked CODEX_HOME"
     );
 
@@ -136,9 +162,10 @@ struct GuestAgentInvocation<'a> {
     run_id: &'a str,
 }
 
-fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Error> {
+async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Error> {
     let guest_agent = env!("CARGO_BIN_EXE_guest-agent");
-    Command::new(guest_agent)
+    let mut command = Command::new(guest_agent);
+    command
         .env_clear()
         .env("CLI_AGENT_TYPE", "codex")
         .env("USE_MOCK_CODEX", "true")
@@ -156,8 +183,12 @@ fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Er
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             args.runtime_dir,
         )
-        .env("HOME", args.home)
-        .output()
+        .env("HOME", args.home);
+    let timeout_context = format!(
+        "codex_setup_fail_closed guest-agent scenario '{}' exceeded its completion budget",
+        args.run_id
+    );
+    common::command_output_with_timeout(&mut command, GUEST_AGENT_TIMEOUT, &timeout_context).await
 }
 
 fn write_fake_codex(path: &Path, marker: &Path) -> TestResult {

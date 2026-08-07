@@ -121,7 +121,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Detect Turbo TypeScript check need
         id: detect
@@ -161,22 +161,22 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
+      runner-image-job-ref: ${{ steps.set-job-ref.outputs.runner-image-job-ref }}
       app-preview-url: ${{ steps.preview-urls.outputs.app-url }}
       api-preview-url: ${{ steps.preview-urls.outputs.api-url }}
       api-changed: ${{ steps.detect.outputs.api-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
-      e2b-changed: ${{ steps.detect.outputs.e2b-changed }}
       migration-changed: ${{ steps.detect.outputs.migration-changed }}
       crates-changed: ${{ steps.detect.outputs.crates-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       e2e-changed: ${{ steps.detect.outputs.e2e-changed }}
-      turbo-runner-consumer-needed: ${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}
+      playwright-runner-consumer-needed: ${{ steps.playwright-runner.outputs.playwright-runner-consumer-needed }}
       base-ref: ${{ steps.detect.outputs.base-ref }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Configure Git safe directory
         run: git config --global --add safe.directory /__w/vm0/vm0
@@ -221,14 +221,6 @@ jobs:
             fi
           done
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -q "^turbo/scripts/e2b/"; then
-            echo "E2B template changes detected"
-            echo "e2b-changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No E2B template changes"
-            echo "e2b-changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
           if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
             echo "Migration, schema, or JSONB contract changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
@@ -261,16 +253,15 @@ jobs:
             echo "e2e-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Select runner E2E consumer
-        id: runner-e2e
+      - name: Select Playwright runner consumer
+        id: playwright-runner
         env:
-          EVENT_NAME: ${{ github.event_name }}
           API_CHANGED: ${{ steps.detect.outputs.api-changed }}
+          PLATFORM_CHANGED: ${{ steps.detect.outputs.platform-changed }}
           CLI_CHANGED: ${{ steps.detect.outputs.cli-changed }}
-          CRATES_CHANGED: ${{ steps.detect.outputs.crates-changed }}
           CI_CHANGED: ${{ steps.detect.outputs.ci-changed }}
           E2E_CHANGED: ${{ steps.detect.outputs.e2e-changed }}
-        run: .github/scripts/runner-image-context.sh turbo-consumer
+        run: .github/scripts/runner-image-context.sh playwright-consumer
 
       - name: Set job-ref
         id: set-job-ref
@@ -301,19 +292,23 @@ jobs:
               exit 0
             fi
             echo "job-ref=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "runner-image-job-ref=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
             echo "Job ref set to: pr-${{ github.event.pull_request.number }}"
           elif [ "${{ github.event_name }}" = "merge_group" ]; then
             MQ_REF="${{ github.event.merge_group.head_ref }}"
             PR_NUM=$(echo "$MQ_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
             if [ -n "$PR_NUM" ]; then
               echo "job-ref=pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
+              echo "runner-image-job-ref=pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
               echo "Job ref set to: pr-${PR_NUM}"
             else
               echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_REF"
               exit 1
             fi
           else
+            SHORT_SHA=$(printf '%s' "$GITHUB_SHA" | cut -c1-12)
             echo "job-ref=staging" >> "$GITHUB_OUTPUT"
+            echo "runner-image-job-ref=staging-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
             echo "Job ref set to: staging"
           fi
 
@@ -350,7 +345,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Check file sizes
         env:
@@ -392,7 +387,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 1
       - uses: ./.github/actions/toolchain-init
       - name: Check DB ownership boundary
         run: .github/scripts/check-db-boundary.sh
@@ -593,7 +588,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
       - uses: ./.github/actions/toolchain-init
       - name: Prompt for JSONB Contract Changes
         run: |
@@ -620,8 +615,29 @@ jobs:
         if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
-          # Check that migration SQL files and snapshots are only added, never modified or deleted
-          CHANGED=$(git diff --diff-filter=MD --name-only "$BASE_REF" -- \
+          MIGRATION_BASELINE=808
+          # The squashed baseline and its history may be removed. Migrations after
+          # the baseline must not be deleted once they land on main.
+          DELETED=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
+            'turbo/packages/db/src/migrations/*.sql' \
+            'turbo/packages/db/src/migrations/meta/*_snapshot.json' | \
+            awk -v baseline="$MIGRATION_BASELINE" '
+              {
+                name = $0
+                sub(/^.*\//, "", name)
+                if (name !~ /^[0-9][0-9][0-9][0-9]_/) {
+                  print
+                  next
+                }
+                if ((substr(name, 1, 4) + 0) > baseline) {
+                  print
+                }
+              }
+            ')
+
+          # Migration SQL and snapshots are append-only at every index, including
+          # the baseline.
+          MODIFIED=$(git diff --diff-filter=M --name-only "$BASE_REF" -- \
             'turbo/packages/db/src/migrations/*.sql' \
             'turbo/packages/db/src/migrations/meta/*_snapshot.json')
 
@@ -630,9 +646,14 @@ jobs:
             'turbo/packages/db/src/migrations/meta/_journal.json')
 
           FAILED=0
-          if [ -n "$CHANGED" ]; then
-            echo "::error::Migration files must not be modified or deleted once on main:"
-            echo "$CHANGED"
+          if [ -n "$DELETED" ]; then
+            echo "::error::Migration files above baseline $MIGRATION_BASELINE must not be deleted once on main:"
+            echo "$DELETED"
+            FAILED=1
+          fi
+          if [ -n "$MODIFIED" ]; then
+            echo "::error::Migration files must never be modified once on main:"
+            echo "$MODIFIED"
             FAILED=1
           fi
           if [ -n "$DELETED_JOURNAL" ]; then
@@ -664,7 +685,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test CLI
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/cli --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@vm0/zero-cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -748,6 +769,7 @@ jobs:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
           FAL_KEY: ${{ secrets.FAL_KEY }}
           BYTEPLUS_API_KEY: ${{ secrets.BYTEPLUS_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           BYTEPLUS_STT_API_KEY: ${{ secrets.BYTEPLUS_STT_API_KEY }}
         run: pnpm vitest run --project=api --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
@@ -859,6 +881,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
+          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -962,6 +985,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
+          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1115,94 +1139,16 @@ jobs:
           message: |
             API preview: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
 
-      # Step 6: Provision ephemeral E2E test accounts in Clerk
-      - name: Provision E2E test accounts
-        env:
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          # Delete existing users matching JOB_REF+clerk_test
-          users=$(curl -sS -X GET \
-            "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
-            -H "Authorization: Bearer ${CLERK_SECRET_KEY}")
-          ids=$(echo "$users" | jq -r '.[].id' 2>/dev/null || true)
-          for uid in $ids; do
-            curl -sS -X DELETE "https://api.clerk.com/v1/users/${uid}" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null
-          done
-
-          # Create test users + orgs (browser is created via UI sign-up flow)
-          for variant in serial runner; do
-            email="${JOB_REF}+clerk_test+${variant}@vm0-e2e.ai"
-            encoded_email=$(jq -rn --arg email "$email" '$email|@uri')
-            existing_users=$(curl -sS -X GET \
-              "https://api.clerk.com/v1/users?email_address%5B%5D=${encoded_email}&limit=100" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}")
-            existing_ids=$(echo "$existing_users" | jq -r --arg email "$email" '.[] | select(.email_addresses[]?.email_address == $email) | .id' 2>/dev/null || true)
-            for uid in $existing_ids; do
-              curl -sS -X DELETE "https://api.clerk.com/v1/users/${uid}" \
-                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null
-            done
-
-            user=$(curl -sS -X POST "https://api.clerk.com/v1/users" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-              -H "Content-Type: application/json" \
-              -d "{\"email_address\":[\"${email}\"],\"skip_password_requirement\":true,\"legal_accepted_at\":\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"}")
-            user_id=$(echo "$user" | jq -r '.id')
-            if [[ "$user_id" == "null" || -z "$user_id" ]]; then
-              echo "Error: Failed to create user ${email}"
-              echo "Clerk response: ${user}"
-              exit 1
-            fi
-            echo "Created user ${email} -> ${user_id}"
-
-            org=$(curl -sS -X POST "https://api.clerk.com/v1/organizations" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-              -H "Content-Type: application/json" \
-              -d "{\"name\":\"e2e-${variant}-${JOB_REF}\",\"created_by\":\"${user_id}\"}")
-            org_id=$(echo "$org" | jq -r '.id')
-            if [[ "$org_id" == "null" || -z "$org_id" ]]; then
-              echo "Error: Failed to create org for user ${email}"
-              echo "Clerk response: ${org}"
-              exit 1
-            fi
-            echo "Created org -> ${org_id}"
-          done
-
-      # Step 7: Generate test tokens for E2E tests (one per test user)
-      - name: Generate E2E test tokens
-        run: |
-          e2e/scripts/generate-test-token.sh \
-            "${JOB_REF}+clerk_test+serial@vm0-e2e.ai" \
-            "/tmp/e2e-api-credentials-serial.json"
-          e2e/scripts/generate-test-token.sh \
-            "${JOB_REF}+clerk_test+runner@vm0-e2e.ai" \
-            "/tmp/e2e-api-credentials-runner.json"
-        env:
-          VM0_API_BACKEND_URL: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-
-      - name: Upload E2E test tokens
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-tokens
-          path: |
-            /tmp/e2e-api-credentials-serial.json
-            /tmp/e2e-api-credentials-runner.json
-          retention-days: 1
-
   # Build the canonical Cloudflare app artifact independently of Vercel, then
-  # deploy the verified R2 artifact to a Pages preview branch. Release PRs keep
-  # the provider preview but do not receive a custom preview domain.
+  # deploy the verified R2 artifact to a Pages preview branch. The shared
+  # gateway fronts that branch at the stable app preview URL.
   deploy-app:
-    needs: [detect-release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
       deployment-url: ${{ steps.pages-deploy.outputs.url }}
     concurrency:
-      group: deploy-app-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      group: deploy-app-${{ github.sha }}
       cancel-in-progress: false
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -1222,7 +1168,6 @@ jobs:
       AWS_DEFAULT_REGION: auto
       CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
       CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
-      CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
       PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
@@ -1230,7 +1175,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
+
+      - name: Resolve Cloudflare Pages preview branch
+        id: pages-branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || '' }}
+        run: |
+          branch="$(bash .github/scripts/resolve-okou-pages-branch.sh \
+            "$EVENT_NAME" \
+            "$PULL_REQUEST_NUMBER" \
+            "$MERGE_GROUP_HEAD_REF")"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve app preview gateway URL
+        id: app-preview
+        env:
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+        run: |
+          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+          echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/toolchain-init
 
@@ -1257,19 +1223,6 @@ jobs:
           sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "prefix=okou-app/$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve Cloudflare Pages preview branch
-        id: pages-branch
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
-          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || '' }}
-        run: |
-          branch="$(bash .github/scripts/resolve-okou-pages-branch.sh \
-            "$EVENT_NAME" \
-            "$PULL_REQUEST_NUMBER" \
-            "$MERGE_GROUP_HEAD_REF")"
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
       - name: Check for existing artifact
         id: existing
@@ -1371,9 +1324,16 @@ jobs:
             --endpoint-url "$r2_endpoint" \
             --recursive
 
-          aws s3 cp turbo/apps/platform/dist "$artifact_uri/" \
+          # A single archive keeps readers to one request instead of one per
+          # file, which is where R2 kept breaking the transfer mid-stream.
+          tar -czf /tmp/okou-app-dist.tar.gz -C turbo/apps/platform/dist .
+
+          aws s3api put-object \
             --endpoint-url "$r2_endpoint" \
-            --recursive \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/dist.tar.gz" \
+            --body /tmp/okou-app-dist.tar.gz \
+            --content-type application/gzip \
             --cache-control "$cache_control"
 
           aws s3api put-object \
@@ -1398,6 +1358,7 @@ jobs:
       - name: Prepare Cloudflare Pages preview
         id: pages-preview
         env:
+          ARTIFACT_EXISTS: ${{ steps.existing.outputs.exists }}
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
         run: |
@@ -1409,14 +1370,23 @@ jobs:
 
           r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
-          canonical_dist="$(mktemp -d)"
           pages_dist="$(mktemp -d)"
           job_ref="${PAGES_BRANCH%-app}"
           api_origin="https://${job_ref}-api.${PREVIEW_DOMAIN}"
 
-          aws s3 cp "$artifact_uri/" "$canonical_dist/" \
-            --endpoint-url "$r2_endpoint" \
-            --recursive
+          if [[ "$ARTIFACT_EXISTS" == "true" ]]; then
+            canonical_dist="$(mktemp -d)"
+            bash .github/scripts/fetch-okou-app-artifact.sh \
+              "$r2_endpoint" \
+              "$artifact_uri" \
+              "$canonical_dist"
+          else
+            # This job built and uploaded the artifact, so the canonical bytes
+            # are still on disk. Reading them back from R2 only adds latency and
+            # a network failure mode.
+            canonical_dist="turbo/apps/platform/dist"
+          fi
+
           bash .github/scripts/prepare-okou-pages-dist.sh \
             "$canonical_dist" \
             "$pages_dist" \
@@ -1426,16 +1396,6 @@ jobs:
             echo "dist=$pages_dist"
             echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Resolve Cloudflare Pages custom preview domain
-        id: pages-custom-domain
-        if: needs.detect-release.outputs.skip != 'true' || github.event_name == 'push'
-        env:
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-        run: |
-          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-          echo "domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
-          echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy Cloudflare Pages preview
         id: pages-deploy
@@ -1484,22 +1444,6 @@ jobs:
           fi
 
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
-
-      - name: Configure Cloudflare Pages custom preview domain
-        if: steps.pages-custom-domain.outputs.domain != ''
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-custom-domain.outputs.domain }}
-        run: |
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          bash .github/scripts/manage-okou-pages-domain.sh \
-            ensure \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "$CF_PAGES_PROJECT_NAME" \
-            "$PAGES_CUSTOM_DOMAIN" \
-            "$PAGES_BRANCH"
 
       - name: Wait for Cloudflare Pages preview assets
         env:
@@ -1613,16 +1557,39 @@ jobs:
           echo "::error::Cloudflare Pages preview assets did not become ready"
           exit 1
 
+      - name: Smoke test app preview gateway
+        if: steps.app-preview.outputs.url != ''
+        env:
+          APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          response_headers="$(mktemp)"
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error \
+              --dump-header "$response_headers" \
+              --output /dev/null \
+              "${APP_PREVIEW_URL}/" && \
+              grep -Eiq '^x-vm0-preview-gateway:[[:space:]]*1[[:space:]]*$' \
+                "$response_headers"; then
+              echo "App preview gateway is ready"
+              exit 0
+            fi
+            echo "::warning::App preview gateway is not ready (attempt ${attempt}/12)"
+            sleep 5
+          done
+          echo "::error::${APP_PREVIEW_URL} did not use vm0-preview-gateway"
+          exit 1
+
       - name: Record Cloudflare Pages preview
         env:
+          APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
           PAGES_DEPLOYMENT_URL: ${{ steps.pages-deploy.outputs.url }}
-          PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}
           PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
         run: |
           echo "Cloudflare Pages deployment: ${PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
           echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
-          if [[ -n "$PAGES_CUSTOM_URL" ]]; then
-            echo "Cloudflare Pages custom preview: ${PAGES_CUSTOM_URL}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$APP_PREVIEW_URL" ]]; then
+            echo "App preview gateway: ${APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   deploy-stripe-listener:
@@ -1771,6 +1738,7 @@ jobs:
       - deploy-api
       - deploy-app
       - deploy-stripe-listener
+      - deploy-runner-start
     if: |
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1783,7 +1751,11 @@ jobs:
       ) &&
       needs.deploy-api.result == 'success' &&
       needs.deploy-app.result == 'success' &&
-      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
+      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success') &&
+      (
+        needs.prepare.outputs.playwright-runner-consumer-needed != 'true' ||
+        needs.deploy-runner-start.result == 'success'
+      )
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -1851,7 +1823,7 @@ jobs:
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_APP_URL: ${{ needs.deploy-app.outputs.deployment-url }}
+          ZERO_APP_URL: ${{ needs.deploy-app.outputs.deployment-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
@@ -1879,23 +1851,38 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  build-cli:
+  # Build one self-contained package archive per checked-out commit and upload
+  # it to the same canonical R2 bucket used by deploy-app. The ready marker is
+  # written last so PR, merge-group, main, and release runs can safely reuse it.
+  deploy-cli:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-cli-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      cancel-in-progress: false
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    needs: [prepare]
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.api-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.e2e-changed == 'true'
-      )
+    if: >-
+      ${{
+        github.actor != 'dependabot[bot]' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      CLI_STATIC_BASE_URL: https://static.vm0.io
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+      R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - uses: pnpm/action-setup@v6
         with:
           version: 10.33.4
@@ -1904,56 +1891,185 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: turbo/pnpm-lock.yaml
+      - name: Initialize pnpm cache directory
+        run: mkdir -p "$(pnpm store path --silent)"
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install AWS CLI
+        run: |
+          architecture="$(dpkg --print-architecture)"
+          case "$architecture" in
+            amd64) aws_architecture="x86_64" ;;
+            arm64) aws_architecture="aarch64" ;;
+            *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
+          esac
+
+          curl -fsSL --retry 3 \
+            "https://awscli.amazonaws.com/awscli-exe-linux-${aws_architecture}.zip" \
+            --output /tmp/awscliv2.zip
+          python3 -m zipfile -e /tmp/awscliv2.zip /tmp/awscli
+          chmod +x /tmp/awscli/aws/install /tmp/awscli/aws/dist/aws
+          /tmp/awscli/aws/install
+          aws --version
+
+      - name: Resolve artifact commit SHA
+        id: artifact
+        run: |
+          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
+          prefix="okou-cli/$sha"
+          {
+            echo "sha=$sha"
+            echo "prefix=$prefix"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing artifact
+        id: existing
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_ACCESS_KEY_ID:?R2_STATIC_ACCESS_KEY_ID secret is required}"
+          : "${AWS_SECRET_ACCESS_KEY:?R2_STATIC_SECRET_ACCESS_KEY secret is required}"
+          : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID variable is required}"
+          : "${R2_BUCKET_NAME:?R2_STATIC_BUCKET_NAME variable is required}"
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          ready_key="${ARTIFACT_PREFIX}/ready.json"
+          error_log="$(mktemp)"
+
+          set +e
+          aws s3api head-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "$ready_key" \
+            >/dev/null 2>"$error_log"
+          status=$?
+          set -e
+
+          if (( status == 0 )); then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Artifact already ready: s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}/"
+          elif grep -Eq '404|NotFound|Not Found|NoSuchKey' "$error_log"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$error_log" >&2
+            exit "$status"
+          fi
+
       - name: Install CLI dependencies
-        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli...
+        if: steps.existing.outputs.exists != 'true'
+        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/zero-cli...
       - name: Build CLI
-        run: cd turbo && pnpm --filter @vm0/cli build
-      - name: Verify CLI package contents
-        shell: bash
+        if: steps.existing.outputs.exists != 'true'
+        run: cd turbo && pnpm --filter @vm0/zero-cli build
+        env:
+          DEFAULT_SENTRY_DSN: ${{ vars.SENTRY_DSN_CLI }}
+
+      - name: Create canonical CLI artifact
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+        run: |
+          mkdir -p /tmp/okou-cli-artifact
+          bash .github/scripts/build-okou-cli-artifact.sh \
+            "$ARTIFACT_SHA" \
+            /tmp/okou-cli-artifact
+
+      - name: Upload canonical CLI artifact
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
         run: |
           set -euo pipefail
-          cd turbo/apps/cli/dist
-          # Ensure all imported chunks are present in the package
-          for f in zero.js; do
-            chunks=$(grep -oP './chunk-[A-Z0-9]+\.js' "$f" 2>/dev/null || true)
-            for chunk in $chunks; do
-              chunk_file="${chunk#./}"
-              if [ ! -f "$chunk_file" ]; then
-                echo "ERROR: $f imports $chunk but file is missing from dist/"
-                exit 1
-              fi
-            done
-          done
-          # Verify npm pack includes all JS files
-          npm pack --dry-run 2>&1 | tee /tmp/pack-list.txt
-          for js in *.js; do
-            if ! grep -q "$js" /tmp/pack-list.txt; then
-              echo "ERROR: $js exists in dist/ but would not be included in npm package"
-              exit 1
-            fi
-          done
-          echo "CLI package verification passed"
-      - name: Deploy CLI with production dependencies
-        run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy --config.node-linker=hoisted --config.ignore-scripts=true /tmp/cli-deploy
-      - name: Smoke test deployed CLI
-        shell: bash
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
+          cache_control="public, max-age=31536000, immutable"
+
+          aws s3 rm "$artifact_uri/" \
+            --endpoint-url "$r2_endpoint" \
+            --recursive
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/package.tgz" \
+            --body /tmp/okou-cli-artifact/package.tgz \
+            --content-type application/gzip \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/manifest.json" \
+            --body /tmp/okou-cli-artifact/manifest.json \
+            --content-type application/json \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/ready.json" \
+            --body /tmp/okou-cli-artifact/ready.json \
+            --content-type application/json \
+            --cache-control "$cache_control" \
+            --if-none-match "*"
+
+          echo "Artifact ready: ${artifact_uri}/"
+
+      - name: Download existing CLI artifact
+        if: steps.existing.outputs.exists == 'true'
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          mkdir -p /tmp/okou-cli-artifact
+          aws s3 cp \
+            "s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}/" \
+            /tmp/okou-cli-artifact/ \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --recursive
+
+      - name: Verify and smoke test CLI artifact
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
         run: |
           set -euo pipefail
-          cd /tmp/cli-deploy
-          # Eager imports load the full dependency tree
-          # (@sentry/node → @prisma/instrumentation → @opentelemetry/*).
-          # Any broken transitive dep will fail here.
-          node dist/zero.js --help
+          bash .github/scripts/verify-okou-cli-artifact.sh \
+            /tmp/okou-cli-artifact \
+            "$ARTIFACT_SHA"
+          npx --yes \
+            --package=/tmp/okou-cli-artifact/package.tgz \
+            zero --help
+
+      - name: Verify CLI artifact through CDN
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          set -euo pipefail
+          cdn_dir="$(mktemp -d)"
+          for filename in package.tgz manifest.json ready.json; do
+            curl -fsSL \
+              --retry 5 \
+              --retry-delay 2 \
+              --retry-all-errors \
+              "${CLI_STATIC_BASE_URL}/${ARTIFACT_PREFIX}/${filename}" \
+              --output "${cdn_dir}/${filename}"
+          done
+          bash .github/scripts/verify-okou-cli-artifact.sh \
+            "$cdn_dir" \
+            "$ARTIFACT_SHA"
+
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: cli-dist
-          path: /tmp/cli-deploy
+          name: cli-package
+          path: /tmp/okou-cli-artifact/package.tgz
           retention-days: 1
 
-  # Run CLI E2E tests - Phase 1: Serial tests (org/provider CRUD)
+  # Smoke-test the deployed CLI package entry point.
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     concurrency:
@@ -1962,8 +2078,7 @@ jobs:
     needs:
       [
         prepare,
-        build-cli,
-        deploy-api,
+        deploy-cli,
         lint-eslint,
         lint-types,
         lint-format,
@@ -1992,63 +2107,27 @@ jobs:
       - name: Download CLI artifact
         uses: actions/download-artifact@v8.0.1
         with:
-          name: cli-dist
-          path: /tmp/cli-deploy
+          name: cli-package
+          path: /tmp/cli-package
       - name: Install CLI globally
         run: |
           set -euo pipefail
-          # Derive from `node` on PATH so sudo and user see the same prefix
-          # regardless of npmrc / env-var inheritance.
-          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
-          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
-          sudo rm -rf "$CLI_DIR"
-          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
-          sudo cp -a /tmp/cli-deploy "$CLI_DIR"
-          sudo chmod +x "$CLI_DIR/dist/zero.js"
-          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          package_root="$(mktemp -d)"
+          tar -xzf /tmp/cli-package/package.tgz -C "$package_root"
+          node_prefix=$(dirname "$(dirname "$(command -v node)")")
+          cli_dir="$node_prefix/lib/node_modules/@vm0/zero-cli"
+          sudo rm -rf "$cli_dir"
+          sudo mkdir -p "$node_prefix/lib/node_modules/@vm0"
+          sudo cp -a "$package_root/package" "$cli_dir"
+          sudo chmod +x "$cli_dir/zero.js"
+          sudo ln -sf "$cli_dir/zero.js" "$node_prefix/bin/zero"
           zero --help
-      - name: Download E2E test tokens
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: e2e-tokens
-          path: /tmp
-      - name: Setup E2E API credentials
-        run: |
-          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-serial.json)
-          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-serial.json)
-          echo "::add-mask::$token"
-          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
-          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
-
-      - name: Start Cron Simulator
-        run: |
-          chmod +x ./e2e/scripts/cron-simulator.sh
-          ./e2e/scripts/cron-simulator.sh "$VM0_API_BACKEND_URL" 60 &
-          echo "CRON_SIMULATOR_PID=$!" >> "$GITHUB_ENV"
-        env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
       - name: Run Serial E2E Tests
         run: |
           echo "=== Running Serial E2E Tests ==="
           mkdir -p e2e/results
           BATS_TEST_TIMEOUT=30 ./e2e/test/libs/bats/bin/bats -T --report-formatter junit --output e2e/results ./e2e/tests/01-serial/*.bats
           echo "✅ Serial tests passed"
-        env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          USE_MOCK_CLAUDE: "true"
-          USE_MOCK_CODEX: "true"
-          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
-          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+serial@vm0-e2e.ai
-          # Slack tests override BATS_TEST_TIMEOUT to 90s at file scope,
-          # so the polling budget can go up to ~60s and still leave
-          # margin for the state fetch + seed round-trips.
-          SLACK_POLL_TIMEOUT_S: 60
-          SLACK_POLL_INTERVAL_S: 3
 
       - name: Print E2E trace log
         if: always()
@@ -2075,17 +2154,8 @@ jobs:
           path: e2e/results/
           retention-days: 7
 
-      - name: Stop Cron Simulator
-        if: always()
-        run: |
-          if [ -n "$CRON_SIMULATOR_PID" ]; then
-            kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
-            echo "Cron simulator stopped"
-          fi
-
   # Deploy runner prepare: wait for the shared runner-image workflow manifest.
   # The runner-image workflow owns cross-compilation and all-host image build.
-  # Skip on push to main - runner deployment is only needed for PRs
   deploy-runner-prepare:
     runs-on: ubuntu-latest
     permissions:
@@ -2099,12 +2169,10 @@ jobs:
     if: |
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
+      needs.prepare.outputs.playwright-runner-consumer-needed == 'true'
     outputs:
       bin-dir: ${{ steps.manifest.outputs.bin-dir }}
       runner-dir: ${{ steps.manifest.outputs.runner-dir }}
-      runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
-      chunk-count: ${{ steps.runner-matrix.outputs.chunk-count }}
       rootfs-hash-map: ${{ steps.manifest.outputs.rootfs-hash-map }}
       snapshot-hash-map: ${{ steps.manifest.outputs.snapshot-hash-map }}
     steps:
@@ -2119,61 +2187,13 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
-      - name: Generate runner E2E test matrix
-        id: runner-matrix
-        shell: bash
-        run: |
-          # Split test files into chunks using weight-based bin-packing.
-          # Weight = number of @test cases per file.
-          # Greedy assignment: heaviest file goes to the lightest chunk,
-          # ensuring heavy tests are spread across chunks instead of clustering.
-          NUM_CHUNKS=12
-
-          # Compute weight per file: count @test declarations
-          declare -A WEIGHTS
-          for f in e2e/tests/03-runner/*.bats; do
-            count=$(grep -cE '^@test\b' "$f" || true)
-            WEIGHTS[$f]=$(( count > 0 ? count : 1 ))
-          done
-
-          # Sort files by weight descending (heaviest first)
-          mapfile -t FILES < <(
-            for f in "${!WEIGHTS[@]}"; do echo "${WEIGHTS[$f]} $f"; done | sort -rn | awk '{print $2}'
-          )
-          NUM_FILES=${#FILES[@]}
-          [ "$NUM_CHUNKS" -gt "$NUM_FILES" ] && NUM_CHUNKS=$NUM_FILES
-          echo "Runner E2E: $NUM_FILES files, $NUM_CHUNKS chunks"
-
-          # Greedy bin-packing: assign each file to the chunk with lowest total weight
-          declare -a CHUNK_FILES CHUNK_WEIGHTS
-          for ((i=0; i<NUM_CHUNKS; i++)); do CHUNK_FILES[i]=""; CHUNK_WEIGHTS[i]=0; done
-          for f in "${FILES[@]}"; do
-            # Find lightest chunk
-            min_idx=0
-            for ((i=1; i<NUM_CHUNKS; i++)); do
-              [ "${CHUNK_WEIGHTS[i]}" -lt "${CHUNK_WEIGHTS[min_idx]}" ] && min_idx=$i
-            done
-            CHUNK_FILES[min_idx]="${CHUNK_FILES[min_idx]:+${CHUNK_FILES[min_idx]} }$f"
-            CHUNK_WEIGHTS[min_idx]=$(( CHUNK_WEIGHTS[min_idx] + WEIGHTS[$f] ))
-          done
-
-          CHUNKS="["
-          for ((i=0; i<NUM_CHUNKS; i++)); do
-            [ "$i" -gt 0 ] && CHUNKS="$CHUNKS,"
-            file_count=$(echo "${CHUNK_FILES[$i]}" | wc -w)
-            CHUNKS="$CHUNKS{\"index\":$((i+1)),\"files\":\"${CHUNK_FILES[$i]}\"}"
-            echo "Chunk $((i+1)): ${file_count} files, weight ${CHUNK_WEIGHTS[$i]}"
-          done
-          echo "matrix=${CHUNKS}]" >> "$GITHUB_OUTPUT"
-          echo "chunk-count=${NUM_CHUNKS}" >> "$GITHUB_OUTPUT"
-
       - name: Wait for runner image manifest
         id: manifest
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.sha }}
           LOOKUP_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          JOB_REF: ${{ needs.prepare.outputs.runner-image-job-ref }}
           # The helper resolves per-architecture host subsets locally and emits
           # merged hash maps for deploy-runner-start.
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
@@ -2189,15 +2209,13 @@ jobs:
       group: deploy-runner-start-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     needs: [prepare, deploy-runner-prepare, deploy-api]
-    outputs:
-      total-capacity: ${{ steps.start.outputs.total-capacity }}
     # Normal starts should finish quickly; failures need enough room for the
     # bounded partial-start cleanup watchdog to run before GitHub kills the job.
     timeout-minutes: 8
     if: |
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
+      needs.prepare.outputs.playwright-runner-consumer-needed == 'true'
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -2212,12 +2230,12 @@ jobs:
 
       # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
       - name: Rebuild config and start runner service on all hosts
-        id: start
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          RUNNER_SERVICE_REF: ${{ needs.prepare.outputs.job-ref }}
+          RUNNER_GROUP: ${{ format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
@@ -2240,7 +2258,8 @@ jobs:
 
             local HOST=$1
             local HOST_INDEX=$2
-            local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
+            local RUNNER_DIRNAME="${RUNNER_DIR##*/}"
             local REMOTE="${METAL_USER}@${HOST}"
             local MC
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
@@ -2269,8 +2288,8 @@ jobs:
               --rootfs-hash ${ROOTFS_HASH} \
               --snapshot-hash ${SNAPSHOT_HASH} \
               --name ${RUNNER_NAME} \
-              --group vm0/development-${JOB_REF} \
-              --runner-dirname ${JOB_REF} \
+              --group ${RUNNER_GROUP} \
+              --runner-dirname ${RUNNER_DIRNAME} \
               --concurrency-factor 1.5 \
               --api-url ${RUNNER_API_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
@@ -2379,7 +2398,7 @@ jobs:
             local HOST_INDEX=0
             for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
               HOST_INDEX=$((HOST_INDEX + 1))
-              local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+              local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
               local REMOTE="${METAL_USER}@${HOST}"
               echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
               (
@@ -2440,244 +2459,7 @@ jobs:
             exit 1
           fi
 
-          # Sum auto-detected max_concurrent from all hosts' status.json
-          TOTAL=0
-          HOST_INDEX=0
-          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            HOST_INDEX=$((HOST_INDEX + 1))
-            RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
-            if ! MC=$(read_host_capacity "$HOST" "$RUNNER_NAME"); then
-              check_runner_start_exit
-              FAILED=1
-              break
-            fi
-            check_runner_start_exit
-            echo "Host ${HOST}: max_concurrent=${MC}"
-            TOTAL=$((TOTAL + MC))
-          done
-          if [ "$FAILED" -ne 0 ]; then
-            exit 1
-          fi
-          echo "total-capacity=${TOTAL}" >> "$GITHUB_OUTPUT"
-          echo "Total capacity across all hosts: ${TOTAL}"
           RUNNER_START_SUCCEEDED=1
-
-  # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
-  # Bootstrap runner E2E test account (runs once, in parallel with deploy-runner-start)
-  e2e-runner-bootstrap:
-    runs-on: ubuntu-latest
-    concurrency:
-      group: e2e-runner-bootstrap-${{ needs.prepare.outputs.job-ref }}
-      cancel-in-progress: true
-    needs: [prepare, deploy-api]
-    if: |
-      needs.prepare.outputs.job-ref != '' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
-    timeout-minutes: 2
-    steps:
-      - name: Download E2E test tokens
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: e2e-tokens
-          path: /tmp
-      - name: Setup E2E API credentials
-        run: |
-          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
-          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
-          echo "::add-mask::$token"
-          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
-          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
-      - name: Reset model-first defaults
-        run: |
-          set -euo pipefail
-          token="${E2E_API_TOKEN:-}"
-          if [ -z "$token" ]; then
-            echo "::error::Missing runner E2E token"
-            exit 1
-          fi
-
-          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
-          if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
-            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
-          fi
-
-          payload="$(jq -nc '{
-            policies: [
-              {model: "claude-opus-4-7", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "claude-sonnet-4-6", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "deepseek-v4-pro", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "gpt-5.5", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
-            ]
-          }')"
-
-          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${VM0_API_BACKEND_URL}/api/zero/model-policies" >/dev/null
-          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null}' "${VM0_API_BACKEND_URL}/api/zero/user-model-preference" >/dev/null
-        env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      - name: Bootstrap test account
-        run: |
-          curl -fsS \
-            -H "Authorization: Bearer ${E2E_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
-            -X POST \
-            -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
-            "${E2E_API_URL}/api/zero/model-providers" >/dev/null
-        env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
-  # Skip on push to main - runner tests are only needed for PRs
-  cli-e2e-03-runner:
-    runs-on: ubuntu-latest
-    concurrency:
-      group: cli-e2e-03-runner-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}
-      cancel-in-progress: true
-    needs:
-      [
-        prepare,
-        deploy-api,
-        deploy-runner-prepare,
-        deploy-runner-start,
-        e2e-runner-bootstrap,
-      ]
-    if: |
-      needs.prepare.outputs.job-ref != '' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.deploy-runner-prepare.outputs.runner-matrix) }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          submodules: recursive
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - name: Install GNU parallel for bats
-        run: sudo curl -fsSL --retry 5 --retry-delay 2 --retry-max-time 60 --retry-all-errors https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
-      - name: Download E2E test tokens
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: e2e-tokens
-          path: /tmp
-      - name: Setup E2E API credentials
-        run: |
-          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
-          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
-          echo "::add-mask::$token"
-          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
-          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
-
-      - name: Start Cron Simulator
-        run: |
-          chmod +x ./e2e/scripts/cron-simulator.sh
-          ./e2e/scripts/cron-simulator.sh "$VM0_API_BACKEND_URL" 60 &
-          echo "CRON_SIMULATOR_PID=$!" >> "$GITHUB_ENV"
-        env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
-      - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
-        run: |
-          if [ -z "$RUNNER_CHUNK_COUNT" ] || [ "$RUNNER_CHUNK_COUNT" -eq 0 ]; then
-            echo "::error::RUNNER_CHUNK_COUNT is empty or zero"
-            exit 1
-          fi
-          PARALLEL=$(( RUNNER_TOTAL_CAPACITY / RUNNER_CHUNK_COUNT ))
-          [ "$PARALLEL" -lt 1 ] && PARALLEL=1
-          echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel, total capacity ${RUNNER_TOTAL_CAPACITY}) ==="
-          echo "Files: ${{ matrix.files }}"
-          mkdir -p e2e/results
-          BATS_TEST_TIMEOUT=240 ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files --report-formatter junit --output e2e/results ${{ matrix.files }}
-          echo "✅ Chunk ${{ matrix.index }} tests passed"
-        env:
-          RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
-          RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          USE_MOCK_CLAUDE: "true"
-          USE_MOCK_CODEX: "true"
-          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          BYTEPLUS_API_KEY: ${{ secrets.BYTEPLUS_API_KEY }}
-          BYTEPLUS_STT_API_KEY: ${{ secrets.BYTEPLUS_STT_API_KEY }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          CI_GITHUB_TOKEN: ${{ github.token }}
-          E2E_RUNNER_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+runner@vm0-e2e.ai
-          # Slack round-trip test (t40-slack-roundtrip.bats) needs the
-          # preview's signing secret so bash can HMAC-sign webhook
-          # payloads that match what /api/zero/slack/{commands,events}
-          # validate. Also tunes the polling knobs for the full
-          # dispatch → runner → callback round-trip.
-          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
-          SLACK_POLL_TIMEOUT_S: 60
-          SLACK_POLL_INTERVAL_S: 3
-
-      - name: Print E2E trace log
-        if: always()
-        run: |
-          if [ -f /tmp/e2e-trace.log ]; then
-            echo "=== E2E CLI Trace (Chunk ${{ matrix.index }}) ==="
-            cat /tmp/e2e-trace.log
-          fi
-
-      - name: Upload test results to Codecov
-        if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v7
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: e2e-runner
-          files: e2e/results/*.xml
-          report_type: test_results
-
-      - name: Upload JUnit XML artifact
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-runner-junit-xml-${{ matrix.index }}
-          path: e2e/results/
-          retention-days: 7
-
-      - name: Stop Cron Simulator
-        if: always()
-        run: |
-          if [ -n "$CRON_SIMULATOR_PID" ]; then
-            kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
-            echo "Cron simulator stopped"
-          fi
-
-  # Build E2B templates (development account)
-  # Uses repository-level E2B_API_KEY secret
-  build-e2b-template:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    needs: [prepare]
-    # Build on PR or main push when E2B templates changed, skip release-please commits
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      needs.prepare.outputs.e2b-changed == 'true'
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Build E2B templates
-        working-directory: turbo
-        env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-        run: |
-          pnpm e2b:cli:build
-
-      - name: Build summary
-        run: echo "✅ E2B templates built successfully (development account)"
 
   lint-runtime-api-compat:
     runs-on: ubuntu-latest
@@ -2773,15 +2555,12 @@ jobs:
       - deploy-api
       - deploy-app
       - deploy-stripe-listener
-      - build-cli
-      - build-e2b-template
+      - deploy-cli
       - cli-e2e-02-browser
       - cli-e2e-02-playwright
       - cli-e2e-01-serial
       - deploy-runner-prepare
       - deploy-runner-start
-      - e2e-runner-bootstrap
-      - cli-e2e-03-runner
     # Always run so the gate reports an explicit result (not "skipped").
     # Release-please PRs skip CI jobs — auto-pass the gate for them.
     if: always()
@@ -2791,11 +2570,21 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
           RELEASE_PRESENCE_RESULT: ${{ needs.validate-release-presence.result }}
+          RELEASE_DEPLOY_APP_RESULT: ${{ needs.deploy-app.result }}
+          RELEASE_DEPLOY_CLI_RESULT: ${{ needs.deploy-cli.result }}
         run: |
           # Auto-pass for release-please PRs, commits, and merge queue entries
           if [[ "$IS_RELEASE" == "true" ]]; then
             if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_PRESENCE_RESULT" != "success" ]]; then
               echo "::error::validate-release-presence: expected success, got $RELEASE_PRESENCE_RESULT"
+              exit 1
+            fi
+            if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_DEPLOY_APP_RESULT" != "success" ]]; then
+              echo "::error::deploy-app: expected success, got $RELEASE_DEPLOY_APP_RESULT"
+              exit 1
+            fi
+            if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_DEPLOY_CLI_RESULT" != "success" ]]; then
+              echo "::error::deploy-cli: expected success, got $RELEASE_DEPLOY_CLI_RESULT"
               exit 1
             fi
             echo "✅ Release-please — skipping CI gate"
@@ -2808,15 +2597,15 @@ jobs:
           if [ "${{ needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed }}" = "false" ]; then
             TS_CHECK_SKIP_ALLOWED="skipped"
           fi
-          RUNNER_E2E_SKIP_ALLOWED="true"
-          if [ "${{ needs.prepare.outputs.turbo-runner-consumer-needed }}" = "true" ]; then
-            RUNNER_E2E_SKIP_ALLOWED=""
+          RUNNER_DEPLOY_SKIP_ALLOWED="true"
+          if [ "${{ needs.prepare.outputs.playwright-runner-consumer-needed }}" = "true" ]; then
+            RUNNER_DEPLOY_SKIP_ALLOWED=""
           fi
           CF_APP_SKIP_ALLOWED=""
           if [ "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}" = "true" ]; then
             # External fork PRs cannot access runner infra secrets, so their
-            # runner deployment and runner E2E jobs are expected to skip.
-            RUNNER_E2E_SKIP_ALLOWED="true"
+            # runner deployment jobs are expected to skip.
+            RUNNER_DEPLOY_SKIP_ALLOWED="true"
             CF_APP_SKIP_ALLOWED="true"
           fi
           if [ "${{ github.actor == 'dependabot[bot]' }}" = "true" ]; then
@@ -2865,15 +2654,12 @@ jobs:
           check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"
-          check_result "build-cli" "${{ needs.build-cli.result }}" "true"
-          check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
+          check_result "deploy-cli" "${{ needs.deploy-cli.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
-          check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
-          check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
-          check_result "e2e-runner-bootstrap" "${{ needs.e2e-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
-          check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
+          check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
 
           echo "::endgroup::"
           exit $FAILED

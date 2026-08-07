@@ -50,20 +50,20 @@ function basicTemplate(variableName: string, secretName: string): string {
 }
 
 function providerCapability(
-  connectorRef: string,
+  connectorSlug: string,
   authMethodId: string,
 ): ConnectorAuthProviderRegistrationCapability {
   const capability = getConnectorAuthProviderRegistrationCapabilities().find(
     (candidate) => {
       return (
-        candidate.connectorRef === connectorRef &&
+        candidate.connectorSlug === connectorSlug &&
         candidate.authMethodId === authMethodId
       );
     },
   );
   if (capability === undefined) {
     throw new Error(
-      `Missing test provider capability for ${connectorRef}:${authMethodId}`,
+      `Missing test provider capability for ${connectorSlug}:${authMethodId}`,
     );
   }
   return capability;
@@ -87,6 +87,7 @@ function selectValueRefs(
 
 function storageFromValueRefs(
   values: Readonly<Record<string, string>>,
+  version = 1,
 ): ConnectorCatalogAuthMethod["storage"] {
   const secrets = new Set<string>();
   const variables = new Set<string>();
@@ -99,7 +100,7 @@ function storageFromValueRefs(
       throw new Error(`Invalid test connector value ref: ${valueRef}`);
     }
   }
-  return { version: 1, secrets: [...secrets], variables: [...variables] };
+  return { version, secrets: [...secrets], variables: [...variables] };
 }
 
 function providerClient(
@@ -150,14 +151,13 @@ function providerClient(
 }
 
 interface ProviderMethodArgs {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly values: Readonly<Record<string, string>>;
   readonly envBindings: EnvironmentBindings;
   readonly label?: string;
   readonly description?: string | null;
   readonly visible?: boolean;
-  readonly featureSwitch?: string | null;
   readonly scopes?: readonly string[];
   readonly fields?: readonly ManualField[];
   readonly startOptions?: readonly DeviceStartOption[];
@@ -165,6 +165,7 @@ interface ProviderMethodArgs {
   readonly clientId?: string;
   readonly clientSecret?: string;
   readonly revokePreviousOnReplace?: boolean;
+  readonly storageVersion?: number;
 }
 
 function providerGrant(args: {
@@ -269,8 +270,8 @@ function providerRevoke(args: {
 }
 
 function providerMethod(args: ProviderMethodArgs): ConnectorCatalogAuthMethod {
-  const capability = providerCapability(args.connectorRef, args.authMethodId);
-  const methodRef = `${args.connectorRef}:${args.authMethodId}`;
+  const capability = providerCapability(args.connectorSlug, args.authMethodId);
+  const methodRef = `${args.connectorSlug}:${args.authMethodId}`;
   const grantOutputs = selectValueRefs(
     capability.contract.grant.outputNames,
     args.values,
@@ -304,9 +305,8 @@ function providerMethod(args: ProviderMethodArgs): ConnectorCatalogAuthMethod {
         ? "Test connector authorization."
         : args.description,
     visible: args.visible ?? true,
-    featureSwitch: args.featureSwitch ?? null,
     ...(client === undefined ? {} : { client }),
-    storage: storageFromValueRefs(args.values),
+    storage: storageFromValueRefs(args.values, args.storageVersion),
     grant: providerGrant({
       capability,
       method: args,
@@ -332,7 +332,6 @@ interface ManualMethodArgs {
   readonly label?: string;
   readonly description?: string | null;
   readonly visible?: boolean;
-  readonly featureSwitch?: string | null;
   readonly fields: readonly ManualField[];
   readonly envBindings: EnvironmentBindings;
   readonly additionalSecrets?: readonly string[];
@@ -353,7 +352,6 @@ function manualMethod(args: ManualMethodArgs): ConnectorCatalogAuthMethod {
         ? "Enter test connector credentials."
         : args.description,
     visible: args.visible ?? true,
-    featureSwitch: args.featureSwitch ?? null,
     storage: {
       version: 1,
       secrets: [...secrets],
@@ -366,14 +364,15 @@ function manualMethod(args: ManualMethodArgs): ConnectorCatalogAuthMethod {
 }
 
 interface StandardOauthMethodArgs {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly prefix: string;
   readonly tokenEnvironmentNames: readonly string[];
+  readonly additionalValues?: Readonly<Record<string, string>>;
   readonly scopes?: readonly string[];
-  readonly featureSwitch?: string;
   readonly label?: string;
   readonly callbackDescription?: string;
   readonly platformEnvironmentNames?: readonly string[];
+  readonly storageVersion?: number;
 }
 
 function standardOauthMethod(
@@ -384,10 +383,11 @@ function standardOauthMethod(
   const accessTokenRef = secret(accessTokenName);
   const values = {
     accessToken: accessTokenRef,
+    ...args.additionalValues,
     refreshToken: secret(refreshTokenName),
   };
   return providerMethod({
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     authMethodId: "oauth",
     values,
     envBindings: {
@@ -405,9 +405,11 @@ function standardOauthMethod(
     label: args.label ?? "OAuth",
     description:
       args.callbackDescription ?? "Sign in to the test connector provider.",
-    featureSwitch: args.featureSwitch,
     scopes: args.scopes,
     refreshableSecrets: [accessTokenName],
+    ...(args.storageVersion === undefined
+      ? {}
+      : { storageVersion: args.storageVersion }),
   });
 }
 
@@ -493,7 +495,7 @@ function bearerApi(
 }
 
 interface ConnectorArgs {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly label: string;
   readonly authMethods: readonly ConnectorCatalogAuthMethod[];
   readonly description?: string;
@@ -506,7 +508,7 @@ interface ConnectorArgs {
 
 function connector(args: ConnectorArgs): ConnectorCatalogArtifactConnector {
   return {
-    connectorRef: args.connectorRef,
+    slug: args.connectorSlug,
     label: args.label,
     description:
       args.description ?? `${args.label} accepted-catalog test fixture.`,
@@ -517,7 +519,7 @@ function connector(args: ConnectorArgs): ConnectorCatalogArtifactConnector {
     icon:
       args.icon ??
       ({
-        key: `test-fixtures/connectors/${args.connectorRef}.svg`,
+        key: `test-fixtures/connectors/${args.connectorSlug}.svg`,
         invertInDarkMode: false,
       } satisfies ConnectorCatalogArtifactConnector["icon"]),
     skill: args.skill ?? { kind: "none" },
@@ -573,11 +575,11 @@ const slackPermissions = [
 
 const connectors = [
   connector({
-    connectorRef: "airtable",
+    connectorSlug: "airtable",
     label: "Airtable",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "airtable",
+        connectorSlug: "airtable",
         prefix: "AIRTABLE",
         tokenEnvironmentNames: ["AIRTABLE_TOKEN"],
         scopes: [
@@ -590,14 +592,13 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "aws",
+    connectorSlug: "aws",
     label: "AWS",
     authMethods: [
       providerMethod({
-        connectorRef: "aws",
+        connectorSlug: "aws",
         authMethodId: "cli",
         clientId: "arn:aws:signin:::devtools/cross-device",
-        featureSwitch: "awsConnector",
         scopes: ["openid"],
         values: {
           accessKeyId: secret("AWS_ACCESS_KEY_ID"),
@@ -637,11 +638,11 @@ const connectors = [
     ]),
   }),
   connector({
-    connectorRef: "base44",
+    connectorSlug: "base44",
     label: "Base44",
     authMethods: [
       providerMethod({
-        connectorRef: "base44",
+        connectorSlug: "base44",
         authMethodId: "oauth",
         clientId: "base44_cli",
         values: {
@@ -655,11 +656,10 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "bentoml",
+    connectorSlug: "bentoml",
     label: "BentoML",
     authMethods: [
       manualMethod({
-        featureSwitch: "bentomlConnector",
         fields: [
           manualField({
             privateName: "BENTO_CLOUD_API_KEY",
@@ -683,11 +683,11 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "cloudflare",
+    connectorSlug: "cloudflare",
     label: "Cloudflare",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "cloudflare",
+        connectorSlug: "cloudflare",
         prefix: "CLOUDFLARE",
         tokenEnvironmentNames: ["CLOUDFLARE_TOKEN"],
         scopes: ["dns-firewall.read", "offline_access"],
@@ -730,7 +730,7 @@ const connectors = [
     ),
   }),
   connector({
-    connectorRef: "cloudinary",
+    connectorSlug: "cloudinary",
     label: "Cloudinary",
     authMethods: [
       manualMethod({
@@ -763,13 +763,12 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "datadog",
+    connectorSlug: "datadog",
     label: "Datadog",
     authMethods: [
       providerMethod({
-        connectorRef: "datadog",
+        connectorSlug: "datadog",
         authMethodId: "oauth",
-        featureSwitch: "datadogConnector",
         values: {
           accessToken: secret("DATADOG_ACCESS_TOKEN"),
           domain: variable("DATADOG_DOMAIN"),
@@ -793,14 +792,13 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "figma",
+    connectorSlug: "figma",
     label: "Figma",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "figma",
+        connectorSlug: "figma",
         prefix: "FIGMA",
         tokenEnvironmentNames: ["FIGMA_TOKEN"],
-        featureSwitch: "figmaConnector",
       }),
       manualMethod({
         fields: [
@@ -833,11 +831,11 @@ const connectors = [
     ),
   }),
   connector({
-    connectorRef: "github",
+    connectorSlug: "github",
     label: "GitHub",
     authMethods: [
       providerMethod({
-        connectorRef: "github",
+        connectorSlug: "github",
         authMethodId: "oauth",
         values: { accessToken: secret("GITHUB_ACCESS_TOKEN") },
         envBindings: {
@@ -852,7 +850,7 @@ const connectors = [
     ]),
   }),
   connector({
-    connectorRef: "gitlab",
+    connectorSlug: "gitlab",
     label: "GitLab",
     authMethods: [
       manualMethod({
@@ -896,11 +894,11 @@ const connectors = [
     ),
   }),
   connector({
-    connectorRef: "gmail",
+    connectorSlug: "gmail",
     label: "Gmail",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "gmail",
+        connectorSlug: "gmail",
         prefix: "GMAIL",
         tokenEnvironmentNames: ["GMAIL_TOKEN"],
         scopes: ["https://www.googleapis.com/auth/gmail.modify"],
@@ -923,11 +921,11 @@ const connectors = [
     ),
   }),
   connector({
-    connectorRef: "google-ads",
+    connectorSlug: "google-ads",
     label: "Google Ads",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "google-ads",
+        connectorSlug: "google-ads",
         prefix: "GOOGLE_ADS",
         tokenEnvironmentNames: ["GOOGLE_ADS_TOKEN"],
         platformEnvironmentNames: ["GOOGLE_ADS_DEVELOPER_TOKEN"],
@@ -948,11 +946,11 @@ const connectors = [
     ]),
   }),
   connector({
-    connectorRef: "google-calendar",
+    connectorSlug: "google-calendar",
     label: "Google Calendar",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "google-calendar",
+        connectorSlug: "google-calendar",
         prefix: "GOOGLE_CALENDAR",
         tokenEnvironmentNames: ["GOOGLE_CALENDAR_TOKEN"],
       }),
@@ -962,11 +960,11 @@ const connectors = [
     ]),
   }),
   connector({
-    connectorRef: "google-drive",
+    connectorSlug: "google-drive",
     label: "Google Drive",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "google-drive",
+        connectorSlug: "google-drive",
         prefix: "GOOGLE_DRIVE",
         tokenEnvironmentNames: ["GOOGLE_DRIVE_TOKEN"],
       }),
@@ -976,18 +974,48 @@ const connectors = [
     ]),
   }),
   connector({
-    connectorRef: "google-maps",
+    connectorSlug: "google-forms",
+    label: "Google Forms",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "google-forms",
+        prefix: "GOOGLE_FORMS",
+        tokenEnvironmentNames: ["GOOGLE_FORMS_TOKEN"],
+        scopes: [
+          "https://www.googleapis.com/auth/forms.body.readonly",
+          "https://www.googleapis.com/auth/forms.responses.readonly",
+        ],
+      }),
+    ],
+    firewall: generatedFirewall(
+      [
+        bearerApi("https://forms.googleapis.com", "GOOGLE_FORMS_TOKEN", [
+          { name: "forms.read", rules: ["GET /v1/forms/{formId}"] },
+          {
+            name: "responses.read",
+            rules: ["GET /v1/forms/{formId}/responses"],
+          },
+        ]),
+      ],
+      {
+        defaultAllowed: ["forms.read", "responses.read"],
+        defaultUnknownPolicy: "deny",
+      },
+    ),
+  }),
+  connector({
+    connectorSlug: "google-maps",
     label: "Google Maps",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "google-maps",
+        connectorSlug: "google-maps",
         prefix: "GOOGLE_MAPS",
         tokenEnvironmentNames: ["GOOGLE_MAPS_TOKEN"],
       }),
     ],
   }),
   connector({
-    connectorRef: "insforge",
+    connectorSlug: "insforge",
     label: "InsForge",
     authMethods: [
       manualMethod({
@@ -1014,7 +1042,7 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "jira",
+    connectorSlug: "jira",
     label: "Jira",
     authMethods: [
       manualMethod({
@@ -1063,11 +1091,11 @@ const connectors = [
     ]),
   }),
   connector({
-    connectorRef: "lark",
+    connectorSlug: "lark",
     label: "Lark",
     authMethods: [
       providerMethod({
-        connectorRef: "lark",
+        connectorSlug: "lark",
         authMethodId: "api-token",
         label: "App Credentials",
         values: {
@@ -1099,11 +1127,11 @@ const connectors = [
     ),
   }),
   connector({
-    connectorRef: "linear",
+    connectorSlug: "linear",
     label: "Linear",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "linear",
+        connectorSlug: "linear",
         prefix: "LINEAR",
         tokenEnvironmentNames: ["LINEAR_TOKEN"],
         scopes: ["read", "write"],
@@ -1111,14 +1139,13 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "neon",
+    connectorSlug: "neon",
     label: "Neon",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "neon",
+        connectorSlug: "neon",
         prefix: "NEON",
         tokenEnvironmentNames: ["NEON_TOKEN"],
-        featureSwitch: "neonConnector",
       }),
       manualMethod({
         fields: [
@@ -1134,11 +1161,11 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "nintendo-store",
+    connectorSlug: "nintendo-store",
     label: "Nintendo Store",
     authMethods: [
       providerMethod({
-        connectorRef: "nintendo-store",
+        connectorSlug: "nintendo-store",
         authMethodId: "api",
         label: "Nintendo sign-in",
         clientId: "5c38e31cd085304b",
@@ -1188,11 +1215,11 @@ const connectors = [
     ),
   }),
   connector({
-    connectorRef: "nintendo-switch-parental-controls",
+    connectorSlug: "nintendo-switch-parental-controls",
     label: "Nintendo Switch Parental Controls",
     authMethods: [
       providerMethod({
-        connectorRef: "nintendo-switch-parental-controls",
+        connectorSlug: "nintendo-switch-parental-controls",
         authMethodId: "api",
         label: "Nintendo sign-in",
         clientId: "54789befb391a838",
@@ -1265,11 +1292,11 @@ const connectors = [
     ),
   }),
   connector({
-    connectorRef: "notion",
+    connectorSlug: "notion",
     label: "Notion",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "notion",
+        connectorSlug: "notion",
         prefix: "NOTION",
         tokenEnvironmentNames: ["NOTION_TOKEN"],
       }),
@@ -1285,7 +1312,7 @@ const connectors = [
     ]),
   }),
   connector({
-    connectorRef: "openai",
+    connectorSlug: "openai",
     label: "OpenAI",
     description: "OpenAI fixture for manual connector behavior.",
     generation: ["text"],
@@ -1297,7 +1324,7 @@ const connectors = [
     },
   }),
   connector({
-    connectorRef: "parallel",
+    connectorSlug: "parallel",
     label: "Parallel",
     authMethods: [
       manualMethod({
@@ -1315,11 +1342,11 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "playstation",
+    connectorSlug: "playstation",
     label: "PlayStation",
     authMethods: [
       providerMethod({
-        connectorRef: "playstation",
+        connectorSlug: "playstation",
         authMethodId: "api",
         label: "PlayStation sign-in",
         clientId: "09515159-7237-4370-9b40-3806e67c0891",
@@ -1347,7 +1374,7 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "reap",
+    connectorSlug: "reap",
     label: "Reap",
     authMethods: [
       manualMethod({
@@ -1388,7 +1415,7 @@ const connectors = [
     ]),
   }),
   connector({
-    connectorRef: "runtime",
+    connectorSlug: "runtime",
     label: "Runtime",
     authMethods: [
       manualMethod({
@@ -1405,7 +1432,7 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "serpapi",
+    connectorSlug: "serpapi",
     label: "SerpApi",
     authMethods: [
       manualMethod({
@@ -1422,12 +1449,12 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "slack",
+    connectorSlug: "slack",
     label: "Slack",
     description: "Slack fixture used for search and permission behavior.",
     authMethods: [
       providerMethod({
-        connectorRef: "slack",
+        connectorSlug: "slack",
         authMethodId: "oauth",
         values: { accessToken: secret("SLACK_ACCESS_TOKEN") },
         envBindings: { SLACK_TOKEN: secret("SLACK_ACCESS_TOKEN") },
@@ -1454,11 +1481,11 @@ const connectors = [
     ),
   }),
   connector({
-    connectorRef: "slock",
+    connectorSlug: "slock",
     label: "Slock",
     authMethods: [
       providerMethod({
-        connectorRef: "slock",
+        connectorSlug: "slock",
         authMethodId: "oauth",
         values: {
           accessToken: secret("SLOCK_ACCESS_TOKEN"),
@@ -1474,11 +1501,11 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "steam",
+    connectorSlug: "steam",
     label: "Steam",
     authMethods: [
       providerMethod({
-        connectorRef: "steam",
+        connectorSlug: "steam",
         authMethodId: "openid",
         label: "Steam sign-in",
         values: { steamId: variable("STEAM_ID") },
@@ -1490,14 +1517,16 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "stripe",
+    connectorSlug: "stripe",
     label: "Stripe",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         prefix: "STRIPE",
         tokenEnvironmentNames: ["STRIPE_TOKEN"],
+        additionalValues: { livemode: variable("STRIPE_LIVEMODE") },
         scopes: ["read_write"],
+        storageVersion: 2,
       }),
       manualMethod({
         fields: [
@@ -1511,7 +1540,7 @@ const connectors = [
         envBindings: { STRIPE_TOKEN: secret("STRIPE_TOKEN") },
       }),
       providerMethod({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         authMethodId: "cli",
         values: { token: secret("STRIPE_TOKEN") },
         envBindings: { STRIPE_TOKEN: secret("STRIPE_TOKEN") },
@@ -1520,15 +1549,14 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "test-oauth",
+    connectorSlug: "test-oauth",
     label: "Test OAuth",
     authMethods: [
       providerMethod({
-        connectorRef: "test-oauth",
+        connectorSlug: "test-oauth",
         authMethodId: "oauth",
         clientId: "test-oauth-client",
         clientSecret: "test-oauth-secret",
-        featureSwitch: "testOauthConnector",
         scopes: ["read"],
         values: {
           accessToken: secret("TEST_OAUTH_ACCESS_TOKEN"),
@@ -1542,11 +1570,10 @@ const connectors = [
         refreshableSecrets: ["TEST_OAUTH_ACCESS_TOKEN"],
       }),
       providerMethod({
-        connectorRef: "test-oauth",
+        connectorSlug: "test-oauth",
         authMethodId: "api",
         clientId: "test-oauth-client",
         clientSecret: "test-oauth-secret",
-        featureSwitch: "testOauthConnector",
         scopes: ["read"],
         values: {
           initialAccessToken: secret("TEST_OAUTH_API_ACCESS_TOKEN"),
@@ -1565,9 +1592,8 @@ const connectors = [
         refreshableSecrets: ["TEST_OAUTH_API_ACCESS_TOKEN"],
       }),
       providerMethod({
-        connectorRef: "test-oauth",
+        connectorSlug: "test-oauth",
         authMethodId: "api-token",
-        featureSwitch: "testOauthConnector",
         values: {
           inputSecret: secret("TEST_OAUTH_TOKEN"),
           inputVariable: variable("TEST_OAUTH_API_TOKEN_INPUT_VAR"),
@@ -1618,14 +1644,13 @@ const connectors = [
     ),
   }),
   connector({
-    connectorRef: "test-oauth-device",
+    connectorSlug: "test-oauth-device",
     label: "Test OAuth Device",
     authMethods: [
       providerMethod({
-        connectorRef: "test-oauth-device",
+        connectorSlug: "test-oauth-device",
         authMethodId: "oauth",
         clientId: "test-oauth-device-client",
-        featureSwitch: "testOauthConnector",
         scopes: ["read"],
         values: {
           accessToken: secret("TEST_OAUTH_DEVICE_ACCESS_TOKEN"),
@@ -1635,10 +1660,9 @@ const connectors = [
         },
       }),
       providerMethod({
-        connectorRef: "test-oauth-device",
+        connectorSlug: "test-oauth-device",
         authMethodId: "api",
         clientId: "test-oauth-device-api-client",
-        featureSwitch: "testOauthConnector",
         scopes: ["read"],
         values: {
           accessToken: secret("TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"),
@@ -1653,11 +1677,11 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "x",
+    connectorSlug: "x",
     label: "X",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "x",
+        connectorSlug: "x",
         prefix: "X",
         tokenEnvironmentNames: ["X_TOKEN"],
         scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
@@ -1669,11 +1693,11 @@ const connectors = [
     }),
   }),
   connector({
-    connectorRef: "youtube",
+    connectorSlug: "youtube",
     label: "YouTube",
     authMethods: [
       standardOauthMethod({
-        connectorRef: "youtube",
+        connectorSlug: "youtube",
         prefix: "YOUTUBE",
         tokenEnvironmentNames: ["YOUTUBE_TOKEN"],
         scopes: [
@@ -1687,7 +1711,7 @@ const connectors = [
     ],
   }),
   connector({
-    connectorRef: "zendesk",
+    connectorSlug: "zendesk",
     label: "Zendesk",
     authMethods: [
       manualMethod({
@@ -1734,8 +1758,8 @@ const connectors = [
 ] satisfies readonly ConnectorCatalogArtifactConnector[];
 
 export const API_TEST_CONNECTOR_CATALOG_ARTIFACT = {
-  artifactSchemaVersion: 1,
-  catalogVersion: "api-test-v1",
+  artifactSchemaVersion: 3,
+  catalogVersion: "api-test-v3",
   categoryMetadata: {
     categories: [
       {

@@ -3,13 +3,15 @@ import { randomUUID } from "node:crypto";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { zeroAgentsRoutes } from "../zero-agents";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -21,7 +23,9 @@ function currentSecond(): number {
 }
 
 function agentCustomConnectorsClient() {
-  return setupApp({ context })(zeroAgentCustomConnectorsContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentCustomConnectorsContract,
+  );
 }
 
 function bearerHeaders(token: string): { readonly authorization: string } {
@@ -69,7 +73,7 @@ async function createUnconfiguredCustomConnector(
 ) {
   return await connectors.createCustomConnector(actor, {
     displayName: `Connector ${slug}`,
-    slug,
+    slug: `_${slug}`,
     prefixes: [`https://${slug}.example.test`],
     headerName: "Authorization",
     headerTemplate: "Bearer {{secret}}",
@@ -86,13 +90,33 @@ async function createCustomConnector(actor: ApiTestUser, slug: string) {
   return connector;
 }
 
+async function createPermissionedCustomConnector(
+  actor: ApiTestUser,
+  slug: string,
+) {
+  const connector = await connectors.createCustomConnector(actor, {
+    displayName: `Connector ${slug}`,
+    slug: `_${slug}`,
+    prefixes: [`https://${slug}.example.test`],
+    headerName: "Authorization",
+    headerTemplate: "Bearer {{secret}}",
+    permissionBundleRef: "builtin:slack@1",
+  });
+  await connectors.setCustomConnectorSecret(
+    actor,
+    connector.id,
+    `${slug}-secret`,
+  );
+  return connector;
+}
+
 async function createOptionalOnlyCustomConnector(
   actor: ApiTestUser,
   slug: string,
 ) {
   return await connectors.createCustomConnector(actor, {
     displayName: `Connector ${slug}`,
-    slug,
+    slug: `_${slug}`,
     prefixTemplates: [`https://${slug}.example.test`],
     fields: [
       {
@@ -118,7 +142,7 @@ async function createCustomConnectorWithOptionalPrefixVariable(
 ) {
   const connector = await connectors.createCustomConnector(actor, {
     displayName: `Connector ${slug}`,
-    slug,
+    slug: `_${slug}`,
     prefixTemplates: [`https://{{variables.subdomain}}.${slug}.example.test`],
     fields: [
       {
@@ -149,6 +173,45 @@ async function createCustomConnectorWithOptionalPrefixVariable(
   );
   return connector;
 }
+
+describe("GET /api/zero/custom-connectors/:id/permissions", () => {
+  it("returns permission metadata for a custom connector with a bundle", async () => {
+    const actor = bdd.user();
+    const connector = await createPermissionedCustomConnector(
+      actor,
+      "permission-metadata",
+    );
+
+    const response = await connectors.readCustomConnectorPermissions(
+      actor,
+      connector.id,
+    );
+
+    expect(response.ref).toBe("builtin:slack@1");
+    expect(response.permissions).toContainEqual(
+      expect.objectContaining({ name: "chat:write" }),
+    );
+    expect(response.defaultPolicies["chat:write"]).toBe("deny");
+  });
+
+  it("returns 404 when the custom connector has no permission bundle", async () => {
+    const actor = bdd.user();
+    const connector = await createCustomConnector(actor, "no-permissions");
+
+    const response = await connectors.requestCustomConnectorPermissions(
+      actor,
+      connector.id,
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Custom connector permission bundle not found",
+        code: "NOT_FOUND",
+      },
+    });
+  });
+});
 
 describe("GET /api/zero/agents/:id/custom-connectors", () => {
   it("returns 401 when the request is unauthenticated", async () => {
@@ -198,7 +261,7 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ enabledIds: [] });
+    expect(response.body).toStrictEqual({ enabledIds: [], grants: [] });
   });
 
   it("returns 404 for a non-existent agent", async () => {
@@ -316,6 +379,81 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
       agent.agentId,
     );
     expect([...readBack].sort()).toStrictEqual([...response].sort());
+  });
+
+  it("requires explicit permission selection for connectors with a bundle", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, {
+      displayName: "Permissioned Agent",
+    });
+    const connector = await createPermissionedCustomConnector(
+      actor,
+      "permission-required",
+    );
+
+    const response = await connectors.requestUpdateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [connector.id],
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Permission selection is required for custom connector ids: ${connector.id}`,
+        code: "VALIDATION_ERROR",
+      },
+    });
+  });
+
+  it("persists selected permission names and rejects unknown permissions atomically", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, {
+      displayName: "Permission Grant Agent",
+    });
+    const connector = await createPermissionedCustomConnector(
+      actor,
+      "permission-roundtrip",
+    );
+    const grant = {
+      customConnectorId: connector.id,
+      permissionNames: ["chat:write"],
+    };
+
+    const updated = await connectors.requestUpdateAgentCustomConnectorGrants(
+      actor,
+      agent.agentId,
+      [grant],
+      [200],
+    );
+    expect(updated.body).toStrictEqual({
+      enabledIds: [connector.id],
+      grants: [grant],
+    });
+    await expect(
+      connectors.readAgentCustomConnectorGrants(actor, agent.agentId),
+    ).resolves.toStrictEqual([grant]);
+
+    const rejected = await connectors.requestUpdateAgentCustomConnectorGrants(
+      actor,
+      agent.agentId,
+      [
+        {
+          customConnectorId: connector.id,
+          permissionNames: ["unknown:permission"],
+        },
+      ],
+      [400],
+    );
+    expect(rejected.body).toStrictEqual({
+      error: {
+        message: `Unknown permission names for custom connector ${connector.id}: unknown:permission`,
+        code: "VALIDATION_ERROR",
+      },
+    });
+    await expect(
+      connectors.readAgentCustomConnectorGrants(actor, agent.agentId),
+    ).resolves.toStrictEqual([grant]);
   });
 
   it("rejects enabling custom connectors without required user values", async () => {

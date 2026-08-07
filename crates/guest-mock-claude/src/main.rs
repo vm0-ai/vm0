@@ -33,11 +33,11 @@
 //!                               can terminate it; tests the
 //!                               SigkillPending->Done escalation path
 //!   @hang-after-result-then-event
-//!                             - Emit result, later emit a meaningful event,
-//!                               then hang
+//!                             - Emit result, then one release-gated meaningful
+//!                               event, then hang
 //!   @hang-after-result-periodic-events
-//!                             - Emit result, then keep emitting meaningful
-//!                               events until reaped
+//!                             - Emit result, then two release-gated meaningful
+//!                               events, then hang
 //!   @hang-after-error-result  - Emit an error result, then hang
 //!   @exit-after-result        - Emit result event, exit(0) immediately;
 //!                               tests that reap stays no-op on the

@@ -6,12 +6,18 @@ interface ZeroUnsavedBarProps {
   onDiscard: () => void;
   onSave: () => void;
   saving: boolean;
+  message?: string;
+  discardLabel?: string;
+  saveLabel?: string;
 }
 
 export function ZeroUnsavedBar({
   onDiscard,
   onSave,
   saving,
+  message = "You have unsaved changes",
+  discardLabel = "Discard",
+  saveLabel = "Save",
 }: ZeroUnsavedBarProps) {
   return createPortal(
     <div className="zero-app fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4">
@@ -25,7 +31,7 @@ export function ZeroUnsavedBar({
             stroke={1.5}
             className="shrink-0 text-muted-foreground"
           />
-          <span>You have unsaved changes</span>
+          <span>{message}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button
@@ -36,7 +42,7 @@ export function ZeroUnsavedBar({
             onClick={onDiscard}
             disabled={saving}
           >
-            Discard
+            {discardLabel}
           </Button>
           <Button
             data-testid="save-button"
@@ -53,7 +59,7 @@ export function ZeroUnsavedBar({
                 className="animate-spin mr-1.5"
               />
             ) : null}
-            Save
+            {saveLabel}
           </Button>
         </div>
       </div>

@@ -8,6 +8,7 @@ import type {
   DraftSignals,
   ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
+import { i18n } from "../../i18n/index.ts";
 
 /**
  * Placeholder stored as the prompt when the user sends only files with no
@@ -72,8 +73,12 @@ export function isVisualAttachment({
 
 export function shouldExcludeVisualAttachmentsForModel(
   selectedModel: string | null | undefined,
+  imageRecognitionEnabled: boolean,
 ): boolean {
-  return getModelImageInputSupport(selectedModel) === "unsupported";
+  return (
+    !imageRecognitionEnabled &&
+    getModelImageInputSupport(selectedModel) === "unsupported"
+  );
 }
 
 export function collectSuccessfulAttachmentInfos(
@@ -110,10 +115,17 @@ function attachmentUploadFailureMessage(
   }
 
   if (failedFilenames.length === 1) {
-    return `Failed to upload ${failedFilenames[0]}. Remove it and try again.`;
+    return i18n.t(
+      ($) => {
+        return $.chat.attachments.uploadFailedRetry;
+      },
+      { filename: failedFilenames[0] },
+    );
   }
 
-  return "Failed to upload one or more attachments. Remove them and try again.";
+  return i18n.t(($) => {
+    return $.chat.attachments.uploadsFailed;
+  });
 }
 
 /**

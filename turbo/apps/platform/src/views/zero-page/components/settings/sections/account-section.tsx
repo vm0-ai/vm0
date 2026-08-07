@@ -1,22 +1,24 @@
-import { useGet, useLoadable, useSet } from "ccstate-react";
-import { IconUser } from "@tabler/icons-react";
+import { useGet, useLoadable } from "ccstate-react";
+import { useTranslation } from "react-i18next";
+import { IconExternalLink } from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
-import { currentUserInfo$ } from "../../../../../signals/auth.ts";
 import {
-  openSettingsUserProfile$,
-  settingsClerkProfilePortalContainer$,
-  settingsDialogSignal$,
-} from "../../../../../signals/zero-page/settings/settings-dialog.ts";
-import { detach, Reason } from "../../../../../signals/utils.ts";
+  clerkInstance$,
+  currentUserInfo$,
+  resolveClerkSatelliteConfig,
+} from "../../../../../signals/auth.ts";
+
+// Clerk satellite domains do not receive their own hosted Account Portal.
+const CLERK_PRIMARY_USER_PROFILE_URL = "https://accounts.vm0.ai/user";
 
 export function AccountSection() {
-  const clerkProfilePortalContainer = useGet(
-    settingsClerkProfilePortalContainer$,
-  );
-  const settingsDialogSignal = useGet(settingsDialogSignal$);
-  const openUserProfile = useSet(openSettingsUserProfile$);
+  const { t } = useTranslation();
+  const clerk = useGet(clerkInstance$);
   const userLoadable = useLoadable(currentUserInfo$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
+  const userProfileUrl = resolveClerkSatelliteConfig()
+    ? CLERK_PRIMARY_USER_PROFILE_URL
+    : clerk.buildUrlWithAuth(clerk.buildUserProfileUrl());
 
   const displayName = user?.fullName ?? user?.firstName ?? "";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
@@ -45,17 +47,13 @@ export function AccountSection() {
           <div className="text-sm text-muted-foreground truncate">{email}</div>
         )}
       </div>
-      <Button
-        onClick={() => {
-          if (settingsDialogSignal) {
-            detach(openUserProfile(settingsDialogSignal), Reason.DomCallback);
-          }
-        }}
-        disabled={!clerkProfilePortalContainer || !settingsDialogSignal}
-        className="shrink-0"
-      >
-        <IconUser size={14} />
-        Manage
+      <Button asChild className="shrink-0">
+        <a href={userProfileUrl} target="_blank" rel="noreferrer">
+          <IconExternalLink size={14} />
+          {t(($) => {
+            return $.settings.preferences.account.manage;
+          })}
+        </a>
       </Button>
     </div>
   );

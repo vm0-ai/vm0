@@ -18,6 +18,7 @@ _CR_BYTE = b"\r"
 _LF_BYTE = b"\n"
 _SPACE = ord(" ")
 _DATA_FIELD_PREFIX = b"data:"
+_UTF8_BOM = b"\xef\xbb\xbf"
 
 # Non-data SSE control lines are expected to be tiny.  Cap malformed lines so
 # an upstream bug cannot grow memory while we wait for a newline.
@@ -71,6 +72,7 @@ class SseUsageScanner:
     This is deliberately not a full EventSource implementation and does not
     return assembled event bodies.  It keeps only bounded control-line state;
     captured ``data`` payload bytes are streamed directly to the handler.
+    One optional UTF-8 byte-order mark is ignored only at stream start.
 
     With ``capture_data_without_event=True``, the first ``data:`` field can
     start a captured event while the current event name is still ``None``.  If a
@@ -101,6 +103,7 @@ class SseUsageScanner:
         self._capture_data_without_event = capture_data_without_event
         self._event_name: str | None = None
         self._line_buf = bytearray()
+        self._at_stream_start = True
         self._state = "line"
         self._discard_event = False
         self._skip_next_lf = False
@@ -133,6 +136,7 @@ class SseUsageScanner:
     def finish(self) -> None:
         """Flush a trailing event when the stream ends without a blank line."""
 
+        self._at_stream_start = False
         if self._state == "data_prefix_space":
             self._start_data_line()
         elif self._state == "line" and self._line_buf:
@@ -153,10 +157,19 @@ class SseUsageScanner:
     def _consume_line(self, chunk: bytes, i: int) -> int:
         byte = chunk[i]
         if _is_line_ending(byte):
+            self._at_stream_start = False
             self._finish_control_line(byte)
             return i + 1
 
         self._line_buf.append(byte)
+        if self._at_stream_start:
+            if _UTF8_BOM.startswith(self._line_buf):
+                if self._line_buf == _UTF8_BOM:
+                    self._line_buf.clear()
+                    self._at_stream_start = False
+                return i + 1
+            self._at_stream_start = False
+
         if self._line_buf == _DATA_FIELD_PREFIX:
             self._line_buf.clear()
             self._state = "data_prefix_space"

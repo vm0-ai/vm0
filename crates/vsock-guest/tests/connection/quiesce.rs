@@ -254,7 +254,7 @@ fn malformed_quiesce_resume_payloads_do_not_change_state() {
 }
 
 #[test]
-fn resume_operations_reopens_after_busy_quiesce_with_pending_operation() {
+fn resume_operations_reopens_without_losing_pending_operation() {
     let (handle, mut host_stream) = start_guest_connection();
 
     send_exec_start(
@@ -289,9 +289,18 @@ fn resume_operations_reopens_after_busy_quiesce_with_pending_operation() {
     );
     assert_eq!(reopened.stdout, Some(b"reopened".to_vec()));
 
+    send_quiesce_operations(&mut host_stream, 245);
+    assert_error_contains(&mut host_stream, 245, "guest operations still pending: 1");
+
     send_exec_cancel(&mut host_stream, 241);
     let (_chunks, cancelled) = read_exec_result(&mut host_stream, 241);
     assert_eq!(cancelled.termination, ExecTermination::Cancelled);
+
+    send_quiesce_operations(&mut host_stream, 246);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(quiesced.seq, 246);
+    assert!(quiesced.payload.is_empty());
 
     finish_guest_connection(handle, host_stream);
 }

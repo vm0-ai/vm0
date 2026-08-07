@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.21.45](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.44...guest-mock-claude-v0.21.45) (2026-08-07)
+
+## [0.21.44](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.43...guest-mock-claude-v0.21.44) (2026-08-07)
+
+## [0.21.43](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.42...guest-mock-claude-v0.21.43) (2026-08-07)
+
+## [0.21.42](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.41...guest-mock-claude-v0.21.42) (2026-08-06)
+
+## [0.21.41](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.40...guest-mock-claude-v0.21.41) (2026-08-05)
+
+## [0.21.40](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.39...guest-mock-claude-v0.21.40) (2026-08-05)
+
+## [0.21.39](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.38...guest-mock-claude-v0.21.39) (2026-08-04)
+
+## [0.21.38](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.37...guest-mock-claude-v0.21.38) (2026-08-04)
+
+## [0.21.37](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.36...guest-mock-claude-v0.21.37) (2026-08-04)
+
+## [0.21.36](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.35...guest-mock-claude-v0.21.36) (2026-08-04)
+
+## [0.21.35](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.34...guest-mock-claude-v0.21.35) (2026-08-04)
+
+## [0.21.34](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.33...guest-mock-claude-v0.21.34) (2026-08-03)
+
+## [0.21.33](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.32...guest-mock-claude-v0.21.33) (2026-08-03)
+
+
+### Refactoring
+
+* **rust:** centralize base cli agent session id validation ([#24759](https://github.com/vm0-ai/vm0/issues/24759)) ([da34435](https://github.com/vm0-ai/vm0/commit/da34435c6747be672914e4651c29d0abd2b47936))
+
+## [0.21.32](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.31...guest-mock-claude-v0.21.32) (2026-08-02)
+
+
+### Refactoring
+
+* **guest-mock-claude:** split process responsibilities ([#24534](https://github.com/vm0-ai/vm0/issues/24534)) ([a656092](https://github.com/vm0-ai/vm0/commit/a656092964fcee4269f45c54d2d857e12a6430ac))
+
+## [0.21.31](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.30...guest-mock-claude-v0.21.31) (2026-07-31)
+
+## [0.21.30](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.29...guest-mock-claude-v0.21.30) (2026-07-30)
+
+## [0.21.29](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.28...guest-mock-claude-v0.21.29) (2026-07-30)
+
+## [0.21.28](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.27...guest-mock-claude-v0.21.28) (2026-07-29)
+
 ## [0.21.27](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.26...guest-mock-claude-v0.21.27) (2026-07-28)
 
 ## [0.21.26](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.25...guest-mock-claude-v0.21.26) (2026-07-26)

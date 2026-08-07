@@ -1,10 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type {
-  ChangeEvent,
   CSSProperties,
-  DragEvent,
-  FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
@@ -17,25 +14,25 @@ import {
   useLastResolved,
   type Loadable,
 } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { i18n } from "../../i18n/index.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   IconAdjustmentsHorizontal,
   IconAlertTriangle,
   IconArrowUp,
   IconBolt,
+  IconCheck,
   IconColorSwatch,
   IconDeviceDesktop,
   IconDownload,
-  IconDots,
   IconPresentation,
-  IconLoader2,
-  IconLink,
   IconMicrophone,
   IconPaperclip,
   IconPalette,
-  IconPlayerPause,
   IconPlayerPlay,
   IconPlayerStop,
   IconPlug,
@@ -45,7 +42,7 @@ import {
   IconSearch,
   IconTarget,
   IconTemplate,
-  IconUpload,
+  IconUser,
   IconVideo,
   IconWorld,
   IconX,
@@ -57,32 +54,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
+import { Button } from "@vm0/ui/components/ui/button";
+import { Card, CardContent } from "@vm0/ui/components/ui/card";
+import { Input } from "@vm0/ui/components/ui/input";
 import {
-  Button,
-  Card,
-  CardContent,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  Input,
   Popover,
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
+} from "@vm0/ui/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+} from "@vm0/ui/components/ui/select";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  cn,
-  processShortcut,
-  type KeyboardEventLike,
-} from "@vm0/ui";
+} from "@vm0/ui/components/ui/tooltip";
+import { cn } from "@vm0/ui/lib/utils";
+import { processShortcut, type KeyboardEventLike } from "@vm0/ui";
 import {
   bestEffort,
   detach,
@@ -91,30 +86,22 @@ import {
   tapError,
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
-import {
-  activeGoalDialogGoal$,
-  activeGoalDialogThreadId$,
-  closeChatThreadGoalDialog$,
-  openChatThreadGoalDialog$,
-} from "../../signals/chat-page/chat-goal.ts";
-import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
-import type {
-  ComposerTemplateAttachment,
-  WorkflowComposerSubmissionSnapshot,
-  WorkflowComposerSignals,
-} from "../../signals/zero-page/tiptap-workflow-composer.ts";
+import type { ComposerTemplateAttachment } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
-import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
-import type { Command, Computed } from "ccstate";
 import {
-  composerFileInput$ as singletonComposerFileInput$,
-  setComposerFileInput$ as singletonSetComposerFileInput$,
-} from "../../signals/chat-page/chat-message.ts";
+  isVisualAttachment,
+  shouldExcludeVisualAttachmentsForModel,
+} from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ZeroAvatarVideoAvatar,
+  ZeroAvatarVideoVoice,
+} from "@vm0/api-contracts/contracts/zero-avatar-video";
+import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
@@ -125,25 +112,32 @@ import {
 } from "./presentation-html-preview.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
+  type IllustrationTemplateItem,
+} from "@vm0/core/illustration-template-items";
+import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  type PresentationTemplateItem,
+} from "@vm0/core/presentation-template-items";
+import {
   VIDEO_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+  type VideoTemplateItem,
+} from "@vm0/core/video-template-items";
+import {
   WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
+  type WebsiteTemplateItem,
+} from "@vm0/core/website-template-items";
+import {
   WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
-  findWebsiteTemplateItem,
-  findVideoTemplateItem,
   findWorkflowTemplateItem,
-  r2ImageTransformUrl,
-  type IllustrationTemplateItem,
-  type PresentationTemplateItem,
-  type VideoTemplateItem,
-  type WebsiteTemplateItem,
   type WorkflowTemplateItem,
-} from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
+} from "@vm0/core/workflow-template-items";
+import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   ModelProviderPicker,
@@ -151,80 +145,54 @@ import {
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectorCard } from "./components/settings/connector-card.tsx";
+import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
+import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
-  connectFlowConnectorRef$,
+  connectFlowConnectorSlug$,
   matchesConnectorSearch,
-  justConnectedRefs$,
-  pollingOAuthAuthCodeConnectorRef$,
-  pollingOAuthDeviceAuthConnectorRef$,
+  justConnectedSlugs$,
+  pollingOAuthAuthCodeConnectorSlug$,
+  pollingOAuthDeviceAuthConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   codexFastModeEnabled$,
-  composerUploadPopoverEnabled$,
   composerConnectorPermissionsEnabled$,
+  avatarTemplatesEnabled$,
+  imageRecognitionAvailable$,
   featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
+  computerUseHosts$,
+  selectedComputerUseHostId,
+  visibleComputerUseHosts,
+  ZERO_DESKTOP_DOWNLOAD_URL,
   zeroDesktopDownloadSupportStatus$,
-  ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
-  ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
-import type { ComposerConnectorSignals } from "../../signals/zero-page/zero-connectors.ts";
-import type { AgentConnectorAuthorizations } from "../../signals/zero-page/agent-connector-authorizations.ts";
+import type { ComposerConnectorAuthorizationState } from "../../signals/zero-page/zero-connectors.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
 import { PermissionsDialog } from "./components/settings/permissions-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  modelPickerOpen$,
-  setModelPickerOpen$,
-  uploadPopoverOpen$,
-  setUploadPopoverOpen$,
-  templatePickerOpen$,
-  templatePickerSkipEnterAnimation$,
-  setTemplatePickerOpen$,
-  templatePickerReferenceValue$,
-  setTemplatePickerReferenceValue$,
-  openWebsiteTemplatePreview$,
-  templatePickerCategory$,
-  setTemplatePickerCategory$,
-  templatePickerSearch$,
-  setTemplatePickerSearch$,
-  templatePickerWorkflowCategory$,
-  setTemplatePickerWorkflowCategory$,
-  templatePickerPreviewSlug$,
-  setTemplatePickerPreviewSlug$,
-  restoreTemplatePickerPresentationScroll$,
-  setTemplatePickerPresentationScrollTop$,
-  illustrationVariantIndex$,
-  setIllustrationVariantIndex$,
-  templateCardHover$,
-  setTemplateCardHover$,
-  templateCardLoadedHtmlFrameUrls$,
-  setTemplateCardLoadedHtmlFrameUrl$,
-  templateCardThemeIdBySlug$,
-  setTemplateCardThemeId$,
-  templateCardHtmlPreview$,
-  setTemplateCardHtmlPreview$,
-  type TemplateCardHtmlPreviewState,
-  templateDetailHtmlPreview$,
-  closePresentationTemplateDetailPreview$,
-  loadPresentationTemplateHtmlPreview,
-  ownTemplatePickerPreviewResources$,
-  openPresentationTemplateDetailPreview$,
-  releaseTemplatePickerPreviewResources$,
-  selectPresentationTemplateDetailPreview$,
-  settlePresentationTemplateDetailPreviewFrame$,
+import type {
+  TemplateCardHtmlPreviewState,
+  VideoTemplateOptionsAnchor,
 } from "../../signals/zero-page/zero-chat-composer.ts";
+import type {
+  ComposerPendingEvent,
+  ComposerPrimaryAction,
+  ComposerSignals,
+} from "../../signals/zero-page/composer-signals.ts";
 import {
   audioInputAvailable$,
   audioInputQuota$,
@@ -238,8 +206,14 @@ import {
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
 import { shouldUseUserMessage } from "../../signals/zero-page/user-message-document-codec.ts";
-import { Markdown } from "../components/markdown.tsx";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
+import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
+import { AvatarTemplatePickerContent } from "./avatar-template-picker.tsx";
+import { VideoTemplateOptionsPopover } from "./video-template-options-popover.tsx";
+import {
+  avatarTemplateSelection,
+  toAvatarGenerationTemplate,
+} from "../../signals/zero-page/avatar-template-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -255,139 +229,17 @@ function isHappyDomTestEnvironment(): boolean {
 // Props
 // ---------------------------------------------------------------------------
 
-export interface ZeroChatComposerProps {
-  composer: WorkflowComposerSignals;
-  composerConnectors: ComposerConnectorSignals;
-  onSend: (
-    message: string,
-    generationTemplate: GenerationTemplateRequest | undefined,
-    editorDocument: WorkflowComposerSubmissionSnapshot["editorDocument"],
-  ) => void;
-  onQueue?: (
-    message: string,
-    generationTemplate: GenerationTemplateRequest | undefined,
-    editorDocument: WorkflowComposerSubmissionSnapshot["editorDocument"],
-  ) => void;
-  sending?: boolean;
-  queueWhileSending?: boolean;
-  /** Blocks send and queue submission while an async composer command settles. */
-  submissionLoading?: boolean;
-  /**
-   * Cancel the active run. When provided, the Send button switches to a Stop
-   * button while sending and the composer is empty; with content present the
-   * Send button stays visible and clicks queue the message instead.
-   * Clicking Stop while a queue exists recalls the queued messages.
-   */
-  onCancel?: () => void;
-  displayName: string;
-  className?: string;
-  /** Auto-focus the textarea when mounted. */
-  autoFocus?: boolean;
-  /** When set, reduces this instance to a single-line resting height on mobile. */
-  enableMobileSingleLine?: boolean;
-  /** Per-instance draft signals (from ChatThreadSignals factory). When omitted, falls back to singleton signals. */
-  draft: DraftSignals;
-  /** Composer file input element reference. When omitted, falls back to singleton. */
-  composerFileInput$?: Computed<HTMLElement | null>;
-  /** Set the composer file input element. When omitted, falls back to singleton. */
-  setComposerFileInput$?: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
+interface ZeroChatComposerProps {
+  readonly signals: ComposerSignals;
+}
+
+interface ComposerConnectorReadState {
+  readonly catalogItems: Loadable<
+    readonly PlatformConnectorCatalogStatusItem[]
   >;
-  /** Current chat thread id. Used by thread-scoped goal controls. */
-  chatThreadId?: string;
-  /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
-  onDraftChange?: () => void;
-  /**
-   * When true, keep the send control in its disabled empty-composer state.
-   * Model and voice controls resolve independently and should not be hidden by
-   * message list loading.
-   */
-  actionsLoading?: boolean;
-  /**
-   * Per-run model picker wiring. When present, a compact picker is rendered
-   * immediately to the left of the Send button; the parent owns the selected
-   * value and decides when to include it in the send payload. Undefined
-   * hides the picker entirely (e.g. callers that haven't opted in).
-   */
-  modelPicker?: {
-    value: ModelProviderSelection | null;
-    onChange: (value: ModelProviderSelection | null) => void;
-    // When true, picker is read-only for the current composer state.
-    disabled?: boolean;
-  };
-  templatePicker?: {
-    value: GenerationTemplateRequest | undefined;
-    onChange: (value: GenerationTemplateRequest | undefined) => void;
-  };
-  onCreateWorkflowPrompt?: () => void;
-  computerUse?: {
-    hosts: readonly ComposerComputerUseHost[];
-    loading: boolean;
-    selectedHostId: string | null;
-    onChange: (hostId: string | null) => void;
-    cloudBrowserAvailable: boolean;
-    cloudBrowserEnabled: boolean;
-    onCloudBrowserChange: (enabled: boolean) => void;
-    downloadUrl: string;
-  };
-  /** When true, hide the model picker until the selected model resolves. */
-  modelPickerLoading?: boolean;
-  submitBlocker?: {
-    message: string;
-    actionLabel: string;
-    onAction: () => void;
-  };
-  /**
-   * Pending sends that landed while a run was active. Rendered as a compact
-   * strip above the textarea so the user can see what's queued without
-   * having those messages re-appear as bubbles in the conversation.
-   */
-  queuedItems?: QueuedComposerItem[];
-  /** Cancels a queued message (routed to the recall flow by the caller). */
-  onRemoveQueuedItem?: (id: string) => void;
-  /** Pending workflow events, rendered after queued messages. */
-  workflowEventItems?: WorkflowEventComposerItem[];
-  /** Skips one pending workflow event. */
-  onRemoveWorkflowEvent?: (id: string) => void;
-  /** Whether workflow event processing is paused for this thread. */
-  workflowEventsPaused?: boolean;
-  /** Optional server-provided reason for the paused workflow event queue. */
-  workflowEventsPauseReason?: string | null;
-  /** Pauses or resumes workflow event processing without affecting messages. */
-  onSetWorkflowEventsPaused?: (paused: boolean) => void;
-  /** Clears every pending workflow event without affecting messages. */
-  onClearWorkflowEvents?: () => void;
-  /**
-   * The thread's active goal. Rendered as a row beneath the queued messages in
-   * the strip above the composer — a goal runs only once the queue drains, so it
-   * sits closest to the composer to read as lower priority than the queue.
-   * Absent when the thread has no in-progress goal.
-   */
-  activeGoal?: ActiveGoalComposerItem;
-  /** Cancels the active goal through the goal API. */
-  onCancelActiveGoal?: () => void;
-}
-
-export interface ComposerConnectorReadState {
-  readonly catalogItems: Loadable<readonly PublicConnectorCatalogStatusItem[]>;
-  readonly agentId: Loadable<string | null>;
-  readonly authorizations: Loadable<AgentConnectorAuthorizations | null>;
-}
-
-export interface QueuedComposerItem {
-  id: string;
-  text: string;
-}
-
-export interface WorkflowEventComposerItem {
-  id: string;
-  text: string;
-}
-
-interface ActiveGoalComposerItem {
-  /** The goal's brief objective — the human-readable text shown in the row. */
-  objective: string;
+  readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
+  readonly agent: Loadable<ZeroAgentResponse>;
+  readonly authorization: Loadable<ComposerConnectorAuthorizationState>;
 }
 
 interface ComposerComputerUseHost {
@@ -397,11 +249,32 @@ interface ComposerComputerUseHost {
   status: "online" | "offline";
 }
 
-type ComposerModelPicker = NonNullable<ZeroChatComposerProps["modelPicker"]>;
-type ComposerTemplatePicker = NonNullable<
-  ZeroChatComposerProps["templatePicker"]
->;
-type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
+interface ComposerModelPicker {
+  readonly value: ModelProviderSelection | null;
+  readonly onChange: (value: ModelProviderSelection | null) => void;
+  readonly disabled?: boolean;
+}
+
+interface ComposerTemplatePicker {
+  readonly value: GenerationTemplateRequest | undefined;
+  readonly onChange: (value: GenerationTemplateRequest | undefined) => void;
+}
+
+interface ComposerComputerUse {
+  readonly hosts: readonly ComposerComputerUseHost[];
+  readonly loading: boolean;
+  readonly selectedHostId: string | null;
+  readonly onChange: (hostId: string | null) => void;
+  readonly cloudBrowserEnabled: boolean;
+  readonly onCloudBrowserChange: (enabled: boolean) => void;
+  readonly downloadUrl: string;
+}
+
+interface ComposerSubmitBlocker {
+  readonly message: string;
+  readonly actionLabel: string;
+  readonly onAction: () => void;
+}
 
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 480, height: 270 } as const;
 const TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE = {
@@ -441,7 +314,11 @@ type TemplatePreviewImageSize = Parameters<typeof r2ImageTransformUrl>[1];
 // Helpers
 // ---------------------------------------------------------------------------
 
-type ComposerConnectorItem = PublicConnectorCatalogStatusItem & {
+type ComposerConnectorItem = PlatformConnectorCatalogStatusItem & {
+  readonly authorized: boolean;
+};
+
+type ComposerCustomConnectorItem = CustomConnectorResponse & {
   readonly authorized: boolean;
 };
 
@@ -469,12 +346,16 @@ interface VisualAttachmentCandidate {
 
 function getVisualAttachmentUnsupportedState(
   modelPicker: ComposerModelPicker | undefined,
+  imageRecognitionEnabled: boolean,
   selection: ModelProviderSelection | null = modelPicker?.value ?? null,
 ): VisualAttachmentUnsupportedState | null {
   const currentModel = resolveComposerModelForSelection(modelPicker, selection);
   if (
-    getModelImageInputSupport(currentModel?.selectedModel) !== "unsupported" ||
-    !currentModel
+    !currentModel ||
+    !shouldExcludeVisualAttachmentsForModel(
+      currentModel.selectedModel,
+      imageRecognitionEnabled,
+    )
   ) {
     return null;
   }
@@ -494,7 +375,14 @@ function showVisualAttachmentUnsupportedToast(
   state: VisualAttachmentUnsupportedState,
 ): void {
   toast.error(
-    `${state.currentModelName} cannot recognize images or videos. Switch to a vision-capable model to attach them.`,
+    i18n.t(
+      ($) => {
+        return $.chat.composer.visualAttachmentsUnsupported;
+      },
+      {
+        modelName: state.currentModelName,
+      },
+    ),
     { id: "visual-attachment-unsupported" },
   );
 }
@@ -509,18 +397,6 @@ function resolveVisibleAttachments<T extends VisualAttachmentCandidate>(
   return attachments.filter((attachment) => {
     return !isVisualAttachment(attachment);
   });
-}
-
-function resolveComposerCanSend({
-  hasInput,
-  visibleAttachmentCount,
-  uploadsReady,
-}: {
-  hasInput: boolean;
-  visibleAttachmentCount: number;
-  uploadsReady: boolean;
-}): boolean {
-  return uploadsReady && (hasInput || visibleAttachmentCount > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -554,35 +430,67 @@ function ComposerStripRow({
   onRemove,
   onOpenDetail,
   removeAriaLabel,
+  cancellationRecoveryPending,
 }: {
   kind: "queued" | "workflow-event" | "goal";
   text: string;
   onRemove?: () => void;
   onOpenDetail?: () => void;
   removeAriaLabel: string;
+  cancellationRecoveryPending?: boolean;
 }) {
+  const { t } = useTranslation();
   const isGoal = kind === "goal";
   const isWorkflowEvent = kind === "workflow-event";
   const itemAriaLabel = isGoal
-    ? "Active goal"
+    ? t(($) => {
+        return $.chat.queue.activeGoal;
+      })
     : isWorkflowEvent
-      ? "Pending automation event"
-      : "Queued message";
+      ? t(($) => {
+          return $.chat.queue.pendingAutomationEvent;
+        })
+      : t(($) => {
+          return $.chat.queue.queuedMessage;
+        });
   const aboutAriaLabel = isGoal
-    ? "About this goal"
+    ? t(($) => {
+        return $.chat.queue.aboutGoal;
+      })
     : isWorkflowEvent
-      ? "About this automation event"
-      : "About this queued message";
+      ? t(($) => {
+          return $.chat.queue.aboutAutomationEvent;
+        })
+      : t(($) => {
+          return $.chat.queue.aboutQueuedMessage;
+        });
   const itemTitle = isGoal
-    ? "Goal"
+    ? t(($) => {
+        return $.chat.queue.goal;
+      })
     : isWorkflowEvent
-      ? "Automation event"
-      : "Queued message";
-  const itemDescription = isGoal
-    ? "Runs after the queue drains and keeps running until you cancel it."
-    : isWorkflowEvent
-      ? "Waits behind queued messages and runs once the current run finishes."
-      : "Waits in line and sends once the current run finishes.";
+      ? t(($) => {
+          return $.chat.queue.automationEvent;
+        })
+      : t(($) => {
+          return $.chat.queue.queuedMessage;
+        });
+  const itemDescription =
+    cancellationRecoveryPending && !isGoal
+      ? t(($) => {
+          return $.chat.queue.cancellationRecoveryPending;
+        })
+      : isGoal
+        ? t(($) => {
+            return $.chat.queue.goalDescription;
+          })
+        : isWorkflowEvent
+          ? t(($) => {
+              return $.chat.queue.automationEventDescription;
+            })
+          : t(($) => {
+              return $.chat.queue.queuedMessageDescription;
+            });
   return (
     <div
       role="listitem"
@@ -594,7 +502,9 @@ function ComposerStripRow({
           type="button"
           className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onOpenDetail}
-          aria-label="Open goal details"
+          aria-label={t(($) => {
+            return $.chat.queue.openGoalDetails;
+          })}
         >
           <IconTarget
             size={16}
@@ -655,198 +565,166 @@ function ComposerStripRow({
   );
 }
 
-function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
-  const dialogThreadId = useGet(activeGoalDialogThreadId$);
-  const goalLoadable = useLoadable(activeGoalDialogGoal$);
-  const closeDialog = useSet(closeChatThreadGoalDialog$);
-  const open = threadId !== undefined && dialogThreadId === threadId;
-  const goal = goalLoadable.state === "hasData" ? goalLoadable.data : undefined;
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          closeDialog();
-        }
-      }}
-    >
-      <DialogContent
-        className="w-[calc(100vw-2rem)] max-w-2xl gap-5 p-5 sm:p-6"
-        aria-describedby={undefined}
-      >
-        <DialogHeader>
-          <DialogTitle className="text-base">Goal</DialogTitle>
-          <DialogDescription className="leading-6">
-            Runs after the queue drains and keeps running until you cancel it.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
-          {goalLoadable.state === "loading" ? (
-            <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
-              <IconLoader2
-                size={16}
-                stroke={1.7}
-                className="animate-spin"
-                aria-hidden="true"
-              />
-              <span>Loading goal...</span>
-            </div>
-          ) : goalLoadable.state === "hasError" ? (
-            <div className="flex min-h-28 flex-col justify-center gap-1 text-muted-foreground">
-              <p className="font-medium text-foreground">
-                Couldn&apos;t load this goal
-              </p>
-              <p className="text-xs">
-                Close the dialog and open it again to retry.
-              </p>
-            </div>
-          ) : goal ? (
-            <Markdown
-              source={goal.objective}
-              escapeHtml
-              mathEnabled
-              style={{ fontSize: "inherit", lineHeight: "inherit" }}
-            />
-          ) : (
-            <div className="flex min-h-28 items-center text-muted-foreground">
-              This goal is no longer available.
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function PendingItemsStripHeader({
-  count,
   label,
-  workflowEventCount,
-  workflowEventsPaused,
-  onSetWorkflowEventsPaused,
-  onClearWorkflowEvents,
+  modelChangeAppliesNextRun,
+  cancellationRecoveryPending,
 }: {
-  count: number;
-  label: string;
-  workflowEventCount: number;
-  workflowEventsPaused: boolean;
-  onSetWorkflowEventsPaused?: (paused: boolean) => void;
-  onClearWorkflowEvents?: () => void;
+  label: string | null;
+  modelChangeAppliesNextRun: boolean;
+  cancellationRecoveryPending: boolean;
 }) {
-  const showWorkflowControls =
-    onSetWorkflowEventsPaused !== undefined &&
-    (workflowEventCount > 0 || workflowEventsPaused);
+  const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-2 px-5 pt-3 pb-2">
-      <div className="min-w-0 flex-1">
-        <span className="text-sm text-muted-foreground">
-          {count > 0 ? label : "Automation events paused"}
-        </span>
-      </div>
-      {showWorkflowControls ? (
-        <button
-          type="button"
-          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={
-            workflowEventsPaused
-              ? "Resume automation events"
-              : "Pause automation events"
-          }
-          onClick={() => {
-            onSetWorkflowEventsPaused?.(!workflowEventsPaused);
-          }}
+    <div className="px-5 pt-3 pb-2">
+      {modelChangeAppliesNextRun ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="text-sm text-muted-foreground"
         >
-          {workflowEventsPaused ? (
-            <IconPlayerPlay size={14} stroke={1.5} />
-          ) : (
-            <IconPlayerPause size={14} stroke={1.5} />
-          )}
-          {workflowEventsPaused ? "Resume events" : "Pause events"}
-        </button>
+          {t(($) => {
+            return $.chat.queue.modelChangeAppliesNextRun;
+          })}
+        </p>
       ) : null}
-      {workflowEventCount > 0 && onClearWorkflowEvents ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Automation event queue actions"
-            >
-              <IconDots size={16} stroke={1.5} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={onClearWorkflowEvents}
-            >
-              Clear automation events ({workflowEventCount})
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {label ? (
+        <p
+          className={cn(
+            "text-sm text-muted-foreground",
+            modelChangeAppliesNextRun && "mt-1",
+          )}
+        >
+          {label}
+        </p>
+      ) : null}
+      {cancellationRecoveryPending ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-1 text-xs text-muted-foreground"
+        >
+          {t(($) => {
+            return $.chat.queue.cancellationRecoveryPending;
+          })}
+        </p>
       ) : null}
     </div>
   );
 }
 
-function PendingItemsStrip({
-  items,
-  onRemove,
-  workflowEvents,
-  onRemoveWorkflowEvent,
-  workflowEventsPaused,
-  workflowEventsPauseReason,
-  onSetWorkflowEventsPaused,
-  onClearWorkflowEvents,
-  activeGoal,
-  onCancelGoal,
-  onOpenGoal,
+function shouldShowNextRunModelNotice({
+  enabled,
+  selectedModel,
+  runningModel,
 }: {
-  items: QueuedComposerItem[] | undefined;
-  onRemove?: (id: string) => void;
-  workflowEvents: WorkflowEventComposerItem[] | undefined;
-  onRemoveWorkflowEvent?: (id: string) => void;
-  workflowEventsPaused: boolean;
-  workflowEventsPauseReason?: string | null;
-  onSetWorkflowEventsPaused?: (paused: boolean) => void;
-  onClearWorkflowEvents?: () => void;
-  activeGoal?: ActiveGoalComposerItem;
-  onCancelGoal?: () => void;
-  onOpenGoal?: () => void;
-}) {
-  const queued = items ?? [];
-  const events = workflowEvents ?? [];
+  enabled: boolean;
+  selectedModel: string | undefined;
+  runningModel: string | null | undefined;
+}): boolean {
+  return (
+    enabled &&
+    selectedModel !== undefined &&
+    runningModel !== undefined &&
+    runningModel !== null &&
+    selectedModel !== runningModel
+  );
+}
+
+function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
+  const { t } = useTranslation();
+  const nextRunModelNoticeEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatNextRunModelNotice] ?? false;
+  const pendingEvents =
+    useLastResolved(signals.queue.pendingEvents$) ??
+    ([] satisfies readonly ComposerPendingEvent[]);
+  const cancellationRecoveryPending =
+    useLastResolved(signals.queue.cancellationRecoveryPending$) ?? false;
+  const selectedModel = useLastResolved(
+    signals.model.modelSelection$,
+  )?.selectedModel;
+  const runningModel = useLastResolved(signals.model.runningModel$);
+  const modelChangeAppliesNextRun = shouldShowNextRunModelNotice({
+    enabled: nextRunModelNoticeEnabled,
+    selectedModel,
+    runningModel,
+  });
+  const activeGoalObjective = useLastResolved(
+    signals.goal.activeGoalObjective$,
+  );
+  const removeQueuedMessage = useSet(signals.queue.removeQueuedMessage$);
+  const removeWorkflowEvent = useSet(signals.queue.removeWorkflowEvent$);
+  const cancelActiveGoal = useSet(signals.goal.cancelActiveGoal$);
+  const openActiveGoal = useSet(signals.goal.openActiveGoal$);
+  const pageSignal = useGet(pageSignal$);
+  const queued = pendingEvents.flatMap((event) => {
+    return event.kind === "message" ? [{ id: event.id, text: event.text }] : [];
+  });
+  const events = pendingEvents.flatMap((event) => {
+    return event.kind === "automation"
+      ? [
+          {
+            id: event.id,
+            text: event.automationBrief ?? event.workflowName,
+          },
+        ]
+      : [];
+  });
+  const activeGoal = activeGoalObjective
+    ? { objective: activeGoalObjective }
+    : undefined;
   const count = queued.length + events.length;
-  const messageLabel = `${queued.length} ${queued.length === 1 ? "message" : "messages"}`;
-  const eventLabel = `${events.length} ${events.length === 1 ? "event" : "events"}`;
+  const messageLabel = t(
+    ($) => {
+      return $.chat.queue.message;
+    },
+    {
+      count: queued.length,
+    },
+  );
+  const eventLabel = t(
+    ($) => {
+      return $.chat.queue.event;
+    },
+    {
+      count: events.length,
+    },
+  );
   const label =
     queued.length > 0 && events.length > 0
-      ? `${messageLabel} and ${eventLabel} waiting`
-      : `${queued.length > 0 ? messageLabel : eventLabel} waiting`;
-  if (count === 0 && !activeGoal && !workflowEventsPaused) {
+      ? t(
+          ($) => {
+            return $.chat.queue.itemsWaitingTogether;
+          },
+          {
+            messages: messageLabel,
+            events: eventLabel,
+          },
+        )
+      : t(
+          ($) => {
+            return $.chat.queue.itemsWaiting;
+          },
+          {
+            items: queued.length > 0 ? messageLabel : eventLabel,
+          },
+        );
+  if (count === 0 && !activeGoal && !modelChangeAppliesNextRun) {
     return null;
   }
   return (
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      {count > 0 || workflowEventsPaused ? (
+      {count > 0 || modelChangeAppliesNextRun ? (
         <PendingItemsStripHeader
-          count={count}
-          label={label}
-          workflowEventCount={events.length}
-          workflowEventsPaused={workflowEventsPaused}
-          onSetWorkflowEventsPaused={onSetWorkflowEventsPaused}
-          onClearWorkflowEvents={onClearWorkflowEvents}
+          label={count > 0 ? label : null}
+          modelChangeAppliesNextRun={modelChangeAppliesNextRun}
+          cancellationRecoveryPending={cancellationRecoveryPending}
         />
       ) : null}
-      {workflowEventsPaused ? (
-        <div className="mx-4 mb-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400">
-          Automation events paused
-          {workflowEventsPauseReason ? `: ${workflowEventsPauseReason}` : ""}.
-          New events keep queueing and run after you resume.
-        </div>
-      ) : null}
-      <div className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1" role="list">
+      <div
+        className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1"
+        role={count > 0 || activeGoal ? "list" : undefined}
+      >
         {queued.map((item) => {
           return (
             <ComposerStripRow
@@ -854,9 +732,15 @@ function PendingItemsStrip({
               kind="queued"
               text={item.text}
               onRemove={() => {
-                onRemove?.(item.id);
+                detach(
+                  removeQueuedMessage(item.id, pageSignal),
+                  Reason.DomCallback,
+                );
               }}
-              removeAriaLabel="Remove queued message"
+              removeAriaLabel={t(($) => {
+                return $.chat.queue.removeQueuedMessage;
+              })}
+              cancellationRecoveryPending={cancellationRecoveryPending}
             />
           );
         })}
@@ -867,9 +751,15 @@ function PendingItemsStrip({
               kind="workflow-event"
               text={event.text}
               onRemove={() => {
-                onRemoveWorkflowEvent?.(event.id);
+                detach(
+                  removeWorkflowEvent(event.id, pageSignal),
+                  Reason.DomCallback,
+                );
               }}
-              removeAriaLabel="Skip automation event"
+              removeAriaLabel={t(($) => {
+                return $.chat.queue.skipAutomationEvent;
+              })}
+              cancellationRecoveryPending={cancellationRecoveryPending}
             />
           );
         })}
@@ -880,11 +770,13 @@ function PendingItemsStrip({
           <ComposerStripRow
             kind="goal"
             text={activeGoal.objective}
-            onOpenDetail={onOpenGoal}
+            onOpenDetail={openActiveGoal}
             onRemove={() => {
-              onCancelGoal?.();
+              detach(cancelActiveGoal(pageSignal), Reason.DomCallback);
             }}
-            removeAriaLabel="Cancel goal"
+            removeAriaLabel={t(($) => {
+              return $.chat.queue.cancelGoal;
+            })}
           />
         ) : null}
       </div>
@@ -926,7 +818,10 @@ function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
 ): string | undefined {
   if (value?.type === "video") {
-    return selectedVideoTemplateItem(value)?.title;
+    return (
+      avatarTemplateSelection(value)?.title ??
+      selectedVideoTemplateItem(value)?.title
+    );
   }
   if (value?.type === "workflow") {
     return selectedWorkflowTemplateItem(value)?.title;
@@ -1050,7 +945,7 @@ function workflowTemplateMatchesSearch(
     item.title,
     item.id,
     item.description,
-    item.connectors.join(" "),
+    item.connectorSlugs.join(" "),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
@@ -1135,6 +1030,7 @@ function videoTemplatePosterImage(item: VideoTemplateItem): string {
 }
 
 function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
+  const { t } = useTranslation();
   const posterImage = videoTemplatePosterImage(item);
   return (
     <div
@@ -1179,7 +1075,14 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
       />
       <button
         type="button"
-        aria-label={`Play video template preview ${item.title}`}
+        aria-label={t(
+          ($) => {
+            return $.artifacts.templates.playVideo;
+          },
+          {
+            title: item.title,
+          },
+        )}
         className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/0 text-white opacity-100 transition-colors duration-200 hover:bg-black/25 focus-visible:bg-black/25 focus-visible:outline-none peer-data-[preview-playing=true]:pointer-events-none peer-data-[preview-playing=true]:!opacity-0"
         onClick={(event) => {
           event.preventDefault();
@@ -1207,6 +1110,28 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
 const TEMPLATE_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
 
+/**
+ * Gallery tile. Hover feedback comes from the scrim and the Use pill alone —
+ * the card already carries a hairline border, so a hover ring only doubled it.
+ * The ring is reserved for the selected state, offset so it is drawn outside
+ * the card and keeps a gap from the artwork.
+ */
+const TEMPLATE_TILE_WRAPPER = "group/tile relative cursor-pointer";
+const TEMPLATE_TILE_RING =
+  "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
+const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
+const TEMPLATE_TILE_MEDIA =
+  "relative overflow-hidden border border-gray-200 bg-muted";
+const TEMPLATE_TILE_SCRIM =
+  "pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-14 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100";
+const TEMPLATE_TILE_USE =
+  "absolute bottom-2 right-2 z-20 h-[30px] rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground opacity-100 transition-opacity duration-150 hover:bg-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover/tile:opacity-100";
+// Caption metrics track the illustration card: same text size, and enough
+// breathing room under the artwork that the title never crowds it.
+const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-2 pb-2 pt-2";
+const TEMPLATE_TILE_NAME =
+  "min-w-0 truncate text-sm font-medium leading-5 text-foreground";
+
 function VideoTemplateCard({
   item,
   selected,
@@ -1216,41 +1141,46 @@ function VideoTemplateCard({
   selected: boolean;
   onSelect: (item: VideoTemplateItem) => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <div
-      className={cn(
-        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-      )}
-    >
-      <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
+    <div className={TEMPLATE_TILE_WRAPPER}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "aspect-[16/9]",
+          selected && TEMPLATE_TILE_RING_SELECTED,
+        )}
+      >
         <VideoTemplatePreview item={item} />
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <IconCheck size={14} stroke={2.6} />
+          </span>
+        ) : null}
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectVideo;
+            },
+            {
+              title: item.title,
+            },
+          )}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={TEMPLATE_TILE_USE}
+        >
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
+        </button>
       </div>
-      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            aria-label={`Select video template ${item.title}`}
-            aria-pressed={selected}
-            onClick={() => {
-              onSelect(item);
-            }}
-            className={cn(
-              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              selected
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-background text-foreground hover:bg-muted",
-            )}
-          >
-            Use
-          </button>
-        </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
       </div>
     </div>
   );
@@ -1292,6 +1222,7 @@ function WebsiteTemplateCard({
   onSelect: (item: WebsiteTemplateItem) => void;
   onPreview: (item: WebsiteTemplateItem) => void;
 }) {
+  const { t } = useTranslation();
   const previewImageUrl = websiteTemplateCardImageUrl(item);
   const preview = () => {
     onPreview(item);
@@ -1301,7 +1232,14 @@ function WebsiteTemplateCard({
     <div
       role="button"
       tabIndex={0}
-      aria-label={`Preview website template ${item.title}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.templates.previewWebsite;
+        },
+        {
+          title: item.title,
+        },
+      )}
       onClick={preview}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -1310,15 +1248,35 @@ function WebsiteTemplateCard({
         }
       }}
       className={cn(
-        "group flex cursor-zoom-in flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
+        TEMPLATE_TILE_WRAPPER,
+        "cursor-zoom-in focus-visible:outline-none",
       )}
     >
-      <div className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted">
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "aspect-[16/9] group-focus-visible/tile:ring-1 group-focus-visible/tile:ring-ring",
+          selected && TEMPLATE_TILE_RING_SELECTED,
+        )}
+      >
         <img
-          alt={`${item.title} website template preview`}
-          title={`${item.title} website template preview`}
+          alt={t(
+            ($) => {
+              return $.artifacts.templates.websitePreview;
+            },
+            {
+              title: item.title,
+            },
+          )}
+          title={t(
+            ($) => {
+              return $.artifacts.templates.websitePreview;
+            },
+            {
+              title: item.title,
+            },
+          )}
           src={previewImageUrl}
           loading="eager"
           decoding="async"
@@ -1326,30 +1284,36 @@ function WebsiteTemplateCard({
           draggable={false}
           className="pointer-events-none h-full w-full bg-background object-cover"
         />
-      </div>
-      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
-          </p>
-        </div>
+        <div className={TEMPLATE_TILE_SCRIM} />
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <IconCheck size={14} stroke={2.6} />
+          </span>
+        ) : null}
         <button
           type="button"
-          aria-label={`Select website template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectWebsite;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={(event) => {
             event.stopPropagation();
             onSelect(item);
           }}
-          className={cn(
-            "h-8 shrink-0 cursor-pointer rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            selected
-              ? "border-primary/40 bg-primary/10 text-primary"
-              : "border-border bg-background text-foreground hover:bg-muted",
-          )}
+          className={cn(TEMPLATE_TILE_USE, "cursor-pointer")}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
       </div>
     </div>
   );
@@ -1384,20 +1348,20 @@ function WebsiteTemplateGrid({
 }
 
 function WorkflowTemplateConnectorIcons({
-  connectors,
+  connectorSlugs,
   compact = false,
   limit = compact ? 3 : 5,
   withDivider = false,
 }: {
-  connectors: readonly string[];
+  connectorSlugs: readonly ConnectorSlug[];
   compact?: boolean;
   limit?: number;
   withDivider?: boolean;
 }) {
   const catalogConnectors = useLastResolved(allConnectorCatalogItems$);
-  const visibleConnectors = connectors.flatMap((connectorRef) => {
+  const visibleConnectors = connectorSlugs.flatMap((connectorSlug) => {
     const connector = catalogConnectors?.find((candidate) => {
-      return candidate.connectorRef === connectorRef;
+      return candidate.slug === connectorSlug;
     });
     return connector ? [connector] : [];
   });
@@ -1421,7 +1385,7 @@ function WorkflowTemplateConnectorIcons({
         {displayedConnectors.map((connector) => {
           return (
             <span
-              key={connector.connectorRef}
+              key={connector.slug}
               className={cn(
                 "flex shrink-0 items-center justify-center border border-border/60 bg-background",
                 compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
@@ -1455,12 +1419,14 @@ function WorkflowTemplateCard({
   selected: boolean;
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
-        "group flex flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
+        "group/tile flex flex-col border border-gray-200 bg-card p-4",
         TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
+        TEMPLATE_TILE_RING,
+        selected && TEMPLATE_TILE_RING_SELECTED,
       )}
     >
       <p className="text-sm font-semibold text-foreground">{item.title}</p>
@@ -1469,12 +1435,19 @@ function WorkflowTemplateCard({
       </p>
       <div className="mt-auto flex items-center gap-2 pt-3.5">
         <WorkflowTemplateConnectorIcons
-          connectors={item.connectors}
+          connectorSlugs={item.connectorSlugs}
           limit={4}
         />
         <button
           type="button"
-          aria-label={`Select workflow template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectWorkflow;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={() => {
             onSelect(item);
@@ -1486,7 +1459,9 @@ function WorkflowTemplateCard({
               : "border-border bg-background text-foreground hover:bg-muted",
           )}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
       </div>
     </div>
@@ -1534,8 +1509,9 @@ function WorkflowTemplatePillRow({
   active: string;
   onSelect: (category: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
+    <div className="flex flex-wrap items-center gap-1.5 px-6">
       {["all", ...pills].map((pill) => {
         const isActive = active === pill;
         return (
@@ -1553,7 +1529,11 @@ function WorkflowTemplatePillRow({
               onSelect(pill);
             }}
           >
-            {pill === "all" ? "All" : pill}
+            {pill === "all"
+              ? t(($) => {
+                  return $.artifacts.templates.all;
+                })
+              : pill}
           </button>
         );
       })}
@@ -1590,13 +1570,8 @@ function WorkflowTemplateGrid({
   );
 }
 
-function TemplateEmptyPanel({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function TemplateEmptyPanel() {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
       <div className="flex max-w-xl flex-col items-center">
@@ -1604,8 +1579,16 @@ function TemplateEmptyPanel({
           className="mb-4 h-8 w-8 text-muted-foreground/70"
           stroke={1.7}
         />
-        <p className="text-sm font-semibold text-muted-foreground">{title}</p>
-        <p className="mt-2 text-sm text-muted-foreground/80">{description}</p>
+        <p className="text-sm font-semibold text-muted-foreground">
+          {t(($) => {
+            return $.artifacts.templates.noMatches;
+          })}
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground/80">
+          {t(($) => {
+            return $.artifacts.templates.tryDifferentSearch;
+          })}
+        </p>
       </div>
     </div>
   );
@@ -1895,9 +1878,7 @@ function prewarmIllustrationPreviewImagesNearScroll({
 
 interface PresentationTemplateThemeOption {
   readonly id: string;
-  readonly name: string;
   readonly group: "multi-accent" | "single-accent";
-  readonly paletteName: string;
   readonly colors: readonly [
     bg: string,
     surface: string,
@@ -1911,332 +1892,400 @@ interface PresentationTemplateThemeOption {
   ];
 }
 
-const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOption[] =
-  [
-    {
-      id: "prism",
-      name: "Prism",
-      group: "multi-accent",
-      paletteName: "Prism",
-      colors: [
-        "#FFFFFF",
-        "#F7F7FA",
-        "#1A1726",
-        "#5C5870",
-        "#7257E6",
-        "#FF6B4A",
-        "#AEE63E",
-        "#3FA9F5",
-        "#ECECF2",
-      ],
-    },
-    {
-      id: "carnival",
-      name: "Carnival",
-      group: "multi-accent",
-      paletteName: "Carnival",
-      colors: [
-        "#FFFDF7",
-        "#FFFFFF",
-        "#221C14",
-        "#5E564A",
-        "#FF7A1A",
-        "#E5388E",
-        "#F5B73E",
-        "#1FB6A6",
-        "#EFEADF",
-      ],
-    },
-    {
-      id: "pop-art",
-      name: "Pop Art",
-      group: "multi-accent",
-      paletteName: "Pop Art",
-      colors: [
-        "#111016",
-        "#1B1A22",
-        "#F4F2FA",
-        "#A09CB0",
-        "#3D7BFF",
-        "#FF3D9A",
-        "#C6FF4A",
-        "#FF7A1A",
-        "#26242E",
-      ],
-    },
-    {
-      id: "warm-sand",
-      name: "Warm Sand",
-      group: "single-accent",
-      paletteName: "Warm Sand",
-      colors: [
-        "#FFFDF8",
-        "#FFFFFF",
-        "#262626",
-        "#5A5A5A",
-        "#F19B3A",
-        "#8DACE5",
-        "#DDB8D9",
-        "#516049",
-        "#ECECEC",
-      ],
-    },
-    {
-      id: "bauhaus-primary",
-      name: "Bauhaus Primary",
-      group: "single-accent",
-      paletteName: "Bauhaus Primary",
-      colors: [
-        "#F5F1E6",
-        "#FFFFFF",
-        "#1A1A1A",
-        "#4A4A4A",
-        "#E63327",
-        "#2C5BD6",
-        "#F2B705",
-        "#1A1A1A",
-        "#E2DDD0",
-      ],
-    },
-    {
-      id: "nordic-frost",
-      name: "Nordic Frost",
-      group: "single-accent",
-      paletteName: "Nordic Frost",
-      colors: [
-        "#FBFCFD",
-        "#FFFFFF",
-        "#1F2933",
-        "#5B6B7B",
-        "#3E8EDE",
-        "#7BC6C9",
-        "#B8C4D0",
-        "#1F2933",
-        "#E8EDF1",
-      ],
-    },
-    {
-      id: "forest-editorial",
-      name: "Forest Editorial",
-      group: "single-accent",
-      paletteName: "Forest Editorial",
-      colors: [
-        "#F7F6F1",
-        "#FFFFFF",
-        "#1E2B22",
-        "#4F5C52",
-        "#5B7553",
-        "#C97B4A",
-        "#E4DFD0",
-        "#1E2B22",
-        "#E6E8E1",
-      ],
-    },
-    {
-      id: "coral-studio",
-      name: "Coral Studio",
-      group: "single-accent",
-      paletteName: "Coral Studio",
-      colors: [
-        "#FFF9F6",
-        "#FFFFFF",
-        "#3A2A26",
-        "#6E5B55",
-        "#FF6F5E",
-        "#FFB199",
-        "#2BB3A3",
-        "#3A2A26",
-        "#F0E7E2",
-      ],
-    },
-    {
-      id: "slate-corporate",
-      name: "Slate Corporate",
-      group: "single-accent",
-      paletteName: "Slate Corporate",
-      colors: [
-        "#FFFFFF",
-        "#F6F8FB",
-        "#16243B",
-        "#5A6678",
-        "#2F5BD0",
-        "#6E8BB8",
-        "#F0A03A",
-        "#16243B",
-        "#E9EDF3",
-      ],
-    },
-    {
-      id: "terracotta-clay",
-      name: "Terracotta Clay",
-      group: "single-accent",
-      paletteName: "Terracotta Clay",
-      colors: [
-        "#FBF4EC",
-        "#FFFFFF",
-        "#3B2A20",
-        "#6B5546",
-        "#C36A3F",
-        "#D9A441",
-        "#7A7A52",
-        "#EAD9C6",
-        "#ECE0D2",
-      ],
-    },
-    {
-      id: "berry-pop",
-      name: "Berry Pop",
-      group: "single-accent",
-      paletteName: "Berry Pop",
-      colors: [
-        "#FFFAFC",
-        "#FFFFFF",
-        "#2E1A2C",
-        "#6A5566",
-        "#D63A8E",
-        "#8E5BD0",
-        "#F4B8D4",
-        "#2E1A2C",
-        "#F0E6EC",
-      ],
-    },
-    {
-      id: "citrus-fresh",
-      name: "Citrus Fresh",
-      group: "single-accent",
-      paletteName: "Citrus Fresh",
-      colors: [
-        "#FFFFFB",
-        "#FFFFFF",
-        "#232318",
-        "#5C5C4E",
-        "#FF8A1E",
-        "#FFD23E",
-        "#8FB339",
-        "#4FA3A3",
-        "#EDEDE3",
-      ],
-    },
-    {
-      id: "mauve-dusk",
-      name: "Mauve Dusk",
-      group: "single-accent",
-      paletteName: "Mauve Dusk",
-      colors: [
-        "#FAF7FB",
-        "#FFFFFF",
-        "#2B2533",
-        "#635B70",
-        "#9C7BB8",
-        "#8AA0C9",
-        "#E0B6C9",
-        "#2B2533",
-        "#ECE7F0",
-      ],
-    },
-    {
-      id: "mono-ink",
-      name: "Mono Ink",
-      group: "single-accent",
-      paletteName: "Mono Ink",
-      colors: [
-        "#FFFFFF",
-        "#FAFAFA",
-        "#0A0A0A",
-        "#6B6B6B",
-        "#E5392E",
-        "#0A0A0A",
-        "#BFBFBF",
-        "#0A0A0A",
-        "#EEEEEE",
-      ],
-    },
-    {
-      id: "sunset-maroon",
-      name: "Sunset Maroon",
-      group: "single-accent",
-      paletteName: "Sunset Maroon",
-      colors: [
-        "#FFF7F2",
-        "#FFFFFF",
-        "#3A1F22",
-        "#6E4A4C",
-        "#F26B3A",
-        "#E0457B",
-        "#F2A93B",
-        "#3A1F22",
-        "#F0E2DA",
-      ],
-    },
-    {
-      id: "mint-tech",
-      name: "Mint Tech",
-      group: "single-accent",
-      paletteName: "Mint Tech",
-      colors: [
-        "#FBFFFD",
-        "#FFFFFF",
-        "#1B2A26",
-        "#56655F",
-        "#16B981",
-        "#4FA3E0",
-        "#9AE6C8",
-        "#3A4A45",
-        "#E6F0EB",
-      ],
-    },
-    {
-      id: "midnight-mono",
-      name: "Midnight Mono",
-      group: "single-accent",
-      paletteName: "Midnight Mono",
-      colors: [
-        "#121316",
-        "#1C1E22",
-        "#F2F2F0",
-        "#A0A3A8",
-        "#C6FF4A",
-        "#6B7280",
-        "#3A3D44",
-        "#C6FF4A",
-        "#2A2C31",
-      ],
-    },
-    {
-      id: "ocean-deep",
-      name: "Ocean Deep",
-      group: "single-accent",
-      paletteName: "Ocean Deep",
-      colors: [
-        "#0E2A33",
-        "#143840",
-        "#EAF6F4",
-        "#9DB8B8",
-        "#38C7B4",
-        "#5A93A8",
-        "#1F4A52",
-        "#38C7B4",
-        "#1B454E",
-      ],
-    },
-    {
-      id: "gold-luxe",
-      name: "Gold Luxe",
-      group: "single-accent",
-      paletteName: "Gold Luxe",
-      colors: [
-        "#16140F",
-        "#211E16",
-        "#F3EEE2",
-        "#ADA48E",
-        "#C9A24B",
-        "#8A6E3A",
-        "#3A352A",
-        "#C9A24B",
-        "#2A271E",
-      ],
-    },
-  ];
+const PRESENTATION_TEMPLATE_THEME_OPTIONS = [
+  {
+    id: "prism",
+    group: "multi-accent",
+    colors: [
+      "#FFFFFF",
+      "#F7F7FA",
+      "#1A1726",
+      "#5C5870",
+      "#7257E6",
+      "#FF6B4A",
+      "#AEE63E",
+      "#3FA9F5",
+      "#ECECF2",
+    ],
+  },
+  {
+    id: "carnival",
+    group: "multi-accent",
+    colors: [
+      "#FFFDF7",
+      "#FFFFFF",
+      "#221C14",
+      "#5E564A",
+      "#FF7A1A",
+      "#E5388E",
+      "#F5B73E",
+      "#1FB6A6",
+      "#EFEADF",
+    ],
+  },
+  {
+    id: "pop-art",
+    group: "multi-accent",
+    colors: [
+      "#111016",
+      "#1B1A22",
+      "#F4F2FA",
+      "#A09CB0",
+      "#3D7BFF",
+      "#FF3D9A",
+      "#C6FF4A",
+      "#FF7A1A",
+      "#26242E",
+    ],
+  },
+  {
+    id: "warm-sand",
+    group: "single-accent",
+    colors: [
+      "#FFFDF8",
+      "#FFFFFF",
+      "#262626",
+      "#5A5A5A",
+      "#F19B3A",
+      "#8DACE5",
+      "#DDB8D9",
+      "#516049",
+      "#ECECEC",
+    ],
+  },
+  {
+    id: "bauhaus-primary",
+    group: "single-accent",
+    colors: [
+      "#F5F1E6",
+      "#FFFFFF",
+      "#1A1A1A",
+      "#4A4A4A",
+      "#E63327",
+      "#2C5BD6",
+      "#F2B705",
+      "#1A1A1A",
+      "#E2DDD0",
+    ],
+  },
+  {
+    id: "nordic-frost",
+    group: "single-accent",
+    colors: [
+      "#FBFCFD",
+      "#FFFFFF",
+      "#1F2933",
+      "#5B6B7B",
+      "#3E8EDE",
+      "#7BC6C9",
+      "#B8C4D0",
+      "#1F2933",
+      "#E8EDF1",
+    ],
+  },
+  {
+    id: "forest-editorial",
+    group: "single-accent",
+    colors: [
+      "#F7F6F1",
+      "#FFFFFF",
+      "#1E2B22",
+      "#4F5C52",
+      "#5B7553",
+      "#C97B4A",
+      "#E4DFD0",
+      "#1E2B22",
+      "#E6E8E1",
+    ],
+  },
+  {
+    id: "coral-studio",
+    group: "single-accent",
+    colors: [
+      "#FFF9F6",
+      "#FFFFFF",
+      "#3A2A26",
+      "#6E5B55",
+      "#FF6F5E",
+      "#FFB199",
+      "#2BB3A3",
+      "#3A2A26",
+      "#F0E7E2",
+    ],
+  },
+  {
+    id: "slate-corporate",
+    group: "single-accent",
+    colors: [
+      "#FFFFFF",
+      "#F6F8FB",
+      "#16243B",
+      "#5A6678",
+      "#2F5BD0",
+      "#6E8BB8",
+      "#F0A03A",
+      "#16243B",
+      "#E9EDF3",
+    ],
+  },
+  {
+    id: "terracotta-clay",
+    group: "single-accent",
+    colors: [
+      "#FBF4EC",
+      "#FFFFFF",
+      "#3B2A20",
+      "#6B5546",
+      "#C36A3F",
+      "#D9A441",
+      "#7A7A52",
+      "#EAD9C6",
+      "#ECE0D2",
+    ],
+  },
+  {
+    id: "berry-pop",
+    group: "single-accent",
+    colors: [
+      "#FFFAFC",
+      "#FFFFFF",
+      "#2E1A2C",
+      "#6A5566",
+      "#D63A8E",
+      "#8E5BD0",
+      "#F4B8D4",
+      "#2E1A2C",
+      "#F0E6EC",
+    ],
+  },
+  {
+    id: "citrus-fresh",
+    group: "single-accent",
+    colors: [
+      "#FFFFFB",
+      "#FFFFFF",
+      "#232318",
+      "#5C5C4E",
+      "#FF8A1E",
+      "#FFD23E",
+      "#8FB339",
+      "#4FA3A3",
+      "#EDEDE3",
+    ],
+  },
+  {
+    id: "mauve-dusk",
+    group: "single-accent",
+    colors: [
+      "#FAF7FB",
+      "#FFFFFF",
+      "#2B2533",
+      "#635B70",
+      "#9C7BB8",
+      "#8AA0C9",
+      "#E0B6C9",
+      "#2B2533",
+      "#ECE7F0",
+    ],
+  },
+  {
+    id: "mono-ink",
+    group: "single-accent",
+    colors: [
+      "#FFFFFF",
+      "#FAFAFA",
+      "#0A0A0A",
+      "#6B6B6B",
+      "#E5392E",
+      "#0A0A0A",
+      "#BFBFBF",
+      "#0A0A0A",
+      "#EEEEEE",
+    ],
+  },
+  {
+    id: "sunset-maroon",
+    group: "single-accent",
+    colors: [
+      "#FFF7F2",
+      "#FFFFFF",
+      "#3A1F22",
+      "#6E4A4C",
+      "#F26B3A",
+      "#E0457B",
+      "#F2A93B",
+      "#3A1F22",
+      "#F0E2DA",
+    ],
+  },
+  {
+    id: "mint-tech",
+    group: "single-accent",
+    colors: [
+      "#FBFFFD",
+      "#FFFFFF",
+      "#1B2A26",
+      "#56655F",
+      "#16B981",
+      "#4FA3E0",
+      "#9AE6C8",
+      "#3A4A45",
+      "#E6F0EB",
+    ],
+  },
+  {
+    id: "midnight-mono",
+    group: "single-accent",
+    colors: [
+      "#121316",
+      "#1C1E22",
+      "#F2F2F0",
+      "#A0A3A8",
+      "#C6FF4A",
+      "#6B7280",
+      "#3A3D44",
+      "#C6FF4A",
+      "#2A2C31",
+    ],
+  },
+  {
+    id: "ocean-deep",
+    group: "single-accent",
+    colors: [
+      "#0E2A33",
+      "#143840",
+      "#EAF6F4",
+      "#9DB8B8",
+      "#38C7B4",
+      "#5A93A8",
+      "#1F4A52",
+      "#38C7B4",
+      "#1B454E",
+    ],
+  },
+  {
+    id: "gold-luxe",
+    group: "single-accent",
+    colors: [
+      "#16140F",
+      "#211E16",
+      "#F3EEE2",
+      "#ADA48E",
+      "#C9A24B",
+      "#8A6E3A",
+      "#3A352A",
+      "#C9A24B",
+      "#2A271E",
+    ],
+  },
+] as const satisfies readonly PresentationTemplateThemeOption[];
+
+type PresentationTemplateTheme =
+  (typeof PRESENTATION_TEMPLATE_THEME_OPTIONS)[number];
+
+const PRESENTATION_TEMPLATE_THEME_NAMES = {
+  "bauhaus-primary": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.bauhausPrimary;
+    });
+  },
+  "berry-pop": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.berryPop;
+    });
+  },
+  carnival: () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.carnival;
+    });
+  },
+  "citrus-fresh": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.citrusFresh;
+    });
+  },
+  "coral-studio": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.coralStudio;
+    });
+  },
+  "forest-editorial": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.forestEditorial;
+    });
+  },
+  "gold-luxe": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.goldLuxe;
+    });
+  },
+  "mauve-dusk": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.mauveDusk;
+    });
+  },
+  "midnight-mono": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.midnightMono;
+    });
+  },
+  "mint-tech": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.mintTech;
+    });
+  },
+  "mono-ink": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.monoInk;
+    });
+  },
+  "nordic-frost": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.nordicFrost;
+    });
+  },
+  "ocean-deep": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.oceanDeep;
+    });
+  },
+  "pop-art": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.popArt;
+    });
+  },
+  prism: () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.prism;
+    });
+  },
+  "slate-corporate": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.slateCorporate;
+    });
+  },
+  "sunset-maroon": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.sunsetMaroon;
+    });
+  },
+  "terracotta-clay": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.terracottaClay;
+    });
+  },
+  "warm-sand": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.warmSand;
+    });
+  },
+} satisfies Record<PresentationTemplateTheme["id"], () => string>;
+
+function presentationTemplateThemeName(
+  theme: PresentationTemplateTheme,
+): string {
+  return PRESENTATION_TEMPLATE_THEME_NAMES[theme.id]();
+}
 
 function defaultPresentationTemplateThemeId(
   item: PresentationTemplateItem,
@@ -2250,7 +2299,7 @@ function presentationTemplateColorSystemId(themeId: string): string {
 
 function findPresentationTemplateTheme(
   themeId: string,
-): PresentationTemplateThemeOption {
+): PresentationTemplateTheme {
   return (
     PRESENTATION_TEMPLATE_THEME_OPTIONS.find((theme) => {
       return theme.id === themeId;
@@ -2885,6 +2934,7 @@ function TemplatePreviewFrames({
   readonly primaryFrameUrl: string | null;
   readonly title: string;
 }) {
+  const { t } = useTranslation();
   const frameUrls: readonly string[] =
     primaryFrameUrl === null
       ? []
@@ -2910,8 +2960,18 @@ function TemplatePreviewFrames({
             key={frameUrl}
             title={
               frameUrl === overlayFrameUrl
-                ? `${title} active HTML preview`
-                : `${title} HTML preview`
+                ? t(
+                    ($) => {
+                      return $.artifacts.templates.activeHtmlPreview;
+                    },
+                    { title },
+                  )
+                : t(
+                    ($) => {
+                      return $.artifacts.templates.htmlPreview;
+                    },
+                    { title },
+                  )
             }
             data-testid={
               frameUrl === overlayFrameUrl || overlayFrameUrl === null
@@ -2946,21 +3006,28 @@ function TemplatePreview({
   item,
   onPreview,
   runtime,
+  signals,
   theme,
 }: {
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
   priority?: boolean;
   runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
   theme?: PresentationTemplateThemeOption;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const hover = useGet(templateCardHover$);
-  const setHover = useSet(setTemplateCardHover$);
-  const htmlPreview = useGet(templateCardHtmlPreview$);
-  const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
-  const loadedHtmlFrameUrls = useGet(templateCardLoadedHtmlFrameUrls$);
-  const setLoadedHtmlFrameUrl = useSet(setTemplateCardLoadedHtmlFrameUrl$);
+  const hover = useGet(signals.template.templateCardHover$);
+  const setHover = useSet(signals.template.setTemplateCardHover$);
+  const htmlPreview = useGet(signals.template.templateCardHtmlPreview$);
+  const setHtmlPreview = useSet(signals.template.setTemplateCardHtmlPreview$);
+  const loadedHtmlFrameUrls = useGet(
+    signals.template.templateCardLoadedHtmlFrameUrls$,
+  );
+  const setLoadedHtmlFrameUrl = useSet(
+    signals.template.setTemplateCardLoadedHtmlFrameUrl$,
+  );
   const slideCount = presentationTemplateSlideCount(item);
   const hoverSlideIndex = Math.max(
     0,
@@ -3052,7 +3119,7 @@ function TemplatePreview({
 
     let pendingLoad = cache.pendingLoads.get(item.embedUrl);
     if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({
+      pendingLoad = signals.template.loadPresentationTemplateHtmlPreview({
         item,
         signal: pageSignal,
       });
@@ -3197,7 +3264,14 @@ function TemplatePreview({
       />
       <button
         type="button"
-        aria-label={`Preview ${item.title} at current slide`}
+        aria-label={t(
+          ($) => {
+            return $.artifacts.templates.previewCurrentSlide;
+          },
+          {
+            title: item.title,
+          },
+        )}
         className="absolute inset-0 z-10 cursor-zoom-in bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onClick={openPreview}
       />
@@ -3272,6 +3346,7 @@ function TemplateDetailPreviewFrame({
   readonly slideIndex: number;
   readonly title: string;
 }) {
+  const { t } = useTranslation();
   const frames: readonly {
     readonly active: boolean;
     readonly slideIndex: number;
@@ -3297,8 +3372,18 @@ function TemplateDetailPreviewFrame({
         key={candidateFrame.url}
         title={
           candidateFrame.active
-            ? `${title} HTML preview`
-            : `${title} previous HTML preview`
+            ? t(
+                ($) => {
+                  return $.artifacts.templates.htmlPreview;
+                },
+                { title },
+              )
+            : t(
+                ($) => {
+                  return $.artifacts.templates.previousHtmlPreview;
+                },
+                { title },
+              )
         }
         data-template-detail-frame={
           candidateFrame.active ? "active" : "previous"
@@ -3348,17 +3433,22 @@ function TemplatePreviewPage({
   onBack,
   onSelect,
   runtime,
+  signals,
 }: {
   item: PresentationTemplateItem;
   onBack: () => void;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
 }) {
-  const detailPreview = useGet(templateDetailHtmlPreview$);
-  const setCardThemeId = useSet(setTemplateCardThemeId$);
-  const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
+  const { t } = useTranslation();
+  const detailPreview = useGet(signals.template.templateDetailHtmlPreview$);
+  const setCardThemeId = useSet(signals.template.setTemplateCardThemeId$);
+  const selectDetailPreview = useSet(
+    signals.template.selectPresentationTemplateDetailPreview$,
+  );
   const settleDetailPreviewFrame = useSet(
-    settlePresentationTemplateDetailPreviewFrame$,
+    signals.template.settlePresentationTemplateDetailPreviewFrame$,
   );
   const visibleDetailPreview = templateDetailPreviewMatchesItem(
     detailPreview,
@@ -3435,7 +3525,7 @@ function TemplatePreviewPage({
     <>
       <DialogHeader
         data-presentation-template-detail-header=""
-        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left sm:pr-16"
+        className="flex h-[68px] shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none"
       >
         <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
@@ -3443,7 +3533,9 @@ function TemplatePreviewPage({
             className="inline-flex shrink-0 items-center p-0 leading-none text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onBack}
           >
-            Template
+            {t(($) => {
+              return $.artifacts.templates.template;
+            })}
           </button>
           <span className="shrink-0 text-muted-foreground">/</span>
           <span className="block min-w-0 truncate leading-none">
@@ -3451,11 +3543,18 @@ function TemplatePreviewPage({
           </span>
         </DialogTitle>
       </DialogHeader>
-      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
-            aria-label={`${item.title} slide preview`}
+            aria-label={t(
+              ($) => {
+                return $.artifacts.templates.slidePreview;
+              },
+              {
+                title: item.title,
+              },
+            )}
             tabIndex={0}
             onKeyDown={handleDetailSlideKeyDown}
             className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -3484,7 +3583,9 @@ function TemplatePreviewPage({
             />
             <button
               type="button"
-              aria-label="Preview previous slide"
+              aria-label={t(($) => {
+                return $.artifacts.templates.previousSlide;
+              })}
               disabled={activeSlideIndex === 0}
               tabIndex={-1}
               onClick={() => {
@@ -3494,7 +3595,9 @@ function TemplatePreviewPage({
             />
             <button
               type="button"
-              aria-label="Preview next slide"
+              aria-label={t(($) => {
+                return $.artifacts.templates.nextSlide;
+              })}
               disabled={activeSlideIndex >= detailSlideCount - 1}
               tabIndex={-1}
               onClick={() => {
@@ -3536,7 +3639,14 @@ function TemplatePreviewPage({
                 <button
                   key={slideNumber}
                   type="button"
-                  aria-label={`Preview slide ${slideNumber}`}
+                  aria-label={t(
+                    ($) => {
+                      return $.artifacts.templates.previewSlide;
+                    },
+                    {
+                      slideNumber,
+                    },
+                  )}
                   aria-pressed={active}
                   onClick={() => {
                     selectDetailSlide(slideIndex);
@@ -3554,7 +3664,15 @@ function TemplatePreviewPage({
                     runtime={runtime}
                     slideId={thumbnailSlide?.id ?? null}
                     themeVariables={thumbnailThemeVariables}
-                    title={`${item.title} slide ${slideNumber} preview`}
+                    title={t(
+                      ($) => {
+                        return $.artifacts.templates.slideThumbnail;
+                      },
+                      {
+                        title: item.title,
+                        slideNumber,
+                      },
+                    )}
                   />
                   <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
                     {slideNumber}
@@ -3572,12 +3690,18 @@ function TemplatePreviewPage({
             <div className="my-5 border-t border-border" />
             <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <IconPalette size={14} stroke={1.9} />
-              <span>Theme</span>
+              <span>
+                {t(($) => {
+                  return $.artifacts.templates.theme;
+                })}
+              </span>
             </p>
             <div className="mt-3 space-y-4">
               <div className="space-y-2">
                 <p className="px-1 text-xs font-medium text-muted-foreground">
-                  Multi-accent
+                  {t(($) => {
+                    return $.artifacts.templates.multiAccent;
+                  })}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {multiAccentThemes.map((theme) => {
@@ -3586,7 +3710,12 @@ function TemplatePreviewPage({
                       <button
                         key={theme.id}
                         type="button"
-                        aria-label={`Select style ${theme.name}`}
+                        aria-label={t(
+                          ($) => {
+                            return $.artifacts.templates.selectStyle;
+                          },
+                          { style: presentationTemplateThemeName(theme) },
+                        )}
                         aria-pressed={active}
                         onClick={() => {
                           selectDetailTheme(theme);
@@ -3618,7 +3747,9 @@ function TemplatePreviewPage({
               </div>
               <div className="space-y-2">
                 <p className="px-1 text-xs font-medium text-muted-foreground">
-                  Single-accent
+                  {t(($) => {
+                    return $.artifacts.templates.singleAccent;
+                  })}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {singleAccentThemes.map((theme) => {
@@ -3631,7 +3762,12 @@ function TemplatePreviewPage({
                       <button
                         key={theme.id}
                         type="button"
-                        aria-label={`Select style ${theme.name}`}
+                        aria-label={t(
+                          ($) => {
+                            return $.artifacts.templates.selectStyle;
+                          },
+                          { style: presentationTemplateThemeName(theme) },
+                        )}
                         aria-pressed={active}
                         onClick={() => {
                           selectDetailTheme(theme);
@@ -3662,7 +3798,14 @@ function TemplatePreviewPage({
             </div>
             <button
               type="button"
-              aria-label={`Select template ${item.title}`}
+              aria-label={t(
+                ($) => {
+                  return $.artifacts.templates.selectTemplate;
+                },
+                {
+                  title: item.title,
+                },
+              )}
               className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => {
                 setCardThemeId(item.slug, selectedTheme.id);
@@ -3672,7 +3815,9 @@ function TemplatePreviewPage({
                 );
               }}
             >
-              Use this template
+              {t(($) => {
+                return $.artifacts.templates.useThisTemplate;
+              })}
             </button>
           </div>
         </div>
@@ -3687,6 +3832,7 @@ function PptCard({
   onSelect,
   onPreview,
   runtime,
+  signals,
 }: {
   item: PresentationTemplateItem;
   selected: boolean;
@@ -3694,55 +3840,82 @@ function PptCard({
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
   priority?: boolean;
   runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
 }) {
-  const themeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const { t } = useTranslation();
+  const themeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const selectedTheme = findPresentationTemplateTheme(
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
   );
 
   return (
-    <div
-      className={cn(
-        "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-      )}
-    >
-      <TemplatePreview
-        item={item}
-        onPreview={onPreview}
-        runtime={runtime}
-        theme={selectedTheme}
-      />
-      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
-        <div className="min-w-0 flex-1">
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <p className="min-w-0 cursor-default truncate text-sm font-semibold leading-5 text-foreground">
-                  {item.title}
-                </p>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{item.title}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+    <div className={TEMPLATE_TILE_WRAPPER}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          selected && TEMPLATE_TILE_RING_SELECTED,
+        )}
+      >
+        <TemplatePreview
+          item={item}
+          onPreview={onPreview}
+          runtime={runtime}
+          signals={signals}
+          theme={selectedTheme}
+        />
+        <div className={TEMPLATE_TILE_SCRIM} />
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <IconCheck size={14} stroke={2.6} />
+          </span>
+        ) : null}
         <button
           type="button"
-          aria-label={`Select template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectTemplate;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={() => {
             onSelect(item, presentationTemplateColorSystemId(selectedTheme.id));
           }}
-          className={cn(
-            "h-8 shrink-0 rounded-md border border-border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            selected
-              ? "bg-primary/10 text-primary"
-              : "bg-background text-foreground hover:bg-muted",
-          )}
+          className={TEMPLATE_TILE_USE}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p className={cn(TEMPLATE_TILE_NAME, "cursor-default")}>
+                {item.title}
+              </p>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{item.title}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {presentationTemplateThemeAccentSwatches(item, selectedTheme).map(
+            (swatch) => {
+              return (
+                <span
+                  key={swatch.id}
+                  aria-hidden
+                  className="h-3 w-3 rounded-full ring-1 ring-inset ring-black/10"
+                  style={{ backgroundColor: swatch.color }}
+                />
+              );
+            },
+          )}
+        </span>
       </div>
     </div>
   );
@@ -3765,6 +3938,7 @@ function IllustrationTemplateHero({
   onVariantChange: (slug: string, index: number) => void;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const heroImage = illustrationHeroImageUrl(source);
   const navigable = images.length > 1;
   const variantAt = (direction: -1 | 1): number => {
@@ -3783,15 +3957,41 @@ function IllustrationTemplateHero({
       <img
         key={source}
         src={heroImage}
-        alt={`${item.title} illustration preview`}
+        alt={t(
+          ($) => {
+            return $.artifacts.templates.illustrationPreview;
+          },
+          {
+            title: item.title,
+          },
+        )}
         className={cn(
           "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
-          navigable && "cursor-pointer",
+          // Same affordance the detail preview uses for slide paging: the
+          // cursor points at the half that will be navigated to.
+          navigable &&
+            "data-[half=left]:cursor-w-resize data-[half=right]:cursor-e-resize",
         )}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
         fetchPriority={priority ? "high" : "low"}
         onMouseEnter={navigable ? preloadNeighbors : undefined}
+        onMouseMove={
+          navigable
+            ? (event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                event.currentTarget.dataset.half =
+                  event.clientX - rect.left < rect.width / 2 ? "left" : "right";
+              }
+            : undefined
+        }
+        onMouseLeave={
+          navigable
+            ? (event) => {
+                delete event.currentTarget.dataset.half;
+              }
+            : undefined
+        }
         onClick={
           navigable
             ? (event) => {
@@ -4169,6 +4369,7 @@ function IllustrationTemplateCard({
   onVariantChange: (slug: string, index: number) => void;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const images = item.previewImages;
   const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1));
   const heroSource = images[safeIndex] ?? item.previewImage;
@@ -4178,11 +4379,10 @@ function IllustrationTemplateCard({
     <div
       data-illustration-template-card=""
       className={cn(
-        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card transition-colors",
+        "group/tile mb-4 break-inside-avoid overflow-hidden border border-gray-200 bg-card",
         TEMPLATE_CARD_SHADOW,
-        selected
-          ? "border-primary ring-1 ring-primary"
-          : "border-border hover:border-muted-foreground/30",
+        TEMPLATE_TILE_RING,
+        selected && TEMPLATE_TILE_RING_SELECTED,
       )}
     >
       <IllustrationTemplateHero
@@ -4209,7 +4409,14 @@ function IllustrationTemplateCard({
               <button
                 key={image}
                 type="button"
-                aria-label={`Show variant ${index + 1}`}
+                aria-label={t(
+                  ($) => {
+                    return $.artifacts.templates.showVariant;
+                  },
+                  {
+                    variantNumber: index + 1,
+                  },
+                )}
                 aria-pressed={active}
                 className={cn(
                   "relative h-12 w-12 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -4269,7 +4476,14 @@ function IllustrationTemplateCard({
         </p>
         <button
           type="button"
-          aria-label={`Select template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectTemplate;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={() => {
             onSelect(item);
@@ -4281,7 +4495,9 @@ function IllustrationTemplateCard({
               : "border-border bg-background text-foreground hover:bg-muted",
           )}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
       </div>
     </div>
@@ -4293,12 +4509,14 @@ function resolveTemplatePickerCategory({
   hasPptTab,
   hasIllustrationTab,
   hasVideoTab,
+  hasAvatarTab,
   hasWorkflowTab,
 }: {
   category: string;
   hasPptTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
 }): string {
   const categories: string[] = [];
@@ -4312,6 +4530,9 @@ function resolveTemplatePickerCategory({
   if (hasVideoTab) {
     categories.push("video");
   }
+  if (hasAvatarTab) {
+    categories.push("avatar");
+  }
   if (hasWorkflowTab) {
     categories.push("workflow");
   }
@@ -4319,41 +4540,12 @@ function resolveTemplatePickerCategory({
   return categories.includes(category) ? category : defaultCategory;
 }
 
-const TEMPLATE_PICKER_CATEGORY_META: Readonly<
-  Record<string, { title: string }>
-> = {
-  slides: {
-    title: "Presentation",
-  },
-  website: {
-    title: "Website",
-  },
-  illustration: {
-    title: "Illustration",
-  },
-  video: {
-    title: "Video",
-  },
-  workflow: {
-    title: "Workflow",
-  },
-};
-
-function templatePickerCategoryMeta(category: string): {
-  title: string;
-} {
-  return (
-    TEMPLATE_PICKER_CATEGORY_META[category] ?? {
-      title: "Template",
-    }
-  );
-}
-
 function TemplatePickerCategoryNav({
   selectedCategory,
   hasPptTab,
   hasIllustrationTab,
   hasVideoTab,
+  hasAvatarTab,
   hasWorkflowTab,
   onChange,
 }: {
@@ -4361,9 +4553,11 @@ function TemplatePickerCategoryNav({
   hasPptTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   const categoryOptions: {
     value: string;
     label: string;
@@ -4372,33 +4566,52 @@ function TemplatePickerCategoryNav({
   if (hasPptTab) {
     categoryOptions.push({
       value: "slides",
-      label: "Presentation",
+      label: t(($) => {
+        return $.artifacts.kinds.presentation;
+      }),
       Icon: IconPresentation,
     });
   }
   categoryOptions.push({
     value: "website",
-    label: "Website",
+    label: t(($) => {
+      return $.artifacts.templates.website;
+    }),
     Icon: IconWorld,
   });
   if (hasIllustrationTab) {
     categoryOptions.push({
       value: "illustration",
-      label: "Illustration",
+      label: t(($) => {
+        return $.artifacts.templates.illustration;
+      }),
       Icon: IconPhoto,
     });
   }
   if (hasVideoTab) {
     categoryOptions.push({
       value: "video",
-      label: "Video",
+      label: t(($) => {
+        return $.artifacts.kinds.video;
+      }),
       Icon: IconVideo,
+    });
+  }
+  if (hasAvatarTab) {
+    categoryOptions.push({
+      value: "avatar",
+      label: t(($) => {
+        return $.artifacts.templates.avatar;
+      }),
+      Icon: IconUser,
     });
   }
   if (hasWorkflowTab) {
     categoryOptions.push({
       value: "workflow",
-      label: "Workflow",
+      label: t(($) => {
+        return $.artifacts.templates.workflow;
+      }),
       Icon: IconRoute,
     });
   }
@@ -4408,7 +4621,9 @@ function TemplatePickerCategoryNav({
       <div className="shrink-0 border-b border-border bg-gray-50 px-4 pb-4 pr-14 pt-4 sm:hidden">
         <Select value={selectedCategory} onValueChange={onChange}>
           <SelectTrigger
-            aria-label="Template category"
+            aria-label={t(($) => {
+              return $.artifacts.templates.category;
+            })}
             className="h-9 w-full bg-card"
           >
             <SelectValue />
@@ -4427,119 +4642,120 @@ function TemplatePickerCategoryNav({
           </SelectContent>
         </Select>
       </div>
-      <nav
-        role="tablist"
-        aria-label="Template categories"
-        aria-orientation="vertical"
-        data-template-picker-sidebar=""
-        className="hidden w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-gray-50 p-3 sm:flex"
-      >
-        <div className="flex min-h-[50px] items-center px-2">
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">
-            Template
-          </h2>
+      <div className="hidden shrink-0 sm:flex">
+        <div className="flex w-56 shrink-0 flex-col border-r border-border bg-card">
+          <TemplatePickerHeader />
+          <nav
+            role="tablist"
+            aria-label={t(($) => {
+              return $.artifacts.templates.categories;
+            })}
+            aria-orientation="vertical"
+            data-template-picker-sidebar=""
+            className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3"
+          >
+            {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
+              const selected = value === selectedCategory;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => {
+                    onChange(value);
+                  }}
+                  onKeyDown={(event) => {
+                    let nextIndex: number | null = null;
+                    if (event.key === "ArrowDown") {
+                      nextIndex = (categoryIndex + 1) % categoryOptions.length;
+                    } else if (event.key === "ArrowUp") {
+                      nextIndex =
+                        (categoryIndex - 1 + categoryOptions.length) %
+                        categoryOptions.length;
+                    } else if (event.key === "Home") {
+                      nextIndex = 0;
+                    } else if (event.key === "End") {
+                      nextIndex = categoryOptions.length - 1;
+                    }
+                    if (nextIndex === null) {
+                      return;
+                    }
+                    event.preventDefault();
+                    const nextTab = event.currentTarget.parentElement
+                      ?.querySelectorAll<HTMLElement>("[role=tab]")
+                      .item(nextIndex);
+                    nextTab?.focus();
+                    onChange(categoryOptions[nextIndex]?.value ?? value);
+                  }}
+                  className={cn(
+                    "group flex h-9 w-full shrink-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                    selected
+                      ? "bg-gray-50 font-medium text-foreground"
+                      : "text-gray-800 hover:bg-gray-50 hover:text-foreground",
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-colors",
+                      selected
+                        ? "text-foreground"
+                        : "text-gray-700 group-hover:text-gray-800",
+                    )}
+                    stroke={1.8}
+                  />
+                  <span className="truncate">{label}</span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
-        {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
-          const selected = value === selectedCategory;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => {
-                onChange(value);
-              }}
-              onKeyDown={(event) => {
-                let nextIndex: number | null = null;
-                if (event.key === "ArrowDown") {
-                  nextIndex = (categoryIndex + 1) % categoryOptions.length;
-                } else if (event.key === "ArrowUp") {
-                  nextIndex =
-                    (categoryIndex - 1 + categoryOptions.length) %
-                    categoryOptions.length;
-                } else if (event.key === "Home") {
-                  nextIndex = 0;
-                } else if (event.key === "End") {
-                  nextIndex = categoryOptions.length - 1;
-                }
-                if (nextIndex === null) {
-                  return;
-                }
-                event.preventDefault();
-                const nextTab = event.currentTarget.parentElement
-                  ?.querySelectorAll<HTMLElement>("[role=tab]")
-                  .item(nextIndex);
-                nextTab?.focus();
-                onChange(categoryOptions[nextIndex]?.value ?? value);
-              }}
-              className={cn(
-                "flex h-8 w-full items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                selected
-                  ? "bg-gray-200 font-medium text-sidebar-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent focus-visible:bg-sidebar-accent",
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0 text-gray-700" stroke={1.8} />
-              <span className="truncate">{label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      </div>
     </>
   );
 }
 
-function TemplatePickerCategoryHeader({
-  selectedCategory,
-}: {
-  selectedCategory: string;
-}) {
-  const meta = templatePickerCategoryMeta(selectedCategory);
+function TemplatePickerHeader() {
+  const { t } = useTranslation();
   return (
-    <header
-      className={cn(
-        "hidden min-h-[74px] shrink-0 items-center border-b border-border px-5 py-4 sm:flex",
-        selectedCategory === "workflow" ? "pr-[21rem]" : "pr-14",
-      )}
-    >
-      <div className="min-w-0">
-        <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
-          {meta.title}
-        </h2>
-      </div>
+    <header className="flex h-[68px] shrink-0 items-center px-5">
+      <h2 className="text-lg font-semibold leading-6 tracking-tight text-foreground">
+        {t(($) => {
+          return $.artifacts.templates.template;
+        })}
+      </h2>
     </header>
   );
 }
 
 function TemplatePickerWorkflowSearch({
-  selectedCategory,
   search,
   onSearchChange,
 }: {
-  selectedCategory: string;
   search: string;
   onSearchChange: (value: string) => void;
 }) {
-  if (selectedCategory !== "workflow") {
-    return null;
-  }
+  const { t } = useTranslation();
   return (
-    <div className="shrink-0 border-b border-border px-4 py-3 sm:absolute sm:right-14 sm:top-[21px] sm:z-10 sm:w-64 sm:border-0 sm:p-0">
+    <div className="relative w-56 shrink-0">
       <div className="relative">
         <IconSearch
           className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
           stroke={1.8}
         />
         <Input
-          aria-label="Search connectors"
-          className="h-9 pl-9 text-sm sm:h-8"
+          aria-label={t(($) => {
+            return $.artifacts.templates.searchConnectors;
+          })}
+          className="h-9 pl-9 text-sm"
           value={search}
           onChange={(event) => {
             onSearchChange(event.target.value);
           }}
-          placeholder="Search connector..."
+          placeholder={t(($) => {
+            return $.artifacts.templates.searchConnector;
+          })}
         />
       </div>
     </div>
@@ -4590,12 +4806,14 @@ function PptTemplateGrid({
   value,
   onSelect,
   onPreview,
+  signals,
 }: {
   items: readonly PresentationTemplateItem[];
   runtime: TemplatePreviewRuntime;
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
+  signals: ComposerSignals;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -4608,6 +4826,7 @@ function PptTemplateGrid({
             onSelect={onSelect}
             onPreview={onPreview}
             runtime={runtime}
+            signals={signals}
           />
         );
       })}
@@ -4624,8 +4843,10 @@ function TemplatePickerDialog({
   presentationItems,
   hasIllustrationTab,
   hasVideoTab,
+  hasAvatarTab,
   hasWorkflowTab,
   runtime,
+  signals,
 }: {
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
@@ -4635,33 +4856,53 @@ function TemplatePickerDialog({
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const category = useGet(templatePickerCategory$);
-  const setCategory = useSet(setTemplatePickerCategory$);
-  const search = useGet(templatePickerSearch$);
-  const setSearch = useSet(setTemplatePickerSearch$);
-  const previewSlug = useGet(templatePickerPreviewSlug$);
+  const category = useGet(signals.template.templatePickerCategory$);
+  const setCategory = useSet(signals.template.setTemplatePickerCategory$);
+  const search = useGet(signals.template.templatePickerSearch$);
+  const setSearch = useSet(signals.template.setTemplatePickerSearch$);
+  const previewSlug = useGet(signals.template.templatePickerPreviewSlug$);
   const restorePresentationGridScroll = useSet(
-    restoreTemplatePickerPresentationScroll$,
+    signals.template.restoreTemplatePickerPresentationScroll$,
   );
   const setPresentationGridScrollTop = useSet(
-    setTemplatePickerPresentationScrollTop$,
+    signals.template.setTemplatePickerPresentationScrollTop$,
   );
-  const detailPreview = useGet(templateDetailHtmlPreview$);
-  const ownPreviewResources = useSet(ownTemplatePickerPreviewResources$);
+  const detailPreview = useGet(signals.template.templateDetailHtmlPreview$);
+  const ownPreviewResources = useSet(
+    signals.template.ownTemplatePickerPreviewResources$,
+  );
   const releasePreviewResources = useSet(
-    releaseTemplatePickerPreviewResources$,
+    signals.template.releaseTemplatePickerPreviewResources$,
   );
-  const openDetailPreview = useSet(openPresentationTemplateDetailPreview$);
-  const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
-  const closeDetailPreview = useSet(closePresentationTemplateDetailPreview$);
-  const openWebsiteTemplatePreview = useSet(openWebsiteTemplatePreview$);
-  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
-  const illustrationVariantIndex = useGet(illustrationVariantIndex$);
-  const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
+  const openDetailPreview = useSet(
+    signals.template.openPresentationTemplateDetailPreview$,
+  );
+  const selectDetailPreview = useSet(
+    signals.template.selectPresentationTemplateDetailPreview$,
+  );
+  const closeDetailPreview = useSet(
+    signals.template.closePresentationTemplateDetailPreview$,
+  );
+  const openWebsiteTemplatePreview = useSet(
+    signals.template.openWebsiteTemplatePreview$,
+  );
+  const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
+  const illustrationVariantIndex = useGet(
+    signals.template.illustrationVariantIndex$,
+  );
+  const setIllustrationVariantIndex = useSet(
+    signals.template.setIllustrationVariantIndex$,
+  );
+  const clearAvatarVoiceSelection = useSet(
+    signals.template.clearAvatarTemplateVoiceSelection$,
+  );
   const previewItem =
     presentationItems.find((item) => {
       return item.slug === previewSlug;
@@ -4670,19 +4911,17 @@ function TemplatePickerDialog({
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     skipEnterAnimation && "data-[state=open]:!animate-none",
-    isPreviewing
-      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button[aria-label=Close]]:top-[7px]"
-      : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button[aria-label=Close]]:top-[7px] sm:[&>button[aria-label=Close]]:top-[19px]",
+    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
-  const filteredPptItems = presentationItems;
-  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
-  const filteredVideoItems = VIDEO_TEMPLATE_ITEMS;
-  const filteredWebsiteItems = WEBSITE_TEMPLATE_ITEMS;
   // A persona pill filters the grid, ideation-gallery style.
   // resolveWorkflowCatalog() keeps that logic out of this component to stay
   // under the complexity budget.
-  const workflowCategoryFilter = useGet(templatePickerWorkflowCategory$);
-  const setWorkflowCategoryFilter = useSet(setTemplatePickerWorkflowCategory$);
+  const workflowCategoryFilter = useGet(
+    signals.template.templatePickerWorkflowCategory$,
+  );
+  const setWorkflowCategoryFilter = useSet(
+    signals.template.setTemplatePickerWorkflowCategory$,
+  );
   const workflowCatalog = resolveWorkflowCatalog({
     categoryFilter: workflowCategoryFilter,
     search,
@@ -4693,8 +4932,10 @@ function TemplatePickerDialog({
     hasPptTab,
     hasIllustrationTab,
     hasVideoTab,
+    hasAvatarTab,
     hasWorkflowTab,
   });
+  const showTemplatePickerSearch = selectedCategory === "workflow";
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
@@ -4728,6 +4969,7 @@ function TemplatePickerDialog({
 
   const closeTemplatePicker = () => {
     releasePreviewResources(runtime);
+    clearAvatarVoiceSelection();
     setPresentationGridScrollTop(0);
     onClose();
   };
@@ -4742,6 +4984,15 @@ function TemplatePickerDialog({
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
     onChange(toVideoGenerationTemplate(item));
+    closeTemplatePicker();
+  };
+
+  const handleSelectAvatar = (
+    avatar: ZeroAvatarVideoAvatar,
+    voice: ZeroAvatarVideoVoice,
+    aspectRatio: "portrait" | "landscape",
+  ) => {
+    onChange(toAvatarGenerationTemplate(avatar, voice, aspectRatio));
     closeTemplatePicker();
   };
 
@@ -4851,6 +5102,9 @@ function TemplatePickerDialog({
   };
 
   const handleCategoryChange = (nextCategory: string) => {
+    if (nextCategory !== "avatar") {
+      clearAvatarVoiceSelection();
+    }
     setCategory(nextCategory);
     if (!isPreviewing) {
       prewarmTemplatePreviewsForCategory(nextCategory);
@@ -4885,6 +5139,9 @@ function TemplatePickerDialog({
       }}
     >
       <DialogContent
+        closeLabel={t(($) => {
+          return $.artifacts.actions.close;
+        })}
         className={dialogContentClassName}
         overlayClassName={
           skipEnterAnimation ? "data-[state=open]:!animate-none" : undefined
@@ -4910,11 +5167,16 @@ function TemplatePickerDialog({
             }}
             onSelect={handleSelectPresentation}
             runtime={runtime}
+            signals={signals}
           />
         ) : (
           <>
             <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:hidden">
-              <DialogTitle>Template</DialogTitle>
+              <DialogTitle>
+                {t(($) => {
+                  return $.artifacts.templates.template;
+                })}
+              </DialogTitle>
             </DialogHeader>
             <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
               <TemplatePickerCategoryNav
@@ -4922,27 +5184,35 @@ function TemplatePickerDialog({
                 hasPptTab={hasPptTab}
                 hasIllustrationTab={hasIllustrationTab}
                 hasVideoTab={hasVideoTab}
+                hasAvatarTab={hasAvatarTab}
                 hasWorkflowTab={hasWorkflowTab}
                 onChange={handleCategoryChange}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                <TemplatePickerCategoryHeader
-                  selectedCategory={selectedCategory}
-                />
-                <TemplatePickerWorkflowSearch
-                  selectedCategory={selectedCategory}
-                  search={search}
-                  onSearchChange={handleSearchChange}
-                />
+                <div
+                  className={cn(
+                    "relative h-[68px] shrink-0 items-center px-6 pr-14",
+                    showTemplatePickerSearch ? "flex" : "hidden sm:flex",
+                  )}
+                >
+                  {showTemplatePickerSearch ? (
+                    <TemplatePickerWorkflowSearch
+                      search={search}
+                      onSearchChange={handleSearchChange}
+                    />
+                  ) : null}
+                </div>
                 <TemplatePickerCategoryContent
+                  signals={signals}
                   selectedCategory={selectedCategory}
                   hasPptTab={hasPptTab}
                   hasVideoTab={hasVideoTab}
+                  hasAvatarTab={hasAvatarTab}
                   hasWorkflowTab={hasWorkflowTab}
-                  filteredPptItems={filteredPptItems}
-                  filteredWebsiteItems={filteredWebsiteItems}
-                  filteredIllustrationItems={filteredIllustrationItems}
-                  filteredVideoItems={filteredVideoItems}
+                  pptItems={presentationItems}
+                  websiteItems={WEBSITE_TEMPLATE_ITEMS}
+                  illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
+                  videoItems={VIDEO_TEMPLATE_ITEMS}
                   workflowCatalog={workflowCatalog}
                   value={value}
                   illustrationVariantIndex={illustrationVariantIndex}
@@ -4957,6 +5227,7 @@ function TemplatePickerDialog({
                   onSelectIllustration={handleSelectIllustration}
                   onIllustrationVariantChange={setIllustrationVariantIndex}
                   onSelectVideo={handleSelectVideo}
+                  onSelectAvatar={handleSelectAvatar}
                   onWorkflowCategoryChange={setWorkflowCategoryFilter}
                   onSelectWorkflow={handleSelectWorkflow}
                   runtime={runtime}
@@ -4971,14 +5242,16 @@ function TemplatePickerDialog({
 }
 
 function TemplatePickerCategoryContent({
+  signals,
   selectedCategory,
   hasPptTab,
   hasVideoTab,
+  hasAvatarTab,
   hasWorkflowTab,
-  filteredPptItems,
-  filteredWebsiteItems,
-  filteredIllustrationItems,
-  filteredVideoItems,
+  pptItems,
+  websiteItems,
+  illustrationItems,
+  videoItems,
   workflowCatalog,
   value,
   illustrationVariantIndex,
@@ -4991,18 +5264,21 @@ function TemplatePickerCategoryContent({
   onSelectIllustration,
   onIllustrationVariantChange,
   onSelectVideo,
+  onSelectAvatar,
   onWorkflowCategoryChange,
   onSelectWorkflow,
   runtime,
 }: {
+  signals: ComposerSignals;
   selectedCategory: string;
   hasPptTab: boolean;
   hasVideoTab: boolean;
+  hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
-  filteredPptItems: readonly PresentationTemplateItem[];
-  filteredWebsiteItems: readonly WebsiteTemplateItem[];
-  filteredIllustrationItems: readonly IllustrationTemplateItem[];
-  filteredVideoItems: readonly VideoTemplateItem[];
+  pptItems: readonly PresentationTemplateItem[];
+  websiteItems: readonly WebsiteTemplateItem[];
+  illustrationItems: readonly IllustrationTemplateItem[];
+  videoItems: readonly VideoTemplateItem[];
   workflowCatalog: ResolvedWorkflowTemplateCatalog;
   value: GenerationTemplateRequest | undefined;
   illustrationVariantIndex: Readonly<Record<string, number>>;
@@ -5021,6 +5297,11 @@ function TemplatePickerCategoryContent({
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
+  onSelectAvatar: (
+    avatar: ZeroAvatarVideoAvatar,
+    voice: ZeroAvatarVideoVoice,
+    aspectRatio: "portrait" | "landscape",
+  ) => void;
   onWorkflowCategoryChange: (category: string) => void;
   onSelectWorkflow: (item: WorkflowTemplateItem) => void;
   runtime: TemplatePreviewRuntime;
@@ -5030,24 +5311,22 @@ function TemplatePickerCategoryContent({
       <div
         data-presentation-template-grid-scroll=""
         ref={onRestorePresentationScroll}
-        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-5 py-4"
+        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-6 pb-6 pt-0.5"
         onScroll={(event) => {
           onPresentationScroll(event.currentTarget.scrollTop);
         }}
       >
-        {filteredPptItems.length > 0 ? (
+        {pptItems.length > 0 ? (
           <PptTemplateGrid
-            items={filteredPptItems}
+            items={pptItems}
             value={value}
             onSelect={onSelectPresentation}
             onPreview={onPreviewPresentation}
             runtime={runtime}
+            signals={signals}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5057,20 +5336,17 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-website-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {filteredWebsiteItems.length > 0 ? (
+        {websiteItems.length > 0 ? (
           <WebsiteTemplateGrid
-            items={filteredWebsiteItems}
+            items={websiteItems}
             value={value}
             onSelect={onSelectWebsite}
             onPreview={onPreviewWebsite}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5080,19 +5356,19 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-illustration-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
         onScroll={(event) => {
           prewarmIllustrationPreviewImagesNearScroll({
-            items: filteredIllustrationItems,
+            items: illustrationItems,
             runtime,
             scrollContainer: event.currentTarget,
             variantIndexBySlug: illustrationVariantIndex,
           });
         }}
       >
-        {filteredIllustrationItems.length > 0 ? (
+        {illustrationItems.length > 0 ? (
           <IllustrationTemplateGrid
-            items={filteredIllustrationItems}
+            items={illustrationItems}
             value={value}
             variantIndexBySlug={illustrationVariantIndex}
             onSelect={onSelectIllustration}
@@ -5100,10 +5376,7 @@ function TemplatePickerCategoryContent({
             runtime={runtime}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5113,20 +5386,29 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-video-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {filteredVideoItems.length > 0 ? (
+        {videoItems.length > 0 ? (
           <VideoTemplateGrid
-            items={filteredVideoItems}
+            items={videoItems}
             value={value}
             onSelect={onSelectVideo}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
+      </div>
+    );
+  }
+
+  if (selectedCategory === "avatar" && hasAvatarTab) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6">
+        <AvatarTemplatePickerContent
+          signals={signals}
+          value={value}
+          onSelect={onSelectAvatar}
+        />
       </div>
     );
   }
@@ -5144,7 +5426,7 @@ function TemplatePickerCategoryContent({
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             data-workflow-template-grid-scroll=""
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-4"
           >
             {workflowCatalog.items.length > 0 ? (
               <WorkflowTemplateGrid
@@ -5153,10 +5435,7 @@ function TemplatePickerCategoryContent({
                 onSelect={onSelectWorkflow}
               />
             ) : (
-              <TemplateEmptyPanel
-                title="No matches"
-                description="Try a different search."
-              />
+              <TemplateEmptyPanel />
             )}
           </div>
           {/* Soften the hard clip where cards scroll up under the pill row,
@@ -5173,6 +5452,15 @@ function TemplatePickerCategoryContent({
 function selectedComposerTemplateAttachment(
   value: GenerationTemplateRequest | undefined,
 ): ComposerTemplateAttachment | undefined {
+  const avatar = avatarTemplateSelection(value);
+  if (avatar) {
+    return {
+      type: "avatar",
+      title: avatar.title,
+      category: "avatar",
+      previewImageUrl: avatar.previewUrl,
+    };
+  }
   const presentationItem = selectedPresentationTemplateItem(value);
   if (presentationItem && value?.type === "presentation") {
     const selectedTheme = findPresentationTemplateTheme(
@@ -5223,19 +5511,17 @@ function selectedComposerTemplateAttachment(
 
 function inlineComposerTemplatePicker({
   picker,
-  enabled,
   insertTemplate,
   onDraftChange,
 }: {
   picker: ComposerTemplatePicker | undefined;
-  enabled: boolean;
   insertTemplate: (
     value: GenerationTemplateRequest,
     attachment: ComposerTemplateAttachment,
   ) => void;
   onDraftChange: (() => void) | undefined;
 }): ComposerTemplatePicker | undefined {
-  if (!picker || !enabled) {
+  if (!picker) {
     return picker;
   }
   return {
@@ -5254,14 +5540,6 @@ function inlineComposerTemplatePicker({
   };
 }
 
-function userMessageInlineTemplatesEnabled(
-  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>,
-): boolean {
-  return (
-    featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] === true
-  );
-}
-
 function composerTemplateAttachmentLifecycleKey(
   attachment: ComposerTemplateAttachment | undefined,
 ): string {
@@ -5275,25 +5553,51 @@ function composerTemplateAttachmentLifecycleKey(
     : "none";
 }
 
+/** Serialized by the inline chip node view as "left,top,width,height". */
+function parseTemplateAnchor(
+  serialized: string | undefined,
+): VideoTemplateOptionsAnchor | undefined {
+  const parts = serialized?.split(",").map(Number);
+  if (parts?.length !== 4 || parts.some(Number.isNaN)) {
+    return undefined;
+  }
+  const [left, top, width, height] = parts;
+  return left === undefined ||
+    top === undefined ||
+    width === undefined ||
+    height === undefined
+    ? undefined
+    : { left, top, width, height };
+}
+
 function ComposerTemplateAttachmentSync({
-  composer,
-  picker,
-  onDraftChange,
-  runtime,
+  signals,
 }: {
-  composer: WorkflowComposerSignals;
-  picker: ComposerTemplatePicker | undefined;
-  onDraftChange: (() => void) | undefined;
-  runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
 }) {
-  const setLifecycleRef = useSet(composer.setTemplateAttachmentLifecycleRef$);
-  const setOpen = useSet(setTemplatePickerOpen$);
-  const setCategory = useSet(setTemplatePickerCategory$);
-  const setSearch = useSet(setTemplatePickerSearch$);
-  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const setReferenceValue = useSet(setTemplatePickerReferenceValue$);
-  const readSelectedTemplate = useSet(composer.readSelectedTemplate$);
-  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const picker = useComposerTemplatePicker(signals);
+  const onDraftChange = useComposerDraftChange(signals);
+  const runtime = signals.template.templatePreview;
+  const setLifecycleRef = useSet(
+    signals.template.setTemplateAttachmentLifecycleRef$,
+  );
+  const setOpen = useSet(signals.template.setTemplatePickerOpen$);
+  const setCategory = useSet(signals.template.setTemplatePickerCategory$);
+  const setSearch = useSet(signals.template.setTemplatePickerSearch$);
+  const setPreviewSlug = useSet(signals.template.setTemplatePickerPreviewSlug$);
+  const setReferenceValue = useSet(
+    signals.template.setTemplatePickerReferenceValue$,
+  );
+  const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
+  const openVideoOptions = useSet(signals.template.openVideoTemplateOptions$);
+  const videoOptionsPosition = useGet(
+    signals.template.videoTemplateOptionsPosition$,
+  );
+  const updateTemplateAt = useSet(signals.template.updateTemplateAt$);
+  const setVideoOptionsValue = useSet(
+    signals.template.setVideoTemplateOptionsValue$,
+  );
+  const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const attachment = selectedComposerTemplateAttachment(picker?.value);
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
@@ -5315,25 +5619,56 @@ function ComposerTemplateAttachmentSync({
   };
 
   return (
-    <button
-      key={composerTemplateAttachmentLifecycleKey(attachment)}
-      ref={setLifecycleRef}
-      type="button"
-      hidden
-      data-template-type={attachment?.type}
-      data-template-title={attachment?.title}
-      data-template-category={attachment?.category}
-      data-template-preview-url={attachment?.previewImageUrl}
-      onClick={(event) => {
-        const action = event.currentTarget.dataset.templateAction;
-        if (action === "open") {
-          openPicker(event.currentTarget.dataset.templateCategory ?? "slides");
-        } else if (action === "remove") {
-          picker?.onChange(undefined);
+    <>
+      <VideoTemplateOptionsPopover
+        signals={signals}
+        onChange={(next) => {
+          const nextAttachment = selectedComposerTemplateAttachment(next);
+          if (videoOptionsPosition === null || !nextAttachment) {
+            return;
+          }
+          // Addressed by position: the editor selection does not survive
+          // repeated in-place updates, and the popover can outlive it.
+          updateTemplateAt(videoOptionsPosition, next, nextAttachment);
+          // The popover holds a snapshot; without this a second edit would be
+          // computed from the pre-edit value and undo the first one.
+          setVideoOptionsValue(next);
           onDraftChange?.();
-        }
-      }}
-    />
+        }}
+      />
+      <button
+        key={composerTemplateAttachmentLifecycleKey(attachment)}
+        ref={setLifecycleRef}
+        type="button"
+        hidden
+        data-template-type={attachment?.type}
+        data-template-title={attachment?.title}
+        data-template-category={attachment?.category}
+        data-template-preview-url={attachment?.previewImageUrl}
+        onClick={(event) => {
+          const action = event.currentTarget.dataset.templateAction;
+          if (action === "open") {
+            openPicker(
+              event.currentTarget.dataset.templateCategory ?? "slides",
+            );
+          } else if (action === "remove") {
+            picker?.onChange(undefined);
+            onDraftChange?.();
+          } else if (action === "options") {
+            const anchor = parseTemplateAnchor(
+              event.currentTarget.dataset.templateAnchor,
+            );
+            const position = Number(
+              event.currentTarget.dataset.templatePosition,
+            );
+            const selected = readSelectedTemplate();
+            if (anchor && selected && Number.isInteger(position)) {
+              openVideoOptions(anchor, selected, position);
+            }
+          }
+        }}
+      />
+    </>
   );
 }
 
@@ -5344,8 +5679,10 @@ function TemplatePickerButton({
   presentationItems,
   hasIllustrationTab,
   hasVideoTab,
+  hasAvatarTab,
   hasWorkflowTab,
   runtime,
+  signals,
 }: {
   picker: ComposerTemplatePicker;
   onOpen: () => void;
@@ -5353,24 +5690,32 @@ function TemplatePickerButton({
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
 }) {
-  const open = useGet(templatePickerOpen$);
-  const skipEnterAnimation = useGet(templatePickerSkipEnterAnimation$);
-  const category = useGet(templatePickerCategory$);
-  const referenceValue = useGet(templatePickerReferenceValue$);
-  const setOpen = useSet(setTemplatePickerOpen$);
-  const setSearch = useSet(setTemplatePickerSearch$);
-  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const setReferenceValue = useSet(setTemplatePickerReferenceValue$);
-  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const { t } = useTranslation();
+  const open = useGet(signals.template.templatePickerOpen$);
+  const skipEnterAnimation = useGet(
+    signals.template.templatePickerSkipEnterAnimation$,
+  );
+  const category = useGet(signals.template.templatePickerCategory$);
+  const referenceValue = useGet(signals.template.templatePickerReferenceValue$);
+  const setOpen = useSet(signals.template.setTemplatePickerOpen$);
+  const setSearch = useSet(signals.template.setTemplatePickerSearch$);
+  const setPreviewSlug = useSet(signals.template.setTemplatePickerPreviewSlug$);
+  const setReferenceValue = useSet(
+    signals.template.setTemplatePickerReferenceValue$,
+  );
+  const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const selectedTitle = selectedTemplateTitle(picker.value);
   const selectedCategory = resolveTemplatePickerCategory({
     category,
     hasPptTab,
     hasIllustrationTab,
     hasVideoTab,
+    hasAvatarTab,
     hasWorkflowTab,
   });
   const prewarmPicker = () => {
@@ -5399,7 +5744,9 @@ function TemplatePickerButton({
                 COMPOSER_CONTROL_FOCUS_CLASS,
                 picker.value && "bg-accent text-foreground",
               )}
-              aria-label="Template"
+              aria-label={t(($) => {
+                return $.artifacts.templates.template;
+              })}
               aria-pressed={picker.value !== undefined}
               onPointerEnter={prewarmPicker}
               onFocus={prewarmPicker}
@@ -5417,7 +5764,18 @@ function TemplatePickerButton({
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            {selectedTitle ? `Template: ${selectedTitle}` : "Template"}
+            {selectedTitle
+              ? t(
+                  ($) => {
+                    return $.artifacts.templates.selected;
+                  },
+                  {
+                    title: selectedTitle,
+                  },
+                )
+              : t(($) => {
+                  return $.artifacts.templates.template;
+                })}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -5434,30 +5792,27 @@ function TemplatePickerButton({
           presentationItems={presentationItems}
           hasIllustrationTab={hasIllustrationTab}
           hasVideoTab={hasVideoTab}
+          hasAvatarTab={hasAvatarTab}
           hasWorkflowTab={hasWorkflowTab}
           runtime={runtime}
+          signals={signals}
         />
       )}
     </>
   );
 }
 
-function ComposerTemplatePickerSlot({
-  composer,
-  picker,
-}: {
-  composer: WorkflowComposerSignals;
-  picker: ComposerTemplatePicker | undefined;
-}) {
+function ComposerTemplatePickerSlot({ signals }: { signals: ComposerSignals }) {
+  const picker = useComposerTemplatePicker(signals);
   const hasPptTab = true;
   const hasIllustrationTab = true;
   const hasVideoTab = true;
+  const hasAvatarTab = useGet(avatarTemplatesEnabled$);
   const hasWorkflowTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
-  const prepareTemplateInsertion = useSet(composer.prepareTemplateInsertion$);
-  if (!picker) {
-    return null;
-  }
+  const prepareTemplateInsertion = useSet(
+    signals.template.prepareTemplateInsertion$,
+  );
   return (
     <TemplatePickerButton
       picker={picker}
@@ -5466,8 +5821,10 @@ function ComposerTemplatePickerSlot({
       presentationItems={presentationItems}
       hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
+      hasAvatarTab={hasAvatarTab}
       hasWorkflowTab={hasWorkflowTab}
-      runtime={composer.templatePreview}
+      runtime={signals.template.templatePreview}
+      signals={signals}
     />
   );
 }
@@ -5477,6 +5834,7 @@ function CreateWorkflowPromptButton({
 }: {
   onCreateWorkflowPrompt: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -5487,59 +5845,88 @@ function CreateWorkflowPromptButton({
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
               COMPOSER_CONTROL_FOCUS_CLASS,
             )}
-            aria-label="Create workflow"
+            aria-label={t(($) => {
+              return $.chat.composer.createWorkflow;
+            })}
             onClick={onCreateWorkflowPrompt}
           >
             <IconRoute size={18} stroke={1.5} aria-hidden="true" />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          Create workflow
+          {t(($) => {
+            return $.chat.composer.createWorkflow;
+          })}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
 }
 
-function ComposerWorkflowPromptSlot({
-  onCreateWorkflowPrompt,
-}: {
-  onCreateWorkflowPrompt: (() => void) | undefined;
-}) {
-  if (!onCreateWorkflowPrompt) {
-    return null;
-  }
+function ComposerWorkflowPromptSlot({ signals }: { signals: ComposerSignals }) {
+  const createWorkflowPrompt = useSet(signals.workflow.createWorkflowPrompt$);
+  const pageSignal = useGet(pageSignal$);
   return (
     <CreateWorkflowPromptButton
-      onCreateWorkflowPrompt={onCreateWorkflowPrompt}
+      onCreateWorkflowPrompt={() => {
+        detach(createWorkflowPrompt(pageSignal), Reason.DomCallback);
+      }}
     />
   );
 }
 
 function ConnectorTriggerIcons({
   connectors,
+  customConnectors,
   hasComputerUse,
   hasCloudBrowser,
 }: {
   connectors: ComposerConnectorItem[];
+  customConnectors: ComposerCustomConnectorItem[];
   hasComputerUse: boolean;
   hasCloudBrowser: boolean;
 }) {
-  const enabled = connectors
-    .filter((c) => {
-      return c.authorized;
-    })
-    .slice(0, 3);
+  const enabledConnectors = connectors.filter((connector) => {
+    return connector.authorized;
+  });
+  const enabledCustomConnectors = customConnectors.filter((connector) => {
+    return connector.authorized;
+  });
+  const enabled = [
+    ...enabledConnectors.map((connector) => {
+      return { kind: "builtin" as const, connector };
+    }),
+    ...enabledCustomConnectors.map((connector) => {
+      return { kind: "custom" as const, connector };
+    }),
+  ].slice(0, 3);
+  const hasComputerAccess = hasComputerUse || hasCloudBrowser;
   if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
     return <IconPlug size={18} stroke={1.5} />;
   }
   return (
-    <span className="flex items-center -space-x-2 sm:-space-x-1.5">
-      {enabled.map((c) => {
+    <span className="flex items-center sm:-space-x-1.5">
+      {enabled.map((item, index) => {
+        const key =
+          item.kind === "builtin" ? item.connector.slug : item.connector.id;
         return (
-          <span key={c.connectorRef} className="relative shrink-0">
+          <span
+            key={key}
+            className={cn(
+              "relative shrink-0",
+              (index > 0 || hasComputerAccess) && "hidden sm:block",
+            )}
+          >
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
-              <ConnectorIcon icon={c.icon} size={16} />
+              {item.kind === "builtin" ? (
+                <ConnectorIcon icon={item.connector.icon} size={16} />
+              ) : (
+                <CustomConnectorIcon
+                  id={item.connector.id}
+                  displayName={item.connector.displayName}
+                  size={16}
+                />
+              )}
             </span>
           </span>
         );
@@ -5562,26 +5949,104 @@ function ConnectorTriggerIcons({
   );
 }
 
+function matchesCustomConnectorSearch(
+  search: string,
+  connector: CustomConnectorResponse,
+): boolean {
+  const normalizedSearch = search.trim().toLowerCase();
+  if (!normalizedSearch) {
+    return true;
+  }
+  return [connector.displayName, connector.slug, ...connector.prefixes].some(
+    (value) => {
+      return value.toLowerCase().includes(normalizedSearch);
+    },
+  );
+}
+
+function CustomConnectorCatalogCard({
+  connector,
+  onConnect,
+}: {
+  connector: CustomConnectorResponse;
+  onConnect: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      aria-label={t(
+        ($) => {
+          return $.connectors.card.connectAria;
+        },
+        { connector: connector.displayName },
+      )}
+      className="zero-card cursor-pointer overflow-hidden text-left"
+      onClick={onConnect}
+    >
+      <span className="flex items-center gap-2.5 px-5 pb-1 pt-4">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+          <CustomConnectorIcon
+            id={connector.id}
+            displayName={connector.displayName}
+            size={20}
+          />
+        </span>
+        <span
+          data-testid="connector-card-label"
+          className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+        >
+          {connector.displayName}
+        </span>
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground"
+          aria-hidden="true"
+        >
+          <IconPlus size={14} stroke={1.5} />
+        </span>
+      </span>
+      <span className="block px-5 pb-4 pt-1">
+        <span
+          data-testid="connector-help-text"
+          className="line-clamp-2 text-xs text-muted-foreground"
+        >
+          {connector.prefixes[0]}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function AddConnectorsDialog({
   signals,
   unconnected,
-  busyConnectorRef,
+  unconnectedCustom,
+  busyConnectorSlug,
   connectHandlers,
+  onConnectCustom,
   onClose,
 }: {
-  signals: ComposerConnectorSignals;
-  unconnected: PublicConnectorCatalogStatusItem[];
-  busyConnectorRef: ConnectorRef | null;
+  signals: ComposerSignals;
+  unconnected: PlatformConnectorCatalogStatusItem[];
+  unconnectedCustom: CustomConnectorResponse[];
+  busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
-    connector: PublicConnectorCatalogStatusItem,
+    connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
+  onConnectCustom: (connector: CustomConnectorResponse) => void;
   onClose: () => void;
 }) {
-  const search = useGet(signals.addDialogSearch$);
-  const setSearch = useSet(signals.setAddDialogSearch$);
+  const { t } = useTranslation();
+  const connectorUi = useGet(signals.connector.connectorUiState$);
+  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const search = connectorUi.addDialogSearch;
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
   });
+  const filteredCustom = unconnectedCustom.filter((item) => {
+    return matchesCustomConnectorSearch(search, item);
+  });
+  const connectorCount = unconnected.length + unconnectedCustom.length;
 
   return (
     <Dialog
@@ -5596,16 +6061,25 @@ function AddConnectorsDialog({
       >
         <DialogHeader className="shrink-0">
           <DialogTitle>
-            Available connectors to connect ({unconnected.length})
+            {t(
+              ($) => {
+                return $.chat.connectors.available;
+              },
+              {
+                count: connectorCount,
+              },
+            )}
           </DialogTitle>
         </DialogHeader>
         <div className="shrink-0">
           <Input
             type="text"
-            placeholder="Find connectors..."
+            placeholder={t(($) => {
+              return $.chat.connectors.find;
+            })}
             value={search}
             onChange={(e) => {
-              return setSearch(e.target.value);
+              return updateConnectorUi({ addDialogSearch: e.target.value });
             }}
             autoFocus
           />
@@ -5615,11 +6089,22 @@ function AddConnectorsDialog({
             {filtered.map((item) => {
               return (
                 <ConnectorCard
-                  key={item.connectorRef}
+                  key={item.slug}
                   variant="catalog"
                   connector={item}
-                  busy={busyConnectorRef === item.connectorRef}
+                  busy={busyConnectorSlug === item.slug}
                   connect={connectHandlers(item)}
+                />
+              );
+            })}
+            {filteredCustom.map((item) => {
+              return (
+                <CustomConnectorCatalogCard
+                  key={item.id}
+                  connector={item}
+                  onConnect={() => {
+                    onConnectCustom(item);
+                  }}
                 />
               );
             })}
@@ -5637,54 +6122,61 @@ function ComputerUseConnectorMenuSection({
   computerUse: ComposerComputerUse;
   onOpenDownloadDialog: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="shrink-0 border-t border-border/50 bg-gray-50 p-1 dark:bg-gray-100">
-      <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
-        Your computer
-      </div>
-      {computerUse.cloudBrowserAvailable && (
-        <div
-          onClick={() => {
-            computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
+      <div
+        onClick={() => {
+          computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
+        }}
+        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+      >
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+          <IconWorld size={16} stroke={1.5} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm text-foreground">
+            {t(($) => {
+              return $.chat.computerUse.cloudBrowser;
+            })}
+          </span>
+        </span>
+        <span
+          className="flex shrink-0 items-center"
+          onClick={(event) => {
+            event.stopPropagation();
           }}
-          className={cn(
-            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
-            computerUse.cloudBrowserEnabled
-              ? "bg-primary/5"
-              : "hover:bg-gray-100 dark:hover:bg-gray-200",
-          )}
         >
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-            <IconWorld size={16} stroke={1.5} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm text-foreground">
-              Cloud browser
-            </span>
-          </span>
-          <span
-            className="flex shrink-0 items-center"
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <LoadingSwitch
-              checked={computerUse.cloudBrowserEnabled}
-              onCheckedChange={onDomEventFn((enabled) => {
-                computerUse.onCloudBrowserChange(enabled);
-              })}
-              loading={false}
-              ariaLabel={`${computerUse.cloudBrowserEnabled ? "Disable" : "Enable"} Cloud browser`}
-              size="sm"
-            />
-          </span>
-        </div>
-      )}
+          <LoadingSwitch
+            checked={computerUse.cloudBrowserEnabled}
+            onCheckedChange={onDomEventFn((enabled) => {
+              computerUse.onCloudBrowserChange(enabled);
+            })}
+            loading={false}
+            ariaLabel={
+              computerUse.cloudBrowserEnabled
+                ? t(($) => {
+                    return $.chat.computerUse.disableCloudBrowser;
+                  })
+                : t(($) => {
+                    return $.chat.computerUse.enableCloudBrowser;
+                  })
+            }
+            size="sm"
+          />
+        </span>
+      </div>
+      <div className="mx-2 my-1 border-t border-border/50" />
+      <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
+        {t(($) => {
+          return $.chat.computerUse.yourComputer;
+        })}
+      </div>
       {computerUse.loading ? (
         <div className="flex flex-col animate-pulse">
           {Array.from({ length: 2 }, (_, i) => {
             return (
-              <div key={i} className="flex items-center gap-2 px-2 py-2">
+              <div key={i} className="flex items-center gap-2 px-2 py-1.5">
                 <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
                 <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
                 <span className="h-3 w-6 rounded-full bg-muted/50" />
@@ -5694,9 +6186,11 @@ function ComputerUseConnectorMenuSection({
         </div>
       ) : computerUse.hosts.length > 0 ? (
         <div
-          className="flex max-h-[108px] flex-col overflow-y-auto"
+          className="flex max-h-[96px] flex-col overflow-y-auto"
           role="group"
-          aria-label="Computer Use hosts"
+          aria-label={t(($) => {
+            return $.chat.computerUse.hosts;
+          })}
         >
           {computerUse.hosts.map((host) => {
             const checked = computerUse.selectedHostId === host.id;
@@ -5706,12 +6200,7 @@ function ComputerUseConnectorMenuSection({
                 onClick={() => {
                   computerUse.onChange(checked ? null : host.id);
                 }}
-                className={cn(
-                  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
-                  checked
-                    ? "bg-primary/5"
-                    : "hover:bg-gray-100 dark:hover:bg-gray-200",
-                )}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                   <IconDeviceDesktop size={16} stroke={1.5} />
@@ -5722,7 +6211,9 @@ function ComputerUseConnectorMenuSection({
                   </span>
                   {host.status === "offline" && (
                     <span className="block text-[11px] leading-3 text-muted-foreground">
-                      Offline
+                      {t(($) => {
+                        return $.chat.computerUse.offline;
+                      })}
                     </span>
                   )}
                 </span>
@@ -5738,7 +6229,25 @@ function ComputerUseConnectorMenuSection({
                       computerUse.onChange(nextChecked ? host.id : null);
                     })}
                     loading={false}
-                    ariaLabel={`${checked ? "Disconnect" : "Connect"} ${host.displayName}`}
+                    ariaLabel={
+                      checked
+                        ? t(
+                            ($) => {
+                              return $.chat.computerUse.disconnectHost;
+                            },
+                            {
+                              hostName: host.displayName,
+                            },
+                          )
+                        : t(
+                            ($) => {
+                              return $.chat.computerUse.connectHost;
+                            },
+                            {
+                              hostName: host.displayName,
+                            },
+                          )
+                    }
                     size="sm"
                   />
                 </span>
@@ -5747,19 +6256,21 @@ function ComputerUseConnectorMenuSection({
           })}
         </div>
       ) : (
-        <div className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
           <IconDeviceDesktop
             size={16}
             stroke={1.5}
             className="shrink-0 text-muted-foreground"
           />
-          No online computers
+          {t(($) => {
+            return $.chat.computerUse.noOnlineComputers;
+          })}
         </div>
       )}
       <PopoverClose asChild>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
           onClick={onOpenDownloadDialog}
         >
           <IconPlug
@@ -5767,7 +6278,9 @@ function ComputerUseConnectorMenuSection({
             stroke={1.5}
             className="shrink-0 text-muted-foreground"
           />
-          Connect my computer
+          {t(($) => {
+            return $.chat.computerUse.connectMyComputer;
+          })}
         </button>
       </PopoverClose>
     </div>
@@ -5781,13 +6294,16 @@ function ComposerConnectorPermissionDialog({
   connector,
   onClose,
 }: {
-  signals: ComposerConnectorSignals;
+  signals: ComposerSignals;
   agentId: string;
   agentDisplayName: string;
   connector: ComposerConnectorItem;
   onClose: () => void;
 }) {
-  const grantsLoadable = useLastLoadable(signals.permissionGrants$);
+  const { t } = useTranslation();
+  const grantsLoadable = useLastLoadable(
+    signals.connector.connectorPermissionGrants$,
+  );
   const pageSignal = useGet(pageSignal$);
   const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
 
@@ -5804,9 +6320,9 @@ function ComposerConnectorPermissionDialog({
   return (
     <PermissionsDialog
       agentId={agentId}
-      connectorRef={connector.connectorRef}
+      connectorSlug={connector.slug}
       connectorLabel={connector.label}
-      metadata$={signals.permissionMetadata$}
+      metadata$={signals.connector.connectorPermissionMetadata$}
       displayName={agentDisplayName}
       initialPolicies={initialPolicies}
       initialGrants={activeSnapshot.grants}
@@ -5815,7 +6331,7 @@ function ComposerConnectorPermissionDialog({
       onApply={async (intent, { metadata: appliedMetadata }) => {
         await savePermissionDraftPolicies({
           scope: { agentId },
-          connectorRef: connector.connectorRef,
+          connectorSlug: connector.slug,
           metadata: appliedMetadata,
           initialPolicies,
           initialGrants: activeSnapshot.grants,
@@ -5823,11 +6339,40 @@ function ComposerConnectorPermissionDialog({
           pageSignal,
           applyGrantPolicies,
         });
-        toast.success("Permissions updated");
+        toast.success(
+          t(($) => {
+            return $.chat.permissions.updated;
+          }),
+        );
       }}
       onClose={onClose}
     />
   );
+}
+
+type ComposerPopoverConnectorItem =
+  | {
+      readonly kind: "builtin";
+      readonly connector: ComposerConnectorItem;
+    }
+  | {
+      readonly kind: "custom";
+      readonly connector: ComposerCustomConnectorItem;
+    };
+
+function composerPopoverConnectorId(
+  item: ComposerPopoverConnectorItem,
+): string {
+  return item.kind === "builtin" ? item.connector.slug : item.connector.id;
+}
+
+function matchesComposerPopoverConnectorSearch(
+  search: string,
+  item: ComposerPopoverConnectorItem,
+): boolean {
+  return item.kind === "builtin"
+    ? matchesConnectorSearch(search, item.connector)
+    : matchesCustomConnectorSearch(search, item.connector);
 }
 
 function ConnectorsPopoverButton({
@@ -5835,49 +6380,68 @@ function ConnectorsPopoverButton({
   agentId,
   agentDisplayName,
   agentConnectors,
+  agentCustomConnectors,
   connectorsLoading,
-  savingConnectorRef,
+  savingConnectorSlug,
+  savingCustomConnectorId,
   computerUse,
   onOpenAddDialog,
   onToggle,
+  onToggleCustom,
 }: {
-  signals: ComposerConnectorSignals;
+  signals: ComposerSignals;
   agentId: string | null;
   agentDisplayName: string;
   agentConnectors: ComposerConnectorItem[];
+  agentCustomConnectors: ComposerCustomConnectorItem[];
   connectorsLoading: boolean;
-  savingConnectorRef: ConnectorRef | null;
+  savingConnectorSlug: ConnectorSlug | null;
+  savingCustomConnectorId: string | null;
   computerUse: ComposerComputerUse | undefined;
   onOpenAddDialog: () => void;
   onToggle: (
-    connectorRef: ConnectorRef,
+    connectorSlug: ConnectorSlug,
+    checked: boolean,
+  ) => void | Promise<void>;
+  onToggleCustom: (
+    connectorId: string,
     checked: boolean,
   ) => void | Promise<void>;
 }) {
-  const search = useGet(signals.popoverSearch$);
-  const setSearch = useSet(signals.setPopoverSearch$);
-  const sortOrder = useGet(signals.popoverSortOrder$);
-  const setSortOrder = useSet(signals.setPopoverSortOrder$);
-  const downloadDialogOpen = useGet(signals.computerUseDownloadDialogOpen$);
+  const { t } = useTranslation();
+  const connectorUi = useGet(signals.connector.connectorUiState$);
+  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const search = connectorUi.popoverSearch;
+  const sortOrder = connectorUi.popoverSortOrder;
+  const downloadDialogOpen = useGet(
+    signals.computer.computerUseDownloadDialogOpen$,
+  );
   const setDownloadDialogOpen = useSet(
-    signals.setComputerUseDownloadDialogOpen$,
+    signals.computer.setComputerUseDownloadDialogOpen$,
   );
   const permissionEntryEnabled = useGet(composerConnectorPermissionsEnabled$);
-  const permissionConnectorRef = useGet(signals.permissionConnectorRef$);
-  const setPermissionConnectorRef = useSet(signals.setPermissionConnectorRef$);
-  const showSearch = agentConnectors.length > 20;
+  const permissionConnectorSlug = connectorUi.permissionConnectorSlug;
+  const connectorItems: ComposerPopoverConnectorItem[] = [
+    ...agentConnectors.map((connector) => {
+      return { kind: "builtin" as const, connector };
+    }),
+    ...agentCustomConnectors.map((connector) => {
+      return { kind: "custom" as const, connector };
+    }),
+  ];
+  const showSearch = connectorItems.length > 20;
   const permissionConnector =
-    permissionEntryEnabled && permissionConnectorRef
+    permissionEntryEnabled && permissionConnectorSlug
       ? agentConnectors.find((c) => {
-          return c.connectorRef === permissionConnectorRef;
+          return c.slug === permissionConnectorSlug;
         })
       : undefined;
 
   // Use snapshot order if available, otherwise preserve catalog order.
   const sorted = sortOrder
-    ? [...agentConnectors].sort((a, b) => {
-        const ai = sortOrder.indexOf(a.connectorRef);
-        const bi = sortOrder.indexOf(b.connectorRef);
+    ? [...connectorItems].sort((a, b) => {
+        const ai = sortOrder.indexOf(composerPopoverConnectorId(a));
+        const bi = sortOrder.indexOf(composerPopoverConnectorId(b));
         if (ai === -1 && bi === -1) {
           return 0;
         }
@@ -5889,25 +6453,22 @@ function ConnectorsPopoverButton({
         }
         return ai - bi;
       })
-    : agentConnectors;
+    : connectorItems;
 
   const visibleConnectors =
     showSearch && search.trim()
-      ? sorted.filter((c) => {
-          return matchesConnectorSearch(search, c);
+      ? sorted.filter((item) => {
+          return matchesComposerPopoverConnectorSearch(search, item);
         })
       : sorted;
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
       // Snapshot the sort order when popover opens
-      const freshSort = agentConnectors.map((c) => {
-        return c.connectorRef;
-      });
-      setSortOrder(freshSort);
+      const freshSort = connectorItems.map(composerPopoverConnectorId);
+      updateConnectorUi({ popoverSortOrder: freshSort });
     } else {
-      setSortOrder(null);
-      setSearch("");
+      updateConnectorUi({ popoverSortOrder: null, popoverSearch: "" });
     }
   };
 
@@ -5923,10 +6484,13 @@ function ConnectorsPopoverButton({
                   "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
                   COMPOSER_CONTROL_FOCUS_CLASS,
                 )}
-                aria-label="Connectors"
+                aria-label={t(($) => {
+                  return $.chat.connectors.title;
+                })}
               >
                 <ConnectorTriggerIcons
                   connectors={agentConnectors}
+                  customConnectors={agentCustomConnectors}
                   hasComputerUse={Boolean(computerUse?.selectedHostId)}
                   hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
                 />
@@ -5934,7 +6498,9 @@ function ConnectorsPopoverButton({
             </TooltipTrigger>
           </PopoverTrigger>
           <TooltipContent side="top" className="text-xs">
-            Connectors
+            {t(($) => {
+              return $.chat.connectors.title;
+            })}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -5943,16 +6509,20 @@ function ConnectorsPopoverButton({
         align="start"
         className="flex max-h-[var(--radix-popover-content-available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
       >
-        {(agentConnectors.length > 0 || connectorsLoading) && (
+        {(connectorItems.length > 0 || connectorsLoading) && (
           <div className="flex min-h-0 flex-col py-1">
             {showSearch && (
               <div className="px-3 py-1 border-b border-border/50">
                 <input
                   type="text"
-                  placeholder="Find connectors..."
+                  placeholder={t(($) => {
+                    return $.chat.connectors.find;
+                  })}
                   value={search}
                   onChange={(e) => {
-                    return setSearch(e.target.value);
+                    return updateConnectorUi({
+                      popoverSearch: e.target.value,
+                    });
                   }}
                   className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
                 />
@@ -5973,41 +6543,114 @@ function ConnectorsPopoverButton({
             ) : (
               <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
                 {visibleConnectors.map((item) => {
+                  if (item.kind === "custom") {
+                    const connector = item.connector;
+                    return (
+                      <label
+                        key={connector.id}
+                        className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                      >
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                          <CustomConnectorIcon
+                            id={connector.id}
+                            displayName={connector.displayName}
+                            size={16}
+                          />
+                        </span>
+                        <span className="text-sm flex-1 truncate text-foreground">
+                          {connector.displayName}
+                        </span>
+                        <LoadingSwitch
+                          checked={connector.authorized}
+                          onCheckedChange={onDomEventFn(async (checked) => {
+                            await onToggleCustom(connector.id, checked);
+                          })}
+                          loading={savingCustomConnectorId === connector.id}
+                          ariaLabel={
+                            connector.authorized
+                              ? t(
+                                  ($) => {
+                                    return $.chat.connectors.remove;
+                                  },
+                                  {
+                                    connectorName: connector.displayName,
+                                  },
+                                )
+                              : t(
+                                  ($) => {
+                                    return $.chat.connectors.add;
+                                  },
+                                  {
+                                    connectorName: connector.displayName,
+                                  },
+                                )
+                          }
+                          size="sm"
+                        />
+                      </label>
+                    );
+                  }
+                  const connector = item.connector;
                   return (
                     <label
-                      key={item.connectorRef}
+                      key={connector.slug}
                       className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                        <ConnectorIcon icon={item.icon} size={16} />
+                        <ConnectorIcon icon={connector.icon} size={16} />
                       </span>
                       <span className="text-sm flex-1 truncate text-foreground">
-                        {item.label}
+                        {connector.label}
                       </span>
                       {permissionEntryEnabled &&
                         agentId &&
-                        item.authorized &&
-                        item.permissionSummary.hasPermissions && (
+                        connector.authorized &&
+                        connector.permissionSummary.hasPermissions && (
                           <button
                             type="button"
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              setPermissionConnectorRef(item.connectorRef);
+                              updateConnectorUi({
+                                permissionConnectorSlug: connector.slug,
+                              });
                             }}
-                            aria-label={`Configure ${item.label} permissions`}
+                            aria-label={t(
+                              ($) => {
+                                return $.chat.connectors.configurePermissions;
+                              },
+                              { connectorName: connector.label },
+                            )}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           >
                             <IconAdjustmentsHorizontal size={15} stroke={1.5} />
                           </button>
                         )}
                       <LoadingSwitch
-                        checked={item.authorized}
+                        checked={connector.authorized}
                         onCheckedChange={onDomEventFn(async (checked) => {
-                          await onToggle(item.connectorRef, checked);
+                          await onToggle(connector.slug, checked);
                         })}
-                        loading={savingConnectorRef === item.connectorRef}
-                        ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
+                        loading={savingConnectorSlug === connector.slug}
+                        ariaLabel={
+                          connector.authorized
+                            ? t(
+                                ($) => {
+                                  return $.chat.connectors.remove;
+                                },
+                                {
+                                  connectorName: connector.label,
+                                },
+                              )
+                            : t(
+                                ($) => {
+                                  return $.chat.connectors.add;
+                                },
+                                {
+                                  connectorName: connector.label,
+                                },
+                              )
+                        }
                         size="sm"
                       />
                     </label>
@@ -6018,7 +6661,7 @@ function ConnectorsPopoverButton({
           </div>
         )}
         <div className="flex shrink-0 flex-col p-1">
-          {(agentConnectors.length > 0 || connectorsLoading) && (
+          {(connectorItems.length > 0 || connectorsLoading) && (
             <div className="mx-2 mb-1 border-t border-border/50" />
           )}
           <button
@@ -6031,7 +6674,9 @@ function ConnectorsPopoverButton({
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
               <IconPlus size={13} stroke={1.5} />
             </span>
-            Add connectors
+            {t(($) => {
+              return $.chat.connectors.addConnectors;
+            })}
           </button>
         </div>
         {computerUse && (
@@ -6057,7 +6702,7 @@ function ConnectorsPopoverButton({
           agentDisplayName={agentDisplayName}
           connector={permissionConnector}
           onClose={() => {
-            setPermissionConnectorRef(null);
+            updateConnectorUi({ permissionConnectorSlug: null });
           }}
         />
       )}
@@ -6074,6 +6719,7 @@ function ComputerUseDownloadDialog({
   onOpenChange: (open: boolean) => void;
   downloadUrl: string;
 }) {
+  const { t } = useTranslation();
   const downloadSupportLoadable = useLoadable(
     zeroDesktopDownloadSupportStatus$,
   );
@@ -6094,25 +6740,34 @@ function ComputerUseDownloadDialog({
         </div>
         <DialogHeader className="space-y-2 px-6 pt-5 text-left">
           <DialogTitle className="text-xl leading-7">
-            Let Zero use your computer
+            {t(($) => {
+              return $.chat.computerUse.dialogTitle;
+            })}
           </DialogTitle>
           <DialogDescription className="leading-6">
-            So Zero can work in your browser and apps for you, even ones with no
-            connector like LinkedIn or Reddit.
+            {t(($) => {
+              return $.chat.computerUse.dialogDescription;
+            })}
           </DialogDescription>
           <p className="text-sm leading-5 text-muted-foreground">
-            {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
+            {t(($) => {
+              return $.chat.computerUse.macosRequirement;
+            })}
           </p>
         </DialogHeader>
         <div className="px-6 pb-6 pt-4">
           {downloadSupportStatus === "unsupported-intel-mac" ? (
             <Button type="button" size="lg" className="w-full" disabled>
               <IconAlertTriangle size={16} stroke={1.5} />
-              {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}
+              {t(($) => {
+                return $.chat.computerUse.unsupportedIntelMac;
+              })}
             </Button>
           ) : downloadSupportStatus === "checking" ? (
             <Button type="button" size="lg" className="w-full" disabled>
-              Checking compatibility
+              {t(($) => {
+                return $.chat.computerUse.checkingCompatibility;
+              })}
             </Button>
           ) : (
             <Button asChild size="lg" className="w-full">
@@ -6125,7 +6780,9 @@ function ComputerUseDownloadDialog({
                 }}
               >
                 <IconDownload size={16} stroke={1.5} />
-                Download for macOS
+                {t(($) => {
+                  return $.chat.computerUse.downloadMacos;
+                })}
               </a>
             </Button>
           )}
@@ -6148,41 +6805,57 @@ interface MicButtonStatus {
 
 function micButtonAriaLabel(status: MicButtonStatus): string {
   if (status.recording) {
-    return "Stop recording";
+    return i18n.t(($) => {
+      return $.chat.voice.stopRecording;
+    });
   }
   if (status.starting) {
-    return "Starting voice input";
+    return i18n.t(($) => {
+      return $.chat.voice.starting;
+    });
   }
   if (status.transcribing) {
-    return "Transcribing";
+    return i18n.t(($) => {
+      return $.chat.voice.transcribing;
+    });
   }
   if (status.quotaLoading) {
-    return "Checking voice input limit";
+    return i18n.t(($) => {
+      return $.chat.voice.checkingLimit;
+    });
   }
-  return "Voice input";
+  return i18n.t(($) => {
+    return $.chat.voice.input;
+  });
 }
 
 function micButtonTooltip(status: MicButtonStatus): string {
   if (status.recording) {
-    return "Stop recording";
+    return i18n.t(($) => {
+      return $.chat.voice.stopRecording;
+    });
   }
   if (status.starting) {
-    return "Opening microphone...";
+    return i18n.t(($) => {
+      return $.chat.voice.openingMicrophone;
+    });
   }
   if (status.transcribing) {
-    return "Transcribing...";
+    return i18n.t(($) => {
+      return $.chat.voice.transcribingProgress;
+    });
   }
   if (status.quotaLoading) {
-    return "Checking voice input limit";
+    return i18n.t(($) => {
+      return $.chat.voice.checkingLimit;
+    });
   }
-  return "Voice input";
+  return i18n.t(($) => {
+    return $.chat.voice.input;
+  });
 }
 
-function MicButton({
-  onTranscribed,
-}: {
-  onTranscribed: (text: string) => void;
-}) {
+function MicButton({ signals }: { signals: ComposerSignals }) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
   const quotaState = useLoadableState(audioInputQuota$);
   const quota = useLastResolved(audioInputQuota$) ?? null;
@@ -6195,6 +6868,8 @@ function MicButton({
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
+  const appendText = useSet(signals.editor.appendText$);
+  const saveDraft = useSet(signals.draft.save$);
   const signal = useGet(pageSignal$);
   const disabled = starting || transcribing || (!recording && !quotaResolved);
   const status = {
@@ -6208,20 +6883,17 @@ function MicButton({
     return null;
   }
 
+  const onTranscribed = (text: string) => {
+    appendText(text);
+    detach(saveDraft(signal), Reason.DomCallback);
+  };
+
   const handleClick = () => {
     if (starting || transcribing) {
       return;
     }
     if (recording) {
-      detach(
-        (async () => {
-          const text = await stopAndTranscribe(signal);
-          if (text) {
-            onTranscribed(text);
-          }
-        })(),
-        Reason.DomCallback,
-      );
+      detach(stopAndTranscribe(signal), Reason.DomCallback);
       return;
     }
     if (!quota) {
@@ -6282,11 +6954,9 @@ function MicButton({
   );
 }
 
-function ComposerAttachButton({
-  onSelectFile,
-}: {
-  readonly onSelectFile: () => void;
-}) {
+function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
+  const { t } = useTranslation();
+  const fileInput = useGet(signals.draft.composerFileInput$);
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -6297,183 +6967,24 @@ function ComposerAttachButton({
               "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
               COMPOSER_CONTROL_FOCUS_CLASS,
             )}
-            aria-label="Attach"
-            onClick={onSelectFile}
+            aria-label={t(($) => {
+              return $.chat.attachments.attach;
+            })}
+            onClick={() => {
+              fileInput?.click();
+            }}
           >
             <IconPaperclip size={18} stroke={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          Attach
+          {t(($) => {
+            return $.chat.attachments.attach;
+          })}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
-}
-
-function ComposerUploadMenu({
-  onDraftChange,
-  onAppendText,
-  onSelectFile,
-}: {
-  readonly onDraftChange?: () => void;
-  readonly onAppendText: (value: string) => void;
-  readonly onSelectFile: () => void;
-}) {
-  const uploadOpen = useGet(uploadPopoverOpen$);
-  const setUploadOpen = useSet(setUploadPopoverOpen$);
-  const addLink = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const trimmed = String(data.get("uploadLink") ?? "").trim();
-    if (!URL.canParse(trimmed)) {
-      toast.error("Enter a valid link");
-      return;
-    }
-    const normalized = new URL(trimmed).toString();
-    onAppendText(normalized);
-    onDraftChange?.();
-    form.reset();
-    setUploadOpen(false);
-  };
-
-  return (
-    <div className="relative inline-flex">
-      <button
-        type="button"
-        className={cn(
-          "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
-          COMPOSER_CONTROL_FOCUS_CLASS,
-          uploadOpen && "bg-accent text-foreground",
-        )}
-        aria-label="Upload"
-        aria-expanded={uploadOpen}
-        aria-haspopup="dialog"
-        title="Upload"
-        data-testid="composer-upload"
-        onClick={() => {
-          setUploadOpen(!uploadOpen);
-        }}
-      >
-        <IconUpload size={18} stroke={1.5} />
-      </button>
-      {uploadOpen && (
-        <div
-          role="dialog"
-          aria-label="Upload"
-          className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-2 text-foreground shadow-lg"
-        >
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent"
-            data-testid="composer-upload-local"
-            onClick={() => {
-              setUploadOpen(false);
-              onSelectFile();
-            }}
-          >
-            <IconPaperclip size={16} stroke={1.6} />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-foreground">
-                Upload from computer
-              </span>
-              <span className="block truncate text-xs text-muted-foreground">
-                Images, docs, audio, video and archives
-              </span>
-            </span>
-          </button>
-          <form
-            className="mt-2 rounded-lg border border-border/70 p-3"
-            onSubmit={addLink}
-          >
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <IconLink size={15} stroke={1.7} />
-              Upload from link
-            </div>
-            <Input
-              className="mt-2 h-9 text-sm"
-              name="uploadLink"
-              placeholder="https://example.com/image.png"
-              type="url"
-              data-testid="composer-upload-link-input"
-            />
-            <Button
-              type="submit"
-              size="sm"
-              className="mt-2 h-8 w-full rounded-lg text-xs font-medium"
-              data-testid="composer-upload-link-add"
-            >
-              Add link
-            </Button>
-          </form>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ComposerUploadControl({
-  onDraftChange,
-  onAppendText,
-  onSelectFile,
-}: {
-  readonly onDraftChange?: () => void;
-  readonly onAppendText: (value: string) => void;
-  readonly onSelectFile: () => void;
-}) {
-  const uploadPopoverEnabled = useGet(composerUploadPopoverEnabled$);
-  return uploadPopoverEnabled ? (
-    <ComposerUploadMenu
-      onDraftChange={onDraftChange}
-      onAppendText={onAppendText}
-      onSelectFile={onSelectFile}
-    />
-  ) : (
-    <ComposerAttachButton onSelectFile={onSelectFile} />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Signal resolution — resolves draft/file-input with singleton fallback
-// ---------------------------------------------------------------------------
-
-function useResolvedComposerSignals(
-  draft: DraftSignals,
-  composerFileInputProp$: Computed<HTMLElement | null> | undefined,
-  setComposerFileInputProp$:
-    | Command<(() => void) | undefined, [HTMLElement | null]>
-    | undefined,
-) {
-  const attachments = useGet(draft.attachments$);
-  const attachmentUploadsState = useLoadableState(
-    draft.attachmentUploadsReady$,
-  );
-  const readInput = useSet(draft.readInput$);
-  const uploadAttachment = useSet(draft.uploadAttachment$);
-  const restoreAttachments = useSet(draft.restoreAttachments$);
-  const removeAttachment = useSet(draft.removeAttachment$);
-  const fileInputEl = useGet(
-    composerFileInputProp$ ?? singletonComposerFileInput$,
-  );
-  const setFileInputEl = useSet(
-    setComposerFileInputProp$ ?? singletonSetComposerFileInput$,
-  );
-  const dragOver = useGet(draft.dragOver$);
-  const setDragOver = useSet(draft.setDragOver$);
-
-  return {
-    readInput,
-    attachments,
-    attachmentUploadsState,
-    uploadAttachment,
-    restoreAttachments,
-    removeAttachment,
-    fileInputEl,
-    setFileInputEl,
-    dragOver,
-    setDragOver,
-  };
 }
 
 function toPersistedAttachments(
@@ -6502,23 +7013,17 @@ function toPersistedAttachments(
 
 function restoreChatClipboardPayload({
   event,
-  inlineTemplatesEnabled,
   visualAttachmentUnsupported,
   insertPromptMarkdown,
   insertUserMessage,
   restoreAttachments,
-  onTemplateChange,
   onDraftChange,
 }: {
   event: ComposerPasteEvent;
-  inlineTemplatesEnabled: boolean;
   visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
   insertPromptMarkdown: (value: string) => void;
   insertUserMessage: (value: UserMessageDocument) => void;
   restoreAttachments: (attachments: PersistedAttachment[]) => void;
-  onTemplateChange:
-    | ((value: GenerationTemplateRequest | undefined) => void)
-    | undefined;
   onDraftChange: (() => void) | undefined;
 }): boolean {
   if (!event.clipboardData) {
@@ -6537,10 +7042,7 @@ function restoreChatClipboardPayload({
   }
   const allowedAttachments = visualAttachmentUnsupported
     ? persistedAttachments.filter((attachment) => {
-        return !isVisualAttachment({
-          contentType: attachment.contentType,
-          filename: attachment.filename,
-        });
+        return !isVisualAttachment(attachment);
       })
     : persistedAttachments;
   if (
@@ -6555,20 +7057,15 @@ function restoreChatClipboardPayload({
     return (
       part.type === "text" ||
       part.type === "chat_thread" ||
+      part.type === "agent" ||
       part.type === "feedback" ||
-      (inlineTemplatesEnabled && part.type === "template")
+      part.type === "template"
     );
   });
   if (userMessage && hasInsertableUserMessagePart) {
     insertUserMessage(userMessage);
   } else if (payload.text) {
     insertPromptMarkdown(payload.text);
-  }
-  const templatePart = userMessage?.parts.find((part) => {
-    return part.type === "template";
-  });
-  if (!inlineTemplatesEnabled && templatePart?.type === "template") {
-    onTemplateChange?.(templatePart.template);
   }
   if (allowedAttachments.length > 0) {
     restoreAttachments(allowedAttachments);
@@ -6577,77 +7074,235 @@ function restoreChatClipboardPayload({
   return true;
 }
 
-type KeyboardSendAction = "none" | "send" | "queue";
+function useComposerDraftChange(signals: ComposerSignals): () => void {
+  const saveDraft = useSet(signals.draft.save$);
+  const pageSignal = useGet(pageSignal$);
+  return () => {
+    detach(saveDraft(pageSignal), Reason.DomCallback);
+  };
+}
 
-function ComposerInputSlot({
-  composer,
-  onDraftChange,
-  sending,
-  autoFocus,
-  enableMobileSingleLine,
-  onKeyDown,
-  onPaste,
+function useComposerVisualAttachmentUnsupported(
+  signals: ComposerSignals,
+): VisualAttachmentUnsupportedState | null {
+  const modelSelection = useLastResolved(signals.model.modelSelection$) ?? null;
+  const imageRecognitionEnabled = useGet(imageRecognitionAvailable$);
+  return getVisualAttachmentUnsupportedState(
+    {
+      value: modelSelection,
+      onChange: () => {},
+    },
+    imageRecognitionEnabled,
+  );
+}
+
+function useComposerTemplatePicker(
+  signals: ComposerSignals,
+): ComposerTemplatePicker {
+  const value = useGet(signals.template.generationTemplate$);
+  const setValue = useSet(signals.template.setGenerationTemplate$);
+  const insertTemplate = useSet(signals.template.insertTemplate$);
+  const notifyDraftChanged = useComposerDraftChange(signals);
+  return (
+    inlineComposerTemplatePicker({
+      picker: { value, onChange: setValue },
+      insertTemplate,
+      onDraftChange: notifyDraftChanged,
+    }) ?? { value, onChange: setValue }
+  );
+}
+
+function useComposerPrimaryAction(
+  signals: ComposerSignals,
+): ComposerPrimaryAction {
+  const action =
+    useLastResolved(signals.submission.primaryAction$) ?? "disabled";
+  const selectedModelOauthAvailable =
+    useLastResolved(signals.model.selectedModelOauthAvailable$) ?? true;
+  return selectedModelOauthAvailable ? action : "disabled";
+}
+
+function startComposerSubmission({
+  action,
+  activate,
+  completeVoiceInput,
+  ensurePushSubscription,
+  signal,
 }: {
-  readonly composer: WorkflowComposerSignals;
-  readonly onDraftChange: (() => void) | undefined;
-  readonly sending: boolean | undefined;
-  readonly autoFocus: boolean | undefined;
-  readonly enableMobileSingleLine: boolean;
-  readonly onKeyDown: (e: KeyboardEventLike) => void;
-  readonly onPaste: (e: ComposerPasteEvent) => void;
-}) {
-  const singleLineOnMobile = enableMobileSingleLine;
+  action: ComposerPrimaryAction;
+  activate: (signal: AbortSignal) => Promise<boolean>;
+  completeVoiceInput: (signal: AbortSignal) => Promise<void>;
+  ensurePushSubscription: (signal: AbortSignal) => Promise<void>;
+  signal: AbortSignal;
+}): void {
+  if (action === "disabled" || action === "stop") {
+    return;
+  }
+  if (action === "send") {
+    detach(ensurePushSubscription(signal), Reason.DomCallback);
+  }
+  detach(
+    (async () => {
+      await completeVoiceInput(signal);
+      await activate(signal);
+    })(),
+    Reason.DomCallback,
+  );
+}
+
+function useComposerFileUpload(
+  signals: ComposerSignals,
+): (file: File) => boolean {
+  const visualAttachmentUnsupported =
+    useComposerVisualAttachmentUnsupported(signals);
+  const uploadAttachment = useSet(signals.draft.uploadAttachment$);
+  const rootSignal = useGet(rootSignal$);
+  const { t } = useTranslation();
+  return (file) => {
+    if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
+      showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+      return false;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(
+        t(
+          ($) => {
+            return $.chat.attachments.fileTooLarge;
+          },
+          { filename: file.name },
+        ),
+      );
+      return false;
+    }
+    detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+    return true;
+  };
+}
+
+function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
+  const sending = useLastResolved(signals.submission.sending$) ?? false;
+  const notifyDraftChanged = useComposerDraftChange(signals);
+  const visualAttachmentUnsupported =
+    useComposerVisualAttachmentUnsupported(signals);
+  const restoreAttachments = useSet(signals.draft.restoreAttachments$);
+  const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
+  const insertUserMessage = useSet(signals.editor.insertUserMessage$);
+  const uploadFile = useComposerFileUpload(signals);
+  const primaryAction = useComposerPrimaryAction(signals);
+  const submitCurrentInput = useSet(signals.submission.submitCurrentInput$);
+  const completeVoiceInput = useSet(stopAndTranscribe$);
+  const ensurePushSubscription = useSet(ensurePushSubscription$);
+  const rootSignal = useGet(rootSignal$);
+  const sendModeLoadable = useLastLoadable(sendMode$);
+  const sendMode =
+    sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
+
+  const handlePaste = (event: ComposerPasteEvent) => {
+    if (
+      restoreChatClipboardPayload({
+        event,
+        visualAttachmentUnsupported,
+        insertPromptMarkdown,
+        insertUserMessage,
+        restoreAttachments,
+        onDraftChange: notifyDraftChanged,
+      })
+    ) {
+      return;
+    }
+    const items = event.clipboardData?.items;
+    if (!items) {
+      return;
+    }
+    const plainText = event.clipboardData?.getData("text/plain") ?? "";
+    let pastedPlainText = false;
+    let uploaded = false;
+    const applyPlainText = () => {
+      if (pastedPlainText || !plainText) {
+        return;
+      }
+      insertPromptMarkdown(plainText);
+      pastedPlainText = true;
+    };
+    for (const item of items) {
+      if (item.kind !== "file") {
+        continue;
+      }
+      const file = item.getAsFile();
+      if (!file) {
+        continue;
+      }
+      event.preventDefault();
+      applyPlainText();
+      uploaded = uploadFile(file) || uploaded;
+    }
+    if (uploaded || pastedPlainText) {
+      notifyDraftChanged();
+    }
+  };
+
+  const submit = () => {
+    startComposerSubmission({
+      action: primaryAction,
+      activate: (signal) => {
+        return submitCurrentInput(primaryAction, signal);
+      },
+      completeVoiceInput,
+      ensurePushSubscription,
+      signal: rootSignal,
+    });
+  };
+
+  const handleKeyDown = (event: KeyboardEventLike) => {
+    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+    if (isMobileTextInputDevice()) {
+      processShortcut({ "mod+enter": submit }, event);
+      return;
+    }
+    processShortcut(
+      {
+        ...(sendMode === "enter" ? { enter: submit } : { "mod+enter": submit }),
+        ...(isTouchDevice && sendMode === "enter"
+          ? { "mod+enter": submit }
+          : {}),
+        escape: () => {
+          (event.target as HTMLElement).blur();
+        },
+      },
+      event,
+    );
+  };
 
   return (
     <TiptapWorkflowComposer
-      composer={composer}
-      onDraftChange={onDraftChange}
+      signals={signals}
+      onDraftChange={notifyDraftChanged}
       sending={sending}
-      autoFocus={autoFocus}
-      onKeyDown={onKeyDown}
-      onPaste={onPaste}
-      singleLineOnMobile={singleLineOnMobile}
+      onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
     />
   );
 }
 
-function resolveKeyboardSendAction({
-  canSend,
-  sending,
-  queueWhileSending,
-  hasQueueHandler,
-}: {
-  canSend: boolean;
-  sending: boolean | undefined;
-  queueWhileSending: boolean;
-  hasQueueHandler: boolean;
-}): KeyboardSendAction {
-  if (!canSend || (sending && (!queueWhileSending || !hasQueueHandler))) {
-    return "none";
-  }
-  return sending ? "queue" : "send";
-}
-
 // Stop while an empty composer is mid-run; otherwise Send.
 function ComposerSendButton({
-  showStopButton,
-  onCancel,
-  sendAction,
-  onSend,
+  action,
+  onActivate,
 }: {
-  showStopButton: boolean;
-  onCancel: (() => void) | undefined;
-  sendAction: KeyboardSendAction;
-  onSend: () => void;
+  action: ComposerPrimaryAction;
+  onActivate: () => void;
 }) {
-  if (showStopButton) {
+  const { t } = useTranslation();
+  if (action === "stop") {
     return (
       <Button
         size="sm"
         variant="destructive"
         className="rounded-lg h-9 w-9 p-0 shrink-0"
-        onClick={onCancel}
-        aria-label="Stop"
+        onClick={onActivate}
+        aria-label={t(($) => {
+          return $.chat.actions.stop;
+        })}
       >
         <IconPlayerStop size={16} />
       </Button>
@@ -6657,94 +7312,47 @@ function ComposerSendButton({
     <Button
       size="sm"
       className="rounded-lg h-9 w-9 p-0 shrink-0"
-      onClick={onSend}
-      disabled={sendAction === "none"}
-      aria-label="Send"
+      onClick={onActivate}
+      disabled={action === "disabled"}
+      aria-label={t(($) => {
+        return $.chat.actions.send;
+      })}
     >
       <IconArrowUp size={18} stroke={2} />
     </Button>
   );
 }
 
-function ComposerSendControl({
-  draft,
-  visibleAttachmentCount,
-  uploadsReady,
-  submitBlocked,
-  sending,
-  queueWhileSending,
-  hasQueueHandler,
-  onCancel,
-  actionsLoading,
-  submissionLoading,
-  onSend,
-}: {
-  draft: DraftSignals;
-  visibleAttachmentCount: number;
-  uploadsReady: boolean;
-  submitBlocked: boolean;
-  sending: boolean | undefined;
-  queueWhileSending: boolean;
-  hasQueueHandler: boolean;
-  onCancel: (() => void) | undefined;
-  actionsLoading: boolean;
-  submissionLoading: boolean;
-  onSend: () => void;
-}) {
-  const hasInput = useGet(draft.hasInput$);
-  const canSend = resolveComposerCanSend({
-    hasInput,
-    visibleAttachmentCount,
-    uploadsReady,
-  });
-  const sendAction = resolveKeyboardSendAction({
-    canSend: canSend && !submitBlocked && !submissionLoading,
-    sending,
-    queueWhileSending,
-    hasQueueHandler,
-  });
-  const state = resolveSendButtonStateForActionsLoading({
-    actionsLoading,
-    showStopButton: Boolean(sending && onCancel) && !canSend,
-    onCancel,
-    sendAction,
-  });
-  return <ComposerSendButton {...state} onSend={onSend} />;
-}
-
-function resolveSendButtonStateForActionsLoading({
-  actionsLoading,
-  showStopButton,
-  onCancel,
-  sendAction,
-}: {
-  actionsLoading: boolean;
-  showStopButton: boolean;
-  onCancel: (() => void) | undefined;
-  sendAction: KeyboardSendAction;
-}): {
-  showStopButton: boolean;
-  onCancel: (() => void) | undefined;
-  sendAction: KeyboardSendAction;
-} {
-  if (actionsLoading) {
-    return {
-      showStopButton: false,
-      onCancel: undefined,
-      sendAction: "none",
-    };
-  }
-  return {
-    showStopButton,
-    onCancel,
-    sendAction,
+function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
+  const action = useComposerPrimaryAction(signals);
+  const activatePrimaryAction = useSet(
+    signals.submission.activatePrimaryAction$,
+  );
+  const completeVoiceInput = useSet(stopAndTranscribe$);
+  const ensurePushSubscription = useSet(ensurePushSubscription$);
+  const rootSignal = useGet(rootSignal$);
+  const activate = () => {
+    if (action === "stop") {
+      detach(activatePrimaryAction(action, rootSignal), Reason.DomCallback);
+      return;
+    }
+    startComposerSubmission({
+      action,
+      activate: (signal) => {
+        return activatePrimaryAction(action, signal);
+      },
+      completeVoiceInput,
+      ensurePushSubscription,
+      signal: rootSignal,
+    });
   };
+  return <ComposerSendButton action={action} onActivate={activate} />;
 }
 
 function ModelConfigurationWarning({
   blocker,
 }: {
-  blocker: NonNullable<ZeroChatComposerProps["submitBlocker"]>;
+  blocker: ComposerSubmitBlocker;
 }) {
   return (
     <TooltipProvider delayDuration={200}>
@@ -6768,49 +7376,90 @@ function ModelConfigurationWarning({
   );
 }
 
-function ComposerModelPickerSlot({
-  modelPicker,
-  modelPickerLoading,
-  submitBlocker,
-  onModelPickerChange,
-}: {
-  modelPicker: ComposerModelPicker | undefined;
-  modelPickerLoading: boolean;
-  submitBlocker: ZeroChatComposerProps["submitBlocker"];
-  onModelPickerChange: (value: ModelProviderSelection | null) => void;
-}) {
+function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
+  const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
-  const modelPickerOpen = useGet(modelPickerOpen$);
-  const setModelPickerOpen = useSet(setModelPickerOpen$);
-  if (modelPickerLoading) {
+  const explicitDefaultModelActionEnabled = useGet(
+    signals.model.explicitDefaultModelActionEnabled$,
+  );
+  const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
+  const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
+  const modelSelection = useLastLoadable(signals.model.modelSelection$);
+  const selectedModelOauthAvailable =
+    useLastResolved(signals.model.selectedModelOauthAvailable$) ?? true;
+  const setModelSelection = useSet(signals.model.setModelSelection$);
+  const configureSelectedModel = useSet(signals.model.configureSelectedModel$);
+  const attachments = useGet(signals.draft.attachments$);
+  const imageRecognitionEnabled = useGet(imageRecognitionAvailable$);
+  const pageSignal = useGet(pageSignal$);
+  const value = modelSelection.state === "hasData" ? modelSelection.data : null;
+  const modelPickerLoading = modelSelection.state === "loading";
+  const onModelPickerChange = (selection: ModelProviderSelection | null) => {
+    const nextUnsupported = getVisualAttachmentUnsupportedState(
+      {
+        value,
+        onChange: onModelPickerChange,
+      },
+      imageRecognitionEnabled,
+      selection,
+    );
+    if (
+      nextUnsupported &&
+      attachments.some((attachment) => {
+        return isVisualAttachment(attachment);
+      })
+    ) {
+      showVisualAttachmentUnsupportedToast(nextUnsupported);
+    }
+    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
+  };
+  const modelPicker: ComposerModelPicker = {
+    value,
+    onChange: onModelPickerChange,
+  };
+  const submitBlocker: ComposerSubmitBlocker | undefined =
+    value && !selectedModelOauthAvailable
+      ? {
+          message: t(($) => {
+            return $.chat.composer.selectedModelUnavailable;
+          }),
+          actionLabel: t(($) => {
+            return $.chat.composer.configureModel;
+          }),
+          onAction: () => {
+            detach(configureSelectedModel(pageSignal), Reason.DomCallback);
+          },
+        }
+      : undefined;
+  if (modelPickerLoading || modelPicker.value === null) {
     return null;
   }
-  const shouldRenderModelPicker =
-    modelPicker !== undefined && modelPicker.value !== null;
 
   return (
     <>
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
-      {shouldRenderModelPicker && (
-        <ModelProviderPicker
-          value={modelPicker.value}
-          onChange={onModelPickerChange}
-          placeholder="Select model"
-          triggerClassName={cn(
-            "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
-            "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-            "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
-            COMPOSER_CONTROL_FOCUS_CLASS,
-          )}
-          compactTrigger
-          mobileIconTrigger
-          codexFastModeEnabled={codexFastModeEnabled}
-          open={modelPickerOpen}
-          onOpenChange={setModelPickerOpen}
-          disabled={modelPicker.disabled}
-          resolveDefaultSelection={false}
-        />
-      )}
+      <ModelProviderPicker
+        value={modelPicker.value}
+        onChange={onModelPickerChange}
+        placeholder={t(($) => {
+          return $.chat.composer.selectModel;
+        })}
+        triggerClassName={cn(
+          "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
+          "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
+          "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+          COMPOSER_CONTROL_FOCUS_CLASS,
+        )}
+        compactTrigger
+        mobileIconTrigger
+        codexFastModeEnabled={codexFastModeEnabled}
+        open={modelPickerOpen}
+        onOpenChange={setModelPickerOpen}
+        disabled={modelPicker.disabled}
+        resolveDefaultSelection={false}
+        showDefaultModelAction={explicitDefaultModelActionEnabled}
+      />
+      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>
   );
 }
@@ -6827,314 +7476,319 @@ function nullToUndefined<T>(value: T | null): T | undefined {
   return value === null ? undefined : value;
 }
 
-function equalAgentConnectorAuthorizations(
-  left: AgentConnectorAuthorizations | null,
-  right: AgentConnectorAuthorizations | null,
+function equalComposerConnectorAuthorizationState(
+  left: ComposerConnectorAuthorizationState,
+  right: ComposerConnectorAuthorizationState,
 ): boolean {
-  if (left === null || right === null) {
-    return left === right;
-  }
   return (
     left.agentId === right.agentId &&
-    equalArrays(left.enabledTypes, right.enabledTypes)
+    equalArrays(left.enabledConnectorSlugs, right.enabledConnectorSlugs) &&
+    equalArrays(left.enabledCustomConnectorIds, right.enabledCustomConnectorIds)
   );
 }
 
-export function useComposerConnectorReadState(
-  composerConnectors: ComposerConnectorSignals,
+function useComposerConnectorReadState(
+  signals: ComposerSignals,
 ): ComposerConnectorReadState {
   return {
     catalogItems: useLastLoadable(allConnectorCatalogItems$),
-    agentId: useLoadable(composerConnectors.agentId$),
-    authorizations: useLastLoadable(composerConnectors.authorizations$, {
-      equalityFn: equalAgentConnectorAuthorizations,
+    customConnectors: useLastLoadable(customConnectors$),
+    agent: useLoadable(signals.agent$),
+    authorization: useLastLoadable(signals.connector.connectorAuthorization$, {
+      equalityFn: equalComposerConnectorAuthorizationState,
     }),
   };
 }
 
-function matchingAuthorizedConnectorRefs(
-  agentId: Loadable<string | null>,
-  authorizations: Loadable<AgentConnectorAuthorizations | null>,
-): readonly ConnectorRef[] | null {
-  if (agentId.state !== "hasData" || authorizations.state !== "hasData") {
+function matchingAuthorizedConnectorSlugs(
+  agent: Loadable<ZeroAgentResponse>,
+  authorization: Loadable<ComposerConnectorAuthorizationState>,
+): readonly ConnectorSlug[] | null {
+  if (agent.state !== "hasData" || authorization.state !== "hasData") {
     return null;
   }
-  if (agentId.data === null) {
-    return authorizations.data === null ? [] : null;
-  }
-  if (authorizations.data?.agentId !== agentId.data) {
+  if (authorization.data.agentId !== agent.data.agentId) {
     return null;
   }
-  return authorizations.data.enabledTypes;
+  return authorization.data.enabledConnectorSlugs;
 }
 
-// The thread route invokes this hook from its ccstate-connected composer so
-// dynamic bindings do not cross another React component boundary. The agent
-// landing page uses the component wrapper below for its separate signal scope.
-export function useZeroChatComposer(
-  {
-    composer,
-    composerConnectors,
-    onSend,
-    onQueue,
-    sending,
-    queueWhileSending = false,
-    submissionLoading = false,
-    onCancel,
-    displayName,
-    className,
-    autoFocus,
-    enableMobileSingleLine = false,
-    draft,
-    composerFileInput$: composerFileInputProp$,
-    setComposerFileInput$: setComposerFileInputProp$,
-    chatThreadId,
-    onDraftChange,
-    actionsLoading = false,
-    modelPicker,
-    templatePicker,
-    onCreateWorkflowPrompt,
-    computerUse,
-    modelPickerLoading = false,
-    submitBlocker,
-    queuedItems,
-    onRemoveQueuedItem,
-    workflowEventItems,
-    onRemoveWorkflowEvent,
-    workflowEventsPaused = false,
-    workflowEventsPauseReason,
-    onSetWorkflowEventsPaused,
-    onClearWorkflowEvents,
-    activeGoal,
-    onCancelActiveGoal,
-  }: ZeroChatComposerProps,
-  connectorReadState: ComposerConnectorReadState,
-) {
-  const showAddDialog = useGet(composerConnectors.showAddDialog$);
-  const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
-  const openGoalDialog = useSet(openChatThreadGoalDialog$);
-  const featureSwitches = useGet(featureSwitch$);
-  const inlineTemplatesEnabled =
-    userMessageInlineTemplatesEnabled(featureSwitches);
+function matchingAuthorizedCustomConnectorIds(
+  agent: Loadable<ZeroAgentResponse>,
+  authorization: Loadable<ComposerConnectorAuthorizationState>,
+): readonly string[] | null {
+  if (agent.state !== "hasData" || authorization.state !== "hasData") {
+    return null;
+  }
+  if (authorization.data.agentId !== agent.data.agentId) {
+    return null;
+  }
+  return authorization.data.enabledCustomConnectorIds;
+}
 
-  const resolved = useResolvedComposerSignals(
-    draft,
-    composerFileInputProp$,
-    setComposerFileInputProp$,
-  );
-  const {
-    readInput,
-    attachments,
-    attachmentUploadsState,
-    uploadAttachment,
-    restoreAttachments,
-    removeAttachment,
-    fileInputEl,
-    setFileInputEl,
-    dragOver,
-    setDragOver,
-  } = resolved;
-  const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
-  const insertUserMessage = useSet(composer.insertUserMessage$);
-  const insertTemplate = useSet(composer.insertTemplate$);
-  const appendComposerText = useSet(composer.appendText$);
-  const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
-    composer.readInputForSubmission$,
-  );
+interface ResolvedComposerConnectorCollections {
+  readonly authorizedSet: ReadonlySet<ConnectorSlug>;
+  readonly connectorMap: ReadonlyMap<
+    ConnectorSlug,
+    PlatformConnectorCatalogStatusItem
+  >;
+  readonly unconnectedConnectors: PlatformConnectorCatalogStatusItem[];
+  readonly unconnectedCustomConnectors: CustomConnectorResponse[];
+  readonly agentConnectors: ComposerConnectorItem[];
+  readonly agentCustomConnectors: ComposerCustomConnectorItem[];
+  readonly selectedCustomConnector: CustomConnectorResponse | undefined;
+}
 
-  const ensurePushSubscription = useSet(ensurePushSubscription$);
-  const rootSignal = useGet(rootSignal$);
+function resolveComposerConnectorCollections({
+  catalogItems,
+  customConnectors,
+  authorizedConnectorSlugs,
+  authorizedCustomConnectorIds,
+  optimisticConnected,
+  selectedCustomConnectorId,
+}: {
+  catalogItems: Loadable<readonly PlatformConnectorCatalogStatusItem[]>;
+  customConnectors: Loadable<readonly CustomConnectorResponse[]>;
+  authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
+  authorizedCustomConnectorIds: readonly string[] | null;
+  optimisticConnected: ReadonlySet<ConnectorSlug>;
+  selectedCustomConnectorId: string | null;
+}): ResolvedComposerConnectorCollections {
+  const resolvedCatalogItems =
+    catalogItems.state === "hasData" ? catalogItems.data : [];
+  const resolvedCustomConnectors =
+    customConnectors.state === "hasData" ? customConnectors.data : [];
+  const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
+  const authorizedCustomSet = new Set(authorizedCustomConnectorIds ?? []);
+  const connectorMap = new Map(
+    resolvedCatalogItems.map((connector) => {
+      return [connector.slug, connector];
+    }),
+  );
+  const unconnectedConnectors = resolvedCatalogItems.filter((connector) => {
+    return !connector.connected && !optimisticConnected.has(connector.slug);
+  });
+  const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
+    (connector) => {
+      return !connector.connected;
+    },
+  );
+  const agentConnectors = resolvedCatalogItems
+    .filter((connector) => {
+      return connector.connected || optimisticConnected.has(connector.slug);
+    })
+    .map((connector) => {
+      return {
+        ...connector,
+        authorized: authorizedSet.has(connector.slug),
+      };
+    });
+  const agentCustomConnectors = resolvedCustomConnectors
+    .filter((connector) => {
+      return connector.connected;
+    })
+    .map((connector) => {
+      return {
+        ...connector,
+        authorized: authorizedCustomSet.has(connector.id),
+      };
+    });
+  const selectedCustomConnector = selectedCustomConnectorId
+    ? resolvedCustomConnectors.find((connector) => {
+        return connector.id === selectedCustomConnectorId;
+      })
+    : undefined;
+  return {
+    authorizedSet,
+    connectorMap,
+    unconnectedConnectors,
+    unconnectedCustomConnectors,
+    agentConnectors,
+    agentCustomConnectors,
+    selectedCustomConnector,
+  };
+}
+
+function ComposerFileInput({ signals }: { signals: ComposerSignals }) {
+  const setFileInput = useSet(signals.draft.setComposerFileInput$);
+  const uploadFile = useComposerFileUpload(signals);
+  const notifyDraftChanged = useComposerDraftChange(signals);
+
+  return (
+    <input
+      ref={setFileInput}
+      type="file"
+      className="hidden"
+      accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.tsv,.md,.json,.xml,.yaml,.yml,.html,.htm,.doc,.docx,.docm,.dotx,.dotm,.odt,.rtf,.xls,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ods,.ppt,.pptx,.pptm,.potx,.potm,.ppsx,.ppsm,.odp,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.gz,.bz2,.xz,.pages,.numbers,.key,.heic,.heif,.tif,.tiff,.bmp,.parquet,.sqlite,.sqlite3,.db,.epub,.psd,.ai"
+      multiple
+      onChange={(event) => {
+        const files = event.target.files;
+        let uploaded = false;
+        if (files) {
+          for (const file of files) {
+            uploaded = uploadFile(file) || uploaded;
+          }
+        }
+        if (uploaded) {
+          notifyDraftChanged();
+        }
+        event.target.value = "";
+      }}
+    />
+  );
+}
+
+function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
+  const attachments = useGet(signals.draft.attachments$);
   const visualAttachmentUnsupported =
-    getVisualAttachmentUnsupportedState(modelPicker);
+    useComposerVisualAttachmentUnsupported(signals);
   const visibleAttachments = resolveVisibleAttachments(
     attachments,
     visualAttachmentUnsupported,
   );
-  const uploadsReady = attachmentUploadsState === "hasData";
-  const composerTemplatePicker = inlineComposerTemplatePicker({
-    picker: templatePicker,
-    enabled: inlineTemplatesEnabled,
-    insertTemplate,
-    onDraftChange,
-  });
+  const removeAttachment = useSet(signals.draft.removeAttachment$);
+  const notifyDraftChanged = useComposerDraftChange(signals);
 
-  // File upload handlers (paste / drag-drop)
-  const handlePaste = (e: ComposerPasteEvent) => {
-    if (!e.clipboardData) {
-      return;
-    }
-    if (
-      restoreChatClipboardPayload({
-        event: e,
-        inlineTemplatesEnabled,
-        visualAttachmentUnsupported,
-        insertPromptMarkdown,
-        insertUserMessage,
-        restoreAttachments,
-        onTemplateChange: composerTemplatePicker?.onChange,
-        onDraftChange,
-      })
-    ) {
-      return;
-    }
+  if (visibleAttachments.length === 0) {
+    return null;
+  }
+  return (
+    <AttachmentChips
+      attachments={visibleAttachments}
+      onRemove={(attachment) => {
+        removeAttachment(attachment);
+        notifyDraftChanged();
+      }}
+    />
+  );
+}
 
-    const items = e.clipboardData?.items;
-    if (!items) {
-      return;
-    }
-    const plainText = e.clipboardData.getData("text/plain");
-    let pastedPlainText = false;
-    const applyPlainText = () => {
-      if (pastedPlainText || !plainText) {
-        return;
-      }
-      insertPromptMarkdown(plainText);
-      pastedPlainText = true;
-    };
-    for (const item of items) {
-      if (item.kind !== "file") {
-        continue;
-      }
-      const file = item.getAsFile();
-      if (!file) {
-        continue;
-      }
-      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
-        e.preventDefault();
-        applyPlainText();
-        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        e.preventDefault();
-        toast.error(`${file.name} exceeds the 1 GB limit`);
-        continue;
-      }
-      e.preventDefault();
-      applyPlainText();
-      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
-      onDraftChange?.();
-    }
-  };
-
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = e.dataTransfer?.files;
-    if (!files) {
-      return;
-    }
-    let uploaded = false;
-    for (const file of files) {
-      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
-        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        e.preventDefault();
-        toast.error(`${file.name} exceeds the 1 GB limit`);
-        continue;
-      }
-      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
-      uploaded = true;
-    }
-    if (uploaded) {
-      onDraftChange?.();
-    }
-  };
-
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragOver(true);
-  };
-
-  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setDragOver(false);
-    }
+function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
+  const { t } = useTranslation();
+  const connectorReadState = useComposerConnectorReadState(signals);
+  const connectorUi = useGet(signals.connector.connectorUiState$);
+  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const storedComputerUseHostId = useGet(signals.computer.computerUseHostId$);
+  const cloudBrowserEnabled = useGet(signals.computer.cloudBrowserEnabled$);
+  const setComputerUseHostId = useSet(signals.computer.setComputerUseHostId$);
+  const setCloudBrowserEnabled = useSet(
+    signals.computer.setCloudBrowserEnabled$,
+  );
+  const computerUseHostsState = useLastLoadable(computerUseHosts$);
+  const lastComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
+  const computerUseHosts =
+    computerUseHostsState.state === "hasData"
+      ? computerUseHostsState.data
+      : lastComputerUseHosts;
+  const resolvedComputerUseHostId = selectedComputerUseHostId(
+    computerUseHosts,
+    storedComputerUseHostId,
+  );
+  const composerPageSignal = useGet(pageSignal$);
+  const computerUse: ComposerComputerUse = {
+    hosts: visibleComputerUseHosts(computerUseHosts, resolvedComputerUseHostId),
+    loading:
+      computerUseHostsState.state === "loading" &&
+      computerUseHosts.length === 0,
+    selectedHostId: resolvedComputerUseHostId,
+    onChange: (hostId) => {
+      detach(
+        setComputerUseHostId(hostId, composerPageSignal),
+        Reason.DomCallback,
+      );
+    },
+    cloudBrowserEnabled,
+    onCloudBrowserChange: (enabled) => {
+      detach(
+        setCloudBrowserEnabled(enabled, composerPageSignal),
+        Reason.DomCallback,
+      );
+    },
+    downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
   };
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
   const connectorCatalogItemsLoadable = connectorReadState.catalogItems;
-  const agentIdLoadable = connectorReadState.agentId;
-  const authorizationsLoadable = connectorReadState.authorizations;
+  const customConnectorsLoadable = connectorReadState.customConnectors;
+  const agentLoadable = connectorReadState.agent;
+  const authorizationLoadable = connectorReadState.authorization;
   const pageSignal = useGet(pageSignal$);
-  const selectedConnectorRef = useGet(composerConnectors.selectedConnectorRef$);
-  const pendingConnectorRef = useGet(composerConnectors.pendingConnectorRef$);
-  const setPendingConnectorRef = useSet(
-    composerConnectors.setPendingConnectorRef$,
-  );
-  const setSelectedConnectorRef = useSet(
-    composerConnectors.setSelectedConnectorRef$,
-  );
-  const pollingAuthCodeRef = useGet(pollingOAuthAuthCodeConnectorRef$);
-  const pollingDeviceAuthRef = useGet(pollingOAuthDeviceAuthConnectorRef$);
-  const connectFlowRef = useGet(connectFlowConnectorRef$);
-  const busyConnectorRef =
-    connectFlowRef ?? pollingAuthCodeRef ?? pollingDeviceAuthRef;
+  const selectedConnectorSlug = connectorUi.selectedConnectorSlug;
+  const pendingConnectorSlug = connectorUi.pendingConnectorSlug;
+  const selectedCustomConnectorId = connectorUi.selectedCustomConnectorId;
+  const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
+  const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
+  const connectFlowSlug = useGet(connectFlowConnectorSlug$);
+  const busyConnectorSlug =
+    connectFlowSlug ?? pollingAuthCodeSlug ?? pollingDeviceAuthSlug;
   const connectBrowserAuth = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
-  const authorizeFn = useSet(composerConnectors.authorizeConnector$);
-  const deauthorizeFn = useSet(composerConnectors.deauthorizeConnector$);
-  const optimisticConnected = useGet(justConnectedRefs$);
-
-  const savingConnectorRef = useGet(composerConnectors.savingConnectorRef$);
-  const setSavingConnectorRef = useSet(
-    composerConnectors.setSavingConnectorRef$,
+  const setConnectorAuthorization = useSet(
+    signals.connector.setConnectorAuthorization$,
   );
-  const agentRecordId = loadableDataOrNull(agentIdLoadable);
+  const optimisticConnected = useGet(justConnectedSlugs$);
+  const savingConnectorSlug = connectorUi.savingConnectorSlug;
+  const savingCustomConnectorId = connectorUi.savingCustomConnectorId;
+  const agent = loadableDataOrNull(agentLoadable);
+  const agentRecordId = agent?.agentId ?? null;
+  const displayName = agent?.displayName ?? "";
 
-  const authorizedConnectors = matchingAuthorizedConnectorRefs(
-    agentIdLoadable,
-    authorizationsLoadable,
+  const authorizedConnectors = matchingAuthorizedConnectorSlugs(
+    agentLoadable,
+    authorizationLoadable,
+  );
+  const authorizedCustomConnectors = matchingAuthorizedCustomConnectorIds(
+    agentLoadable,
+    authorizationLoadable,
   );
 
   const connectorsLoading =
     connectorCatalogItemsLoadable.state !== "hasData" ||
-    authorizedConnectors === null;
+    customConnectorsLoadable.state !== "hasData" ||
+    authorizedConnectors === null ||
+    authorizedCustomConnectors === null;
 
-  const connectorCatalogItems =
-    connectorCatalogItemsLoadable.state === "hasData"
-      ? connectorCatalogItemsLoadable.data
-      : [];
-  const connectorMap = new Map(
-    connectorCatalogItems.map((connector) => {
-      return [connector.connectorRef, connector];
-    }),
-  );
-  const authorizedSet = new Set(authorizedConnectors ?? []);
-
-  const unconnectedConnectors = connectorCatalogItems.filter((connector) => {
-    return (
-      !connector.connected && !optimisticConnected.has(connector.connectorRef)
-    );
+  const {
+    authorizedSet,
+    connectorMap,
+    unconnectedConnectors,
+    unconnectedCustomConnectors,
+    agentConnectors,
+    agentCustomConnectors,
+    selectedCustomConnector,
+  } = resolveComposerConnectorCollections({
+    catalogItems: connectorCatalogItemsLoadable,
+    customConnectors: customConnectorsLoadable,
+    authorizedConnectorSlugs: authorizedConnectors,
+    authorizedCustomConnectorIds: authorizedCustomConnectors,
+    optimisticConnected,
+    selectedCustomConnectorId,
   });
 
-  // Show all org-connected services so user can toggle authorization on/off per agent.
-  const connectedCatalogItems = connectorCatalogItems.filter((connector) => {
-    return (
-      connector.connected || optimisticConnected.has(connector.connectorRef)
-    );
-  });
-  const agentConnectors: ComposerConnectorItem[] = connectedCatalogItems.map(
-    (connector) => {
-      const authorized = authorizedSet.has(connector.connectorRef);
-      return { ...connector, authorized };
-    },
-  );
-
-  const handleConnectSuccess = async (connectorRef: ConnectorRef) => {
-    const label = connectorMap.get(connectorRef)?.label ?? connectorRef;
+  const handleConnectSuccess = async (connectorSlug: ConnectorSlug) => {
+    const label = connectorMap.get(connectorSlug)?.label ?? connectorSlug;
     const authorized = await tapError(
       (async () => {
-        await authorizeFn(connectorRef, pageSignal);
+        await setConnectorAuthorization(
+          { kind: "builtin", connectorSlug },
+          true,
+          pageSignal,
+        );
         return true;
       })(),
       () => {
         toast.error(
-          `${label} connected but could not be authorized for ${displayName}`,
+          t(
+            ($) => {
+              return $.chat.connectors.authorizationFailed;
+            },
+            {
+              connectorName: label,
+              agentName: displayName,
+            },
+          ),
           {
-            id: `connector-save-error-${connectorRef}`,
+            id: `connector-save-error-${connectorSlug}`,
           },
         );
       },
@@ -7142,39 +7796,54 @@ export function useZeroChatComposer(
     if (authorized !== true) {
       return false;
     }
-    toast.success(`${label} connected and authorized for ${displayName}`, {
-      id: `connector-connected-${connectorRef}`,
-    });
+    toast.success(
+      t(
+        ($) => {
+          return $.chat.connectors.authorized;
+        },
+        {
+          connectorName: label,
+          agentName: displayName,
+        },
+      ),
+      {
+        id: `connector-connected-${connectorSlug}`,
+      },
+    );
     return true;
   };
 
   const completeConnectorAddition = async (
-    connectorRef: ConnectorRef,
+    connectorSlug: ConnectorSlug,
   ): Promise<void> => {
-    if (!authorizedSet.has(connectorRef)) {
-      const authorized = await handleConnectSuccess(connectorRef);
+    if (!authorizedSet.has(connectorSlug)) {
+      const authorized = await handleConnectSuccess(connectorSlug);
       if (!authorized) {
-        setPendingConnectorRef(null);
+        updateConnectorUi({ pendingConnectorSlug: null });
         return;
       }
     }
-    setPendingConnectorRef(null);
-    setShowAddDialog(false);
+    updateConnectorUi({
+      pendingConnectorSlug: null,
+      showAddDialog: false,
+    });
   };
 
   const connectorConnectHandlers = (
-    connector: PublicConnectorCatalogStatusItem,
+    connector: PlatformConnectorCatalogStatusItem,
   ): ConnectorConnectHandlers => {
-    const connectorRef = connector.connectorRef;
+    const connectorSlug = connector.slug;
     return {
       openModal: () => {
-        setPendingConnectorRef(connectorRef);
-        setSelectedConnectorRef(connectorRef);
+        updateConnectorUi({
+          pendingConnectorSlug: connectorSlug,
+          selectedConnectorSlug: connectorSlug,
+        });
       },
       connectBrowserAuth: async (authMethod) => {
-        setPendingConnectorRef(connectorRef);
+        updateConnectorUi({ pendingConnectorSlug: connectorSlug });
         const connected = await connectBrowserAuth(
-          connectorRef,
+          connectorSlug,
           authMethod,
           {
             connectorLabel: connector.label,
@@ -7184,17 +7853,17 @@ export function useZeroChatComposer(
           pageSignal,
         );
         if (connected) {
-          await completeConnectorAddition(connectorRef);
+          await completeConnectorAddition(connectorSlug);
         } else {
-          setPendingConnectorRef(null);
+          updateConnectorUi({ pendingConnectorSlug: null });
         }
         return connected;
       },
       connectNoAuth: async (authMethod) => {
-        setPendingConnectorRef(connectorRef);
+        updateConnectorUi({ pendingConnectorSlug: connectorSlug });
         const connected = await connectNoAuth(
           {
-            connectorRef,
+            connectorSlug,
             authMethod,
             options: {
               connectorLabel: connector.label,
@@ -7204,304 +7873,102 @@ export function useZeroChatComposer(
           pageSignal,
         );
         if (connected) {
-          await completeConnectorAddition(connectorRef);
+          await completeConnectorAddition(connectorSlug);
         } else {
-          setPendingConnectorRef(null);
+          updateConnectorUi({ pendingConnectorSlug: null });
         }
         return connected;
       },
     };
   };
 
-  const handleToggle = async (connectorRef: ConnectorRef, checked: boolean) => {
-    setSavingConnectorRef(connectorRef);
-    await bestEffort(
-      checked
-        ? authorizeFn(connectorRef, pageSignal)
-        : deauthorizeFn(connectorRef, pageSignal),
-    );
-    setSavingConnectorRef(null);
-  };
-
-  const handleSend = () => {
-    const input = readInput();
-    const sendAction = resolveKeyboardSendAction({
-      canSend:
-        !actionsLoading &&
-        !submissionLoading &&
-        inputForSubmissionLoadable.state !== "loading" &&
-        uploadsReady &&
-        (input.trim().length > 0 || visibleAttachments.length > 0) &&
-        !submitBlocker,
-      sending,
-      queueWhileSending,
-      hasQueueHandler: onQueue !== undefined,
-    });
-    if (sendAction === "none") {
-      return;
-    }
-    if (sendAction === "send") {
-      // Fire-and-forget: request push permission on first send, never blocks
-      detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
-    }
-    const submitCurrentInput = async () => {
-      const submission = await readInputForSubmission(pageSignal);
-      const prompt = submission.prompt.trim();
-      if (prompt.length === 0 && visibleAttachments.length === 0) {
-        return;
-      }
-      if (sendAction === "send") {
-        onSend(
-          prompt,
-          composerTemplatePicker?.value,
-          submission.editorDocument,
-        );
-      } else {
-        onQueue?.(
-          prompt,
-          composerTemplatePicker?.value,
-          submission.editorDocument,
-        );
-      }
-    };
-    detach(submitCurrentInput(), Reason.DomCallback);
-  };
-
-  // Routes a button click to the queue path while the current thread is sending,
-  // otherwise to the normal send path.
-  const handleButtonSend = () => {
-    handleSend();
-  };
-
-  const sendModeLoadable = useLastLoadable(sendMode$);
-  const sendMode =
-    sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
-
-  const handleKeyDown = (e: KeyboardEventLike) => {
-    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
-    const isTouchOnlyDevice =
-      isTouchDevice && !window.matchMedia("(any-pointer: fine)").matches;
-    const send = () => {
-      handleSend();
-    };
-    if (isTouchOnlyDevice) {
-      processShortcut({ "mod+enter": send }, e);
-      return;
-    }
-    processShortcut(
-      {
-        ...(sendMode === "enter" ? { enter: send } : { "mod+enter": send }),
-        ...(isTouchDevice && sendMode === "enter" ? { "mod+enter": send } : {}),
-        escape: () => {
-          (e.target as HTMLElement).blur();
-        },
-      },
-      e,
-    );
-  };
-
-  const handleFileSelect = () => {
-    fileInputEl?.click();
-  };
-
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) {
-      return;
-    }
-    let uploaded = false;
-    for (const file of files) {
-      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
-        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        e.preventDefault();
-        toast.error(`${file.name} exceeds the 1 GB limit`);
-        continue;
-      }
-      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
-      uploaded = true;
-    }
-    if (uploaded) {
-      onDraftChange?.();
-    }
-    e.target.value = "";
-  };
-
-  const handleModelPickerChange = (
-    selection: ModelProviderSelection | null,
+  const handleToggle = async (
+    connectorSlug: ConnectorSlug,
+    checked: boolean,
   ) => {
-    const nextUnsupported = getVisualAttachmentUnsupportedState(
-      modelPicker,
-      selection,
+    updateConnectorUi({ savingConnectorSlug: connectorSlug });
+    await bestEffort(
+      setConnectorAuthorization(
+        { kind: "builtin", connectorSlug },
+        checked,
+        pageSignal,
+      ),
     );
-    if (
-      nextUnsupported &&
-      attachments.some((attachment) => {
-        return isVisualAttachment(attachment);
-      })
-    ) {
-      showVisualAttachmentUnsupportedToast(nextUnsupported);
-    }
-    modelPicker?.onChange(selection);
+    updateConnectorUi({ savingConnectorSlug: null });
+  };
+
+  const handleCustomToggle = async (connectorId: string, checked: boolean) => {
+    updateConnectorUi({ savingCustomConnectorId: connectorId });
+    await bestEffort(
+      setConnectorAuthorization(
+        { kind: "custom", connectorId },
+        checked,
+        pageSignal,
+      ),
+    );
+    updateConnectorUi({ savingCustomConnectorId: null });
   };
 
   return (
     <>
-      <input
-        ref={setFileInputEl}
-        type="file"
-        className="hidden"
-        accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.tsv,.md,.json,.xml,.yaml,.yml,.html,.htm,.doc,.docx,.docm,.dotx,.dotm,.odt,.rtf,.xls,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ods,.ppt,.pptx,.pptm,.potx,.potm,.ppsx,.ppsm,.odp,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.gz,.bz2,.xz,.pages,.numbers,.key,.heic,.heif,.tif,.tiff,.bmp,.parquet,.sqlite,.sqlite3,.db,.epub,.psd,.ai"
-        multiple
-        onChange={handleFileChange}
+      <ConnectorsPopoverButton
+        signals={signals}
+        agentId={agentRecordId}
+        agentDisplayName={displayName}
+        agentConnectors={agentConnectors}
+        agentCustomConnectors={agentCustomConnectors}
+        connectorsLoading={connectorsLoading}
+        savingConnectorSlug={savingConnectorSlug}
+        savingCustomConnectorId={savingCustomConnectorId}
+        computerUse={computerUse}
+        onOpenAddDialog={() => {
+          return updateConnectorUi({ showAddDialog: true });
+        }}
+        onToggle={handleToggle}
+        onToggleCustom={handleCustomToggle}
       />
-      <div className={cn("relative flex flex-col", className)}>
-        <PendingItemsStrip
-          items={queuedItems}
-          onRemove={onRemoveQueuedItem}
-          workflowEvents={workflowEventItems}
-          onRemoveWorkflowEvent={onRemoveWorkflowEvent}
-          workflowEventsPaused={workflowEventsPaused}
-          workflowEventsPauseReason={workflowEventsPauseReason}
-          onSetWorkflowEventsPaused={onSetWorkflowEventsPaused}
-          onClearWorkflowEvents={onClearWorkflowEvents}
-          activeGoal={activeGoal}
-          onCancelGoal={onCancelActiveGoal}
-          onOpenGoal={
-            chatThreadId
-              ? () => {
-                  openGoalDialog(chatThreadId);
-                }
-              : undefined
-          }
-        />
-        <Card
-          className={cn(
-            "zero-composer relative z-10 overflow-visible",
-            dragOver && "outline outline-2 outline-blue-400/60",
-          )}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-        >
-          <CardContent className="p-0">
-            <div className="flex flex-col">
-              <ComposerTemplateAttachmentSync
-                composer={composer}
-                picker={composerTemplatePicker}
-                onDraftChange={onDraftChange}
-                runtime={composer.templatePreview}
-              />
-              {visibleAttachments.length > 0 && (
-                <AttachmentChips
-                  attachments={visibleAttachments}
-                  onRemove={(attachment) => {
-                    removeAttachment(attachment);
-                    onDraftChange?.();
-                  }}
-                />
-              )}
-              <ComposerInputSlot
-                composer={composer}
-                onDraftChange={onDraftChange}
-                sending={sending}
-                autoFocus={autoFocus}
-                enableMobileSingleLine={enableMobileSingleLine}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-              />
-              <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
-                <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                  <ComposerUploadControl
-                    onDraftChange={onDraftChange}
-                    onAppendText={appendComposerText}
-                    onSelectFile={handleFileSelect}
-                  />
-                  <ComposerTemplatePickerSlot
-                    composer={composer}
-                    picker={composerTemplatePicker}
-                  />
-                  <ComposerWorkflowPromptSlot
-                    onCreateWorkflowPrompt={onCreateWorkflowPrompt}
-                  />
-                  <ConnectorsPopoverButton
-                    signals={composerConnectors}
-                    agentId={agentRecordId}
-                    agentDisplayName={displayName}
-                    agentConnectors={agentConnectors}
-                    connectorsLoading={connectorsLoading}
-                    savingConnectorRef={savingConnectorRef}
-                    computerUse={computerUse}
-                    onOpenAddDialog={() => {
-                      return setShowAddDialog(true);
-                    }}
-                    onToggle={handleToggle}
-                  />
-                </div>
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <ComposerModelPickerSlot
-                    modelPicker={modelPicker}
-                    modelPickerLoading={modelPickerLoading}
-                    submitBlocker={submitBlocker}
-                    onModelPickerChange={handleModelPickerChange}
-                  />
-                  <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
-                  <MicButton
-                    onTranscribed={(text) => {
-                      appendComposerText(text);
-                      onDraftChange?.();
-                    }}
-                  />
-                  <ComposerSendControl
-                    draft={draft}
-                    visibleAttachmentCount={visibleAttachments.length}
-                    uploadsReady={uploadsReady}
-                    submitBlocked={submitBlocker !== undefined}
-                    sending={sending}
-                    queueWhileSending={queueWhileSending}
-                    hasQueueHandler={onQueue !== undefined}
-                    onCancel={onCancel}
-                    actionsLoading={actionsLoading}
-                    submissionLoading={
-                      submissionLoading ||
-                      inputForSubmissionLoadable.state === "loading"
-                    }
-                    onSend={handleButtonSend}
-                  />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <ActiveGoalObjectiveDialog threadId={chatThreadId} />
-        <WebsiteTemplatePreviewDialogSlot />
-      </div>
-      {selectedConnectorRef && (
+      {selectedConnectorSlug && (
         <ConnectModal
-          selectedConnectorRef={selectedConnectorRef}
+          selectedConnectorSlug={selectedConnectorSlug}
           agentId={nullToUndefined(agentRecordId)}
           onClose={() => {
-            return setSelectedConnectorRef(null);
+            return updateConnectorUi({ selectedConnectorSlug: null });
           }}
           onSuccess={async () => {
-            const connectorRef = pendingConnectorRef ?? selectedConnectorRef;
-            if (connectorRef) {
-              await completeConnectorAddition(connectorRef);
+            const connectorSlug = pendingConnectorSlug ?? selectedConnectorSlug;
+            if (connectorSlug) {
+              await completeConnectorAddition(connectorSlug);
             }
           }}
         />
       )}
-      {showAddDialog && (
-        <AddConnectorsDialog
-          signals={composerConnectors}
-          unconnected={unconnectedConnectors}
-          busyConnectorRef={busyConnectorRef}
-          connectHandlers={connectorConnectHandlers}
+      {selectedCustomConnector && agentRecordId && (
+        <CustomConnectorConnectDialog
+          connector={selectedCustomConnector}
+          agentId={agentRecordId}
           onClose={() => {
-            setPendingConnectorRef(null);
-            return setShowAddDialog(false);
+            updateConnectorUi({ selectedCustomConnectorId: null });
+          }}
+        />
+      )}
+      {connectorUi.showAddDialog && (
+        <AddConnectorsDialog
+          signals={signals}
+          unconnected={unconnectedConnectors}
+          unconnectedCustom={unconnectedCustomConnectors}
+          busyConnectorSlug={busyConnectorSlug}
+          connectHandlers={connectorConnectHandlers}
+          onConnectCustom={(connector) => {
+            updateConnectorUi({
+              showAddDialog: false,
+              selectedCustomConnectorId: connector.id,
+            });
+          }}
+          onClose={() => {
+            return updateConnectorUi({
+              pendingConnectorSlug: null,
+              showAddDialog: false,
+            });
           }}
         />
       )}
@@ -7509,9 +7976,77 @@ export function useZeroChatComposer(
   );
 }
 
-export function ZeroChatComposer(props: ZeroChatComposerProps) {
-  const connectorReadState = useComposerConnectorReadState(
-    props.composerConnectors,
+function ComposerCard({ signals }: { signals: ComposerSignals }) {
+  const dragOver = useGet(signals.draft.dragOver$);
+  const setDragOver = useSet(signals.draft.setDragOver$);
+  const uploadFile = useComposerFileUpload(signals);
+  const notifyDraftChanged = useComposerDraftChange(signals);
+
+  return (
+    <Card
+      className={cn(
+        "zero-composer relative z-10 overflow-visible",
+        dragOver && "outline outline-2 outline-blue-400/60",
+      )}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragOver(false);
+        let uploaded = false;
+        for (const file of event.dataTransfer.files) {
+          uploaded = uploadFile(file) || uploaded;
+        }
+        if (uploaded) {
+          notifyDraftChanged();
+        }
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          setDragOver(false);
+        }
+      }}
+    >
+      <CardContent className="p-0">
+        <div className="flex flex-col">
+          <ComposerTemplateAttachmentSync signals={signals} />
+          <ComposerAttachments signals={signals} />
+          <ComposerInputSlot signals={signals} />
+          <div className="flex items-center justify-between gap-1 px-2 pb-3 pt-1 sm:gap-2 sm:px-4">
+            <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
+              <ComposerAttachButton signals={signals} />
+              <ComposerTemplatePickerSlot signals={signals} />
+              <ComposerWorkflowPromptSlot signals={signals} />
+              <ComposerConnectorsSlot signals={signals} />
+            </div>
+            <div className="flex items-center gap-1 sm:gap-2">
+              <ComposerModelPickerSlot signals={signals} />
+              <MicButton signals={signals} />
+              <ComposerSendControl signals={signals} />
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
-  return useZeroChatComposer(props, connectorReadState);
+}
+
+function ComposerSurface({ signals }: { signals: ComposerSignals }) {
+  return (
+    <>
+      <ComposerFileInput signals={signals} />
+      <div className="relative flex w-full min-w-0 flex-col">
+        <PendingItemsStrip signals={signals} />
+        <ComposerCard signals={signals} />
+        <ReplaceComposerDraftDialog signals={signals} />
+        <WebsiteTemplatePreviewDialogSlot signals={signals} />
+      </div>
+    </>
+  );
+}
+
+export function ZeroChatComposer({ signals }: ZeroChatComposerProps) {
+  return <ComposerSurface signals={signals} />;
 }

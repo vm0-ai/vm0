@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.4.73](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.72...nbd-cow-v0.4.73) (2026-08-06)
+
+
+### Documentation
+
+* **nbd-cow:** document pooled snapshot restore ([#25407](https://github.com/vm0-ai/vm0/issues/25407)) ([70e168a](https://github.com/vm0-ai/vm0/commit/70e168adb652e259bb727feb7b0e45c92adcb951))
+
+## [0.4.72](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.71...nbd-cow-v0.4.72) (2026-08-06)
+
+
+### Documentation
+
+* **nbd-cow:** document cow io cancellation semantics ([#25338](https://github.com/vm0-ai/vm0/issues/25338)) ([51502fb](https://github.com/vm0-ai/vm0/commit/51502fbe14b0fc76a5dbce4b369aa5c06d8316f5))
+
+## [0.4.71](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.70...nbd-cow-v0.4.71) (2026-08-03)
+
+
+### Performance Improvements
+
+* **nbd-cow:** decode bitmaps in chunks ([#24727](https://github.com/vm0-ai/vm0/issues/24727)) ([0280a52](https://github.com/vm0-ai/vm0/commit/0280a52383a7002aad480b0f3d34305adaaba31d))
+
+## [0.4.70](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.69...nbd-cow-v0.4.70) (2026-07-31)
+
+
+### Documentation
+
+* **rust:** align cow layer threshold and restore contracts ([#24251](https://github.com/vm0-ai/vm0/issues/24251)) ([022c237](https://github.com/vm0-ai/vm0/commit/022c237491bd53852a9c7e67219e2a54fc8f8e25))
+
 ## [0.4.69](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.68...nbd-cow-v0.4.69) (2026-07-23)
 
 

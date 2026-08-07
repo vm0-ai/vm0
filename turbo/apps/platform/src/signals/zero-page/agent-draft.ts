@@ -5,16 +5,12 @@ import {
   zeroAgentDraftResponseSchema,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import type {
-  GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
-import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { collectSuccessfulAttachmentInfos } from "../chat-page/resolve-draft-attachments.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { resetSignal } from "../utils.ts";
 import {
   createDraftSignals,
@@ -46,7 +42,6 @@ export interface EnsuredAgentDraft extends AgentDraftEntry {
 interface RestoredAgentDraftState {
   readonly content: string;
   readonly userMessage: UserMessageDocument | null;
-  readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: PersistedAttachment[];
 }
 
@@ -70,39 +65,21 @@ function userMessageAgentDraftAttachments(
   });
 }
 
-function userMessageAgentDraftState(
-  args: {
-    readonly draftContent: string | null;
-    readonly draftUserMessage?: UserMessageDocument | null;
-    readonly draftAttachments: PersistedAttachment[] | null;
-  },
-  inlineTemplatesEnabled: boolean,
-): RestoredAgentDraftState | null {
+function userMessageAgentDraftState(args: {
+  readonly draftUserMessage?: UserMessageDocument | null;
+  readonly draftAttachments: PersistedAttachment[] | null;
+}): RestoredAgentDraftState | null {
   const document = args.draftUserMessage;
-  if (
-    !document ||
-    messageDocumentToEditorDoc(document, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }) === null
-  ) {
+  if (!document || messageDocumentToEditorDoc(document) === null) {
     return null;
   }
-  const content = messageDocumentToPrompt(document, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  const content = messageDocumentToPrompt(document);
   if (content === null) {
     return null;
   }
-  const generationTemplate = document.parts.find((part) => {
-    return part.type === "template";
-  });
   return {
     content,
     userMessage: document,
-    generationTemplate:
-      !inlineTemplatesEnabled && generationTemplate?.type === "template"
-        ? generationTemplate.template
-        : undefined,
     attachments: userMessageAgentDraftAttachments(
       document,
       args.draftAttachments ?? [],
@@ -120,7 +97,6 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
         client.patch({
           params: { id: agentId },
           body: {
-            draftContent: payload.content,
             draftUserMessage: payload.userMessage,
             draftAttachments: payload.attachments,
           },
@@ -177,14 +153,17 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
 
   const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
     set(draftSyncReset$);
-    await set(
-      patchDraft$,
-      { content: null, userMessage: null, attachments: null },
-      signal,
-    );
+    await set(patchDraft$, { userMessage: null, attachments: null }, signal);
   });
 
   return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };
+}
+
+export function createAgentDraftSignals(agentId: string): EnsuredAgentDraft {
+  const draft = createDraftSignals();
+  const sync = createAgentDraftSync(agentId, draft);
+  const entry: AgentDraftEntry = { draft, ...sync };
+  return { ...entry, isNew: true };
 }
 
 export const ensureAgentDraft$ = command(
@@ -195,13 +174,17 @@ export const ensureAgentDraft$ = command(
       return { ...existing, isNew: false };
     }
 
-    const draft = createDraftSignals();
-    const sync = createAgentDraftSync(agentId, draft);
-    const entry: AgentDraftEntry = { draft, ...sync };
+    const created = createAgentDraftSignals(agentId);
+    const entry: AgentDraftEntry = {
+      draft: created.draft,
+      queueDraftSync$: created.queueDraftSync$,
+      cancelDraftSync$: created.cancelDraftSync$,
+      flushDraftClear$: created.flushDraftClear$,
+    };
     const next = new Map(cache);
     next.set(agentId, entry);
     set(agentDraftCache$, next);
-    return { ...entry, isNew: true };
+    return created;
   },
 );
 
@@ -217,9 +200,14 @@ export const loadAgentDraft$ = command(
       return;
     }
 
-    const hasLocalDraft =
-      get(draft.input$).trim() !== "" || get(draft.attachments$).length > 0;
-    if (hasLocalDraft) {
+    const hasLocalDraft = (): boolean => {
+      return (
+        get(draft.input$).trim() !== "" ||
+        get(draft.generationTemplate$) !== undefined ||
+        get(draft.attachments$).length > 0
+      );
+    };
+    if (hasLocalDraft()) {
       return;
     }
 
@@ -233,14 +221,15 @@ export const loadAgentDraft$ = command(
     );
     signal.throwIfAborted();
 
+    // The composer is interactive while the remote draft loads. Preserve any
+    // input the user added after the request started instead of replacing it
+    // with the older server snapshot.
+    if (hasLocalDraft()) {
+      return;
+    }
+
     const response = zeroAgentDraftResponseSchema.parse(result.body);
-    const features = get(featureSwitch$);
-    const inlineTemplatesEnabled =
-      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
-    const restoredDraft = userMessageAgentDraftState(
-      response,
-      inlineTemplatesEnabled,
-    );
+    const restoredDraft = userMessageAgentDraftState(response);
     if (!restoredDraft) {
       return;
     }
@@ -255,22 +244,9 @@ export const loadAgentDraft$ = command(
     set(draft.seed$, {
       content: restoredDraft.content,
       userMessage: restoredDraft.userMessage,
-      generationTemplate: restoredDraft.generationTemplate,
+      generationTemplate: undefined,
       attachments: restoredDraft.attachments.map(createRestoredAttachment),
     });
-  },
-);
-
-export const queueCurrentAgentDraftSync$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const agentId = await get(currentChatAgentRecordId$);
-    signal.throwIfAborted();
-    if (!agentId) {
-      return;
-    }
-
-    const entry = set(ensureAgentDraft$, agentId);
-    await set(entry.queueDraftSync$, signal);
   },
 );
 

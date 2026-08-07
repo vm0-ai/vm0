@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import {
   builtInGenerationJobs,
   type BuiltInGenerationError,
@@ -43,7 +43,7 @@ interface CreateBuiltInGenerationJobArgs {
 
 interface BuiltInGenerationRequestInternal {
   readonly admissionId?: string;
-  readonly provider?: "openai" | "fal" | "byteplus";
+  readonly provider?: "openai" | "fal" | "byteplus" | "minimax" | "joggai";
   readonly providerJobId?: string;
   readonly providerStatusUrl?: string;
   readonly providerResponseUrl?: string;
@@ -127,7 +127,9 @@ export function readBuiltInGenerationRequestInternal(
     provider:
       value.provider === "openai" ||
       value.provider === "fal" ||
-      value.provider === "byteplus"
+      value.provider === "byteplus" ||
+      value.provider === "minimax" ||
+      value.provider === "joggai"
         ? value.provider
         : undefined,
     providerJobId:
@@ -408,6 +410,53 @@ export const getBuiltInGenerationWebhookJob$ = command(
           inArray(builtInGenerationJobs.status, [
             ...ACTIVE_BUILT_IN_GENERATION_STATUSES,
           ]),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!job || !isRecord(job.request)) {
+      return null;
+    }
+    return { ...job, request: job.request };
+  },
+);
+
+export const getBuiltInGenerationWebhookJobByProviderJobId$ = command(
+  async (
+    { set },
+    args: {
+      readonly provider: NonNullable<
+        BuiltInGenerationRequestInternal["provider"]
+      >;
+      readonly providerJobId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<BuiltInGenerationWebhookJob | null> => {
+    const writeDb = set(writeDb$);
+    const [job] = await writeDb
+      .select({
+        id: builtInGenerationJobs.id,
+        type: builtInGenerationJobs.type,
+        status: builtInGenerationJobs.status,
+        orgId: builtInGenerationJobs.orgId,
+        userId: builtInGenerationJobs.userId,
+        runId: builtInGenerationJobs.runId,
+        request: builtInGenerationJobs.request,
+      })
+      .from(builtInGenerationJobs)
+      .where(
+        and(
+          inArray(builtInGenerationJobs.status, [
+            ...ACTIVE_BUILT_IN_GENERATION_STATUSES,
+          ]),
+          eq(
+            sql`${builtInGenerationJobs.request}->${BUILT_IN_GENERATION_INTERNAL_REQUEST_KEY}->>'provider'`,
+            args.provider,
+          ),
+          eq(
+            sql`${builtInGenerationJobs.request}->${BUILT_IN_GENERATION_INTERNAL_REQUEST_KEY}->>'providerJobId'`,
+            args.providerJobId,
+          ),
         ),
       )
       .limit(1);

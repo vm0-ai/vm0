@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Final, Literal
 
 import builtin_firewall_cache
+import connector_template_syntax
 import matching
 
 _DYNAMIC_BASE_MARKERS: Final = ("{", "}")
@@ -12,14 +13,10 @@ _DIAGNOSTIC_ANY_PERMISSION: Final = "__connector_diagnostic_any__"
 _DIAGNOSTIC_ANY_RULES: Final = ("ANY /", "ANY /{path+}")
 _DIAGNOSTIC_CANDIDATE_KEY: Final = "_diagnostic_candidate"
 _MODEL_PROVIDER_PREFIX: Final = "model-provider:"
-# Keep this regular grammar aligned with AUTH_REFERENCE_PATTERN and
-# parseBasicAuthTemplates() in the TypeScript connector contract.
-# basic() uses explicit ASCII whitespace; simple references use ECMAScript \s.
+# Keep this regular grammar aligned with parseBasicAuthTemplates() in the
+# TypeScript connector contract.
+# basic() uses explicit ASCII whitespace.
 _BASIC_TEMPLATE_WHITESPACE: Final = r"[\u0009-\u000d\u0020]"
-_SIMPLE_TEMPLATE_WHITESPACE: Final = (
-    r"[\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a"
-    r"\u2028\u2029\u202f\u205f\u3000\ufeff]"
-)
 _TEMPLATE_IDENTIFIER: Final = r"[a-zA-Z_][a-zA-Z0-9_]*"
 _BASIC_LITERAL: Final = r'"[^"\\]*"'
 _BASIC_FIRST_REFERENCE: Final = rf"(?:secrets|vars)\.(?P<basic_first_name>{_TEMPLATE_IDENTIFIER})"
@@ -34,7 +31,7 @@ _BASIC_SECOND_ARGUMENT: Final = (
     rf"(?:(?:{_BASIC_LITERAL}|{_BASIC_SECOND_REFERENCE})"
     rf"{_BASIC_TEMPLATE_WHITESPACE}*)?"
 )
-_BASIC_AUTH_TEMPLATE_PATTERN: Final = (
+_BASIC_AUTH_TEMPLATE_PATTERN: Final = re.compile(
     r"\$\{\{"
     rf"{_BASIC_TEMPLATE_WHITESPACE}*basic\("
     rf"{_BASIC_FIRST_ARGUMENT},"
@@ -42,27 +39,16 @@ _BASIC_AUTH_TEMPLATE_PATTERN: Final = (
     rf"{_BASIC_TEMPLATE_WHITESPACE}*"
     r"\}\}"
 )
-_SIMPLE_AUTH_REFERENCE_PATTERN: Final = (
-    r"\$\{\{"
-    rf"{_SIMPLE_TEMPLATE_WHITESPACE}*(?:secrets|vars)\."
-    rf"(?P<simple_name>{_TEMPLATE_IDENTIFIER})"
-    rf"{_SIMPLE_TEMPLATE_WHITESPACE}*"
-    r"\}\}"
-)
-_DIAGNOSTIC_TEMPLATE_PATTERN: Final = re.compile(
-    rf"(?:{_BASIC_AUTH_TEMPLATE_PATTERN}|{_SIMPLE_AUTH_REFERENCE_PATTERN})"
-)
-_REFERENCE_NAME_GROUPS: Final = (
+_BASIC_REFERENCE_NAME_GROUPS: Final = (
     "basic_first_name",
     "basic_second_name",
-    "simple_name",
 )
 _SHARED_BASE_MIN_CANDIDATES: Final = 2
 
 
 @dataclass(frozen=True)
 class ConnectorDiagnosticCandidate:
-    connector_type: str
+    connector_slug: str
     reason: str
     env_names: tuple[str, ...]
     base: str
@@ -91,7 +77,7 @@ SharedBaseOwnershipHintStatus = Literal[
 class SharedBaseOwnershipResolution:
     candidate: ConnectorDiagnosticCandidate | None
     reason: SharedBaseOwnershipReason
-    candidate_connector_types: tuple[str, ...]
+    candidate_connector_slugs: tuple[str, ...]
     hint_status: SharedBaseOwnershipHintStatus
 
 
@@ -242,7 +228,7 @@ def _find_shared_base_candidate(
         return _SharedBaseDiagnosticResolution(candidate=None)
 
     selected = route_matches[0].candidate
-    if selected.connector_type in active_firewall_names:
+    if selected.connector_slug in active_firewall_names:
         return _SharedBaseDiagnosticResolution(candidate=None)
     return _SharedBaseDiagnosticResolution(candidate=selected)
 
@@ -298,41 +284,41 @@ def resolve_shared_base_ownership(
     matches = _ownership_matches(url, method, catalog)
     if len(matches) < _SHARED_BASE_MIN_CANDIDATES:
         return None
-    if not any(match.candidate.connector_type == matched_firewall_name for match in matches):
+    if not any(match.candidate.connector_slug == matched_firewall_name for match in matches):
         return None
 
-    candidate_connector_types = tuple(sorted(match.candidate.connector_type for match in matches))
+    candidate_connector_slugs = tuple(sorted(match.candidate.connector_slug for match in matches))
     route_matches = [match for match in matches if match.route_specific]
     if len(route_matches) == 1:
         selected = route_matches[0].candidate
-        if selected.connector_type in active_firewall_names:
+        if selected.connector_slug in active_firewall_names:
             return SharedBaseOwnershipResolution(
                 candidate=None,
                 reason="active_route_owner",
-                candidate_connector_types=candidate_connector_types,
+                candidate_connector_slugs=candidate_connector_slugs,
                 hint_status=_hint_status(connector_intent, matches, used=False),
             )
         return SharedBaseOwnershipResolution(
             candidate=selected,
             reason="route_owner",
-            candidate_connector_types=candidate_connector_types,
+            candidate_connector_slugs=candidate_connector_slugs,
             hint_status=_hint_status(connector_intent, matches, used=False),
         )
 
     hint_match = _hint_match(connector_intent, matches)
     if hint_match is not None:
         selected = hint_match.candidate
-        if selected.connector_type in active_firewall_names:
+        if selected.connector_slug in active_firewall_names:
             return SharedBaseOwnershipResolution(
                 candidate=None,
                 reason="active_hint_owner",
-                candidate_connector_types=candidate_connector_types,
+                candidate_connector_slugs=candidate_connector_slugs,
                 hint_status="used",
             )
         return SharedBaseOwnershipResolution(
             candidate=selected,
             reason="hint_owner",
-            candidate_connector_types=candidate_connector_types,
+            candidate_connector_slugs=candidate_connector_slugs,
             hint_status="used",
         )
 
@@ -340,7 +326,7 @@ def resolve_shared_base_ownership(
     return SharedBaseOwnershipResolution(
         candidate=None,
         reason=reason,
-        candidate_connector_types=candidate_connector_types,
+        candidate_connector_slugs=candidate_connector_slugs,
         hint_status=_hint_status(connector_intent, matches, used=False),
     )
 
@@ -382,7 +368,7 @@ def _hint_match(
     if connector_intent is None:
         return None
     for match in matches:
-        if match.candidate.connector_type == connector_intent:
+        if match.candidate.connector_slug == connector_intent:
             return match
     return None
 
@@ -408,7 +394,7 @@ def _candidate_from_match(
     candidate = match.api_entry.get(_DIAGNOSTIC_CANDIDATE_KEY)
     if not isinstance(candidate, ConnectorDiagnosticCandidate):
         return None
-    if candidate.connector_type != match.name or candidate.base != match.api_entry.get("base"):
+    if candidate.connector_slug != match.name or candidate.base != match.api_entry.get("base"):
         return None
     return candidate
 
@@ -529,14 +515,34 @@ def _diagnostic_reference_names(value: object) -> tuple[str, ...]:
     names: list[str] = []
     seen: set[str] = set()
 
+    def add_name(name: str) -> None:
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+
+    def add_basic_names(match: re.Match[str]) -> None:
+        for group_name in _BASIC_REFERENCE_NAME_GROUPS:
+            name = match.group(group_name)
+            if name is not None:
+                add_name(name)
+
     def visit(nested: object) -> None:
         if isinstance(nested, str):
-            for match in _DIAGNOSTIC_TEMPLATE_PATTERN.finditer(nested):
-                for group_name in _REFERENCE_NAME_GROUPS:
-                    name = match.group(group_name)
-                    if name is not None and name not in seen:
-                        seen.add(name)
-                        names.append(name)
+            basic_matches = iter(_BASIC_AUTH_TEMPLATE_PATTERN.finditer(nested))
+            basic_match = next(basic_matches, None)
+            for reference in connector_template_syntax.iter_simple_references(nested):
+                while basic_match is not None and basic_match.end() <= reference.start:
+                    add_basic_names(basic_match)
+                    basic_match = next(basic_matches, None)
+                if (
+                    basic_match is not None
+                    and basic_match.start() <= reference.start < basic_match.end()
+                ):
+                    continue
+                add_name(reference.name)
+            while basic_match is not None:
+                add_basic_names(basic_match)
+                basic_match = next(basic_matches, None)
             return
         if isinstance(nested, list):
             for item in nested:
@@ -635,7 +641,7 @@ def project_diagnostic_catalog(firewalls: dict[str, dict]) -> DiagnosticCatalogP
         for api in raw_apis:
             projected_api = _project_connector_api(
                 api,
-                connector_type=raw_name,
+                connector_slug=raw_name,
                 shared_base_keys=shared_base_keys,
             )
             if projected_api is not None:
@@ -653,7 +659,7 @@ def project_diagnostic_catalog(firewalls: dict[str, dict]) -> DiagnosticCatalogP
 def _project_connector_api(
     api: dict,
     *,
-    connector_type: str,
+    connector_slug: str,
     shared_base_keys: frozenset[str],
 ) -> dict | None:
     raw_base = api.get("base")
@@ -669,7 +675,7 @@ def _project_connector_api(
         return None
 
     candidate = ConnectorDiagnosticCandidate(
-        connector_type=connector_type,
+        connector_slug=connector_slug,
         reason="not_configured_for_run",
         env_names=env_names,
         base=raw_base,

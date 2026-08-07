@@ -10,12 +10,10 @@ use crate::ids::RunId;
 use crate::storage_fingerprints::StorageFingerprints;
 
 use super::fs::{
-    allocated_bytes, ensure_workspace_cache_entry_dir, remove_workspace_cache_path_if_exists,
+    allocated_bytes, remove_workspace_cache_path_if_exists, secure_workspace_cache_publication_file,
 };
 use super::types::WorkspaceCacheTerminalStatus;
-use super::{
-    CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, SessionWorkspaceCache, WORKSPACE_DRIVE_LAYOUT,
-};
+use super::{CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceImageCache};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,10 +33,9 @@ pub(super) enum WorkspaceTrust {
 #[serde(rename_all = "camelCase")]
 pub(super) struct WorkspaceCacheMetadata {
     pub(super) format_version: u32,
-    pub(super) key_version: u32,
     pub(super) cache_scope: String,
     pub(super) profile_name: String,
-    pub(super) session_id: String,
+    pub(super) reuse_key: String,
     pub(super) working_dir: String,
     pub(super) last_completed_at: String,
     pub(super) last_used_at: String,
@@ -70,12 +67,12 @@ impl WorkspaceImageFileIdentity {
     }
 }
 
-impl SessionWorkspaceCache {
+impl WorkspaceImageCache {
     pub(super) async fn read_valid_metadata(
         &self,
         metadata_path: &Path,
         profile_name: &str,
-        session_id: &str,
+        reuse_key: &str,
         working_dir: &str,
         image_size_bytes: u64,
     ) -> RunnerResult<Option<WorkspaceCacheMetadata>> {
@@ -86,9 +83,9 @@ impl SessionWorkspaceCache {
             }
             Err(e) => return Err(e),
         };
-        let current_path = self.session_workspace_cache_current_image(&self.scoped_cache_key(
+        let current_path = self.workspace_image_cache_current_image(&self.scoped_cache_key(
             profile_name,
-            session_id,
+            reuse_key,
             working_dir,
             image_size_bytes,
         ));
@@ -101,7 +98,7 @@ impl SessionWorkspaceCache {
             &metadata,
             &self.inner.cache_scope,
             profile_name,
-            session_id,
+            reuse_key,
             working_dir,
             image_size_bytes,
         )?;
@@ -115,7 +112,7 @@ impl SessionWorkspaceCache {
         cache_key: &str,
         metadata: &WorkspaceCacheMetadata,
     ) -> bool {
-        let current_path = self.session_workspace_cache_current_image(cache_key);
+        let current_path = self.workspace_image_cache_current_image(cache_key);
         let Ok(current_metadata) = fs::symlink_metadata(current_path).await else {
             return false;
         };
@@ -142,17 +139,19 @@ impl SessionWorkspaceCache {
         run_id: RunId,
         metadata: WorkspaceCacheMetadata,
     ) -> RunnerResult<()> {
-        let metadata_path = self.session_workspace_cache_metadata(cache_key);
+        let metadata_path = self.workspace_image_cache_metadata(cache_key);
         let tmp = metadata_path.with_file_name(format!("metadata.json.tmp.{run_id}"));
-        if let Some(parent) = metadata_path.parent() {
-            ensure_workspace_cache_entry_dir(parent).await?;
-        }
+        self.ensure_workspace_cache_entry_dir(cache_key).await?;
         let bytes = serde_json::to_vec_pretty(&metadata)
             .map_err(|e| RunnerError::Internal(format!("serialize workspace metadata: {e}")))?;
         let _ = remove_workspace_cache_path_if_exists(&tmp).await;
         if let Err(e) = fs::write(&tmp, bytes).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e.into());
+        }
+        if let Err(e) = secure_workspace_cache_publication_file(&tmp) {
+            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
+            return Err(e);
         }
         if let Err(e) = fs::rename(&tmp, &metadata_path).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
@@ -188,7 +187,7 @@ fn validate_metadata(
     metadata: &WorkspaceCacheMetadata,
     cache_scope: &str,
     profile_name: &str,
-    session_id: &str,
+    reuse_key: &str,
     working_dir: &str,
     image_size_bytes: u64,
 ) -> RunnerResult<()> {
@@ -196,12 +195,6 @@ fn validate_metadata(
         return Err(RunnerError::Internal(format!(
             "workspace metadata format version {} does not match {CACHE_FORMAT_VERSION}",
             metadata.format_version
-        )));
-    }
-    if metadata.key_version != CACHE_KEY_VERSION {
-        return Err(RunnerError::Internal(format!(
-            "workspace metadata key version {} does not match {CACHE_KEY_VERSION}",
-            metadata.key_version
         )));
     }
     if metadata.cache_scope != cache_scope {
@@ -214,9 +207,9 @@ fn validate_metadata(
             "workspace metadata profile mismatch".into(),
         ));
     }
-    if metadata.session_id != session_id {
+    if metadata.reuse_key != reuse_key {
         return Err(RunnerError::Internal(
-            "workspace metadata session id mismatch".into(),
+            "workspace metadata reuse key mismatch".into(),
         ));
     }
     if metadata.working_dir != working_dir {

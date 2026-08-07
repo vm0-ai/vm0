@@ -1,7 +1,7 @@
 import { createStore } from "ccstate";
 import { describe, it } from "vitest";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { seedOwnedConnectorSecret } from "./helpers/connector-credential-storage-state";
 import {
   deleteUsageInsightFixture$,
@@ -23,7 +23,7 @@ describe("usage insight test state", () => {
     );
     await seedOwnedConnectorSecret(context, {
       ...fixture,
-      connectorRef: "fixture-connector",
+      connectorSlug: "fixture-connector",
       authMethod: "api-token",
       storageVersion: 1,
       name: "FIXTURE_CONNECTOR_TOKEN",

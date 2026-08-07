@@ -298,10 +298,17 @@ pub trait SandboxFactory: Send + Sync {
     fn config_hash(&self) -> String;
     /// Create a new sandbox instance with the given per-sandbox configuration.
     ///
+    /// If `config` uses [`crate::WorkspaceDriveSeedImage::Move`], this method
+    /// may return an error after source ownership has transferred to the
+    /// provider. Callers must not infer source availability from the final
+    /// result.
+    ///
     /// The returned sandbox belongs to this factory's lifecycle and should be
     /// released through [`destroy`](Self::destroy) on the normal teardown path.
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>>;
     /// Create a sandbox while reporting create-stage timings to `observer`.
+    ///
+    /// Seed-image ownership and failure semantics match [`Self::create`].
     ///
     /// Implementations can report only the boundaries applicable to their
     /// provider. Callers must not assume a complete callback set after an error

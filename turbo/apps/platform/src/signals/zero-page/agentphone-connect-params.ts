@@ -1,3 +1,5 @@
+import { i18n } from "../../i18n/index.ts";
+
 interface AgentPhoneConnectParams {
   phoneHandle: string;
   agentphoneAgentId: string;
@@ -6,10 +8,8 @@ interface AgentPhoneConnectParams {
   channel?: string;
 }
 
-export const AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE =
-  "SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number.";
-
 interface AgentPhoneConnectParamError {
+  code: "incomplete" | "invalid_signature" | "invalid_timestamp";
   title: string;
   message: string;
 }
@@ -61,12 +61,18 @@ function encodeReturnPath(
   return `/agentphone/connect?${search.toString()}`;
 }
 
-function invalidParams(message: string): ParsedAgentPhoneConnectParams {
+function invalidParams(
+  code: "invalid_signature" | "invalid_timestamp",
+  message: string,
+): ParsedAgentPhoneConnectParams {
   return {
     ok: false,
     returnPath: "/agentphone/connect",
     error: {
-      title: "Connect link is invalid",
+      code,
+      title: i18n.t(($) => {
+        return $.connectors.providerConnect.agentphone.invalidTitle;
+      }),
       message,
     },
   };
@@ -86,23 +92,43 @@ export function parseAgentPhoneConnectParams(
       ok: false,
       returnPath: "/agentphone/connect",
       error: {
-        title: "Connect link is incomplete",
-        message: "Open a fresh /connect link from your text messages.",
+        code: "incomplete",
+        title: i18n.t(($) => {
+          return $.connectors.providerConnect.agentphone.incompleteTitle;
+        }),
+        message: i18n.t(($) => {
+          return $.connectors.providerConnect.agentphone.incompleteDescription;
+        }),
       },
     };
   }
 
   if (!/^\d+$/.test(tsRaw)) {
-    return invalidParams("The timestamp on this link is not valid.");
+    return invalidParams(
+      "invalid_timestamp",
+      i18n.t(($) => {
+        return $.connectors.providerConnect.agentphone.invalidTimestamp;
+      }),
+    );
   }
 
   const timestamp = Number(tsRaw);
   if (!Number.isSafeInteger(timestamp) || timestamp <= 0) {
-    return invalidParams("The timestamp on this link is not valid.");
+    return invalidParams(
+      "invalid_timestamp",
+      i18n.t(($) => {
+        return $.connectors.providerConnect.agentphone.invalidTimestamp;
+      }),
+    );
   }
 
   if (!/^[0-9a-f]{64}$/i.test(signature)) {
-    return invalidParams("The signature on this link is not valid.");
+    return invalidParams(
+      "invalid_signature",
+      i18n.t(($) => {
+        return $.connectors.providerConnect.agentphone.invalidSignature;
+      }),
+    );
   }
 
   const params: AgentPhoneConnectParams = {

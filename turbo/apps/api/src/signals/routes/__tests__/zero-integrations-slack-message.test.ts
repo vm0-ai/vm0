@@ -4,7 +4,8 @@ import { createStore } from "ccstate";
 
 import { integrationsSlackMessageContract } from "@vm0/api-contracts/contracts/integrations";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
@@ -15,6 +16,7 @@ import {
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { zeroIntegrationsSlackMessageRoutes } from "../zero-integrations-slack-message";
 
 const context = testContext();
 const store = createStore();
@@ -152,7 +154,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
   }
 
   it("returns 401 when no auth token is provided", async () => {
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { channel: "C123", text: "hello" },
@@ -172,7 +177,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const userId = `user_${randomUUID().slice(0, 8)}`;
     const token = zeroToken({ userId, orgId, runId: "run-1" });
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { channel: "C123", text: "hello" },
@@ -191,7 +199,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const runId = `run_${randomUUID()}`;
     const token = sandboxToken({ userId, orgId, runId });
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { channel: "C123", text: "hello" },
@@ -206,7 +217,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const { orgId, userId } = await seedBaseContext();
     const token = zeroToken({ userId, orgId, runId: "run-1" });
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { channel: "C123", text: "hello" },
@@ -221,7 +235,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const { orgId, userId } = await seedWithInstallation();
     const token = zeroToken({ userId, orgId, runId: "run-1" });
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: {
@@ -255,7 +272,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
       }),
     );
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { channel: "C-invalid", text: "hello" },
@@ -271,7 +291,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const { orgId, userId } = await seedWithInstallation();
     const token = zeroToken({ userId, orgId, runId: "run-1" });
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { user: "U0A8V9X98QJ", text: "Hello DM!" },
@@ -302,7 +325,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
       }),
     );
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { user: "U-invalid", text: "hello" },
@@ -323,7 +349,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
     );
     const token = zeroToken({ userId, orgId, runId: "run-1" });
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { user: "me", text: "Hello self!" },
@@ -342,7 +371,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const { orgId, userId } = await seedWithInstallation();
     const token = zeroToken({ userId, orgId, runId: "run-1" });
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { user: "me", text: "hello" },
@@ -358,7 +390,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const { runId } = await seedAgentRun({ orgId, userId });
     const token = zeroToken({ userId, orgId, runId });
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { channel: "C123456", text: "Hello" },
@@ -400,7 +435,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
     const token = zeroToken({ userId, orgId, runId });
 
-    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackMessageRoutes,
+    })(integrationsSlackMessageContract);
     const response = await accept(
       client.sendMessage({
         body: { channel: "C123456", text: "Hello" },

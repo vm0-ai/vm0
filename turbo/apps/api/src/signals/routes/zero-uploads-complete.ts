@@ -4,11 +4,8 @@ import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { listS3Objects } from "../external/s3";
-import { env } from "../../lib/env";
-import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
-import { inferMimetype } from "../../lib/mimetype";
 import { isAllowedUploadType } from "../../lib/uploads-constants";
+import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import type { RouteEntry } from "../route-entry";
@@ -49,11 +46,12 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     }
   }
 
-  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const prefix = buildArtifactPrefix(auth.userId, id);
-  const objects = await get(listS3Objects(bucket, prefix));
-  signal.throwIfAborted();
-  if (objects.length === 0) {
+  const s3Object = await set(
+    resolveArtifactObject$,
+    { userId: auth.userId, id },
+    signal,
+  );
+  if (!s3Object) {
     return {
       status: 404 as const,
       body: {
@@ -62,15 +60,11 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     };
   }
 
-  const s3Object = objects[0]!;
-  const filename = s3Object.key.split("/").pop() ?? id;
-  const contentType = requestedContentType ?? inferMimetype(filename);
+  const filename = s3Object.filename;
+  const contentType = requestedContentType ?? s3Object.contentType;
   const size = s3Object.size;
-  const url = buildFileUrl(auth.userId, id, filename);
-  const lastModified =
-    s3Object.lastModified instanceof Date
-      ? s3Object.lastModified.toISOString()
-      : undefined;
+  const url = s3Object.url;
+  const lastModified = s3Object.lastModified?.toISOString();
 
   const runId = "runId" in auth ? auth.runId : undefined;
 

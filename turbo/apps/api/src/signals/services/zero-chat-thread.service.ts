@@ -5,7 +5,6 @@ import {
 } from "@vm0/api-contracts/contracts/chat-events";
 import {
   chatEventResponse,
-  type ArtifactItem,
   type ChatSearchMessage,
   type ChatSearchResult,
   type ChatThreadDraft,
@@ -13,16 +12,12 @@ import {
   type ChatThreadDetail,
   type CodexServiceTier,
   type ChatEvent,
-  type ChatEventResponse,
   type PersistedAttachment,
   type ResolvedAttachFile,
   type UserMessageDocument,
+  type UserMessageInputDocument,
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  triggerSourceSchema,
-  type TriggerSource,
-} from "@vm0/api-contracts/contracts/logs";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
@@ -36,32 +31,22 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
-  chatMessages,
-  type ChatMessageUsagePayload,
-  type ChatMessageAttachFileMetadata,
-  type ChatMessageGenerationTemplate,
-  type ChatMessageRecommendedFollowups,
-  type ChatMessageUserMessage,
-  type ChatMessageGoalEvent,
-  type ChatMessageGoalSnapshot,
-} from "@vm0/db/schema/chat-message";
+  chatEvents,
+  type ChatEventUsagePayload,
+  type ChatEventGenerationTemplate,
+  type ChatEventRecommendedFollowups,
+  type ChatEventUserMessage,
+  type ChatEventGoalEvent,
+} from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import {
-  CANONICAL_ASSET_ACCESS_LEVELS,
-  CANONICAL_ASSET_CLASSIFICATIONS,
-  CANONICAL_ASSET_MATERIALIZATION_STATUSES,
   CANONICAL_ASSET_VERSION,
-  chatMessageAssetRefs,
+  chatEventAssetRefs,
   runUploadedFiles,
 } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
 import { alias } from "drizzle-orm/pg-core";
 import {
   and,
@@ -76,178 +61,60 @@ import {
   isNotNull,
   isNull,
   lt,
-  ne,
   not,
   notExists,
   or,
   type SQL,
-  type SQLWrapper,
   sql,
 } from "drizzle-orm";
-import { z } from "zod";
 
 import {
-  executeRawRows,
-  pgInt8ToSafeIntegerSchema,
-  pgTimestampWithoutTimezoneToDateSchema,
-} from "../../lib/db-raw-rows";
-import {
-  nullableDriverValueDecoder,
   pgBooleanDecoder,
-  pgInt8ToSafeIntegerDecoder,
   pgIntegerDecoder,
-  pgTextDecoder,
-  zodDriverValueDecoder,
-  zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   inferMimetype,
-  insertAssistantEventMessages$,
-  resolveAttachFileMetadataUrls,
   resolveAttachFileUrls,
   visibleChatEventCondition,
-} from "./zero-chat-message-shared.service";
+} from "./zero-chat-event-shared.service";
 import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
-import { latestRunFinishMessageSubquery } from "./zero-chat-thread-read-state-query";
+import { latestRunFinishEventSubquery } from "./zero-chat-thread-read-state-query";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
-import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import {
-  maybeCreateUserMessageDocument,
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
-export { insertAssistantEventMessages$ };
-
-const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
-  zodEnumDriverValueDecoder(triggerSourceSchema),
-);
-const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
-const matchedChatMessage = alias(chatMessages, "matched_chat_message");
-const revokedChatMessage = alias(chatMessages, "revoked_chat_message");
-const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
-const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
+const matchedChatEvent = alias(chatEvents, "matched_chat_event");
 
 type ChatEventRow = {
   readonly id: string;
   readonly chatThreadId: string;
   readonly eventType: ChatEventType;
   readonly content: string | null;
-  readonly userMessage: ChatMessageUserMessage | null;
+  readonly userMessage: ChatEventUserMessage | null;
   readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
-  readonly automationId: string | null;
-  readonly triggerSource: TriggerSource | null;
-  readonly triggerBrief: string | null;
-  readonly slackMessagePermalink: string | null;
-  readonly feishuChatOpenUrl: string | null;
   readonly isGoalRun: boolean;
-  readonly usagePayload: ChatMessageUsagePayload | null;
+  readonly usagePayload: ChatEventUsagePayload | null;
   readonly runEventId: string | null;
-  readonly goalEvent: ChatMessageGoalEvent | null;
-  readonly goalSnapshot: ChatMessageGoalSnapshot | null;
+  readonly goalEvent: ChatEventGoalEvent | null;
   readonly error: string | null;
-  readonly runLifecycleEvent: string | null;
   readonly seqId: number;
   readonly sequenceNumber: number | null;
   readonly createdAt: Date;
   readonly attachFiles: readonly string[] | null;
-  readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
-  readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
+  readonly generationTemplate: ChatEventGenerationTemplate | null;
+  readonly recommendedFollowups: ChatEventRecommendedFollowups | null;
   readonly revokesEventId: string | null;
   readonly interruptsRunId: string | null;
-  readonly workflowName: string | null;
-  readonly workflowDisplayName: string | null;
-  readonly workflowDescription: string | null;
-  readonly workflowId: string | null;
-  readonly workflowAgentId: string | null;
-  readonly workflowAutomationId: string | null;
-  readonly workflowAutomationBrief: string | null;
-  readonly workflowAutomationKind: string | null;
-  readonly workflowAutomationScheduleType: string | null;
-  readonly workflowAutomationCronExpression: string | null;
-  readonly workflowAutomationIntervalSeconds: number | null;
-  readonly workflowAutomationAtTime: Date | null;
-  readonly workflowAutomationTimezone: string | null;
-  readonly workflowAutomationUserTimezone: string | null;
 };
-
-const canonicalAssetClassificationSchema = z.enum(
-  CANONICAL_ASSET_CLASSIFICATIONS,
-);
-const canonicalAssetAccessLevelSchema = z.enum(CANONICAL_ASSET_ACCESS_LEVELS);
-const canonicalAssetMaterializationStatusSchema = z.enum(
-  CANONICAL_ASSET_MATERIALIZATION_STATUSES,
-);
-const canonicalAssetMaterializationErrorSchema = z.object({
-  code: z.string(),
-  message: z.string(),
-  retryable: z.boolean(),
-});
-const canonicalAssetProvenanceSchema = z.object({
-  provider: z.string(),
-});
-
-const artifactListSqlRowSchema = z.object({
-  row_id: z.string(),
-  asset_version: z.number().nullable(),
-  run_id: z.string(),
-  external_id: z.string(),
-  filename: z.string().nullable(),
-  content_type: z.string().nullable(),
-  size_bytes: pgInt8ToSafeIntegerSchema.nullable(),
-  url: z.string(),
-  preview_image_url: z.string().nullable(),
-  metadata: z.unknown(),
-  classification: canonicalAssetClassificationSchema.nullable(),
-  access_level: canonicalAssetAccessLevelSchema.nullable(),
-  materialization_status: canonicalAssetMaterializationStatusSchema.nullable(),
-  materialization_error: canonicalAssetMaterializationErrorSchema.nullable(),
-  provenance: canonicalAssetProvenanceSchema.nullable(),
-  created_at: pgTimestampWithoutTimezoneToDateSchema,
-  updated_at: pgTimestampWithoutTimezoneToDateSchema,
-  cursor_created_at: z.string(),
-  cursor_updated_at: z.string().optional(),
-  thread_id: z.string(),
-  thread_title: z.string().nullable(),
-  agent_id: z.string(),
-  agent_name: z.string().nullable(),
-  agent_avatar_url: z.string().nullable(),
-});
-type ArtifactListSqlRow = z.output<typeof artifactListSqlRowSchema>;
-
-type ArtifactListRow = Omit<ArtifactListSqlRow, "url"> & {
-  readonly url: string | null;
-};
-
-const nullableCanonicalAssetClassificationDecoder = nullableDriverValueDecoder(
-  zodEnumDriverValueDecoder(canonicalAssetClassificationSchema),
-);
-const nullableCanonicalAssetAccessLevelDecoder = nullableDriverValueDecoder(
-  zodEnumDriverValueDecoder(canonicalAssetAccessLevelSchema),
-);
-const nullableCanonicalAssetMaterializationStatusDecoder =
-  nullableDriverValueDecoder(
-    zodEnumDriverValueDecoder(canonicalAssetMaterializationStatusSchema),
-  );
-const nullableCanonicalAssetMaterializationErrorDecoder =
-  nullableDriverValueDecoder(
-    zodDriverValueDecoder(canonicalAssetMaterializationErrorSchema),
-  );
-const nullableCanonicalAssetProvenanceDecoder = nullableDriverValueDecoder(
-  zodDriverValueDecoder(canonicalAssetProvenanceSchema),
-);
-
-const artifactSyncUntilRowSchema = z.object({ sync_until: z.string() });
 
 type ChatSearchMessageRow = {
   readonly messageId: string;
@@ -270,8 +137,7 @@ type ChatThreadRow = {
   readonly id: string;
   readonly title: string | null;
   readonly agentComposeId: string;
-  readonly draftContent: string | null;
-  readonly draftUserMessage: UserMessageDocument | null;
+  readonly draftUserMessage: UserMessageInputDocument | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: ModelProviderType | null;
@@ -292,189 +158,72 @@ type ChatThreadDetailRow = {
   readonly lastReadAt: Date | null;
 };
 
-function effectiveChatMessageRunId() {
-  return chatMessages.runId;
+function effectiveChatEventRunId() {
+  return chatEvents.runId;
 }
 
 const eventColumns = {
-  id: chatMessages.id,
-  chatThreadId: chatMessages.chatThreadId,
-  eventType: chatEventTypeSql().as("event_type"),
-  content: chatMessages.content,
-  userMessage: chatMessages.userMessage,
-  thinking: chatMessages.thinking,
-  runId: effectiveChatMessageRunId(),
-  runGroupId: chatMessages.runGroupId,
-  automationId: chatMessages.automationId,
-  triggerBrief: chatMessages.triggerBrief,
-  usagePayload: chatMessages.usagePayload,
-  runEventId: chatMessages.runEventId,
-  goalEvent: chatMessages.goalEvent,
-  goalSnapshot: chatMessages.goalSnapshot,
-  error: chatMessages.error,
-  runLifecycleEvent: chatMessages.runLifecycleEvent,
-  seqId: chatMessages.seqId,
-  sequenceNumber: chatMessages.sequenceNumber,
-  createdAt: chatMessages.createdAt,
-  attachFiles: chatMessages.attachFiles,
-  attachFileMetadata: chatMessages.attachFileMetadata,
-  generationTemplate: chatMessages.generationTemplate,
-  recommendedFollowups: chatMessages.recommendedFollowups,
-  revokesEventId: chatMessages.revokesEventId,
-  interruptsRunId: chatMessages.interruptsRunId,
+  id: chatEvents.id,
+  chatThreadId: chatEvents.chatThreadId,
+  eventType: chatEvents.eventType,
+  content: chatEvents.content,
+  userMessage: chatEvents.userMessage,
+  thinking: chatEvents.thinking,
+  runId: effectiveChatEventRunId(),
+  runGroupId: chatEvents.runGroupId,
+  usagePayload: chatEvents.usagePayload,
+  runEventId: chatEvents.runEventId,
+  goalEvent: chatEvents.goalEvent,
+  error: chatEvents.error,
+  seqId: chatEvents.seqId,
+  sequenceNumber: chatEvents.runEventSequenceNumber,
+  createdAt: chatEvents.createdAt,
+  attachFiles: chatEvents.attachFiles,
+  generationTemplate: chatEvents.generationTemplate,
+  recommendedFollowups: chatEvents.recommendedFollowups,
+  revokesEventId: chatEvents.revokesEventId,
+  interruptsRunId: chatEvents.interruptsRunId,
 } as const;
 
-function chatMessageMetadataSubquery(db: Pick<Db, "select">) {
+function chatEventMetadataSubquery(db: Pick<Db, "select">) {
   return db
     .select({
-      runTriggerSource: sql`${zeroRuns.triggerSource}`
-        .mapWith(nullableTriggerSourceDecoder)
-        .as("run_trigger_source"),
-      workflowId: sql`${zeroWorkflows.id}`
-        .mapWith(zeroWorkflows.id)
-        .as("workflow_id"),
-      workflowAgentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
-      workflowDescription: zeroWorkflows.description,
-      workflowAutomationId: sql`${zeroWorkflowAutomations.id}`
-        .mapWith(zeroWorkflowAutomations.id)
-        .as("workflow_automation_id"),
-      workflowAutomationBrief: sql`CASE
-        WHEN ${isNull(zeroWorkflowAutomations.id)} THEN NULL
-        ELSE COALESCE(
-          ${zeroRuns.triggerBrief},
-          CASE
-            WHEN ${eq(zeroWorkflowAutomations.kind, "event")} THEN CASE
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "gmail-label-applied",
-              )} THEN 'Gmail label applied'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "gmail-new-message",
-              )} THEN 'Gmail new message'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "google-calendar-event-created",
-              )} THEN 'Google Calendar event created'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "google-calendar-event-updated",
-              )} THEN 'Google Calendar event updated'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "google-calendar-event-cancelled",
-              )} THEN 'Google Calendar event cancelled'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "webhook-received",
-              )} THEN 'Webhook received'
-              ELSE NULL
-            END
-            ELSE NULL
-          END
-        )
-      END`
-        .mapWith(nullableTextDecoder)
-        .as("workflow_automation_brief"),
-      workflowAutomationKind: zeroWorkflowAutomations.kind,
-      workflowAutomationScheduleType: zeroWorkflowAutomations.scheduleType,
-      workflowAutomationCronExpression: zeroWorkflowAutomations.cronExpression,
-      workflowAutomationIntervalSeconds:
-        zeroWorkflowAutomations.intervalSeconds,
-      workflowAutomationAtTime: zeroWorkflowAutomations.atTime,
-      workflowAutomationTimezone: zeroWorkflowAutomations.timezone,
-      workflowAutomationUserTimezone: sql`${orgMembersMetadata.timezone}`
-        .mapWith(orgMembersMetadata.timezone)
-        .as("workflow_automation_user_timezone"),
       goalId: zeroRuns.goalId,
     })
     .from(zeroRuns)
-    .leftJoin(
-      zeroWorkflowAutomations,
-      eq(zeroWorkflowAutomations.id, zeroRuns.workflowAutomationId),
-    )
-    .leftJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
-    .leftJoin(
-      orgMembersMetadata,
-      and(
-        eq(orgMembersMetadata.orgId, zeroWorkflowAutomations.orgId),
-        eq(orgMembersMetadata.userId, zeroWorkflowAutomations.ownerUserId),
-      ),
-    )
-    .where(eq(zeroRuns.id, chatMessages.runId))
+    .where(eq(zeroRuns.id, chatEvents.runId))
     .limit(1)
-    .as("chat_message_metadata");
+    .as("chat_event_metadata");
 }
 
 function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
-  const metadata = chatMessageMetadataSubquery(db);
+  const metadata = chatEventMetadataSubquery(db);
   return db
     .select({
       ...eventColumns,
-      triggerSource: sql`COALESCE(
-        ${chatMessages.triggerSource},
-        ${metadata.runTriggerSource}
-      )`
-        .mapWith(nullableTriggerSourceDecoder)
-        .as("trigger_source"),
-      slackMessagePermalink: sql`COALESCE(
-        ${chatMessages.slackMessagePermalink},
-        ${revokedChatMessage.slackMessagePermalink}
-      )`
-        .mapWith(nullableTextDecoder)
-        .as("slack_message_permalink"),
-      feishuChatOpenUrl: sql`COALESCE(
-        ${chatMessages.feishuChatOpenUrl},
-        ${revokedChatMessage.feishuChatOpenUrl}
-      )`
-        .mapWith(nullableTextDecoder)
-        .as("feishu_chat_open_url"),
-      workflowId: metadata.workflowId,
-      workflowAgentId: metadata.workflowAgentId,
-      workflowName: metadata.workflowName,
-      workflowDisplayName: metadata.workflowDisplayName,
-      workflowDescription: metadata.workflowDescription,
-      workflowAutomationId: metadata.workflowAutomationId,
-      workflowAutomationBrief: metadata.workflowAutomationBrief,
-      workflowAutomationKind: metadata.workflowAutomationKind,
-      workflowAutomationScheduleType: metadata.workflowAutomationScheduleType,
-      workflowAutomationCronExpression:
-        metadata.workflowAutomationCronExpression,
-      workflowAutomationIntervalSeconds:
-        metadata.workflowAutomationIntervalSeconds,
-      workflowAutomationAtTime: metadata.workflowAutomationAtTime,
-      workflowAutomationTimezone: metadata.workflowAutomationTimezone,
-      workflowAutomationUserTimezone: metadata.workflowAutomationUserTimezone,
       isGoalRun: isNotNull(metadata.goalId).mapWith(pgBooleanDecoder),
     })
-    .from(chatMessages)
-    .leftJoinLateral(metadata, sql`true`)
-    .leftJoin(
-      revokedChatMessage,
-      eq(revokedChatMessage.id, chatMessages.revokesEventId),
-    );
+    .from(chatEvents)
+    .leftJoinLateral(metadata, sql`true`);
 }
 
 const searchMessageColumns = {
-  messageId: chatMessages.id,
-  chatThreadId: chatMessages.chatThreadId,
-  eventType: chatEventTypeSql().as("event_type"),
-  content: chatMessages.content,
-  userMessage: chatMessages.userMessage,
-  createdAt: chatMessages.createdAt,
-  seqId: chatMessages.seqId,
-  sequenceNumber: chatMessages.sequenceNumber,
-  runId: effectiveChatMessageRunId(),
+  messageId: chatEvents.id,
+  chatThreadId: chatEvents.chatThreadId,
+  eventType: chatEvents.eventType,
+  content: chatEvents.content,
+  userMessage: chatEvents.userMessage,
+  createdAt: chatEvents.createdAt,
+  seqId: chatEvents.seqId,
+  sequenceNumber: chatEvents.runEventSequenceNumber,
+  runId: effectiveChatEventRunId(),
 } as const;
 
 const searchContextMessageColumns = {
   ...searchMessageColumns,
-  eventType: chatEventTypeSql().as("context_event_type"),
+  eventType: sql`${chatEvents.eventType}`
+    .mapWith(chatEvents.eventType)
+    .as("context_event_type"),
 } as const;
 
 function escapeLikePattern(value: string): string {
@@ -520,7 +269,6 @@ function ownedChatThread(
         id: chatThreads.id,
         title: chatThreads.title,
         agentComposeId: chatThreads.agentComposeId,
-        draftContent: chatThreads.draftContent,
         draftUserMessage: chatThreads.draftUserMessage,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
@@ -550,7 +298,6 @@ function ownedChatThread(
       id: thread.id,
       title: thread.title,
       agentComposeId: thread.agentComposeId,
-      draftContent: thread.draftContent ?? null,
       draftUserMessage: thread.draftUserMessage ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
@@ -588,7 +335,6 @@ export function zeroChatThreadDraft(args: {
     }
 
     return {
-      draftContent: thread.draftContent,
       draftUserMessage: thread.draftUserMessage,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
@@ -625,18 +371,18 @@ function canonicalAssetMaterialization(
   };
 }
 
-async function canonicalMessageAttachments(
+async function canonicalInputEventAttachments(
   db: ReadonlyDb,
   userId: string,
-  messageIds: readonly string[],
+  eventIds: readonly string[],
 ): Promise<ReadonlyMap<string, readonly ResolvedAttachFile[]>> {
-  if (messageIds.length === 0) {
+  if (eventIds.length === 0) {
     return new Map();
   }
   const rows = await db
     .select({
-      messageId: chatMessageAssetRefs.chatMessageId,
-      position: chatMessageAssetRefs.position,
+      eventId: chatEventAssetRefs.chatEventId,
+      position: chatEventAssetRefs.position,
       assetId: runUploadedFiles.id,
       filename: runUploadedFiles.filename,
       contentType: runUploadedFiles.contentType,
@@ -644,69 +390,58 @@ async function canonicalMessageAttachments(
       status: runUploadedFiles.materializationStatus,
       error: runUploadedFiles.materializationError,
       provenance: runUploadedFiles.provenance,
+      source: runUploadedFiles.source,
+      externalId: runUploadedFiles.externalId,
       url: runUploadedFiles.url,
-      classification: runUploadedFiles.classification,
-      accessLevel: runUploadedFiles.accessLevel,
     })
-    .from(chatMessageAssetRefs)
+    .from(chatEventAssetRefs)
     .innerJoin(
       runUploadedFiles,
-      eq(runUploadedFiles.id, chatMessageAssetRefs.assetId),
+      eq(runUploadedFiles.id, chatEventAssetRefs.assetId),
     )
     .where(
       and(
-        inArray(chatMessageAssetRefs.chatMessageId, [...messageIds]),
+        inArray(chatEventAssetRefs.chatEventId, [...eventIds]),
         eq(runUploadedFiles.userId, userId),
         eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
-        or(
-          and(
-            eq(runUploadedFiles.classification, "input"),
-            eq(runUploadedFiles.accessLevel, "private"),
-          ),
-          and(
-            eq(runUploadedFiles.classification, "published-output"),
-            eq(runUploadedFiles.accessLevel, "published"),
-          ),
-        ),
+        eq(runUploadedFiles.classification, "input"),
+        eq(runUploadedFiles.accessLevel, "private"),
       ),
     )
     .orderBy(
-      asc(chatMessageAssetRefs.chatMessageId),
-      asc(chatMessageAssetRefs.position),
+      asc(chatEventAssetRefs.chatEventId),
+      asc(chatEventAssetRefs.position),
     );
 
-  const byMessage = new Map<string, ResolvedAttachFile[]>();
+  const byEvent = new Map<string, ResolvedAttachFile[]>();
   for (const row of rows) {
     const filename = row.filename ?? row.assetId;
-    const isPublishedOutput =
-      row.classification === "published-output" &&
-      row.accessLevel === "published";
-    const attachments = byMessage.get(row.messageId) ?? [];
+    const attachments = byEvent.get(row.eventId) ?? [];
     attachments.push({
-      id: row.assetId,
+      id: row.source === "web" ? row.externalId : row.assetId,
       filename,
       contentType: row.contentType ?? inferMimetype(filename),
       size: row.sizeBytes ?? 0,
       url:
-        isPublishedOutput && row.url
+        row.source === "web" && row.url
           ? row.url
           : privateCanonicalAssetUrl(row.assetId),
       assetRef: {
         id: row.assetId,
-        classification: isPublishedOutput ? "published-output" : "input",
-        access: isPublishedOutput ? "published" : "private",
+        classification: "input",
+        access: "private",
         materialization: canonicalAssetMaterialization(row.status, row.error),
         ...(row.provenance
           ? { provenance: { provider: row.provenance.provider } }
           : {}),
       },
     });
-    byMessage.set(row.messageId, attachments);
+    byEvent.set(row.eventId, attachments);
   }
-  return byMessage;
+  return byEvent;
 }
 
-function chatMessageAttachFiles(
+function chatEventAttachFiles(
   userId: string,
   row: ChatEventRow,
   canonicalAttachments: readonly ResolvedAttachFile[],
@@ -714,9 +449,6 @@ function chatMessageAttachFiles(
   return computed(async (get) => {
     if (canonicalAttachments.length > 0) {
       return canonicalAttachments;
-    }
-    if (row.attachFileMetadata && row.attachFileMetadata.length > 0) {
-      return resolveAttachFileMetadataUrls(row.attachFileMetadata);
     }
     if (row.attachFiles && row.attachFiles.length > 0) {
       return await get(resolveAttachFileUrls(userId, row.attachFiles));
@@ -730,7 +462,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeUsagePayload(
-  value: ChatMessageUsagePayload | null,
+  value: ChatEventUsagePayload | null,
 ): Extract<ChatEvent, { eventType: "usage.recorded" }>["usage"] | undefined {
   if (value === null) {
     return undefined;
@@ -766,79 +498,18 @@ function requiredChatEventField<T>(
   return value;
 }
 
-function workflowScheduleAutomationBrief(row: ChatEventRow): string | null {
-  if (row.workflowAutomationKind !== "schedule") {
-    return null;
-  }
-  return buildWorkflowScheduleAutomationBrief({
-    createdAt: row.createdAt,
-    scheduleType: row.workflowAutomationScheduleType,
-    cronExpression: row.workflowAutomationCronExpression,
-    intervalSeconds: row.workflowAutomationIntervalSeconds,
-    atTime: row.workflowAutomationAtTime,
-    automationTimezone: row.workflowAutomationTimezone,
-    userTimezone: row.workflowAutomationUserTimezone,
-  });
-}
-
-function workflowSnapshotFromRow(
-  row: ChatEventRow,
-): NonNullable<ChatEvent["workflowSnapshot"]> | undefined {
-  if (row.workflowName === null) {
-    return undefined;
-  }
-  return {
-    id: row.workflowId ?? undefined,
-    agentId: row.workflowAgentId ?? undefined,
-    name: row.workflowName,
-    displayName: row.workflowDisplayName,
-    description: row.workflowDescription,
-    automationId: row.workflowAutomationId ?? undefined,
-    triggerBrief:
-      row.workflowAutomationBrief ?? workflowScheduleAutomationBrief(row),
-  };
-}
-
-function chatEventContent(
-  row: ChatEventRow,
-  canonicalAttachmentCount: number,
-): string | null {
-  if (
-    (row.eventType !== "input.prompt" && row.eventType !== "input.rejected") ||
-    canonicalAttachmentCount === 0 ||
-    !row.slackMessagePermalink
-  ) {
-    return row.content;
-  }
-  return (row.content ?? "")
-    .split(/\n{2,}/)
-    .filter((block) => {
-      return !block.trimStart().startsWith("[Slack file] ");
-    })
-    .join("\n\n");
-}
-
-function baseChatEventFromRow(
-  row: ChatEventRow,
-  workflowSnapshot: NonNullable<ChatEvent["workflowSnapshot"]> | undefined,
-  content: string | null,
-) {
+function baseChatEventFromRow(row: ChatEventRow, content: string | null) {
   return {
     id: row.id,
     threadId: row.chatThreadId,
     content,
     runId: row.runId ?? undefined,
     runGroupId: row.runGroupId ?? undefined,
-    triggerSource: row.triggerSource ?? undefined,
-    slackMessagePermalink: row.slackMessagePermalink ?? undefined,
-    feishuChatOpenUrl: row.feishuChatOpenUrl ?? undefined,
     isGoalRun: row.isGoalRun || undefined,
     runEventId: row.runEventId ?? undefined,
-    goalSnapshot: row.goalSnapshot ?? undefined,
     revokesEventId: row.revokesEventId ?? undefined,
     seqId: row.seqId,
     sequenceNumber: row.sequenceNumber,
-    workflowSnapshot,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -855,6 +526,7 @@ const chatEventBuilders = {
     return {
       ...event,
       eventType: "input.prompt",
+      content: null,
       userMessage: requiredChatEventField(
         row.userMessage,
         row.eventType,
@@ -869,31 +541,47 @@ const chatEventBuilders = {
       ...event,
       eventType: "input.automation",
       content: null,
-      automationId: requiredChatEventField(
-        row.automationId,
+      userMessage: row.userMessage ?? undefined,
+    };
+  },
+  "input.goal": (row, event) => {
+    return {
+      id: event.id,
+      threadId: event.threadId,
+      eventType: "input.goal",
+      content: null,
+      userMessage: requiredChatEventField(
+        row.userMessage,
         row.eventType,
-        "automationId",
+        "userMessage",
       ),
-      triggerSource: requiredChatEventField(
-        row.triggerSource,
+      seqId: event.seqId,
+      createdAt: event.createdAt,
+    };
+  },
+  "input.budget": (row, event) => {
+    return {
+      ...event,
+      eventType: "input.budget",
+      content: null,
+      userMessage: requiredChatEventField(
+        row.userMessage,
         row.eventType,
-        "triggerSource",
+        "userMessage",
       ),
-      triggerBrief: row.triggerBrief,
     };
   },
   "input.rejected": (row, event, attachFiles) => {
     return {
       ...event,
       eventType: "input.rejected",
+      content: null,
       userMessage: requiredChatEventField(
         row.userMessage,
         row.eventType,
         "userMessage",
       ),
       error: requiredChatEventField(row.error, row.eventType, "error"),
-      automationId: row.automationId ?? undefined,
-      triggerBrief: row.automationId === null ? undefined : row.triggerBrief,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };
@@ -954,12 +642,11 @@ const chatEventBuilders = {
       ),
     };
   },
-  "run.completed": (row, event, attachFiles) => {
+  "run.completed": (row, event) => {
     return {
       ...event,
       eventType: "run.completed",
       runId: requiredChatEventField(row.runId, row.eventType, "runId"),
-      attachFiles: attachFiles ? [...attachFiles] : undefined,
       runLifecycleEvent: "completed",
     };
   },
@@ -979,21 +666,6 @@ const chatEventBuilders = {
       runId: requiredChatEventField(row.runId, row.eventType, "runId"),
       error: row.error ?? undefined,
       runLifecycleEvent: "cancelled",
-    };
-  },
-  "queue.automation_paused": (row, event) => {
-    return {
-      ...event,
-      eventType: "queue.automation_paused",
-      content: null,
-      pauseReason: row.error,
-    };
-  },
-  "queue.automation_resumed": (_row, event) => {
-    return {
-      ...event,
-      eventType: "queue.automation_resumed",
-      content: null,
     };
   },
   "control.interrupt": (row, event) => {
@@ -1018,6 +690,20 @@ const chatEventBuilders = {
         row.eventType,
         "revokesEventId",
       ),
+    };
+  },
+  "browser.open": (_row, event) => {
+    return {
+      ...event,
+      eventType: "browser.open",
+      content: null,
+    };
+  },
+  "browser.close": (_row, event) => {
+    return {
+      ...event,
+      eventType: "browser.close",
+      content: null,
     };
   },
   "goal.changed": (row, event) => {
@@ -1045,24 +731,21 @@ const chatEventBuilders = {
       ),
     };
   },
-} satisfies Record<ChatEventType, ChatEventBuilder>;
+} satisfies Record<ChatEvent["eventType"], ChatEventBuilder>;
 
 function toChatEvent(
   userId: string,
   row: ChatEventRow,
   canonicalAttachments: readonly ResolvedAttachFile[],
-): Computed<Promise<ChatEventResponse>> {
-  return computed(async (get): Promise<ChatEventResponse> => {
-    const attachFiles = await get(
-      chatMessageAttachFiles(userId, row, canonicalAttachments),
-    );
+): Computed<Promise<ChatEvent>> {
+  return computed(async (get): Promise<ChatEvent> => {
+    const attachFiles =
+      row.eventType === "input.prompt" || row.eventType === "input.rejected"
+        ? await get(chatEventAttachFiles(userId, row, canonicalAttachments))
+        : undefined;
     const event = chatEventBuilders[row.eventType](
       row,
-      baseChatEventFromRow(
-        row,
-        workflowSnapshotFromRow(row),
-        chatEventContent(row, canonicalAttachments.length),
-      ),
+      baseChatEventFromRow(row, row.content),
       attachFiles,
     );
     return chatEventResponse(event);
@@ -1132,9 +815,14 @@ export function zeroChatThreadDetail(args: {
     if (!thread) {
       return null;
     }
+    const cancellationRecoveryPending =
+      await cancellationRecoveryPendingForThread(get(db$), {
+        threadId: args.threadId,
+      });
 
     return {
       lastReadAt: thread.lastReadAt?.toISOString() ?? null,
+      cancellationRecoveryPending,
     };
   });
 }
@@ -1150,7 +838,7 @@ export function zeroChatThreadUnreads(args: {
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastRunFinish = latestRunFinishMessageSubquery(db, chatThreads.id);
+    const lastRunFinish = latestRunFinishEventSubquery(db, chatThreads.id);
     const rows = await db
       .select({
         threadId: chatThreads.id,
@@ -1186,7 +874,7 @@ export function zeroChatThreadUnreadAgentIds(args: {
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastRunFinish = latestRunFinishMessageSubquery(db, chatThreads.id);
+    const lastRunFinish = latestRunFinishEventSubquery(db, chatThreads.id);
     const rows = await db
       .selectDistinct({ agentId: chatThreads.agentComposeId })
       .from(chatThreads)
@@ -1206,6 +894,37 @@ export function zeroChatThreadUnreadAgentIds(args: {
       );
     return rows.map((row) => {
       return row.agentId;
+    });
+  });
+}
+
+/** The user's unread thread ids in the current organization. */
+export function zeroChatThreadUnreadThreadIds(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Computed<Promise<readonly string[]>> {
+  return computed(async (get) => {
+    const db = get(db$);
+    const lastRunFinish = latestRunFinishEventSubquery(db, chatThreads.id);
+    const rows = await db
+      .select({ threadId: chatThreads.id })
+      .from(chatThreads)
+      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+      .crossJoinLateral(lastRunFinish)
+      .where(
+        and(
+          eq(chatThreads.userId, args.userId),
+          eq(zeroAgents.orgId, args.orgId),
+          or(
+            isNull(chatThreads.lastReadAt),
+            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
+          ),
+          noActiveRunsForCurrentThreadCondition(db),
+          noActiveGoalsForCurrentThreadCondition(db),
+        ),
+      );
+    return rows.map((row) => {
+      return row.threadId;
     });
   });
 }
@@ -1244,7 +963,7 @@ export function zeroChatThreadActiveRunThreadIds(args: {
 
 /**
  * Thread ids owned by the user that currently hold an unsent composer draft
- * (non-empty `draftContent`, a user message, or one+ `draftAttachments`).
+ * (a canonical user message with optional `draftAttachments`).
  */
 export function zeroChatThreadDraftIds(args: {
   readonly userId: string;
@@ -1257,17 +976,7 @@ export function zeroChatThreadDraftIds(args: {
       .where(
         and(
           eq(chatThreads.userId, args.userId),
-          or(
-            ne(sql`COALESCE(${chatThreads.draftContent}, '')`, sql`''`),
-            isNotNull(chatThreads.draftUserMessage),
-            and(
-              isNotNull(chatThreads.draftAttachments),
-              gt(
-                sql`jsonb_array_length(${chatThreads.draftAttachments})`,
-                sql`0`,
-              ),
-            ),
-          ),
+          isNotNull(chatThreads.draftUserMessage),
         ),
       );
     return rows.map((row) => {
@@ -1309,12 +1018,12 @@ function loadZeroChatThreadArtifactRows(
           eq(zeroRuns.chatThreadId, args.threadId),
           exists(
             db
-              .select({ id: chatMessages.id })
-              .from(chatMessages)
+              .select({ id: chatEvents.id })
+              .from(chatEvents)
               .where(
                 and(
-                  eq(chatMessages.runId, runUploadedFiles.runId),
-                  eq(chatMessages.chatThreadId, args.threadId),
+                  eq(chatEvents.runId, runUploadedFiles.runId),
+                  eq(chatEvents.chatThreadId, args.threadId),
                 ),
               ),
           ),
@@ -1428,472 +1137,6 @@ export function zeroChatThreadArtifacts(args: {
   );
 }
 
-function artifactCallerVisibilityConditions(args: {
-  readonly userId: string;
-  readonly orgId: string;
-}): SQL[] {
-  return [
-    eq(agentRuns.orgId, args.orgId),
-    eq(chatThreads.userId, args.userId),
-    eq(agentComposes.orgId, args.orgId),
-  ];
-}
-
-function artifactFileVisibilityConditions(
-  db: Pick<Db, "select">,
-): (SQL | undefined)[] {
-  const hostedArtifactKind = sql`${hostedRunUploadedFiles.metadata}->>'artifactKind'`;
-  const artifactKind = sql`${runUploadedFiles.metadata}->>'artifactKind'`;
-  return [
-    isNotNull(runUploadedFiles.url),
-    or(
-      notExists(
-        db
-          .select({ id: hostedRunUploadedFiles.id })
-          .from(hostedRunUploadedFiles)
-          .where(
-            and(
-              eq(hostedRunUploadedFiles.runId, runUploadedFiles.runId),
-              inArray(hostedArtifactKind, HOSTED_ARTIFACT_KINDS),
-            ),
-          ),
-      ),
-      inArray(artifactKind, HOSTED_ARTIFACT_KINDS),
-    ),
-  ];
-}
-
-function artifactVisibilityConditions(
-  db: Pick<Db, "select">,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-  },
-): (SQL | undefined)[] {
-  return [
-    ...artifactCallerVisibilityConditions(args),
-    ...artifactFileVisibilityConditions(db),
-  ];
-}
-
-function artifactChatThreadId(db: Pick<Db, "select">, runId: SQLWrapper): SQL {
-  const earliestThread = db
-    .select({ threadId: chatMessages.chatThreadId })
-    .from(chatMessages)
-    .where(eq(chatMessages.runId, runId))
-    .orderBy(asc(chatMessages.seqId))
-    .limit(1);
-
-  return sql`COALESCE(${zeroRuns.chatThreadId}, (${earliestThread}))`;
-}
-
-function toArtifactItem(row: ArtifactListRow): ArtifactItem {
-  if (row.url === null) {
-    throw new Error(
-      "artifact list invariant violated: URL is null despite isNotNull filter",
-    );
-  }
-
-  const filename = row.filename ?? row.external_id;
-  const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
-  const canonical =
-    row.asset_version === CANONICAL_ASSET_VERSION &&
-    row.classification === "published-output" &&
-    row.access_level === "published";
-  return {
-    artifactItemId: canonical
-      ? `asset:${row.row_id}`
-      : `${row.run_id}:${row.external_id}`,
-    threadId: row.thread_id,
-    runId: row.run_id,
-    fileId: canonical ? row.row_id : row.external_id,
-    agentId: row.agent_id,
-    agentName: row.agent_name,
-    agentAvatarUrl: row.agent_avatar_url,
-    threadTitle: row.thread_title,
-    filename,
-    contentType: row.content_type ?? inferMimetype(filename),
-    size: row.size_bytes ?? 0,
-    url: row.url,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
-    ...(row.preview_image_url
-      ? { previewImageUrl: row.preview_image_url }
-      : {}),
-    ...(canonical
-      ? {
-          assetRef: {
-            id: row.row_id,
-            classification: "published-output" as const,
-            access: "published" as const,
-            materialization: canonicalAssetMaterialization(
-              row.materialization_status,
-              row.materialization_error,
-            ),
-            ...(row.provenance
-              ? {
-                  provenance: {
-                    provider: row.provenance.provider,
-                  },
-                }
-              : {}),
-          },
-        }
-      : {}),
-    ...(artifactKind ? { artifactKind } : {}),
-  };
-}
-
-// Default page size when a caller passes no `limit`. Kept at the historical
-// bulk cap so un-paginated callers (older frontend bundles) see the exact same
-// first page as before.
-const ARTIFACTS_DEFAULT_LIMIT = 10_000;
-const ARTIFACTS_MAX_LIMIT = 10_000;
-// Re-read a small overlap on every new sync. Artifact writes are idempotently
-// merged by artifactItemId in IndexedDB, so replaying rows is safe and closes
-// the gap where a transaction starts before syncUntil but commits afterward.
-const ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES = 5;
-
-const artifactHistoryCursorSchema = z.object({
-  createdAt: z.string(),
-  rowId: z.string(),
-});
-const artifactChangesCursorSchema = z.object({
-  updatedAt: z.string(),
-  rowId: z.string(),
-  syncUntil: z.string(),
-});
-const artifactCursorSchema = z.union([
-  artifactHistoryCursorSchema,
-  artifactChangesCursorSchema,
-]);
-type ArtifactHistoryCursor = z.infer<typeof artifactHistoryCursorSchema>;
-type ArtifactChangesCursor = z.infer<typeof artifactChangesCursorSchema>;
-type ArtifactCursor = z.infer<typeof artifactCursorSchema>;
-
-function encodeArtifactCursor(cursor: ArtifactCursor): string {
-  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
-}
-
-function decodeArtifactCursor(raw: string): ArtifactCursor {
-  return artifactCursorSchema.parse(
-    JSON.parse(Buffer.from(raw, "base64url").toString("utf8")),
-  );
-}
-
-interface ZeroArtifactsArgs {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly limit?: number;
-  readonly cursor?: string;
-  readonly updatedAfter?: string;
-}
-
-interface ZeroArtifactsResult {
-  readonly artifacts: readonly ArtifactItem[];
-  readonly truncated: boolean;
-  readonly nextCursor: string | null;
-  readonly syncUntil: string;
-}
-
-async function artifactSyncUntil(db: Db): Promise<string> {
-  const rows = await executeRawRows(
-    db,
-    sql`SELECT to_char(
-      clock_timestamp() AT TIME ZONE 'UTC',
-      'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-    ) AS sync_until`,
-    artifactSyncUntilRowSchema,
-  );
-  const row = rows[0];
-  if (!row) {
-    throw new Error("Failed to read artifact sync timestamp");
-  }
-  return row.sync_until;
-}
-
-function toArtifactChangesPage(args: {
-  readonly rows: readonly ArtifactListSqlRow[];
-  readonly limit: number;
-  readonly syncUntil: string;
-}): ZeroArtifactsResult {
-  const hasMore = args.rows.length > args.limit;
-  const pageRows = hasMore ? args.rows.slice(0, args.limit) : args.rows;
-  const lastRow = pageRows.at(-1);
-  const nextCursor =
-    hasMore && lastRow?.cursor_updated_at
-      ? encodeArtifactCursor({
-          updatedAt: lastRow.cursor_updated_at,
-          rowId: lastRow.row_id,
-          syncUntil: args.syncUntil,
-        })
-      : null;
-
-  return {
-    artifacts: pageRows.map(toArtifactItem),
-    truncated: hasMore,
-    nextCursor,
-    syncUntil: args.syncUntil,
-  };
-}
-
-async function listChangedArtifacts(args: {
-  readonly db: Db;
-  readonly query: ZeroArtifactsArgs;
-  readonly limit: number;
-  readonly cursor: ArtifactChangesCursor | null;
-  readonly updatedAfter: string;
-  readonly syncUntil: string;
-  readonly signal: AbortSignal;
-}): Promise<ZeroArtifactsResult> {
-  // Metadata returned with an artifact can change without changing the file
-  // row itself. Treat the latest source timestamp as the artifact's effective
-  // update time so cross-device thread and agent edits are synchronized too.
-  const effectiveUpdatedAt = sql`GREATEST(
-    ${runUploadedFiles.updatedAt},
-    visible_runs.metadata_updated_at
-  )`;
-  const lowerBoundClause = args.cursor
-    ? gt(
-        sql`(${effectiveUpdatedAt}, ${runUploadedFiles.id})`,
-        sql`(${args.cursor.updatedAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`,
-      )
-    : gte(
-        effectiveUpdatedAt,
-        sql`(${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC') - (${ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES} * interval '1 minute')`,
-      );
-  const callerConditions = artifactCallerVisibilityConditions(args.query);
-  const fileConditions = artifactFileVisibilityConditions(args.db);
-  const rows = await executeRawRows(
-    args.db,
-    sql`
-      WITH visible_runs AS MATERIALIZED (
-        SELECT
-          ${agentRuns.id} AS run_id,
-          GREATEST(
-            ${chatThreads.updatedAt},
-            ${agentComposes.updatedAt},
-            ${zeroAgents.updatedAt}
-          ) AS metadata_updated_at
-        FROM ${agentRuns}
-        INNER JOIN ${zeroRuns}
-          ON ${eq(zeroRuns.id, agentRuns.id)}
-        INNER JOIN ${chatThreads}
-          ON ${eq(chatThreads.id, artifactChatThreadId(args.db, zeroRuns.id))}
-        INNER JOIN ${agentComposes}
-          ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
-        INNER JOIN ${zeroAgents}
-          ON ${eq(zeroAgents.id, agentComposes.id)}
-        WHERE ${sql.join(callerConditions, sql` AND `)}
-      ),
-      changed_artifact_ids AS MATERIALIZED (
-        SELECT
-          ${runUploadedFiles.id} AS row_id,
-          ${effectiveUpdatedAt} AS effective_updated_at
-        FROM visible_runs
-        INNER JOIN ${runUploadedFiles}
-          ON ${eq(runUploadedFiles.runId, sql`visible_runs.run_id`)}
-        WHERE ${and(
-          ...fileConditions,
-          lowerBoundClause,
-          lt(
-            effectiveUpdatedAt,
-            sql`${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'`,
-          ),
-        )}
-        ORDER BY ${asc(effectiveUpdatedAt)}, ${asc(runUploadedFiles.id)}
-        LIMIT ${args.limit + 1}
-      )
-      SELECT
-        ${runUploadedFiles.id} AS row_id,
-        ${runUploadedFiles.assetVersion} AS asset_version,
-        ${runUploadedFiles.runId} AS run_id,
-        ${runUploadedFiles.externalId} AS external_id,
-        ${runUploadedFiles.filename} AS filename,
-        ${runUploadedFiles.contentType} AS content_type,
-        ${runUploadedFiles.sizeBytes} AS size_bytes,
-        ${runUploadedFiles.url} AS url,
-        ${runUploadedFiles.previewImageUrl} AS preview_image_url,
-        ${runUploadedFiles.metadata} AS metadata,
-        ${runUploadedFiles.classification} AS classification,
-        ${runUploadedFiles.accessLevel} AS access_level,
-        ${runUploadedFiles.materializationStatus} AS materialization_status,
-        ${runUploadedFiles.materializationError} AS materialization_error,
-        ${runUploadedFiles.provenance} AS provenance,
-        ${runUploadedFiles.createdAt} AS created_at,
-        ${runUploadedFiles.updatedAt} AS updated_at,
-        to_char(
-          ${runUploadedFiles.createdAt},
-          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-        ) AS cursor_created_at,
-        to_char(
-          changed_artifact_ids.effective_updated_at,
-          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-        ) AS cursor_updated_at,
-        ${chatThreads.id} AS thread_id,
-        ${chatThreads.title} AS thread_title,
-        ${zeroAgents.id} AS agent_id,
-        COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
-        ${zeroAgents.avatarUrl} AS agent_avatar_url
-      FROM changed_artifact_ids
-      INNER JOIN ${runUploadedFiles}
-        ON ${eq(runUploadedFiles.id, sql`changed_artifact_ids.row_id`)}
-      INNER JOIN ${agentRuns}
-        ON ${eq(agentRuns.id, runUploadedFiles.runId)}
-      INNER JOIN ${zeroRuns}
-        ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
-      INNER JOIN ${chatThreads}
-        ON ${eq(
-          chatThreads.id,
-          artifactChatThreadId(args.db, runUploadedFiles.runId),
-        )}
-      INNER JOIN ${agentComposes}
-        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
-      INNER JOIN ${zeroAgents}
-        ON ${eq(zeroAgents.id, agentComposes.id)}
-      ORDER BY changed_artifact_ids.effective_updated_at ASC,
-        changed_artifact_ids.row_id ASC
-    `,
-    artifactListSqlRowSchema,
-  );
-  args.signal.throwIfAborted();
-  return toArtifactChangesPage({ rows, ...args });
-}
-
-async function listArtifactHistory(args: {
-  readonly db: Db;
-  readonly query: ZeroArtifactsArgs;
-  readonly limit: number;
-  readonly cursor: ArtifactHistoryCursor | null;
-  readonly syncUntil: string;
-  readonly signal: AbortSignal;
-}): Promise<ZeroArtifactsResult> {
-  // The full path returns visible rows. IndexedDB owns stable-ID merging and
-  // hosted-run shadowing, so this query avoids a history-wide URL sort.
-  const keysetCondition = args.cursor
-    ? lt(
-        sql`(${runUploadedFiles.createdAt}, ${runUploadedFiles.id})`,
-        sql`(${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`,
-      )
-    : undefined;
-  const conditions = artifactVisibilityConditions(args.db, args.query);
-  const rows: ArtifactListRow[] = await args.db
-    .select({
-      row_id: runUploadedFiles.id,
-      asset_version: runUploadedFiles.assetVersion,
-      run_id: agentRuns.id,
-      external_id: runUploadedFiles.externalId,
-      filename: runUploadedFiles.filename,
-      content_type: runUploadedFiles.contentType,
-      size_bytes: sql`${runUploadedFiles.sizeBytes}`
-        .mapWith(nullableDriverValueDecoder(pgInt8ToSafeIntegerDecoder))
-        .as("size_bytes"),
-      url: runUploadedFiles.url,
-      preview_image_url: runUploadedFiles.previewImageUrl,
-      metadata: runUploadedFiles.metadata,
-      classification: sql`${runUploadedFiles.classification}`
-        .mapWith(nullableCanonicalAssetClassificationDecoder)
-        .as("classification"),
-      access_level: sql`${runUploadedFiles.accessLevel}`
-        .mapWith(nullableCanonicalAssetAccessLevelDecoder)
-        .as("access_level"),
-      materialization_status: sql`${runUploadedFiles.materializationStatus}`
-        .mapWith(nullableCanonicalAssetMaterializationStatusDecoder)
-        .as("materialization_status"),
-      materialization_error: sql`${runUploadedFiles.materializationError}`
-        .mapWith(nullableCanonicalAssetMaterializationErrorDecoder)
-        .as("materialization_error"),
-      provenance: sql`${runUploadedFiles.provenance}`
-        .mapWith(nullableCanonicalAssetProvenanceDecoder)
-        .as("provenance"),
-      created_at: runUploadedFiles.createdAt,
-      updated_at: runUploadedFiles.updatedAt,
-      thread_id: chatThreads.id,
-      thread_title: chatThreads.title,
-      agent_id: zeroAgents.id,
-      agent_name:
-        sql`COALESCE(${zeroAgents.displayName}, ${agentComposes.name})`
-          .mapWith(nullableTextDecoder)
-          .as("agent_name"),
-      agent_avatar_url: zeroAgents.avatarUrl,
-      cursor_created_at: sql`to_char(
-        ${runUploadedFiles.createdAt},
-        'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-      )`
-        .mapWith(pgTextDecoder)
-        .as("cursor_created_at"),
-    })
-    .from(runUploadedFiles)
-    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
-    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
-    .innerJoin(
-      chatThreads,
-      eq(chatThreads.id, artifactChatThreadId(args.db, runUploadedFiles.runId)),
-    )
-    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
-    .innerJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
-    .where(and(...conditions, keysetCondition))
-    .orderBy(desc(runUploadedFiles.createdAt), desc(runUploadedFiles.id))
-    .limit(args.limit + 1);
-  args.signal.throwIfAborted();
-
-  const hasMore = rows.length > args.limit;
-  const pageRows = hasMore ? rows.slice(0, args.limit) : rows;
-  const lastRow = pageRows.at(-1);
-  const nextCursor =
-    hasMore && lastRow
-      ? encodeArtifactCursor({
-          createdAt: lastRow.cursor_created_at,
-          rowId: lastRow.row_id,
-        })
-      : null;
-
-  return {
-    artifacts: pageRows.map(toArtifactItem),
-    truncated: hasMore,
-    nextCursor,
-    syncUntil: args.syncUntil,
-  };
-}
-
-export const zeroArtifacts$ = command(
-  async (
-    { set },
-    args: ZeroArtifactsArgs,
-    signal: AbortSignal,
-  ): Promise<ZeroArtifactsResult> => {
-    const db = set(writeDb$);
-    const limit = Math.min(
-      args.limit ?? ARTIFACTS_DEFAULT_LIMIT,
-      ARTIFACTS_MAX_LIMIT,
-    );
-    const cursor = args.cursor ? decodeArtifactCursor(args.cursor) : null;
-    const changesCursor = cursor && "updatedAt" in cursor ? cursor : null;
-    const syncUntil = changesCursor?.syncUntil ?? (await artifactSyncUntil(db));
-    const updatedAfter = changesCursor?.updatedAt ?? args.updatedAfter;
-    if (updatedAfter !== undefined) {
-      return await listChangedArtifacts({
-        db,
-        query: args,
-        limit,
-        cursor: changesCursor,
-        updatedAfter,
-        syncUntil,
-        signal,
-      });
-    }
-
-    return await listArtifactHistory({
-      db,
-      query: args,
-      limit,
-      cursor: cursor && "createdAt" in cursor ? cursor : null,
-      syncUntil,
-      signal,
-    });
-  },
-);
-
 function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   const userMessage = requiredUserMessageForEvent(
     row.eventType,
@@ -1924,11 +1167,11 @@ function chatSearchMessageTextCondition(): SQL {
   return or(
     and(
       chatEventTypeIn(["input.prompt", "input.rejected"]),
-      isNotNull(chatMessages.userMessage),
+      isNotNull(chatEvents.userMessage),
     ),
     and(
       not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-      isNotNull(chatMessages.content),
+      isNotNull(chatEvents.content),
     ),
   ) as SQL;
 }
@@ -1936,12 +1179,14 @@ function chatSearchMessageTextCondition(): SQL {
 function userMessageSearchText(): SQL {
   return sql`concat_ws(
     ' ',
-    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].text')::text,
-    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].titleSnapshot')::text,
-    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].filenameSnapshot')::text,
-    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].quote')::text,
-    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].note[*].text')::text,
-    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].note[*].titleSnapshot')::text
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].text')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].titleSnapshot')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].nameSnapshot')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].filenameSnapshot')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].quote')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].text')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].titleSnapshot')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].nameSnapshot')::text
   )`;
 }
 
@@ -1953,7 +1198,7 @@ function chatSearchKeywordCondition(pattern: string): SQL {
     ),
     and(
       not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-      ilike(chatMessages.content, pattern),
+      ilike(chatEvents.content, pattern),
     ),
   ) as SQL;
 }
@@ -1977,19 +1222,19 @@ function chatSearchContextSideQuery(
         .as("is_before"),
       ...searchContextMessageColumns,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, matchedChatMessage.chatThreadId),
+        eq(chatEvents.chatThreadId, matchedChatEvent.chatThreadId),
         args.isBefore
-          ? lt(chatMessages.seqId, matchedChatMessage.seqId)
-          : gt(chatMessages.seqId, matchedChatMessage.seqId),
+          ? lt(chatEvents.seqId, matchedChatEvent.seqId)
+          : gt(chatEvents.seqId, matchedChatEvent.seqId),
         chatSearchMessageTextCondition(),
         visibleChatEventCondition(db),
         excludeGoalMarkerCondition(),
       ),
     )
-    .orderBy(args.isBefore ? desc(chatMessages.seqId) : asc(chatMessages.seqId))
+    .orderBy(args.isBefore ? desc(chatEvents.seqId) : asc(chatEvents.seqId))
     .limit(args.limit);
 }
 
@@ -2038,7 +1283,7 @@ async function loadChatSearchContexts(
   const rows = await db
     .select({
       resultOrdinality,
-      matchedMessageId: matchedChatMessage.id,
+      matchedMessageId: matchedChatEvent.id,
       isBefore: context.isBefore,
       messageId: context.messageId,
       chatThreadId: context.chatThreadId,
@@ -2058,8 +1303,8 @@ async function loadChatSearchContexts(
       ),
     )
     .innerJoin(
-      matchedChatMessage,
-      eq(matchedChatMessage.id, sql`chat_search_matches.message_id`),
+      matchedChatEvent,
+      eq(matchedChatEvent.id, sql`chat_search_matches.message_id`),
     )
     .crossJoinLateral(context)
     .orderBy(resultOrdinality, asc(context.seqId));
@@ -2111,7 +1356,7 @@ export function zeroChatSearch(args: {
       chatSearchKeywordCondition(pattern),
     ];
     if (sinceDate) {
-      matchConditions.push(gte(chatMessages.createdAt, sinceDate));
+      matchConditions.push(gte(chatEvents.createdAt, sinceDate));
     }
     if (args.agentId) {
       matchConditions.push(eq(zeroAgents.id, args.agentId));
@@ -2122,15 +1367,15 @@ export function zeroChatSearch(args: {
         ...searchMessageColumns,
         agentName: agentComposes.name,
       })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
+      .from(chatEvents)
+      .innerJoin(chatThreads, eq(chatEvents.chatThreadId, chatThreads.id))
       .innerJoin(
         agentComposes,
         eq(chatThreads.agentComposeId, agentComposes.id),
       )
       .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(and(...matchConditions))
-      .orderBy(desc(chatMessages.createdAt))
+      .orderBy(desc(chatEvents.createdAt))
       .limit(args.limit + 1);
 
     const hasMore = matches.length > args.limit;
@@ -2164,15 +1409,8 @@ export function zeroChatThreadEventsPage(args: {
   readonly userId: string;
   readonly sinceSeqId: number | undefined;
   readonly beforeSeqId: number | undefined;
-  readonly sinceId: string | undefined;
-  readonly beforeId: string | undefined;
   readonly limit: number;
-}): Computed<
-  Promise<{
-    readonly events: readonly ChatEventResponse[];
-    readonly hasHistoryBefore: boolean;
-  } | null>
-> {
+}): Computed<Promise<readonly ChatEvent[] | null>> {
   return computed(async (get) => {
     const db = get(db$);
     const [owned] = await db
@@ -2189,95 +1427,70 @@ export function zeroChatThreadEventsPage(args: {
       return null;
     }
 
-    const cursors = [
-      args.sinceSeqId,
-      args.beforeSeqId,
-      args.sinceId,
-      args.beforeId,
-    ].filter((cursor) => {
+    const cursors = [args.sinceSeqId, args.beforeSeqId].filter((cursor) => {
       return cursor !== undefined;
     });
     if (cursors.length > 1) {
       throw new Error("after and before cursors are mutually exclusive");
     }
 
-    // Previous browser bundles use UUID cursors. Resolve them to the immutable
-    // per-thread sequence until those clients can no longer remain active.
-    const legacyCursorId = args.sinceId ?? args.beforeId;
-    const [legacyCursor] =
-      legacyCursorId === undefined
-        ? []
-        : await db
-            .select({ seqId: chatMessages.seqId })
-            .from(chatMessages)
-            .where(
-              and(
-                eq(chatMessages.id, legacyCursorId),
-                eq(chatMessages.chatThreadId, args.threadId),
-              ),
-            )
-            .limit(1);
-    if (legacyCursorId !== undefined && !legacyCursor) {
-      return { events: [], hasHistoryBefore: false };
-    }
-
-    const sinceSeqId =
-      args.sinceSeqId ?? (args.sinceId ? legacyCursor?.seqId : undefined);
-    const beforeSeqId =
-      args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
-    const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
+    const threadFilter = eq(chatEvents.chatThreadId, args.threadId);
     let rows: ChatEventRow[];
-    let hasHistoryBefore = false;
 
-    if (sinceSeqId !== undefined) {
+    if (args.sinceSeqId !== undefined) {
       rows = await selectChatEventsWithMetadata(db)
-        .where(and(threadFilter, gt(chatMessages.seqId, sinceSeqId)))
-        .orderBy(asc(chatMessages.seqId))
+        .where(and(threadFilter, gt(chatEvents.seqId, args.sinceSeqId)))
+        .orderBy(asc(chatEvents.seqId))
         .limit(args.limit);
-    } else if (beforeSeqId !== undefined) {
-      const previousRows = await selectChatEventsWithMetadata(db)
-        .where(and(threadFilter, lt(chatMessages.seqId, beforeSeqId)))
-        .orderBy(desc(chatMessages.seqId))
-        .limit(args.limit + 1);
-      hasHistoryBefore = previousRows.length > args.limit;
-      rows = previousRows.slice(0, args.limit).reverse();
+    } else if (args.beforeSeqId !== undefined) {
+      rows = (
+        await selectChatEventsWithMetadata(db)
+          .where(and(threadFilter, lt(chatEvents.seqId, args.beforeSeqId)))
+          .orderBy(desc(chatEvents.seqId))
+          .limit(args.limit)
+      ).reverse();
     } else {
-      const latestRows = await selectChatEventsWithMetadata(db)
-        .where(threadFilter)
-        .orderBy(desc(chatMessages.seqId))
-        .limit(args.limit + 1);
-      hasHistoryBefore = latestRows.length > args.limit;
-      rows = latestRows.slice(0, args.limit).reverse();
+      rows = (
+        await selectChatEventsWithMetadata(db)
+          .where(threadFilter)
+          .orderBy(desc(chatEvents.seqId))
+          .limit(args.limit)
+      ).reverse();
     }
 
-    return {
-      events: await get(
-        chatEventsWithAssets({
-          userId: args.userId,
-          rows,
-        }),
-      ),
-      hasHistoryBefore,
-    };
+    return await get(
+      chatEventsWithAssets({
+        userId: args.userId,
+        rows,
+      }),
+    );
   });
 }
 
 function chatEventsWithAssets(args: {
   readonly userId: string;
   readonly rows: readonly ChatEventRow[];
-}): Computed<Promise<readonly ChatEventResponse[]>> {
+}): Computed<Promise<readonly ChatEvent[]>> {
   return computed(async (get) => {
-    const canonicalByMessage = await canonicalMessageAttachments(
+    const attachmentEventIds = args.rows.flatMap((row) => {
+      return row.eventType === "input.prompt" ||
+        row.eventType === "input.rejected"
+        ? [row.id]
+        : [];
+    });
+    const canonicalInputByEvent = await canonicalInputEventAttachments(
       get(db$),
       args.userId,
-      args.rows.map((row) => {
-        return row.id;
-      }),
+      attachmentEventIds,
     );
     return await Promise.all(
       args.rows.map((row) => {
         return get(
-          toChatEvent(args.userId, row, canonicalByMessage.get(row.id) ?? []),
+          toChatEvent(
+            args.userId,
+            row,
+            canonicalInputByEvent.get(row.id) ?? [],
+          ),
         );
       }),
     );
@@ -2288,7 +1501,7 @@ export function zeroChatThreadEventById(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly eventId: string;
-}): Computed<Promise<ChatEventResponse | null>> {
+}): Computed<Promise<ChatEvent | null>> {
   return computed(async (get) => {
     const owned = await get(ownedChatThread(args.threadId, args.userId));
     if (!owned) {
@@ -2299,8 +1512,8 @@ export function zeroChatThreadEventById(args: {
     const [row] = await selectChatEventsWithMetadata(db)
       .where(
         and(
-          eq(chatMessages.id, args.eventId),
-          eq(chatMessages.chatThreadId, args.threadId),
+          eq(chatEvents.id, args.eventId),
+          eq(chatEvents.chatThreadId, args.threadId),
         ),
       )
       .limit(1);
@@ -2382,28 +1595,24 @@ export const createChatThread$ = command(
   },
 );
 
-export function chatThreadForRun(
+export async function chatThreadForRunFromDb(
+  db: Pick<Db, "select">,
   runId: string,
-): Computed<
-  Promise<{ readonly chatThreadId: string; readonly userId: string } | null>
-> {
-  return computed(async (get) => {
-    const db = get(db$);
-    const [row] = await db
-      .select({
-        chatThreadId: zeroRuns.chatThreadId,
-        userId: chatThreads.userId,
-      })
-      .from(zeroRuns)
-      .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-      .where(eq(zeroRuns.id, runId))
-      .limit(1);
+): Promise<{ readonly chatThreadId: string; readonly userId: string } | null> {
+  const [row] = await db
+    .select({
+      chatThreadId: zeroRuns.chatThreadId,
+      userId: chatThreads.userId,
+    })
+    .from(zeroRuns)
+    .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
 
-    if (!row?.chatThreadId) {
-      return null;
-    }
-    return { chatThreadId: row.chatThreadId, userId: row.userId };
-  });
+  if (!row?.chatThreadId) {
+    return null;
+  }
+  return { chatThreadId: row.chatThreadId, userId: row.userId };
 }
 
 interface ThreadRunToCancel {
@@ -2489,7 +1698,7 @@ export const deleteChatThread$ = command(
           ),
         );
 
-      // Delete the thread last inside the lock. Cascades chat_messages; captured
+      // Delete the thread last inside the lock. Cascades chat_events; captured
       // active runs will have their zero_runs.chatThreadId set to NULL.
       const [deletedThread] = await tx
         .delete(chatThreads)
@@ -2507,7 +1716,12 @@ export const deleteChatThread$ = command(
     for (const run of deletion.activeRuns) {
       const result = await set(
         cancelRun$,
-        { runId: run.runId, userId: args.userId, orgId: run.orgId },
+        {
+          runId: run.runId,
+          userId: args.userId,
+          orgId: run.orgId,
+          runnerCancellationMode: "hard",
+        },
         signal,
       );
       signal.throwIfAborted();
@@ -2538,24 +1752,16 @@ export const updateChatThreadDraft$ = command(
     args: {
       readonly threadId: string;
       readonly userId: string;
-      readonly draftContent: string | null;
-      readonly draftUserMessage: UserMessageDocument | null;
+      readonly draftUserMessage: UserMessageInputDocument | null;
       readonly draftAttachments: readonly PersistedAttachment[] | null;
     },
     signal: AbortSignal,
   ): Promise<{ readonly updated: boolean }> => {
     const writeDb = set(writeDb$);
-    const draftUserMessage =
-      args.draftUserMessage ??
-      maybeCreateUserMessageDocument({
-        text: args.draftContent,
-        files: args.draftAttachments ?? undefined,
-      });
     const updated = await writeDb
       .update(chatThreads)
       .set({
-        draftContent: args.draftContent,
-        draftUserMessage,
+        draftUserMessage: args.draftUserMessage,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

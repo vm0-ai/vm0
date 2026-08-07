@@ -1,7 +1,8 @@
 use std::future::Future;
+use std::pin::Pin;
 use std::time::{Duration, Instant};
 
-use guest_contracts::diagnostics::FailureDiagnostic;
+use guest_contracts::diagnostics::{CliTerminationReason, FailureDiagnostic};
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
@@ -14,11 +15,11 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
 };
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessHandle, ProcessControlMode,
-    ProcessOutputMode, Sandbox, StartProcessRequest,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessCancelHandle,
+    GuestProcessControlHandle, GuestProcessHandle, ProcessControlMode, ProcessOutputMode, Sandbox,
+    StartProcessRequest,
 };
 use shell_quote::quote_shell_arg;
-use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
@@ -29,7 +30,7 @@ use super::diagnostics::{
     AgentBootstrapAbnormalExitLogContext, AgentEnvDiagnostics, AgentStdoutStreamDiagnostics,
     StdoutDrainReport, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
     check_host_oom, collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom,
-    drain_stdout_to_file, log_agent_abnormal_exit_env_diagnostics,
+    drain_stdout_to_file, explicit_enospc_evidence, log_agent_abnormal_exit_env_diagnostics,
     log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
     read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
@@ -51,14 +52,18 @@ use super::session_restore::{
     MaterializedResumeSession, SessionRestoreDiagnostics, restore_session,
 };
 use super::storage::download_storages;
-use super::telemetry::{RunnerSpawnTiming, record_api_latency};
+use super::telemetry::{RunnerSpawnTiming, record_api_to_spawn};
+use super::workspace_session_history_materializer::{
+    WorkspaceSessionHistoryMaterialization, WorkspaceSessionHistoryPhaseTiming,
+    WorkspaceSessionHistoryTimings,
+};
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
-    JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, ResourceFailureDiagnostics,
-    ResourceFailureKind, RunnerError, RunnerResult, SandboxReuseResult,
-    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, USER_ENV_FILE_ENV_KEY,
-    agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_terminal_wait_timeout,
-    normalize_failure_exit_code,
+    JOB_TIMEOUT_EXIT_CODE, ResourceFailureDiagnostics, ResourceFailureKind, RunnerError,
+    RunnerResult, SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseResult,
+    SandboxReuseTerminal, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
+    USER_ENV_FILE_ENV_KEY, agent_exit_failure_message, guest_runtime_dir, guest_runtime_path,
+    job_supervisor_timeout, job_terminal_wait_timeout, normalize_failure_exit_code,
 };
 use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
@@ -72,9 +77,6 @@ use crate::telemetry::{
     JobTelemetry, SessionHistoryTelemetryMetadata, session_history_prefix_extension_action_type,
 };
 use crate::types::ExecutionContext;
-use crate::workspace_image_cache::{
-    WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarRepresentation,
-};
 
 const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
@@ -82,9 +84,12 @@ const SESSION_HISTORY_DOWNLOAD_PHASE_TELEMETRY_ERROR: &str =
     "session history download phase failed";
 const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
     "session history materialization failed";
+const WORKSPACE_SESSION_HISTORY_PHASE_TELEMETRY_ERROR: &str =
+    "workspace session history phase failed";
 const STORAGE_CACHE_POPULATE_FAILED: &str = "storage-cache-populate-failed";
 const STORAGE_DOWNLOAD_FAILED: &str = "storage-download-failed";
 const SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT: Duration = Duration::from_secs(5);
+const USER_CANCELLATION_CONTROL_PAYLOAD: &[u8] = br#"{"type":"user-cancellation"}"#;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SessionHistoryIdentityReason {
@@ -335,47 +340,43 @@ fn record_session_history_restore_fallback(
     }
 }
 
-async fn materialize_session_history_sidecar(
-    context: &ExecutionContext,
-    sidecar: &WorkspaceSessionHistorySidecar,
-    config: &ExecutorConfig,
-    cancel: &CancellationToken,
-) -> RunnerResult<MaterializedResumeSession> {
-    let resume_session = context.resume_session.as_ref().ok_or_else(|| {
-        RunnerError::Internal("resume session missing for sidecar restore".into())
-    })?;
-    let history_ref = resume_session.history_ref().ok_or_else(|| {
-        RunnerError::Internal("resume session history ref missing for sidecar restore".into())
-    })?;
-    let bytes = tokio::select! {
-        biased;
-        _ = cancel.cancelled() => {
-            return Err(RunnerError::Cancelled);
-        }
-        result = read_session_history_sidecar_bytes(sidecar) => result?,
-    };
-    let job = match sidecar.representation {
-        WorkspaceSessionHistorySidecarRepresentation::Raw => SessionHistoryCpuJob::raw(
-            resume_session.cli_agent_session_id.clone(),
-            bytes,
-            history_ref.raw_size,
-            history_ref.hash.clone(),
-            effective_cli_framework(&context.cli_agent_type),
-        ),
-        WorkspaceSessionHistorySidecarRepresentation::CodexZstd => SessionHistoryCpuJob::zstd(
-            resume_session.cli_agent_session_id.clone(),
-            bytes,
-            history_ref.raw_size,
-            history_ref.hash.clone(),
-            super::cli_framework::EffectiveCliFramework::Codex,
-        ),
-    };
-    config
-        .session_history_cpu
-        .materialize(job, cancel)
-        .await?
-        .result
-        .map(|materialization| materialization.session)
+fn record_workspace_session_history_phase(
+    telemetry: &mut JobTelemetry,
+    action_type: &'static str,
+    phase: Option<WorkspaceSessionHistoryPhaseTiming>,
+) {
+    if let Some(phase) = phase {
+        telemetry.record(
+            action_type,
+            phase.elapsed(),
+            phase.success(),
+            (!phase.success()).then_some(WORKSPACE_SESSION_HISTORY_PHASE_TELEMETRY_ERROR),
+        );
+    }
+}
+
+fn record_workspace_session_history_timings(
+    telemetry: &mut JobTelemetry,
+    timings: WorkspaceSessionHistoryTimings,
+) {
+    record_workspace_session_history_phase(
+        telemetry,
+        "session_history_workspace_cache_file_read",
+        timings.file_read(),
+    );
+    if let Some(wait) = timings.cpu_admission_wait() {
+        telemetry.record(
+            "session_history_workspace_cache_cpu_pool_wait",
+            wait,
+            true,
+            None,
+        );
+    }
+    record_workspace_session_history_phase(
+        telemetry,
+        "session_history_workspace_cache_materialization",
+        timings.materialization(),
+    );
 }
 
 async fn materialize_inline_resume_session(
@@ -411,22 +412,6 @@ async fn materialize_inline_resume_session(
         history,
         None,
     )))
-}
-
-async fn read_session_history_sidecar_bytes(
-    sidecar: &WorkspaceSessionHistorySidecar,
-) -> RunnerResult<Vec<u8>> {
-    let file = tokio::fs::File::open(&sidecar.path).await?;
-    let mut bytes = Vec::with_capacity(sidecar.encoded_size.min(1024 * 1024) as usize);
-    file.take(sidecar.encoded_size.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .await?;
-    if bytes.len() as u64 != sidecar.encoded_size {
-        return Err(RunnerError::Internal(
-            "workspace session history sidecar size mismatch".into(),
-        ));
-    }
-    Ok(bytes)
 }
 
 pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
@@ -692,26 +677,21 @@ async fn read_final_session_history_identity(
         .ok_or(SessionHistoryIdentityReason::FinalizeUnverifiableMetadata)
 }
 
+#[derive(Clone, Copy)]
 pub(super) struct ProcessCancelTimeouts {
     pub(super) write: Duration,
     pub(super) terminal_grace: Duration,
+    pub(super) cooperative_grace: Duration,
 }
 
 pub(super) struct AgentExecutionResult {
     pub(super) failure: Option<ExecutionFailure>,
+    pub(super) sandbox_reuse_disposition: SandboxReuseDisposition,
     pub(super) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
     pub(super) reusable_session_identity: Option<RestoredSessionIdentity>,
 }
 
 impl AgentExecutionResult {
-    pub(super) fn success() -> Self {
-        Self {
-            failure: None,
-            stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
-            reusable_session_identity: None,
-        }
-    }
-
     pub(super) fn failure(
         exit_code: i32,
         error: impl Into<String>,
@@ -719,6 +699,7 @@ impl AgentExecutionResult {
     ) -> Self {
         Self {
             failure: Some(ExecutionFailure::new(exit_code, error, diagnostic)),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
             reusable_session_identity: None,
         }
@@ -731,6 +712,7 @@ impl AgentExecutionResult {
     pub(super) fn cancelled() -> Self {
         Self {
             failure: Some(ExecutionFailure::cancelled()),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
             reusable_session_identity: None,
         }
@@ -744,18 +726,14 @@ impl AgentExecutionResult {
         self
     }
 
-    pub(super) fn with_reusable_session_identity(
-        mut self,
-        reusable_session_identity: Option<RestoredSessionIdentity>,
-    ) -> Self {
-        self.reusable_session_identity = reusable_session_identity;
-        self
-    }
-
     pub(super) fn with_resource_diagnostics(
         mut self,
         resource_diagnostics: Option<ResourceFailureDiagnostics>,
     ) -> Self {
+        if resource_diagnostics.is_some_and(|diagnostics| diagnostics.failure_kind.is_some()) {
+            self.sandbox_reuse_disposition =
+                SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure);
+        }
         if let Some(failure) = self.failure.take() {
             self.failure = Some(failure.with_resource_diagnostics(resource_diagnostics));
         }
@@ -764,6 +742,8 @@ impl AgentExecutionResult {
 
     #[must_use]
     pub(super) fn with_resource_failure_kind(mut self, kind: ResourceFailureKind) -> Self {
+        self.sandbox_reuse_disposition =
+            SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure);
         if let Some(failure) = self.failure.take() {
             self.failure = Some(failure.with_resource_diagnostics(Some(
                 ResourceFailureDiagnostics::from_failure_kind(kind),
@@ -780,6 +760,285 @@ pub(super) fn cancelled_agent_process_exit(
     exit.termination = ExecTermination::Cancelled;
     exit.stream_overflowed = stream_overflowed;
     exit
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CancellationDisposition {
+    None,
+    Cooperative,
+    HardFallback,
+}
+
+impl CancellationDisposition {
+    fn observed(self) -> bool {
+        self != Self::None
+    }
+
+    fn used_hard_fallback(self) -> bool {
+        self == Self::HardFallback
+    }
+}
+
+struct ProcessWaitOutcome {
+    result: sandbox::Result<sandbox::ProcessExit>,
+    cancellation: CancellationDisposition,
+    interrupt_stdout_drain: bool,
+}
+
+impl ProcessWaitOutcome {
+    fn normal(result: sandbox::Result<sandbox::ProcessExit>) -> Self {
+        let interrupt_stdout_drain = result.is_err();
+        Self {
+            result,
+            cancellation: CancellationDisposition::None,
+            interrupt_stdout_drain,
+        }
+    }
+
+    fn cooperative(exit: sandbox::ProcessExit) -> Self {
+        Self {
+            result: Ok(exit),
+            cancellation: CancellationDisposition::Cooperative,
+            interrupt_stdout_drain: false,
+        }
+    }
+
+    fn hard_fallback(
+        guest_process_pid: u32,
+        stream_overflowed: bool,
+        interrupt_stdout_drain: bool,
+    ) -> Self {
+        Self {
+            result: Ok(cancelled_agent_process_exit(
+                guest_process_pid,
+                stream_overflowed,
+            )),
+            cancellation: CancellationDisposition::HardFallback,
+            interrupt_stdout_drain,
+        }
+    }
+}
+
+async fn request_guest_process_cancel(
+    run_id: crate::ids::RunId,
+    guest_process_pid: u32,
+    process_cancel: &mut Option<GuestProcessCancelHandle>,
+    timeout: Duration,
+) -> bool {
+    let Some(process_cancel) = process_cancel.take() else {
+        warn!(
+            run_id = %run_id,
+            pid = guest_process_pid,
+            "sandbox does not support guest process cancellation"
+        );
+        return false;
+    };
+    match process_cancel.cancel(timeout).await {
+        Ok(()) => true,
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                pid = guest_process_pid,
+                error = %error,
+                "failed to send guest process cancellation"
+            );
+            false
+        }
+    }
+}
+
+async fn force_cancel_guest_process<F>(
+    run_id: crate::ids::RunId,
+    guest_process_pid: u32,
+    process_cancel: &mut Option<GuestProcessCancelHandle>,
+    process_cancel_timeouts: ProcessCancelTimeouts,
+    mut wait_process: Pin<&mut F>,
+) -> ProcessWaitOutcome
+where
+    F: Future<Output = sandbox::Result<sandbox::ProcessExit>>,
+{
+    if !request_guest_process_cancel(
+        run_id,
+        guest_process_pid,
+        process_cancel,
+        process_cancel_timeouts.write,
+    )
+    .await
+    {
+        return ProcessWaitOutcome::hard_fallback(guest_process_pid, false, true);
+    }
+
+    match tokio::time::timeout(
+        process_cancel_timeouts.terminal_grace,
+        wait_process.as_mut(),
+    )
+    .await
+    {
+        Ok(Ok(exit)) => {
+            info!(
+                run_id = %run_id,
+                pid = guest_process_pid,
+                "cancelled guest process reached terminal status"
+            );
+            ProcessWaitOutcome::hard_fallback(guest_process_pid, exit.stream_overflowed, false)
+        }
+        Ok(Err(error)) => {
+            warn!(
+                run_id = %run_id,
+                pid = guest_process_pid,
+                error = %error,
+                "guest process wait failed after cancellation"
+            );
+            ProcessWaitOutcome::hard_fallback(guest_process_pid, false, true)
+        }
+        Err(_) => {
+            warn!(
+                run_id = %run_id,
+                pid = guest_process_pid,
+                timeout_ms = process_cancel_timeouts.terminal_grace.as_millis(),
+                "timed out waiting for cancelled guest process"
+            );
+            ProcessWaitOutcome::hard_fallback(guest_process_pid, false, true)
+        }
+    }
+}
+
+async fn send_cooperative_user_cancellation(
+    run_id: crate::ids::RunId,
+    process_control: Option<&GuestProcessControlHandle>,
+    hard_cancel: &CancellationToken,
+    timeout: Duration,
+) -> bool {
+    let Some(process_control) = process_control else {
+        warn!(
+            run_id = %run_id,
+            "guest process does not support cooperative user cancellation"
+        );
+        return false;
+    };
+    let message_id = format!("user-cancellation:{run_id}");
+    tokio::select! {
+        biased;
+        () = hard_cancel.cancelled() => false,
+        result = process_control.control(
+            &message_id,
+            USER_CANCELLATION_CONTROL_PAYLOAD,
+            timeout,
+        ) => {
+            match result {
+                Ok(ack) if ack.message_id == message_id => true,
+                Ok(ack) => {
+                    warn!(
+                        run_id = %run_id,
+                        expected_message_id = %message_id,
+                        acknowledged_message_id = %ack.message_id,
+                        "guest acknowledged the wrong user-cancellation message"
+                    );
+                    false
+                }
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        error = %error,
+                        "failed to send cooperative user cancellation"
+                    );
+                    false
+                }
+            }
+        }
+    }
+}
+
+async fn wait_for_cooperative_user_cancellation<F>(
+    run_id: crate::ids::RunId,
+    guest_process_pid: u32,
+    process_control: Option<&GuestProcessControlHandle>,
+    process_cancel: &mut Option<GuestProcessCancelHandle>,
+    hard_cancel: &CancellationToken,
+    process_cancel_timeouts: ProcessCancelTimeouts,
+    mut wait_process: Pin<&mut F>,
+) -> ProcessWaitOutcome
+where
+    F: Future<Output = sandbox::Result<sandbox::ProcessExit>>,
+{
+    if !send_cooperative_user_cancellation(
+        run_id,
+        process_control,
+        hard_cancel,
+        process_cancel_timeouts.write,
+    )
+    .await
+    {
+        return force_cancel_guest_process(
+            run_id,
+            guest_process_pid,
+            process_cancel,
+            process_cancel_timeouts,
+            wait_process,
+        )
+        .await;
+    }
+
+    tokio::select! {
+        biased;
+        result = wait_process.as_mut() => {
+            match result {
+                Ok(exit) => {
+                    info!(
+                        run_id = %run_id,
+                        pid = guest_process_pid,
+                        "guest completed cooperative user cancellation"
+                    );
+                    ProcessWaitOutcome::cooperative(exit)
+                }
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        pid = guest_process_pid,
+                        error = %error,
+                        "guest process wait failed during cooperative cancellation"
+                    );
+                    request_guest_process_cancel(
+                        run_id,
+                        guest_process_pid,
+                        process_cancel,
+                        process_cancel_timeouts.write,
+                    )
+                    .await;
+                    ProcessWaitOutcome::hard_fallback(guest_process_pid, false, true)
+                }
+            }
+        }
+        () = hard_cancel.cancelled() => {
+            info!(
+                run_id = %run_id,
+                "hard cancellation preempted cooperative user cancellation"
+            );
+            force_cancel_guest_process(
+                run_id,
+                guest_process_pid,
+                process_cancel,
+                process_cancel_timeouts,
+                wait_process,
+            )
+            .await
+        }
+        () = tokio::time::sleep(process_cancel_timeouts.cooperative_grace) => {
+            warn!(
+                run_id = %run_id,
+                timeout_ms = process_cancel_timeouts.cooperative_grace.as_millis(),
+                "cooperative user cancellation timed out"
+            );
+            force_cancel_guest_process(
+                run_id,
+                guest_process_pid,
+                process_cancel,
+                process_cancel_timeouts,
+                wait_process,
+            )
+            .await
+        }
+    }
 }
 
 fn wait_process_timed_out(error: &sandbox::SandboxError) -> bool {
@@ -808,6 +1067,55 @@ fn process_exit_code(exit: &sandbox::ProcessExit) -> Option<i32> {
 
 fn process_failed(exit: &sandbox::ProcessExit) -> bool {
     !matches!(exit.termination, ExecTermination::Exited { exit_code: 0 })
+}
+
+fn diagnostic_is_agent_execution_timeout(diagnostic: Option<&FailureDiagnostic>) -> bool {
+    diagnostic
+        .and_then(|diagnostic| diagnostic.cli_termination.as_ref())
+        .is_some_and(|termination| termination.reason == CliTerminationReason::ExecutionTimeout)
+}
+
+fn sandbox_reuse_disposition_for_process_exit(
+    exit: &sandbox::ProcessExit,
+    cancellation: CancellationDisposition,
+    failure: Option<&ExecutionFailure>,
+) -> SandboxReuseDisposition {
+    if cancellation == CancellationDisposition::HardFallback {
+        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::HardCancellation);
+    }
+    if failure.is_some_and(|failure| {
+        failure
+            .resource_diagnostics
+            .is_some_and(|diagnostics| diagnostics.failure_kind.is_some())
+    }) {
+        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure);
+    }
+    // A guest-agent execution deadline is reusable only when the provider
+    // observed the guest-agent itself exit. A provider-level timeout does not
+    // carry the same process-termination evidence.
+    let exit_code = match exit.termination {
+        ExecTermination::Exited { exit_code } => exit_code,
+        ExecTermination::TimedOut => {
+            return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::UnconfirmedTimeout);
+        }
+        ExecTermination::Cancelled | ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain);
+        }
+    };
+    if cancellation == CancellationDisposition::Cooperative {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::CooperativeCancellation)
+    } else if failure.is_some_and(|failure| {
+        matches!(
+            failure.kind,
+            super::ExecutionFailureKind::RunnerJobTimeout { .. }
+        )
+    }) {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::ExecutionTimeout)
+    } else if exit_code == 0 {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::Success)
+    } else {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit)
+    }
 }
 
 fn process_exit_oom_candidate(exit: &sandbox::ProcessExit) -> bool {
@@ -874,11 +1182,15 @@ pub(super) struct RunStart<'a> {
 
 pub(super) struct RunControls {
     pub(super) cancel: CancellationToken,
+    pub(super) cooperative_user_cancel: CancellationToken,
+    pub(super) hard_cancel: CancellationToken,
     pub(super) active_input_source: Option<ActiveInputSource>,
+    pub(super) pi_standby_source: Option<crate::pi_standby::PiStandbySubscription>,
     pub(super) spawn_timing: Option<RunnerSpawnTiming>,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
     pub(super) prepared_storage: Option<crate::storage_cache::PreparedFreshStorage>,
     pub(super) prepared_guest_runtime: Option<PreparedGuestRuntime>,
+    guest_state_prepared: bool,
 }
 
 pub(super) enum PreparedGuestRuntime {
@@ -947,17 +1259,32 @@ impl PreparedGuestRuntime {
 }
 
 impl RunControls {
+    #[cfg(test)]
     pub(super) fn new(
         cancel: CancellationToken,
         active_input_source: Option<ActiveInputSource>,
     ) -> Self {
-        Self {
-            cancel,
+        Self::from_cancellation(
+            crate::run_cancellation::RunCancellationSignals::hard_only(cancel),
             active_input_source,
+        )
+    }
+
+    pub(super) fn from_cancellation(
+        cancellation: crate::run_cancellation::RunCancellationSignals,
+        active_input_source: Option<ActiveInputSource>,
+    ) -> Self {
+        Self {
+            cancel: cancellation.any(),
+            cooperative_user_cancel: cancellation.cooperative_user(),
+            hard_cancel: cancellation.hard(),
+            active_input_source,
+            pi_standby_source: None,
             spawn_timing: None,
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
             prepared_storage: None,
             prepared_guest_runtime: None,
+            guest_state_prepared: false,
         }
     }
 
@@ -966,11 +1293,24 @@ impl RunControls {
         self
     }
 
+    pub(super) fn with_pi_standby_source(
+        mut self,
+        source: Option<crate::pi_standby::PiStandbySubscription>,
+    ) -> Self {
+        self.pi_standby_source = source;
+        self
+    }
+
     pub(super) fn with_session_history_restore_plan(
         mut self,
         plan: SessionHistoryRestorePlan,
     ) -> Self {
         self.session_history_restore_plan = plan;
+        self
+    }
+
+    pub(super) fn with_guest_state_prepared(mut self, prepared: bool) -> Self {
+        self.guest_state_prepared = prepared;
         self
     }
 }
@@ -1216,6 +1556,7 @@ async fn prepare_guest_storage(
     result
 }
 
+#[cfg(test)]
 pub(super) async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
@@ -1231,11 +1572,31 @@ pub(super) async fn run_in_sandbox(
         start,
         telemetry,
         controls,
-        PROCESS_CANCEL_TIMEOUTS,
+        super::PROCESS_CANCEL_TIMEOUTS,
     )
     .await
 }
 
+/// Runs the inner guest-agent lifecycle with configurable cancellation timeouts.
+///
+/// Guest runtime state may already be prepared, while storage delivery or
+/// session-history materialization may already be in flight. This function:
+///
+/// - completes cancellation-aware guest runtime and storage preparation while
+///   taking ownership of model-catalog prefetch supervision;
+/// - consumes the session-history restore plan, builds private guest inputs,
+///   and spawns guest-agent;
+/// - starts locally owned active-input and stdout-drain work, releases deferred
+///   cache fill, and supervises normal exit or cancellation;
+/// - stops or drains locally owned background work before classifying terminal
+///   status and collecting diagnostics; and
+/// - publishes a reusable session identity only after successful execution.
+///
+/// Pre-spawn cancellation returns without creating a process and drains any
+/// prepared storage delivery that still owns asynchronous work.
+///
+/// The caller retains the enclosing sandbox and network-log cleanup lifecycle
+/// after this function returns.
 pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
@@ -1247,16 +1608,26 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 ) -> RunnerResult<AgentExecutionResult> {
     let RunControls {
         cancel,
+        cooperative_user_cancel,
+        hard_cancel,
         active_input_source,
+        pi_standby_source,
         spawn_timing,
         session_history_restore_plan,
         mut prepared_storage,
         prepared_guest_runtime,
+        guest_state_prepared,
     } = controls;
-    let has_active_input_source = active_input_source.is_some();
     let pre_spawn_started = Instant::now();
+
+    // Complete cancellation-aware guest runtime and storage preparation while
+    // taking ownership of model-catalog prefetch supervision.
     let prepared_guest_runtime = match prepared_guest_runtime {
         Some(prepared) => prepared,
+        None if guest_state_prepared => PreparedGuestRuntime::Ready(
+            StartedCodexModelCatalogPrefetch::start(sandbox, context, start.reuse_result, &cancel)
+                .await,
+        ),
         None => {
             PreparedGuestRuntime::prepare(
                 sandbox,
@@ -1354,9 +1725,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             let telemetry = pre_spawn_telemetry;
             let deferred_background_fill = deferred_background_fill;
 
+    // Consume the session-history restore plan and prepare the private guest
+    // inputs before crossing the process-spawn ownership boundary.
     let mut session_restore_diagnostics = None;
     let mut pre_run_restored_session_identity = None;
-    let mut local_session_history_sidecar = None;
+    let mut local_session_history_materializer = None;
     let mut session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
             match verify_restored_session_identity_for_reuse(sandbox, context, identity).await {
@@ -1416,65 +1789,112 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             record_session_history_restore_fallback(telemetry, fallback);
             Some(materializer)
         }
-        SessionHistoryRestorePlan::LocalSidecar { sidecar, fallback } => {
+        SessionHistoryRestorePlan::LocalSidecar {
+            materializer,
+            fallback,
+        } => {
             record_session_history_restore_fallback(telemetry, fallback);
-            local_session_history_sidecar = Some(sidecar);
+            local_session_history_materializer = Some(materializer);
             None
         }
     };
-    if let Some(sidecar) = local_session_history_sidecar {
-        let restore_started = Instant::now();
-        match materialize_session_history_sidecar(context, &sidecar, config, &cancel).await {
-            Ok(session) => match restore_session(sandbox, context, &session).await {
-                Ok(diagnostics) => {
-                    telemetry.record(
-                        "session_history_workspace_cache_restore",
-                        restore_started.elapsed(),
-                        true,
-                        None,
-                    );
-                    telemetry.record("session_restore", restore_started.elapsed(), true, None);
-                    session_restore_diagnostics = Some(diagnostics);
-                }
-                Err(error) => {
-                    if cancel.is_cancelled() {
-                        return Err(error);
+    if let Some(local_materializer) = local_session_history_materializer {
+        let completed_before_restore = local_materializer.is_finished();
+        let materialization_wait_started = Instant::now();
+        let local_materialization = local_materializer.finish(&cancel).await;
+        let materialization_wait = if completed_before_restore {
+            Duration::ZERO
+        } else {
+            materialization_wait_started.elapsed()
+        };
+        let materialization_succeeded = matches!(
+            &local_materialization,
+            WorkspaceSessionHistoryMaterialization::Materialized { .. }
+        );
+        telemetry.record(
+            "session_history_workspace_cache_materialization_wait",
+            materialization_wait,
+            materialization_succeeded,
+            (!materialization_succeeded).then_some(
+                WORKSPACE_SESSION_HISTORY_PHASE_TELEMETRY_ERROR,
+            ),
+        );
+        match local_materialization {
+            WorkspaceSessionHistoryMaterialization::Materialized { session, timings } => {
+                record_workspace_session_history_timings(telemetry, timings);
+                let guest_restore_started = Instant::now();
+                let restore_result = restore_session(sandbox, context, &session).await;
+                let guest_restore_elapsed = guest_restore_started.elapsed();
+                telemetry.record(
+                    "session_history_workspace_cache_guest_restore",
+                    guest_restore_elapsed,
+                    restore_result.is_ok(),
+                    restore_result
+                        .is_err()
+                        .then_some(WORKSPACE_SESSION_HISTORY_PHASE_TELEMETRY_ERROR),
+                );
+                match restore_result {
+                    Ok(diagnostics) => {
+                        telemetry.record(
+                            "session_history_workspace_cache_restore",
+                            timings
+                                .host_service_time()
+                                .saturating_add(guest_restore_elapsed),
+                            true,
+                            None,
+                        );
+                        telemetry.record("session_restore", guest_restore_elapsed, true, None);
+                        session_restore_diagnostics = Some(diagnostics);
                     }
-                    telemetry.record(
-                        "session_history_workspace_cache_restore",
-                        restore_started.elapsed(),
-                        false,
-                        Some("restore_error"),
-                    );
-                    telemetry.record(
-                        "session_history_workspace_cache_miss",
-                        Duration::ZERO,
-                        true,
-                        Some("restore_error"),
-                    );
-                    warn!(
-                        run_id = %context.run_id,
-                        error = %error,
-                        "workspace session history sidecar restore failed; falling back to remote history"
-                    );
-                    session_history_materializer =
-                        Some(SessionHistoryMaterializer::start_cancellable(
-                            &config.http,
-                            &config.session_history_cpu,
-                            context.resume_session.as_ref(),
-                            effective_cli_framework(&context.cli_agent_type),
-                            cancel.clone(),
-                            Some(&config.session_history_probe),
-                        ));
+                    Err(error) => {
+                        telemetry.record(
+                            "session_restore",
+                            guest_restore_elapsed,
+                            false,
+                            Some(&error.to_string()),
+                        );
+                        if cancel.is_cancelled() || matches!(&error, RunnerError::Cancelled) {
+                            return Err(error);
+                        }
+                        telemetry.record(
+                            "session_history_workspace_cache_restore",
+                            timings
+                                .host_service_time()
+                                .saturating_add(guest_restore_elapsed),
+                            false,
+                            Some("restore_error"),
+                        );
+                        telemetry.record(
+                            "session_history_workspace_cache_miss",
+                            Duration::ZERO,
+                            true,
+                            Some("restore_error"),
+                        );
+                        warn!(
+                            run_id = %context.run_id,
+                            error = %error,
+                            "workspace session history sidecar restore failed; falling back to remote history"
+                        );
+                        session_history_materializer =
+                            Some(SessionHistoryMaterializer::start_cancellable(
+                                &config.http,
+                                &config.session_history_cpu,
+                                context.resume_session.as_ref(),
+                                effective_cli_framework(&context.cli_agent_type),
+                                cancel.clone(),
+                                Some(&config.session_history_probe),
+                            ));
+                    }
                 }
-            },
-            Err(error) => {
-                if cancel.is_cancelled() {
+            }
+            WorkspaceSessionHistoryMaterialization::Failed { timings, error } => {
+                record_workspace_session_history_timings(telemetry, timings);
+                if cancel.is_cancelled() || matches!(&error, RunnerError::Cancelled) {
                     return Err(error);
                 }
                 telemetry.record(
                     "session_history_workspace_cache_restore",
-                    restore_started.elapsed(),
+                    timings.host_service_time(),
                     false,
                     Some("materialize_error"),
                 );
@@ -1501,8 +1921,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
     if let Some(session_history_materializer) = session_history_materializer {
-        // 4. Restore session history. Hash-backed history downloads can start
-        // before sandbox preparation, then materialize here right before restore.
+        // Finish any remaining history materialization immediately before
+        // restoring it into the guest.
         let should_record_materialization_wait = session_history_materializer.is_downloading();
         let materializer_completed_before_restore =
             session_history_materializer.is_download_finished();
@@ -1600,9 +2020,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
 
-    // 5. Build env vars. The guest-agent bootstrap env is runner-owned only;
-    // user-provided env is passed through a private guest file and injected
-    // into the CLI child after guest-agent has started.
+    // Build the private run payload and environment used to bootstrap
+    // guest-agent. User-provided env is passed through a private guest file and
+    // injected into the CLI child after guest-agent has started.
     let user_env_started = Instant::now();
     let user_env_map = build_user_env_json(context);
     let user_env_file = match write_user_env_file(sandbox, context.run_id, &user_env_map).await {
@@ -1677,7 +2097,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         &config.api_url,
         sandbox.id(),
         start.reuse_result,
-        has_active_input_source,
     ) {
         Ok(env_map) => env_map,
         Err(error) => {
@@ -1711,21 +2130,21 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     );
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // 6. Spawn agent — stdout streamed to host via vsock. guest-agent stderr is
-    //    merged into stdout, while a small stderr capture keeps shell/wrapper
-    //    startup failures visible when the process exits before guest logging.
+    // Spawn guest-agent with stdout streamed to the host via vsock. Its stderr
+    // is merged into stdout, while a small capture keeps shell or wrapper
+    // startup failures visible when the process exits before guest logging.
     let agent_cmd = build_agent_start_command(guest::RUN_AGENT);
     validate_agent_bootstrap_exec_boundary(&agent_cmd, &env_pairs)?;
     info!(run_id = %context.run_id, "spawning agent");
 
-    // JOB_TIMEOUT remains the guest-side runtime budget. The host waits a
-    // little longer for terminal proof so the guest timeout path can kill,
-    // drain stdout/stderr, and report ExecTermination::TimedOut.
+    // Guest-agent receives JOB_TIMEOUT as the user execution budget. The
+    // sandbox supervisor remains a later hard fallback so guest-agent can
+    // terminate the CLI and create a recovery checkpoint first.
     let t = Instant::now();
     let handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: &agent_cmd,
-            timeout: JOB_TIMEOUT,
+            timeout: job_supervisor_timeout(),
             env: &env_refs,
             sudo: false,
             output: ProcessOutputMode::stream_with_stderr_capture(
@@ -1809,145 +2228,135 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     } = prepared_agent;
 
     // Claude Code process has a PID now — record end-to-end startup latency.
-    record_api_latency("api_to_spawn", context, telemetry);
+    record_api_to_spawn(
+        context,
+        telemetry,
+        start.reuse_result,
+        start.prev_storage.is_some(),
+    );
 
+    // Start locally owned input and output work, then release deferred cache
+    // fill now that process spawn has succeeded.
+    let process_control = handle.control_handle();
     let active_input_forwarder = super::active_input::ActiveInputForwarder::start(
         context.run_id,
         active_input_source,
-        handle.control_handle(),
+        process_control.clone(),
+        cancel.clone(),
+    );
+    let pi_standby_forwarder = super::pi_standby::PiStandbyForwarder::start(
+        context.run_id,
+        pi_standby_source,
+        process_control.clone(),
         cancel.clone(),
     );
 
     // Spawn background task to drain stdout chunks and write to the host stream log file.
     let host_log_path = config.log_paths.system_stream_log(context.run_id);
-    let stream_task = handle
-        .take_stdout_receiver()
-        .map(|stdout_rx| tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path)));
+    let stream_task = handle.take_stdout_receiver().map(|stdout_rx| {
+        let stop = CancellationToken::new();
+        let task_stop = stop.clone();
+        let task = tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path, task_stop));
+        (stop, task)
+    });
 
     if let Some(background_fill) = deferred_background_fill {
         background_fill.start(telemetry);
     }
 
-    // 6. Wait for exit (or cancellation). On cancel, ask the guest to cancel the
-    // supervised process and briefly wait for its terminal status so the vsock
-    // operation can be removed before sandbox cleanup closes the connection.
+    // Supervise normal exit or cancellation. A user request first asks
+    // guest-agent to checkpoint recovery state and exit; hard cancellation and
+    // bounded fallback use the existing supervised-process cancellation path.
     let guest_process_pid = handle.guest_pid;
-    let process_cancel = handle.take_cancel_handle();
+    let mut process_cancel = handle.take_cancel_handle();
     let wait_process = sandbox.wait_process(handle, job_terminal_wait_timeout());
     tokio::pin!(wait_process);
-    let (result, wait_cancelled, abort_stdout_drain) = model_catalog_prefetch
+    let wait_outcome = model_catalog_prefetch
         .race(async {
             tokio::select! {
                 biased;
-                result = &mut wait_process => {
-                    let abort_stdout_drain = result.is_err();
-                    (result, false, abort_stdout_drain)
+                result = wait_process.as_mut() => {
+                    ProcessWaitOutcome::normal(result)
                 }
-                () = cancel.cancelled() => {
-                    info!(run_id = %context.run_id, "cancel received, cancelling guest process");
-                    let cancelled_exit = || -> sandbox::Result<sandbox::ProcessExit> {
-                        Ok(cancelled_agent_process_exit(guest_process_pid, false))
-                    };
-                    match process_cancel {
-                        Some(process_cancel) => match process_cancel.cancel(process_cancel_timeouts.write).await {
-                            Ok(()) => {
-                                match tokio::time::timeout(
-                                    process_cancel_timeouts.terminal_grace,
-                                    &mut wait_process,
-                                )
-                                .await
-                                {
-                                    Ok(Ok(exit)) => {
-                                        info!(
-                                            run_id = %context.run_id,
-                                            pid = guest_process_pid,
-                                            "cancelled guest process reached terminal status"
-                                        );
-                                        (
-                                            Ok(cancelled_agent_process_exit(
-                                                guest_process_pid,
-                                                exit.stream_overflowed,
-                                            )),
-                                            true,
-                                            false,
-                                        )
-                                    }
-                                    Ok(Err(error)) => {
-                                        warn!(
-                                            run_id = %context.run_id,
-                                            pid = guest_process_pid,
-                                            error = %error,
-                                            "guest process wait failed after cancellation"
-                                        );
-                                        (cancelled_exit(), true, true)
-                                    }
-                                    Err(_) => {
-                                        warn!(
-                                            run_id = %context.run_id,
-                                            pid = guest_process_pid,
-                                            timeout_ms = process_cancel_timeouts.terminal_grace.as_millis(),
-                                            "timed out waiting for cancelled guest process"
-                                        );
-                                        (cancelled_exit(), true, true)
-                                    }
-                                }
-                            }
-                            Err(error) => {
-                                warn!(
-                                    run_id = %context.run_id,
-                                    pid = guest_process_pid,
-                                    error = %error,
-                                    "failed to send guest process cancellation"
-                                );
-                                (cancelled_exit(), true, true)
-                            }
-                        },
-                        None => {
-                            warn!(
-                                run_id = %context.run_id,
-                                pid = guest_process_pid,
-                                "sandbox does not support guest process cancellation"
-                            );
-                            (cancelled_exit(), true, true)
-                        }
-                    }
+                () = hard_cancel.cancelled() => {
+                    info!(run_id = %context.run_id, "hard cancellation received, cancelling guest process");
+                    force_cancel_guest_process(
+                        context.run_id,
+                        guest_process_pid,
+                        &mut process_cancel,
+                        process_cancel_timeouts,
+                        wait_process.as_mut(),
+                    )
+                    .await
+                }
+                () = cooperative_user_cancel.cancelled() => {
+                    info!(
+                        run_id = %context.run_id,
+                        "user cancellation received, requesting guest recovery"
+                    );
+                    wait_for_cooperative_user_cancellation(
+                        context.run_id,
+                        guest_process_pid,
+                        process_control.as_ref(),
+                        &mut process_cancel,
+                        &hard_cancel,
+                        process_cancel_timeouts,
+                        wait_process.as_mut(),
+                    )
+                    .await
                 }
             }
         })
         .await;
     model_catalog_prefetch.record_outcome(telemetry);
+    let ProcessWaitOutcome {
+        result,
+        cancellation,
+        interrupt_stdout_drain,
+    } = wait_outcome;
+    let cancellation_observed = cancellation.observed();
+    let used_hard_cancellation_fallback = cancellation.used_hard_fallback();
 
+    // Stop locally owned post-spawn work before interpreting terminal process
+    // state. Join active input and model prefetch; drain or abort stdout based
+    // on the wait outcome.
     if let Some(forwarder) = active_input_forwarder {
+        forwarder.stop().await;
+    }
+    if let Some(forwarder) = pi_standby_forwarder {
         forwarder.stop().await;
     }
 
     // Wait for streaming to finish (channel closes when process exits).
-    // On cancel/timeout/crash the stream channel may not close — abort to
-    // prevent blocking indefinitely on the drain task.
+    // When terminal proof is unavailable, close the bounded receiver so the
+    // drain can flush accepted chunks without waiting for sender drop.
     let mut stdout_drain_report = StdoutDrainReport::default();
-    if let Some(task) = stream_task {
-        if abort_stdout_drain || result.is_err() {
-            task.abort();
-            let _ = task.await;
-        } else {
-            match task.await {
-                Ok(Ok(report)) => {
-                    stdout_drain_report = report;
-                }
-                Ok(Err(e)) => {
-                    warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
-                }
-                Err(e) => {
-                    warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
-                }
+    if let Some((stop, task)) = stream_task {
+        if interrupt_stdout_drain {
+            stop.cancel();
+        }
+        match task.await {
+            Ok(Ok(report)) => {
+                stdout_drain_report = report;
+            }
+            Ok(Err(e)) => {
+                stdout_drain_report.stream_incomplete = true;
+                warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
+            }
+            Err(e) => {
+                stdout_drain_report.stream_incomplete = true;
+                warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
             }
         }
     }
     model_catalog_prefetch.finish(telemetry).await;
+
+    // Classify terminal state and collect diagnostics justified by the outcome.
     let stdout_stream_diagnostics_on_wait_error = AgentStdoutStreamDiagnostics {
         bytes_written: stdout_drain_report.bytes_written,
         chunk_truncated: stdout_drain_report.chunk_truncated,
         stream_overflowed: false,
+        stream_incomplete: stdout_drain_report.stream_incomplete,
     };
     let exit = match result {
         Ok(exit) => exit,
@@ -1965,7 +2374,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 let error = "Firecracker VM killed by host OOM killer".to_string();
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
-                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled));
+                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled)
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error));
             }
             let error = e.to_string();
             telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
@@ -1979,11 +2389,28 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         t.elapsed(),
                         None,
                     )),
+                    sandbox_reuse_disposition: SandboxReuseDisposition::Ineligible(
+                        SandboxReuseRejection::UnconfirmedTimeout,
+                    ),
                     stdout_stream_diagnostics: stdout_stream_diagnostics_on_wait_error,
                     reusable_session_identity: None,
                 });
             }
-            return Err(e.into());
+            let resource_diagnostics = if explicit_enospc_evidence([error.as_str()]) {
+                collect_agent_abnormal_exit_diagnostics(
+                    sandbox,
+                    context.run_id,
+                    sandbox.id(),
+                    start.reuse_result,
+                    1,
+                )
+                .await
+            } else {
+                None
+            };
+            return Ok(AgentExecutionResult::failure_from_error(error)
+                .with_resource_diagnostics(resource_diagnostics)
+                .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error));
         }
     };
     if exit.stream_overflowed {
@@ -1993,6 +2420,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         bytes_written: stdout_drain_report.bytes_written,
         chunk_truncated: stdout_drain_report.chunk_truncated,
         stream_overflowed: exit.stream_overflowed,
+        stream_incomplete: stdout_drain_report.stream_incomplete,
     };
     if !exit.diagnostic.is_empty() {
         warn!(
@@ -2017,10 +2445,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         stdout_stream_diagnostics,
     );
 
-    // Check for OOM kill when process was terminated by SIGKILL.
-    // Skip when cancelled — the SIGKILL exit code is synthetic and dmesg
-    // would run against a sandbox that hasn't been stopped yet.
-    if !wait_cancelled && process_exit_oom_candidate(&exit) {
+    // Check for OOM kill when process was terminated by SIGKILL. Skip only
+    // after hard fallback, where the SIGKILL exit code is synthetic. A
+    // cooperative guest exit remains real process evidence.
+    if !used_hard_cancellation_fallback && process_exit_oom_candidate(&exit) {
         let dmesg_req = ExecRequest {
             cmd: "dmesg | tail -20 2>/dev/null",
             timeout: Duration::from_secs(5),
@@ -2061,8 +2489,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
 
-    let failure = if wait_cancelled {
-        // Skip guest file reads — sandbox hasn't been stopped yet.
+    let failure = if cancellation_observed {
+        // Cancellation remains authoritative over guest failure files. Hard
+        // fallback may also leave the guest process without terminal proof.
         Some(ExecutionFailure::cancelled())
     } else if process_failed(&exit) {
         let failure_exit_code = process_failure_exit_code(&exit);
@@ -2077,13 +2506,13 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             None
         };
         let should_log_bootstrap_diagnostics = should_log_agent_bootstrap_abnormal_exit_diagnostics(
-            wait_cancelled,
+            cancellation_observed,
             &exit,
             failure_diagnostic.as_ref(),
             guest_error.as_deref(),
         );
         let should_collect_resource_diagnostics = should_collect_agent_abnormal_exit_diagnostics(
-            wait_cancelled,
+            cancellation_observed,
             &exit,
             &stderr,
             failure_diagnostic.as_ref(),
@@ -2091,7 +2520,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         );
         let should_collect_sigkill_resource_diagnostics =
             should_collect_unattributed_sigkill_resource_diagnostics(
-                wait_cancelled,
+                cancellation_observed,
                 &exit,
                 failure_diagnostic.as_ref(),
             );
@@ -2141,7 +2570,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             // handoff.
             guest_error.unwrap_or_else(|| agent_exit_failure_message(failure_exit_code))
         };
-        Some(if matches!(exit.termination, ExecTermination::TimedOut) {
+        let is_runner_job_timeout = matches!(exit.termination, ExecTermination::TimedOut)
+            || diagnostic_is_agent_execution_timeout(failure_diagnostic.as_ref());
+        Some(if is_runner_job_timeout {
             ExecutionFailure::runner_job_timeout(
                 failure_exit_code,
                 error,
@@ -2159,9 +2590,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         None
     };
 
-    // A pre-run identity proves only what was restored. Once the agent starts,
-    // publish an identity only after a successful execution verifies the
-    // current history or confirms that the restored history stayed unchanged.
+    // Finalize reusable session identity only after successful execution. A
+    // pre-run identity proves only what was restored, so verify the current
+    // history or confirm that the restored history stayed unchanged.
     let reusable_session_identity = if failure.is_none() {
         match read_final_session_history_identity(sandbox, context).await {
             Ok(final_identity) => {
@@ -2200,15 +2631,21 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         None
     };
 
+    let sandbox_reuse_disposition =
+        sandbox_reuse_disposition_for_process_exit(&exit, cancellation, failure.as_ref());
     let agent_result = match failure {
         Some(failure) => AgentExecutionResult {
             failure: Some(failure),
+            sandbox_reuse_disposition,
             stdout_stream_diagnostics,
             reusable_session_identity: None,
         },
-        None => AgentExecutionResult::success()
-            .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
-            .with_reusable_session_identity(reusable_session_identity),
+        None => AgentExecutionResult {
+            failure: None,
+            sandbox_reuse_disposition,
+            stdout_stream_diagnostics,
+            reusable_session_identity,
+        },
     };
     telemetry.record(
         "agent_execute",

@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { zeroTeamsOauthRoutes } from "../zero-teams-oauth";
 import {
   createFixtureTracker,
@@ -20,6 +21,7 @@ import {
   teamsConnectFixture,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
+import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -229,7 +231,9 @@ describe("Teams OAuth API routes", () => {
     );
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     const pendingStatus = await accept(
       client.getStatus({
         headers: { authorization: "Bearer clerk-session" },
@@ -281,7 +285,9 @@ describe("Teams OAuth API routes", () => {
     );
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     const status = await accept(
       client.getStatus({
         headers: { authorization: "Bearer clerk-session" },
@@ -300,7 +306,9 @@ describe("Teams OAuth API routes", () => {
     const fixture = await seedTeamsInstallation(track);
     await seedMembership(fixture.orgId, fixture.userId, "admin");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },

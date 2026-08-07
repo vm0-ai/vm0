@@ -20,6 +20,8 @@ const ROBOTS_UPLOAD_URL = "https://uploads.example.com/robots";
 const ALIAS_URL = "https://demo-site.sites.example.com";
 const ARTIFACT_URL =
   "https://dpl-00000000-0000-4000-8000-000000000002.sites.example.com";
+const CHAT_SCOPE_CONFLICT_MESSAGE =
+  'Hosted site slug "demo-site" is owned outside this chat. Choose a different --site value and rerun the same zero host command.';
 
 function sha256(bytes: string): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -33,6 +35,10 @@ describe("zero host publish command", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  const stderrIsTtyDescriptor = Object.getOwnPropertyDescriptor(
+    process.stderr,
+    "isTTY",
+  );
 
   let tempDir: string;
 
@@ -50,6 +56,11 @@ describe("zero host publish command", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
+    if (stderrIsTtyDescriptor) {
+      Object.defineProperty(process.stderr, "isTTY", stderrIsTtyDescriptor);
+    } else {
+      Reflect.deleteProperty(process.stderr, "isTTY");
+    }
   });
 
   it("uploads a default robots.txt when the site does not include one", async () => {
@@ -219,4 +230,50 @@ describe("zero host publish command", () => {
     expect(parsed.artifactUrl).toBeUndefined();
     expect(parsed.aliasUrl).toBeUndefined();
   });
+
+  it.each([
+    { label: "TTY", isTty: true, extraArgs: [] },
+    { label: "non-TTY JSON", isTty: false, extraArgs: ["--json"] },
+  ])(
+    "prints actionable chat-scope conflicts in $label mode",
+    async ({ isTty, extraArgs }) => {
+      writeFileSync(
+        join(tempDir, "index.html"),
+        "<!doctype html><main>Hosted site</main>",
+      );
+      Object.defineProperty(process.stderr, "isTTY", {
+        configurable: true,
+        value: isTty,
+      });
+      server.use(
+        http.post(PREPARE_URL, () => {
+          return HttpResponse.json(
+            {
+              error: {
+                code: "CONFLICT",
+                message: CHAT_SCOPE_CONFLICT_MESSAGE,
+              },
+            },
+            { status: 409 },
+          );
+        }),
+      );
+
+      await expect(
+        zeroHostCommand.parseAsync([
+          "node",
+          "cli",
+          tempDir,
+          "--site",
+          "demo-site",
+          ...extraArgs,
+        ]),
+      ).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+        `409: ${CHAT_SCOPE_CONFLICT_MESSAGE}`,
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    },
+  );
 });

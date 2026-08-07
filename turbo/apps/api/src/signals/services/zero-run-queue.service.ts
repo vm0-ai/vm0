@@ -15,9 +15,8 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import {
   publishOrgSignal,
   publishThreadListChanged,
@@ -27,20 +26,23 @@ import { logger } from "../../lib/log";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
-import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
+import {
+  recordSameThreadRunnerJobPersisted,
+  runnerJobQueueTimestamps,
+} from "./runner-job-queue-lifecycle.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   revokeQueuedRunAssistantMarkers,
   type QueueMarkerRevokeNotification,
 } from "./zero-chat-queue-marker.service";
-import { recordFirstAssistantMessageEligibility } from "./zero-chat-first-assistant-message-metric.service";
+import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import {
-  activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
+  loadOrgConcurrencyState,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
-import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import { tapError } from "../utils";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("ZeroRunQueue");
 
@@ -49,19 +51,24 @@ const QUEUED_RUN_EXPIRED_REASON = "Queued run expired (exceeded queue TTL)";
 const QUEUED_RUN_LAUNCH_ORPHAN_REASON =
   "Queued run timed out before queue entry was persisted";
 
-async function effectiveOrgConcurrencyLimit(
+async function effectiveOrgConcurrencyState(
   db: Pick<Db, "select">,
   orgId: string,
-): Promise<number> {
-  const capabilities = await loadOrgPlanCapabilities(db, orgId);
-  const baseLimit = cappedBaseConcurrencyLimit(
-    capabilities?.baseConcurrencyLimit ?? 0,
-  );
-  const paidSlots = await activePaidConcurrencySlots(db, orgId);
-  return totalConcurrencyLimit({ baseLimit, paidSlots });
+): Promise<{ readonly activeRunCount: number; readonly limit: number }> {
+  const at = nowDate();
+  const state = await loadOrgConcurrencyState(db, {
+    orgId,
+    at,
+    activePendingAfter: new Date(at.getTime() - PENDING_RUN_TTL_MS),
+  });
+  const baseLimit = cappedBaseConcurrencyLimit(state.baseConcurrencyLimit);
+  return {
+    activeRunCount: state.activeRunCount,
+    limit: totalConcurrencyLimit({ baseLimit, paidSlots: state.paidSlots }),
+  };
 }
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 type QueuedRunnerJobPayload = NonNullable<
   Awaited<ReturnType<typeof decryptQueuedRunnerJobPayload>>
 >;
@@ -79,12 +86,13 @@ interface RunnerNotification {
   readonly runId: string;
   readonly runnerGroup: string;
   readonly profile: string;
+  readonly reuseKey: string | null;
   readonly cliAgentSessionId: string | null;
   readonly historyGenerationRunId: string | undefined;
   readonly createdAt: Date;
 }
 
-interface FirstAssistantMessageEligibility {
+interface FirstAssistantEventEligibility {
   readonly runId: string;
   readonly apiStartedAt: number;
 }
@@ -99,7 +107,7 @@ type PromoteQueuedCandidateResult =
       readonly status: "promoted";
       readonly runnerNotification: RunnerNotification | null;
       readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
-      readonly firstAssistantMessageEligibility: FirstAssistantMessageEligibility | null;
+      readonly firstAssistantEventEligibility: FirstAssistantEventEligibility | null;
     }
   | { readonly status: "full" }
   | { readonly status: "removed-stale" }
@@ -143,29 +151,6 @@ async function timedOutQueuedRunsWithMarkerNotifications(
   return timedOutRuns;
 }
 
-async function activeConcurrencyCount(
-  db: Pick<Db, "select">,
-  orgId: string,
-): Promise<number> {
-  const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
-  const [activeRow] = await db
-    .select({ count: count() })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.orgId, orgId),
-        or(
-          eq(agentRuns.status, "running"),
-          and(
-            eq(agentRuns.status, "pending"),
-            activePendingRunPredicate(staleThreshold),
-          ),
-        ),
-      ),
-    );
-  return Number(activeRow?.count ?? 0);
-}
-
 async function insertPromotedRunnerJob(
   tx: DbTransaction,
   args: {
@@ -205,6 +190,7 @@ async function insertPromotedRunnerJob(
       runnerGroup: args.payload.runnerGroup,
       profile: args.payload.profile,
       cliAgentSessionId: args.payload.cliAgentSessionId,
+      reuseKey: args.payload.reuseKey,
       executionContext: {
         ...args.payload.executionContext,
         apiStartTime: promotedAt,
@@ -228,10 +214,8 @@ async function loadDrainCandidates(
   return await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
 
-    const limit = await effectiveOrgConcurrencyLimit(tx, orgId);
-
-    const activeCount = await activeConcurrencyCount(tx, orgId);
-    if (activeCount >= limit) {
+    const concurrency = await effectiveOrgConcurrencyState(tx, orgId);
+    if (concurrency.activeRunCount >= concurrency.limit) {
       return [];
     }
 
@@ -265,10 +249,8 @@ async function promoteQueuedCandidate(
       sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
     );
 
-    const limit = await effectiveOrgConcurrencyLimit(tx, args.orgId);
-
-    const activeCount = await activeConcurrencyCount(tx, args.orgId);
-    if (activeCount >= limit) {
+    const concurrency = await effectiveOrgConcurrencyState(tx, args.orgId);
+    if (concurrency.activeRunCount >= concurrency.limit) {
       return { status: "full" };
     }
 
@@ -342,7 +324,7 @@ async function promoteQueuedCandidate(
         status: "promoted",
         runnerNotification: null,
         queueMarkerNotification,
-        firstAssistantMessageEligibility: null,
+        firstAssistantEventEligibility: null,
       };
     }
 
@@ -355,7 +337,7 @@ async function promoteQueuedCandidate(
     return {
       status: "promoted",
       queueMarkerNotification,
-      firstAssistantMessageEligibility: args.row.chatThreadId
+      firstAssistantEventEligibility: args.row.chatThreadId
         ? {
             runId: args.row.runId,
             apiStartedAt: runnerJob.apiStartedAt,
@@ -365,6 +347,7 @@ async function promoteQueuedCandidate(
         runId: args.row.runId,
         runnerGroup: args.payload.runnerGroup,
         profile: args.payload.profile,
+        reuseKey: args.payload.reuseKey,
         cliAgentSessionId: args.payload.cliAgentSessionId,
         historyGenerationRunId: args.payload.historyGenerationRunId,
         createdAt: runnerJob.createdAt,
@@ -458,10 +441,14 @@ async function promoteQueuedCandidateWithSideEffects(
     return "skipped";
   }
 
-  if (result.firstAssistantMessageEligibility) {
-    recordFirstAssistantMessageEligibility(
-      result.firstAssistantMessageEligibility,
-    );
+  if (result.firstAssistantEventEligibility) {
+    recordFirstAssistantEventEligibility(result.firstAssistantEventEligibility);
+  }
+  if (args.row.chatThreadId && result.runnerNotification) {
+    recordSameThreadRunnerJobPersisted({
+      runId: result.runnerNotification.runId,
+      createdAt: result.runnerNotification.createdAt,
+    });
   }
 
   await publishPromotedQueueSideEffects(db, {

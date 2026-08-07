@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-
 import {
   chatThreadMetadataContract,
   chatThreadRenameContract,
@@ -8,13 +7,15 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
+import { zeroChatThreadRenameRoutes } from "../zero-chat-threads-rename";
 
 const context = testContext();
 const store = createStore();
@@ -24,6 +25,7 @@ const chat = createChatFilesBddApi(context);
 interface ChatThreadFixture {
   readonly userId: string;
   readonly orgId: string;
+  readonly agentId: string;
   readonly threadId: string;
 }
 
@@ -47,7 +49,12 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
     { orgId: actor.orgId, userId: actor.userId },
     context.signal,
   );
-  return { userId: actor.userId, orgId: actor.orgId, threadId: thread.id };
+  return {
+    userId: actor.userId,
+    orgId: actor.orgId,
+    agentId: agent.agentId,
+    threadId: thread.id,
+  };
 }
 
 function currentSecond(): number {
@@ -72,11 +79,15 @@ function zeroToken(args: {
 }
 
 function renameClient() {
-  return setupApp({ context })(chatThreadRenameContract);
+  return setupApp({ context, routes: zeroChatThreadRenameRoutes })(
+    chatThreadRenameContract,
+  );
 }
 
 function metadataClient() {
-  return setupApp({ context })(chatThreadMetadataContract);
+  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+    chatThreadMetadataContract,
+  );
 }
 
 describe("POST /api/zero/chat-threads/:id/rename", () => {
@@ -113,6 +124,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     );
     expect(metadataResponse.body).toStrictEqual({
       id: fixture.threadId,
+      agentId: fixture.agentId,
       title: "CLI renamed title",
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });
@@ -123,7 +135,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     const token = zeroToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
-      capabilities: ["chat-message:read"],
+      capabilities: ["chat-event:read"],
     });
 
     const response = await accept(

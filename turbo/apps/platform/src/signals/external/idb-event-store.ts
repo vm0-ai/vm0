@@ -32,7 +32,7 @@ interface ChatEventWriteStore {
   ): Promise<void>;
 }
 
-function validateEvent(raw: unknown): ChatEvent {
+function storedChatEvent(raw: unknown): ChatEvent {
   return chatEventSchema.parse(raw);
 }
 
@@ -61,15 +61,18 @@ function createEventReadStore(
       const tx = db.transaction(storeName, "readonly");
       const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
       const range = threadOrderRange(threadId);
-      const [firstCursor, lastCursor] = await Promise.all([
-        index.openCursor(range, "next"),
-        index.openCursor(range, "prev"),
+      const readBound = async (
+        direction: IDBCursorDirection,
+      ): Promise<ChatEvent | null> => {
+        const cursor = await index.openCursor(range, direction);
+        return cursor ? storedChatEvent(cursor.value) : null;
+      };
+      const [first, last] = await Promise.all([
+        readBound("next"),
+        readBound("prev"),
       ]);
       signal?.throwIfAborted();
-      const bounds = {
-        first: firstCursor ? validateEvent(firstCursor.value) : null,
-        last: lastCursor ? validateEvent(lastCursor.value) : null,
-      };
+      const bounds = { first, last };
       L.debug("readBounds:done", {
         threadId,
         firstId: bounds.first?.id ?? null,
@@ -86,7 +89,7 @@ function createEventReadStore(
       const range = threadOrderRange(threadId);
       const storedEvents = await index.getAll(range);
       signal?.throwIfAborted();
-      const events = storedEvents.map(validateEvent);
+      const events = storedEvents.map(storedChatEvent);
       L.debug("readLatest:done", { threadId, count: events.length });
       return events;
     },

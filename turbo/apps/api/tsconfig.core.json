@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "rootDir": "./src",
+    "outDir": "./.typecheck/core",
+    "tsBuildInfoFile": "./.typecheck/core.tsbuildinfo"
+  },
+  "include": ["src/**/*", "src/**/*.json"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/__benches__/**/*",
+    "src/**/__tests__/**/*",
+    "src/**/*.bench.ts",
+    "src/**/*.spec.ts",
+    "src/**/*.suite.ts",
+    "src/**/*.test.ts",
+    "src/test-fixtures/**/*",
+    "src/index.ts",
+    "src/production-bootstrap.ts",
+    "src/server.ts",
+    "src/signals/route.ts"
+  ]
+}

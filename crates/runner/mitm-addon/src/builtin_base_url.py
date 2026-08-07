@@ -11,12 +11,12 @@ transport and built-in host-policy validation are a subsequent registry step.
 import re
 import urllib.parse
 
+import connector_template_syntax
 import matching
 from authority_utils import percent_decode_host
 from path_security import has_unsafe_path, has_unsafe_url_path
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
-_BASE_URL_VAR_PATTERN = re.compile(r"\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 _URL_COMPONENT_DELIMITER_PATTERN = re.compile(r"[/?#]")
 _AUTHORITY_VAR_STRUCTURE_CHARS = frozenset(("/", "?", "#", "@", "\\"))
 _AUTHORITY_FRAGMENT_VAR_STRUCTURE_CHARS = frozenset(("/", ":", "?", "#", "@", "\\"))
@@ -302,13 +302,6 @@ def _prefix_is_inside_path(prefix: str) -> bool:
     return "/" in after_scheme
 
 
-def _suffix_authority_prefix(suffix: str) -> str:
-    delimiter = _URL_COMPONENT_DELIMITER_PATTERN.search(suffix)
-    if delimiter is None:
-        return suffix
-    return suffix[: delimiter.start()]
-
-
 def _validate_base_url_template_variable(
     *,
     firewall_name: str,
@@ -354,7 +347,7 @@ def _validate_base_url_template_variable(
             value=value,
         )
         return
-    if _prefix_is_inside_authority(prefix) and _suffix_authority_prefix(suffix) != "":
+    if _prefix_is_inside_authority(prefix):
         _validate_base_url_authority_fragment_variable(
             firewall_name=firewall_name,
             base=base,
@@ -407,8 +400,10 @@ def resolve_base_url_template(
     """
     resolved_parts: list[str] = []
     last_index = 0
-    for match in _BASE_URL_VAR_PATTERN.finditer(base):
-        name = match.group(1)
+    for reference in connector_template_syntax.iter_simple_references(base):
+        if reference.namespace != "vars":
+            continue
+        name = reference.name
         value = vars_map.get(name)
         if not value:
             raise BuiltinBaseUrlResolutionError(
@@ -419,12 +414,12 @@ def resolve_base_url_template(
             base=base,
             name=name,
             value=value,
-            prefix=base[: match.start()],
-            suffix=base[match.end() :],
+            prefix=base[: reference.start],
+            suffix=base[reference.end :],
         )
-        resolved_parts.append(base[last_index : match.start()])
+        resolved_parts.append(base[last_index : reference.start])
         resolved_parts.append(value)
-        last_index = match.end()
+        last_index = reference.end
 
     resolved_parts.append(base[last_index:])
     resolved = "".join(resolved_parts)

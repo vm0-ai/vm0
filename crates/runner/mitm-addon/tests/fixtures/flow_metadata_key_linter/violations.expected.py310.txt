@@ -33,7 +33,7 @@ violations.py:29: use metadata_keys.FIREWALL_PARAMS for flow.metadata access
 violations.py:30: use metadata_keys.FIREWALL_BILLABLE for flow.metadata access
 violations.py:31: use metadata_keys.TRUSTED_AUTHORITY_HOST for flow.metadata access
 violations.py:32: use metadata_keys.FIREWALL_PERMISSION for flow.metadata access
-violations.py:33: use metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE for flow.metadata access
+violations.py:33: use metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG for flow.metadata access
 violations.py:34: use metadata_keys.CONNECTOR_DIAGNOSTIC_REASON for flow.metadata access
 violations.py:35: use metadata_keys.CONNECTOR_DIAGNOSTIC_BASE for flow.metadata access
 violations.py:36: use metadata_keys.VM_RUN_ID for flow.metadata access
@@ -138,7 +138,7 @@ violations.py:175: use metadata_keys.FIREWALL_ACTION for flow.metadata access
 violations.py:176: use metadata_keys.FIREWALL_NAME for flow.metadata access
 violations.py:177: use metadata_keys.FIREWALL_NAME for flow.metadata access
 violations.py:178: use metadata_keys.VM_RUN_ID for flow.metadata access
-violations.py:179: use metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE for flow.metadata access
+violations.py:179: use metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG for flow.metadata access
 violations.py:180: use metadata_keys.CONNECTOR_DIAGNOSTIC_REASON for flow.metadata access
 violations.py:182: use metadata_keys.VM_RUN_ID for flow.metadata access
 violations.py:183: use metadata_keys.VM_NETWORK_LOG_PATH for flow.metadata access

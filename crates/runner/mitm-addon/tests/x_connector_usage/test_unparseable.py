@@ -89,8 +89,8 @@ def test_x_stream_all_failed_rows_logs_risk_without_billing(x_usage, tmp_path, r
 
 
 def test_x_stream_empty_emits_no_billing(x_usage, tmp_path, real_flow):
-    """Stream that delivered 0 tweets emits no usage_event row, and
-    in particular does NOT trigger _X_UNPARSEABLE_READ_FALLBACK."""
+    """A parsed NDJSON stream with zero resources and no row failures
+    emits no usage event or lost-visibility log."""
     flow = x_usage.make_flow(
         real_flow,
         tmp_path,
@@ -312,6 +312,56 @@ def test_billable_counts_fallback_only_when_no_hints(x_usage, tmp_path, real_flo
     assert p["quantity"] == 3
 
 
+@pytest.mark.parametrize(
+    ("path", "query", "rule", "expected_quantity"),
+    [
+        pytest.param(
+            "/2/tweets",
+            "%69ds=1,2",
+            "GET /2/tweets",
+            2,
+            id="encoded-key",
+        ),
+        pytest.param(
+            "/2/tweets",
+            "ids=1%2C2",
+            "GET /2/tweets",
+            2,
+            id="encoded-comma",
+        ),
+        pytest.param(
+            "/2/tweets/search/recent",
+            "query=test&max_results=%35%30",
+            "GET /2/tweets/search/recent",
+            50,
+            id="encoded-decimal",
+        ),
+    ],
+)
+def test_unparseable_response_decodes_percent_encoded_fallback_hints(
+    x_usage,
+    tmp_path,
+    real_flow,
+    path,
+    query,
+    rule,
+    expected_quantity,
+):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path=path,
+        query=query,
+        body=b"not json",
+        rule=rule,
+    )
+
+    event = x_usage.call_and_get_single_billing(flow)
+
+    assert event["category"] == "posts.read"
+    assert event["quantity"] == expected_quantity
+
+
 def test_parsed_response_ignores_oversized_fallback_query(x_usage, tmp_path, real_flow):
     """Parsed responses bill from the body and do not need query fallback hints."""
     body = json.dumps({"data": [{"id": "1"}, {"id": "2"}]}).encode()
@@ -359,6 +409,78 @@ def test_unparseable_response_accumulates_repeated_id_like_fallback_hints(
 
     assert p["category"] == "posts.read"
     assert p["quantity"] == 3
+
+
+@pytest.mark.parametrize(
+    ("path", "query", "permission", "rule", "expected_category", "expected_quantity"),
+    [
+        (
+            "/2/tweets",
+            "ids=1,2&ids=,,",
+            "tweet.read",
+            "GET /2/tweets",
+            "posts.read",
+            2,
+        ),
+        (
+            "/2/tweets",
+            "ids=,,&ids=1,2",
+            "tweet.read",
+            "GET /2/tweets",
+            "posts.read",
+            2,
+        ),
+        (
+            "/2/users/by",
+            "usernames=a,b&usernames=,,",
+            "users.read",
+            "GET /2/users/by",
+            "user.read",
+            2,
+        ),
+        (
+            "/2/users/by",
+            "usernames=,,&usernames=a,b",
+            "users.read",
+            "GET /2/users/by",
+            "user.read",
+            2,
+        ),
+        (
+            "/2/tweets",
+            f"ids={','.join(str(i) for i in range(1, 101))}&ids=,,",
+            "tweet.read",
+            "GET /2/tweets",
+            "posts.read",
+            100,
+        ),
+    ],
+)
+def test_unparseable_response_preserves_repeated_selector_counts_across_empty_values(
+    x_usage,
+    tmp_path,
+    real_flow,
+    path,
+    query,
+    permission,
+    rule,
+    expected_category,
+    expected_quantity,
+):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path=path,
+        query=query,
+        body=b"not json",
+        permission=permission,
+        rule=rule,
+    )
+
+    event = x_usage.call_and_get_single_billing(flow)
+
+    assert event["category"] == expected_category
+    assert event["quantity"] == expected_quantity
 
 
 def test_unparseable_response_does_not_treat_semicolon_as_query_separator(
@@ -750,6 +872,12 @@ def test_x_json_parse_error_ignores_id_like_hints_on_irrelevant_paths(
             f"usernames={','.join(f'user{i}' for i in range(101))}",
             "users.read",
             "GET /2/users/by",
+        ),
+        (
+            "/2/tweets",
+            f"ids={','.join(str(i) for i in range(1, 101))}&ids=,,&ids=101",
+            "tweet.read",
+            "GET /2/tweets",
         ),
     ],
 )

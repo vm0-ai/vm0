@@ -1,8 +1,11 @@
 import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
-import { createZeroAgent, updateZeroAgentInstructions } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  createZeroAgent,
+  updateZeroAgentInstructions,
+} from "../../../lib/api/domains/zero-agents";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { resolveAvatarUrl } from "./avatar";
 
 export const createCommand = new Command()
@@ -106,7 +109,7 @@ Examples:
           "  - Check authorization status (prints an authorize URL if not authorized):",
         );
         console.log(
-          `      zero connector status <type> --agent ${agent.agentId}`,
+          `      zero connector status <slug> --agent ${agent.agentId}`,
         );
       },
     ),

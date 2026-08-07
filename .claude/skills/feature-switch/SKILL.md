@@ -141,7 +141,7 @@ const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
 | `turbo/packages/core/src/feature-switch.ts` | Registry and evaluation logic |
 | `turbo/apps/platform/src/signals/external/feature-switch.ts` | Client-side reactive state with override layers |
 | `turbo/apps/platform/src/views/zero-page/zero-sidebar.tsx` | Sidebar nav items with `featureGate` |
-| `turbo/packages/core/src/contracts/connectors.ts` | Connector type definitions with `featureFlag` field |
+| `turbo/apps/api/src/signals/services/connector-catalog-artifacts/source.ts` | External connector auth-method schema with `featureSwitch` field |
 | `turbo/apps/api/src/signals/auth/tokens.ts` | Token capability gating |
 
 ## Override Layers
@@ -152,8 +152,8 @@ Evaluation has two layers (lowest to highest priority):
 2. **DB overrides** — most switches are per-user rows in
    `user_feature_switches` keyed by `(orgId, userId)`. Some switches are
    org-scoped and stored under the org sentinel user id (`__org__`); currently
-   `ChatThreadUnifiedSearch` is org-scoped. Written via the Lab
-   page toggles or `window._vm0.featureSwitches.myFeature = true` (both call
+   `ChatErrorRecovery` and `PiLoop` are org-scoped. Written via the Lab page
+   toggles or `window._vm0.featureSwitches.myFeature = true` (both call
    `POST /api/zero/feature-switches`). Cleared via the Lab page "Reset all"
    button (`DELETE /api/zero/feature-switches`).
 

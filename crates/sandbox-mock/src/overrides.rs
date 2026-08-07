@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ::sandbox::*;
+use tokio_util::sync::CancellationToken;
 
 use crate::call_records::{
     CopyFileCall, ExecCall, ExecMatcher, ProcessCancelCall, ProcessControlCall, StartProcessCall,
@@ -16,16 +17,32 @@ pub(crate) struct ExecMatcherResult {
     pub(crate) result: ExecResult,
 }
 
+pub(crate) struct ExecMatcherBehavior {
+    pub(crate) pattern: String,
+    pub(crate) outcome: ExecMatcherOutcome,
+}
+
+pub(crate) enum ExecMatcherOutcome {
+    Return(ExecResult),
+    Error(SandboxError),
+    Panic(String),
+}
+
 #[derive(Default)]
 pub(crate) struct ExecOverrideState {
-    /// Pattern-matched exec results. First matching pattern wins and is
+    /// Pattern-matched exec behaviors. First matching pattern wins and is
     /// consumed (one-shot).
-    pub(crate) matchers: Mutex<Vec<ExecMatcherResult>>,
+    pub(crate) matchers: Mutex<Vec<ExecMatcherBehavior>>,
     /// Pattern-matched exec results that remain available for every matching
     /// call after one-shot matchers have been checked.
     pub(crate) persistent_matchers: Mutex<Vec<ExecMatcherResult>>,
     /// Recorded exec calls across all sandboxes built from this override set.
     pub(crate) calls: Mutex<Vec<ExecCall>>,
+    /// Wakes tests after an exec call is recorded.
+    pub(crate) call_notify: tokio::sync::Notify,
+    /// Optional gate entered after every exec call is recorded but before its
+    /// configured result is selected.
+    pub(crate) lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
 }
 
 #[derive(Default)]
@@ -40,13 +57,26 @@ pub(crate) struct FileOverrideState {
     pub(crate) private_write_file_results: Mutex<VecDeque<Result<()>>>,
     /// FIFO queue of read_file results consumed by factory-created sandboxes.
     pub(crate) read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
+    /// FIFO queue of copy_file results consumed by factory-created sandboxes.
+    pub(crate) copy_file_results: Mutex<VecDeque<Result<Vec<u8>>>>,
     /// Recorded copy_file calls across all sandboxes built from this override
     /// set.
     pub(crate) copy_file_calls: Mutex<Vec<CopyFileCall>>,
+    /// Optional gate entered after copy validation and result assignment but
+    /// before host publication.
+    pub(crate) copy_file_gate: Mutex<Option<MockLifecycleGate>>,
+    /// Optional gate entered before every write_private_file operation.
+    pub(crate) private_write_file_gate: Mutex<Option<MockLifecycleGate>>,
 }
 
 #[derive(Default)]
 pub(crate) struct LifecycleOverrideState {
+    /// Full run IDs passed to `bind_run_control`, in call order.
+    pub(crate) run_control_bind_calls: Mutex<Vec<String>>,
+    /// Assignment visible when `start` was entered.
+    pub(crate) start_run_control_ids: Mutex<Vec<Option<String>>>,
+    /// Assignment visible when `unpark` was entered.
+    pub(crate) unpark_run_control_ids: Mutex<Vec<Option<String>>>,
     /// FIFO queue of start results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) start_results: Mutex<VecDeque<Result<()>>>,
@@ -77,6 +107,8 @@ pub(crate) struct LifecycleOverrideState {
 }
 
 pub(crate) struct ProcessOverrideState {
+    /// Optional gate entered before every start_process operation.
+    pub(crate) start_process_lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
     /// When `Some`, `wait_process` returns this exit code instead of 0.
     pub(crate) wait_process_code: Option<i32>,
     /// When set, `wait_process` awaits this [`tokio::sync::Notify`] before
@@ -86,12 +118,19 @@ pub(crate) struct ProcessOverrideState {
     /// entry until released.
     pub(crate) wait_process_lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
     /// When `Some`, `wait_process` returns a wait-process operation error to
-    /// simulate timeout or crash. The stdout channel sender is also kept alive
-    /// in `MockSandbox` so the drain task would block without the fix.
+    /// simulate timeout or crash.
     pub(crate) wait_process_error: Option<String>,
+    /// Structured reason used for a configured `wait_process` error.
+    pub(crate) wait_process_error_reason: SandboxOperationReason,
     /// FIFO queue of full wait_process exits consumed by factory-created
     /// sandboxes. Empty queue follows the existing default/override behavior.
     pub(crate) wait_process_exits: Mutex<VecDeque<ProcessExit>>,
+    /// FIFO tokens cancelled immediately before successful start_process
+    /// results are returned.
+    pub(crate) start_process_result_cancellations: Mutex<VecDeque<CancellationToken>>,
+    /// FIFO tokens cancelled immediately before successful wait_process
+    /// results are returned.
+    pub(crate) wait_process_result_cancellations: Mutex<VecDeque<CancellationToken>>,
     /// Recorded wait_process calls across all sandboxes built from this
     /// override set.
     pub(crate) wait_process_calls: Mutex<Vec<WaitProcessCall>>,
@@ -101,8 +140,13 @@ pub(crate) struct ProcessOverrideState {
     /// FIFO queue of stdout chunk batches emitted by factory-created
     /// sandboxes during streaming start_process calls.
     pub(crate) start_process_stdout_chunks: Mutex<VecDeque<Vec<ProcessOutputChunk>>>,
+    /// Whether factory-created sandboxes retain the stdout sender after
+    /// `start_process` returns.
+    pub(crate) keep_stdout_sender_open: Mutex<bool>,
     /// Whether factory-created sandboxes expose a process cancel handle.
     pub(crate) process_cancel_supported: Mutex<bool>,
+    /// Whether factory-created sandboxes expose a process-control handle.
+    pub(crate) process_control_supported: Mutex<bool>,
     /// Recorded process cancel calls across all sandboxes built from this
     /// override set.
     pub(crate) process_cancel_calls: Mutex<Vec<ProcessCancelCall>>,
@@ -126,15 +170,21 @@ pub(crate) struct ProcessOverrideState {
 impl Default for ProcessOverrideState {
     fn default() -> Self {
         Self {
+            start_process_lifecycle_gate: Mutex::new(None),
             wait_process_code: None,
             wait_process_gate: None,
             wait_process_lifecycle_gate: Mutex::new(None),
             wait_process_error: None,
+            wait_process_error_reason: SandboxOperationReason::Timeout,
             wait_process_exits: Mutex::new(VecDeque::new()),
+            start_process_result_cancellations: Mutex::new(VecDeque::new()),
+            wait_process_result_cancellations: Mutex::new(VecDeque::new()),
             wait_process_calls: Mutex::new(Vec::new()),
             start_process_calls: Mutex::new(Vec::new()),
             start_process_stdout_chunks: Mutex::new(VecDeque::new()),
+            keep_stdout_sender_open: Mutex::new(false),
             process_cancel_supported: Mutex::new(true),
+            process_control_supported: Mutex::new(true),
             process_cancel_calls: Mutex::new(Vec::new()),
             process_cancel_notify: tokio::sync::Notify::new(),
             process_cancel_errors: Mutex::new(VecDeque::new()),
@@ -205,6 +255,25 @@ impl MockSandboxOverrides {
         overrides
     }
 
+    /// Block every `start_process` call before validation or call recording.
+    pub fn set_start_process_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self
+            .process
+            .start_process_lifecycle_gate
+            .lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Remove the start-process gate for future calls.
+    ///
+    /// Already-entered calls keep waiting on their cloned gate until released
+    /// or cancelled.
+    pub fn clear_start_process_lifecycle_gate(&self) {
+        *self
+            .process
+            .start_process_lifecycle_gate
+            .lock_ignoring_poison() = None;
+    }
+
     /// Block every `wait_process` call with a durable lifecycle gate.
     ///
     /// Prefer this over [`Self::with_wait_process_gate`]: entries and releases
@@ -233,6 +302,20 @@ impl MockSandboxOverrides {
     pub fn with_wait_process_error(msg: impl Into<String>) -> Self {
         let mut overrides = Self::new();
         overrides.process.wait_process_error = Some(msg.into());
+        *overrides
+            .process
+            .keep_stdout_sender_open
+            .lock_ignoring_poison() = true;
+        overrides
+    }
+
+    /// Create overrides that make `wait_process` return an error with the supplied reason.
+    pub fn with_wait_process_error_reason(
+        reason: SandboxOperationReason,
+        msg: impl Into<String>,
+    ) -> Self {
+        let mut overrides = Self::with_wait_process_error(msg);
+        overrides.process.wait_process_error_reason = reason;
         overrides
     }
 
@@ -246,6 +329,29 @@ impl MockSandboxOverrides {
             .push_back(exit);
     }
 
+    /// Cancel a token immediately before the next successful `start_process`
+    /// result is returned.
+    pub fn cancel_after_next_start_process_result(&self, cancel: CancellationToken) {
+        self.process
+            .start_process_result_cancellations
+            .lock_ignoring_poison()
+            .push_back(cancel);
+    }
+
+    /// Cancel a token immediately before the next successful `wait_process`
+    /// result is returned.
+    pub fn cancel_after_next_wait_process_result(&self, cancel: CancellationToken) {
+        self.process
+            .wait_process_result_cancellations
+            .lock_ignoring_poison()
+            .push_back(cancel);
+    }
+
+    /// Block every `exec` call with a durable lifecycle gate after recording it.
+    pub fn set_exec_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.exec.lifecycle_gate.lock_ignoring_poison() = Some(gate);
+    }
+
     /// Register a one-shot pattern matcher for an ordinary exited result.
     ///
     /// The first registered matcher whose pattern occurs in a command is
@@ -255,9 +361,13 @@ impl MockSandboxOverrides {
         self.exec
             .matchers
             .lock_ignoring_poison()
-            .push(ExecMatcherResult {
+            .push(ExecMatcherBehavior {
                 pattern: matcher.pattern,
-                result: ExecResult::new(matcher.exit_code, matcher.stdout, matcher.stderr),
+                outcome: ExecMatcherOutcome::Return(ExecResult::new(
+                    matcher.exit_code,
+                    matcher.stdout,
+                    matcher.stderr,
+                )),
             });
     }
 
@@ -270,17 +380,38 @@ impl MockSandboxOverrides {
         self.exec
             .matchers
             .lock_ignoring_poison()
-            .push(ExecMatcherResult {
+            .push(ExecMatcherBehavior {
                 pattern: pattern.into(),
-                result,
+                outcome: ExecMatcherOutcome::Return(result),
+            });
+    }
+
+    /// Register a one-shot pattern matcher that returns an exec transport error.
+    pub fn add_exec_error_matcher(&self, pattern: impl Into<String>, error: SandboxError) {
+        self.exec
+            .matchers
+            .lock_ignoring_poison()
+            .push(ExecMatcherBehavior {
+                pattern: pattern.into(),
+                outcome: ExecMatcherOutcome::Error(error),
+            });
+    }
+
+    /// Register a one-shot pattern matcher that panics from the exec boundary.
+    pub fn add_exec_panic_matcher(&self, pattern: impl Into<String>, message: impl Into<String>) {
+        self.exec
+            .matchers
+            .lock_ignoring_poison()
+            .push(ExecMatcherBehavior {
+                pattern: pattern.into(),
+                outcome: ExecMatcherOutcome::Panic(message.into()),
             });
     }
 
     /// Register a persistent matcher for an ordinary exited result.
     ///
-    /// One-shot matchers registered with [`Self::add_exec_matcher`] or
-    /// [`Self::add_exec_result_matcher`] take precedence. The persistent
-    /// matcher is not consumed and can serve repeated calls across sandboxes.
+    /// One-shot matchers take precedence. The persistent matcher is not
+    /// consumed and can serve repeated calls across sandboxes.
     pub fn add_persistent_exec_matcher(&self, matcher: ExecMatcher) {
         self.exec
             .persistent_matchers
@@ -298,6 +429,28 @@ impl MockSandboxOverrides {
     /// is captured before exec matchers or queued exec results are consumed.
     pub fn exec_calls(&self) -> Vec<ExecCall> {
         self.exec.calls.lock_ignoring_poison().clone()
+    }
+
+    /// Wait until at least `expected` exec calls have been recorded.
+    pub async fn wait_exec_call_count(&self, expected: usize, timeout: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = self.exec.call_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            if self.exec.calls.lock_ignoring_poison().len() >= expected {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, notified).await.is_err() {
+                return false;
+            }
+        }
     }
 
     /// Return recorded write-file calls across all sandboxes built from this
@@ -345,6 +498,45 @@ impl MockSandboxOverrides {
             .push_back(result);
     }
 
+    /// Queue a `copy_file` result shared by factory-created sandboxes.
+    ///
+    /// A sandbox-local result takes precedence. Shared results are consumed in
+    /// FIFO order after the local queue is empty.
+    pub fn push_copy_file_result(&self, result: Result<Vec<u8>>) {
+        self.file
+            .copy_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Block copy operations after validation and result assignment but before
+    /// host publication.
+    pub fn set_copy_file_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.file.copy_file_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Remove the copy gate for future calls.
+    ///
+    /// Already-entered copies keep waiting on their cloned gate until released
+    /// or cancelled.
+    pub fn clear_copy_file_lifecycle_gate(&self) {
+        *self.file.copy_file_gate.lock_ignoring_poison() = None;
+    }
+
+    /// Block every `write_private_file` call before validation, recording, or
+    /// queued-result consumption.
+    pub fn set_private_write_file_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.file.private_write_file_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Remove the private-write gate for future calls.
+    ///
+    /// Already-entered calls keep waiting on their cloned gate until released
+    /// or cancelled.
+    pub fn clear_private_write_file_lifecycle_gate(&self) {
+        *self.file.private_write_file_gate.lock_ignoring_poison() = None;
+    }
+
     /// Queue a factory `create()` result applied to the next factory create
     /// call made through these overrides. Consumed FIFO across all factories;
     /// empty queue → default Ok(()).
@@ -372,6 +564,30 @@ impl MockSandboxOverrides {
             .start_results
             .lock_ignoring_poison()
             .push_back(result);
+    }
+
+    /// Return full run identities bound across all mock sandboxes.
+    pub fn run_control_bind_calls(&self) -> Vec<String> {
+        self.lifecycle
+            .run_control_bind_calls
+            .lock_ignoring_poison()
+            .clone()
+    }
+
+    /// Return the assignment visible at each sandbox start.
+    pub fn start_run_control_ids(&self) -> Vec<Option<String>> {
+        self.lifecycle
+            .start_run_control_ids
+            .lock_ignoring_poison()
+            .clone()
+    }
+
+    /// Return the assignment visible at each sandbox unpark.
+    pub fn unpark_run_control_ids(&self) -> Vec<Option<String>> {
+        self.lifecycle
+            .unpark_run_control_ids
+            .lock_ignoring_poison()
+            .clone()
     }
 
     /// Queue a `stop()` result applied to the next factory-created sandbox.
@@ -488,11 +704,25 @@ impl MockSandboxOverrides {
     /// overrides already set on this instance.
     pub fn set_wait_process_error(&mut self, msg: impl Into<String>) {
         self.process.wait_process_error = Some(msg.into());
+        *self.process.keep_stdout_sender_open.lock_ignoring_poison() = true;
+    }
+
+    /// Configure whether future streaming process handles retain their stdout sender.
+    pub fn set_keep_stdout_sender_open(&self, keep_open: bool) {
+        *self.process.keep_stdout_sender_open.lock_ignoring_poison() = keep_open;
     }
 
     /// Configure whether future `start_process` handles include a cancel handle.
     pub fn set_process_cancel_supported(&self, supported: bool) {
         *self.process.process_cancel_supported.lock_ignoring_poison() = supported;
+    }
+
+    /// Configure whether future `start_process` handles include a control handle.
+    pub fn set_process_control_supported(&self, supported: bool) {
+        *self
+            .process
+            .process_control_supported
+            .lock_ignoring_poison() = supported;
     }
 
     /// Return recorded process-cancel calls across all sandboxes built from

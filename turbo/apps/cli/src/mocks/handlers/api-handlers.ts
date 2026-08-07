@@ -53,18 +53,18 @@ function manualMethod(
 }
 
 function defaultPublicCatalogStatusItem(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly label: string;
   readonly description: string;
   readonly tags?: readonly string[];
   readonly authMethods?: readonly PublicConnectorCatalogAuthMethodDetail[];
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: args.connectorRef,
+    slug: args.connectorSlug,
     label: args.label,
     description: args.description,
     icon: {
-      url: `https://icons.example.test/${args.connectorRef}.svg`,
+      url: `https://icons.example.test/${args.connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     category: "test-connectors",
@@ -93,50 +93,50 @@ const tokenField = {
 
 const defaultPublicCatalogStatus = [
   defaultPublicCatalogStatusItem({
-    connectorRef: "github",
+    connectorSlug: "github",
     label: "GitHub",
     description: "Access GitHub repositories.",
     tags: ["vcs", "api"],
   }),
   defaultPublicCatalogStatusItem({
-    connectorRef: "gitlab",
+    connectorSlug: "gitlab",
     label: "GitLab",
     description: "Access GitLab repositories.",
     tags: ["vcs"],
   }),
   defaultPublicCatalogStatusItem({
-    connectorRef: "microsoft-365",
+    connectorSlug: "microsoft-365",
     label: "Microsoft 365",
     description: "Access Microsoft 365 collaboration tools.",
     tags: ["chat"],
   }),
   defaultPublicCatalogStatusItem({
-    connectorRef: "slack",
+    connectorSlug: "slack",
     label: "Slack",
     description: "Send Slack messages.",
     tags: ["chat"],
   }),
   defaultPublicCatalogStatusItem({
-    connectorRef: "chatwoot",
+    connectorSlug: "chatwoot",
     label: "Chatwoot",
     description: "Manage customer conversations.",
   }),
   defaultPublicCatalogStatusItem({
-    connectorRef: "openai",
+    connectorSlug: "openai",
     label: "OpenAI",
     description: "Access the OpenAI API.",
     tags: ["chatgpt", "api"],
     authMethods: [manualMethod([tokenField])],
   }),
   defaultPublicCatalogStatusItem({
-    connectorRef: "stripe",
+    connectorSlug: "stripe",
     label: "Stripe",
     description: "Manage payments through the Stripe API.",
     tags: ["api", "payments"],
     authMethods: [authCodeMethod(), manualMethod([tokenField])],
   }),
   defaultPublicCatalogStatusItem({
-    connectorRef: "zendesk",
+    connectorSlug: "zendesk",
     label: "Zendesk",
     description: "Manage support data through the Zendesk API.",
     tags: ["api", "support"],
@@ -171,7 +171,7 @@ const defaultPublicCatalogStatus = [
 function defaultPublicCatalog(): PublicConnectorCatalogItem[] {
   return defaultPublicCatalogStatus.map((item) => {
     return {
-      connectorRef: item.connectorRef,
+      slug: item.slug,
       label: item.label,
       description: item.description,
       icon: item.icon,
@@ -199,12 +199,12 @@ function manualGrantAuthMethodFromBody(body: unknown): ConnectorAuthMethodId {
 }
 
 function connectorManualGrantResponse(
-  type: string,
+  connectorSlug: string,
   authMethod: ConnectorAuthMethodId,
 ) {
   return {
     id: "00000000-0000-4000-8000-000000000001",
-    type,
+    slug: connectorSlug,
     authMethod,
     externalId: null,
     externalUsername: null,
@@ -217,26 +217,24 @@ function connectorManualGrantResponse(
 }
 
 export const apiHandlers = [
-  // GET /api/zero/secrets - listZeroSecrets
-  http.get("http://localhost:3000/api/zero/secrets", () => {
-    return HttpResponse.json({ secrets: [] }, { status: 200 });
-  }),
-
-  // GET /api/zero/variables - listZeroVariables
-  http.get("http://localhost:3000/api/zero/variables", () => {
-    return HttpResponse.json({ variables: [] }, { status: 200 });
-  }),
-
   // GET /api/zero/connectors - listZeroConnectors
   http.get("http://localhost:3000/api/zero/connectors", () => {
     return HttpResponse.json(
-      { connectors: [], configuredTypes: [], connectorProvidedBindings: [] },
+      {
+        connectors: [],
+        configuredConnectorSlugs: [],
+        connectorProvidedBindings: [],
+      },
       { status: 200 },
     );
   }),
   http.get("https://www.vm0.ai/api/zero/connectors", () => {
     return HttpResponse.json(
-      { connectors: [], configuredTypes: [], connectorProvidedBindings: [] },
+      {
+        connectors: [],
+        configuredConnectorSlugs: [],
+        connectorProvidedBindings: [],
+      },
       { status: 200 },
     );
   }),
@@ -281,36 +279,36 @@ export const apiHandlers = [
     );
   }),
   http.post(
-    "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+    "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
         connectorManualGrantResponse(
-          String(params.type),
+          String(params.connectorSlug),
           manualGrantAuthMethodFromBody(body),
         ),
       );
     },
   ),
   http.post(
-    "https://app.vm0.ai/api/zero/connectors/:type/manual-grant",
+    "https://app.vm0.ai/api/zero/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
         connectorManualGrantResponse(
-          String(params.type),
+          String(params.connectorSlug),
           manualGrantAuthMethodFromBody(body),
         ),
       );
     },
   ),
   http.post(
-    "https://www.vm0.ai/api/zero/connectors/:type/manual-grant",
+    "https://www.vm0.ai/api/zero/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
         connectorManualGrantResponse(
-          String(params.type),
+          String(params.connectorSlug),
           manualGrantAuthMethodFromBody(body),
         ),
       );
@@ -323,9 +321,8 @@ export const apiHandlers = [
       {
         id: "org-default",
         slug: "user-default",
-        displayName: null,
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
+        name: "Default Workspace",
+        tier: "free",
       },
       { status: 200 },
     );

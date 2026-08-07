@@ -1,7 +1,7 @@
 import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { eq } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -59,16 +59,15 @@ export async function upsertConnectorOwnedSecret(
       type: "connector",
     })
     .onConflictDoUpdate({
-      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+      target: [secrets.connectorId, secrets.name],
+      targetWhere: isNotNull(secrets.connectorId),
       set: {
-        connectorId: args.connectorId,
         encryptedValue: args.encryptedValue,
         ...(args.updatedDescription === undefined
           ? {}
           : { description: args.updatedDescription }),
         updatedAt: nowDate(),
       },
-      setWhere: eq(secrets.connectorId, args.connectorId),
     })
     .returning({ id: secrets.id });
   if (!row) {

@@ -51,6 +51,30 @@ export function getCustomSkillStorageName(skillName: string): string {
 }
 
 /**
+ * Generate the storage name for a custom connector skill.
+ * The connector id is used so renaming the connector does not orphan storage.
+ */
+export function getCustomConnectorSkillStorageName(
+  connectorId: string,
+): string {
+  return `custom-connector-skill@${connectorId}`;
+}
+
+/**
+ * Generate the framework-visible name for a custom connector skill.
+ * Includes connector identity so it cannot collide with builtin/workflow skills.
+ */
+export function getCustomConnectorSkillName(
+  connectorSlug: string,
+  connectorId: string,
+): string {
+  const base = connectorSlug.startsWith("_")
+    ? connectorSlug.slice(1)
+    : connectorSlug;
+  return `custom-${base.slice(0, 48)}-${connectorId.replaceAll("-", "").slice(0, 8)}`;
+}
+
+/**
  * Reserved name of the per-user memory storage that Zero auto-injects into
  * every agent run. It is owned by the user and mounted into the sandbox at a
  * framework-specific path.

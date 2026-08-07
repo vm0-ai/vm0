@@ -6,7 +6,7 @@ import {
   loadLeftThread$,
   loadRightThread$,
 } from "./chat-thread-panes.ts";
-import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import type { ChatPanelSignals } from "./chat-panel-signals.ts";
 import {
   clearChatThreadEmojiFromThreadMeta$,
   openRenameChatThreadDialogFromThreadMeta$,
@@ -15,7 +15,6 @@ import {
 } from "./chat-thread-rename.ts";
 import { chatThreadMetaMap$ } from "./chat-thread-event-sourcing.ts";
 import { CHAT_THREAD_EMOJI_OPTIONS } from "./chat-thread-title.ts";
-import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
 import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
 import {
@@ -31,16 +30,8 @@ import { scrollToThread$ } from "./sidebar-chat-thread-scroll.ts";
 
 type ChatThreadPane = "main" | "side";
 
-function plainArrowScrollDirection(
-  event: KeyboardEvent,
-): ScrollStepDirection | null {
-  if (matchShortcut("arrowup", event)) {
-    return "up";
-  }
-  if (matchShortcut("arrowdown", event)) {
-    return "down";
-  }
-  return null;
+function isPlainArrowScroll(event: KeyboardEvent): boolean {
+  return matchShortcut("arrowup", event) || matchShortcut("arrowdown", event);
 }
 
 function containerContainsTarget(
@@ -81,10 +72,10 @@ function isKeyboardScrollAllowedTarget(
 }
 
 function resolveKeyboardScrollThread(
-  leftThread: ChatThreadSignals | null,
-  rightThread: ChatThreadSignals | null,
+  leftThread: ChatPanelSignals | null,
+  rightThread: ChatPanelSignals | null,
   threadId: string | null,
-): ChatThreadSignals | null {
+): ChatPanelSignals | null {
   if (threadId === rightThread?.threadId) {
     return rightThread;
   }
@@ -96,10 +87,10 @@ function resolveKeyboardScrollThread(
 
 function containingChatThread(
   target: EventTarget | null,
-  leftThread: ChatThreadSignals | null,
-  rightThread: ChatThreadSignals | null,
-  containerElForThread: (thread: ChatThreadSignals) => HTMLElement | null,
-): ChatThreadSignals | null {
+  leftThread: ChatPanelSignals | null,
+  rightThread: ChatPanelSignals | null,
+  containerElForThread: (thread: ChatPanelSignals) => HTMLElement | null,
+): ChatPanelSignals | null {
   if (
     rightThread &&
     containerContainsTarget(containerElForThread(rightThread), target)
@@ -116,9 +107,9 @@ function containingChatThread(
 }
 
 function paneForThread(
-  leftThread: ChatThreadSignals | null,
-  rightThread: ChatThreadSignals | null,
-  thread: ChatThreadSignals | null,
+  leftThread: ChatPanelSignals | null,
+  rightThread: ChatPanelSignals | null,
+  thread: ChatPanelSignals | null,
 ): ChatThreadPane | null {
   if (!thread) {
     return null;
@@ -143,11 +134,11 @@ function setupKeyboardScrollPrepareListener({
   signal,
 }: {
   activeThreadId: () => string | null;
-  containingThread: (target: EventTarget | null) => ChatThreadSignals | null;
-  currentLeftThread: () => ChatThreadSignals | null;
-  currentRightThread: () => ChatThreadSignals | null;
+  containingThread: (target: EventTarget | null) => ChatPanelSignals | null;
+  currentLeftThread: () => ChatPanelSignals | null;
+  currentRightThread: () => ChatPanelSignals | null;
   doc: Document;
-  prepareScroll: (thread: ChatThreadSignals) => void;
+  prepareScroll: (thread: ChatPanelSignals) => void;
   root: HTMLElement;
   signal: AbortSignal;
 }): void {
@@ -157,8 +148,10 @@ function setupKeyboardScrollPrepareListener({
       if (event.defaultPrevented) {
         return;
       }
-      const direction = plainArrowScrollDirection(event);
-      if (!direction || !isKeyboardScrollAllowedTarget(root, event.target)) {
+      if (
+        !isPlainArrowScroll(event) ||
+        !isKeyboardScrollAllowedTarget(root, event.target)
+      ) {
         return;
       }
       const thread = resolveKeyboardScrollThread(
@@ -187,7 +180,7 @@ interface ChatPageShortcutActions {
 
 interface ChatPageShortcutSetup {
   doc: Document;
-  focusedThread: () => ChatThreadSignals | null;
+  focusedThread: () => ChatPanelSignals | null;
   navigateFocusedThread: (direction: "prev" | "next") => void | Promise<void>;
 }
 
@@ -209,7 +202,7 @@ const setFocusedThreadEmoji$ = command(
   async (
     { set },
     args: {
-      thread: ChatThreadSignals;
+      thread: ChatPanelSignals;
       emoji: string;
     },
     signal: AbortSignal,
@@ -226,7 +219,7 @@ const setFocusedThreadEmoji$ = command(
 );
 
 const clearFocusedThreadEmoji$ = command(
-  async ({ set }, args: { thread: ChatThreadSignals }, signal: AbortSignal) => {
+  async ({ set }, args: { thread: ChatPanelSignals }, signal: AbortSignal) => {
     await set(
       clearChatThreadEmojiFromThreadMeta$,
       {
@@ -306,7 +299,7 @@ const setupChatPageShortcutActions$ = command(
 );
 
 const openFocusedThreadEmojiMenu$ = command(
-  ({ get, set }, args: { thread: ChatThreadSignals }, _signal: AbortSignal) => {
+  ({ get, set }, args: { thread: ChatPanelSignals }, _signal: AbortSignal) => {
     const threadMeta = get(args.thread.threadMeta$);
     set(openChatThreadEmojiMenu$, {
       threadId: args.thread.threadId,
@@ -318,7 +311,7 @@ const openFocusedThreadEmojiMenu$ = command(
 const renameDialogRequestForThread$ = command(
   (
     { get },
-    thread: ChatThreadSignals | null,
+    thread: ChatPanelSignals | null,
     threadId: string,
     _signal: AbortSignal,
   ): RenameChatThreadDialogRequest => {
@@ -423,11 +416,7 @@ export const focusChatThreadContainer$ = command(
 );
 
 const scrollCurrentThread$ = command(
-  (
-    { set },
-    thread: ChatThreadSignals,
-    position: "top" | "bottom" | ScrollStepDirection,
-  ): boolean => {
+  ({ set }, thread: ChatPanelSignals, position: "top" | "bottom"): boolean => {
     if (position === "top") {
       set(thread.scrollToTop$);
       return true;
@@ -436,7 +425,7 @@ const scrollCurrentThread$ = command(
       set(thread.scrollToBottom$);
       return true;
     }
-    return set(thread.scrollBy$, position);
+    return false;
   },
 );
 
@@ -540,7 +529,12 @@ export const setChatKeyboardScrollRoot$ = onRef(
         return get(currentRightThread$);
       },
       prepareScroll(thread) {
-        set(thread.prepareKeyboardScroll$);
+        const scrollContainer = get(thread.containerEl$)?.querySelector(
+          "[data-scroll-container]",
+        );
+        if (scrollContainer instanceof HTMLElement) {
+          scrollContainer.focus({ preventScroll: true });
+        }
       },
     });
   }),

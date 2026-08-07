@@ -1,7 +1,7 @@
 //! Bounded CPU execution for resume-session history materialization.
 
 use std::fmt;
-use std::io::{self, BufRead, BufReader, Read};
+use std::io::{self, BufReader, Read};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -10,6 +10,7 @@ use std::sync::{Condvar, Mutex};
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use flate2::read::MultiGzDecoder;
+use guest_contracts::session_history::CODEX_COMPACT_GENERATION_MAX_BYTES;
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
@@ -21,6 +22,7 @@ use crate::restored_session_identity::RestoredSessionHistoryPrefixAttribution;
 
 const CPU_CHUNK_BYTES: usize = 64 * 1024;
 const DECODER_BUFFER_BYTES: usize = 8 * 1024;
+const CODEX_TIMESTAMP_RECORD_MAX_BYTES: usize = 1024 * 1024;
 const CPU_CANCELLED: &str = "session history materialization cancelled";
 
 #[derive(Clone)]
@@ -35,6 +37,16 @@ struct SessionHistoryCpuHooks {
     cpu_gate: Option<SessionHistoryCpuTestGate>,
     #[cfg(test)]
     reader_gate: Option<SessionHistoryCpuTestGate>,
+    #[cfg(test)]
+    codex_timestamp_record_max_bytes: Option<usize>,
+    #[cfg(test)]
+    codex_raw_restore_threshold: Option<u64>,
+}
+
+struct CodexTimestampRecordScanner {
+    record: Vec<u8>,
+    max_record_bytes: usize,
+    record_too_large: bool,
 }
 
 struct SessionHistoryCpuTaskGuard {
@@ -134,6 +146,7 @@ impl fmt::Debug for SessionHistoryCpuMaterialization {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct SessionHistoryCpuTimings {
+    admission_wait: Duration,
     validation: Option<SessionHistoryCpuPhaseTiming>,
     decompression: Option<SessionHistoryCpuPhaseTiming>,
     hash_verification: Option<SessionHistoryCpuPhaseTiming>,
@@ -159,7 +172,7 @@ impl SessionHistoryCpuPool {
     }
 
     #[cfg(test)]
-    fn with_test_gates(
+    pub(in crate::executor) fn with_test_gates(
         capacity: usize,
         cpu_gate: Option<SessionHistoryCpuTestGate>,
         reader_gate: Option<SessionHistoryCpuTestGate>,
@@ -169,6 +182,40 @@ impl SessionHistoryCpuPool {
             hooks: SessionHistoryCpuHooks {
                 cpu_gate,
                 reader_gate,
+                codex_timestamp_record_max_bytes: None,
+                codex_raw_restore_threshold: None,
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::executor) fn with_test_codex_timestamp_record_max_bytes(
+        capacity: usize,
+        max_record_bytes: usize,
+    ) -> Self {
+        Self {
+            permits: Arc::new(Semaphore::new(capacity.max(1))),
+            hooks: SessionHistoryCpuHooks {
+                cpu_gate: None,
+                reader_gate: None,
+                codex_timestamp_record_max_bytes: Some(max_record_bytes),
+                codex_raw_restore_threshold: None,
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::executor) fn with_test_codex_raw_restore_threshold(
+        capacity: usize,
+        threshold: u64,
+    ) -> Self {
+        Self {
+            permits: Arc::new(Semaphore::new(capacity.max(1))),
+            hooks: SessionHistoryCpuHooks {
+                cpu_gate: None,
+                reader_gate: None,
+                codex_timestamp_record_max_bytes: None,
+                codex_raw_restore_threshold: Some(threshold),
             },
         }
     }
@@ -180,6 +227,7 @@ impl SessionHistoryCpuPool {
     ) -> RunnerResult<SessionHistoryCpuOutcome> {
         self.hooks.record_submission();
         let operation_cancel = cancel.child_token();
+        let admission_started = Instant::now();
         let permit = tokio::select! {
             biased;
             _ = cancel.cancelled() => return Err(cpu_cancelled_error()),
@@ -187,6 +235,7 @@ impl SessionHistoryCpuPool {
                 RunnerError::Internal(format!("acquire session history CPU permit: {error}"))
             })?,
         };
+        let admission_wait = admission_started.elapsed();
 
         let blocking_cancel = operation_cancel.clone();
         let hooks = self.hooks.clone();
@@ -208,9 +257,10 @@ impl SessionHistoryCpuPool {
         if cancellation_observed || cancel.is_cancelled() {
             return Err(cpu_cancelled_error());
         }
-        let outcome = joined.map_err(|error| {
+        let mut outcome = joined.map_err(|error| {
             RunnerError::Internal(format!("session history CPU task failed: {error}"))
         })?;
+        outcome.timings.admission_wait = admission_wait;
         Ok(outcome)
     }
 }
@@ -271,6 +321,22 @@ impl SessionHistoryCpuHooks {
         }
         let _ = cancel;
         Ok(())
+    }
+
+    fn codex_timestamp_record_max_bytes(&self) -> usize {
+        #[cfg(test)]
+        if let Some(max_record_bytes) = self.codex_timestamp_record_max_bytes {
+            return max_record_bytes;
+        }
+        CODEX_TIMESTAMP_RECORD_MAX_BYTES
+    }
+
+    fn codex_raw_restore_threshold(&self) -> u64 {
+        #[cfg(test)]
+        if let Some(threshold) = self.codex_raw_restore_threshold {
+            return threshold;
+        }
+        CODEX_COMPACT_GENERATION_MAX_BYTES
     }
 }
 
@@ -352,6 +418,10 @@ impl SessionHistoryCpuJob {
 }
 
 impl SessionHistoryCpuTimings {
+    pub(super) fn admission_wait(self) -> Duration {
+        self.admission_wait
+    }
+
     pub(super) fn validation(self) -> Option<SessionHistoryCpuPhaseTiming> {
         self.validation
     }
@@ -601,7 +671,7 @@ fn materialize_codex_zstd(
     let mut timings = SessionHistoryCpuTimings::default();
     let result = (|| {
         validate_compressed_raw_size(expected_raw_size, "zstd", &mut timings)?;
-        let (timestamp, prefix_outcome) = verify_codex_zstd(
+        let verified = verify_codex_zstd(
             &encoded_bytes,
             expected_raw_size,
             expected_hash,
@@ -610,13 +680,19 @@ fn materialize_codex_zstd(
             cancel,
             hooks,
         )?;
-        Ok(SessionHistoryCpuMaterialization {
-            session: MaterializedResumeSession::new_codex_zstd(
+        let session = match verified.raw_bytes {
+            Some(raw_bytes) => {
+                MaterializedResumeSession::new(cli_agent_session_id, raw_bytes, verified.timestamp)
+            }
+            None => MaterializedResumeSession::new_codex_zstd(
                 cli_agent_session_id,
                 encoded_bytes,
-                timestamp,
+                verified.timestamp,
             ),
-            prefix_outcome,
+        };
+        Ok(SessionHistoryCpuMaterialization {
+            session,
+            prefix_outcome: verified.prefix_outcome,
         })
     })();
     SessionHistoryCpuOutcome { timings, result }
@@ -846,6 +922,12 @@ fn read_compressed_history(
     Ok(bytes)
 }
 
+struct VerifiedCodexZstd {
+    timestamp: Option<chrono::DateTime<chrono::Utc>>,
+    prefix_outcome: Option<SessionHistoryPrefixOutcome>,
+    raw_bytes: Option<Vec<u8>>,
+}
+
 fn verify_codex_zstd(
     encoded_bytes: &[u8],
     expected_raw_size: u64,
@@ -854,10 +936,7 @@ fn verify_codex_zstd(
     timings: &mut SessionHistoryCpuTimings,
     cancel: &CancellationToken,
     hooks: &SessionHistoryCpuHooks,
-) -> RunnerResult<(
-    Option<chrono::DateTime<chrono::Utc>>,
-    Option<SessionHistoryPrefixOutcome>,
-)> {
+) -> RunnerResult<VerifiedCodexZstd> {
     let decompression_started = Instant::now();
     let input = CancellationReader::new(encoded_bytes, cancel.clone(), hooks.clone());
     let decoder = match zstd::stream::read::Decoder::new(input) {
@@ -870,17 +949,26 @@ fn verify_codex_zstd(
         }
     };
     let decoded = decoder.take(expected_raw_size.saturating_add(1));
-    let output = CancellationReader::new(decoded, cancel.clone(), hooks.clone());
-    let mut reader = BufReader::with_capacity(DECODER_BUFFER_BYTES, output);
+    let mut output = CancellationReader::new(decoded, cancel.clone(), hooks.clone());
     let mut observer = SessionHistoryHashObserver::new(prefix_attribution);
+    let mut raw_bytes = if expected_raw_size > hooks.codex_raw_restore_threshold() {
+        let capacity = usize::try_from(expected_raw_size).map_err(|_| {
+            RunnerError::Internal("session history raw size does not fit in memory".into())
+        })?;
+        Some(Vec::with_capacity(capacity))
+    } else {
+        None
+    };
     let mut decoded_bytes = 0u64;
     let mut timestamp = None;
-    let mut line = Vec::new();
+    let mut timestamp_scanner = Some(CodexTimestampRecordScanner::new(
+        hooks.codex_timestamp_record_max_bytes(),
+    ));
+    let mut buffer = [0u8; DECODER_BUFFER_BYTES];
 
     loop {
         check_cancelled(cancel)?;
-        line.clear();
-        let read = match reader.read_until(b'\n', &mut line) {
+        let read = match output.read(&mut buffer) {
             Ok(read) => read,
             Err(error) => {
                 timings.record_decompression(decompression_started.elapsed(), false);
@@ -903,10 +991,22 @@ fn verify_codex_zstd(
                 "session history is too large after decompression: {decoded_bytes} bytes exceeds {expected_raw_size} bytes"
             )));
         }
-        observer.update(&line, cancel)?;
-        if timestamp.is_none() {
-            timestamp = parse_codex_timestamp_line(strip_jsonl_line_ending(&line), cancel, hooks)?;
+        let chunk = buffer.get(..read).ok_or_else(|| {
+            RunnerError::Internal("invalid zstd session history read chunk length".into())
+        })?;
+        observer.update(chunk, cancel)?;
+        if let Some(raw_bytes) = &mut raw_bytes {
+            raw_bytes.extend_from_slice(chunk);
         }
+        if let Some(scanner) = &mut timestamp_scanner
+            && let Some(discovered) = scanner.scan(chunk, cancel, hooks)?
+        {
+            timestamp = Some(discovered);
+            timestamp_scanner = None;
+        }
+    }
+    if let Some(scanner) = &mut timestamp_scanner {
+        timestamp = scanner.finish(cancel, hooks)?;
     }
     timings.record_decompression(decompression_started.elapsed(), true);
 
@@ -926,7 +1026,93 @@ fn verify_codex_zstd(
     let hash_result = observer.finish(expected_hash);
     timings.record_hash_verification(hash_started.elapsed(), hash_result.is_ok());
     let prefix_outcome = hash_result?;
-    Ok((timestamp, prefix_outcome))
+    Ok(VerifiedCodexZstd {
+        timestamp,
+        prefix_outcome,
+        raw_bytes,
+    })
+}
+
+impl CodexTimestampRecordScanner {
+    fn new(max_record_bytes: usize) -> Self {
+        Self {
+            record: Vec::with_capacity(DECODER_BUFFER_BYTES.min(max_record_bytes)),
+            max_record_bytes,
+            record_too_large: false,
+        }
+    }
+
+    fn scan(
+        &mut self,
+        mut bytes: &[u8],
+        cancel: &CancellationToken,
+        hooks: &SessionHistoryCpuHooks,
+    ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+        while let Some(newline) = bytes.iter().position(|byte| *byte == b'\n') {
+            let (record_bytes, remaining) = bytes.split_at(newline);
+            self.extend_record(record_bytes);
+            if let Some(timestamp) = self.finish_record(cancel, hooks)? {
+                return Ok(Some(timestamp));
+            }
+            bytes = remaining.get(1..).unwrap_or_default();
+        }
+        self.extend_record(bytes);
+        Ok(None)
+    }
+
+    fn finish(
+        &mut self,
+        cancel: &CancellationToken,
+        hooks: &SessionHistoryCpuHooks,
+    ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+        if self.record.is_empty() && !self.record_too_large {
+            return Ok(None);
+        }
+        self.finish_record(cancel, hooks)
+    }
+
+    fn extend_record(&mut self, bytes: &[u8]) {
+        if self.record_too_large {
+            return;
+        }
+        let record_len = self.record.len() + bytes.len();
+        if record_len > self.max_record_bytes {
+            self.mark_record_too_large();
+            return;
+        }
+        if record_len > self.record.capacity() {
+            let target_capacity = self
+                .record
+                .capacity()
+                .saturating_mul(2)
+                .max(record_len)
+                .min(self.max_record_bytes);
+            self.record
+                .reserve_exact(target_capacity - self.record.len());
+        }
+        self.record.extend_from_slice(bytes);
+    }
+
+    fn finish_record(
+        &mut self,
+        cancel: &CancellationToken,
+        hooks: &SessionHistoryCpuHooks,
+    ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+        let timestamp = if self.record_too_large {
+            None
+        } else {
+            let record = self.record.strip_suffix(b"\r").unwrap_or(&self.record);
+            parse_codex_timestamp_line(record, cancel, hooks)?
+        };
+        self.record.clear();
+        self.record_too_large = false;
+        Ok(timestamp)
+    }
+
+    fn mark_record_too_large(&mut self) {
+        self.record.clear();
+        self.record_too_large = true;
+    }
 }
 
 fn scan_raw_codex_history(
@@ -1089,11 +1275,6 @@ fn is_utf8_continuation(byte: u8) -> bool {
     byte & 0b1100_0000 == 0b1000_0000
 }
 
-fn strip_jsonl_line_ending(line: &[u8]) -> &[u8] {
-    let line = line.strip_suffix(b"\n").unwrap_or(line);
-    line.strip_suffix(b"\r").unwrap_or(line)
-}
-
 fn parse_codex_rollout_timestamp(raw: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     chrono::DateTime::parse_from_rfc3339(raw)
         .ok()
@@ -1123,7 +1304,7 @@ fn cpu_cancelled_error() -> RunnerError {
 
 #[cfg(test)]
 #[derive(Clone)]
-struct SessionHistoryCpuTestGate {
+pub(in crate::executor) struct SessionHistoryCpuTestGate {
     inner: Arc<SessionHistoryCpuTestGateInner>,
 }
 
@@ -1153,11 +1334,11 @@ struct SessionHistoryCpuTestGateState {
 
 #[cfg(test)]
 impl SessionHistoryCpuTestGate {
-    fn every_entry() -> Self {
+    pub(in crate::executor) fn every_entry() -> Self {
         Self::new(SessionHistoryCpuTestGateMode::Every)
     }
 
-    fn at_entry(entry: usize) -> Self {
+    pub(in crate::executor) fn at_entry(entry: usize) -> Self {
         Self::new(SessionHistoryCpuTestGateMode::Entry(entry.max(1)))
     }
 
@@ -1207,7 +1388,7 @@ impl SessionHistoryCpuTestGate {
         !cancel.is_cancelled()
     }
 
-    fn release_one(&self) {
+    pub(in crate::executor) fn release_one(&self) {
         let mut state = self
             .inner
             .state
@@ -1218,7 +1399,7 @@ impl SessionHistoryCpuTestGate {
         self.inner.release.notify_one();
     }
 
-    async fn wait_submitted(&self) {
+    pub(in crate::executor) async fn wait_submitted(&self) {
         self.inner
             .submitted
             .acquire()
@@ -1227,7 +1408,7 @@ impl SessionHistoryCpuTestGate {
             .forget();
     }
 
-    async fn wait_entered(&self) {
+    pub(in crate::executor) async fn wait_entered(&self) {
         self.inner
             .entered
             .acquire()
@@ -1236,7 +1417,7 @@ impl SessionHistoryCpuTestGate {
             .forget();
     }
 
-    async fn wait_completed(&self) {
+    pub(in crate::executor) async fn wait_completed(&self) {
         self.inner
             .completed
             .acquire()
@@ -1302,10 +1483,74 @@ mod tests {
         )
     }
 
+    fn codex_zstd_job(history: &[u8]) -> SessionHistoryCpuJob {
+        SessionHistoryCpuJob::zstd(
+            "019e9154-c304-70f0-adde-36efb1be1701".into(),
+            zstd::encode_all(history, 0).expect("test history should compress"),
+            history.len() as u64,
+            hex::encode(Sha256::digest(history)),
+            EffectiveCliFramework::Codex,
+        )
+    }
+
     async fn wait_for<T>(future: impl Future<Output = T>) -> T {
         tokio::time::timeout(Duration::from_secs(5), future)
             .await
             .expect("test synchronization should complete")
+    }
+
+    fn padded_codex_timestamp_record(record_len: usize) -> Vec<u8> {
+        let prefix =
+            br#"{"type":"session_meta","payload":{"timestamp":"2026-07-13T01:02:03Z","padding":""#;
+        let suffix = br#""}}"#;
+        assert!(prefix.len() + suffix.len() <= record_len);
+        let mut record = Vec::with_capacity(record_len);
+        record.extend_from_slice(prefix);
+        record.resize(record_len - suffix.len(), b'x');
+        record.extend_from_slice(suffix);
+        record
+    }
+
+    #[test]
+    fn codex_timestamp_scanner_bounds_candidates_and_recovers_at_record_boundaries() {
+        const RECORD_LIMIT: usize = 128;
+
+        let cancel = CancellationToken::new();
+        let hooks = SessionHistoryCpuHooks::default();
+        let exact_record = padded_codex_timestamp_record(RECORD_LIMIT);
+        let mut scanner = CodexTimestampRecordScanner::new(RECORD_LIMIT);
+        for chunk in exact_record.chunks(17) {
+            assert!(scanner.scan(chunk, &cancel, &hooks).unwrap().is_none());
+            assert!(scanner.record.len() <= RECORD_LIMIT);
+            assert!(scanner.record.capacity() <= RECORD_LIMIT);
+        }
+        let timestamp = scanner.finish(&cancel, &hooks).unwrap().unwrap();
+        assert_eq!(timestamp.to_rfc3339(), "2026-07-13T01:02:03+00:00");
+
+        let mut scanner = CodexTimestampRecordScanner::new(RECORD_LIMIT);
+        let oversized_record = vec![b'x'; RECORD_LIMIT + 1];
+        assert!(
+            scanner
+                .scan(&oversized_record, &cancel, &hooks)
+                .unwrap()
+                .is_none()
+        );
+        assert!(scanner.record_too_large);
+        assert!(scanner.record.is_empty());
+        assert!(scanner.record.capacity() <= RECORD_LIMIT);
+
+        let mut next_record = b"\r\n".to_vec();
+        next_record.extend_from_slice(
+            br#"{"type":"session_meta","payload":{"timestamp":"2026-07-13T01:02:03Z"}}"#,
+        );
+        next_record.extend_from_slice(b"\r\n");
+        let timestamp = scanner
+            .scan(&next_record, &cancel, &hooks)
+            .unwrap()
+            .unwrap();
+        assert_eq!(timestamp.to_rfc3339(), "2026-07-13T01:02:03+00:00");
+        assert!(scanner.record.is_empty());
+        assert!(scanner.record.capacity() <= RECORD_LIMIT);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1498,6 +1743,46 @@ mod tests {
             .await
             .unwrap();
         assert!(outcome.result.unwrap().session.codex_timestamp().is_none());
+    }
+
+    #[tokio::test]
+    async fn codex_zstd_restore_materializes_raw_only_above_pruning_guard() {
+        let history =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-13T01:02:03Z\"}}\n";
+        let encoded = zstd::encode_all(history.as_slice(), 0).unwrap();
+
+        let encoded_outcome =
+            SessionHistoryCpuPool::with_test_codex_raw_restore_threshold(1, history.len() as u64)
+                .materialize(codex_zstd_job(history), &CancellationToken::new())
+                .await
+                .unwrap()
+                .result
+                .unwrap();
+        assert_eq!(encoded_outcome.session.history_bytes(), encoded);
+        assert_eq!(
+            encoded_outcome.session.codex_zstd_history(),
+            Some(encoded.as_slice())
+        );
+
+        let raw_outcome = SessionHistoryCpuPool::with_test_codex_raw_restore_threshold(
+            1,
+            history.len() as u64 - 1,
+        )
+        .materialize(codex_zstd_job(history), &CancellationToken::new())
+        .await
+        .unwrap()
+        .result
+        .unwrap();
+        assert_eq!(raw_outcome.session.history_bytes(), history);
+        assert!(raw_outcome.session.codex_zstd_history().is_none());
+        assert_eq!(
+            raw_outcome
+                .session
+                .codex_timestamp()
+                .map(|timestamp| timestamp.to_rfc3339())
+                .as_deref(),
+            Some("2026-07-13T01:02:03+00:00")
+        );
     }
 
     #[tokio::test]

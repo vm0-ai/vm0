@@ -40,8 +40,8 @@ describe("agentDefinitionSchema strips unknown experimental_capabilities", () =>
 });
 
 describe("ZERO_CAPABILITIES", () => {
-  it("should have exactly 37 capabilities", () => {
-    expect(ZERO_CAPABILITIES).toHaveLength(37);
+  it("should have exactly 40 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(40);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -115,6 +115,14 @@ describe("ZERO_CAPABILITIES", () => {
     expect(ZERO_CAPABILITIES).toContain("people-search:read");
   });
 
+  it("should include managed image recognition capability", () => {
+    expect(ZERO_CAPABILITIES).toContain("image-recognition:write");
+  });
+
+  it("should include managed translation capability", () => {
+    expect(ZERO_CAPABILITIES).toContain("translation:write");
+  });
+
   it("should include managed finance read capability", () => {
     expect(ZERO_CAPABILITIES).toContain("finance:read");
   });
@@ -122,6 +130,11 @@ describe("ZERO_CAPABILITIES", () => {
   it("should include billing read and write capabilities", () => {
     expect(ZERO_CAPABILITIES).toContain("billing:read");
     expect(ZERO_CAPABILITIES).toContain("billing:write");
+  });
+
+  it("should include connector read and write capabilities", () => {
+    expect(ZERO_CAPABILITIES).toContain("connector:read");
+    expect(ZERO_CAPABILITIES).toContain("connector:write");
   });
 
   it("should include banking read capability", () => {
@@ -137,6 +150,11 @@ describe("ZERO_CAPABILITIES", () => {
   it("should include chat thread read and write capabilities", () => {
     expect(ZERO_CAPABILITIES).toContain("chat-thread:read");
     expect(ZERO_CAPABILITIES).toContain("chat-thread:write");
+  });
+
+  it("should include chat event read and write capabilities", () => {
+    expect(ZERO_CAPABILITIES).toContain("chat-event:read");
+    expect(ZERO_CAPABILITIES).toContain("chat-event:write");
   });
 });
 

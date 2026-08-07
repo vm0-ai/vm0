@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
@@ -47,12 +47,12 @@ export async function publishArtifactsChangedForRun(
 
   const [messageThread] = await writeDb
     .select({
-      chatThreadId: chatMessages.chatThreadId,
+      chatThreadId: chatEvents.chatThreadId,
       userId: chatThreads.userId,
     })
-    .from(chatMessages)
-    .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
-    .where(eq(chatMessages.runId, runId))
+    .from(chatEvents)
+    .innerJoin(chatThreads, eq(chatEvents.chatThreadId, chatThreads.id))
+    .where(eq(chatEvents.runId, runId))
     .limit(1);
   signal.throwIfAborted();
 

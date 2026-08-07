@@ -4,8 +4,10 @@ import {
 } from "@clerk/react";
 import { useGet } from "ccstate-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";
 import { brandName$ } from "../../signals/branding.ts";
+import { locale$ } from "../../signals/locale.ts";
 import {
   clerkInstance$,
   clerkUi$,
@@ -22,9 +24,11 @@ interface ClerkProviderProps {
 }
 
 export function VM0ClerkProvider({ children }: ClerkProviderProps) {
+  const { t } = useTranslation();
   const clerkInstance = useGet(clerkInstance$);
   const clerkUi = useGet(clerkUi$);
   const brandName = useGet(brandName$);
+  const locale = useGet(locale$);
 
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
@@ -36,7 +40,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
     allowedRedirectOrigins,
     appearance: getClerkAppearance(),
-    localization: getClerkLocalization(brandName),
+    localization: getClerkLocalization(brandName, locale, t),
     publishableKey,
     signInFallbackRedirectUrl: appUrl,
     signInUrl: resolveAppAuthUrl("/sign-in"),

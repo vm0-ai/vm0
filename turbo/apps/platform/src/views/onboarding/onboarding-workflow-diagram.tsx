@@ -1,7 +1,9 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useLastLoadable } from "ccstate-react";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import { useTranslation } from "react-i18next";
 import type { OnboardingWorkflow } from "./onboarding-data.ts";
-import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
+import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { platformStaticAssetUrl } from "../../lib/static-assets.ts";
 
@@ -16,16 +18,16 @@ const ZERO_AVATAR_FACE_IMG = platformStaticAssetUrl(
 );
 
 function DiagramConnectorIcon({
-  connectorRef,
+  connectorSlug,
   size,
 }: {
-  readonly connectorRef: string;
+  readonly connectorSlug: ConnectorSlug;
   readonly size: number;
 }) {
-  const catalogByRefLoadable = useLastLoadable(connectorCatalogStatusByRef$);
+  const catalogBySlugLoadable = useLastLoadable(connectorCatalogStatusBySlug$);
   const icon =
-    catalogByRefLoadable.state === "hasData"
-      ? catalogByRefLoadable.data.get(connectorRef)?.icon
+    catalogBySlugLoadable.state === "hasData"
+      ? catalogBySlugLoadable.data.get(connectorSlug)?.icon
       : undefined;
   return <ConnectorIcon icon={icon} size={size} />;
 }
@@ -94,11 +96,11 @@ const CONNECTOR_LABELS: Readonly<Record<string, string>> = {
   tldv: "tl;dv",
 };
 
-function connectorLabel(connectorId: string): string {
-  return CONNECTOR_LABELS[connectorId] ?? connectorId;
+function connectorLabel(connectorSlug: ConnectorSlug): string {
+  return CONNECTOR_LABELS[connectorSlug] ?? connectorSlug;
 }
 
-const WORKFLOW_SOURCE_CONNECTOR_IDS: ReadonlySet<string> = new Set([
+const WORKFLOW_SOURCE_CONNECTOR_SLUGS: ReadonlySet<ConnectorSlug> = new Set([
   "apollo",
   "axiom",
   "gmail",
@@ -111,7 +113,7 @@ const WORKFLOW_SOURCE_CONNECTOR_IDS: ReadonlySet<string> = new Set([
   "x",
 ]);
 
-const WORKFLOW_OUTPUT_CONNECTOR_IDS: ReadonlySet<string> = new Set([
+const WORKFLOW_OUTPUT_CONNECTOR_SLUGS: ReadonlySet<ConnectorSlug> = new Set([
   "elevenlabs",
   "gamma",
   "github",
@@ -126,7 +128,7 @@ const WORKFLOW_OUTPUT_CONNECTOR_IDS: ReadonlySet<string> = new Set([
   "vercel",
 ]);
 
-const WORKFLOW_DELIVERY_CONNECTOR_IDS: ReadonlySet<string> = new Set([
+const WORKFLOW_DELIVERY_CONNECTOR_SLUGS: ReadonlySet<ConnectorSlug> = new Set([
   "slack",
   "gmail",
   "resend",
@@ -140,106 +142,109 @@ const WORKFLOW_DELIVERY_CONNECTOR_IDS: ReadonlySet<string> = new Set([
   "heygen",
 ]);
 
-function uniqueWorkflowConnectors(
-  connectors: readonly string[],
-): readonly string[] {
-  const seen = new Set<string>();
-  return connectors.filter((connectorId) => {
-    if (seen.has(connectorId)) {
+function uniqueWorkflowConnectorSlugs(
+  connectorSlugs: readonly ConnectorSlug[],
+): readonly ConnectorSlug[] {
+  const seen = new Set<ConnectorSlug>();
+  return connectorSlugs.filter((connectorSlug) => {
+    if (seen.has(connectorSlug)) {
       return false;
     }
-    seen.add(connectorId);
+    seen.add(connectorSlug);
     return true;
   });
 }
 
 interface WorkflowDiagramModel {
-  readonly sourceConnectors: readonly string[];
+  readonly sourceConnectorSlugs: readonly ConnectorSlug[];
   readonly sourceLabel: string;
-  readonly destinationConnector: string | undefined;
+  readonly destinationConnectorSlug: ConnectorSlug | undefined;
 }
 
 function buildWorkflowDiagramModel(
   workflow: OnboardingWorkflow,
+  sourceFallback: string,
 ): WorkflowDiagramModel {
-  const allConnectors = uniqueWorkflowConnectors(workflow.connectors);
-  const sourceCandidates = uniqueWorkflowConnectors([
-    ...allConnectors.filter((connectorId) => {
-      return WORKFLOW_SOURCE_CONNECTOR_IDS.has(connectorId);
+  const allConnectorSlugs = uniqueWorkflowConnectorSlugs(
+    workflow.connectorSlugs,
+  );
+  const sourceCandidates = uniqueWorkflowConnectorSlugs([
+    ...allConnectorSlugs.filter((connectorSlug) => {
+      return WORKFLOW_SOURCE_CONNECTOR_SLUGS.has(connectorSlug);
     }),
-    ...allConnectors,
+    ...allConnectorSlugs,
   ]);
-  const outputCandidates = uniqueWorkflowConnectors([
-    ...allConnectors.filter((connectorId) => {
-      return WORKFLOW_OUTPUT_CONNECTOR_IDS.has(connectorId);
+  const outputCandidates = uniqueWorkflowConnectorSlugs([
+    ...allConnectorSlugs.filter((connectorSlug) => {
+      return WORKFLOW_OUTPUT_CONNECTOR_SLUGS.has(connectorSlug);
     }),
-    ...allConnectors,
+    ...allConnectorSlugs,
   ]);
 
-  const primarySource = sourceCandidates[0] ?? allConnectors[0];
-  const destinationConnector =
-    outputCandidates.find((connectorId) => {
+  const primarySource = sourceCandidates[0] ?? allConnectorSlugs[0];
+  const destinationConnectorSlug =
+    outputCandidates.find((connectorSlug) => {
       return (
-        connectorId !== primarySource &&
-        WORKFLOW_DELIVERY_CONNECTOR_IDS.has(connectorId)
+        connectorSlug !== primarySource &&
+        WORKFLOW_DELIVERY_CONNECTOR_SLUGS.has(connectorSlug)
       );
     }) ??
-    outputCandidates.find((connectorId) => {
-      return connectorId !== primarySource;
+    outputCandidates.find((connectorSlug) => {
+      return connectorSlug !== primarySource;
     }) ??
     undefined;
-  const sourceConnectors = uniqueWorkflowConnectors([
+  const sourceConnectorSlugs = uniqueWorkflowConnectorSlugs([
     ...(primarySource ? [primarySource] : []),
-    ...allConnectors.filter((connectorId) => {
-      return connectorId !== destinationConnector;
+    ...allConnectorSlugs.filter((connectorSlug) => {
+      return connectorSlug !== destinationConnectorSlug;
     }),
   ]);
-  const primaryLabel = sourceConnectors[0]
-    ? connectorLabel(sourceConnectors[0])
-    : "Source";
+  const primaryLabel = sourceConnectorSlugs[0]
+    ? connectorLabel(sourceConnectorSlugs[0])
+    : sourceFallback;
   const sourceLabel =
-    sourceConnectors.length > 1
-      ? `${primaryLabel} + ${sourceConnectors.length - 1}`
-      : sourceConnectors[0]
-        ? connectorLabel(sourceConnectors[0])
+    sourceConnectorSlugs.length > 1
+      ? `${primaryLabel} + ${sourceConnectorSlugs.length - 1}`
+      : sourceConnectorSlugs[0]
+        ? connectorLabel(sourceConnectorSlugs[0])
         : "";
 
   return {
-    sourceConnectors,
+    sourceConnectorSlugs,
     sourceLabel,
-    destinationConnector,
+    destinationConnectorSlug,
   };
 }
 
 function WorkflowDiagramNode({
   label,
-  connector,
-  connectors,
+  connectorSlug,
+  connectorSlugs,
   className,
   iconClassName,
   children,
 }: {
   readonly label: string;
-  readonly connector?: string;
-  readonly connectors?: readonly string[];
+  readonly connectorSlug?: ConnectorSlug;
+  readonly connectorSlugs?: readonly ConnectorSlug[];
   readonly className: string;
   readonly iconClassName?: string;
   readonly children?: ReactNode;
 }) {
-  const visibleConnectors = connectors?.slice(0, 3) ?? [];
-  const hiddenConnectorCount = Math.max((connectors?.length ?? 0) - 3, 0);
+  const visibleConnectorSlugs = connectorSlugs?.slice(0, 3) ?? [];
+  const hiddenConnectorCount = Math.max((connectorSlugs?.length ?? 0) - 3, 0);
 
   return (
     <div className={`owf-diagram-node ${className}`}>
       {label ? <span>{label}</span> : null}
       <span className={`owf-diagram-icon-box ${iconClassName ?? ""}`}>
         {children ??
-          (visibleConnectors.length > 1 ? (
+          (visibleConnectorSlugs.length > 1 ? (
             <span className="owf-diagram-icon-stack">
-              {visibleConnectors.map((item) => {
+              {visibleConnectorSlugs.map((item) => {
                 return (
                   <span key={item} className="owf-diagram-icon-stack-item">
-                    <DiagramConnectorIcon connectorRef={item} size={22} />
+                    <DiagramConnectorIcon connectorSlug={item} size={22} />
                   </span>
                 );
               })}
@@ -249,8 +254,8 @@ function WorkflowDiagramNode({
                 </span>
               ) : null}
             </span>
-          ) : connector ? (
-            <DiagramConnectorIcon connectorRef={connector} size={34} />
+          ) : connectorSlug ? (
+            <DiagramConnectorIcon connectorSlug={connectorSlug} size={34} />
           ) : null)}
       </span>
     </div>
@@ -281,12 +286,18 @@ export function WorkflowPreviewDiagram({
 }: {
   readonly workflow: OnboardingWorkflow;
 }) {
-  const diagram = buildWorkflowDiagramModel(workflow);
+  const { t } = useTranslation();
+  const diagram = buildWorkflowDiagramModel(
+    workflow,
+    t(($) => {
+      return $.onboarding.workflowDiagram.source;
+    }),
+  );
   const firstStep = workflow.detailSteps[1] ?? workflow.detailSteps[0];
   const lastStep = workflow.detailSteps.at(-1) ?? firstStep;
   const destinationCurvePath =
     "M485 112V148.65C485 166.79 469.17 175.85 437.51 175.85H352.59C325.19 175.85 311.5 183.7 311.5 199.4V223";
-  const beamPath = diagram.destinationConnector
+  const beamPath = diagram.destinationConnectorSlug
     ? "M170 81H485V148.65C485 166.79 469.17 175.85 437.51 175.85H352.59C325.19 175.85 311.5 183.7 311.5 199.4V356"
     : "M170 81H311.5V223H312.5V356";
 
@@ -301,7 +312,7 @@ export function WorkflowPreviewDiagram({
           aria-hidden="true"
         >
           <path d="M170 81H277" />
-          {diagram.destinationConnector ? (
+          {diagram.destinationConnectorSlug ? (
             <>
               <path d="M349 81H451" />
               <path d={destinationCurvePath} />
@@ -316,7 +327,7 @@ export function WorkflowPreviewDiagram({
           style={{ offsetPath: `path("${beamPath}")` } satisfies CSSProperties}
         />
         <span className="owf-diagram-dot-source" aria-hidden="true" />
-        {diagram.destinationConnector ? (
+        {diagram.destinationConnectorSlug ? (
           <>
             <span
               className="owf-diagram-dot-destination-in"
@@ -332,11 +343,11 @@ export function WorkflowPreviewDiagram({
         <span className="owf-diagram-vertical-control" aria-hidden="true" />
         <span className="owf-diagram-dot-action-middle" aria-hidden="true" />
         <span className="owf-diagram-dot-action-bottom" aria-hidden="true" />
-        {diagram.sourceConnectors.length > 0 ? (
+        {diagram.sourceConnectorSlugs.length > 0 ? (
           <WorkflowDiagramNode
             label={diagram.sourceLabel}
-            connector={diagram.sourceConnectors[0]}
-            connectors={diagram.sourceConnectors}
+            connectorSlug={diagram.sourceConnectorSlugs[0]}
+            connectorSlugs={diagram.sourceConnectorSlugs}
             className="owf-diagram-node-source"
           />
         ) : null}
@@ -351,26 +362,40 @@ export function WorkflowPreviewDiagram({
             <img src={ZERO_AVATAR_FACE_IMG} alt="" aria-hidden />
           </span>
         </WorkflowDiagramNode>
-        {diagram.destinationConnector ? (
+        {diagram.destinationConnectorSlug ? (
           <WorkflowDiagramNode
-            label={connectorLabel(diagram.destinationConnector)}
-            connector={diagram.destinationConnector}
+            label={connectorLabel(diagram.destinationConnectorSlug)}
+            connectorSlug={diagram.destinationConnectorSlug}
             className="owf-diagram-node-output"
           />
         ) : null}
         <WorkflowDiagramAction
-          title={firstStep?.title ?? "Workflow prepared"}
+          title={
+            firstStep?.title ??
+            t(($) => {
+              return $.onboarding.workflowDiagram.preparedTitle;
+            })
+          }
           description={
             firstStep?.description ??
-            "Zero prepares the next step from your tools."
+            t(($) => {
+              return $.onboarding.workflowDiagram.preparedDescription;
+            })
           }
           className="owf-diagram-action-one"
         />
         <WorkflowDiagramAction
-          title={lastStep?.title ?? "Ready for review"}
+          title={
+            lastStep?.title ??
+            t(($) => {
+              return $.onboarding.workflowDiagram.reviewTitle;
+            })
+          }
           description={
             lastStep?.description ??
-            "Zero completes the workflow and returns the result."
+            t(($) => {
+              return $.onboarding.workflowDiagram.reviewDescription;
+            })
           }
           className="owf-diagram-action-two"
         />

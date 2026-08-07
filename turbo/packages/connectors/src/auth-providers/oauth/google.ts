@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "./error";
 
-type GoogleOAuthConnectorType =
+type GoogleOAuthConnectorSlug =
   | "gmail"
   | "google-ads"
   | "google-analytics"
@@ -54,7 +54,7 @@ interface GoogleRefreshResult {
  */
 export function buildGoogleAuthorizationUrl(
   authCodeGrant: ConnectorAuthCodeGrantConfig,
-  connectorType: GoogleOAuthConnectorType,
+  connectorSlug: GoogleOAuthConnectorSlug,
   clientId: string,
   redirectUri: string,
   state: string,
@@ -78,7 +78,7 @@ export function buildGoogleAuthorizationUrl(
  */
 export async function exchangeGoogleOAuthCode(
   authCodeGrant: ConnectorAuthCodeGrantConfig,
-  connectorType: GoogleOAuthConnectorType,
+  connectorSlug: GoogleOAuthConnectorSlug,
   clientId: string,
   clientSecret: string,
   code: string,
@@ -99,7 +99,7 @@ export async function exchangeGoogleOAuthCode(
   });
 
   if (!response.ok) {
-    await throwOAuthError(connectorType, "exchange", response);
+    await throwOAuthError(connectorSlug, "exchange", response);
   }
 
   const data = z
@@ -118,7 +118,7 @@ export async function exchangeGoogleOAuthCode(
   }
 
   if (!data.access_token) {
-    throw new Error(`No access token in ${connectorType} response`);
+    throw new Error(`No access token in ${connectorSlug} response`);
   }
 
   const userInfo = await fetchGoogleUserInfo(data.access_token);
@@ -139,7 +139,7 @@ export async function exchangeGoogleOAuthCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://developers.google.com/identity/protocols/oauth2/web-server
  */
 export async function refreshGoogleToken(
-  connectorType: GoogleOAuthConnectorType,
+  connectorSlug: GoogleOAuthConnectorSlug,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -160,7 +160,7 @@ export async function refreshGoogleToken(
   });
 
   if (!response.ok) {
-    await throwOAuthError(connectorType, "refresh", response);
+    await throwOAuthError(connectorSlug, "refresh", response);
   }
 
   const data = z
@@ -178,7 +178,7 @@ export async function refreshGoogleToken(
   }
 
   if (!data.access_token) {
-    throw new Error(`No access token in ${connectorType} refresh response`);
+    throw new Error(`No access token in ${connectorSlug} refresh response`);
   }
 
   return {
@@ -189,7 +189,7 @@ export async function refreshGoogleToken(
 }
 
 export async function revokeGoogleToken(
-  connectorType: GoogleOAuthConnectorType,
+  connectorSlug: GoogleOAuthConnectorSlug,
   token: string,
 ): Promise<void> {
   const response = await fetch(GOOGLE_OAUTH_REVOKE_URL, {
@@ -203,7 +203,7 @@ export async function revokeGoogleToken(
   });
 
   if (!response.ok) {
-    await throwOAuthError(connectorType, "revoke", response);
+    await throwOAuthError(connectorSlug, "revoke", response);
   }
 }
 

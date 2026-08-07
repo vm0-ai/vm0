@@ -21,8 +21,8 @@ import type {
   ConnectorAuthProviderAuthMethodIdByGrantKind,
   ConnectorAuthProviderAuthMethodIdByRevokeKind,
   ConnectorAuthProviderClientFor,
-  ConnectorAuthProviderConnectorRef,
-  ConnectorAuthProviderConnectorRefByGrantKind,
+  ConnectorAuthProviderConnectorSlug,
+  ConnectorAuthProviderConnectorSlugByGrantKind,
   ConnectorAuthProviderRefreshInputValuesFor,
   ConnectorAuthProviderRefreshOutputValuesFor,
 } from "./provider-capabilities";
@@ -33,31 +33,34 @@ interface NoneGrantProvider {
 }
 
 export interface AuthCodeGrantProvider<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"auth-code">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"auth-code">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "auth-code"
-  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorRef, "auth-code">,
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorSlug, "auth-code">,
 > {
   readonly kind: "auth-code";
   buildAuthUrl(
-    args: ConnectorAuthCodeAuthorizeArgs<ConnectorRef, AuthMethodId>,
+    args: ConnectorAuthCodeAuthorizeArgs<ConnectorSlug, AuthMethodId>,
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
   exchangeCode(
-    args: ConnectorAuthCodeExchangeArgs<ConnectorRef, AuthMethodId>,
+    args: ConnectorAuthCodeExchangeArgs<ConnectorSlug, AuthMethodId>,
   ): Promise<
-    ConnectorAuthProviderGrantResultForMethod<ConnectorRef, AuthMethodId>
+    ConnectorAuthProviderGrantResultForMethod<ConnectorSlug, AuthMethodId>
   >;
 }
 
 export interface OpenIdAuthGrantProvider<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"openid-auth">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"openid-auth">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "openid-auth"
-  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorRef, "openid-auth">,
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorSlug,
+    "openid-auth"
+  >,
 > {
   readonly kind: "openid-auth";
   buildAuthUrl(
@@ -66,52 +69,55 @@ export interface OpenIdAuthGrantProvider<
   verifyCallback(
     args: ConnectorOpenIdVerifyArgs,
   ): Promise<
-    ConnectorAuthProviderGrantResultForMethod<ConnectorRef, AuthMethodId>
+    ConnectorAuthProviderGrantResultForMethod<ConnectorSlug, AuthMethodId>
   >;
 }
 
 export interface DeviceAuthGrantProvider<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"device-auth">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"device-auth">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "device-auth"
-  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorRef, "device-auth">,
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorSlug,
+    "device-auth"
+  >,
 > {
   readonly kind: "device-auth";
   startDeviceAuth(
-    args: ConnectorDeviceAuthorizationStartArgs<ConnectorRef, AuthMethodId>,
+    args: ConnectorDeviceAuthorizationStartArgs<ConnectorSlug, AuthMethodId>,
   ): Promise<OAuthDeviceAuthStartResult>;
   pollDeviceAuth(
-    args: ConnectorDeviceAuthorizationPollArgs<ConnectorRef, AuthMethodId>,
-  ): Promise<OAuthDeviceAuthPollResult<ConnectorRef, AuthMethodId>>;
+    args: ConnectorDeviceAuthorizationPollArgs<ConnectorSlug, AuthMethodId>,
+  ): Promise<OAuthDeviceAuthPollResult<ConnectorSlug, AuthMethodId>>;
 }
 
 export interface ExternalCodeGrantProvider<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"external-code">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"external-code">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "external-code"
   > = ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "external-code"
   >,
 > {
   readonly kind: "external-code";
   startExternalCodeAuthorization(
     args: ConnectorExternalCodeAuthorizationStartArgs<
-      ConnectorRef,
+      ConnectorSlug,
       AuthMethodId
     >,
   ): Promise<ExternalCodeAuthorizationStartResult>;
   completeExternalCodeAuthorization(
     args: ConnectorExternalCodeAuthorizationCompleteArgs<
-      ConnectorRef,
+      ConnectorSlug,
       AuthMethodId
     >,
   ): Promise<
-    ConnectorAuthProviderGrantResultForMethod<ConnectorRef, AuthMethodId>
+    ConnectorAuthProviderGrantResultForMethod<ConnectorSlug, AuthMethodId>
   >;
 }
 
@@ -120,28 +126,30 @@ interface NoneAccessProvider {
 }
 
 export type ConnectorAuthProviderRefreshArgs<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef> =
-    ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug> =
+    ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > =
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>
     ? {
         readonly inputs: ConnectorAuthProviderRefreshInputValuesFor<
-          ConnectorRef,
+          ConnectorSlug,
           AuthMethodId
         >;
         readonly signal: AbortSignal;
-      } & ConnectorRefreshAuthClientArgs<ConnectorRef, AuthMethodId>
+      } & ConnectorRefreshAuthClientArgs<ConnectorSlug, AuthMethodId>
     : never;
 
 type ConnectorRefreshAuthClientArgs<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
-> = [ConnectorAuthProviderClientFor<ConnectorRef, AuthMethodId>] extends [never]
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
+> = [ConnectorAuthProviderClientFor<ConnectorSlug, AuthMethodId>] extends [
+  never,
+]
   ? unknown
   : {
       readonly authClient: ConnectorAuthProviderClientFor<
-        ConnectorRef,
+        ConnectorSlug,
         AuthMethodId
       >;
     };
@@ -152,35 +160,35 @@ export interface ConnectorAuthProviderRefreshResultBase {
 }
 
 export interface ConnectorAuthProviderRefreshResult<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > extends ConnectorAuthProviderRefreshResultBase {
   readonly outputs: ConnectorAuthProviderRefreshOutputValuesFor<
-    ConnectorRef,
+    ConnectorSlug,
     AuthMethodId
   >;
 }
 
 export interface RefreshTokenAccessProvider<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > {
   readonly kind: "refresh-token";
   refresh(
-    args: ConnectorAuthProviderRefreshArgs<ConnectorRef, AuthMethodId>,
-  ): Promise<ConnectorAuthProviderRefreshResult<ConnectorRef, AuthMethodId>>;
+    args: ConnectorAuthProviderRefreshArgs<ConnectorSlug, AuthMethodId>,
+  ): Promise<ConnectorAuthProviderRefreshResult<ConnectorSlug, AuthMethodId>>;
 }
 
 export type ConnectorAuthProviderAccess<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef> =
-    ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug> =
+    ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > =
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByAccessKind<
-    ConnectorRef,
+    ConnectorSlug,
     "refresh-token"
   >
-    ? RefreshTokenAccessProvider<ConnectorRef, AuthMethodId>
+    ? RefreshTokenAccessProvider<ConnectorSlug, AuthMethodId>
     : NoneAccessProvider;
 
 interface NoneRevokeProvider {
@@ -188,25 +196,25 @@ interface NoneRevokeProvider {
 }
 
 export interface TokenRevokeProvider<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > {
   readonly kind: "token-revoke";
   revokeToken(
-    args: ConnectorAuthProviderRevokeArgs<ConnectorRef, AuthMethodId>,
+    args: ConnectorAuthProviderRevokeArgs<ConnectorSlug, AuthMethodId>,
   ): Promise<void>;
 }
 
 export type ConnectorAuthProviderRevoke<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef> =
-    ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug> =
+    ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > =
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByRevokeKind<
-    ConnectorRef,
+    ConnectorSlug,
     "token-revoke"
   >
-    ? TokenRevokeProvider<ConnectorRef, AuthMethodId>
+    ? TokenRevokeProvider<ConnectorSlug, AuthMethodId>
     : NoneRevokeProvider;
 
 export interface AuthProvider<Grant, Access, Revoke> {
@@ -216,58 +224,64 @@ export interface AuthProvider<Grant, Access, Revoke> {
 }
 
 export type AuthCodeConnectorAuthProvider<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"auth-code">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"auth-code">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "auth-code"
-  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorRef, "auth-code">,
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorSlug, "auth-code">,
 > = AuthProvider<
-  AuthCodeGrantProvider<ConnectorRef, AuthMethodId>,
-  ConnectorAuthProviderAccess<ConnectorRef, AuthMethodId>,
-  ConnectorAuthProviderRevoke<ConnectorRef, AuthMethodId>
+  AuthCodeGrantProvider<ConnectorSlug, AuthMethodId>,
+  ConnectorAuthProviderAccess<ConnectorSlug, AuthMethodId>,
+  ConnectorAuthProviderRevoke<ConnectorSlug, AuthMethodId>
 >;
 
 export type OpenIdAuthConnectorAuthProvider<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"openid-auth">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"openid-auth">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "openid-auth"
-  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorRef, "openid-auth">,
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorSlug,
+    "openid-auth"
+  >,
 > = AuthProvider<
-  OpenIdAuthGrantProvider<ConnectorRef, AuthMethodId>,
-  ConnectorAuthProviderAccess<ConnectorRef, AuthMethodId>,
-  ConnectorAuthProviderRevoke<ConnectorRef, AuthMethodId>
+  OpenIdAuthGrantProvider<ConnectorSlug, AuthMethodId>,
+  ConnectorAuthProviderAccess<ConnectorSlug, AuthMethodId>,
+  ConnectorAuthProviderRevoke<ConnectorSlug, AuthMethodId>
 >;
 
 export type DeviceAuthConnectorAuthProvider<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"device-auth">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"device-auth">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "device-auth"
-  > = ConnectorAuthProviderAuthMethodIdByGrantKind<ConnectorRef, "device-auth">,
+  > = ConnectorAuthProviderAuthMethodIdByGrantKind<
+    ConnectorSlug,
+    "device-auth"
+  >,
 > = AuthProvider<
-  DeviceAuthGrantProvider<ConnectorRef, AuthMethodId>,
-  ConnectorAuthProviderAccess<ConnectorRef, AuthMethodId>,
-  ConnectorAuthProviderRevoke<ConnectorRef, AuthMethodId>
+  DeviceAuthGrantProvider<ConnectorSlug, AuthMethodId>,
+  ConnectorAuthProviderAccess<ConnectorSlug, AuthMethodId>,
+  ConnectorAuthProviderRevoke<ConnectorSlug, AuthMethodId>
 >;
 
 export type ExternalCodeConnectorAuthProvider<
-  ConnectorRef extends
-    ConnectorAuthProviderConnectorRefByGrantKind<"external-code">,
+  ConnectorSlug extends
+    ConnectorAuthProviderConnectorSlugByGrantKind<"external-code">,
   AuthMethodId extends ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "external-code"
   > = ConnectorAuthProviderAuthMethodIdByGrantKind<
-    ConnectorRef,
+    ConnectorSlug,
     "external-code"
   >,
 > = AuthProvider<
-  ExternalCodeGrantProvider<ConnectorRef, AuthMethodId>,
-  ConnectorAuthProviderAccess<ConnectorRef, AuthMethodId>,
-  ConnectorAuthProviderRevoke<ConnectorRef, AuthMethodId>
+  ExternalCodeGrantProvider<ConnectorSlug, AuthMethodId>,
+  ConnectorAuthProviderAccess<ConnectorSlug, AuthMethodId>,
+  ConnectorAuthProviderRevoke<ConnectorSlug, AuthMethodId>
 >;
 
 export type ModelProviderGrantProvider = NoneGrantProvider;

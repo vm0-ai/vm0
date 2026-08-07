@@ -6,6 +6,8 @@ import {
   jsonb,
   timestamp,
   integer,
+  boolean,
+  bigint,
   index,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -55,10 +57,16 @@ export const agentRuns = pgTable(
     // Canonical resolved mounts used by new run writers.
     storageMounts: jsonb("storage_mounts").$type<AgentRunStorageMounts>(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
-    // One of: "reused" | "featureDisabled" | "noSessionId" | "poolMiss" |
-    // "profileMismatch" | "deviceLimitMismatch" | "unparkFailed". Null means
-    // unknown (old runner or historical row).
+    // One of: "reused" | "featureDisabled" | "noSessionId" | "noReuseKey" |
+    // "poolMiss" | "profileMismatch" | "deviceLimitMismatch" | "unparkFailed".
+    // Null means unknown (old runner or historical row); "noSessionId" is a
+    // legacy ambiguous result.
     sandboxReuseResult: varchar("sandbox_reuse_result", { length: 50 }),
+    // Null identifies a historical claim without cancellation recovery.
+    // Current claims initialize false; false/true records whether recovery
+    // completion has been reported. The barrier is active only while the
+    // public run status is cancelled.
+    cancellationRecoveryCompleted: boolean("cancellation_recovery_completed"),
     result: jsonb("result").$type<AgentRunResult>(),
     error: text("error"),
     lastEventSequence: integer("last_event_sequence"),
@@ -67,6 +75,15 @@ export const agentRuns = pgTable(
     startedAt: timestamp("started_at"),
     completedAt: timestamp("completed_at"),
     lastHeartbeatAt: timestamp("last_heartbeat_at"),
+    // Immutable winning official claim identity. Null covers historical,
+    // rollout-omitting, and non-official claims.
+    runnerId: uuid("runner_id"),
+    runnerHeartbeatGeneration: bigint("runner_heartbeat_generation", {
+      mode: "number",
+    }),
+    activeInputEnabled: boolean("active_input_enabled")
+      .default(false)
+      .notNull(),
     runnerGroup: varchar("runner_group", { length: 255 }),
   },
   (table) => {

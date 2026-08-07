@@ -14,9 +14,9 @@ use super::types::{
     CacheBudget, FsStats, WorkspaceImageCacheInspection, WorkspaceImageCacheInspectionEntry,
     WorkspaceImageCacheInspectionStatus, WorkspaceImageCacheInspectionSummary,
 };
-use super::{SessionWorkspaceCache, TemporaryPathStats};
+use super::{TemporaryPathStats, WorkspaceImageCache};
 
-impl SessionWorkspaceCache {
+impl WorkspaceImageCache {
     pub(crate) async fn inspect(&self) -> RunnerResult<WorkspaceImageCacheInspection> {
         let fs_stats = self.fs_stats().await?;
         let budget = CacheBudget::from_fs_stats(fs_stats);
@@ -122,7 +122,7 @@ impl SessionWorkspaceCache {
         }
         let temporary = inspect_temporary_paths(&entry_dir).await?;
 
-        let current = self.session_workspace_cache_current_image(&cache_key);
+        let current = self.workspace_image_cache_current_image(&cache_key);
         let current_metadata = match fs::symlink_metadata(&current).await {
             Ok(metadata) => Some(metadata),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
@@ -131,7 +131,7 @@ impl SessionWorkspaceCache {
                 return Err(e.into());
             }
         };
-        let metadata_path = self.session_workspace_cache_metadata(&cache_key);
+        let metadata_path = self.workspace_image_cache_metadata(&cache_key);
         let (metadata, metadata_read_error) = match self.read_metadata_file(&metadata_path).await {
             Ok(metadata) => (Some(metadata), None),
             Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => (None, None),

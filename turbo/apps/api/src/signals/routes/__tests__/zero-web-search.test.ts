@@ -24,7 +24,7 @@ import {
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now, nowDate } from "../../external/time";
+import { now, nowDate } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
 import { createDeferredPromise } from "../../utils";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
@@ -40,6 +40,7 @@ import {
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroUsageRunsRoutes } from "../zero-usage-runs";
 
 const context = testContext();
 const PERPLEXITY_SEARCH_URL = "https://api.perplexity.ai/search";
@@ -274,7 +275,9 @@ describe("zero web-search route", () => {
       ],
     });
     const usage = await accept(
-      setupApp({ context })(zeroUsageRunsContract).get({
+      setupApp({ context, routes: zeroUsageRunsRoutes })(
+        zeroUsageRunsContract,
+      ).get({
         headers: authenticate(actor),
         query: { runId: run.runId },
       }),

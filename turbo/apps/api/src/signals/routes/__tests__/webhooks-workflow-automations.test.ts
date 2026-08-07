@@ -1,6 +1,7 @@
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../lib/env";
@@ -10,6 +11,13 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...webhooksWorkflowAutomationsRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -22,7 +30,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -88,20 +98,20 @@ async function postWorkflowWebhook(args: {
   readonly signature?: string;
 }): Promise<{ readonly status: number; readonly body: unknown }> {
   const timestamp = args.timestamp ?? Math.floor(now() / 1000);
-  const response = await createApp({ signal: context.signal }).request(
-    `/api/webhooks/workflow-automations/${args.token}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-VM0-Timestamp": String(timestamp),
-        "X-VM0-Signature":
-          args.signature ??
-          computeHmacSignature(args.rawBody, args.secret, timestamp),
-      },
-      body: args.rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/webhooks/workflow-automations/${args.token}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-VM0-Timestamp": String(timestamp),
+      "X-VM0-Signature":
+        args.signature ??
+        computeHmacSignature(args.rawBody, args.secret, timestamp),
     },
-  );
+    body: args.rawBody,
+  });
   return {
     status: response.status,
     body: await response.json(),

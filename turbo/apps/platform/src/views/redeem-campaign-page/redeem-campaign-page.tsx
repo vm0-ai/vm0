@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { useGet, useLastLoadable } from "ccstate-react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import {
   IconCheck,
   IconGift,
@@ -31,41 +33,74 @@ function resolveCard(
   response: RedeemResponse | null,
   stripeSuccess: boolean,
   orgName: string,
+  t: TFunction<"common">,
 ): CardInfo {
   if (stripeSuccess) {
     return {
       kind: "granted",
-      title: "Payment successful",
-      body: `Your credits are on the way to ${orgName}. Open the dashboard to see your new balance.`,
+      title: t(($) => {
+        return $.lifecycle.redeemCampaign.states.paymentSuccessful.title;
+      }),
+      body: t(
+        ($) => {
+          return $.lifecycle.redeemCampaign.states.paymentSuccessful.body;
+        },
+        { orgName },
+      ),
     };
   }
   if (!response) {
     return {
       kind: "broken",
-      title: "Something went wrong",
-      body: "We couldn't complete your redemption. Please try again or contact support.",
+      title: t(($) => {
+        return $.lifecycle.redeemCampaign.states.broken.title;
+      }),
+      body: t(($) => {
+        return $.lifecycle.redeemCampaign.states.broken.body;
+      }),
     };
   }
   switch (response.status) {
     case "ready": {
       return {
         kind: "ready",
-        title: "Claim your credits",
-        body: `Complete checkout to add these credits to ${orgName}'s balance.`,
+        title: t(($) => {
+          return $.lifecycle.redeemCampaign.states.ready.title;
+        }),
+        body: t(
+          ($) => {
+            return $.lifecycle.redeemCampaign.states.ready.body;
+          },
+          { orgName },
+        ),
       };
     }
     case "already_granted": {
       return {
         kind: "granted",
-        title: "You've already redeemed this offer",
-        body: `Your credits are already in ${orgName}'s account. Head back to the app to start using them.`,
+        title: t(($) => {
+          return $.lifecycle.redeemCampaign.states.alreadyGranted.title;
+        }),
+        body: t(
+          ($) => {
+            return $.lifecycle.redeemCampaign.states.alreadyGranted.body;
+          },
+          { orgName },
+        ),
       };
     }
     case "processing": {
       return {
         kind: "processing",
-        title: "Payment received",
-        body: `We're applying your credits to ${orgName} now. This usually takes a few seconds — refresh in a moment to see the updated balance.`,
+        title: t(($) => {
+          return $.lifecycle.redeemCampaign.states.processing.title;
+        }),
+        body: t(
+          ($) => {
+            return $.lifecycle.redeemCampaign.states.processing.body;
+          },
+          { orgName },
+        ),
       };
     }
     case "error": {
@@ -73,22 +108,38 @@ function resolveCard(
         case "billing_unavailable": {
           return {
             kind: "broken",
-            title: "Billing is temporarily unavailable",
-            body: "Our payment system isn't available right now. Please try again in a few minutes.",
+            title: t(($) => {
+              return $.lifecycle.redeemCampaign.states.billingUnavailable.title;
+            }),
+            body: t(($) => {
+              return $.lifecycle.redeemCampaign.states.billingUnavailable.body;
+            }),
           };
         }
         case "admin_required": {
           return {
             kind: "auth",
-            title: "Admin access required",
-            body: `Only organization admins can redeem campaign credits for ${orgName}. Ask an admin in your org to open the link instead.`,
+            title: t(($) => {
+              return $.lifecycle.redeemCampaign.states.adminRequired.title;
+            }),
+            body: t(
+              ($) => {
+                return $.lifecycle.redeemCampaign.states.adminRequired.body;
+              },
+              { orgName },
+            ),
           };
         }
         case "campaign_misconfigured": {
           return {
             kind: "broken",
-            title: "This offer isn't available",
-            body: "The promo code may have expired, reached its redemption limit, or been removed. If you believe this is a mistake, contact support.",
+            title: t(($) => {
+              return $.lifecycle.redeemCampaign.states.campaignUnavailable
+                .title;
+            }),
+            body: t(($) => {
+              return $.lifecycle.redeemCampaign.states.campaignUnavailable.body;
+            }),
           };
         }
       }
@@ -127,6 +178,7 @@ function PrimaryAction({
   response: RedeemResponse | null;
   stripeSuccess: boolean;
 }): ReactNode {
+  const { t } = useTranslation();
   const brandName = useGet(brandName$);
 
   if (!stripeSuccess && response?.status === "ready") {
@@ -136,7 +188,11 @@ function PrimaryAction({
     const checkoutUrl = response.checkoutUrl;
     return (
       <Button className="w-full" asChild>
-        <a href={checkoutUrl}>Redeem credits</a>
+        <a href={checkoutUrl}>
+          {t(($) => {
+            return $.lifecycle.redeemCampaign.actions.redeem;
+          })}
+        </a>
       </Button>
     );
   }
@@ -145,18 +201,30 @@ function PrimaryAction({
   // where the new credit balance is visible. Error cards just send them home.
   return (
     <Button className="w-full" asChild>
-      <Link pathname={ROUTES.home}>Back to {brandName}</Link>
+      <Link pathname={ROUTES.home}>
+        {t(
+          ($) => {
+            return $.lifecycle.redeemCampaign.actions.back;
+          },
+          { brandName },
+        )}
+      </Link>
     </Button>
   );
 }
 
 export function RedeemCampaignPage() {
+  const { t } = useTranslation();
   const response = useGet(redeemResponse$);
   const stripeSuccess = useGet(redeemStripeSuccess$);
   const clerkLoadable = useLastLoadable(clerk$);
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
-  const orgName = clerk?.organization?.name ?? "your organization";
-  const info = resolveCard(response, stripeSuccess, orgName);
+  const orgName =
+    clerk?.organization?.name ??
+    t(($) => {
+      return $.lifecycle.redeemCampaign.organizationFallback;
+    });
+  const info = resolveCard(response, stripeSuccess, orgName, t);
 
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6 md:-translate-x-[128px]">

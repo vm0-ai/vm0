@@ -1,71 +1,267 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
+import { randomUUID } from "node:crypto";
+import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
+import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
+import type {
+  ChatSlackMentionDisplayNames,
+  ChatSlackMessageFiles,
+} from "@vm0/db/jsonb-contracts/chat-slack-context";
+import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
+import { chatAgentRunContext } from "@vm0/db/schema/chat-agent-run-context";
+import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
+import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import {
-  chatEventRunLifecycle,
-  isValidChatEventRevocation,
-} from "@vm0/api-contracts/contracts/chat-events";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+  chatEventTerminalPredicate,
+  chatEvents,
+} from "@vm0/db/schema/chat-event";
+import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
+import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
+import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
+import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
+import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { eq, isNotNull, sql } from "drizzle-orm";
+import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
+import { eq, sql } from "drizzle-orm";
+import { nowDate } from "../../lib/time";
+import type {
+  WorkflowAutomationEventPayload,
+  WorkflowAutomationEventType,
+} from "./workflow-automation-context.service";
+import type { Tx } from "../../lib/db-types";
 
-import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
-import { chatEventTypeSql } from "./zero-chat-event-type.service";
-
-type ChatEventInsert = typeof chatMessages.$inferInsert;
-type ChatEventWriteTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
+type ChatEventInsert = typeof chatEvents.$inferInsert;
+type ChatEventWriteTransaction = Tx;
 
 type ChatEventIdentity = Pick<
   ChatEventInsert,
-  | "id"
-  | "chatThreadId"
-  | "runId"
-  | "runGroupId"
-  | "slackMessagePermalink"
-  | "feishuChatOpenUrl"
+  "id" | "chatThreadId" | "runId" | "runGroupId"
 > & {
   readonly createdAt?: Date;
 };
 
+type ChatEventDisplayContext =
+  | {
+      readonly slackContext: {
+        readonly channelId: string;
+        readonly messageTs: string;
+        readonly conversationContext: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatSlackMessageFiles;
+        readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
+        readonly senderDisplayName: string | null;
+        readonly senderUserId: string | null;
+        readonly channelType: "channel" | "dm" | "group_dm";
+        readonly threadTs: string;
+        readonly routeThreadTs: string | null;
+      };
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext: {
+        readonly conversationHistory: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatFeishuMessageFiles;
+        readonly chatType: "group" | "p2p" | "topic_group";
+        readonly chatId: string;
+        readonly messageId: string;
+        readonly threadId: string;
+        readonly replyInThread: boolean;
+        readonly reactionId: string | null;
+        readonly senderOpenId: string;
+        readonly connectionId: string;
+        readonly installationId: string;
+      };
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext: {
+        readonly tenantId: string;
+        readonly teamId: string | null;
+        readonly channelId: string | null;
+        readonly conversationId: string;
+        readonly conversationType: string | null;
+        readonly activityId: string | null;
+        readonly threadContext: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatTeamsMessageFiles;
+        readonly tenantName: string | null;
+        readonly teamName: string | null;
+        readonly threadId: string;
+        readonly serviceUrl: string;
+        readonly teamsAppId: string | null;
+        readonly senderUserId: string;
+        readonly senderDisplayName: string | null;
+        readonly senderPrincipalName: string | null;
+        readonly connectionId: string;
+      };
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext: {
+        readonly chatId: string;
+        readonly messageId: string;
+        readonly messageThreadId: number | null;
+        readonly messageText: string;
+        readonly threadContext: string;
+        readonly rootMessageId: string | null;
+        readonly thinkingMessageId: string | null;
+        readonly userLinkId: string;
+        readonly userLinkKind: "custom" | "official";
+        readonly chatType: string;
+        readonly senderUserId: string | null;
+        readonly senderDisplayName: string | null;
+        readonly senderUsername: string | null;
+        readonly senderLanguage: string | null;
+      };
+      readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext: {
+        readonly repo: string;
+        readonly subjectNumber: number;
+        readonly subjectKind: "issue" | "pull_request";
+        readonly triggerCommentId: string | null;
+        readonly issueContext: string;
+        readonly messageText: string;
+        readonly triggerReactionId: string | null;
+        readonly triggerCommentBody: string | null;
+      };
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+      readonly morningBriefContext: {
+        readonly deliveryId: string;
+        readonly timezone: string;
+        readonly triggeredAt: Date;
+      };
+      readonly agentphoneContext?: never;
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext: {
+        readonly messageText: string;
+        readonly threadContext: string;
+        readonly messageId: string;
+        readonly rootMessageId: string;
+        readonly conversationId: string | null;
+        readonly channel: "imessage" | "sms" | "mms";
+        readonly isGroup: boolean;
+        readonly phoneHandle: string;
+        readonly fromNumber: string;
+        readonly toNumber: string;
+        readonly userLinkId: string;
+        readonly agentphoneAgentId: string;
+      };
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
+    };
+
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
-  "attachFiles" | "attachFileMetadata" | "generationTemplate" | "goalSnapshot"
+  "attachFiles" | "generationTemplate"
 > & {
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
+interface ChatAgentRunDisplayContext {
+  readonly agentRunContext?: {
+    readonly sourceRunId: string;
+    readonly sourceChatThreadId: string;
+    readonly sourceAgentId: string;
+  };
+}
+
 type ChatEventOutputSequence = Pick<
   ChatEventInsert,
-  "sequenceNumber" | "runEventId"
+  "runEventSequenceNumber" | "runEventId"
 >;
 
 type InputPromptEvent = ChatEventIdentity &
+  ChatEventDisplayContext &
+  ChatAgentRunDisplayContext &
   ChatEventInputPayload & {
     readonly eventType: "input.prompt";
-    readonly content: string | null;
-    readonly triggerSource?: TriggerSource;
-    readonly encryptedParams?: string | null;
+    readonly content?: null;
+    readonly contextType?: "web";
   };
 
-type InputAutomationEvent = ChatEventIdentity & {
-  readonly eventType: "input.automation";
-  readonly content?: null;
-  readonly automationId: string;
-  readonly triggerSource: TriggerSource;
-  readonly triggerBrief: string | null;
-  readonly encryptedParams: string;
-};
+type InputAutomationEvent = ChatEventIdentity &
+  Pick<ChatEventInputPayload, "userMessage"> & {
+    readonly eventType: "input.automation";
+    readonly content?: null;
+    readonly automationId: string;
+    readonly workflowName?: string;
+    readonly workflowAutomationEventType?: WorkflowAutomationEventType;
+    readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
+    readonly triggerBrief: string | null;
+  };
+
+type InputGoalEvent = ChatEventIdentity &
+  Pick<ChatEventInputPayload, "userMessage"> & {
+    readonly eventType: "input.goal";
+    readonly content?: null;
+    readonly contextType: "goal";
+    readonly runGroupId: string;
+  };
+
+type InputBudgetEvent = ChatEventIdentity &
+  ChatAgentRunDisplayContext &
+  Pick<ChatEventInputPayload, "userMessage"> & {
+    readonly eventType: "input.budget";
+    readonly content?: null;
+  };
 
 type InputRejectedEvent = ChatEventIdentity &
+  ChatEventDisplayContext &
   ChatEventInputPayload &
-  Pick<ChatEventInsert, "sequenceNumber"> & {
+  Pick<ChatEventInsert, "runEventSequenceNumber"> & {
     readonly eventType: "input.rejected";
-    readonly content: string | null;
+    readonly content?: null;
     readonly error: string;
     readonly automationId?: string;
-    readonly triggerSource?: TriggerSource;
     readonly triggerBrief?: string | null;
   };
 
@@ -76,7 +272,7 @@ type OutputMessageEvent = ChatEventIdentity &
   };
 
 type OutputErrorEvent = ChatEventIdentity &
-  Pick<ChatEventInsert, "sequenceNumber"> & {
+  Pick<ChatEventInsert, "runEventSequenceNumber"> & {
     readonly eventType: "output.error";
     readonly content: string | null;
     readonly error: string;
@@ -131,17 +327,6 @@ type RunCancelledEvent = ChatEventIdentity & {
   readonly error?: string;
 };
 
-type QueueAutomationPausedEvent = ChatEventIdentity & {
-  readonly eventType: "queue.automation_paused";
-  readonly content?: null;
-  readonly pauseReason: string | null;
-};
-
-type QueueAutomationResumedEvent = ChatEventIdentity & {
-  readonly eventType: "queue.automation_resumed";
-  readonly content?: null;
-};
-
 type ControlInterruptEvent = ChatEventIdentity & {
   readonly eventType: "control.interrupt";
   readonly content?: null;
@@ -151,6 +336,14 @@ type ControlInterruptEvent = ChatEventIdentity & {
 
 type ControlRevokeEvent = ChatEventIdentity & {
   readonly eventType: "control.revoke";
+  readonly content?: null;
+};
+
+type BrowserLifecycleEvent = Pick<
+  ChatEventIdentity,
+  "id" | "chatThreadId" | "createdAt"
+> & {
+  readonly eventType: "browser.open" | "browser.close";
   readonly content?: null;
 };
 
@@ -171,6 +364,8 @@ type UsageRecordedEvent = ChatEventIdentity & {
 export type NewChatEvent =
   | InputPromptEvent
   | InputAutomationEvent
+  | InputGoalEvent
+  | InputBudgetEvent
   | InputRejectedEvent
   | OutputMessageEvent
   | OutputErrorEvent
@@ -181,10 +376,9 @@ export type NewChatEvent =
   | RunCompletedEvent
   | RunFailedEvent
   | RunCancelledEvent
-  | QueueAutomationPausedEvent
-  | QueueAutomationResumedEvent
   | ControlInterruptEvent
   | ControlRevokeEvent
+  | BrowserLifecycleEvent
   | GoalChangedEvent
   | UsageRecordedEvent;
 
@@ -209,27 +403,546 @@ interface ChatEventBatchCommandResult {
 type InsertChatEventConflict = "none" | "any" | "id" | "run-lifecycle";
 type InsertChatEventsConflict = "any" | "run-sequence";
 
-type PersistedChatEvent = Omit<ChatEventInsert, "role" | "seqId">;
+type PersistedChatEvent = Omit<
+  ChatEventInsert,
+  "role" | "runLifecycleEvent" | "seqId"
+>;
 
-function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
-  const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
-  if (values.eventType === "queue.automation_paused") {
-    const { pauseReason, ...event } = values;
-    return {
-      ...event,
-      content: null,
-      error: pauseReason,
-      eventType: event.eventType,
+type ChatEventContextPointer = Pick<
+  ChatEventInsert,
+  "contextType" | "contextId"
+>;
+
+interface StoredChatEventContextPointer {
+  readonly contextType: NonNullable<ChatEventInsert["contextType"]> | null;
+  readonly contextId: string | null;
+}
+
+export interface LoadedChatEventReplacementTarget extends StoredChatEventContextPointer {
+  readonly id: string;
+  readonly chatThreadId: string;
+  readonly createdAt: Date;
+  readonly eventType: NonNullable<ChatEventInsert["eventType"]>;
+}
+
+type NewDisplayContext =
+  | {
+      readonly type: "agent_run";
+      readonly id: string;
+      readonly sourceChatThreadId: string;
+      readonly sourceAgentId: string;
+    }
+  | {
+      readonly type: "slack";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly channelId: string;
+      readonly messageTs: string;
+      readonly conversationContext: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatSlackMessageFiles;
+      readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
+      readonly senderDisplayName: string | null;
+      readonly senderUserId: string | null;
+      readonly channelType: "channel" | "dm" | "group_dm";
+      readonly threadTs: string;
+      readonly routeThreadTs: string | null;
+    }
+  | {
+      readonly type: "feishu";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly conversationHistory: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatFeishuMessageFiles;
+      readonly chatType: "group" | "p2p" | "topic_group";
+      readonly chatId: string;
+      readonly messageId: string;
+      readonly threadId: string;
+      readonly replyInThread: boolean;
+      readonly reactionId: string | null;
+      readonly senderOpenId: string;
+      readonly connectionId: string;
+      readonly installationId: string;
+    }
+  | {
+      readonly type: "teams";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly tenantId: string;
+      readonly teamId: string | null;
+      readonly channelId: string | null;
+      readonly conversationId: string;
+      readonly conversationType: string | null;
+      readonly activityId: string | null;
+      readonly threadContext: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatTeamsMessageFiles;
+      readonly tenantName: string | null;
+      readonly teamName: string | null;
+      readonly threadId: string;
+      readonly serviceUrl: string;
+      readonly teamsAppId: string | null;
+      readonly senderUserId: string;
+      readonly senderDisplayName: string | null;
+      readonly senderPrincipalName: string | null;
+      readonly connectionId: string;
+    }
+  | {
+      readonly type: "telegram";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly chatId: string;
+      readonly messageId: string;
+      readonly messageThreadId: number | null;
+      readonly messageText: string;
+      readonly threadContext: string;
+      readonly rootMessageId: string | null;
+      readonly thinkingMessageId: string | null;
+      readonly userLinkId: string;
+      readonly userLinkKind: "custom" | "official";
+      readonly chatType: string;
+      readonly senderUserId: string | null;
+      readonly senderDisplayName: string | null;
+      readonly senderUsername: string | null;
+      readonly senderLanguage: string | null;
+    }
+  | {
+      readonly type: "github";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly repo: string;
+      readonly subjectNumber: number;
+      readonly subjectKind: "issue" | "pull_request";
+      readonly triggerCommentId: string | null;
+      readonly issueContext: string;
+      readonly messageText: string;
+      readonly triggerReactionId: string | null;
+      readonly triggerCommentBody: string | null;
+    }
+  | {
+      readonly type: "agentphone";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly messageText: string;
+      readonly threadContext: string;
+      readonly messageId: string;
+      readonly rootMessageId: string;
+      readonly conversationId: string | null;
+      readonly channel: "imessage" | "sms" | "mms";
+      readonly isGroup: boolean;
+      readonly phoneHandle: string;
+      readonly fromNumber: string;
+      readonly toNumber: string;
+      readonly userLinkId: string;
+      readonly agentphoneAgentId: string;
+    }
+  | {
+      readonly type: "automation";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly automationId: string;
+      readonly workflowName: string | null;
+      readonly workflowAutomationEventType: WorkflowAutomationEventType | null;
+      readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
+      readonly triggerBrief: string | null;
+    }
+  | {
+      readonly type: "morning_brief";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly deliveryId: string;
+      readonly timezone: string;
+      readonly triggeredAt: Date;
     };
+
+function newAutomationDisplayContext(
+  eventId: string,
+  values: NewChatEvent,
+): Extract<NewDisplayContext, { readonly type: "automation" }> | undefined {
+  const automationId =
+    "automationId" in values ? values.automationId : undefined;
+  if (automationId === undefined) {
+    return undefined;
   }
   return {
+    type: "automation",
+    id: eventId,
+    chatThreadId: values.chatThreadId,
+    automationId,
+    workflowName:
+      "workflowName" in values ? (values.workflowName ?? null) : null,
+    workflowAutomationEventType:
+      "workflowAutomationEventType" in values
+        ? (values.workflowAutomationEventType ?? null)
+        : null,
+    workflowAutomationEventPayload:
+      "workflowAutomationEventPayload" in values
+        ? (values.workflowAutomationEventPayload ?? null)
+        : null,
+    triggerBrief:
+      "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
+  };
+}
+
+function newDisplayContext(
+  eventId: string,
+  values: NewChatEvent,
+): NewDisplayContext | undefined {
+  const agentRunContext =
+    "agentRunContext" in values ? values.agentRunContext : undefined;
+  if (agentRunContext !== undefined) {
+    return {
+      type: "agent_run",
+      id: agentRunContext.sourceRunId,
+      sourceChatThreadId: agentRunContext.sourceChatThreadId,
+      sourceAgentId: agentRunContext.sourceAgentId,
+    };
+  }
+
+  const slackContext =
+    "slackContext" in values ? values.slackContext : undefined;
+  if (slackContext !== undefined) {
+    return {
+      type: "slack",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      channelId: slackContext.channelId,
+      messageTs: slackContext.messageTs,
+      conversationContext: slackContext.conversationContext,
+      messageText: slackContext.messageText,
+      messageFiles: slackContext.messageFiles,
+      mentionDisplayNames: slackContext.mentionDisplayNames,
+      senderDisplayName: slackContext.senderDisplayName,
+      senderUserId: slackContext.senderUserId,
+      channelType: slackContext.channelType,
+      threadTs: slackContext.threadTs,
+      routeThreadTs: slackContext.routeThreadTs,
+    };
+  }
+
+  const feishuContext =
+    "feishuContext" in values ? values.feishuContext : undefined;
+  if (feishuContext !== undefined) {
+    return {
+      type: "feishu",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...feishuContext,
+    };
+  }
+
+  const teamsContext =
+    "teamsContext" in values ? values.teamsContext : undefined;
+  if (teamsContext !== undefined) {
+    return {
+      type: "teams",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...teamsContext,
+    };
+  }
+
+  const telegramContext =
+    "telegramContext" in values ? values.telegramContext : undefined;
+  if (telegramContext !== undefined) {
+    return {
+      type: "telegram",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...telegramContext,
+    };
+  }
+
+  const githubContext =
+    "githubContext" in values ? values.githubContext : undefined;
+  if (githubContext !== undefined) {
+    return {
+      type: "github",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...githubContext,
+    };
+  }
+
+  const morningBriefContext =
+    "morningBriefContext" in values ? values.morningBriefContext : undefined;
+  if (morningBriefContext !== undefined) {
+    return {
+      type: "morning_brief",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...morningBriefContext,
+    };
+  }
+
+  const agentphoneContext =
+    "agentphoneContext" in values ? values.agentphoneContext : undefined;
+  if (agentphoneContext !== undefined) {
+    return {
+      type: "agentphone",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...agentphoneContext,
+    };
+  }
+
+  const automationContext = newAutomationDisplayContext(eventId, values);
+  if (automationContext !== undefined) {
+    return automationContext;
+  }
+
+  return undefined;
+}
+
+function displayContextPointer(
+  context: NewDisplayContext | undefined,
+): ChatEventContextPointer | undefined {
+  if (!context) {
+    return undefined;
+  }
+  return {
+    contextType: context.type,
+    contextId: context.id,
+  };
+}
+
+function replacementContext(
+  target: StoredChatEventContextPointer,
+  eventId: string,
+  values: NewChatEvent,
+): {
+  readonly pointer: ChatEventContextPointer | undefined;
+  readonly displayContext: NewDisplayContext | undefined;
+} {
+  if (target.contextType !== null) {
+    return {
+      pointer: {
+        contextType: target.contextType,
+        contextId: target.contextId,
+      },
+      displayContext: undefined,
+    };
+  }
+  const displayContext = newDisplayContext(eventId, values);
+  return {
+    pointer: displayContextPointer(displayContext),
+    displayContext,
+  };
+}
+
+async function insertMorningBriefContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "morning_brief" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx.insert(chatMorningBriefContext).values({
+    id: context.id,
+    chatThreadId: context.chatThreadId,
+    deliveryId: context.deliveryId,
+    timezone: context.timezone,
+    triggeredAt: context.triggeredAt,
+    createdAt,
+  });
+}
+
+async function insertAgentphoneDisplayContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "agentphone" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx.insert(chatAgentphoneContext).values({
+    id: context.id,
+    chatThreadId: context.chatThreadId,
+    messageText: context.messageText,
+    threadContext: context.threadContext,
+    messageId: context.messageId,
+    rootMessageId: context.rootMessageId,
+    conversationId: context.conversationId,
+    channel: context.channel,
+    isGroup: context.isGroup,
+    phoneHandle: context.phoneHandle,
+    fromNumber: context.fromNumber,
+    toNumber: context.toNumber,
+    userLinkId: context.userLinkId,
+    agentphoneAgentId: context.agentphoneAgentId,
+    createdAt,
+  });
+}
+
+async function insertTelegramDisplayContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "telegram" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx.insert(chatTelegramContext).values({
+    id: context.id,
+    chatThreadId: context.chatThreadId,
+    chatId: context.chatId,
+    messageId: context.messageId,
+    messageThreadId: context.messageThreadId,
+    messageText: context.messageText,
+    threadContext: context.threadContext,
+    rootMessageId: context.rootMessageId,
+    thinkingMessageId: context.thinkingMessageId,
+    userLinkId: context.userLinkId,
+    userLinkKind: context.userLinkKind,
+    chatType: context.chatType,
+    senderUserId: context.senderUserId,
+    senderDisplayName: context.senderDisplayName,
+    senderUsername: context.senderUsername,
+    senderLanguage: context.senderLanguage,
+    createdAt,
+  });
+}
+
+async function insertAgentRunDisplayContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "agent_run" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx
+    .insert(chatAgentRunContext)
+    .values({
+      id: context.id,
+      sourceChatThreadId: context.sourceChatThreadId,
+      sourceAgentId: context.sourceAgentId,
+      createdAt,
+    })
+    .onConflictDoNothing({ target: chatAgentRunContext.id });
+}
+
+async function insertDisplayContext(
+  tx: ChatEventWriteTransaction,
+  context: NewDisplayContext,
+  createdAt: Date,
+): Promise<void> {
+  if (context.type === "agent_run") {
+    await insertAgentRunDisplayContext(tx, context, createdAt);
+    return;
+  }
+  if (context.type === "slack") {
+    await tx.insert(chatSlackContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      channelId: context.channelId,
+      messageTs: context.messageTs,
+      conversationContext: context.conversationContext,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      mentionDisplayNames: context.mentionDisplayNames,
+      senderDisplayName: context.senderDisplayName,
+      senderUserId: context.senderUserId,
+      channelType: context.channelType,
+      threadTs: context.threadTs,
+      routeThreadTs: context.routeThreadTs,
+      createdAt,
+    });
+    return;
+  }
+  if (context.type === "feishu") {
+    await tx.insert(chatFeishuContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      conversationHistory: context.conversationHistory,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      chatType: context.chatType,
+      chatId: context.chatId,
+      messageId: context.messageId,
+      threadId: context.threadId,
+      replyInThread: context.replyInThread,
+      reactionId: context.reactionId,
+      senderOpenId: context.senderOpenId,
+      connectionId: context.connectionId,
+      installationId: context.installationId,
+      createdAt,
+    });
+    return;
+  }
+  if (context.type === "teams") {
+    await tx.insert(chatTeamsContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      tenantId: context.tenantId,
+      teamId: context.teamId,
+      channelId: context.channelId,
+      conversationId: context.conversationId,
+      conversationType: context.conversationType,
+      activityId: context.activityId,
+      threadContext: context.threadContext,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      tenantName: context.tenantName,
+      teamName: context.teamName,
+      threadId: context.threadId,
+      serviceUrl: context.serviceUrl,
+      teamsAppId: context.teamsAppId,
+      senderUserId: context.senderUserId,
+      senderDisplayName: context.senderDisplayName,
+      senderPrincipalName: context.senderPrincipalName,
+      connectionId: context.connectionId,
+      createdAt,
+    });
+    return;
+  }
+  if (context.type === "telegram") {
+    await insertTelegramDisplayContext(tx, context, createdAt);
+    return;
+  }
+  if (context.type === "github") {
+    await tx.insert(chatGithubContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      repo: context.repo,
+      subjectNumber: context.subjectNumber,
+      subjectKind: context.subjectKind,
+      triggerCommentId: context.triggerCommentId,
+      issueContext: context.issueContext,
+      messageText: context.messageText,
+      triggerReactionId: context.triggerReactionId,
+      triggerCommentBody: context.triggerCommentBody,
+      createdAt,
+    });
+    return;
+  }
+  if (context.type === "agentphone") {
+    return insertAgentphoneDisplayContext(tx, context, createdAt);
+  }
+  if (context.type === "automation") {
+    await tx.insert(chatAutomationContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      automationId: context.automationId,
+      workflowName: context.workflowName,
+      eventType: context.workflowAutomationEventType,
+      eventPayload: context.workflowAutomationEventPayload,
+      triggerBrief: context.triggerBrief,
+      createdAt,
+    });
+    return;
+  }
+  if (context.type === "morning_brief") {
+    return insertMorningBriefContext(tx, context, createdAt);
+  }
+}
+
+function persistedChatEventValues(
+  values: NewChatEvent,
+  overrides?: Partial<
+    Pick<ChatEventInsert, "id" | "contextType" | "contextId">
+  >,
+): PersistedChatEvent {
+  return {
     ...values,
-    ...(values.eventType === "input.automation" ||
-    values.eventType === "queue.automation_resumed"
+    ...overrides,
+    ...(values.eventType === "input.prompt" ||
+    values.eventType === "input.rejected" ||
+    values.eventType === "input.automation" ||
+    values.eventType === "input.goal" ||
+    values.eventType === "input.budget"
       ? { content: null }
       : {}),
-    eventType: values.eventType,
-    ...(runLifecycleEvent === null ? {} : { runLifecycleEvent }),
   };
 }
 
@@ -245,14 +958,30 @@ async function reserveChatEventSeqIds(
   const [thread] = await tx
     .update(chatThreads)
     .set({
-      lastChatMessageSeqId: sql`${chatThreads.lastChatMessageSeqId} + ${count}`,
+      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + ${count}`,
     })
     .where(eq(chatThreads.id, chatThreadId))
-    .returning({ lastSeqId: chatThreads.lastChatMessageSeqId });
+    .returning({ lastSeqId: chatThreads.lastChatEventSeqId });
   if (!thread) {
     throw new Error(`Chat thread ${chatThreadId} not found`);
   }
   return thread.lastSeqId - count + 1;
+}
+
+async function releaseChatEventSeqId(
+  tx: ChatEventWriteTransaction,
+  chatThreadId: string,
+): Promise<void> {
+  const [thread] = await tx
+    .update(chatThreads)
+    .set({
+      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} - 1`,
+    })
+    .where(eq(chatThreads.id, chatThreadId))
+    .returning({ id: chatThreads.id });
+  if (!thread) {
+    throw new Error(`Chat thread ${chatThreadId} not found`);
+  }
 }
 
 async function addSeqIdsToEvents(
@@ -290,46 +1019,62 @@ export async function insertChatEvent(
   values: AppendChatEvent,
   conflict: InsertChatEventConflict = "none",
 ): Promise<ChatEventCommandResult | null> {
+  const eventId = values.id ?? randomUUID();
+  const displayContext = newDisplayContext(eventId, values);
   const [valueWithSeqId] = await addSeqIdsToEvents(tx, [
-    persistedChatEventValues(values),
+    persistedChatEventValues(values, {
+      id: eventId,
+      ...displayContextPointer(displayContext),
+    }),
   ]);
   if (!valueWithSeqId) {
     throw new Error("chat event seq_id was not assigned");
   }
 
-  const query = tx.insert(chatMessages).values(valueWithSeqId);
+  const query = tx.insert(chatEvents).values(valueWithSeqId);
   const rows =
     conflict === "any"
       ? await query.onConflictDoNothing().returning({
-          id: chatMessages.id,
-          createdAt: chatMessages.createdAt,
-          seqId: chatMessages.seqId,
+          id: chatEvents.id,
+          createdAt: chatEvents.createdAt,
+          seqId: chatEvents.seqId,
         })
       : conflict === "id"
-        ? await query
-            .onConflictDoNothing({ target: chatMessages.id })
-            .returning({
-              id: chatMessages.id,
-              createdAt: chatMessages.createdAt,
-              seqId: chatMessages.seqId,
-            })
+        ? await query.onConflictDoNothing({ target: chatEvents.id }).returning({
+            id: chatEvents.id,
+            createdAt: chatEvents.createdAt,
+            seqId: chatEvents.seqId,
+          })
         : conflict === "run-lifecycle"
           ? await query
               .onConflictDoNothing({
-                target: chatMessages.runId,
-                where: isNotNull(chatMessages.runLifecycleEvent),
+                target: chatEvents.runId,
+                where: chatEventTerminalPredicate(chatEvents.eventType),
               })
               .returning({
-                id: chatMessages.id,
-                createdAt: chatMessages.createdAt,
-                seqId: chatMessages.seqId,
+                id: chatEvents.id,
+                createdAt: chatEvents.createdAt,
+                seqId: chatEvents.seqId,
               })
           : await query.returning({
-              id: chatMessages.id,
-              createdAt: chatMessages.createdAt,
-              seqId: chatMessages.seqId,
+              id: chatEvents.id,
+              createdAt: chatEvents.createdAt,
+              seqId: chatEvents.seqId,
             });
 
+  if (rows.length === 0) {
+    // A rejected idempotent write is not part of the canonical stream, so it
+    // must not consume the thread's next cursor.
+    await releaseChatEventSeqId(tx, values.chatThreadId);
+  } else {
+    const inserted = rows[0];
+    if (!inserted) {
+      throw new Error("Inserted chat event result is missing");
+    }
+    if (displayContext) {
+      await insertDisplayContext(tx, displayContext, inserted.createdAt);
+    }
+  }
   return rows[0] ?? null;
 }
 
@@ -344,26 +1089,28 @@ export async function insertChatEvents(
 
   const valuesWithSeqIds = await addSeqIdsToEvents(
     tx,
-    values.map(persistedChatEventValues),
+    values.map((value) => {
+      return persistedChatEventValues(value);
+    }),
   );
-  const query = tx.insert(chatMessages).values([...valuesWithSeqIds]);
+  const query = tx.insert(chatEvents).values([...valuesWithSeqIds]);
   if (conflict === "any") {
     return await query.onConflictDoNothing().returning({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-      seqId: chatMessages.seqId,
-      sequenceNumber: chatMessages.sequenceNumber,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     });
   }
   return await query
     .onConflictDoNothing({
-      target: [chatMessages.runId, chatMessages.sequenceNumber],
+      target: [chatEvents.runId, chatEvents.runEventSequenceNumber],
     })
     .returning({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-      seqId: chatMessages.seqId,
-      sequenceNumber: chatMessages.sequenceNumber,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     });
 }
 
@@ -372,23 +1119,37 @@ export async function replaceChatEvent(
   tx: ChatEventWriteTransaction,
   eventId: string,
   replacement: NewChatEvent,
+  options?: { readonly preserveAssetRefs?: boolean },
 ): Promise<ChatEventCommandResult | null> {
   const [target] = await tx
     .select({
-      chatThreadId: chatMessages.chatThreadId,
-      createdAt: chatMessages.createdAt,
-      eventType: chatEventTypeSql(),
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      createdAt: chatEvents.createdAt,
+      eventType: chatEvents.eventType,
+      contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
     })
-    .from(chatMessages)
-    .where(eq(chatMessages.id, eventId))
+    .from(chatEvents)
+    .where(eq(chatEvents.id, eventId))
     .limit(1);
   if (!target) {
     throw new Error("Cannot revoke a missing chat event");
   }
+  return await replaceLoadedChatEvent(tx, target, replacement, options);
+}
+
+/** Append a replacement for a target already loaded by an authoritative read. */
+export async function replaceLoadedChatEvent(
+  tx: ChatEventWriteTransaction,
+  target: LoadedChatEventReplacementTarget,
+  replacement: NewChatEvent,
+  options?: { readonly preserveAssetRefs?: boolean },
+): Promise<ChatEventCommandResult | null> {
   if (target.chatThreadId !== replacement.chatThreadId) {
     throw new Error("Cannot revoke a chat event from another thread");
   }
-  if (replacement.id === eventId) {
+  if (replacement.id === target.id) {
     throw new Error("A chat event cannot revoke itself");
   }
   const createdAt =
@@ -403,21 +1164,61 @@ export async function replaceChatEvent(
     );
   }
 
+  const replacementId = replacement.id ?? randomUUID();
+  const { pointer: contextPointer, displayContext } = replacementContext(
+    target,
+    replacementId,
+    replacement,
+  );
   const seqId = await reserveChatEventSeqIds(tx, replacement.chatThreadId, 1);
   const rows = await tx
-    .insert(chatMessages)
+    .insert(chatEvents)
     .values({
-      ...persistedChatEventValues({ ...replacement, createdAt }),
+      ...persistedChatEventValues(
+        { ...replacement, createdAt },
+        {
+          id: replacementId,
+          ...contextPointer,
+        },
+      ),
       seqId,
-      revokesEventId: eventId,
+      revokesEventId: target.id,
     })
     .onConflictDoNothing()
     .returning({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-      seqId: chatMessages.seqId,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
     });
-  return rows[0] ?? null;
+  const inserted = rows[0];
+  if (!inserted) {
+    return null;
+  }
+
+  if (displayContext) {
+    await insertDisplayContext(tx, displayContext, inserted.createdAt);
+  }
+  if (options?.preserveAssetRefs !== false) {
+    await tx
+      .insert(chatEventAssetRefs)
+      .select(
+        tx
+          .select({
+            chatEventId: sql`${inserted.id}`
+              .mapWith(chatEventAssetRefs.chatEventId)
+              .as("chat_event_id"),
+            assetId: chatEventAssetRefs.assetId,
+            position: chatEventAssetRefs.position,
+            createdAt: sql`now()`
+              .mapWith(chatEventAssetRefs.createdAt)
+              .as("created_at"),
+          })
+          .from(chatEventAssetRefs)
+          .where(eq(chatEventAssetRefs.chatEventId, target.id)),
+      )
+      .onConflictDoNothing();
+  }
+  return inserted;
 }
 
 /** Append a payload-free revocation event for an existing chat event. */

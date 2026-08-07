@@ -1,148 +1,228 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 import { userPermissionGrantsByAgent } from "../permission-allow/permission-allow-signals.ts";
 import { withCleanup } from "../utils.ts";
 import {
   agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
-  type AgentConnectorAuthorizations,
 } from "./agent-connector-authorizations.ts";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
+import type {
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../connector-domain.ts";
+import {
+  customConnectorAuthorizationReloadVersion$,
+  reloadCustomConnectorAuthorizedAgents$,
+} from "./settings/custom-connectors.ts";
 
-export interface ComposerConnectorAuthorizationSignals {
-  readonly agentId$: Computed<Promise<string | null>>;
-  readonly authorizations$: Computed<
-    Promise<AgentConnectorAuthorizations | null>
-  >;
+export interface ComposerConnectorAuthorizationState {
+  readonly agentId: string;
+  readonly enabledConnectorSlugs: readonly ConnectorSlug[];
+  readonly enabledCustomConnectorIds: readonly string[];
 }
 
-export interface ComposerConnectorSignals extends ComposerConnectorAuthorizationSignals {
-  readonly authorizeConnector$: Command<
-    Promise<void>,
-    [ConnectorRef, AbortSignal]
+export type ComposerConnectorAuthorizationTarget =
+  | {
+      readonly kind: "builtin";
+      readonly connectorSlug: ConnectorSlug;
+    }
+  | {
+      readonly kind: "custom";
+      readonly connectorId: string;
+    };
+
+export interface ComposerConnectorUiState {
+  readonly showAddDialog: boolean;
+  readonly pendingConnectorSlug: ConnectorSlug | null;
+  readonly selectedConnectorSlug: ConnectorSlug | null;
+  readonly savingConnectorSlug: ConnectorSlug | null;
+  readonly selectedCustomConnectorId: string | null;
+  readonly savingCustomConnectorId: string | null;
+  readonly addDialogSearch: string;
+  readonly popoverSearch: string;
+  readonly popoverSortOrder: readonly string[] | null;
+  readonly permissionConnectorSlug: ConnectorSlug | null;
+}
+
+export interface ComposerConnectorSignals {
+  readonly connectorAuthorization$: Computed<
+    Promise<ComposerConnectorAuthorizationState>
   >;
-  readonly deauthorizeConnector$: Command<
+  readonly setConnectorAuthorization$: Command<
     Promise<void>,
-    [ConnectorRef, AbortSignal]
+    [ComposerConnectorAuthorizationTarget, boolean, AbortSignal]
   >;
-  readonly showAddDialog$: Computed<boolean>;
-  readonly setShowAddDialog$: Command<void, [boolean]>;
-  readonly pendingConnectorRef$: Computed<ConnectorRef | null>;
-  readonly setPendingConnectorRef$: Command<void, [ConnectorRef | null]>;
-  readonly selectedConnectorRef$: Computed<ConnectorRef | null>;
-  readonly setSelectedConnectorRef$: Command<void, [ConnectorRef | null]>;
-  readonly savingConnectorRef$: Computed<ConnectorRef | null>;
-  readonly setSavingConnectorRef$: Command<void, [ConnectorRef | null]>;
-  readonly addDialogSearch$: Computed<string>;
-  readonly setAddDialogSearch$: Command<void, [string]>;
-  readonly popoverSearch$: Computed<string>;
-  readonly setPopoverSearch$: Command<void, [string]>;
-  readonly popoverSortOrder$: Computed<readonly ConnectorRef[] | null>;
-  readonly setPopoverSortOrder$: Command<
+  readonly connectorUiState$: Computed<ComposerConnectorUiState>;
+  readonly updateConnectorUiState$: Command<
     void,
-    [readonly ConnectorRef[] | null]
+    [Partial<ComposerConnectorUiState>]
   >;
-  readonly computerUseDownloadDialogOpen$: Computed<boolean>;
-  readonly setComputerUseDownloadDialogOpen$: Command<void, [boolean]>;
-  readonly permissionConnectorRef$: Computed<ConnectorRef | null>;
-  readonly setPermissionConnectorRef$: Command<void, [ConnectorRef | null]>;
-  readonly permissionMetadata$: Computed<
-    Promise<PublicConnectorCatalogPermissionDetail | null>
+  readonly connectorPermissionMetadata$: Computed<
+    Promise<PlatformConnectorPermissionMetadata | null>
   >;
-  readonly permissionGrants$: Computed<
-    Promise<readonly UserPermissionGrantResponse[]>
+  readonly connectorPermissionGrants$: Computed<
+    Promise<readonly PlatformUserPermissionGrant[]>
   >;
 }
 
-type AgentIdValue = string | null | Promise<string | null>;
+interface AgentCustomConnectorAuthorizationRequestBroker {
+  load(params: {
+    readonly createClient: ZeroClientFactory;
+    readonly agentId: string;
+    readonly reloadGeneration: number;
+  }): Promise<readonly string[]>;
+}
 
-function createStateBinding<T>(initialValue: T) {
-  const internal$ = state(initialValue);
+interface ResolvedAgentCustomConnectorAuthorizationRequest {
+  readonly key: string;
+  readonly value: readonly string[];
+}
+
+function agentCustomConnectorAuthorizationRequestKey(params: {
+  readonly agentId: string;
+  readonly reloadGeneration: number;
+}): string {
+  return JSON.stringify([params.reloadGeneration, params.agentId]);
+}
+
+function createAgentCustomConnectorAuthorizationRequestBroker(): AgentCustomConnectorAuthorizationRequestBroker {
+  const pendingRequestsByClient = new WeakMap<
+    ZeroClientFactory,
+    Map<string, Promise<readonly string[]>>
+  >();
+  const latestRequestedKeyByClient = new WeakMap<ZeroClientFactory, string>();
+  const latestResolvedByClient = new WeakMap<
+    ZeroClientFactory,
+    ResolvedAgentCustomConnectorAuthorizationRequest
+  >();
+
   return {
-    value$: computed((get) => {
-      return get(internal$);
-    }),
-    set$: command(({ set }, value: T) => {
-      set(internal$, value);
-    }),
+    load(params) {
+      const key = agentCustomConnectorAuthorizationRequestKey(params);
+      latestRequestedKeyByClient.set(params.createClient, key);
+      const resolved = latestResolvedByClient.get(params.createClient);
+      if (resolved?.key === key) {
+        return Promise.resolve(resolved.value);
+      }
+      let pendingRequests = pendingRequestsByClient.get(params.createClient);
+      if (!pendingRequests) {
+        pendingRequests = new Map();
+        pendingRequestsByClient.set(params.createClient, pendingRequests);
+      }
+      const pendingRequest = pendingRequests.get(key);
+      if (pendingRequest) {
+        return pendingRequest;
+      }
+
+      const load = async (): Promise<readonly string[]> => {
+        const client = params.createClient(zeroAgentCustomConnectorsContract);
+        const result = await accept(
+          client.get({ params: { id: params.agentId } }),
+          [200],
+        );
+        const value = result.body.enabledIds;
+        if (latestRequestedKeyByClient.get(params.createClient) === key) {
+          latestResolvedByClient.set(params.createClient, { key, value });
+        }
+        return value;
+      };
+      const sharedRequest = withCleanup(load(), () => {
+        pendingRequests.delete(key);
+        if (pendingRequests.size === 0) {
+          pendingRequestsByClient.delete(params.createClient);
+        }
+      });
+      pendingRequests.set(key, sharedRequest);
+      return sharedRequest;
+    },
   };
 }
 
-interface ComposerConnectorUiState {
-  readonly showAddDialog: boolean;
-  readonly pendingConnectorRef: ConnectorRef | null;
-  readonly selectedConnectorRef: ConnectorRef | null;
-  readonly savingConnectorRef: ConnectorRef | null;
-  readonly addDialogSearch: string;
-  readonly popoverSearch: string;
-  readonly popoverSortOrder: readonly ConnectorRef[] | null;
-  readonly computerUseDownloadDialogOpen: boolean;
-  readonly permissionConnectorRef: ConnectorRef | null;
-}
+const agentCustomConnectorAuthorizationRequestBroker$ = computed(() => {
+  return createAgentCustomConnectorAuthorizationRequestBroker();
+});
 
 function initialComposerConnectorUiState(): ComposerConnectorUiState {
   return {
     showAddDialog: false,
-    pendingConnectorRef: null,
-    selectedConnectorRef: null,
-    savingConnectorRef: null,
+    pendingConnectorSlug: null,
+    selectedConnectorSlug: null,
+    savingConnectorSlug: null,
+    selectedCustomConnectorId: null,
+    savingCustomConnectorId: null,
     addDialogSearch: "",
     popoverSearch: "",
     popoverSortOrder: null,
-    computerUseDownloadDialogOpen: false,
-    permissionConnectorRef: null,
+    permissionConnectorSlug: null,
   };
 }
 
-export function createComposerConnectorAuthorizationSignals<
-  T extends AgentIdValue,
->(agentIdSource$: Computed<T>): ComposerConnectorAuthorizationSignals {
-  const agentId$ = computed(async (get): Promise<string | null> => {
-    return await get(agentIdSource$);
+function createAgentIdSignal(
+  agent$: Computed<Promise<ZeroAgentResponse>>,
+): Computed<Promise<string>> {
+  return computed(async (get): Promise<string> => {
+    return (await get(agent$)).agentId;
   });
-  const authorizations$ = computed(
-    async (get): Promise<AgentConnectorAuthorizations | null> => {
-      const agentId = await get(agentId$);
-      if (!agentId) {
-        return null;
-      }
-      return await get(agentConnectorAuthorizations({ agentId }));
-    },
-  );
-  return { agentId$, authorizations$ };
 }
 
-function createConnectorAuthorizationCommands(
-  agentId$: Computed<Promise<string | null>>,
-): Pick<
-  ComposerConnectorSignals,
-  "authorizeConnector$" | "deauthorizeConnector$"
-> {
-  const updateAuthorizedConnectors$ = command(
+function createConnectorAuthorizationSignal(
+  agentId$: Computed<Promise<string>>,
+): Computed<Promise<ComposerConnectorAuthorizationState>> {
+  const authorizations$ = computed(async (get) => {
+    const agentId = await get(agentId$);
+    return await get(agentConnectorAuthorizations({ agentId }));
+  });
+  const customAuthorizations$ = computed(async (get) => {
+    const agentId = await get(agentId$);
+    const reloadGeneration = get(customConnectorAuthorizationReloadVersion$);
+    return await get(agentCustomConnectorAuthorizationRequestBroker$).load({
+      createClient: get(zeroClient$),
+      agentId,
+      reloadGeneration,
+    });
+  });
+
+  return computed(async (get): Promise<ComposerConnectorAuthorizationState> => {
+    const [authorizations, enabledCustomConnectorIds] = await Promise.all([
+      get(authorizations$),
+      get(customAuthorizations$),
+    ]);
+    return {
+      agentId: authorizations.agentId,
+      enabledConnectorSlugs: authorizations.enabledConnectorSlugs,
+      enabledCustomConnectorIds,
+    };
+  });
+}
+
+function createBuiltinConnectorAuthorizationCommand(
+  agentId$: Computed<Promise<string>>,
+): Command<Promise<void>, [ConnectorSlug, boolean, AbortSignal]> {
+  return command(
     async (
       { get, set },
-      operation: "add" | "remove",
-      connectorRef: ConnectorRef,
+      connectorSlug: ConnectorSlug,
+      authorized: boolean,
       signal: AbortSignal,
     ): Promise<void> => {
       const agentId = await get(agentId$);
       signal.throwIfAborted();
-      if (!agentId) {
-        throw new Error("No agent available");
-      }
-
       const client = get(zeroClient$)(zeroUserConnectorsContract);
       await withCleanup(
         accept(
           client.update({
             params: { id: agentId },
-            body: { enabledTypes: [connectorRef], operation },
+            body: {
+              enabledConnectorSlugs: [connectorSlug],
+              operation: authorized ? "add" : "remove",
+            },
             fetchOptions: { signal },
           }),
           [200],
@@ -152,103 +232,120 @@ function createConnectorAuthorizationCommands(
         },
       );
       signal.throwIfAborted();
-
       await set(reloadOnboardingStatus$);
       signal.throwIfAborted();
     },
   );
-
-  const authorizeConnector$ = command(
-    async (
-      { set },
-      connectorRef: ConnectorRef,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      await set(updateAuthorizedConnectors$, "add", connectorRef, signal);
-    },
-  );
-
-  const deauthorizeConnector$ = command(
-    async (
-      { set },
-      connectorRef: ConnectorRef,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      await set(updateAuthorizedConnectors$, "remove", connectorRef, signal);
-    },
-  );
-
-  return {
-    authorizeConnector$,
-    deauthorizeConnector$,
-  };
 }
 
-export function createComposerConnectorSignals<T extends AgentIdValue>(
-  agentIdSource$: Computed<T>,
-  authorization?: ComposerConnectorAuthorizationSignals,
-): ComposerConnectorSignals {
-  const localAgentId$ = computed(async (get): Promise<string | null> => {
-    return await get(agentIdSource$);
-  });
-  const resolvedAuthorization =
-    authorization ?? createComposerConnectorAuthorizationSignals(localAgentId$);
-  const authorizationCommands =
-    createConnectorAuthorizationCommands(localAgentId$);
-  const initial = initialComposerConnectorUiState();
-  const showAddDialog = createStateBinding(initial.showAddDialog);
-  const pendingConnectorRef = createStateBinding(initial.pendingConnectorRef);
-  const selectedConnectorRef = createStateBinding(initial.selectedConnectorRef);
-  const savingConnectorRef = createStateBinding(initial.savingConnectorRef);
-  const addDialogSearch = createStateBinding(initial.addDialogSearch);
-  const popoverSearch = createStateBinding(initial.popoverSearch);
-  const popoverSortOrder = createStateBinding(initial.popoverSortOrder);
-  const computerUseDownloadDialogOpen = createStateBinding(
-    initial.computerUseDownloadDialogOpen,
+function createCustomConnectorAuthorizationCommand(
+  agentId$: Computed<Promise<string>>,
+): Command<Promise<void>, [string, boolean, AbortSignal]> {
+  return command(
+    async (
+      { get, set },
+      connectorId: string,
+      authorized: boolean,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const agentId = await get(agentId$);
+      signal.throwIfAborted();
+      const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+      await withCleanup(
+        accept(
+          client.update({
+            params: { id: agentId },
+            body: {
+              enabledIds: [connectorId],
+              operation: authorized ? "add" : "remove",
+            },
+            fetchOptions: { signal },
+          }),
+          [200],
+        ),
+        () => {
+          set(reloadCustomConnectorAuthorizedAgents$);
+        },
+      );
+    },
   );
-  const permissionConnectorRef = createStateBinding(
-    initial.permissionConnectorRef,
-  );
+}
 
-  const permissionMetadata$ = computed(async (get) => {
-    const connectorRef = get(permissionConnectorRef.value$);
-    if (!connectorRef) {
+function createConnectorAuthorizationCommand(
+  agentId$: Computed<Promise<string>>,
+): ComposerConnectorSignals["setConnectorAuthorization$"] {
+  const setBuiltinAuthorization$ =
+    createBuiltinConnectorAuthorizationCommand(agentId$);
+  const setCustomAuthorization$ =
+    createCustomConnectorAuthorizationCommand(agentId$);
+  return command(
+    async (
+      { set },
+      target: ComposerConnectorAuthorizationTarget,
+      authorized: boolean,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      if (target.kind === "builtin") {
+        await set(
+          setBuiltinAuthorization$,
+          target.connectorSlug,
+          authorized,
+          signal,
+        );
+        return;
+      }
+      await set(
+        setCustomAuthorization$,
+        target.connectorId,
+        authorized,
+        signal,
+      );
+    },
+  );
+}
+
+function createConnectorUiSignals(): Pick<
+  ComposerConnectorSignals,
+  "connectorUiState$" | "updateConnectorUiState$"
+> {
+  const internalUiState$ = state(initialComposerConnectorUiState());
+  const connectorUiState$ = computed((get): ComposerConnectorUiState => {
+    return get(internalUiState$);
+  });
+  const updateConnectorUiState$ = command(
+    ({ set }, patch: Partial<ComposerConnectorUiState>): void => {
+      set(internalUiState$, (current) => {
+        return { ...current, ...patch };
+      });
+    },
+  );
+  return { connectorUiState$, updateConnectorUiState$ };
+}
+
+export function createComposerConnectorSignals(
+  agent$: Computed<Promise<ZeroAgentResponse>>,
+): ComposerConnectorSignals {
+  const agentId$ = createAgentIdSignal(agent$);
+  const ui = createConnectorUiSignals();
+  const connectorPermissionMetadata$ = computed(async (get) => {
+    const connectorSlug = get(ui.connectorUiState$).permissionConnectorSlug;
+    if (!connectorSlug) {
       return null;
     }
-    return await get(firewallPermissionMetadataByConnector({ connectorRef }));
+    return await get(firewallPermissionMetadataByConnector({ connectorSlug }));
   });
-  const permissionGrants$ = computed(
-    async (get): Promise<readonly UserPermissionGrantResponse[]> => {
-      const agentId = await get(localAgentId$);
-      if (!agentId) {
-        return [];
-      }
+  const connectorPermissionGrants$ = computed(
+    async (get): Promise<readonly PlatformUserPermissionGrant[]> => {
+      const agentId = await get(agentId$);
       return await get(userPermissionGrantsByAgent({ agentId }));
     },
   );
 
   return {
-    ...resolvedAuthorization,
-    ...authorizationCommands,
-    showAddDialog$: showAddDialog.value$,
-    setShowAddDialog$: showAddDialog.set$,
-    pendingConnectorRef$: pendingConnectorRef.value$,
-    setPendingConnectorRef$: pendingConnectorRef.set$,
-    selectedConnectorRef$: selectedConnectorRef.value$,
-    setSelectedConnectorRef$: selectedConnectorRef.set$,
-    savingConnectorRef$: savingConnectorRef.value$,
-    setSavingConnectorRef$: savingConnectorRef.set$,
-    addDialogSearch$: addDialogSearch.value$,
-    setAddDialogSearch$: addDialogSearch.set$,
-    popoverSearch$: popoverSearch.value$,
-    setPopoverSearch$: popoverSearch.set$,
-    popoverSortOrder$: popoverSortOrder.value$,
-    setPopoverSortOrder$: popoverSortOrder.set$,
-    computerUseDownloadDialogOpen$: computerUseDownloadDialogOpen.value$,
-    setComputerUseDownloadDialogOpen$: computerUseDownloadDialogOpen.set$,
-    permissionConnectorRef$: permissionConnectorRef.value$,
-    setPermissionConnectorRef$: permissionConnectorRef.set$,
-    permissionMetadata$,
-    permissionGrants$,
+    connectorAuthorization$: createConnectorAuthorizationSignal(agentId$),
+    setConnectorAuthorization$: createConnectorAuthorizationCommand(agentId$),
+    ...ui,
+    connectorPermissionMetadata$,
+    connectorPermissionGrants$,
   };
 }

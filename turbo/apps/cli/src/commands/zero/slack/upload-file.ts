@@ -9,11 +9,11 @@ import type {
 } from "@vm0/api-contracts/contracts/integrations";
 import {
   completeSlackFileUpload,
-  inferWebUploadContentType,
   initSlackFileUpload,
   materializeSlackFileUpload,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/integrations-slack";
+import { inferWebUploadContentType } from "../../../lib/api/domains/web";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface UploadFileOptions {
   readonly file: string;
@@ -93,7 +93,10 @@ async function uploadCanonicalBody(
   }
   const uploadResponse = await fetch(initialized.uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": contentType },
+    headers: {
+      "Content-Type": contentType,
+      ...initialized.uploadHeaders,
+    },
     body: fileContent,
   });
   if (!uploadResponse.ok) {

@@ -1,30 +1,17 @@
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-  type TSESLint,
-} from "@typescript-eslint/utils";
-import {
-  IndexKind,
-  isVariableDeclaration,
-  isVariableDeclarationList,
-  NodeFlags,
-  TypeFlags,
-  type Node,
-  type Symbol as TypeScriptSymbol,
-  type Type,
-  type TypeChecker,
-  type VariableDeclaration,
-} from "typescript";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import {
-  isDrizzleDeclaration,
-  isDrizzleSqlTag as isDrizzleSqlTagExpression,
-  isDrizzleSymbol,
-  isDrizzleWrapperType,
-  isNamedDrizzleSignature,
-  resolvedSymbol,
-} from "../drizzle.ts";
+  importReference,
+  isColumnExpression,
+  isDatabaseExpression,
+  isDrizzleSqlTag,
+  isDrizzleTypeReference,
+  isSchemaTableExpression,
+  localFunctionReturn,
+  memberName,
+  propertyName,
+  resolveLocalExpression,
+} from "../syntax.ts";
 import { createRule } from "../utils.ts";
 
 const RESULT_FIELD_ARGUMENT = new Map<string, number>([
@@ -33,299 +20,476 @@ const RESULT_FIELD_ARGUMENT = new Map<string, number>([
   ["selectDistinct", 0],
   ["selectDistinctOn", 1],
 ]);
-
 const RELATIONAL_RESULT_METHODS = new Set(["findFirst", "findMany"]);
-
-const RESULT_METHOD_NAMES = [
+const RESULT_METHODS = new Set([
   ...RESULT_FIELD_ARGUMENT.keys(),
   ...RELATIONAL_RESULT_METHODS,
-];
-const RESULT_METHOD_HINTS = RESULT_METHOD_NAMES.map((name) => {
-  return name.toLowerCase();
-});
+]);
+const BUILDER_ROOT_METHODS = new Set([
+  "delete",
+  "insert",
+  "select",
+  "selectDistinct",
+  "selectDistinctOn",
+  "update",
+]);
+const BUILDER_CHAIN_METHODS = new Set([
+  "$dynamic",
+  "as",
+  "crossJoin",
+  "crossJoinLateral",
+  "except",
+  "exceptAll",
+  "for",
+  "from",
+  "fullJoin",
+  "groupBy",
+  "having",
+  "innerJoin",
+  "innerJoinLateral",
+  "intersect",
+  "intersectAll",
+  "leftJoin",
+  "leftJoinLateral",
+  "limit",
+  "offset",
+  "onConflictDoNothing",
+  "onConflictDoUpdate",
+  "orderBy",
+  "rightJoin",
+  "rightJoinLateral",
+  "set",
+  "union",
+  "unionAll",
+  "values",
+  "where",
+]);
+const DRIZZLE_SQL_TYPES = new Set(["Aliased", "SQL"]);
+const REVIEWED_DECODER_FACTORIES = new Set([
+  "nullableDriverValueDecoder",
+  "zodDriverValueDecoder",
+  "zodEnumDriverValueDecoder",
+]);
+const REVIEWED_DECODERS = new Set([
+  "pgBooleanDecoder",
+  "pgInt8ToBigIntDecoder",
+  "pgInt8ToSafeIntegerDecoder",
+  "pgIntegerDecoder",
+  "pgNullDecoder",
+  "pgTextDecoder",
+]);
 
-type SelectionTypeStatus = "safe" | "unmapped" | "uninspectable";
+type MessageId =
+  | "resultMethodReference"
+  | "sqlAliasTypeArgument"
+  | "sqlAssertion"
+  | "sqlTypeArgument"
+  | "sqlTypeReference"
+  | "uninspectableRelationalConfig"
+  | "uninspectableResultArguments"
+  | "uninspectableResultDecoder"
+  | "uninspectableResultSelection"
+  | "unmappedResult";
 
-const TERMINAL_TYPE_FLAGS =
-  TypeFlags.Any |
-  TypeFlags.Unknown |
-  TypeFlags.StringLike |
-  TypeFlags.NumberLike |
-  TypeFlags.BigIntLike |
-  TypeFlags.BooleanLike |
-  TypeFlags.ESSymbolLike |
-  TypeFlags.Null |
-  TypeFlags.Undefined |
-  TypeFlags.Void |
-  TypeFlags.Never;
-
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
-    return node.property.name;
-  }
-  if (node.computed && node.property.type === AST_NODE_TYPES.Literal) {
-    return typeof node.property.value === "string" ? node.property.value : null;
-  }
-  return null;
+interface SelectionFinding {
+  readonly messageId: "uninspectableResultSelection" | "unmappedResult";
+  readonly node: TSESTree.Node;
 }
 
-function propertyName(node: TSESTree.Property): string | null {
-  if (!node.computed && node.key.type === AST_NODE_TYPES.Identifier) {
-    return node.key.name;
-  }
-  if (node.key.type === AST_NODE_TYPES.Literal) {
-    return typeof node.key.value === "string" ? node.key.value : null;
-  }
-  return null;
-}
-
-function propertyType(
-  checker: TypeChecker,
-  type: Type,
-  name: string,
-  location: Node,
-): Type | undefined {
-  const symbol = checker.getPropertyOfType(type, name);
-  return symbol === undefined
-    ? undefined
-    : checker.getTypeOfSymbolAtLocation(symbol, location);
-}
-
-function sqlOutputType(
-  checker: TypeChecker,
-  type: Type,
-  location: Node,
-): Type | null {
-  const metadataSymbol = checker.getPropertyOfType(type, "_");
-  const metadataDeclarations = metadataSymbol?.declarations;
-  if (
-    metadataSymbol === undefined ||
-    metadataDeclarations === undefined ||
-    metadataDeclarations.length === 0 ||
-    !metadataDeclarations.every(isDrizzleDeclaration)
-  ) {
-    return null;
-  }
-
-  const metadataType = propertyType(checker, type, "_", location);
-  if (metadataType === undefined) {
-    return null;
-  }
-  const brandType = propertyType(checker, metadataType, "brand", location);
-  if (
-    brandType === undefined ||
-    !brandType.isStringLiteral() ||
-    (brandType.value !== "SQL" && brandType.value !== "SQL.Aliased")
-  ) {
-    return null;
-  }
-
-  return propertyType(checker, metadataType, "type", location) ?? null;
-}
-
-function isUntrustedOutput(type: Type): boolean {
-  return (type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0;
-}
-
-function isDrizzleWrapper(checker: TypeChecker, type: Type): boolean {
-  return isDrizzleWrapperType(checker, type);
-}
-
-function hasUntrustedSqlMetadata(
-  checker: TypeChecker,
-  type: Type,
-  location: Node,
-): boolean {
-  if (
-    checker.getPropertyOfType(type, "_") === undefined ||
-    !isDrizzleWrapper(checker, type)
-  ) {
-    return false;
-  }
-  const metadataType = propertyType(checker, type, "_", location);
-  if (metadataType === undefined) {
-    return false;
-  }
-  const brandType = propertyType(checker, metadataType, "brand", location);
+function isDbStructuredResultSource(source: string): boolean {
   return (
-    brandType?.isStringLiteral() === true &&
-    (brandType.value === "SQL" || brandType.value === "SQL.Aliased")
+    source.startsWith(".") &&
+    /(?:^|\/)lib\/db-structured-result(?:\.[cm]?[jt]s)?$/.test(source)
   );
 }
 
-function containsUntrustedSql(
-  checker: TypeChecker,
-  type: Type,
-  location: Node,
-  visited: Set<Type>,
+function builderRootedAtDatabase(
+  sourceCode: Parameters<typeof isDatabaseExpression>[0],
+  node: TSESTree.Expression,
+  visited = new Set<TSESTree.Expression>(),
 ): boolean {
-  if (visited.has(type)) {
+  const resolved = resolveLocalExpression(sourceCode, node);
+  if (visited.has(resolved)) {
     return false;
   }
-  visited.add(type);
-
-  if (type.isUnionOrIntersection()) {
-    return type.types.some((member) => {
-      return containsUntrustedSql(checker, member, location, visited);
-    });
-  }
-
-  const outputType = sqlOutputType(checker, type, location);
-  if (outputType !== null) {
-    return isUntrustedOutput(outputType);
-  }
-  if (hasUntrustedSqlMetadata(checker, type, location)) {
-    return true;
-  }
-
+  visited.add(resolved);
   if (
-    (type.flags & TERMINAL_TYPE_FLAGS) !== 0 ||
-    isDrizzleWrapper(checker, type) ||
-    checker.isArrayType(type) ||
-    checker.isTupleType(type) ||
-    type.getCallSignatures().length > 0
+    resolved.type !== AST_NODE_TYPES.CallExpression ||
+    resolved.callee.type !== AST_NODE_TYPES.MemberExpression
   ) {
     return false;
   }
+  const name = memberName(resolved.callee);
+  if (name !== null && BUILDER_ROOT_METHODS.has(name)) {
+    return isDatabaseExpression(sourceCode, resolved.callee.object);
+  }
+  return (
+    name !== null &&
+    BUILDER_CHAIN_METHODS.has(name) &&
+    builderRootedAtDatabase(sourceCode, resolved.callee.object, visited)
+  );
+}
 
-  for (const property of checker.getPropertiesOfType(type)) {
-    const propertyType = checker.getTypeOfSymbolAtLocation(property, location);
-    if (containsUntrustedSql(checker, propertyType, location, visited)) {
-      return true;
+function relationalQueryRootedAtDatabase(
+  sourceCode: Parameters<typeof isDatabaseExpression>[0],
+  node: TSESTree.Expression,
+): boolean {
+  const tableMember = resolveLocalExpression(sourceCode, node);
+  if (tableMember.type !== AST_NODE_TYPES.MemberExpression) {
+    return false;
+  }
+  const queryMember = resolveLocalExpression(sourceCode, tableMember.object);
+  return (
+    queryMember.type === AST_NODE_TYPES.MemberExpression &&
+    memberName(queryMember) === "query" &&
+    isDatabaseExpression(sourceCode, queryMember.object)
+  );
+}
+
+function isResultMethodMember(
+  sourceCode: Parameters<typeof isDatabaseExpression>[0],
+  node: TSESTree.MemberExpression,
+): boolean {
+  const name = memberName(node);
+  if (name === null || !RESULT_METHODS.has(name)) {
+    return false;
+  }
+  if (
+    name === "select" ||
+    name === "selectDistinct" ||
+    name === "selectDistinctOn"
+  ) {
+    return isDatabaseExpression(sourceCode, node.object);
+  }
+  if (name === "returning") {
+    return builderRootedAtDatabase(sourceCode, node.object);
+  }
+  return relationalQueryRootedAtDatabase(sourceCode, node.object);
+}
+
+function isRawSqlExpression(
+  sourceCode: Parameters<typeof isDrizzleSqlTag>[0],
+  node: TSESTree.Expression,
+  visited = new Set<TSESTree.Expression>(),
+): boolean {
+  const resolved = resolveLocalExpression(sourceCode, node);
+  if (visited.has(resolved)) {
+    return false;
+  }
+  visited.add(resolved);
+  if (resolved.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+    return isDrizzleSqlTag(sourceCode, resolved.tag);
+  }
+  if (
+    resolved.type === AST_NODE_TYPES.CallExpression &&
+    resolved.callee.type === AST_NODE_TYPES.MemberExpression
+  ) {
+    const name = memberName(resolved.callee);
+    if (name === "mapWith") {
+      return false;
+    }
+    if (name === "as") {
+      return isRawSqlExpression(sourceCode, resolved.callee.object, visited);
     }
   }
+  if (resolved.type === AST_NODE_TYPES.ConditionalExpression) {
+    return (
+      isRawSqlExpression(sourceCode, resolved.consequent, visited) ||
+      isRawSqlExpression(sourceCode, resolved.alternate, visited)
+    );
+  }
+  if (resolved.type === AST_NODE_TYPES.LogicalExpression) {
+    return (
+      isRawSqlExpression(sourceCode, resolved.left, visited) ||
+      isRawSqlExpression(sourceCode, resolved.right, visited)
+    );
+  }
+  if (resolved.type === AST_NODE_TYPES.CallExpression) {
+    const returned = localFunctionReturn(sourceCode, resolved);
+    return (
+      returned !== null && isRawSqlExpression(sourceCode, returned, visited)
+    );
+  }
+  return false;
+}
 
-  const stringValueType = checker.getIndexTypeOfType(type, IndexKind.String);
+function reviewedDecoderImport(
+  sourceCode: Parameters<typeof importReference>[0],
+  node: TSESTree.Expression,
+): string | null {
+  const resolved = resolveLocalExpression(sourceCode, node);
+  if (resolved.type === AST_NODE_TYPES.Identifier) {
+    const imported = importReference(sourceCode, resolved);
+    return imported !== null &&
+      !imported.isTypeOnly &&
+      isDbStructuredResultSource(imported.source)
+      ? imported.importedName
+      : null;
+  }
+  if (resolved.type !== AST_NODE_TYPES.MemberExpression) {
+    return null;
+  }
+  const object = resolveLocalExpression(sourceCode, resolved.object);
+  if (object.type !== AST_NODE_TYPES.Identifier) {
+    return null;
+  }
+  const imported = importReference(sourceCode, object);
+  return imported?.importedName === "*" &&
+    isDbStructuredResultSource(imported.source)
+    ? memberName(resolved)
+    : null;
+}
+
+function hasReviewedDecoder(
+  sourceCode: Parameters<typeof importReference>[0],
+  node: TSESTree.Expression,
+  visited = new Set<TSESTree.Expression>(),
+): boolean {
+  const resolved = resolveLocalExpression(sourceCode, node);
+  if (visited.has(resolved)) {
+    return false;
+  }
+  visited.add(resolved);
+  if (isColumnExpression(sourceCode, resolved)) {
+    return true;
+  }
+  const importedName = reviewedDecoderImport(sourceCode, resolved);
+  if (importedName !== null && REVIEWED_DECODERS.has(importedName)) {
+    return true;
+  }
+  if (resolved.type !== AST_NODE_TYPES.CallExpression) {
+    return false;
+  }
+  const factoryName = reviewedDecoderImport(sourceCode, resolved.callee);
+  if (factoryName === null || !REVIEWED_DECODER_FACTORIES.has(factoryName)) {
+    return false;
+  }
+  const argument = resolved.arguments[0];
   if (
-    stringValueType !== undefined &&
-    containsUntrustedSql(checker, stringValueType, location, visited)
+    resolved.arguments.length !== 1 ||
+    argument === undefined ||
+    argument.type === AST_NODE_TYPES.SpreadElement
+  ) {
+    return false;
+  }
+  if (
+    factoryName === "zodDriverValueDecoder" ||
+    factoryName === "zodEnumDriverValueDecoder"
   ) {
     return true;
   }
-  const numberValueType = checker.getIndexTypeOfType(type, IndexKind.Number);
-  return (
-    numberValueType !== undefined &&
-    containsUntrustedSql(checker, numberValueType, location, visited)
-  );
+  return hasReviewedDecoder(sourceCode, argument, visited);
 }
 
-function combineSelectionTypeStatus(
-  current: SelectionTypeStatus,
-  next: SelectionTypeStatus,
-): SelectionTypeStatus {
-  if (current === "unmapped" || next === "unmapped") {
-    return "unmapped";
+function selectionFindings(
+  sourceCode: Parameters<typeof isDrizzleSqlTag>[0],
+  node: TSESTree.Node,
+  allowUninspectable: boolean,
+  visited: Set<TSESTree.Node>,
+): readonly SelectionFinding[] {
+  if (visited.has(node)) {
+    return [];
   }
-  if (current === "uninspectable" || next === "uninspectable") {
-    return "uninspectable";
-  }
-  return "safe";
-}
-
-function selectionTypeStatus(
-  checker: TypeChecker,
-  type: Type,
-  location: Node,
-  visited: Set<Type>,
-): SelectionTypeStatus {
-  if (visited.has(type)) {
-    return "safe";
-  }
-  visited.add(type);
-
-  if (type.isUnion()) {
-    return type.types.reduce<SelectionTypeStatus>((status, member) => {
-      return combineSelectionTypeStatus(
-        status,
-        selectionTypeStatus(checker, member, location, visited),
-      );
-    }, "safe");
-  }
-
-  const outputType = sqlOutputType(checker, type, location);
-  if (outputType !== null) {
-    return isUntrustedOutput(outputType) ? "unmapped" : "safe";
-  }
-  if (hasUntrustedSqlMetadata(checker, type, location)) {
-    return "unmapped";
-  }
-  if (isDrizzleWrapper(checker, type)) {
-    return "safe";
-  }
-
-  if ((type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0) {
-    return "uninspectable";
-  }
-  if ((type.flags & TERMINAL_TYPE_FLAGS) !== 0) {
-    return "safe";
-  }
-
-  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
-    const constraint = checker.getBaseConstraintOfType(type);
-    return constraint === undefined
-      ? "uninspectable"
-      : selectionTypeStatus(checker, constraint, location, visited);
-  }
+  visited.add(node);
 
   if (
-    checker.isArrayType(type) ||
-    checker.isTupleType(type) ||
-    type.getCallSignatures().length > 0
+    node.type === AST_NODE_TYPES.TSAsExpression ||
+    node.type === AST_NODE_TYPES.TSNonNullExpression ||
+    node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    node.type === AST_NODE_TYPES.TSTypeAssertion
   ) {
-    return "uninspectable";
-  }
-
-  let status: SelectionTypeStatus = "safe";
-  let inspectedMember = false;
-  for (const property of checker.getPropertiesOfType(type)) {
-    inspectedMember = true;
-    const propertyType = checker.getTypeOfSymbolAtLocation(property, location);
-    status = combineSelectionTypeStatus(
-      status,
-      selectionTypeStatus(checker, propertyType, location, visited),
+    return selectionFindings(
+      sourceCode,
+      node.expression,
+      allowUninspectable,
+      visited,
     );
   }
-
-  const stringValueType = checker.getIndexTypeOfType(type, IndexKind.String);
-  if (stringValueType !== undefined) {
-    inspectedMember = true;
-    status = combineSelectionTypeStatus(
-      status,
-      selectionTypeStatus(checker, stringValueType, location, visited),
+  if (node.type === AST_NODE_TYPES.Identifier) {
+    if (isSchemaTableExpression(sourceCode, node)) {
+      return [];
+    }
+    const resolved = resolveLocalExpression(sourceCode, node);
+    if (resolved !== node) {
+      return selectionFindings(
+        sourceCode,
+        resolved,
+        allowUninspectable,
+        visited,
+      );
+    }
+    return allowUninspectable
+      ? [{ node, messageId: "uninspectableResultSelection" }]
+      : [];
+  }
+  if (node.type === AST_NODE_TYPES.ObjectExpression) {
+    return node.properties.flatMap((property) => {
+      if (property.type === AST_NODE_TYPES.SpreadElement) {
+        return selectionFindings(sourceCode, property.argument, true, visited);
+      }
+      if (property.kind !== "init" || property.method) {
+        return [{ node: property, messageId: "uninspectableResultSelection" }];
+      }
+      return selectionFindings(sourceCode, property.value, false, visited);
+    });
+  }
+  if (node.type === AST_NODE_TYPES.ArrayExpression) {
+    return node.elements.flatMap((element) => {
+      if (element === null) {
+        return [];
+      }
+      return selectionFindings(
+        sourceCode,
+        element.type === AST_NODE_TYPES.SpreadElement
+          ? element.argument
+          : element,
+        element.type === AST_NODE_TYPES.SpreadElement,
+        visited,
+      );
+    });
+  }
+  if (node.type === AST_NODE_TYPES.ConditionalExpression) {
+    return [
+      ...selectionFindings(
+        sourceCode,
+        node.consequent,
+        allowUninspectable,
+        visited,
+      ),
+      ...selectionFindings(
+        sourceCode,
+        node.alternate,
+        allowUninspectable,
+        visited,
+      ),
+    ];
+  }
+  if (node.type === AST_NODE_TYPES.LogicalExpression) {
+    return [
+      ...selectionFindings(sourceCode, node.left, allowUninspectable, visited),
+      ...selectionFindings(sourceCode, node.right, allowUninspectable, visited),
+    ];
+  }
+  if (node.type === AST_NODE_TYPES.CallExpression) {
+    if (
+      node.callee.type === AST_NODE_TYPES.MemberExpression &&
+      memberName(node.callee) === "mapWith"
+    ) {
+      return [];
+    }
+    const returned = localFunctionReturn(sourceCode, node);
+    if (returned !== null) {
+      return selectionFindings(
+        sourceCode,
+        returned,
+        allowUninspectable,
+        visited,
+      );
+    }
+    return isRawSqlExpression(sourceCode, node)
+      ? [{ node, messageId: "unmappedResult" }]
+      : [];
+  }
+  if (node.type === AST_NODE_TYPES.ExpressionStatement) {
+    return selectionFindings(
+      sourceCode,
+      node.expression,
+      allowUninspectable,
+      visited,
     );
   }
-  const numberValueType = checker.getIndexTypeOfType(type, IndexKind.Number);
-  if (numberValueType !== undefined) {
-    inspectedMember = true;
-    status = combineSelectionTypeStatus(
-      status,
-      selectionTypeStatus(checker, numberValueType, location, visited),
+  if (node.type === AST_NODE_TYPES.ReturnStatement && node.argument !== null) {
+    return selectionFindings(
+      sourceCode,
+      node.argument,
+      allowUninspectable,
+      visited,
     );
   }
-
-  return inspectedMember ? status : "uninspectable";
+  return node.type === AST_NODE_TYPES.TaggedTemplateExpression &&
+    isRawSqlExpression(sourceCode, node)
+    ? [{ node, messageId: "unmappedResult" }]
+    : [];
 }
 
-function selectionResultTypeStatus(
-  checker: TypeChecker,
-  type: Type,
-  location: Node,
-): SelectionTypeStatus {
-  const signatures = type.getCallSignatures();
-  if (signatures.length === 0) {
-    return selectionTypeStatus(checker, type, location, new Set<Type>());
+function relationalExtras(
+  sourceCode: Parameters<typeof isDrizzleSqlTag>[0],
+  node: TSESTree.Node,
+): readonly SelectionFinding[] | null {
+  const expression =
+    node.type === AST_NODE_TYPES.Identifier
+      ? resolveLocalExpression(sourceCode, node)
+      : node;
+  if (expression.type !== AST_NODE_TYPES.ObjectExpression) {
+    return null;
   }
-  return signatures.reduce<SelectionTypeStatus>((status, signature) => {
-    return combineSelectionTypeStatus(
-      status,
-      selectionTypeStatus(
-        checker,
-        checker.getReturnTypeOfSignature(signature),
-        location,
-        new Set<Type>(),
-      ),
-    );
-  }, "safe");
+  const findings: SelectionFinding[] = [];
+  for (const property of expression.properties) {
+    if (property.type === AST_NODE_TYPES.SpreadElement) {
+      return null;
+    }
+    const name = propertyName(property);
+    if (name === "extras") {
+      if (
+        property.value.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+        property.value.type === AST_NODE_TYPES.FunctionExpression
+      ) {
+        const returned =
+          property.value.body.type === AST_NODE_TYPES.BlockStatement
+            ? property.value.body.body.at(-1)
+            : property.value.body;
+        if (returned !== undefined) {
+          findings.push(
+            ...selectionFindings(
+              sourceCode,
+              returned,
+              true,
+              new Set<TSESTree.Node>(),
+            ),
+          );
+        }
+      } else {
+        findings.push(
+          ...selectionFindings(
+            sourceCode,
+            property.value,
+            true,
+            new Set<TSESTree.Node>(),
+          ),
+        );
+      }
+    }
+    if (name === "with") {
+      const nestedContainer =
+        property.value.type === AST_NODE_TYPES.Identifier
+          ? resolveLocalExpression(sourceCode, property.value)
+          : property.value;
+      if (nestedContainer.type !== AST_NODE_TYPES.ObjectExpression) {
+        return null;
+      }
+      for (const relation of nestedContainer.properties) {
+        if (relation.type === AST_NODE_TYPES.SpreadElement) {
+          return null;
+        }
+        if (relation.value.type === AST_NODE_TYPES.Literal) {
+          continue;
+        }
+        const nested = relationalExtras(sourceCode, relation.value);
+        if (nested === null) {
+          return null;
+        }
+        findings.push(...nested);
+      }
+    }
+  }
+  return findings;
+}
+
+function typeNameIsDrizzleSql(
+  sourceCode: Parameters<typeof isDrizzleTypeReference>[0],
+  node: TSESTree.TypeNode,
+): boolean {
+  return isDrizzleTypeReference(sourceCode, node, DRIZZLE_SQL_TYPES);
 }
 
 export const requireSqlResultMapping = createRule({
@@ -335,9 +499,8 @@ export const requireSqlResultMapping = createRule({
     type: "problem",
     docs: {
       description:
-        "Require runtime mapping for raw SQL values in structured Drizzle results",
+        "Require runtime mapping for raw SQL values in conventional structured Drizzle results",
       recommended: true,
-      requiresTypeChecking: true,
     },
     schema: [],
     messages: {
@@ -354,1140 +517,164 @@ export const requireSqlResultMapping = createRule({
       uninspectableResultArguments:
         "Do not spread arguments into a Drizzle structured-result method. Pass them explicitly so raw SQL result mapping can be enforced.",
       uninspectableResultSelection:
-        "Structured-result fields must be inspectable so raw SQL runtime mapping can be enforced. Use an inline object, a local const selection, or a type with concrete selected-field members.",
+        "Structured-result fields must be inspectable so raw SQL runtime mapping can be enforced. Use an inline object or a local const selection.",
       uninspectableRelationalConfig:
-        "Relational query config must be an inline object or a local variable so raw SQL extras can be inspected.",
+        "Relational query config must be an inline object or a local const so raw SQL extras can be inspected.",
       unmappedResult:
         "Raw SQL in a structured Drizzle result must derive a concrete output from .mapWith(...) or a trusted schema-aware helper.",
+      uninspectableResultDecoder:
+        "Drizzle .mapWith(...) must use an inspectable schema column or reviewed runtime decoder.",
     },
   },
   create(context) {
-    const services = ESLintUtils.getParserServices(context);
-    const checker = services.program.getTypeChecker();
-    const resultMethodNameByType = new Map<Type, string | null>();
-    const resultMethodHintVariables = new Set<TSESLint.Scope.Variable>();
-    const resultMethodHintVariablesInProgress =
-      new Set<TSESLint.Scope.Variable>();
+    const reported = new WeakMap<TSESTree.Node, Set<MessageId>>();
 
-    function symbolAt(node: TSESTree.Node): TypeScriptSymbol | undefined {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      return checker.getSymbolAtLocation(tsNode);
-    }
-
-    function staticStringValue(node: TSESTree.Node): string | null {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      const type = checker.getTypeAtLocation(tsNode);
-      return type.isStringLiteral() ? type.value : null;
-    }
-
-    function resolvedMemberName(
-      node: TSESTree.MemberExpression,
-    ): string | null {
-      return (
-        memberName(node) ??
-        (node.computed ? staticStringValue(node.property) : null)
-      );
-    }
-
-    function resolvedPropertyName(node: TSESTree.Property): string | null {
-      return (
-        propertyName(node) ??
-        (node.computed ? staticStringValue(node.key) : null)
-      );
-    }
-
-    function localVariableDeclaration(
-      node: TSESTree.Node,
-    ): VariableDeclaration | null {
-      if (node.type !== AST_NODE_TYPES.Identifier) {
-        return null;
+    function report(node: TSESTree.Node, messageId: MessageId): void {
+      const messages = reported.get(node) ?? new Set<MessageId>();
+      if (messages.has(messageId)) {
+        return;
       }
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      const declaration = resolvedSymbol(
-        checker,
-        symbolAt(node),
-      )?.valueDeclaration;
+      messages.add(messageId);
+      reported.set(node, messages);
+      context.report({ node, messageId });
+    }
+
+    function checkResultCall(node: TSESTree.CallExpression): void {
       if (
-        declaration === undefined ||
-        !isVariableDeclaration(declaration) ||
-        declaration.getSourceFile() !== tsNode.getSourceFile()
-      ) {
-        return null;
-      }
-      return declaration;
-    }
-
-    function isConstVariable(declaration: VariableDeclaration): boolean {
-      return (
-        isVariableDeclarationList(declaration.parent) &&
-        (declaration.parent.flags & NodeFlags.Const) !== 0
-      );
-    }
-
-    function localVariableInitializer(
-      node: TSESTree.Node,
-    ): TSESTree.Node | null {
-      const declaration = localVariableDeclaration(node);
-      if (
-        declaration === null ||
-        !isConstVariable(declaration) ||
-        declaration.initializer === undefined
-      ) {
-        return null;
-      }
-      return services.tsNodeToESTreeNodeMap.get(declaration.initializer);
-    }
-
-    function isSelectionContainerType(type: Type, location: Node): boolean {
-      if (type.isUnionOrIntersection()) {
-        return type.types.some((member) => {
-          return isSelectionContainerType(member, location);
-        });
-      }
-      return (
-        (type.flags & TypeFlags.Object) !== 0 &&
-        sqlOutputType(checker, type, location) === null &&
-        !isDrizzleWrapper(checker, type)
-      );
-    }
-
-    function isMutableLocalSelectionContainer(node: TSESTree.Node): boolean {
-      const declaration = localVariableDeclaration(node);
-      if (declaration === null || isConstVariable(declaration)) {
-        return false;
-      }
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      return isSelectionContainerType(
-        checker.getTypeAtLocation(tsNode),
-        tsNode,
-      );
-    }
-
-    function isDrizzleSqlTag(node: TSESTree.Expression): boolean {
-      return isDrizzleSqlTagExpression(checker, services, node);
-    }
-
-    function nodeContainsUntrustedSql(node: TSESTree.Node): boolean {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      return containsUntrustedSql(
-        checker,
-        checker.getTypeAtLocation(tsNode),
-        tsNode,
-        new Set<Type>(),
-      );
-    }
-
-    function isDrizzleSqlConstructor(node: TSESTree.Expression): boolean {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      return checker
-        .getTypeAtLocation(tsNode)
-        .getConstructSignatures()
-        .some((signature) => {
-          return (
-            signature.declaration !== undefined &&
-            isDrizzleDeclaration(signature.declaration) &&
-            sqlOutputType(
-              checker,
-              checker.getReturnTypeOfSignature(signature),
-              tsNode,
-            ) !== null
-          );
-        });
-    }
-
-    function isDrizzleSqlTypeName(node: TSESTree.Node): boolean {
-      const symbol = resolvedSymbol(checker, symbolAt(node));
-      return (
-        (symbol?.getName() === "SQL" || symbol?.getName() === "Aliased") &&
-        isDrizzleSymbol(checker, symbol)
-      );
-    }
-
-    function nodeSelectionTypeStatus(node: TSESTree.Node): SelectionTypeStatus {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      return selectionTypeStatus(
-        checker,
-        checker.getTypeAtLocation(tsNode),
-        tsNode,
-        new Set<Type>(),
-      );
-    }
-
-    function nodeSelectionResultTypeStatus(
-      node: TSESTree.Node,
-    ): SelectionTypeStatus {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      return selectionResultTypeStatus(
-        checker,
-        checker.getTypeAtLocation(tsNode),
-        tsNode,
-      );
-    }
-
-    function collectUnmappedSelections(
-      node: TSESTree.Node,
-      unmapped: TSESTree.Node[],
-      uninspectable: TSESTree.Node[],
-      visited: Set<TSESTree.Node>,
-    ): void {
-      if (visited.has(node)) {
-        return;
-      }
-      visited.add(node);
-
-      if (
-        (node.type === AST_NODE_TYPES.TSAsExpression ||
-          node.type === AST_NODE_TYPES.TSTypeAssertion) &&
-        isUnsafeSqlAssertion(node)
-      ) {
-        return;
-      }
-
-      const initializer = localVariableInitializer(node);
-      if (initializer !== null) {
-        collectUnmappedSelections(
-          initializer,
-          unmapped,
-          uninspectable,
-          visited,
-        );
-        return;
-      }
-      const expression = transparentExpression(node);
-      if (expression !== null) {
-        collectUnmappedSelections(expression, unmapped, uninspectable, visited);
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.ConditionalExpression) {
-        collectUnmappedSelections(
-          node.consequent,
-          unmapped,
-          uninspectable,
-          visited,
-        );
-        collectUnmappedSelections(
-          node.alternate,
-          unmapped,
-          uninspectable,
-          visited,
-        );
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.LogicalExpression) {
-        collectUnmappedSelections(node.left, unmapped, uninspectable, visited);
-        collectUnmappedSelections(node.right, unmapped, uninspectable, visited);
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.SequenceExpression) {
-        const selectedExpression = node.expressions.at(-1);
-        if (selectedExpression !== undefined) {
-          collectUnmappedSelections(
-            selectedExpression,
-            unmapped,
-            uninspectable,
-            visited,
-          );
-        }
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.ObjectExpression) {
-        for (const property of node.properties) {
-          if (property.type === AST_NODE_TYPES.SpreadElement) {
-            collectUnmappedSelections(
-              property.argument,
-              unmapped,
-              uninspectable,
-              visited,
-            );
-          } else if (property.kind === "get") {
-            const status = nodeSelectionResultTypeStatus(property.value);
-            if (status === "unmapped") {
-              unmapped.push(property.value);
-            } else if (status === "uninspectable") {
-              uninspectable.push(property.value);
-            }
-          } else {
-            collectUnmappedSelections(
-              property.value,
-              unmapped,
-              uninspectable,
-              visited,
-            );
-          }
-        }
-        return;
-      }
-
-      if (isMutableLocalSelectionContainer(node)) {
-        uninspectable.push(node);
-        return;
-      }
-
-      const status = nodeSelectionTypeStatus(node);
-      if (status === "unmapped") {
-        unmapped.push(node);
-      } else if (status === "uninspectable") {
-        uninspectable.push(node);
-      }
-    }
-
-    function transparentExpression(node: TSESTree.Node): TSESTree.Node | null {
-      if (
-        node.type === AST_NODE_TYPES.TSAsExpression ||
-        node.type === AST_NODE_TYPES.TSTypeAssertion ||
-        node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-        node.type === AST_NODE_TYPES.TSNonNullExpression ||
-        node.type === AST_NODE_TYPES.ChainExpression
-      ) {
-        return node.expression;
-      }
-      return null;
-    }
-
-    function isSafeRelationalLeaf(node: TSESTree.Node): boolean {
-      let isUndefined = false;
-      if (
-        node.type === AST_NODE_TYPES.Identifier &&
-        node.name === "undefined"
-      ) {
-        const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-        isUndefined =
-          (checker.getTypeAtLocation(tsNode).flags & TypeFlags.Undefined) !== 0;
-      }
-      return (
-        isUndefined ||
-        (node.type === AST_NODE_TYPES.Literal &&
-          (node.value === null || typeof node.value === "boolean")) ||
-        (node.type === AST_NODE_TYPES.UnaryExpression &&
-          node.operator === "void")
-      );
-    }
-
-    function collectUnmappedExtras(
-      node: TSESTree.Node,
-      unmapped: TSESTree.Node[],
-      uninspectable: TSESTree.Node[],
-      visited: Set<TSESTree.Node>,
-    ): void {
-      if (visited.has(node)) {
-        return;
-      }
-      visited.add(node);
-
-      const initializer = localVariableInitializer(node);
-      if (initializer !== null) {
-        collectUnmappedExtras(initializer, unmapped, uninspectable, visited);
-        return;
-      }
-      const expression = transparentExpression(node);
-      if (expression !== null) {
-        collectUnmappedExtras(expression, unmapped, uninspectable, visited);
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.ConditionalExpression) {
-        collectUnmappedExtras(
-          node.consequent,
-          unmapped,
-          uninspectable,
-          visited,
-        );
-        collectUnmappedExtras(node.alternate, unmapped, uninspectable, visited);
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.LogicalExpression) {
-        collectUnmappedExtras(node.left, unmapped, uninspectable, visited);
-        collectUnmappedExtras(node.right, unmapped, uninspectable, visited);
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.SequenceExpression) {
-        const selectedExpression = node.expressions.at(-1);
-        if (selectedExpression !== undefined) {
-          collectUnmappedExtras(
-            selectedExpression,
-            unmapped,
-            uninspectable,
-            visited,
-          );
-        }
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.ObjectExpression) {
-        collectUnmappedSelections(
-          node,
-          unmapped,
-          uninspectable,
-          new Set<TSESTree.Node>(),
-        );
-        return;
-      }
-      if (
-        node.type === AST_NODE_TYPES.ArrowFunctionExpression &&
-        node.body.type !== AST_NODE_TYPES.BlockStatement
-      ) {
-        collectUnmappedExtras(node.body, unmapped, uninspectable, visited);
-        return;
-      }
-      if (isMutableLocalSelectionContainer(node)) {
-        uninspectable.push(node);
-        return;
-      }
-      const status = nodeSelectionResultTypeStatus(node);
-      if (status === "unmapped") {
-        unmapped.push(node);
-      } else if (status === "uninspectable") {
-        uninspectable.push(node);
-      }
-    }
-
-    // DBQueryConfig is recursive, so inspect bounded local syntax instead of
-    // expanding its full contextual type.
-    function collectUnmappedRelationalNode(
-      node: TSESTree.Node,
-      kind: "config" | "with",
-      unmapped: TSESTree.Node[],
-      uninspectable: TSESTree.Node[],
-      visited: {
-        config: Set<TSESTree.Node>;
-        extras: Set<TSESTree.Node>;
-        with: Set<TSESTree.Node>;
-      },
-    ): void {
-      if (visited[kind].has(node)) {
-        return;
-      }
-      visited[kind].add(node);
-
-      const initializer = localVariableInitializer(node);
-      if (initializer !== null) {
-        collectUnmappedRelationalNode(
-          initializer,
-          kind,
-          unmapped,
-          uninspectable,
-          visited,
-        );
-        return;
-      }
-      const expression = transparentExpression(node);
-      if (expression !== null) {
-        collectUnmappedRelationalNode(
-          expression,
-          kind,
-          unmapped,
-          uninspectable,
-          visited,
-        );
-        return;
-      }
-      if (node.type === AST_NODE_TYPES.ConditionalExpression) {
-        collectUnmappedRelationalNode(
-          node.consequent,
-          kind,
-          unmapped,
-          uninspectable,
-          visited,
-        );
-        collectUnmappedRelationalNode(
-          node.alternate,
-          kind,
-          unmapped,
-          uninspectable,
-          visited,
-        );
-        return;
-      }
-      if (node.type !== AST_NODE_TYPES.ObjectExpression) {
-        if (!isSafeRelationalLeaf(node)) {
-          uninspectable.push(node);
-        }
-        return;
-      }
-
-      for (const property of node.properties) {
-        if (property.type === AST_NODE_TYPES.SpreadElement) {
-          collectUnmappedRelationalNode(
-            property.argument,
-            kind,
-            unmapped,
-            uninspectable,
-            visited,
-          );
-          continue;
-        }
-        if (kind === "with") {
-          collectUnmappedRelationalNode(
-            property.value,
-            "config",
-            unmapped,
-            uninspectable,
-            visited,
-          );
-          continue;
-        }
-
-        const name = resolvedPropertyName(property);
-        if (name === "extras") {
-          collectUnmappedExtras(
-            property.value,
-            unmapped,
-            uninspectable,
-            visited.extras,
-          );
-        } else if (name === "with") {
-          collectUnmappedRelationalNode(
-            property.value,
-            "with",
-            unmapped,
-            uninspectable,
-            visited,
-          );
-        }
-      }
-    }
-
-    function resultFieldArgument(
-      node: TSESTree.CallExpression,
-      name: string,
-    ): TSESTree.Expression | null {
-      const argumentIndex = RESULT_FIELD_ARGUMENT.get(name);
-      if (argumentIndex === undefined) {
-        return null;
-      }
-      const argument = node.arguments[argumentIndex];
-      if (
-        argument === undefined ||
-        argument.type === AST_NODE_TYPES.SpreadElement
-      ) {
-        return null;
-      }
-      return argument;
-    }
-
-    function isStructuredSelectionMethod(
-      name: string,
-      symbol: TypeScriptSymbol | undefined,
-      type: Type,
-    ): boolean {
-      if (!RESULT_FIELD_ARGUMENT.has(name)) {
-        return false;
-      }
-      if (name === "returning") {
-        return (
-          isDrizzleSymbol(checker, symbol) ||
-          methodReturnsDrizzleType(type, "execute")
-        );
-      }
-      return methodReturnsDrizzleType(type, "from");
-    }
-
-    function methodReturnsDrizzleType(type: Type, property: string): boolean {
-      return type.getCallSignatures().some((signature) => {
-        const returnType = checker.getReturnTypeOfSignature(signature);
-        return isDrizzleSymbol(
-          checker,
-          checker.getPropertyOfType(returnType, property),
-        );
-      });
-    }
-
-    function isRelationalResultMethod(
-      name: string,
-      symbol: TypeScriptSymbol | undefined,
-      type: Type,
-    ): boolean {
-      return (
-        RELATIONAL_RESULT_METHODS.has(name) &&
-        (isDrizzleSymbol(checker, symbol) ||
-          methodReturnsDrizzleType(type, "execute"))
-      );
-    }
-
-    function isResultMethod(
-      name: string,
-      symbol: TypeScriptSymbol | undefined,
-      type: Type,
-    ): boolean {
-      return (
-        isRelationalResultMethod(name, symbol, type) ||
-        isStructuredSelectionMethod(name, symbol, type)
-      );
-    }
-
-    function hasResultMethodHint(text: string): boolean {
-      const normalizedText = text.toLowerCase();
-      return RESULT_METHOD_HINTS.some((hint) => {
-        return normalizedText.includes(hint);
-      });
-    }
-
-    function isReflectedResultMethod(node: TSESTree.Node): boolean {
-      if (
-        node.type !== AST_NODE_TYPES.CallExpression ||
         node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-        node.callee.object.name !== "Reflect" ||
-        resolvedMemberName(node.callee) !== "get"
+        !isResultMethodMember(context.sourceCode, node.callee)
       ) {
-        return false;
+        return;
       }
-      const key = node.arguments[1];
-      if (key === undefined || key.type === AST_NODE_TYPES.SpreadElement) {
-        return false;
+      const name = memberName(node.callee);
+      if (name === null) {
+        return;
       }
-      const name =
-        key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
-          ? key.value
-          : staticStringValue(key);
-      return (
-        name !== null &&
-        (RESULT_FIELD_ARGUMENT.has(name) || RELATIONAL_RESULT_METHODS.has(name))
-      );
-    }
-
-    function variableInScope(
-      node: TSESTree.Node,
-      name: string,
-    ): TSESLint.Scope.Variable | null {
-      let scope: TSESLint.Scope.Scope | null =
-        context.sourceCode.getScope(node);
-      while (scope !== null) {
-        const variable = scope.variables.find((candidate) => {
-          return candidate.name === name;
-        });
-        if (variable !== undefined) {
-          return variable;
-        }
-        scope = scope.upper;
-      }
-      return null;
-    }
-
-    function variableHasResultMethodHint(
-      variable: TSESLint.Scope.Variable,
-    ): boolean {
-      if (resultMethodHintVariables.has(variable)) {
-        return true;
-      }
-      if (resultMethodHintVariablesInProgress.has(variable)) {
-        return false;
-      }
-      resultMethodHintVariablesInProgress.add(variable);
-
-      for (const definition of variable.defs) {
-        if (
-          definition.node.type !== AST_NODE_TYPES.TSTypeAliasDeclaration &&
-          definition.node.type !== AST_NODE_TYPES.TSInterfaceDeclaration &&
-          definition.node.type !== AST_NODE_TYPES.VariableDeclarator
-        ) {
-          continue;
-        }
-        if (hasResultMethodHint(context.sourceCode.getText(definition.node))) {
-          resultMethodHintVariables.add(variable);
-          resultMethodHintVariablesInProgress.delete(variable);
-          return true;
-        }
-        for (const token of context.sourceCode.getTokens(definition.node)) {
-          const referencedVariable = variableInScope(
-            definition.node,
-            token.value,
-          );
-          if (
-            referencedVariable !== null &&
-            variableHasResultMethodHint(referencedVariable)
-          ) {
-            resultMethodHintVariables.add(variable);
-            resultMethodHintVariablesInProgress.delete(variable);
-            return true;
-          }
+      for (const argument of node.arguments) {
+        if (argument.type === AST_NODE_TYPES.SpreadElement) {
+          report(argument, "uninspectableResultArguments");
         }
       }
-      resultMethodHintVariablesInProgress.delete(variable);
-      return false;
-    }
-
-    function typeAnnotationHasResultMethodHint(node: TSESTree.Node): boolean {
-      if (hasResultMethodHint(context.sourceCode.getText(node))) {
-        return true;
+      if (
+        node.arguments.some(
+          (argument) => argument.type === AST_NODE_TYPES.SpreadElement,
+        )
+      ) {
+        return;
       }
-      return context.sourceCode.getTokens(node).some((token) => {
-        const variable = variableInScope(node, token.value);
-        return variable !== null && variableHasResultMethodHint(variable);
-      });
-    }
-
-    function identifierCanBeResultMethodAlias(
-      node: TSESTree.Identifier,
-    ): boolean {
-      const variable = variableInScope(node, node.name);
-      if (variable === null) {
-        return false;
-      }
-      return variable.defs.some((definition) => {
-        const typeAnnotation =
-          "typeAnnotation" in definition.name
-            ? definition.name.typeAnnotation
-            : undefined;
-        if (
-          typeAnnotation !== undefined &&
-          typeAnnotationHasResultMethodHint(typeAnnotation)
-        ) {
-          return true;
+      if (RELATIONAL_RESULT_METHODS.has(name)) {
+        const config = node.arguments[0];
+        if (config === undefined) {
+          return;
         }
-        return (
-          definition.node.type === AST_NODE_TYPES.VariableDeclarator &&
-          definition.node.init !== null &&
-          isReflectedResultMethod(definition.node.init)
-        );
-      });
+        const findings = relationalExtras(context.sourceCode, config);
+        if (findings === null) {
+          report(config, "uninspectableRelationalConfig");
+          return;
+        }
+        for (const finding of findings) {
+          report(finding.node, finding.messageId);
+        }
+        return;
+      }
+      const argumentIndex = RESULT_FIELD_ARGUMENT.get(name);
+      const fields =
+        argumentIndex === undefined ? undefined : node.arguments[argumentIndex];
+      if (fields === undefined) {
+        return;
+      }
+      for (const finding of selectionFindings(
+        context.sourceCode,
+        fields,
+        true,
+        new Set<TSESTree.Node>(),
+      )) {
+        report(finding.node, finding.messageId);
+      }
     }
 
-    function canBeResultMethodAlias(node: TSESTree.Expression): boolean {
-      if (node.type === AST_NODE_TYPES.MemberExpression) {
-        return (
-          node.object.type === AST_NODE_TYPES.Identifier &&
-          identifierCanBeResultMethodAlias(node.object)
+    function checkMapWith(node: TSESTree.CallExpression): void {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        memberName(node.callee) !== "mapWith" ||
+        !isRawSqlExpression(context.sourceCode, node.callee.object)
+      ) {
+        return;
+      }
+      const argument = node.arguments[0];
+      if (
+        node.arguments.length !== 1 ||
+        argument === undefined ||
+        argument.type === AST_NODE_TYPES.SpreadElement ||
+        !hasReviewedDecoder(context.sourceCode, argument)
+      ) {
+        report(
+          argument === undefined ||
+            argument.type === AST_NODE_TYPES.SpreadElement
+            ? node
+            : argument,
+          "uninspectableResultDecoder",
         );
       }
-      if (node.type !== AST_NODE_TYPES.Identifier) {
-        return isReflectedResultMethod(node);
-      }
-      return identifierCanBeResultMethodAlias(node);
-    }
-
-    function resultMethodName(node: TSESTree.Expression): string | null {
-      if (node.type === AST_NODE_TYPES.MemberExpression) {
-        const name = resolvedMemberName(node);
-        if (
-          name !== null &&
-          (RESULT_FIELD_ARGUMENT.has(name) ||
-            RELATIONAL_RESULT_METHODS.has(name))
-        ) {
-          const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-          const type = checker.getTypeAtLocation(tsNode);
-          return isResultMethod(name, symbolAt(node.property), type)
-            ? name
-            : null;
-        }
-      }
-      if (!canBeResultMethodAlias(node)) {
-        return null;
-      }
-
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      const type = checker.getTypeAtLocation(tsNode);
-      const cachedName = resultMethodNameByType.get(type);
-      if (cachedName !== undefined) {
-        return cachedName;
-      }
-      for (const name of RESULT_METHOD_NAMES) {
-        if (
-          type.getCallSignatures().some((signature) => {
-            return isNamedDrizzleSignature(signature, name);
-          }) &&
-          isResultMethod(name, undefined, type)
-        ) {
-          resultMethodNameByType.set(type, name);
-          return name;
-        }
-      }
-      resultMethodNameByType.set(type, null);
-      return null;
-    }
-
-    function isResultMethodMember(node: TSESTree.MemberExpression): boolean {
-      return resultMethodName(node) !== null;
-    }
-
-    function destructuresResultMethod(node: TSESTree.Property): boolean {
-      if (node.parent.type !== AST_NODE_TYPES.ObjectPattern) {
-        return false;
-      }
-      const name = resolvedPropertyName(node);
-      if (
-        name === null ||
-        (!RESULT_FIELD_ARGUMENT.has(name) &&
-          !RELATIONAL_RESULT_METHODS.has(name))
-      ) {
-        return false;
-      }
-
-      const tsPattern = services.esTreeNodeToTSNodeMap.get(node.parent);
-      const patternType = checker.getTypeAtLocation(tsPattern);
-      const symbol = checker.getPropertyOfType(patternType, name);
-      if (symbol === undefined) {
-        return false;
-      }
-      const type = checker.getTypeOfSymbolAtLocation(symbol, tsPattern);
-      return (
-        isRelationalResultMethod(name, symbol, type) ||
-        isStructuredSelectionMethod(name, symbol, type)
-      );
-    }
-
-    function isDrizzleSqlAliasCallee(node: TSESTree.Expression): boolean {
-      if (
-        node.type === AST_NODE_TYPES.MemberExpression &&
-        resolvedMemberName(node) === "as" &&
-        isDrizzleSymbol(checker, symbolAt(node.property))
-      ) {
-        const tsReceiver = services.esTreeNodeToTSNodeMap.get(node.object);
-        if (
-          sqlOutputType(
-            checker,
-            checker.getTypeAtLocation(tsReceiver),
-            tsReceiver,
-          ) !== null
-        ) {
-          return true;
-        }
-      }
-
-      const tsCallee = services.esTreeNodeToTSNodeMap.get(node);
-      return checker
-        .getTypeAtLocation(tsCallee)
-        .getCallSignatures()
-        .some((signature) => {
-          return (
-            isNamedDrizzleSignature(signature, "as") &&
-            sqlOutputType(
-              checker,
-              checker.getReturnTypeOfSignature(signature),
-              tsCallee,
-            ) !== null
-          );
-        });
-    }
-
-    function isGenericDrizzleSqlAlias(node: TSESTree.CallExpression): boolean {
-      return (
-        node.typeArguments?.params.length === 1 &&
-        isDrizzleSqlAliasCallee(node.callee)
-      );
-    }
-
-    function checkGenericSqlSuperclass(
-      node: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
-    ): void {
-      if (
-        node.superTypeArguments?.params.length &&
-        node.superClass !== null &&
-        isDrizzleSqlConstructor(node.superClass)
-      ) {
-        context.report({ node, messageId: "sqlTypeReference" });
-      }
-    }
-
-    function isUnsafeSqlAssertion(
-      node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
-    ): boolean {
-      return (
-        nodeContainsUntrustedSql(node.expression) &&
-        !nodeContainsUntrustedSql(node)
-      );
     }
 
     function checkAssertion(
       node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
     ): void {
-      if (isUnsafeSqlAssertion(node)) {
-        context.report({ node, messageId: "sqlAssertion" });
-      }
-    }
-
-    function containsReportedResultMethodReference(
-      node: TSESTree.Node,
-      visited: Set<TSESTree.Node>,
-    ): boolean {
-      if (visited.has(node)) {
-        return false;
-      }
-      visited.add(node);
-
-      const initializer = localVariableInitializer(node);
-      if (initializer !== null) {
-        return containsReportedResultMethodReference(initializer, visited);
-      }
-      const expression = transparentExpression(node);
-      if (expression !== null) {
-        return containsReportedResultMethodReference(expression, visited);
-      }
-      if (node.type === AST_NODE_TYPES.MemberExpression) {
-        return (
-          isResultMethodMember(node) ||
-          containsReportedResultMethodReference(node.object, visited) ||
-          (node.computed &&
-            containsReportedResultMethodReference(node.property, visited))
-        );
-      }
-      if (node.type === AST_NODE_TYPES.CallExpression) {
-        if (containsReportedResultMethodReference(node.callee, visited)) {
-          return true;
-        }
-        return node.arguments.some((argument) => {
-          return containsReportedResultMethodReference(
-            argument.type === AST_NODE_TYPES.SpreadElement
-              ? argument.argument
-              : argument,
-            visited,
-          );
-        });
-      }
       if (
-        node.type === AST_NODE_TYPES.ConditionalExpression ||
-        node.type === AST_NODE_TYPES.LogicalExpression
+        isRawSqlExpression(context.sourceCode, node.expression) &&
+        !typeNameIsDrizzleSql(context.sourceCode, node.typeAnnotation)
       ) {
-        return (
-          containsReportedResultMethodReference(
-            node.type === AST_NODE_TYPES.ConditionalExpression
-              ? node.consequent
-              : node.left,
-            visited,
-          ) ||
-          containsReportedResultMethodReference(
-            node.type === AST_NODE_TYPES.ConditionalExpression
-              ? node.alternate
-              : node.right,
-            visited,
-          )
-        );
-      }
-      if (node.type === AST_NODE_TYPES.SequenceExpression) {
-        return node.expressions.some((item) => {
-          return containsReportedResultMethodReference(item, visited);
-        });
-      }
-      return false;
-    }
-
-    function checkResultMethodReference(node: TSESTree.MemberExpression): void {
-      if (
-        (node.parent.type === AST_NODE_TYPES.CallExpression &&
-          node.parent.callee === node) ||
-        !isResultMethodMember(node)
-      ) {
-        return;
-      }
-      context.report({ node, messageId: "resultMethodReference" });
-    }
-
-    function checkDestructuredResultMethod(node: TSESTree.Property): void {
-      if (destructuresResultMethod(node)) {
-        context.report({ node, messageId: "resultMethodReference" });
+        report(node, "sqlAssertion");
       }
     }
 
     return {
       TaggedTemplateExpression(node: TSESTree.TaggedTemplateExpression): void {
-        if (node.typeArguments?.params.length && isDrizzleSqlTag(node.tag)) {
-          context.report({ node, messageId: "sqlTypeArgument" });
+        if (
+          node.typeArguments?.params.length &&
+          isDrizzleSqlTag(context.sourceCode, node.tag)
+        ) {
+          report(node, "sqlTypeArgument");
         }
       },
       TSTypeReference(node: TSESTree.TSTypeReference): void {
         if (
           node.typeArguments?.params.length &&
-          isDrizzleSqlTypeName(node.typeName)
+          typeNameIsDrizzleSql(context.sourceCode, node)
         ) {
-          context.report({ node, messageId: "sqlTypeReference" });
-        }
-      },
-      TSImportType(node: TSESTree.TSImportType): void {
-        if (
-          node.typeArguments?.params.length &&
-          node.qualifier !== null &&
-          isDrizzleSqlTypeName(node.qualifier)
-        ) {
-          context.report({ node, messageId: "sqlTypeReference" });
-        }
-      },
-      TSInterfaceHeritage(node: TSESTree.TSInterfaceHeritage): void {
-        if (
-          node.typeArguments?.params.length &&
-          isDrizzleSqlTypeName(node.expression)
-        ) {
-          context.report({ node, messageId: "sqlTypeReference" });
-        }
-      },
-      TSClassImplements(node: TSESTree.TSClassImplements): void {
-        if (
-          node.typeArguments?.params.length &&
-          isDrizzleSqlTypeName(node.expression)
-        ) {
-          context.report({ node, messageId: "sqlTypeReference" });
-        }
-      },
-      TSInstantiationExpression(
-        node: TSESTree.TSInstantiationExpression,
-      ): void {
-        if (node.typeArguments.params.length !== 1) {
-          return;
-        }
-        if (isDrizzleSqlTag(node.expression)) {
-          context.report({ node, messageId: "sqlTypeArgument" });
-        } else if (isDrizzleSqlAliasCallee(node.expression)) {
-          context.report({ node, messageId: "sqlAliasTypeArgument" });
-        } else if (isDrizzleSqlConstructor(node.expression)) {
-          context.report({ node, messageId: "sqlTypeReference" });
+          report(node, "sqlTypeReference");
         }
       },
       CallExpression(node: TSESTree.CallExpression): void {
-        if (
-          node.typeArguments?.params.length === 1 &&
-          isDrizzleSqlTag(node.callee)
-        ) {
-          context.report({ node, messageId: "sqlTypeArgument" });
-        } else if (isGenericDrizzleSqlAlias(node)) {
-          context.report({ node, messageId: "sqlAliasTypeArgument" });
-        }
-
-        let methodName: string;
-        if (node.callee.type === AST_NODE_TYPES.MemberExpression) {
-          const directName = resolvedMemberName(node.callee);
-          if (
-            directName !== null &&
-            (RESULT_FIELD_ARGUMENT.has(directName) ||
-              RELATIONAL_RESULT_METHODS.has(directName))
-          ) {
-            methodName = directName;
-          } else {
-            const aliasName = resultMethodName(node.callee);
-            if (aliasName === null) {
-              return;
-            }
-            context.report({
-              node: node.callee,
-              messageId: "resultMethodReference",
-            });
-            return;
-          }
-        } else {
-          const aliasName = resultMethodName(node.callee);
-          if (aliasName === null) {
-            return;
-          }
-          const initializer = localVariableInitializer(node.callee);
-          if (
-            initializer === null ||
-            !containsReportedResultMethodReference(
-              initializer,
-              new Set<TSESTree.Node>(),
-            )
-          ) {
-            context.report({
-              node: node.callee,
-              messageId: "resultMethodReference",
-            });
-          }
-          return;
-        }
-
-        const hasSpreadArgument = node.arguments.some(
-          (argument) => argument.type === AST_NODE_TYPES.SpreadElement,
-        );
-        if (hasSpreadArgument) {
-          if (!isResultMethodMember(node.callee)) {
-            return;
-          }
-          for (const argument of node.arguments) {
-            if (argument.type === AST_NODE_TYPES.SpreadElement) {
-              context.report({
-                node: argument,
-                messageId: "uninspectableResultArguments",
-              });
-            }
-          }
-          return;
-        }
-
-        if (RELATIONAL_RESULT_METHODS.has(methodName)) {
-          if (!isResultMethodMember(node.callee)) {
-            return;
-          }
-          const config = node.arguments[0];
-          if (
-            config !== undefined &&
-            config.type !== AST_NODE_TYPES.SpreadElement
-          ) {
-            const unmapped: TSESTree.Node[] = [];
-            const uninspectable: TSESTree.Node[] = [];
-            collectUnmappedRelationalNode(
-              config,
-              "config",
-              unmapped,
-              uninspectable,
-              {
-                config: new Set<TSESTree.Node>(),
-                extras: new Set<TSESTree.Node>(),
-                with: new Set<TSESTree.Node>(),
-              },
-            );
-            for (const field of unmapped) {
-              context.report({ node: field, messageId: "unmappedResult" });
-            }
-            for (const field of uninspectable) {
-              context.report({
-                node: field,
-                messageId: "uninspectableRelationalConfig",
-              });
-            }
-          }
-        }
-
-        const fields = resultFieldArgument(node, methodName);
-        if (fields === null) {
-          return;
-        }
-        const unmapped: TSESTree.Node[] = [];
-        const uninspectable: TSESTree.Node[] = [];
-        collectUnmappedSelections(
-          fields,
-          unmapped,
-          uninspectable,
-          new Set<TSESTree.Node>(),
-        );
-        if (
-          (unmapped.length === 0 && uninspectable.length === 0) ||
-          !isResultMethodMember(node.callee)
-        ) {
-          return;
-        }
-        for (const field of unmapped) {
-          context.report({ node: field, messageId: "unmappedResult" });
-        }
-        for (const field of uninspectable) {
-          context.report({
-            node: field,
-            messageId: "uninspectableResultSelection",
-          });
-        }
-      },
-      NewExpression(node: TSESTree.NewExpression): void {
+        checkMapWith(node);
         if (
           node.typeArguments?.params.length &&
-          isDrizzleSqlConstructor(node.callee)
+          isDrizzleSqlTag(context.sourceCode, node.callee)
         ) {
-          context.report({ node, messageId: "sqlTypeReference" });
+          report(node, "sqlTypeArgument");
+        }
+        if (
+          node.typeArguments?.params.length &&
+          node.callee.type === AST_NODE_TYPES.MemberExpression &&
+          memberName(node.callee) === "as" &&
+          isRawSqlExpression(context.sourceCode, node.callee.object)
+        ) {
+          report(node, "sqlAliasTypeArgument");
+        }
+        checkResultCall(node);
+      },
+      MemberExpression(node: TSESTree.MemberExpression): void {
+        if (
+          isResultMethodMember(context.sourceCode, node) &&
+          !(
+            node.parent.type === AST_NODE_TYPES.CallExpression &&
+            node.parent.callee === node
+          )
+        ) {
+          report(node, "resultMethodReference");
         }
       },
-      ClassDeclaration(node: TSESTree.ClassDeclaration): void {
-        checkGenericSqlSuperclass(node);
-      },
-      ClassExpression(node: TSESTree.ClassExpression): void {
-        checkGenericSqlSuperclass(node);
-      },
-      "MemberExpression[computed=false][property.name='findFirst']":
-        checkResultMethodReference,
-      "MemberExpression[computed=false][property.name='findMany']":
-        checkResultMethodReference,
-      "MemberExpression[computed=false][property.name='returning']":
-        checkResultMethodReference,
-      "MemberExpression[computed=false][property.name='select']":
-        checkResultMethodReference,
-      "MemberExpression[computed=false][property.name='selectDistinct']":
-        checkResultMethodReference,
-      "MemberExpression[computed=false][property.name='selectDistinctOn']":
-        checkResultMethodReference,
-      "MemberExpression[computed=true]": checkResultMethodReference,
-      "ObjectPattern > Property": checkDestructuredResultMethod,
       TSAsExpression(node: TSESTree.TSAsExpression): void {
         checkAssertion(node);
       },

@@ -2,7 +2,8 @@ import { zeroImageShareXContract } from "@vm0/api-contracts/contracts/zero-image
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import {
   seedOrgMetadata,
@@ -12,6 +13,7 @@ import { seedConnectedXConnector } from "../../../test-fixtures/x-connector";
 import { createBddApi } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroImageShareXRoutes } from "../zero-image-share-x";
 
 const context = testContext();
 const routeMocks = createZeroRouteMocks(context);
@@ -44,7 +46,9 @@ function authHeaders() {
 }
 
 function client() {
-  return setupApp({ context })(zeroImageShareXContract);
+  return setupApp({ context, routes: zeroImageShareXRoutes })(
+    zeroImageShareXContract,
+  );
 }
 
 function mockXImageShareProvider(options?: {

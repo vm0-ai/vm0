@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
-
 import {
   githubLabelAppliedEventConfigSchema,
   type GithubLabelAppliedEventConfig,
@@ -13,21 +12,19 @@ import {
   zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-
 import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
 import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
-import {
-  buildChatOnlyWorkflowAutomationCallbacks,
-  runWorkflowAutomationNow$,
-  type AutomationRow,
-} from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { AutomationRow } from "./zero-workflow-automation-launch.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
@@ -272,7 +269,7 @@ async function loadGithubLabelEventAutomations(args: {
 }): Promise<readonly GithubLabelEventAutomationRow[]> {
   const automationRows = await args.db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(false),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
@@ -385,55 +382,49 @@ function githubSubjectUrl(args: {
   return `https://github.com/${args.repo}/${pathSegment}/${args.subjectNumber}`;
 }
 
-function buildGithubWorkflowEventSystemPrompt(args: {
+function githubLabelTriggerContext(args: {
   readonly automation: GithubLabelEventAutomationRow;
   readonly deliveryId: string;
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
-}): string {
+}): WorkflowAutomationContext {
   const subjectLabel =
     args.subjectKind === "pull_request" ? "pull request" : "issue";
-  return [
-    "# Current context",
-    `You are running because the GitHub label "${args.matchedLabelName}" was applied to a ${subjectLabel}.`,
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "This context intentionally includes only event metadata. It does not include the issue or pull request body, comments, files, or diffs.",
-    "Use connected GitHub tools or the GitHub API to inspect the issue or pull request if the workflow needs more detail.",
-    "",
-    "# GitHub event",
-    JSON.stringify(
-      {
-        automationId: args.automation.automation.id,
-        deliveryId: args.deliveryId,
-        event: "label_applied",
-        action: args.payload.action,
-        repository: args.payload.repository.full_name,
-        labelName: args.matchedLabelName,
-        subject: {
-          type: args.subjectKind,
-          number: args.payload.issue.number,
-          title: args.payload.issue.title,
-          url: githubSubjectUrl({
-            repo: args.payload.repository.full_name,
-            subjectKind: args.subjectKind,
-            subjectNumber: args.payload.issue.number,
-          }),
-        },
-        actor: {
-          id: String(args.payload.sender.id),
-          login: args.payload.sender.login,
-          type: args.payload.sender.type,
-        },
-        currentLabels: args.payload.issue.labels.map((label) => {
-          return label.name;
+  return {
+    workflowName: args.automation.workflowName,
+    eventType: "github-label-applied",
+    trigger: `GitHub label "${args.matchedLabelName}" was applied to ${subjectLabel} #${args.payload.issue.number} (GitHub webhook delivery ${args.deliveryId}).`,
+    notes: [
+      "Not included below: the issue or pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
+    ],
+    event: {
+      automationId: args.automation.automation.id,
+      deliveryId: args.deliveryId,
+      event: "label_applied",
+      action: args.payload.action,
+      repository: args.payload.repository.full_name,
+      labelName: args.matchedLabelName,
+      subject: {
+        type: args.subjectKind,
+        number: args.payload.issue.number,
+        title: args.payload.issue.title,
+        url: githubSubjectUrl({
+          repo: args.payload.repository.full_name,
+          subjectKind: args.subjectKind,
+          subjectNumber: args.payload.issue.number,
         }),
       },
-      null,
-      2,
-    ),
-  ].join("\n");
+      actor: {
+        id: String(args.payload.sender.id),
+        login: args.payload.sender.login,
+        type: args.payload.sender.type,
+      },
+      currentLabels: args.payload.issue.labels.map((label) => {
+        return label.name;
+      }),
+    },
+  };
 }
 
 async function dispatchGithubAutomationEvent(args: {
@@ -478,13 +469,8 @@ const startGithubWorkflowRun$ = command(
     const runInput = await args.timing.measure(
       "api_dispatch_pre_create_zero_workflow_event_build_run_input",
       () => {
-        return {
-          appendSystemPrompt: buildGithubWorkflowEventSystemPrompt(args),
-          callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-            args.automation.chatThreadId,
-            args.automation.agentId,
-          ),
-        };
+        const context = githubLabelTriggerContext(args);
+        return { context };
       },
     );
     signal.throwIfAborted();
@@ -494,16 +480,11 @@ const startGithubWorkflowRun$ = command(
         due: {
           automation: args.automation.automation,
           agentId: args.automation.agentId,
-          workflowName: args.automation.workflowName,
           chatThreadId: args.automation.chatThreadId,
         },
+        automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        appendSystemPrompt: runInput.appendSystemPrompt,
-        callbacks: runInput.callbacks,
-        activePreviousRunPolicy: "allow",
-        recordLastRunId: false,
-        recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },

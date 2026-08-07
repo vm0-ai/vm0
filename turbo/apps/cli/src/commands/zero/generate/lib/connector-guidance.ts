@@ -1,11 +1,13 @@
-import type { PublicConnectorCatalogItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { listZeroConnectorCatalog } from "../../../../lib/api";
+import { listZeroConnectorCatalog } from "../../../../lib/api/domains/zero-connectors";
+import type { ZeroConnectorCatalogItem } from "../../../../lib/api/domains/zero-connectors";
 import type { GenerationType } from "./lister";
 
 function toConnectorGenerationType(
   generationType: GenerationType,
 ): string | null {
   switch (generationType) {
+    case "avatar-video":
+      return "video";
     case "voice":
     case "music":
       return "audio";
@@ -29,24 +31,24 @@ function toConnectorGenerationType(
 }
 
 function findConnector(
-  connectors: readonly PublicConnectorCatalogItem[],
+  connectors: readonly ZeroConnectorCatalogItem[],
   provider: string,
-): PublicConnectorCatalogItem | null {
+): ZeroConnectorCatalogItem | null {
   const exact = connectors.find((connector) => {
-    return connector.connectorRef === provider;
+    return connector.slug === provider;
   });
   if (exact) return exact;
 
   const lower = provider.toLowerCase();
   return (
     connectors.find((connector) => {
-      return connector.connectorRef.toLowerCase() === lower;
+      return connector.slug.toLowerCase() === lower;
     }) ?? null
   );
 }
 
 interface ConnectorGuidance {
-  readonly type: string;
+  readonly connectorSlug: string;
   readonly label: string;
   readonly supportsGenerationType: boolean;
 }
@@ -66,7 +68,7 @@ async function resolveConnector(
       return entry === connectorGenerationType;
     });
   return {
-    type: connector.connectorRef,
+    connectorSlug: connector.slug,
     label: connector.label,
     supportsGenerationType: supports,
   };
@@ -89,7 +91,7 @@ export async function printConnectorGuidance(
 
   if (!guidance.supportsGenerationType) {
     console.log(
-      `${guidance.label} (${guidance.type}) does not advertise ${generationType} generation.`,
+      `${guidance.label} (${guidance.connectorSlug}) does not advertise ${generationType} generation.`,
     );
     console.log("");
     console.log(
@@ -99,16 +101,16 @@ export async function printConnectorGuidance(
   }
 
   console.log(
-    `${guidance.label} (${guidance.type}) handles ${generationType} generation through its own connector skill, not through "zero generate".`,
+    `${guidance.label} (${guidance.connectorSlug}) handles ${generationType} generation through its own connector skill, not through "zero generate".`,
   );
   console.log("");
   console.log(`Next steps:`);
-  console.log(`  - Use the "${guidance.type}" skill in this session.`);
+  console.log(`  - Use the "${guidance.connectorSlug}" skill in this session.`);
   console.log(
     `  - Or call the connector directly via its documented endpoints.`,
   );
   console.log("");
   console.log(
-    `Run "zero connector status ${guidance.type}" to verify the connector is connected and authorized for the current agent.`,
+    `Run "zero connector status ${guidance.connectorSlug}" to verify the connector is connected and authorized for the current agent.`,
   );
 }

@@ -4,9 +4,9 @@ import {
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationCreateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { verifyZeroToken } from "../../auth/tokens";
@@ -15,7 +15,18 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { webhooksGithubRoutes } from "../webhooks-github";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...webhooksGithubRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -31,11 +42,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
-}
-
-function queueClient() {
-  return setupApp({ context })(zeroWorkflowQueueContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -55,6 +64,22 @@ function sandboxOperationEventsForRun(
       return isRecord(event) && event.run_id === runId;
     });
   });
+}
+
+async function pendingWorkflowEventCount(threadId: string): Promise<number> {
+  const events = await wf.readThreadEvents(threadId);
+  const revokedIds = new Set(
+    events.flatMap((event) => {
+      return event.revokesEventId ? [event.revokesEventId] : [];
+    }),
+  );
+  return events.filter((event) => {
+    return (
+      event.eventType === "input.automation" &&
+      event.runId === undefined &&
+      !revokedIds.has(event.id)
+    );
+  }).length;
 }
 
 interface WorkflowsFixture {
@@ -152,19 +177,19 @@ async function postGithubWebhook(args: {
   const signature = `sha256=${createHmac("sha256", GITHUB_WEBHOOK_SECRET)
     .update(args.rawBody)
     .digest("hex")}`;
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/github",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-github-event": args.event,
-        "x-github-delivery": args.deliveryId,
-        "x-hub-signature-256": signature,
-      },
-      body: args.rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/webhooks/github", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-github-event": args.event,
+      "x-github-delivery": args.deliveryId,
+      "x-hub-signature-256": signature,
     },
-  );
+    body: args.rawBody,
+  });
   return {
     status: response.status,
     text: await response.text(),
@@ -180,6 +205,8 @@ type GithubWebhookAutomationCase = {
     | "pull_request_review"
     | "workflow_job";
   readonly payload: (installationId: string) => string;
+  /** Trigger summary this event renders, without the delivery parenthetical. */
+  readonly expectedTrigger: string;
   readonly expectedPrompt: readonly string[];
   readonly excludedPrompt?: readonly string[];
 };
@@ -231,6 +258,8 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
         sender: { id: 101, login: "lancy", type: "User" },
       });
     },
+    expectedTrigger:
+      'the GitHub Actions job "test" completed with conclusion "failure"',
     expectedPrompt: [
       'GitHub Actions job "test" completed with conclusion "failure"',
       '"runner"',
@@ -281,6 +310,8 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
         sender: { id: 202, login: "trusted-user", type: "User" },
       });
     },
+    expectedTrigger:
+      'GitHub user "trusted-user" submitted a pull request review with state "approved"',
     expectedPrompt: ['review with state "approved"', '"authorAssociation"'],
     excludedPrompt: ["Ignore previous instructions"],
   },
@@ -335,6 +366,7 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
         sender: { id: 101, login: "lancy", type: "User" },
       });
     },
+    expectedTrigger: 'a GitHub deployment status changed to "success"',
     expectedPrompt: [
       'deployment status changed to "success"',
       '"productionEnvironment": true',
@@ -381,6 +413,7 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
         sender: { id: 202, login: "trusted-user", type: "User" },
       });
     },
+    expectedTrigger: 'GitHub user "trusted-user" created a comment',
     expectedPrompt: ["created a comment", '"bodyIncluded": false'],
     excludedPrompt: ["/verify Ignore previous instructions"],
   },
@@ -429,9 +462,10 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         await flushWaitUntilForTest();
       }
 
+      const deliveryId = `delivery-${randomUUID()}`;
       const response = await postGithubWebhook({
         event: testCase.event,
-        deliveryId: `delivery-${randomUUID()}`,
+        deliveryId,
         rawBody: testCase.payload(installed.remoteInstallationId),
       });
       expect(response).toStrictEqual({ status: 200, text: "OK" });
@@ -444,9 +478,17 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         throw new Error(`Expected a ${testCase.name} automation run`);
       }
       const claim = await runsApi.claimRunnerJob(runId);
+      // The visible user turn names this delivery, so a resumed session can tell
+      // this firing apart from every earlier firing of the same automation.
+      expect(claim.prompt).toBe(
+        `/${WORKFLOW_NAME}\nTrigger: ${testCase.expectedTrigger} (GitHub webhook delivery ${deliveryId}).`,
+      );
       for (const expected of testCase.expectedPrompt) {
         expect(claim.appendSystemPrompt).toContain(expected);
       }
+      expect(claim.appendSystemPrompt).toContain(
+        `Trigger: ${testCase.expectedTrigger} (GitHub webhook delivery ${deliveryId}).`,
+      );
       for (const excluded of testCase.excludedPrompt ?? []) {
         expect(claim.appendSystemPrompt).not.toContain(excluded);
       }
@@ -550,14 +592,9 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     if (!created.body.chatThreadId) {
       throw new Error("Expected the automation to have a chat thread");
     }
-    const queue = await accept(
-      queueClient().get({
-        headers: authHeaders(),
-        params: { threadId: created.body.chatThreadId },
-      }),
-      [200],
-    );
-    expect(queue.body.pending).toHaveLength(3);
+    await expect(
+      pendingWorkflowEventCount(created.body.chatThreadId),
+    ).resolves.toBe(3);
 
     for (const runId of [admittedRunId]) {
       const timingEvents = sandboxOperationEventsForRun(runId);
@@ -610,7 +647,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    await accept(
+    const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -633,6 +670,9 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       }),
       [201],
     );
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the automation to have a chat thread");
+    }
 
     const ignored = await postGithubWebhook({
       event: "workflow_run",
@@ -665,6 +705,33 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     if (!runId || listedRuns.runs.length !== 1) {
       throw new Error("Expected a GitHub workflow run automation");
     }
+    const displayPrompt = `/${WORKFLOW_NAME}\nTrigger: GitHub Actions workflow "Turbo" completed with conclusion "failure" (run 555 attempt 2, GitHub webhook delivery ${deliveryId}).`;
+    const events = await wf.readThreadEvents(created.body.chatThreadId);
+    const admittedEvent = events.find((event) => {
+      return event.eventType === "input.automation";
+    });
+    const claimedEvent = events.find((event) => {
+      return event.eventType === "input.prompt" && event.runId === runId;
+    });
+    if (
+      admittedEvent?.eventType !== "input.automation" ||
+      !admittedEvent.userMessage ||
+      claimedEvent?.eventType !== "input.prompt"
+    ) {
+      throw new Error("Expected admitted and claimed workflow chat events");
+    }
+    expect(
+      chatEventAutomationPart(admittedEvent)?.automationBrief,
+    ).toBeUndefined();
+    expect(chatEventDisplayText(admittedEvent)).toBe(displayPrompt);
+    expect(claimedEvent.userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        ...admittedEvent.userMessage.parts,
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
+    expect(chatEventDisplayText(claimedEvent)).toBe(displayPrompt);
     const claim = await runsApi.claimRunnerJob(runId);
     const zeroToken = claim.environment?.ZERO_TOKEN;
     if (!zeroToken) {
@@ -673,6 +740,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     expect(verifyZeroToken(zeroToken)?.capabilities).toContain(
       "goal:user-control:write",
     );
+    expect(claim.prompt).toBe(displayPrompt);
     expect(claim.appendSystemPrompt).toContain(
       'GitHub Actions workflow "Turbo" completed with conclusion "failure"',
     );

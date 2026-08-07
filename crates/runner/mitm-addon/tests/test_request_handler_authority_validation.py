@@ -72,7 +72,9 @@ async def test_rejects_spoofed_host_before_firewall_auth(
     }
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
 
 
 async def test_authority_validation_deny_response_logs_network_target(
@@ -110,9 +112,7 @@ async def test_authority_validation_deny_response_logs_network_target(
     assert entry["action"] == "DENY"
     assert entry["host"] == "attacker.example.com"
     assert entry["port"] == 8443
-    assert entry["url"] == "https://attacker.example.com:8443/repos"
-    assert "code=secret" not in entry["url"]
-    assert "#frag" not in entry["url"]
+    assert entry["url"] == raw_url
     assert entry["status"] == 403
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 

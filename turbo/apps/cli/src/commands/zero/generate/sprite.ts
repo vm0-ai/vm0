@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   createSpriteAuthoringPacket,
   type SpritePlan,

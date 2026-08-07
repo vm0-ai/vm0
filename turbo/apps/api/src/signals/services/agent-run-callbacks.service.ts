@@ -8,18 +8,35 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { env } from "../../lib/env";
 import { now } from "../../lib/time";
 import { db$ } from "../external/db";
+import { refreshAgentPhoneTypingForRun$ } from "./agent-event-consumer-agentphone-typing.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { handleAgentPhoneInternalCallback$ } from "./internal-agentphone-run-callback.service";
 import { handleChatInternalCallback$ } from "./internal-chat-run-callback.service";
 import { internalRunCallbackKindForRecord } from "./internal-run-callback";
-import { handleTeamsOrgInternalCallback$ } from "./internal-teams-org-run-callback.service";
-import { handleTelegramInternalCallback$ } from "./internal-telegram-run-callback.service";
 
 function resolveCallbackUrl(url: string): string {
   return env("ENV") === "development" && url.startsWith("https://tunnel-")
     ? url.replace(/^https:\/\/tunnel-[^/]+/, "http://localhost:3000")
     : url;
+}
+
+function isCanonicalChatCallback(callback: {
+  readonly internalKind: string | null;
+}): boolean {
+  return internalRunCallbackKindForRecord(callback) === "chat";
+}
+
+function isInlineOnlyCanonicalDeliveryCallback(
+  internalKind: string | null,
+): boolean {
+  return (
+    internalKind === "agentphone:chat" ||
+    internalKind === "slack:chat" ||
+    internalKind === "feishu:chat" ||
+    internalKind === "teams:chat" ||
+    internalKind === "telegram:chat" ||
+    internalKind === "github:chat"
+  );
 }
 
 export const dispatchProgressCallbacks$ = command(
@@ -64,6 +81,8 @@ export const dispatchProgressCallbacks$ = command(
               "slack:chat",
               "feishu:chat",
               "teams:chat",
+              "telegram:chat",
+              "github:chat",
               "slack:org",
             ]),
           ),
@@ -73,6 +92,11 @@ export const dispatchProgressCallbacks$ = command(
 
     if (callbacks.length === 0) {
       return;
+    }
+
+    if (callbacks.some(isCanonicalChatCallback)) {
+      await set(refreshAgentPhoneTypingForRun$, runId, signal);
+      signal.throwIfAborted();
     }
 
     await Promise.allSettled(
@@ -92,30 +116,7 @@ export const dispatchProgressCallbacks$ = command(
           );
           return;
         }
-        if (
-          internalKind === "slack:chat" ||
-          internalKind === "feishu:chat" ||
-          internalKind === "teams:chat"
-        ) {
-          return;
-        }
-        if (internalKind === "agentphone") {
-          await set(
-            handleAgentPhoneInternalCallback$,
-            progressCallback,
-            signal,
-          );
-          return;
-        }
-        if (internalKind === "teams:org") {
-          await set(handleTeamsOrgInternalCallback$, progressCallback, signal);
-          return;
-        }
-        if (internalKind === "telegram") {
-          await set(handleTelegramInternalCallback$, progressCallback, signal);
-          return;
-        }
-        if (internalKind === "agent" || internalKind === "github:issues") {
+        if (isInlineOnlyCanonicalDeliveryCallback(internalKind)) {
           return;
         }
         if (!callback.url) {

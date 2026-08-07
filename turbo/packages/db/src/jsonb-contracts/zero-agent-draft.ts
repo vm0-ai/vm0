@@ -1,7 +1,7 @@
 import type {
   PersistedAttachment,
-  UserMessageDocument,
+  UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 export type ZeroAgentDraftAttachments = PersistedAttachment[];
-export type ZeroAgentDraftUserMessage = UserMessageDocument;
+export type ZeroAgentDraftUserMessage = UserMessageInputDocument;

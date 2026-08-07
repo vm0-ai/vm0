@@ -1,10 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import type { Block, KnownBlock } from "@slack/web-api";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   getVm0VisibleModels,
   isSupportedRunModel,
@@ -17,7 +13,6 @@ import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-prefe
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, desc, eq, or } from "drizzle-orm";
-
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import {
@@ -51,7 +46,7 @@ import {
   postMessage,
   publishAppHome,
 } from "../external/slack-message-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
@@ -293,14 +288,21 @@ function ephemeral(blocks: unknown[]): Response {
   return jsonResponse({ response_type: "ephemeral", blocks });
 }
 
-function parseCommandPayload(body: string): SlackCommandPayload {
+function parseCommandPayload(body: string): SlackCommandPayload | null {
   const params = new URLSearchParams(body);
+  const teamId = params.get("team_id");
+  const channelId = params.get("channel_id");
+  const userId = params.get("user_id");
+  const triggerId = params.get("trigger_id");
+  if (!teamId || !channelId || !userId || !triggerId) {
+    return null;
+  }
   return {
-    team_id: params.get("team_id") ?? "",
-    channel_id: params.get("channel_id") ?? "",
-    user_id: params.get("user_id") ?? "",
+    team_id: teamId,
+    channel_id: channelId,
+    user_id: userId,
     text: params.get("text") ?? "",
-    trigger_id: params.get("trigger_id") ?? "",
+    trigger_id: triggerId,
   };
 }
 
@@ -751,7 +753,7 @@ const resolveSlackRouteCompose$ = command(
 
 const resolveConnectedSlackAgentRouteAdmission$ = command(
   async (
-    { get, set },
+    { set },
     args: SlackAgentRouteArgs & {
       readonly installation: SlackInstallation;
       readonly connection: SlackConnection;
@@ -759,18 +761,8 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
     },
     signal: AbortSignal,
   ): Promise<SlackAgentRouteAdmission> => {
-    const overrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.connection.vm0UserId),
-    );
-    signal.throwIfAborted();
     const reuseMainDirectMessageSession =
-      args.channelType === "dm" &&
-      args.threadTs === undefined &&
-      isFeatureEnabled(FeatureSwitchKey.SlackDmSessionRouting, {
-        orgId: args.orgId,
-        userId: args.connection.vm0UserId,
-        overrides,
-      });
+      args.channelType === "dm" && args.threadTs === undefined;
     let effectiveCompose = reuseMainDirectMessageSession
       ? await set(
           resolveSlackRouteCompose$,
@@ -1279,6 +1271,12 @@ export const handleZeroSlackCommands$ = command(
     }
 
     const payload = parseCommandPayload(verified.body);
+    if (!payload) {
+      return jsonResponse(
+        { error: "Missing required Slack command fields" },
+        400,
+      );
+    }
     const db = set(writeDb$);
     const args = payload.text.trim().split(/\s+/);
     const subCommand = args[0]?.toLowerCase() ?? "";

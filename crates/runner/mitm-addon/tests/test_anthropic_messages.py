@@ -6,6 +6,7 @@ import json
 import pytest
 
 from usage import (
+    create_anthropic_messages_json_usage_extractor,
     create_anthropic_messages_sse_usage_extractor,
     extract_anthropic_messages_usage_with_error_from_json,
 )
@@ -31,6 +32,14 @@ def _create_parser_with_lifecycle_events():
         on_lifecycle_event=record_lifecycle_event
     )
     return parse, usage, lifecycle_events
+
+
+def _create_parser_with_accounting_events():
+    accounting_events: list[str] = []
+    parse, usage = create_anthropic_messages_sse_usage_extractor(
+        on_accounting_event=accounting_events.append
+    )
+    return parse, usage, accounting_events
 
 
 class TestAnthropicSseUsageExtractor:
@@ -179,6 +188,66 @@ class TestAnthropicSseUsageExtractor:
         assert usage["tokens.input"] == 40
         assert usage["tokens.output"] == 250
 
+    def test_reports_only_bounded_accounting_event_identities(self):
+        parse, usage, accounting_events = _create_parser_with_accounting_events()
+
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"id":"msg_secret",'
+            b'"model":"claude-sonnet-4-6","content":[{"text":"secret"}],'
+            b'"usage":{"input_tokens":40}}}\n\n'
+            b'data: {"type":"message_delta","usage":{"output_tokens":250}}\n\n'
+            b"event: message_stop\n"
+            b'data: {"type":"message_stop"}\n\n'
+        )
+
+        assert usage["tokens.input"] == 40
+        assert usage["tokens.output"] == 250
+        assert accounting_events == ["message_start", "message_delta", "message_stop"]
+
+    def test_conflicting_event_identity_does_not_update_usage_or_accounting(self):
+        parse, usage, accounting_events = _create_parser_with_accounting_events()
+
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_delta","message":{"model":"conflict",'
+            b'"usage":{"input_tokens":99}},"usage":{"output_tokens":88}}\n\n'
+            b"event: message_stop\n"
+            b'data: {"type":"message_delta"}\n\n'
+        )
+
+        assert usage == {}
+        assert accounting_events == []
+
+    def test_malformed_and_incomplete_events_do_not_report_accounting_state(self):
+        parse, usage, accounting_events = _create_parser_with_accounting_events()
+
+        parse(b'event: message_start\ndata: {"type":"message_start"\n\n')
+        parse(b'event: message_stop\ndata: {"type":"message_stop"')
+
+        assert usage == {}
+        assert accounting_events == []
+
+    def test_discarded_event_does_not_report_accounting_state(self):
+        parse, usage, accounting_events = _create_parser_with_accounting_events()
+
+        parse(
+            b'data: {"type":"message_start","message":{"usage":{"input_tokens":99}}}\n'
+            b"event: content_block_delta\n\n"
+        )
+
+        assert usage == {}
+        assert accounting_events == []
+
+    def test_finish_reports_complete_trailing_message_stop(self):
+        parse, usage, accounting_events = _create_parser_with_accounting_events()
+
+        parse(b'event: message_stop\ndata: {"type":"message_stop"}')
+        parse.finish()
+
+        assert usage == {}
+        assert accounting_events == ["message_stop"]
+
     def test_reports_content_free_lifecycle_fields_for_selected_events(self):
         parse, usage, lifecycle_events = _create_parser_with_lifecycle_events()
 
@@ -224,6 +293,27 @@ class TestAnthropicSseUsageExtractor:
             ("content_block_start", "redacted_thinking"),
             ("content_block_start", "text"),
         ]
+
+    @pytest.mark.parametrize("prefix", [b"", b"\xef\xbb\xbf"])
+    def test_leading_bom_preserves_eventless_usage_and_diagnostics(self, prefix: bytes):
+        parse_errors: list[tuple[str, str]] = []
+        parse, usage = create_anthropic_messages_sse_usage_extractor(
+            on_parse_error=lambda event, error: parse_errors.append((event, error))
+        )
+
+        parse(
+            prefix + b'data: {"type":"message_start","message":{"id":"msg_bom",'
+            b'"model":"claude-sonnet-4-6","usage":{"input_tokens":9,'
+            b'"output_tokens":1}}}\n\n'
+        )
+
+        assert usage == {
+            "message_id": "msg_bom",
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 9,
+            "tokens.output": 1,
+        }
+        assert parse_errors == []
 
     def test_lifecycle_event_type_mismatch_is_ignored_and_parser_recovers(self):
         parse, usage, lifecycle_events = _create_parser_with_lifecycle_events()
@@ -430,6 +520,48 @@ class TestAnthropicSseUsageExtractor:
             "tokens.output": 6,
         }
 
+    def test_work_limit_discards_partial_event_and_recovers(self):
+        parse_errors: list[tuple[str, str]] = []
+        lifecycle_events: list[tuple[str, str | None]] = []
+        accounting_events: list[str] = []
+        parse, usage = create_anthropic_messages_sse_usage_extractor(
+            on_parse_error=lambda event, error: parse_errors.append((event, error)),
+            on_lifecycle_event=lambda event, block_type: lifecycle_events.append(
+                (event, block_type)
+            ),
+            on_accounting_event=accounting_events.append,
+        )
+        dense_object_first_line = b",".join([b'"x":0'] * 10_000) + b","
+        dense_object_second_line = b",".join([b'"x":0'] * 10_000)
+
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"id":"msg_partial",'
+            b'"model":"claude-sonnet-4-6","usage":{"input_tokens":7}},'
+            b'"padding":{' + dense_object_first_line + b"\n"
+        )
+        parse(b"data: " + dense_object_second_line + b"}}\n\n")
+
+        assert usage == {}
+        assert lifecycle_events == []
+        assert accounting_events == []
+        assert parse_errors == [("message_start", "work limit exceeded")]
+
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"id":"msg_recovered",'
+            b'"model":"claude-sonnet-4-6","usage":{"input_tokens":9}}}\n\n'
+        )
+
+        assert usage == {
+            "message_id": "msg_recovered",
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 9,
+        }
+        assert lifecycle_events == [("message_start", None)]
+        assert accounting_events == ["message_start"]
+        assert parse_errors == [("message_start", "work limit exceeded")]
+
     def test_empty_usage_dict_not_reported(self):
         """Empty model_provider_usage (SSE ran but no usage found) should not trigger report."""
         parse, usage = create_anthropic_messages_sse_usage_extractor()
@@ -570,6 +702,38 @@ class TestExtractAnthropicUsageWithErrorFromJson:
         assert result is not None
         assert result["tokens.cache_read"] == 50
         assert result["tokens.cache_creation"] == 0
+
+    def test_work_limit_accumulates_across_chunks_without_partial_usage(self):
+        extractor = create_anthropic_messages_json_usage_extractor()
+        dense_array = b",".join([b"0"] * 40_000)
+        extractor.feed(
+            b'{"id":"msg_partial","model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":50,"output_tokens":100},"padding":['
+        )
+        midpoint = len(dense_array) // 2
+        extractor.feed(dense_array[:midpoint])
+        extractor.feed(dense_array[midpoint:])
+        extractor.feed(b"]}")
+
+        assert extractor.finish() == (None, "work limit exceeded")
+
+    def test_large_discarded_ascii_content_stays_within_work_limit(self):
+        body = (
+            b'{"id":"msg_bulk","model":"claude-sonnet-4-6",'
+            b'"content":[{"type":"text","text":"'
+            + b"x" * (3 * 1024 * 1024)
+            + b'"}],"usage":{"input_tokens":50,"output_tokens":100}}'
+        )
+
+        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+
+        assert error is None
+        assert result == {
+            "message_id": "msg_bulk",
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 50,
+            "tokens.output": 100,
+        }
 
     def test_gzip_compressed(self, headers):
         original = b'{"model":"test","usage":{"input_tokens":42}}'

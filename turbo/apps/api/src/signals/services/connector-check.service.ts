@@ -4,7 +4,7 @@ import type {
   ConnectorCheckRequest,
 } from "@vm0/api-contracts/contracts/zero-connector-check";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
@@ -19,9 +19,10 @@ import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
 import { variables } from "@vm0/db/schema/variable";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { type Db, writeDb$ } from "../external/db";
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import {
   buildConnectorDiagnosticBaseCandidates,
   loadConnectorDiagnosticCatalogView,
@@ -36,7 +37,7 @@ import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { zeroRunContext } from "./zero-run-detail.service";
 import {
   getConnectorRuntimeConnector,
-  listConnectorRuntimeVisibleRefs,
+  listConnectorRuntimeVisibleSlugs,
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
@@ -50,28 +51,28 @@ import {
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
 interface ConnectorCheckIdentity {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly visibility: "available" | "unavailable";
   readonly credentialResolution: "network-boundary" | "none";
 }
 
 interface ConnectorCheckRoutingConfig {
-  readonly type: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly candidates: readonly ConnectorDiagnosticBaseCandidate[];
   readonly hasUnresolvedDynamicBase: boolean;
 }
 
 interface StoredRuntimeState {
-  readonly baseUrlVarsByType: ReadonlyMap<
-    ConnectorRef,
+  readonly baseUrlVarsBySlug: ReadonlyMap<
+    ConnectorSlug,
     Readonly<Record<string, string>> | null
   >;
 }
 
 interface StoredConnectorRuntimeCandidate {
   readonly connectorId: string;
-  readonly type: string;
+  readonly connectorSlug: string;
   readonly authMethod: string;
   readonly storageVersion: number;
 }
@@ -117,13 +118,13 @@ type RunContextInlinePermission =
 
 interface ConnectorCheckCatalogContext {
   readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly visibleConnectorRefs: ReadonlySet<ConnectorRef>;
+  readonly visibleConnectorSlugs: ReadonlySet<ConnectorSlug>;
 }
 
-function isConnectorRef(
+function isConnectorSlug(
   snapshot: ConnectorRuntimeSnapshot,
   value: string,
-): value is ConnectorRef {
+): value is ConnectorSlug {
   return snapshot.connectors.has(value);
 }
 
@@ -133,34 +134,34 @@ function baseKey(value: string): string {
 
 function connectorCredentialResolution(
   snapshot: ConnectorRuntimeSnapshot,
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
 ): "network-boundary" | "none" {
-  return (snapshot.serverFirewalls.getExecutionMetadata(connectorRef)
+  return (snapshot.serverFirewalls.getExecutionMetadata(connectorSlug)
     ?.secretPlaceholderNames.length ?? 0) > 0
     ? "network-boundary"
     : "none";
 }
 
 function connectorIdentity(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   catalogContext: ConnectorCheckCatalogContext,
 ): ConnectorCheckIdentity {
   const connector = getConnectorRuntimeConnector(
     catalogContext.snapshot,
-    connectorRef,
+    connectorSlug,
   );
   if (!connector) {
-    throw new Error(`Missing connector runtime metadata: ${connectorRef}`);
+    throw new Error(`Missing connector runtime metadata: ${connectorSlug}`);
   }
   return {
-    connectorRef,
+    connectorSlug,
     label: connector.catalogConnector.label,
-    visibility: catalogContext.visibleConnectorRefs.has(connectorRef)
+    visibility: catalogContext.visibleConnectorSlugs.has(connectorSlug)
       ? "available"
       : "unavailable",
     credentialResolution: connectorCredentialResolution(
       catalogContext.snapshot,
-      connectorRef,
+      connectorSlug,
     ),
   };
 }
@@ -179,37 +180,42 @@ function pendingStoredConnectorRuntimes(
     readonly userId: string;
     readonly snapshot: ConnectorRuntimeSnapshot;
   },
-): ReadonlyMap<ConnectorRef, PendingStoredConnectorRuntime | null> {
-  const pending = new Map<ConnectorRef, PendingStoredConnectorRuntime | null>();
+): ReadonlyMap<ConnectorSlug, PendingStoredConnectorRuntime | null> {
+  const pending = new Map<
+    ConnectorSlug,
+    PendingStoredConnectorRuntime | null
+  >();
 
   for (const row of rows) {
-    if (!isConnectorRef(args.snapshot, row.type)) {
+    if (!isConnectorSlug(args.snapshot, row.connectorSlug)) {
       continue;
     }
-    if (pending.has(row.type)) {
-      throw new Error(`Duplicate stored connector state for ${row.type}`);
+    if (pending.has(row.connectorSlug)) {
+      throw new Error(
+        `Duplicate stored connector state for ${row.connectorSlug}`,
+      );
     }
     const accessResult = resolveConnectorCredentialAccess({
       snapshot: args.snapshot,
       stored: {
         authMethodId: row.authMethod,
         connectorId: row.connectorId,
-        connectorRef: row.type,
+        connectorSlug: row.connectorSlug,
         orgId: args.orgId,
         storageVersion: row.storageVersion,
         userId: args.userId,
       },
     });
     if (accessResult.kind !== "ok") {
-      pending.set(row.type, null);
+      pending.set(row.connectorSlug, null);
       continue;
     }
     const { access } = accessResult;
     const requiredRuntimeNames =
-      args.snapshot.serverFirewalls.getExecutionMetadata(row.type)
+      args.snapshot.serverFirewalls.getExecutionMetadata(row.connectorSlug)
         ?.baseUrlVarNames ?? [];
     if (requiredRuntimeNames.length === 0) {
-      pending.set(row.type, {
+      pending.set(row.connectorSlug, {
         access,
         storageNameByRuntimeName: new Map(),
       });
@@ -230,7 +236,7 @@ function pendingStoredConnectorRuntimes(
       }
     }
     pending.set(
-      row.type,
+      row.connectorSlug,
       storageNameByRuntimeName.size === requiredNameSet.size
         ? { access, storageNameByRuntimeName }
         : null,
@@ -248,82 +254,87 @@ async function loadStoredRuntimeState(
     readonly snapshot: ConnectorRuntimeSnapshot;
   },
 ): Promise<StoredRuntimeState> {
-  return await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
-    );
+  return await db.transaction(
+    async (tx) => {
+      const connectorRows = await tx
+        .select({
+          connectorId: connectors.id,
+          connectorSlug: sql`${connectors.connectorSlug}`
+            .mapWith(pgTextDecoder)
+            .as("connector_slug"),
+          authMethod: connectors.authMethod,
+          storageVersion: connectors.storageVersion,
+        })
+        .from(connectors)
+        .where(
+          and(
+            eq(connectors.orgId, args.orgId),
+            eq(connectors.userId, args.userId),
+            isNotNull(connectors.connectorSlug),
+          ),
+        );
 
-    const connectorRows = await tx
-      .select({
-        connectorId: connectors.id,
-        type: connectors.type,
-        authMethod: connectors.authMethod,
-        storageVersion: connectors.storageVersion,
-      })
-      .from(connectors)
-      .where(
-        and(
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-        ),
+      const pending = pendingStoredConnectorRuntimes(connectorRows, args);
+
+      const readGroups = [...pending.values()].flatMap((value) => {
+        return value === null || value.storageNameByRuntimeName.size === 0
+          ? []
+          : [
+              {
+                access: value.access,
+                names: [...value.storageNameByRuntimeName.values()],
+              },
+            ];
+      });
+      const variableRows =
+        readGroups.length === 0
+          ? []
+          : await tx
+              .select({ name: variables.name, value: variables.value })
+              .from(variables)
+              .where(
+                connectorCredentialVariableReadCondition({
+                  db: tx,
+                  groups: readGroups,
+                }),
+              );
+      const valueByStorageName = new Map(
+        variableRows.map((row) => {
+          return [row.name, row.value] as const;
+        }),
       );
-
-    const pending = pendingStoredConnectorRuntimes(connectorRows, args);
-
-    const readGroups = [...pending.values()].flatMap((value) => {
-      return value === null || value.storageNameByRuntimeName.size === 0
-        ? []
-        : [
-            {
-              access: value.access,
-              names: [...value.storageNameByRuntimeName.values()],
-            },
-          ];
-    });
-    const variableRows =
-      readGroups.length === 0
-        ? []
-        : await tx
-            .select({ name: variables.name, value: variables.value })
-            .from(variables)
-            .where(
-              connectorCredentialVariableReadCondition({
-                db: tx,
-                groups: readGroups,
-              }),
-            );
-    const valueByStorageName = new Map(
-      variableRows.map((row) => {
-        return [row.name, row.value] as const;
-      }),
-    );
-    const baseUrlVarsByType = new Map<
-      ConnectorRef,
-      Readonly<Record<string, string>> | null
-    >();
-    for (const [type, pendingState] of pending) {
-      if (pendingState === null) {
-        baseUrlVarsByType.set(type, null);
-        continue;
-      }
-      const values: Record<string, string> = {};
-      let complete = true;
-      for (const [
-        runtimeName,
-        storageName,
-      ] of pendingState.storageNameByRuntimeName) {
-        const value = valueByStorageName.get(storageName);
-        if (!value) {
-          complete = false;
-          break;
+      const baseUrlVarsBySlug = new Map<
+        ConnectorSlug,
+        Readonly<Record<string, string>> | null
+      >();
+      for (const [connectorSlug, pendingState] of pending) {
+        if (pendingState === null) {
+          baseUrlVarsBySlug.set(connectorSlug, null);
+          continue;
         }
-        values[runtimeName] = value;
+        const values: Record<string, string> = {};
+        let complete = true;
+        for (const [
+          runtimeName,
+          storageName,
+        ] of pendingState.storageNameByRuntimeName) {
+          const value = valueByStorageName.get(storageName);
+          if (!value) {
+            complete = false;
+            break;
+          }
+          values[runtimeName] = value;
+        }
+        baseUrlVarsBySlug.set(connectorSlug, complete ? values : null);
       }
-      baseUrlVarsByType.set(type, complete ? values : null);
-    }
 
-    return { baseUrlVarsByType };
-  });
+      return { baseUrlVarsBySlug };
+    },
+    {
+      isolationLevel: "repeatable read",
+      accessMode: "read only",
+    },
+  );
 }
 
 function routesToDecisionPermissions(
@@ -348,7 +359,7 @@ function configsToDecisionFirewalls(
 ) {
   return configs.map((config) => {
     return {
-      name: config.type,
+      name: config.connectorSlug,
       apis: config.candidates.map((candidate) => {
         return {
           base: candidate.decisionBase,
@@ -369,7 +380,7 @@ function configFromCatalogView(
     allowStructuralDynamic,
   });
   return {
-    type: view.type,
+    connectorSlug: view.connectorSlug,
     candidates: result.candidates,
     hasUnresolvedDynamicBase: result.hasUnresolvedDynamicBase,
   };
@@ -427,11 +438,11 @@ function inlineApiEnvironmentNames(
 
 function configFromInlineRunContext(
   firewall: RunContextInlineFirewall,
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   view: ConnectorDiagnosticCatalogView | null,
 ): ConnectorCheckRoutingConfig {
   return {
-    type,
+    connectorSlug,
     candidates: firewall.apis.map((api) => {
       return {
         sourceBase: api.base,
@@ -471,19 +482,19 @@ async function loadRunRoutingConfigs(
   snapshot: ConnectorRuntimeSnapshot,
 ): Promise<ConnectorCheckRoutingConfig[]> {
   const viewPromises = new Map<
-    ConnectorRef,
+    ConnectorSlug,
     Promise<ConnectorDiagnosticCatalogView | null>
   >();
   const loadView = (
-    type: ConnectorRef,
+    connectorSlug: ConnectorSlug,
   ): Promise<ConnectorDiagnosticCatalogView | null> => {
-    let promise = viewPromises.get(type);
+    let promise = viewPromises.get(connectorSlug);
     if (!promise) {
       promise = loadConnectorDiagnosticCatalogView(
         snapshot.serverFirewalls,
-        type,
+        connectorSlug,
       );
-      viewPromises.set(type, promise);
+      viewPromises.set(connectorSlug, promise);
     }
     return promise;
   };
@@ -493,24 +504,24 @@ async function loadRunRoutingConfigs(
     if (!snapshot.serverFirewalls.has(firewall.name)) {
       continue;
     }
-    const type = firewall.name;
-    const view = await loadView(type);
+    const connectorSlug = firewall.name;
+    const view = await loadView(connectorSlug);
     if ("apis" in firewall) {
-      configs.push(configFromInlineRunContext(firewall, type, view));
+      configs.push(configFromInlineRunContext(firewall, connectorSlug, view));
       continue;
     }
     if (!view) {
-      throw new Error(`Missing builtin firewall metadata for ${type}`);
+      throw new Error(`Missing builtin firewall metadata for ${connectorSlug}`);
     }
     const baseUrlVars = completeRunBaseUrlVars(firewall, view.baseUrlVarNames);
     configs.push(configFromCatalogView(view, baseUrlVars, false));
   }
 
-  const merged = new Map<ConnectorRef, ConnectorCheckRoutingConfig>();
+  const merged = new Map<ConnectorSlug, ConnectorCheckRoutingConfig>();
   for (const config of configs) {
-    const existing = merged.get(config.type);
-    merged.set(config.type, {
-      type: config.type,
+    const existing = merged.get(config.connectorSlug);
+    merged.set(config.connectorSlug, {
+      connectorSlug: config.connectorSlug,
       candidates: existing
         ? [...existing.candidates, ...config.candidates]
         : config.candidates,
@@ -523,44 +534,44 @@ async function loadRunRoutingConfigs(
 }
 
 async function catalogConfig(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   state: StoredRuntimeState,
   snapshot: ConnectorRuntimeSnapshot,
 ): Promise<ConnectorCheckRoutingConfig | null> {
   const view = await loadConnectorDiagnosticCatalogView(
     snapshot.serverFirewalls,
-    type,
+    connectorSlug,
   );
   if (!view) {
     return null;
   }
   return configFromCatalogView(
     view,
-    state.baseUrlVarsByType.get(type) ?? null,
+    state.baseUrlVarsBySlug.get(connectorSlug) ?? null,
     true,
   );
 }
 
 async function loadGlobalCatalogConfigs(
   request: ParsedConnectorDiagnosticRequest,
-  requestedType: ConnectorRef | undefined,
+  requestedConnectorSlug: ConnectorSlug | undefined,
   state: StoredRuntimeState,
   snapshot: ConnectorRuntimeSnapshot,
 ): Promise<ConnectorCheckRoutingConfig[]> {
   let bestScore: number | null = null;
-  const ownerTypes = new Set<ConnectorRef>();
+  const ownerSlugs = new Set<ConnectorSlug>();
 
-  for (const connectorRef of snapshot.serverFirewalls.connectorRefs) {
+  for (const connectorSlug of snapshot.serverFirewalls.connectorSlugs) {
     const metadata =
-      snapshot.serverFirewalls.getRoutingIndexMetadata(connectorRef);
+      snapshot.serverFirewalls.getRoutingIndexMetadata(connectorSlug);
     const execution =
-      snapshot.serverFirewalls.getExecutionMetadata(connectorRef);
+      snapshot.serverFirewalls.getExecutionMetadata(connectorSlug);
     if (!metadata || !execution) {
       throw new Error(
-        `Missing indexed connector server firewall metadata for ${connectorRef}`,
+        `Missing indexed connector server firewall metadata for ${connectorSlug}`,
       );
     }
-    const baseUrlVars = state.baseUrlVarsByType.get(connectorRef) ?? null;
+    const baseUrlVars = state.baseUrlVarsBySlug.get(connectorSlug) ?? null;
     for (const api of metadata.apis) {
       const resolution = resolveConnectorDiagnosticBase(
         execution,
@@ -580,24 +591,30 @@ async function loadGlobalCatalogConfigs(
       }
       if (bestScore === null || match.score > bestScore) {
         bestScore = match.score;
-        ownerTypes.clear();
+        ownerSlugs.clear();
       }
       if (match.score === bestScore) {
-        ownerTypes.add(connectorRef);
+        ownerSlugs.add(connectorSlug);
       }
     }
   }
 
-  if (ownerTypes.size === 0 && requestedType) {
-    const selected = await catalogConfig(requestedType, state, snapshot);
+  if (ownerSlugs.size === 0 && requestedConnectorSlug) {
+    const selected = await catalogConfig(
+      requestedConnectorSlug,
+      state,
+      snapshot,
+    );
     return selected ? [selected] : [];
   }
 
   const configs = await Promise.all(
-    [...ownerTypes].sort().map(async (type) => {
-      const config = await catalogConfig(type, state, snapshot);
+    [...ownerSlugs].sort().map(async (connectorSlug) => {
+      const config = await catalogConfig(connectorSlug, state, snapshot);
       if (!config) {
-        throw new Error(`Missing indexed firewall metadata for ${type}`);
+        throw new Error(
+          `Missing indexed firewall metadata for ${connectorSlug}`,
+        );
       }
       return config;
     }),
@@ -661,9 +678,9 @@ function environmentNamesForWinningCandidates(
 
 function connectorEnvironmentBindings(
   snapshot: ConnectorRuntimeSnapshot,
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
 ): readonly ConnectorRuntimeBindingEntry[] {
-  const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
+  const connector = getConnectorRuntimeConnector(snapshot, connectorSlug);
   if (!connector) {
     return [];
   }
@@ -679,11 +696,11 @@ function connectorEnvironmentBindings(
 
 function environmentValueRefs(
   snapshot: ConnectorRuntimeSnapshot,
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   environmentName: string,
 ): ReadonlySet<string> {
   return new Set(
-    connectorEnvironmentBindings(snapshot, type)
+    connectorEnvironmentBindings(snapshot, connectorSlug)
       .filter((entry) => {
         return entry.envName === environmentName;
       })
@@ -695,18 +712,22 @@ function environmentValueRefs(
 
 function environmentNameSupportsRoute(
   snapshot: ConnectorRuntimeSnapshot,
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   environmentName: string,
   routeEnvironmentNames: readonly string[],
 ): boolean {
-  const requestedRefs = environmentValueRefs(snapshot, type, environmentName);
+  const requestedRefs = environmentValueRefs(
+    snapshot,
+    connectorSlug,
+    environmentName,
+  );
   return routeEnvironmentNames.some((routeEnvironmentName) => {
     if (routeEnvironmentName === environmentName) {
       return true;
     }
     const routeRefs = environmentValueRefs(
       snapshot,
-      type,
+      connectorSlug,
       routeEnvironmentName,
     );
     return [...requestedRefs].some((valueRef) => {
@@ -755,7 +776,7 @@ function unavailablePolicy(
 }
 
 function permissionPolicy(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   permission: string,
   timeline: ConnectorCheckTimeline,
   configured: boolean,
@@ -767,7 +788,7 @@ function permissionPolicy(
   if (timeline.kind !== "run" || timeline.context.networkPolicies === null) {
     throw new Error("Missing resolved run policy timeline");
   }
-  const policy = timeline.context.networkPolicies[type];
+  const policy = timeline.context.networkPolicies[connectorSlug];
   if (!policy) {
     return { outcome: "allow", basis: "no-policy" };
   }
@@ -784,7 +805,7 @@ function permissionPolicy(
 }
 
 function unknownPolicy(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   timeline: ConnectorCheckTimeline,
   configured: boolean,
 ): ConnectorCheckPolicy {
@@ -795,7 +816,7 @@ function unknownPolicy(
   if (timeline.kind !== "run" || timeline.context.networkPolicies === null) {
     throw new Error("Missing resolved run policy timeline");
   }
-  const policy = timeline.context.networkPolicies[type];
+  const policy = timeline.context.networkPolicies[connectorSlug];
   if (!policy) {
     return { outcome: "allow", basis: "no-policy" };
   }
@@ -813,7 +834,7 @@ function unknownPolicy(
 }
 
 function decisionPermissionResult(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   decision: Exclude<
     FirewallRequestDecision,
     { readonly kind: "no_match" | "ambiguous" }
@@ -824,7 +845,7 @@ function decisionPermissionResult(
     if (decision.permission === undefined) {
       return {
         kind: "unknown-endpoint" as const,
-        policy: unknownPolicy(type, timeline, true),
+        policy: unknownPolicy(connectorSlug, timeline, true),
       };
     }
     return {
@@ -832,7 +853,12 @@ function decisionPermissionResult(
       permissions: [
         {
           name: decision.permission,
-          policy: permissionPolicy(type, decision.permission, timeline, true),
+          policy: permissionPolicy(
+            connectorSlug,
+            decision.permission,
+            timeline,
+            true,
+          ),
         },
       ],
     };
@@ -841,7 +867,7 @@ function decisionPermissionResult(
   if (decision.reason === "unknown_endpoint") {
     return {
       kind: "unknown-endpoint" as const,
-      policy: unknownPolicy(type, timeline, true),
+      policy: unknownPolicy(connectorSlug, timeline, true),
     };
   }
   if (decision.reason !== "permission_denied") {
@@ -850,14 +876,16 @@ function decisionPermissionResult(
     );
   }
   const permissions = [...new Set(decision.permissions)].sort().map((name) => {
-    const policy = permissionPolicy(type, name, timeline, true);
+    const policy = permissionPolicy(connectorSlug, name, timeline, true);
     if (policy.outcome !== "deny" && policy.outcome !== "ask") {
-      throw new Error(`Inconsistent blocked permission policy for ${type}`);
+      throw new Error(
+        `Inconsistent blocked permission policy for ${connectorSlug}`,
+      );
     }
     return { name, policy };
   });
   if (permissions.length === 0) {
-    throw new Error(`Missing blocked permissions for ${type}`);
+    throw new Error(`Missing blocked permissions for ${connectorSlug}`);
   }
   return { kind: "matched" as const, permissions };
 }
@@ -870,19 +898,23 @@ function displayBaseForDecision(
     return baseKey(entry.decisionBase) === baseKey(decisionBase);
   });
   if (!candidate) {
-    throw new Error(`Missing diagnostic display base for ${config.type}`);
+    throw new Error(
+      `Missing diagnostic display base for ${config.connectorSlug}`,
+    );
   }
   return publicConnectorDiagnosticBase(candidate.displayBase);
 }
 
-function connectorTypeForEnvironmentName(
+function connectorSlugForEnvironmentName(
   snapshot: ConnectorRuntimeSnapshot,
   environmentName: string,
-): ConnectorRef | null {
-  const owners = [...snapshot.connectors.keys()].filter((type) => {
-    return connectorEnvironmentBindings(snapshot, type).some((entry) => {
-      return entry.envName === environmentName;
-    });
+): ConnectorSlug | null {
+  const owners = [...snapshot.connectors.keys()].filter((connectorSlug) => {
+    return connectorEnvironmentBindings(snapshot, connectorSlug).some(
+      (entry) => {
+        return entry.envName === environmentName;
+      },
+    );
   });
   const [owner, ...others] = owners;
   if (!owner) {
@@ -899,20 +931,20 @@ function policyMap(timeline: ConnectorCheckTimeline): NetworkPolicies | null {
 }
 
 function noMatchDiagnostic(
-  requestedType: ConnectorRef | undefined,
+  requestedConnectorSlug: ConnectorSlug | undefined,
   configs: readonly ConnectorCheckRoutingConfig[],
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
 ): ConnectorCheckDiagnosticResult {
-  const selectedConfig = requestedType
+  const selectedConfig = requestedConnectorSlug
     ? configs.find((config) => {
-        return config.type === requestedType;
+        return config.connectorSlug === requestedConnectorSlug;
       })
     : undefined;
-  if (requestedType && selectedConfig?.hasUnresolvedDynamicBase) {
+  if (requestedConnectorSlug && selectedConfig?.hasUnresolvedDynamicBase) {
     return {
       outcome: "unresolved-dynamic-base",
-      connector: connectorIdentity(requestedType, catalogContext),
+      connector: connectorIdentity(requestedConnectorSlug, catalogContext),
     };
   }
   return {
@@ -928,7 +960,7 @@ function ambiguousDiagnostic(
   return {
     outcome: "ambiguous",
     candidates: decision.candidates.map((candidate) => {
-      if (!isConnectorRef(catalogContext.snapshot, candidate)) {
+      if (!isConnectorSlug(catalogContext.snapshot, candidate)) {
         throw new Error("Matched an unknown connector firewall");
       }
       const connector = getConnectorRuntimeConnector(
@@ -939,7 +971,7 @@ function ambiguousDiagnostic(
         throw new Error(`Missing connector runtime metadata: ${candidate}`);
       }
       return {
-        connectorRef: candidate,
+        connectorSlug: candidate,
         label: connector.catalogConnector.label,
       };
     }),
@@ -958,7 +990,7 @@ type UrlEnvironmentSelection =
 
 function selectUrlEnvironmentNames(args: {
   readonly catalogContext: ConnectorCheckCatalogContext;
-  readonly type: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly config: ConnectorCheckRoutingConfig;
   readonly parsed: ParsedConnectorDiagnosticRequest;
   readonly requestedEnvironmentName: string | undefined;
@@ -977,7 +1009,7 @@ function selectUrlEnvironmentNames(args: {
   }
   const owned = connectorEnvironmentBindings(
     args.catalogContext.snapshot,
-    args.type,
+    args.connectorSlug,
   ).some((entry) => {
     return entry.envName === args.requestedEnvironmentName;
   });
@@ -994,7 +1026,7 @@ function selectUrlEnvironmentNames(args: {
     environmentNames !== null &&
     !environmentNameSupportsRoute(
       args.catalogContext.snapshot,
-      args.type,
+      args.connectorSlug,
       args.requestedEnvironmentName,
       environmentNames,
     )
@@ -1042,27 +1074,32 @@ function resolvedUrlDiagnostic(
       `Invalid connector diagnostic decision: ${decision.reason}`,
     );
   }
-  if (!isConnectorRef(catalogContext.snapshot, decision.firewallName)) {
+  if (!isConnectorSlug(catalogContext.snapshot, decision.firewallName)) {
     throw new Error("Matched an unknown connector firewall");
   }
-  const type = decision.firewallName;
-  if (request.connectorRef !== undefined && type !== request.connectorRef) {
+  const connectorSlug = decision.firewallName;
+  if (
+    request.connectorSlug !== undefined &&
+    connectorSlug !== request.connectorSlug
+  ) {
     return {
       outcome: "connector-mismatch",
-      connector: connectorIdentity(type, catalogContext),
+      connector: connectorIdentity(connectorSlug, catalogContext),
     };
   }
   const config = configs.find((entry) => {
-    return entry.type === type;
+    return entry.connectorSlug === connectorSlug;
   });
   if (!config) {
-    throw new Error(`Missing selected connector routing config for ${type}`);
+    throw new Error(
+      `Missing selected connector routing config for ${connectorSlug}`,
+    );
   }
 
-  const identity = connectorIdentity(type, catalogContext);
+  const identity = connectorIdentity(connectorSlug, catalogContext);
   const environmentSelection = selectUrlEnvironmentNames({
     catalogContext,
-    type,
+    connectorSlug,
     config,
     parsed,
     requestedEnvironmentName: request.environmentName,
@@ -1080,7 +1117,7 @@ function resolvedUrlDiagnostic(
     method: parsed.method,
     base: displayBaseForDecision(config, decision.base),
     relativePath: decision.relativePath,
-    permission: decisionPermissionResult(type, decision, timeline),
+    permission: decisionPermissionResult(connectorSlug, decision, timeline),
   };
 }
 
@@ -1090,10 +1127,10 @@ async function resolveUrlMode(
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
 ): Promise<ConnectorCheckDiagnosticResult> {
-  const requestedType = request.connectorRef;
+  const requestedConnectorSlug = request.connectorSlug;
   if (
-    requestedType !== undefined &&
-    !isConnectorRef(catalogContext.snapshot, requestedType)
+    requestedConnectorSlug !== undefined &&
+    !isConnectorSlug(catalogContext.snapshot, requestedConnectorSlug)
   ) {
     return { outcome: "unknown-connector" };
   }
@@ -1103,7 +1140,7 @@ async function resolveUrlMode(
       ? await loadRunRoutingConfigs(timeline.context, catalogContext.snapshot)
       : await loadGlobalCatalogConfigs(
           parsed,
-          requestedType,
+          requestedConnectorSlug,
           timeline.state,
           catalogContext.snapshot,
         );
@@ -1112,13 +1149,18 @@ async function resolveUrlMode(
     parsed.method,
     parsed.url,
     policyMap(timeline),
-    requestedType
-      ? { status: "present", value: requestedType }
+    requestedConnectorSlug
+      ? { status: "present", value: requestedConnectorSlug }
       : { status: "absent" },
   );
 
   if (decision.kind === "no_match") {
-    return noMatchDiagnostic(requestedType, configs, timeline, catalogContext);
+    return noMatchDiagnostic(
+      requestedConnectorSlug,
+      configs,
+      timeline,
+      catalogContext,
+    );
   }
   if (decision.kind === "ambiguous") {
     return ambiguousDiagnostic(decision, catalogContext);
@@ -1138,11 +1180,11 @@ async function resolveEnvironmentMode(
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
 ): Promise<ConnectorCheckDiagnosticResult> {
-  const type = connectorTypeForEnvironmentName(
+  const connectorSlug = connectorSlugForEnvironmentName(
     catalogContext.snapshot,
     request.environmentName,
   );
-  if (!type) {
+  if (!connectorSlug) {
     return { outcome: "unknown-environment" };
   }
   const configs =
@@ -1150,19 +1192,19 @@ async function resolveEnvironmentMode(
       ? await loadRunRoutingConfigs(timeline.context, catalogContext.snapshot)
       : [];
   const config = configs.find((entry) => {
-    return entry.type === type;
+    return entry.connectorSlug === connectorSlug;
   });
   return {
     outcome: "resolved",
     mode: "environment",
-    connector: connectorIdentity(type, catalogContext),
+    connector: connectorIdentity(connectorSlug, catalogContext),
     environmentName: request.environmentName,
     run: runStatus(timeline, config),
     permission:
       request.permission === undefined
         ? null
         : permissionPolicy(
-            type,
+            connectorSlug,
             request.permission,
             timeline,
             config !== undefined,
@@ -1216,7 +1258,7 @@ export const resolveConnectorCheck$ = command(
               userId: args.userId,
               snapshot,
             })
-          : { baseUrlVarsByType: new Map() };
+          : { baseUrlVarsBySlug: new Map() };
       signal.throwIfAborted();
       timeline = { kind: "stored", state };
     }
@@ -1227,14 +1269,14 @@ export const resolveConnectorCheck$ = command(
       args.userId,
     );
     signal.throwIfAborted();
-    const visibleConnectorRefs = listConnectorRuntimeVisibleRefs({
+    const visibleConnectorSlugs = listConnectorRuntimeVisibleSlugs({
       snapshot,
       featureStates,
     });
     signal.throwIfAborted();
     const catalogContext: ConnectorCheckCatalogContext = {
       snapshot,
-      visibleConnectorRefs: new Set(visibleConnectorRefs),
+      visibleConnectorSlugs: new Set(visibleConnectorSlugs),
     };
     let diagnostic: ConnectorCheckDiagnosticResult;
     if (args.request.mode === "url") {

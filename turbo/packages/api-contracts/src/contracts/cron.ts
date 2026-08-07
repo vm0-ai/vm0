@@ -25,6 +25,19 @@ const cleanupResponseSchema = z.object({
   results: z.array(cleanupResultSchema),
   exportJobsCleaned: z.number(),
   exportJobsStuck: z.number(),
+  threadlessRuns: z.object({
+    discovered: z.number().int().nonnegative(),
+    cancelled: z.number().int().nonnegative(),
+    waiting: z.number().int().nonnegative(),
+    deleted: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    errors: z.array(
+      z.object({
+        runId: z.string().uuid(),
+        error: z.string(),
+      }),
+    ),
+  }),
 });
 
 /**
@@ -75,9 +88,8 @@ const cronCompactUsageEventsResponseSchema = z.object({
   seededRawRows: z.number().int().nonnegative(),
   selectedGrains: z.number().int().nonnegative(),
   probedRawRows: z.number().int().nonnegative(),
-  browserHeldRows: z.number().int().nonnegative(),
   billingErrorHeldRows: z.number().int().nonnegative(),
-  rawRowsCompacted: z.number().int().nonnegative(),
+  rawRowsDeleted: z.number().int().nonnegative(),
   hourlyRowsDeleted: z.number().int().nonnegative(),
   hourlyRowsInserted: z.number().int().nonnegative(),
   quantity: z.string().regex(/^-?\d+$/),
@@ -91,7 +103,7 @@ const cronCompactUsageEventsResponseSchema = z.object({
   durationMs: z.number().int().nonnegative(),
 });
 
-const cronMonitorChatMessageQueueResponseSchema = z.object({
+const cronMonitorChatEventQueueResponseSchema = z.object({
   success: z.literal(true),
   orphanedMessages: z.number().int().nonnegative(),
 });
@@ -116,7 +128,6 @@ const cronComputerUseScreenshotCleanupResponseSchema = z.object({
 const cronBrowserReconcileResponseSchema = z.object({
   checked: z.number().int().nonnegative(),
   stopped: z.number().int().nonnegative(),
-  settled: z.number().int().nonnegative(),
   errors: z.number().int().nonnegative(),
   healthy: z.number().int().nonnegative(),
 });
@@ -164,6 +175,12 @@ const cronRenewGmailWatchesResponseSchema = z.object({
   failed: z.number(),
 });
 
+const cronRenewGoogleFormsWatchesResponseSchema = z.object({
+  success: z.literal(true),
+  renewed: z.number(),
+  failed: z.number(),
+});
+
 const cronRenewGoogleCalendarWatchesResponseSchema = z.object({
   success: z.literal(true),
   renewed: z.number(),
@@ -205,13 +222,13 @@ const cronRefreshStoragePresignedUrlsResponseSchema = z.object({
   workflowSkill: storagePresignedUrlRefreshResultSchema,
 });
 
-export const CRON_AGGREGATE_MODEL_STATS_MAX_HOURS = 24 * 32;
-
 const cronAggregateModelStatsResponseSchema = z.object({
   success: z.literal(true),
-  windowStart: z.string(),
-  windowEnd: z.string(),
-  aggregated: z.number(),
+  cutoff: z.iso.datetime(),
+  processedHours: z.number().int().nonnegative(),
+  processedObservations: z.number().int().nonnegative(),
+  updatedStats: z.number().int().nonnegative(),
+  deletedObservations: z.number().int().nonnegative(),
 });
 
 export const cronAggregateUsageContract = c.router({
@@ -266,13 +283,13 @@ export const cronCompactUsageEventsContract = c.router({
   },
 });
 
-export const cronMonitorChatMessageQueueContract = c.router({
+export const cronMonitorChatEventQueueContract = c.router({
   monitor: {
     method: "GET",
-    path: "/api/cron/monitor-chat-message-queue",
+    path: "/api/cron/monitor-chat-event-queue",
     headers: authHeadersSchema,
     responses: {
-      200: cronMonitorChatMessageQueueResponseSchema,
+      200: cronMonitorChatEventQueueResponseSchema,
       401: apiErrorSchema,
       500: z.object({ error: z.string() }),
     },
@@ -341,7 +358,7 @@ export const cronBrowserReconcileContract = c.router({
       200: cronBrowserReconcileResponseSchema,
       401: apiErrorSchema,
     },
-    summary: "Reconcile terminal managed browsers and final billing",
+    summary: "Reconcile managed browser idle leases and provider state",
   },
 });
 
@@ -368,6 +385,19 @@ export const cronRenewGmailWatchesContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Renew Gmail push notification watches",
+  },
+});
+
+export const cronRenewGoogleFormsWatchesContract = c.router({
+  renew: {
+    method: "GET",
+    path: "/api/cron/renew-google-forms-watches",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronRenewGoogleFormsWatchesResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Renew Google Forms response watches",
   },
 });
 
@@ -467,14 +497,7 @@ export const cronAggregateModelStatsContract = c.router({
     method: "GET",
     path: "/api/cron/aggregate-model-stats",
     headers: authHeadersSchema,
-    query: z.object({
-      hours: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(CRON_AGGREGATE_MODEL_STATS_MAX_HOURS)
-        .optional(),
-    }),
+    query: z.object({}).strict(),
     responses: {
       200: cronAggregateModelStatsResponseSchema,
       401: apiErrorSchema,
@@ -501,8 +524,8 @@ export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronCompactChatThreadSnapshotsContract =
   typeof cronCompactChatThreadSnapshotsContract;
-export type CronMonitorChatMessageQueueContract =
-  typeof cronMonitorChatMessageQueueContract;
+export type CronMonitorChatEventQueueContract =
+  typeof cronMonitorChatEventQueueContract;
 export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
 export type CronAggregateInsightsContract =
@@ -522,6 +545,8 @@ export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
 export type CronConnectorCatalogContract = typeof cronConnectorCatalogContract;
 export type CronRenewGmailWatchesContract =
   typeof cronRenewGmailWatchesContract;
+export type CronRenewGoogleFormsWatchesContract =
+  typeof cronRenewGoogleFormsWatchesContract;
 export type CronRenewGoogleCalendarWatchesContract =
   typeof cronRenewGoogleCalendarWatchesContract;
 export type CronRenewGoogleWorkspaceEventSubscriptionsContract =
@@ -543,6 +568,7 @@ export {
   cronSyncSkillsResponseSchema,
   cronExecuteWorkflowAutomationsResponseSchema,
   cronRenewGmailWatchesResponseSchema,
+  cronRenewGoogleFormsWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
   cronAggregateInsightsResponseSchema,

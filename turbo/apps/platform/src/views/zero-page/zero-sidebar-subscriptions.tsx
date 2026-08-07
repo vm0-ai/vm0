@@ -5,6 +5,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 import {
   ACCOUNT_MENU_SUBSCRIPTION_PROVIDERS,
@@ -19,6 +20,7 @@ import {
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { formatCodexResetCredits } from "./components/preferences/codex-reset-usage-dialog.tsx";
 import { formatSubscriptionUsageReset } from "./subscription-usage-format.ts";
+import { formatLocalizedNumber } from "../../i18n/format.ts";
 
 type SubscriptionUsage = AccountMenuSubscriptionUsage;
 type SubscriptionUsageWindow = AccountMenuSubscriptionUsageWindow;
@@ -52,6 +54,7 @@ export function AccountMenuSubscriptionsPanel({
   readonly onResetCodexUsage?: (resetCredits: number | null) => void;
   readonly resetPending?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div data-testid="account-menu-subscriptions" className="px-3 py-2.5">
       {loading && rows.length === 0 ? (
@@ -60,12 +63,22 @@ export function AccountMenuSubscriptionsPanel({
         <TooltipProvider delayDuration={100}>
           <div className="flex flex-col gap-2.5">
             {rows.map((row, index) => {
+              const label =
+                row.type === "codex-oauth-token"
+                  ? t(($) => {
+                      return $.settings.accountMenu.subscriptions.providers
+                        .codex;
+                    })
+                  : t(($) => {
+                      return $.settings.accountMenu.subscriptions.providers
+                        .claudeCode;
+                    });
               return (
                 <AccountMenuSubscriptionProviderSection
                   key={row.type}
                   divided={index > 0}
                   type={row.type}
-                  label={row.label}
+                  label={label}
                   usage={row.usage}
                   resetCredits={row.resetCredits}
                   resetPending={resetPending}
@@ -88,10 +101,10 @@ function AccountMenuSubscriptionsSkeleton() {
           <div key={provider.type} className="flex flex-col gap-1.5">
             {index > 0 && <div className="-mx-3 h-px bg-border" />}
             <div className="h-3 w-20 animate-pulse rounded bg-muted/60" />
-            {["5h", "week"].map((label) => {
+            {["fiveHour", "week"].map((kind) => {
               return (
                 <div
-                  key={label}
+                  key={kind}
                   className="grid grid-cols-[34px_minmax(0,1fr)_34px] items-center gap-1.5"
                 >
                   <div className="h-2.5 animate-pulse rounded bg-muted/60" />
@@ -124,6 +137,7 @@ function AccountMenuSubscriptionProviderSection({
   readonly resetPending: boolean;
   readonly onResetCodexUsage?: (resetCredits: number | null) => void;
 }) {
+  const { t } = useTranslation();
   const windows = accountMenuSubscriptionUsageWindows(usage);
   const canResetCodex =
     type === "codex-oauth-token" &&
@@ -133,16 +147,32 @@ function AccountMenuSubscriptionProviderSection({
     resetCredits > 0;
 
   return (
-    <section className="flex flex-col gap-1.5" aria-label={`${label} usage`}>
+    <section
+      className="flex flex-col gap-1.5"
+      aria-label={t(
+        ($) => {
+          return $.settings.accountMenu.subscriptions.usage;
+        },
+        { provider: label },
+      )}
+    >
       {divided && <div className="-mx-3 h-px bg-border" />}
       <h3 className="truncate text-xs font-medium leading-4 text-foreground">
         {label}
       </h3>
       <div className="flex flex-col gap-1">
-        {windows.map(({ label: windowLabel, window }) => {
+        {windows.map(({ kind, window }) => {
+          const windowLabel =
+            kind === "fiveHour"
+              ? t(($) => {
+                  return $.settings.accountMenu.subscriptions.windows.fiveHour;
+                })
+              : t(($) => {
+                  return $.settings.accountMenu.subscriptions.windows.week;
+                });
           return (
             <AccountMenuSubscriptionUsageBar
-              key={windowLabel}
+              key={kind}
               providerLabel={label}
               windowLabel={windowLabel}
               window={window}
@@ -161,7 +191,11 @@ function AccountMenuSubscriptionProviderSection({
           <span className="min-w-0 flex-1 truncate text-muted-foreground">
             {formatCodexResetCredits(resetCredits)}
           </span>
-          <span className="shrink-0 font-medium text-foreground">Reset</span>
+          <span className="shrink-0 font-medium text-foreground">
+            {t(($) => {
+              return $.settings.accountMenu.subscriptions.reset;
+            })}
+          </span>
         </DropdownMenuModalItem>
       ) : null}
     </section>
@@ -177,6 +211,7 @@ function AccountMenuSubscriptionUsageBar({
   readonly windowLabel: string;
   readonly window: SubscriptionUsageWindow;
 }) {
+  const { t } = useTranslation();
   const rawRemainingPercent =
     window.remainingPercent ??
     (window.usedPercent === null ? null : 100 - window.usedPercent);
@@ -202,7 +237,12 @@ function AccountMenuSubscriptionUsageBar({
           <span
             tabIndex={0}
             role="progressbar"
-            aria-label={`${providerLabel} ${windowLabel} remaining`}
+            aria-label={t(
+              ($) => {
+                return $.settings.accountMenu.subscriptions.usageRemaining;
+              },
+              { provider: providerLabel, window: windowLabel },
+            )}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={remainingPercent ?? undefined}
@@ -216,7 +256,12 @@ function AccountMenuSubscriptionUsageBar({
         </TooltipTrigger>
         <TooltipContent side="right" align="center" className="max-w-56">
           {reset === null ? (
-            <p className="text-xs">Reset time unavailable</p>
+            <p className="text-xs">
+              {t(($) => {
+                return $.settings.accountMenu.subscriptions
+                  .resetTimeUnavailable;
+              })}
+            </p>
           ) : "fallbackText" in reset ? (
             <p className="text-xs">{reset.fallbackText}</p>
           ) : (
@@ -243,7 +288,10 @@ function formatUsagePercent(value: number | null): string | null {
     return null;
   }
   const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
+  return formatLocalizedNumber(rounded / 100, {
+    style: "percent",
+    maximumFractionDigits: 1,
+  });
 }
 
 function usageTone(remainingPercent: number | null): {

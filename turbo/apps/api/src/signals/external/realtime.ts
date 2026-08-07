@@ -1,5 +1,14 @@
 import Ably from "ably";
-import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type {
+  BrowserSessionChangedPayload,
+  ConnectorChangedPayload,
+} from "@vm0/api-contracts/contracts/realtime";
+import type {
+  RunnerPreference,
+  RunnerPreferenceDecision,
+  RunnerPreferenceResolution,
+} from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { env } from "../../lib/env";
@@ -68,10 +77,9 @@ export async function createRunnerGroupRealtimeToken(
  * Platform clients subscribe via the existing /api/zero/realtime/token
  * endpoint and receive events published by the API backend.
  *
- * NOT best-effort: rejections from Ably propagate to the caller, matching
- * the original route behaviour. Mutation handlers should use this directly; if
- * a non-blocking publish becomes necessary for a future route, prefer
- * `settle` from ../utils.
+ * NOT best-effort: rejections from Ably propagate to the caller. Use this
+ * directly only when delivery failure should fail the operation. Post-commit
+ * invalidations should expose a topic-specific safe publisher instead.
  */
 export async function publishUserSignal(
   userIds: readonly string[],
@@ -86,6 +94,36 @@ export async function publishUserSignal(
     }),
   );
   L.debug(`Published "${topic}" to ${userIds.length} user(s)`);
+}
+
+export async function publishConnectorChangedForUserSafely(
+  userId: string,
+  connectorSlug: ConnectorSlug,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], "connector:changed", {
+      connectorSlug,
+    } satisfies ConnectorChangedPayload),
+    (error) => {
+      L.warn("Failed to publish connector changed signal", {
+        connectorSlug,
+        error,
+      });
+    },
+  );
+}
+
+export async function publishCustomConnectorListChangedForUserSafely(
+  userId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], "customConnectorListChanged"),
+    (error) => {
+      L.warn("Failed to publish custom connector list changed signal", {
+        error,
+      });
+    },
+  );
 }
 
 export async function publishRunChangedForUserSafely(
@@ -115,7 +153,7 @@ export async function publishThreadListChangedSafely(
   userId: string,
 ): Promise<void> {
   await tapError(publishThreadListChanged(userId), (error) => {
-    L.warn("Failed to publish thread list changed signal", { error });
+    L.warn("Failed to publish thread list changed signal", { userId, error });
   });
 }
 
@@ -163,6 +201,26 @@ export async function publishChatThreadMessageCreatedSafely(
     ),
     (error) => {
       L.warn("Failed to publish chat thread message created signal", {
+        threadId,
+        error,
+      });
+    },
+  );
+}
+
+/**
+ * Notify an open chat thread that a persisted run was created.
+ *
+ * Best-effort: a failed publish must not fail the committed run creation.
+ */
+export async function publishChatThreadRunCreatedSafely(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], `chatThreadRunCreated:${threadId}`),
+    (error) => {
+      L.warn("Failed to publish chat thread run created signal", {
         threadId,
         error,
       });
@@ -219,6 +277,31 @@ export async function publishConnectorPermissionUpdatedSafely(
 }
 
 /**
+ * Notify the user's open chat surfaces that one managed browser changed
+ * lifecycle state. The thread-scoped payload lets each card registry reload
+ * only the matching shared signals.
+ *
+ * Best-effort: a failed publish must not fail browser resume or reclamation.
+ */
+export async function publishBrowserSessionChangedSafely(
+  userId: string,
+  browser: {
+    readonly threadId: string;
+  },
+): Promise<void> {
+  const payload: BrowserSessionChangedPayload = browser;
+  await tapError(
+    publishUserSignal([userId], "browserSessionChanged", payload),
+    (error) => {
+      L.warn("Failed to publish browser session changed signal", {
+        threadId: browser.threadId,
+        error,
+      });
+    },
+  );
+}
+
+/**
  * Notify a chat thread's UI that its visible workflow set changed. The slash
  * workflow composer subscribes to this topic and refetches the authoritative
  * agent-scoped workflow list.
@@ -234,27 +317,6 @@ export async function publishChatThreadWorkflowsChangedSafely(
     publishUserSignal([userId], `chatThreadWorkflowsChanged:${threadId}`),
     (error) => {
       L.warn("Failed to publish chat thread workflows changed signal", {
-        threadId,
-        error,
-      });
-    },
-  );
-}
-
-/**
- * Notify a chat thread's UI that its workflow queue changed (event enqueued,
- * drained, skipped, cleared, paused, or resumed). Best-effort like the
- * automations signal: a failed publish must not fail the mutation. The client
- * re-fetches the authoritative queue state on any delivery.
- */
-export async function publishChatThreadWorkflowQueueChangedSafely(
-  userId: string,
-  threadId: string,
-): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadWorkflowQueueChanged:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread workflow queue changed signal", {
         threadId,
         error,
       });
@@ -290,29 +352,80 @@ export async function publishOrgSignal(
   L.debug(`Published "${topic}" to org:${orgId}`);
 }
 
+export type RunnerCancellationMode = "cooperative" | "hard";
+
 /**
  * Notify a runner-group channel that a run should halt. The runner subscribes
- * to its group's channel and aborts the matching run on receipt.
+ * to its group's channel and applies the requested cancellation mode.
  */
 export async function publishCancelToRunnerGroup(
   group: string,
   runId: string,
+  mode: RunnerCancellationMode,
 ): Promise<void> {
   const client = ablyClient();
   const channel = client.channels.get(`runner-group:${group}`);
-  await channel.publish("cancel", { runId });
-  L.debug(`Published cancel ${runId} to runner-group:${group}`);
+  await channel.publish("cancel", { runId, mode });
+  L.debug(`Published ${mode} cancel ${runId} to runner-group:${group}`);
 }
 
 export async function publishNetworkPolicyRefreshToRunnerGroup(
   group: string,
   runId: string,
-  connectorRef: string,
+  connectorSlug: string,
 ): Promise<void> {
   const channel = ablyClient().channels.get(`runner-group:${group}`);
-  await channel.publish("network-policy-refresh", { runId, connectorRef });
+  await channel.publish("network-policy-refresh", {
+    runId,
+    connectorSlug,
+  });
   L.debug(
-    `Published network policy refresh ${runId}/${connectorRef} to runner-group:${group}`,
+    `Published network policy refresh ${runId}/${connectorSlug} to runner-group:${group}`,
+  );
+}
+
+export async function publishActiveInputToRunnerGroup(
+  group: string,
+  runId: string,
+): Promise<void> {
+  const channel = ablyClient().channels.get(`runner-group:${group}`);
+  await channel.publish("active-input", { runId });
+  L.debug(`Published active input ${runId} to runner-group:${group}`);
+}
+
+/** Wake the Pi standby runtime after the complete pending tool batch commits. */
+async function publishPiHandoffToRunnerGroup(
+  group: string,
+  runId: string,
+): Promise<void> {
+  const channel = ablyClient().channels.get(`runner-group:${group}`);
+  await channel.publish("pi-handoff", { runId });
+  L.debug(`Published Pi handoff ${runId} to runner-group:${group}`);
+}
+
+export async function publishPiHandoffToRunnerGroupSafely(
+  group: string,
+  runId: string,
+): Promise<void> {
+  await tapError(publishPiHandoffToRunnerGroup(group, runId), (error) => {
+    L.warn("Failed to publish Pi handoff", { group, runId, error });
+  });
+}
+
+/** Release a prewarmed Pi Sandbox after the API has settled the run. */
+export async function publishPiStandbyReleaseToRunnerGroupSafely(
+  group: string,
+  runId: string,
+): Promise<void> {
+  await tapError(
+    (async () => {
+      const channel = ablyClient().channels.get(`runner-group:${group}`);
+      await channel.publish("pi-standby-release", { runId });
+      L.debug(`Published Pi standby release ${runId} to runner-group:${group}`);
+    })(),
+    (error) => {
+      L.warn("Failed to publish Pi standby release", { group, runId, error });
+    },
   );
 }
 
@@ -321,11 +434,13 @@ export async function publishRunnerJobNotification(
   runId: string,
   profile: string,
   metadata?: {
+    /** Raw key required for runner-local reuse matching; it stays on the internal runner-group channel. */
+    readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
-    readonly historyGenerationAffinityProtectedUntil: string | null;
-    readonly affinityProtectedUntil: string | null;
-    readonly sessionAffinityResource: SessionAffinityResource | null;
     readonly historyGenerationRunId: string | undefined;
+    readonly runnerPreferenceDecision: RunnerPreferenceDecision;
+    readonly runnerPreference?: RunnerPreference;
+    readonly runnerPreferenceResolution: RunnerPreferenceResolution;
   },
 ): Promise<boolean> {
   const published = await tapError(
@@ -334,23 +449,21 @@ export async function publishRunnerJobNotification(
       await channel.publish("job", {
         runId,
         profile,
+        ...(metadata?.reuseKey ? { reuseKey: metadata.reuseKey } : {}),
         ...(metadata?.cliAgentSessionId
           ? { cliAgentSessionId: metadata.cliAgentSessionId }
           : {}),
-        ...(metadata?.affinityProtectedUntil
-          ? { affinityProtectedUntil: metadata.affinityProtectedUntil }
-          : {}),
-        ...(metadata?.sessionAffinityResource
-          ? { sessionAffinityResource: metadata.sessionAffinityResource }
-          : {}),
-        ...(metadata?.historyGenerationAffinityProtectedUntil
-          ? {
-              historyGenerationAffinityProtectedUntil:
-                metadata.historyGenerationAffinityProtectedUntil,
-            }
-          : {}),
         ...(metadata?.historyGenerationRunId
           ? { historyGenerationRunId: metadata.historyGenerationRunId }
+          : {}),
+        ...(metadata?.runnerPreference
+          ? { runnerPreference: metadata.runnerPreference }
+          : {}),
+        ...(metadata
+          ? {
+              runnerPreferenceDecision: metadata.runnerPreferenceDecision,
+              runnerPreferenceResolution: metadata.runnerPreferenceResolution,
+            }
           : {}),
       });
       L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);

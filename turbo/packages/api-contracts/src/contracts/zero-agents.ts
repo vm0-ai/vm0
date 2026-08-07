@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { requireUserMessageForNonEmptyDraft } from "./draft-user-message";
+import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import {
   persistedAttachmentSchema,
-  userMessageDocumentSchema,
+  userMessageInputDocumentSchema,
 } from "./chat-threads";
 
 const c = initContract();
@@ -67,19 +67,17 @@ export const zeroAgentInstructionsRequestSchema = z.object({
 
 export const zeroAgentDraftResponseSchema = z
   .object({
-    draftContent: z.string().nullable(),
-    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftUserMessage: userMessageInputDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
-  .superRefine(requireUserMessageForNonEmptyDraft);
+  .superRefine(requireUserMessageForDraftAttachments);
 
 export const zeroAgentDraftRequestSchema = z
   .object({
-    draftContent: z.string().nullable().optional(),
-    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftUserMessage: userMessageInputDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
   })
-  .superRefine(requireUserMessageForNonEmptyDraft);
+  .superRefine(requireUserMessageForDraftAttachments);
 
 /**
  * Contract for GET/POST /api/zero/agents (list/create agents)

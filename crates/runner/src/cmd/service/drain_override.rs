@@ -12,13 +12,25 @@ const RUNTIME_SYSTEMD_SYSTEM_DIR: &str = "/run/systemd/system";
 const DRAIN_DROP_IN_FILE_NAME: &str = "50-vm0-drain.conf";
 const DRAIN_DROP_IN_CONTENT: &str = "[Service]\nRestart=no\n";
 
-pub(super) fn write_drain_restart_override(unit: &RunnerServiceUnit) -> RunnerResult<()> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum DrainRestartOverrideWrite {
+    Created,
+    Replaced,
+}
+
+pub(super) fn write_drain_restart_override(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<DrainRestartOverrideWrite> {
     write_drain_restart_override_at(Path::new(RUNTIME_SYSTEMD_SYSTEM_DIR), unit)
 }
 
 /// Returns whether cleanup found state that warrants reloading systemd.
 pub(super) fn remove_drain_restart_override(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
     remove_drain_restart_override_at(Path::new(RUNTIME_SYSTEMD_SYSTEM_DIR), unit)
+}
+
+pub(super) fn drain_restart_override_path(unit: &RunnerServiceUnit) -> PathBuf {
+    drain_restart_override_path_at(Path::new(RUNTIME_SYSTEMD_SYSTEM_DIR), unit)
 }
 
 fn drain_restart_override_dir_at(root: &Path, unit: &RunnerServiceUnit) -> PathBuf {
@@ -29,7 +41,10 @@ fn drain_restart_override_path_at(root: &Path, unit: &RunnerServiceUnit) -> Path
     drain_restart_override_dir_at(root, unit).join(DRAIN_DROP_IN_FILE_NAME)
 }
 
-fn write_drain_restart_override_at(root: &Path, unit: &RunnerServiceUnit) -> RunnerResult<()> {
+fn write_drain_restart_override_at(
+    root: &Path,
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<DrainRestartOverrideWrite> {
     let dir = drain_restart_override_dir_at(root, unit);
     std::fs::create_dir_all(&dir).map_err(|e| {
         RunnerError::Internal(format!(
@@ -39,7 +54,18 @@ fn write_drain_restart_override_at(root: &Path, unit: &RunnerServiceUnit) -> Run
     })?;
     let path = drain_restart_override_path_at(root, unit);
     cleanup_unit_staging_files(&path)?;
-    write_unit_file(&path, DRAIN_DROP_IN_CONTENT)
+    let outcome = match std::fs::symlink_metadata(&path) {
+        Ok(_) => DrainRestartOverrideWrite::Replaced,
+        Err(e) if e.kind() == ErrorKind::NotFound => DrainRestartOverrideWrite::Created,
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "stat drain restart override {}: {e}",
+                path.display()
+            )));
+        }
+    };
+    write_unit_file(&path, DRAIN_DROP_IN_CONTENT)?;
+    Ok(outcome)
 }
 
 fn remove_drain_restart_override_at(root: &Path, unit: &RunnerServiceUnit) -> RunnerResult<bool> {
@@ -100,7 +126,10 @@ mod tests {
         let unit = service_unit();
         let path = drain_restart_override_path_at(dir.path(), &unit);
 
-        write_drain_restart_override_at(dir.path(), &unit).unwrap();
+        assert_eq!(
+            write_drain_restart_override_at(dir.path(), &unit).unwrap(),
+            DrainRestartOverrideWrite::Created
+        );
 
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
@@ -115,9 +144,15 @@ mod tests {
         let drop_in_dir = drain_restart_override_dir_at(dir.path(), &unit);
         let path = drain_restart_override_path_at(dir.path(), &unit);
 
-        write_drain_restart_override_at(dir.path(), &unit).unwrap();
+        assert_eq!(
+            write_drain_restart_override_at(dir.path(), &unit).unwrap(),
+            DrainRestartOverrideWrite::Created
+        );
         std::fs::write(&path, "old content").unwrap();
-        write_drain_restart_override_at(dir.path(), &unit).unwrap();
+        assert_eq!(
+            write_drain_restart_override_at(dir.path(), &unit).unwrap(),
+            DrainRestartOverrideWrite::Replaced
+        );
 
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),

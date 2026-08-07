@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { zeroConnectorScopeDiffContract } from "@vm0/api-contracts/contracts/zero-connectors";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
@@ -14,6 +15,7 @@ import {
   createConnectorBddApi,
   mockGitHubConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
+import { zeroConnectorsRoutes } from "../zero-connectors";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -49,7 +51,7 @@ async function connectGithub(actor: ApiTestUser): Promise<void> {
   });
 }
 
-describe("GET /api/zero/connectors/:type/scope-diff", () => {
+describe("GET /api/zero/connectors/:connectorSlug/scope-diff", () => {
   it("returns 401 when not authenticated", async () => {
     const response = await connectorsApi.requestScopeDiff(
       null,
@@ -84,10 +86,12 @@ describe("GET /api/zero/connectors/:type/scope-diff", () => {
       iat: seconds,
       exp: seconds + 60,
     });
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorScopeDiffContract,
+    );
     const response = await accept(
       client.getScopeDiff({
-        params: { type: "github" },
+        params: { connectorSlug: "github" },
         headers: { authorization: `Bearer ${token}` },
       }),
       [403],
@@ -98,7 +102,7 @@ describe("GET /api/zero/connectors/:type/scope-diff", () => {
     );
   });
 
-  it("returns 404 when no connector is configured for the type", async () => {
+  it("returns 404 when no connector is configured for the slug", async () => {
     const actor = bdd.user();
     const response = await connectorsApi.requestScopeDiff(
       actor,

@@ -1,1 +1,0 @@
-ALTER TABLE "org_members_metadata" ADD COLUMN "onboarding_role" text;

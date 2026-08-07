@@ -8,6 +8,7 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconFileText,
@@ -19,7 +20,7 @@ import {
   IconMessageCircle,
   IconWand,
 } from "@tabler/icons-react";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   Button,
   Tabs,
@@ -40,25 +41,28 @@ import {
 } from "@vm0/ui";
 import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
 import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
-
 import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
+import { agentDetail$ } from "../../signals/zero-page/job-detail/detail";
 import {
-  agentDetail$,
   agentInstructions$,
   agentEditedContent$,
   agentInstructionsDirty$,
   setAgentEditedContent$,
   discardAgentEdit$,
   buildAgentInstructions$,
-  updateAgentSettings$,
-  deleteAgent$,
+} from "../../signals/zero-page/job-detail/instructions";
+import { updateAgentSettings$ } from "../../signals/zero-page/job-detail/settings";
+import { deleteAgent$ } from "../../signals/zero-page/job-detail/delete";
+import {
   agentAuthorizedConnectors$,
   authorizeAgentConnector$,
   deauthorizeAgentConnector$,
   saveAgentConnectors$,
+} from "../../signals/zero-page/job-detail/connectors";
+import {
   agentActiveTab$,
   setAgentActiveTab$,
-} from "../../signals/zero-page/zero-job-detail.ts";
+} from "../../signals/zero-page/job-detail/agent-name";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -98,22 +102,22 @@ import {
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  permConnectorRef$,
+  permConnectorSlug$,
   agentPermissionMetadata$,
-  setPermConnectorRef$,
+  setPermConnectorSlug$,
   permSearch$,
   setPermSearch$,
   permSearchActive$,
   setPermSearchActive$,
-  permSavingRef$,
-  setPermSavingRef$,
+  permSavingConnectorSlug$,
+  setPermSavingConnectorSlug$,
 } from "../../signals/zero-page/zero-job-detail-page.ts";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import type {
-  PublicConnectorCatalogPermissionDetail,
-  PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+  PlatformConnectorCatalogStatusItem,
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../signals/connector-domain.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import {
   DetailPageBreadcrumbBar,
@@ -125,16 +129,19 @@ import {
 // Page shell: skeleton, error, header
 // ---------------------------------------------------------------------------
 
-function loadableErrorMessage(loadable: {
-  state: string;
-  error?: unknown;
-}): string | null {
+function loadableErrorMessage(
+  loadable: {
+    state: string;
+    error?: unknown;
+  },
+  unknownErrorMessage: string,
+): string | null {
   if (loadable.state !== "hasError") {
     return null;
   }
   return loadable.error instanceof Error
     ? loadable.error.message
-    : "Unknown error";
+    : unknownErrorMessage;
 }
 
 function Breadcrumb({
@@ -144,6 +151,7 @@ function Breadcrumb({
   currentName?: string;
   className?: string;
 }) {
+  const { t } = useTranslation("agents");
   return (
     <DetailPageBreadcrumbBar className={className}>
       <Link
@@ -151,11 +159,16 @@ function Breadcrumb({
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
       >
         <IconUsers size={14} stroke={1.5} className="shrink-0" />
-        Agents
+        {t(($) => {
+          return $.list.title;
+        })}
       </Link>
       <span className="text-muted-foreground/40 select-none">/</span>
       <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
-        {currentName ?? "Agent"}
+        {currentName ??
+          t(($) => {
+            return $.fallbackName;
+          })}
       </span>
     </DetailPageBreadcrumbBar>
   );
@@ -181,6 +194,7 @@ function isNotFoundError(error: string): boolean {
 }
 
 function DetailError({ error, agentId }: { error: string; agentId: string }) {
+  const { t } = useTranslation("agents");
   if (isNotFoundError(error)) {
     return (
       <DetailPageShell scroll={false}>
@@ -190,18 +204,26 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             <ZeroNoPermissionIllustration className="h-32 w-auto max-w-[220px] object-contain opacity-90" />
             <div className="space-y-1.5">
               <h2 className="text-lg font-semibold text-foreground">
-                Agent not found
+                {t(($) => {
+                  return $.detail.notFound.title;
+                })}
               </h2>
               <p className="text-sm text-muted-foreground">
-                The agent &quot;{agentId}&quot; doesn&apos;t exist or you
-                don&apos;t have access to it.
+                {t(
+                  ($) => {
+                    return $.detail.notFound.description;
+                  },
+                  { agentId },
+                )}
               </p>
             </div>
             <Link
               pathname="/agents"
               className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
             >
-              Back to team
+              {t(($) => {
+                return $.detail.notFound.back;
+              })}
             </Link>
           </div>
         </main>
@@ -222,7 +244,9 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
                 options={{ pathParams: { agentId: agentId } }}
                 className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
               >
-                Retry
+                {t(($) => {
+                  return $.actions.retry;
+                })}
               </Link>
             </CardContent>
           </Card>
@@ -254,6 +278,7 @@ function AgentTabNav({
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
 }) {
+  const { t } = useTranslation("agents");
   return (
     <Tabs
       value={activeTab}
@@ -267,12 +292,24 @@ function AgentTabNav({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="authorization">Authorization</SelectItem>
+            <SelectItem value="authorization">
+              {t(($) => {
+                return $.detail.tabs.authorization;
+              })}
+            </SelectItem>
             {showProfileAndInstructions && (
-              <SelectItem value="profile">Profile</SelectItem>
+              <SelectItem value="profile">
+                {t(($) => {
+                  return $.detail.tabs.profile;
+                })}
+              </SelectItem>
             )}
             {showProfileAndInstructions && (
-              <SelectItem value="instructions">Instructions</SelectItem>
+              <SelectItem value="instructions">
+                {t(($) => {
+                  return $.detail.tabs.instructions;
+                })}
+              </SelectItem>
             )}
           </SelectContent>
         </Select>
@@ -281,18 +318,24 @@ function AgentTabNav({
       <TabsList className="zero-tabs hidden sm:inline-flex h-9 gap-1 px-1 py-1">
         <TabsTrigger value="authorization" className={TAB_TRIGGER_CLASS}>
           <IconShield size={14} stroke={1.5} />
-          Authorization
+          {t(($) => {
+            return $.detail.tabs.authorization;
+          })}
         </TabsTrigger>
         {showProfileAndInstructions && (
           <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
             <IconUserCircle size={14} stroke={1.5} />
-            Profile
+            {t(($) => {
+              return $.detail.tabs.profile;
+            })}
           </TabsTrigger>
         )}
         {showProfileAndInstructions && (
           <TabsTrigger value="instructions" className={TAB_TRIGGER_CLASS}>
             <IconFileText size={14} stroke={1.5} />
-            Instructions
+            {t(($) => {
+              return $.detail.tabs.instructions;
+            })}
           </TabsTrigger>
         )}
       </TabsList>
@@ -334,33 +377,45 @@ function PermissionListSkeleton() {
 }
 
 function PermissionGrantsError() {
+  const { t } = useTranslation("agents");
   return (
     <div className="mx-auto max-w-[900px]">
       <div className="zero-card px-5 py-4 text-sm text-destructive">
-        Failed to load permission grants
+        {t(($) => {
+          return $.authorization.permissionLoadError;
+        })}
       </div>
     </div>
   );
 }
 
 function NoConnectedConnectors() {
+  const { t } = useTranslation("agents");
   return (
     <>
       <div className="zero-card py-8 flex flex-col items-center gap-3">
         <img
           src={noConnectorImg}
-          alt="No connectors"
+          alt={t(($) => {
+            return $.authorization.noConnectorsAlt;
+          })}
           className="h-20 w-20 object-contain opacity-80"
         />
         <p className="text-sm text-muted-foreground text-center">
-          No connected services yet. Head to the{" "}
+          {t(($) => {
+            return $.authorization.noConnectorsBeforeLink;
+          })}{" "}
           <Link
             pathname="/connectors"
             className="font-medium text-foreground hover:underline"
           >
-            Connectors
+            {t(($) => {
+              return $.authorization.connectorsLink;
+            })}
           </Link>{" "}
-          page to connect your first service.
+          {t(($) => {
+            return $.authorization.noConnectorsAfterLink;
+          })}
         </p>
       </div>
       <JobCustomConnectorsSection />
@@ -375,22 +430,23 @@ function ConnectedConnectorPermissions({
   setSearch,
   searchActive,
   setSearchActive,
-  savingConnectorRef,
+  savingConnectorSlug,
   canManagePermissions,
   onToggle,
   onManage,
 }: {
-  filteredConnectors: readonly PublicConnectorCatalogStatusItem[];
+  filteredConnectors: readonly PlatformConnectorCatalogStatusItem[];
   authorizedSet: ReadonlySet<string>;
   search: string;
   setSearch: (value: string) => void;
   searchActive: boolean;
   setSearchActive: (active: boolean) => void;
-  savingConnectorRef: ConnectorRef | null;
+  savingConnectorSlug: ConnectorSlug | null;
   canManagePermissions: boolean;
-  onToggle: (connectorRef: ConnectorRef, checked: boolean) => Promise<void>;
-  onManage: (connectorRef: ConnectorRef) => void;
+  onToggle: (connectorSlug: ConnectorSlug, checked: boolean) => Promise<void>;
+  onManage: (connectorSlug: ConnectorSlug) => void;
 }) {
+  const { t } = useTranslation("agents");
   return (
     <>
       <div className="zero-card">
@@ -402,8 +458,9 @@ function ConnectedConnectorPermissions({
             )}
             aria-hidden={searchActive}
           >
-            When running, the agent can securely use your connected services.
-            You can manage or turn off access anytime.
+            {t(($) => {
+              return $.authorization.description;
+            })}
           </div>
           {searchActive && (
             <div className="absolute inset-0 flex items-center gap-2 px-5">
@@ -417,7 +474,9 @@ function ConnectedConnectorPermissions({
                   return el?.focus();
                 }}
                 type="text"
-                placeholder="Find connectors..."
+                placeholder={t(($) => {
+                  return $.authorization.searchPlaceholder;
+                })}
                 value={search}
                 onChange={(e) => {
                   return setSearch(e.target.value);
@@ -437,7 +496,9 @@ function ConnectedConnectorPermissions({
                   setSearchActive(false);
                 }}
                 className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                aria-label="Close search"
+                aria-label={t(($) => {
+                  return $.authorization.closeSearch;
+                })}
               >
                 <IconX size={14} stroke={1.5} />
               </button>
@@ -450,7 +511,9 @@ function ConnectedConnectorPermissions({
                 return setSearchActive(true);
               }}
               className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              aria-label="Find connectors"
+              aria-label={t(($) => {
+                return $.authorization.findConnectors;
+              })}
             >
               <IconSearch size={14} stroke={1.5} />
             </button>
@@ -460,19 +523,19 @@ function ConnectedConnectorPermissions({
           filteredConnectors.map((c, i) => {
             return (
               <ConnectorCard
-                key={c.connectorRef}
+                key={c.slug}
                 variant="permission"
                 connector={c}
-                enabled={authorizedSet.has(c.connectorRef)}
+                enabled={authorizedSet.has(c.slug)}
                 onToggle={onDomEventFn(async (checked) => {
-                  await onToggle(c.connectorRef, checked);
+                  await onToggle(c.slug, checked);
                 })}
-                loading={savingConnectorRef === c.connectorRef}
+                loading={savingConnectorSlug === c.slug}
                 showManage={
                   canManagePermissions && c.permissionSummary.hasPermissions
                 }
                 onManage={() => {
-                  return onManage(c.connectorRef);
+                  return onManage(c.slug);
                 }}
                 isLast={i === filteredConnectors.length - 1}
               />
@@ -480,7 +543,12 @@ function ConnectedConnectorPermissions({
           })
         ) : (
           <p className="px-5 py-4 text-sm text-muted-foreground">
-            No results for &ldquo;{search}&rdquo;
+            {t(
+              ($) => {
+                return $.authorization.noResults;
+              },
+              { search },
+            )}
           </p>
         )}
       </div>
@@ -493,7 +561,7 @@ function ConnectedConnectorPermissions({
 function AgentPermissionsDrawer({
   targetId,
   targetKind = "agent",
-  connectorRef,
+  connectorSlug,
   connectorLabel,
   displayName,
   initialPolicies,
@@ -508,11 +576,11 @@ function AgentPermissionsDrawer({
 }: {
   targetId: string;
   targetKind?: "agent" | "workflow";
-  connectorRef: ConnectorRef | null;
+  connectorSlug: ConnectorSlug | null;
   connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
-  initialGrants: readonly UserPermissionGrantResponse[];
+  initialGrants: readonly PlatformUserPermissionGrant[];
   initialIntent?: PermissionDraftIntent;
   initialSearch?: string;
   initialContextKey?: string;
@@ -521,19 +589,19 @@ function AgentPermissionsDrawer({
   onApply: (
     intent: PermissionDraftIntent,
     options: {
-      readonly metadata: PublicConnectorCatalogPermissionDetail;
+      readonly metadata: PlatformConnectorPermissionMetadata;
     },
   ) => Promise<void>;
   onClose: () => void;
 }) {
-  if (!connectorRef) {
+  if (!connectorSlug) {
     return null;
   }
   return (
     <PermissionsDrawer
       agentId={targetId}
       targetKind={targetKind}
-      connectorRef={connectorRef}
+      connectorSlug={connectorSlug}
       connectorLabel={connectorLabel}
       metadata$={agentPermissionMetadata$}
       displayName={displayName}
@@ -561,6 +629,7 @@ function JobPermissionsTab({
   agentId: string;
   displayName: string;
 }) {
+  const { t } = useTranslation("agents");
   // Use useLastLoadable so the list keeps showing the previous data while the
   // signal refetches after a toggle/save or a permission-policy reload. This
   // prevents the entire list from flickering to the skeleton on each change
@@ -582,14 +651,14 @@ function JobPermissionsTab({
       : null;
   const drawerInitialPolicies = userGrantPolicies ?? {};
   const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
-  const connectorRef = useGet(permConnectorRef$);
-  const setConnectorRef = useSet(setPermConnectorRef$);
+  const connectorSlug = useGet(permConnectorSlug$);
+  const setConnectorSlug = useSet(setPermConnectorSlug$);
   const search = useGet(permSearch$);
   const setSearch = useSet(setPermSearch$);
   const searchActive = useGet(permSearchActive$);
   const setSearchActive = useSet(setPermSearchActive$);
-  const savingRef = useGet(permSavingRef$);
-  const setSavingRef = useSet(setPermSavingRef$);
+  const savingConnectorSlug = useGet(permSavingConnectorSlug$);
+  const setSavingConnectorSlug = useSet(setPermSavingConnectorSlug$);
 
   const connectorsLoading = connectorsLoadable.state === "loading";
 
@@ -601,10 +670,10 @@ function JobPermissionsTab({
   const connectedConnectors = allConnectors.filter((c) => {
     return c.connected;
   });
-  const connectorLabel = connectorRef
+  const connectorLabel = connectorSlug
     ? (allConnectors.find((connector) => {
-        return connector.connectorRef === connectorRef;
-      })?.label ?? connectorRef)
+        return connector.slug === connectorSlug;
+      })?.label ?? connectorSlug)
     : "";
   const filteredConnectors = connectedConnectors.filter((c) => {
     return matchesConnectorSearch(search, c);
@@ -612,28 +681,32 @@ function JobPermissionsTab({
   const authorizedSet = new Set(authorizedConnectors);
 
   const handleToggle = async (
-    targetConnectorRef: ConnectorRef,
+    targetConnectorSlug: ConnectorSlug,
     checked: boolean,
   ) => {
-    if (savingRef !== null) {
+    if (savingConnectorSlug !== null) {
       return;
     }
     const modify = checked
-      ? authorizeFn(targetConnectorRef, pageSignal)
-      : deauthorizeFn(targetConnectorRef, pageSignal);
-    setSavingRef(targetConnectorRef);
+      ? authorizeFn(targetConnectorSlug, pageSignal)
+      : deauthorizeFn(targetConnectorSlug, pageSignal);
+    setSavingConnectorSlug(targetConnectorSlug);
     await bestEffort(
       (async () => {
         await modify;
         await saveConnectors(
-          targetConnectorRef,
+          targetConnectorSlug,
           checked ? "add" : "remove",
           pageSignal,
         );
-        toast.success("Connectors saved");
+        toast.success(
+          t(($) => {
+            return $.authorization.connectorsSaved;
+          }),
+        );
       })(),
     );
-    setSavingRef(null);
+    setSavingConnectorSlug(null);
   };
 
   if (
@@ -661,14 +734,14 @@ function JobPermissionsTab({
             setSearch={setSearch}
             searchActive={searchActive}
             setSearchActive={setSearchActive}
-            savingConnectorRef={savingRef}
+            savingConnectorSlug={savingConnectorSlug}
             canManagePermissions={canManagePermissions}
             onToggle={handleToggle}
-            onManage={setConnectorRef}
+            onManage={setConnectorSlug}
           />
           <AgentPermissionsDrawer
             targetId={agentId}
-            connectorRef={connectorRef}
+            connectorSlug={connectorSlug}
             connectorLabel={connectorLabel}
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
@@ -676,12 +749,12 @@ function JobPermissionsTab({
             resetEnabled
             readOnly={!canManagePermissions}
             onApply={async (intent, { metadata }) => {
-              if (connectorRef === null) {
+              if (connectorSlug === null) {
                 throw new Error("Cannot save permissions without a connector");
               }
               await savePermissionDraftPolicies({
                 scope: { agentId },
-                connectorRef,
+                connectorSlug,
                 metadata,
                 initialPolicies: drawerInitialPolicies,
                 initialGrants: activeUserGrantSnapshot.grants,
@@ -689,10 +762,14 @@ function JobPermissionsTab({
                 pageSignal,
                 applyGrantPolicies,
               });
-              toast.success("Permissions updated");
+              toast.success(
+                t(($) => {
+                  return $.authorization.permissionsUpdated;
+                }),
+              );
             }}
             onClose={() => {
-              return setConnectorRef(null);
+              return setConnectorSlug(null);
             }}
           />
         </>
@@ -702,6 +779,7 @@ function JobPermissionsTab({
 }
 
 function JobInstructionsTab() {
+  const { t } = useTranslation("agents");
   const pageSignal = useGet(pageSignal$);
   const instructionsLoadable = useLoadable(agentInstructions$);
   const editedLoadable = useLoadable(agentEditedContent$);
@@ -711,7 +789,12 @@ function JobInstructionsTab() {
   const instructions =
     instructionsLoadable.state === "hasData" ? instructionsLoadable.data : null;
   const loading = instructionsLoadable.state === "loading";
-  const fetchError = loadableErrorMessage(instructionsLoadable);
+  const fetchError = loadableErrorMessage(
+    instructionsLoadable,
+    t(($) => {
+      return $.errors.unknown;
+    }),
+  );
   const edited =
     editedLoadable.state === "hasData" ? editedLoadable.data : null;
   const isDirty =
@@ -738,7 +821,11 @@ function JobInstructionsTab() {
         detach(
           (async () => {
             await build(pageSignal);
-            toast.success("Instructions saved");
+            toast.success(
+              t(($) => {
+                return $.instructions.saved;
+              }),
+            );
           })(),
           Reason.DomCallback,
         );
@@ -762,6 +849,7 @@ function AgentHeader({
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
 }) {
+  const { t } = useTranslation("agents");
   const nav = useSet(detachedNavigateTo$);
   const openMaker = useSet(openAvatarMaker$);
 
@@ -786,13 +874,19 @@ function AgentHeader({
                         openMaker();
                       }}
                       className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
-                      aria-label="Customize avatar"
+                      aria-label={t(($) => {
+                        return $.avatar.actions.customize;
+                      })}
                     >
                       <IconWand size={12} stroke={1.5} />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    <p className="text-xs">Customize avatar</p>
+                    <p className="text-xs">
+                      {t(($) => {
+                        return $.avatar.actions.customize;
+                      })}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -803,7 +897,10 @@ function AgentHeader({
               {displayName}
             </h1>
             <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
-              {description || "Your AI teammate, tuned to you"}
+              {description ||
+                t(($) => {
+                  return $.detail.defaultDescription;
+                })}
             </p>
           </div>
         </div>
@@ -816,10 +913,22 @@ function AgentHeader({
               pathParams: { agentId: agentId },
             });
           }}
-          aria-label={`Chat with ${displayName}`}
+          aria-label={t(
+            ($) => {
+              return $.detail.chatWith;
+            },
+            { agentName: displayName },
+          )}
         >
           <IconMessageCircle size={14} stroke={2} className="shrink-0" />
-          <span className="truncate">Chat with {displayName}</span>
+          <span className="truncate">
+            {t(
+              ($) => {
+                return $.detail.chatWith;
+              },
+              { agentName: displayName },
+            )}
+          </span>
         </Button>
       </div>
 
@@ -969,6 +1078,7 @@ function AgentTabContent({
 }
 
 function useAgentFields() {
+  const { t } = useTranslation("agents");
   const agent = useLastResolved(currentAgent$);
   const detail = useLastResolved(agentDetail$);
   // Both signals fetch from zeroAgentsByIdContract; pick whichever resolved first
@@ -977,7 +1087,9 @@ function useAgentFields() {
     return {
       detail: detail ?? null,
       agentId: "",
-      displayName: "Agent",
+      displayName: t(($) => {
+        return $.fallbackName;
+      }),
       description: "",
       avatarUrl: null,
       resolvedSound: resolveSound("professional"),
@@ -988,7 +1100,12 @@ function useAgentFields() {
   return {
     detail: detail ?? null,
     agentId: source.agentId,
-    displayName: source.displayName ?? (source.agentId || "Agent"),
+    displayName:
+      source.displayName ??
+      (source.agentId ||
+        t(($) => {
+          return $.fallbackName;
+        })),
     description: source.description ?? "",
     avatarUrl: source.avatarUrl,
     resolvedSound: resolveSound(source.sound ?? "professional"),
@@ -1026,8 +1143,14 @@ function useTabVisibility(agentId: string, ownerId: string) {
 }
 
 export function ZeroJobDetailPage() {
+  const { t } = useTranslation("agents");
   const detailLoadable = useLoadable(agentDetail$);
-  const error = loadableErrorMessage(detailLoadable);
+  const error = loadableErrorMessage(
+    detailLoadable,
+    t(($) => {
+      return $.errors.unknown;
+    }),
+  );
   const currentAgentId = useGet(currentAgentId$);
   const fields = useAgentFields();
   const errorAgentId = fields.agentId || currentAgentId || "";

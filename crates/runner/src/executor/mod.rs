@@ -9,10 +9,12 @@
 //! kept-alive idle VM.
 //!
 //! Both paths return `ExecuteOutcome` plus a pending `JobTelemetry`
-//! buffer. When `ExecuteOutcome::sandbox` is `Some`, the sandbox is still alive
-//! and the caller decides whether to park it for reuse or destroy it. The
-//! caller also flushes telemetry after firing `provider.complete`, so the
-//! user-visible completion signal is not blocked on best-effort uploads.
+//! buffer. When `ExecuteOutcome::sandbox` is `Some`, the executor transfers
+//! ownership of a still-live sandbox that the caller must finalize through the
+//! runner's park-or-destroy path. Presence alone does not mean the sandbox can
+//! be parked. The caller also flushes telemetry after firing
+//! `provider.complete`, so the user-visible completion signal is not blocked on
+//! best-effort uploads.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,6 +23,7 @@ use std::time::Duration;
 use futures_util::future::BoxFuture;
 use guest_contracts::diagnostics::FailureDiagnostic;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
+#[cfg(test)]
 use tokio_util::sync::CancellationToken;
 
 mod active_input;
@@ -30,6 +33,7 @@ mod codex_model_catalog_prefetch;
 mod diagnostics;
 mod env;
 mod guest_state;
+mod pi_standby;
 mod sandbox_run;
 mod session_history_cpu;
 mod session_history_download;
@@ -38,10 +42,14 @@ mod session_id;
 mod session_restore;
 mod storage;
 mod telemetry;
+mod workspace_session_history_materializer;
 
 pub(crate) use crate::restored_session_identity::RestoredSessionIdentity;
 pub(crate) use cli_framework::effective_cli_framework;
-pub(crate) use guest_state::{is_valid_guest_timezone_name, restore_guest_state_with_timezone};
+pub(crate) use guest_state::{
+    is_shell_safe_guest_timezone_name, restore_guest_state_with_intent,
+    restore_guest_state_with_timezone, try_sync_guest_timezone_intent,
+};
 pub(crate) use session_history_cpu::SessionHistoryCpuPool;
 pub(crate) use session_history_download::{SessionHistoryMaterializer, SessionHistoryProbe};
 pub(crate) use session_history_restore_plan::{
@@ -50,41 +58,59 @@ pub(crate) use session_history_restore_plan::{
 };
 
 use crate::active_input::ActiveInputSource;
+use crate::pi_standby::PiStandbySubscription;
 use agent_run::{ProcessCancelTimeouts, RunControls};
 use env::validate_execution_context_before_sandbox;
 pub(crate) use env::validate_resume_session_id;
 use sandbox_run::{
     NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
 };
-pub(crate) use telemetry::{RunnerPreSpawnPhase, RunnerPreSpawnTiming};
+pub(crate) use telemetry::{
+    ExactReuseSpeculationTiming, RunnerPreSpawnOperationTiming, RunnerPreSpawnPhase,
+    RunnerPreSpawnTiming,
+};
 use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};
 
 use crate::ids::RunId;
-use api_contracts::generated::constants::runners::paths::{
-    CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR,
+use crate::run_cancellation::RunCancellationSignals;
+use api_contracts::generated::constants::runners::{
+    RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
+    paths::{CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR},
 };
+use guest_contracts::exec_terminal::EXEC_TERMINAL_CLEANUP_BUDGET;
 
 /// Maximum guest-side runtime budget for a single agent process (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
 /// Exit code used when the runner's job timeout stops an agent process.
-const JOB_TIMEOUT_EXIT_CODE: i32 = 124;
-/// Extra time for the host to receive guest timeout terminal proof.
-///
-/// The guest process still receives `JOB_TIMEOUT` as its runtime budget. This
-/// grace covers vsock-guest's bounded supervised-process cleanup, its 5s
-/// stdout/stderr drain deadline, and normal scheduling overhead before it sends
-/// the terminal `TimedOut` result.
-const JOB_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(10);
-/// Maximum time to spend writing the guest cancel frame after a user cancel.
+const JOB_TIMEOUT_EXIT_CODE: i32 = guest_contracts::diagnostics::AGENT_EXECUTION_TIMEOUT_EXIT_CODE;
+/// Bounded best-effort window after the execution budget for recovery
+/// checkpointing and final telemetry. This covers normal checkpoint latency
+/// plus a full presigned-upload timeout without letting an unavailable backend
+/// hold runner capacity indefinitely.
+const JOB_FINALIZATION_GRACE_TIMEOUT: Duration = Duration::from_secs(90);
+/// Host-owned allowance beyond guest terminal cleanup for scheduling,
+/// observation, and terminal proof delivery after the supervisor timeout.
+const JOB_TERMINAL_HOST_SLACK: Duration = Duration::from_millis(3_250);
+const JOB_TERMINAL_GRACE_TIMEOUT: Duration =
+    EXEC_TERMINAL_CLEANUP_BUDGET.saturating_add(JOB_TERMINAL_HOST_SLACK);
+/// Maximum time to spend writing a guest control or cancellation frame.
 const PROCESS_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
-/// Grace period for the guest to report a terminal status after cancel is sent.
-/// This covers vsock-guest's bounded supervised-process cleanup (500ms TERM
-/// grace, 1s cgroup.kill empty wait, and 250ms cgroup removal), its 5s
-/// stdout/stderr drain deadline, and normal scheduling overhead.
-const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(8);
+/// Host-owned allowance beyond guest terminal cleanup after cancel is sent.
+const PROCESS_CANCEL_TERMINAL_HOST_SLACK: Duration = Duration::from_millis(1_250);
+const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration =
+    EXEC_TERMINAL_CLEANUP_BUDGET.saturating_add(PROCESS_CANCEL_TERMINAL_HOST_SLACK);
+const _: () = assert!(
+    JOB_TERMINAL_GRACE_TIMEOUT.as_nanos() == 10_000_000_000,
+    "job terminal grace changed; review guest cleanup and host slack"
+);
+const _: () = assert!(
+    PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT.as_nanos() == 8_000_000_000,
+    "process cancellation terminal grace changed; review guest cleanup and host slack"
+);
 const PROCESS_CANCEL_TIMEOUTS: ProcessCancelTimeouts = ProcessCancelTimeouts {
     write: PROCESS_CANCEL_WRITE_TIMEOUT,
     terminal_grace: PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT,
+    cooperative_grace: Duration::from_millis(RUNNER_CANCELLATION_RECOVERY_GRACE_MS),
 };
 /// Exit code when a process is killed by SIGKILL (128 + 9).
 const EXIT_SIGKILL: i32 = 137;
@@ -101,10 +127,15 @@ const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
     b"[vm0] stdout stream reached the guest stream limit; later output was omitted\n";
 const STDOUT_STREAM_OVERFLOW_MARKER: &[u8] =
     b"[vm0] stdout stream overflowed the host queue; some output was dropped\n";
-fn job_terminal_wait_timeout() -> Duration {
-    JOB_TIMEOUT + JOB_TERMINAL_GRACE_TIMEOUT
+const STDOUT_STREAM_INCOMPLETE_MARKER: &[u8] =
+    b"[vm0] stdout stream capture ended before clean EOF; some output may be missing\n";
+fn job_supervisor_timeout() -> Duration {
+    JOB_TIMEOUT + JOB_FINALIZATION_GRACE_TIMEOUT
 }
-const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
+
+fn job_terminal_wait_timeout() -> Duration {
+    job_supervisor_timeout() + JOB_TERMINAL_GRACE_TIMEOUT
+}
 const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "BASH_ENV",
     "ENV",
@@ -130,7 +161,7 @@ use crate::proxy::{MitmJsonlFlushHandle, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::{
-    SessionWorkspaceCache, WorkspaceImageActiveLeaseRequest, WorkspaceImageLease,
+    WorkspaceImageActiveLeaseRequest, WorkspaceImageCache, WorkspaceImageLease,
     WorkspaceImageLeaseIdentity, WorkspaceImagePromotionContext,
     WorkspaceImagePromotionIdentityFailure, WorkspaceImagePromotionIdentityMismatch,
     WorkspaceImagePromotionIdentityRequest,
@@ -169,7 +200,7 @@ pub struct ExecutorConfig {
     pub(crate) session_history_probe: SessionHistoryProbe,
     pub(crate) fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission,
     pub home: HomePaths,
-    pub workspace_cache: Option<SessionWorkspaceCache>,
+    pub workspace_cache: Option<WorkspaceImageCache>,
 }
 
 /// Per-job VM parameters resolved from the profile config.
@@ -204,6 +235,7 @@ impl SandboxPreparedNotifier {
 pub(crate) struct ExecutionHooks {
     pub(crate) sandbox_prepared: Option<SandboxPreparedNotifier>,
     pub(crate) active_input_source: Option<ActiveInputSource>,
+    pub(crate) pi_standby_source: Option<PiStandbySubscription>,
     pub(crate) pre_spawn_timing: Option<RunnerPreSpawnTiming>,
     pub(crate) session_history_restore_plan: SessionHistoryRestorePlan,
 }
@@ -214,18 +246,115 @@ impl ExecutionHooks {
         Self {
             sandbox_prepared: None,
             active_input_source: None,
+            pi_standby_source: None,
             pre_spawn_timing: None,
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
         }
     }
 }
 
-/// Outcome of a job execution, including the sandbox for possible reuse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SandboxReuseDisposition {
+    Eligible(SandboxReuseTerminal),
+    Ineligible(SandboxReuseRejection),
+}
+
+impl SandboxReuseDisposition {
+    #[must_use]
+    pub(crate) fn is_eligible(self) -> bool {
+        matches!(self, Self::Eligible(_))
+    }
+
+    #[must_use]
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Eligible(SandboxReuseTerminal::Success) => "eligible_success",
+            Self::Eligible(SandboxReuseTerminal::NonzeroExit) => "eligible_nonzero_exit",
+            Self::Eligible(SandboxReuseTerminal::ExecutionTimeout) => "eligible_execution_timeout",
+            Self::Eligible(SandboxReuseTerminal::CooperativeCancellation) => {
+                "eligible_cooperative_cancellation"
+            }
+            Self::Ineligible(SandboxReuseRejection::ExecutionUncertain) => "execution_uncertain",
+            Self::Ineligible(SandboxReuseRejection::HardCancellation) => "hard_cancellation",
+            Self::Ineligible(SandboxReuseRejection::UnconfirmedTimeout) => "unconfirmed_timeout",
+            Self::Ineligible(SandboxReuseRejection::ResourceFailure) => "resource_failure",
+            Self::Ineligible(SandboxReuseRejection::PostJobCleanupFailure) => {
+                "post_job_cleanup_failure"
+            }
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn telemetry_action(self) -> &'static str {
+        match self {
+            Self::Eligible(SandboxReuseTerminal::Success) => {
+                "runner_terminal_sandbox_reuse_eligible_success"
+            }
+            Self::Eligible(SandboxReuseTerminal::NonzeroExit) => {
+                "runner_terminal_sandbox_reuse_eligible_nonzero_exit"
+            }
+            Self::Eligible(SandboxReuseTerminal::ExecutionTimeout) => {
+                "runner_terminal_sandbox_reuse_eligible_execution_timeout"
+            }
+            Self::Eligible(SandboxReuseTerminal::CooperativeCancellation) => {
+                "runner_terminal_sandbox_reuse_eligible_cooperative_cancellation"
+            }
+            Self::Ineligible(SandboxReuseRejection::ExecutionUncertain) => {
+                "runner_terminal_sandbox_reuse_rejected_execution_uncertain"
+            }
+            Self::Ineligible(SandboxReuseRejection::HardCancellation) => {
+                "runner_terminal_sandbox_reuse_rejected_hard_cancellation"
+            }
+            Self::Ineligible(SandboxReuseRejection::UnconfirmedTimeout) => {
+                "runner_terminal_sandbox_reuse_rejected_unconfirmed_timeout"
+            }
+            Self::Ineligible(SandboxReuseRejection::ResourceFailure) => {
+                "runner_terminal_sandbox_reuse_rejected_resource_failure"
+            }
+            Self::Ineligible(SandboxReuseRejection::PostJobCleanupFailure) => {
+                "runner_terminal_sandbox_reuse_rejected_post_job_cleanup_failure"
+            }
+        }
+    }
+}
+
+impl Default for SandboxReuseDisposition {
+    fn default() -> Self {
+        Self::Ineligible(SandboxReuseRejection::ExecutionUncertain)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SandboxReuseTerminal {
+    Success,
+    NonzeroExit,
+    ExecutionTimeout,
+    CooperativeCancellation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SandboxReuseRejection {
+    ExecutionUncertain,
+    HardCancellation,
+    UnconfirmedTimeout,
+    ResourceFailure,
+    PostJobCleanupFailure,
+}
+
+/// Outcome of a job execution and ownership of any sandbox still alive afterward.
 pub struct ExecuteOutcome {
     pub failure: Option<ExecutionFailure>,
-    /// The sandbox after execution. `Some` when the sandbox is still alive
-    /// and eligible for keep-alive parking. `None` when execution failed
-    /// during create/start (sandbox was destroyed inline).
+    pub(crate) sandbox_reuse_disposition: SandboxReuseDisposition,
+    /// Sandbox ownership after execution.
+    ///
+    /// `Some` transfers a still-live sandbox to the caller for finalization; it
+    /// does not imply the sandbox is eligible for reuse. Finalization consumes
+    /// `sandbox_reuse_disposition` and still enforces hard cancellation, the
+    /// parking gate, a reuse key, reuse preparation, and ownership transfer.
+    ///
+    /// `None` means no live sandbox ownership is returned, either because no
+    /// sandbox was created or because executor-side cleanup already consumed
+    /// it.
     pub sandbox: Option<Box<dyn Sandbox>>,
     pub source_ip: String,
     pub network_log_session: Option<NetworkLogSession>,
@@ -246,6 +375,7 @@ impl ExecuteOutcome {
     ) -> Self {
         Self {
             failure: Some(failure),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             sandbox: Some(sandbox),
             source_ip,
             network_log_session: None,
@@ -442,7 +572,7 @@ pub async fn execute_job(
         dispatch,
         config,
         params,
-        cancel,
+        RunCancellationSignals::hard_only(cancel),
         ExecutionHooks::none(),
     )
     .await
@@ -454,12 +584,13 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     dispatch: NewSandboxDispatch,
     config: &ExecutorConfig,
     params: &JobParams,
-    cancel: CancellationToken,
+    cancellation: RunCancellationSignals,
     hooks: ExecutionHooks,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let ExecutionHooks {
         sandbox_prepared,
         active_input_source,
+        pi_standby_source,
         pre_spawn_timing,
         session_history_restore_plan,
     } = hooks;
@@ -481,6 +612,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     ) {
         ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             sandbox: None,
             source_ip: String::new(),
             network_log_session: None,
@@ -497,7 +629,8 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             params,
             &mut telemetry,
             NewSandboxHooks {
-                controls: RunControls::new(cancel, active_input_source)
+                controls: RunControls::from_cancellation(cancellation, active_input_source)
+                    .with_pi_standby_source(pi_standby_source)
                     .with_spawn_timing(spawn_timing)
                     .with_session_history_restore_plan(session_history_restore_plan),
                 sandbox_prepared: sandbox_prepared.as_ref(),
@@ -508,6 +641,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             Ok(outcome) => outcome,
             Err(e) => ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(e.to_string())),
+                sandbox_reuse_disposition: SandboxReuseDisposition::default(),
                 sandbox: None,
                 source_ip: String::new(),
                 network_log_session: None,
@@ -541,7 +675,7 @@ pub async fn execute_job_reuse(
         context,
         config,
         params,
-        cancel,
+        RunCancellationSignals::hard_only(cancel),
         ExecutionHooks::none(),
     )
     .await
@@ -552,12 +686,13 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     context: ExecutionContext,
     config: &ExecutorConfig,
     params: &JobParams,
-    cancel: CancellationToken,
+    cancellation: RunCancellationSignals,
     hooks: ExecutionHooks,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let ExecutionHooks {
         sandbox_prepared: _,
         active_input_source,
+        pi_standby_source,
         pre_spawn_timing,
         session_history_restore_plan,
     } = hooks;
@@ -573,20 +708,20 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     let sandbox_id = idle_sandbox.sandbox_id();
     let ReusableIdleSandboxParts {
         sandbox,
-        cli_agent_session_id: idle_cli_agent_session_id,
+        reuse_key: idle_reuse_key,
         source_ip,
         storage_fingerprints: prev_storage,
         restored_session_identity: _restored_session_identity,
         workspace_promotion,
+        guest_state_prepared,
     } = idle_sandbox.into_parts();
 
     let resume_session_error = validate_resume_session_id(&context).err();
-    let expected_promotion_session_id = if resume_session_error.is_some() {
-        idle_cli_agent_session_id.as_str()
+    let claimed_reuse_key = context.reuse_key();
+    let expected_promotion_reuse_key = if resume_session_error.is_some() {
+        idle_reuse_key.as_str()
     } else {
-        context
-            .cli_agent_session_id()
-            .unwrap_or(idle_cli_agent_session_id.as_str())
+        claimed_reuse_key.unwrap_or(idle_reuse_key.as_str())
     };
     let workspace_image = match resolve_reused_workspace_promotion(
         config.workspace_cache.as_ref(),
@@ -594,7 +729,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         run_id,
         sandbox_id,
         params,
-        expected_promotion_session_id,
+        expected_promotion_reuse_key,
     )
     .await
     {
@@ -628,7 +763,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                         run_id,
                         sandbox_id,
                         profile_name: &params.profile_name,
-                        cli_agent_session_id: context.cli_agent_session_id(),
+                        reuse_key: claimed_reuse_key,
                         working_dir: CANONICAL_WORKING_DIR,
                         image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
                     },
@@ -662,9 +797,11 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             config,
             &prev_storage,
             &mut telemetry,
-            RunControls::new(cancel, active_input_source)
+            RunControls::from_cancellation(cancellation, active_input_source)
+                .with_pi_standby_source(pi_standby_source)
                 .with_spawn_timing(spawn_timing)
-                .with_session_history_restore_plan(session_history_restore_plan),
+                .with_session_history_restore_plan(session_history_restore_plan)
+                .with_guest_state_prepared(guest_state_prepared),
         )
         .await;
         outcome.workspace_image = workspace_image;
@@ -675,12 +812,12 @@ pub(crate) async fn execute_job_reuse_with_hooks(
 }
 
 async fn resolve_reused_workspace_promotion(
-    cache: Option<&SessionWorkspaceCache>,
+    cache: Option<&WorkspaceImageCache>,
     promotion: Option<WorkspaceImagePromotionContext>,
     run_id: RunId,
     sandbox_id: SandboxId,
     params: &JobParams,
-    cli_agent_session_id: &str,
+    reuse_key: &str,
 ) -> Result<Option<WorkspaceImageLease>, ExecutionFailure> {
     let Some(promotion) = promotion else {
         return Ok(None);
@@ -698,12 +835,7 @@ async fn resolve_reused_workspace_promotion(
     };
 
     match reused_promotion_into_active_lease(
-        cache,
-        promotion,
-        run_id,
-        sandbox_id,
-        params,
-        cli_agent_session_id,
+        cache, promotion, run_id, sandbox_id, params, reuse_key,
     ) {
         Ok(lease) => Ok(Some(lease)),
         Err(identity_failure) => {
@@ -728,18 +860,18 @@ async fn resolve_reused_workspace_promotion(
 }
 
 fn reused_promotion_into_active_lease(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     promotion: WorkspaceImagePromotionContext,
     run_id: RunId,
     sandbox_id: SandboxId,
     params: &JobParams,
-    cli_agent_session_id: &str,
+    reuse_key: &str,
 ) -> Result<WorkspaceImageLease, Box<WorkspaceImagePromotionIdentityFailure>> {
     let expected = match cache
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: &params.profile_name,
-            cli_agent_session_id,
+            reuse_key,
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         })

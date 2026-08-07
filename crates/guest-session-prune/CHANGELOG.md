@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.3...guest-session-prune-v0.3.4) (2026-08-07)
+
+
+### Bug Fixes
+
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
+## [0.3.3](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.2...guest-session-prune-v0.3.3) (2026-08-03)
+
+
+### Performance Improvements
+
+* **guest-agent:** bound checkpoint history test fixtures ([#24682](https://github.com/vm0-ai/vm0/issues/24682)) ([200df14](https://github.com/vm0-ai/vm0/commit/200df141579bdc53a742747ff9c0099cf310a849))
+
+## [0.3.2](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.1...guest-session-prune-v0.3.2) (2026-07-30)
+
+
+### Documentation
+
+* **rust:** document claude compact-generation selection invariants ([#24049](https://github.com/vm0-ai/vm0/issues/24049)) ([1f29385](https://github.com/vm0-ai/vm0/commit/1f29385b693cebd325991325093f865db9f46b1d))
+
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.0...guest-session-prune-v0.3.1) (2026-07-29)
+
+
+### Documentation
+
+* **rust:** document codex compact-generation invariants ([#23743](https://github.com/vm0-ai/vm0/issues/23743)) ([1c6babe](https://github.com/vm0-ai/vm0/commit/1c6babe2fea459b13121c99410a8a598d0918ddb))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.2.0...guest-session-prune-v0.3.0) (2026-07-26)
 
 

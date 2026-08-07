@@ -1,5 +1,254 @@
 # Changelog
 
+## [0.65.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.1...guest-agent-v0.65.2) (2026-08-07)
+
+
+### Documentation
+
+* **rust:** document pi standby lifecycle ([#25659](https://github.com/vm0-ai/vm0/issues/25659)) ([373a5b4](https://github.com/vm0-ai/vm0/commit/373a5b44a3cea5da393252623bf533ed8b0cf5fd))
+
+## [0.65.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.0...guest-agent-v0.65.1) (2026-08-07)
+
+## [0.65.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.9...guest-agent-v0.65.0) (2026-08-07)
+
+
+### Features
+
+* complete pi agent handoff end to end ([#25489](https://github.com/vm0-ai/vm0/issues/25489)) ([feeb1cb](https://github.com/vm0-ai/vm0/commit/feeb1cbc8e838b844945cf5efc3ed7e9820c10a4))
+
+
+### Bug Fixes
+
+* **guest-agent:** classify credit error envelopes ([#25580](https://github.com/vm0-ai/vm0/issues/25580)) ([61475bf](https://github.com/vm0-ai/vm0/commit/61475bf97e6750715d4db0115444219f16636fe5))
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
+## [0.64.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.8...guest-agent-v0.64.9) (2026-08-07)
+
+
+### Refactoring
+
+* **runner:** remove obsolete codex event fallbacks ([#25511](https://github.com/vm0-ai/vm0/issues/25511)) ([94e8703](https://github.com/vm0-ai/vm0/commit/94e87037eef09c503c7280070237483fafad69fa))
+
+## [0.64.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.7...guest-agent-v0.64.8) (2026-08-07)
+
+## [0.64.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.6...guest-agent-v0.64.7) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
+## [0.64.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.5...guest-agent-v0.64.6) (2026-08-06)
+
+## [0.64.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.4...guest-agent-v0.64.5) (2026-08-05)
+
+
+### Bug Fixes
+
+* **guest-agent:** isolate api token from cli descendants ([#25205](https://github.com/vm0-ai/vm0/issues/25205)) ([b057140](https://github.com/vm0-ai/vm0/commit/b057140f03c25cfeeabaa1afc0ed91575f9371ab))
+
+## [0.64.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.3...guest-agent-v0.64.4) (2026-08-05)
+
+## [0.64.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.2...guest-agent-v0.64.3) (2026-08-05)
+
+
+### Refactoring
+
+* **rust:** centralize epoch-millisecond validation ([#25159](https://github.com/vm0-ai/vm0/issues/25159)) ([4780d82](https://github.com/vm0-ai/vm0/commit/4780d82181ac10f4f7bfaafc6b16e448f89f2860))
+
+## [0.64.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.1...guest-agent-v0.64.2) (2026-08-05)
+
+
+### Refactoring
+
+* **rust:** use rustix for child exit pidfds ([#25122](https://github.com/vm0-ai/vm0/issues/25122)) ([85100f1](https://github.com/vm0-ai/vm0/commit/85100f174664559002a35778a73a3b4d9ec722ad))
+
+## [0.64.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.0...guest-agent-v0.64.1) (2026-08-04)
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+
+## [0.64.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.7...guest-agent-v0.64.0) (2026-08-04)
+
+
+### Features
+
+* **chat:** add feature-gated inline steering ([#24941](https://github.com/vm0-ai/vm0/issues/24941)) ([f705e9d](https://github.com/vm0-ai/vm0/commit/f705e9d8d1a1038055d62839ce0bb3725edbd2e3))
+
+## [0.63.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.6...guest-agent-v0.63.7) (2026-08-04)
+
+## [0.63.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.5...guest-agent-v0.63.6) (2026-08-04)
+
+
+### Performance Improvements
+
+* **guest-agent:** measure codex catalog setup ([#24996](https://github.com/vm0-ai/vm0/issues/24996)) ([8f78d8d](https://github.com/vm0-ai/vm0/commit/8f78d8dd548bf1d8ce547f6d0e571db0775e89fb))
+
+## [0.63.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.4...guest-agent-v0.63.5) (2026-08-04)
+
+
+### Refactoring
+
+* **guest-agent:** hydrate codex catalogs structurally ([#24957](https://github.com/vm0-ai/vm0/issues/24957)) ([7520643](https://github.com/vm0-ai/vm0/commit/75206430a93a6f4fcdb1dfec1f43f93499ef85ba))
+
+## [0.63.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.3...guest-agent-v0.63.4) (2026-08-04)
+
+
+### Performance Improvements
+
+* **guest-agent:** bound artifact checkpoint manifests ([#24914](https://github.com/vm0-ai/vm0/issues/24914)) ([27694a0](https://github.com/vm0-ai/vm0/commit/27694a095efd2d559c1a539a512970567946fb85))
+
+## [0.63.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.2...guest-agent-v0.63.3) (2026-08-04)
+
+## [0.63.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.1...guest-agent-v0.63.2) (2026-08-04)
+
+
+### Documentation
+
+* **guest-agent:** clarify raw config empty values ([#24830](https://github.com/vm0-ai/vm0/issues/24830)) ([a8756fa](https://github.com/vm0-ai/vm0/commit/a8756fa18e99a4026094f0ed64c73fb3f78b2c80))
+
+## [0.63.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.0...guest-agent-v0.63.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** use process-owned mock build locks ([#24801](https://github.com/vm0-ai/vm0/issues/24801)) ([a4065d7](https://github.com/vm0-ai/vm0/commit/a4065d78e488b2ba4c518c292db362db081f2c2c))
+
+
+### Performance Improvements
+
+* **guest-agent:** use statx for reuse identity ([#24806](https://github.com/vm0-ai/vm0/issues/24806)) ([d3bbc05](https://github.com/vm0-ai/vm0/commit/d3bbc0578c5a00f44b1dfc063a9ae55d3ac1f139))
+
+## [0.63.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.7...guest-agent-v0.63.0) (2026-08-03)
+
+
+### Features
+
+* enable claude session pruning globally ([#24790](https://github.com/vm0-ai/vm0/issues/24790)) ([4798ff0](https://github.com/vm0-ai/vm0/commit/4798ff006f50e684214197f62e3ac3c29e66178a))
+
+## [0.62.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.6...guest-agent-v0.62.7) (2026-08-03)
+
+## [0.62.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.5...guest-agent-v0.62.6) (2026-08-03)
+
+
+### Refactoring
+
+* **rust:** centralize base cli agent session id validation ([#24759](https://github.com/vm0-ai/vm0/issues/24759)) ([da34435](https://github.com/vm0-ai/vm0/commit/da34435c6747be672914e4651c29d0abd2b47936))
+
+## [0.62.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.4...guest-agent-v0.62.5) (2026-08-03)
+
+
+### Documentation
+
+* **rust:** clarify session history diagnostic semantics ([#24671](https://github.com/vm0-ai/vm0/issues/24671)) ([ecf6630](https://github.com/vm0-ai/vm0/commit/ecf6630d6185b03b6de7bc606259a730dff462b4))
+
+
+### Performance Improvements
+
+* **guest-agent:** bound checkpoint history test fixtures ([#24682](https://github.com/vm0-ai/vm0/issues/24682)) ([200df14](https://github.com/vm0-ai/vm0/commit/200df141579bdc53a742747ff9c0099cf310a849))
+
+## [0.62.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.3...guest-agent-v0.62.4) (2026-08-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** redact overlapping secret matches ([#24639](https://github.com/vm0-ai/vm0/issues/24639)) ([dc20d30](https://github.com/vm0-ai/vm0/commit/dc20d300941918f11f98738142bca5fabfff6301))
+
+
+### Refactoring
+
+* **guest-agent:** split checkpoint integration tests ([#24626](https://github.com/vm0-ai/vm0/issues/24626)) ([40a7e1f](https://github.com/vm0-ai/vm0/commit/40a7e1f137751a8aeab2e9d1def2fefd49940572))
+
+## [0.62.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.2...guest-agent-v0.62.3) (2026-08-03)
+
+## [0.62.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.1...guest-agent-v0.62.2) (2026-08-02)
+
+
+### Documentation
+
+* **guest-agent:** document app-server event policy ([#24581](https://github.com/vm0-ai/vm0/issues/24581)) ([d9a27da](https://github.com/vm0-ai/vm0/commit/d9a27dad6d414438ec8af864b6e80e0c712fce7c))
+
+## [0.62.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.0...guest-agent-v0.62.1) (2026-08-02)
+
+## [0.62.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.6...guest-agent-v0.62.0) (2026-08-01)
+
+
+### Features
+
+* **guest-agent:** set fable effort to max ([#24483](https://github.com/vm0-ai/vm0/issues/24483)) ([f6e92b9](https://github.com/vm0-ai/vm0/commit/f6e92b97b32aec30c26e9e10eb613874d8cc6fff))
+
+## [0.61.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.5...guest-agent-v0.61.6) (2026-08-01)
+
+
+### Bug Fixes
+
+* **guest-agent:** ignore secondary codex thread events ([#24466](https://github.com/vm0-ai/vm0/issues/24466)) ([20ed365](https://github.com/vm0-ai/vm0/commit/20ed365bf6639fdce6c6b42cb64f5a45ed3d2562))
+
+## [0.61.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.4...guest-agent-v0.61.5) (2026-08-01)
+
+## [0.61.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.3...guest-agent-v0.61.4) (2026-07-31)
+
+## [0.61.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.2...guest-agent-v0.61.3) (2026-07-31)
+
+
+### Documentation
+
+* **rust:** document session-history sidecar export contract ([#24224](https://github.com/vm0-ai/vm0/issues/24224)) ([05ab252](https://github.com/vm0-ai/vm0/commit/05ab252160536271300f46221a2f42211675d08b))
+
+## [0.61.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.1...guest-agent-v0.61.2) (2026-07-31)
+
+## [0.61.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.0...guest-agent-v0.61.1) (2026-07-30)
+
+## [0.61.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.60.2...guest-agent-v0.61.0) (2026-07-30)
+
+
+### Features
+
+* add admin-defined model gateway connections ([#23807](https://github.com/vm0-ai/vm0/issues/23807)) ([0632cb4](https://github.com/vm0-ai/vm0/commit/0632cb4e4dfda2c844a2531d6c13a3dd74b86e29))
+
+## [0.60.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.60.1...guest-agent-v0.60.2) (2026-07-30)
+
+## [0.60.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.60.0...guest-agent-v0.60.1) (2026-07-30)
+
+## [0.60.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.59.0...guest-agent-v0.60.0) (2026-07-30)
+
+
+### Features
+
+* **events:** report structured guest event delivery failures ([#23974](https://github.com/vm0-ai/vm0/issues/23974)) ([ebdf828](https://github.com/vm0-ai/vm0/commit/ebdf8280b7b961ebf8404790a15696a7338ecd6e))
+
+## [0.59.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.11...guest-agent-v0.59.0) (2026-07-30)
+
+
+### Features
+
+* enable codex session pruning globally ([#23937](https://github.com/vm0-ai/vm0/issues/23937)) ([e186ffe](https://github.com/vm0-ai/vm0/commit/e186ffe85a92fe9a5b960e5e3174893d54526557))
+
+## [0.58.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.10...guest-agent-v0.58.11) (2026-07-30)
+
+
+### Bug Fixes
+
+* **guest-agent:** checkpoint user cancellations before completion ([#23899](https://github.com/vm0-ai/vm0/issues/23899)) ([ba905f6](https://github.com/vm0-ai/vm0/commit/ba905f65bb5f99fac077c236b4ca57175708ead5))
+
+## [0.58.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.9...guest-agent-v0.58.10) (2026-07-29)
+
+## [0.58.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.8...guest-agent-v0.58.9) (2026-07-29)
+
+
+### Bug Fixes
+
+* **runner:** checkpoint sessions before job timeout ([#23734](https://github.com/vm0-ai/vm0/issues/23734)) ([15f44cc](https://github.com/vm0-ai/vm0/commit/15f44cc68e1387d5b18f604fea9c964a1557561d))
+
+## [0.58.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.7...guest-agent-v0.58.8) (2026-07-29)
+
+
+### Documentation
+
+* **guest-agent:** document claude result status ([#23687](https://github.com/vm0-ai/vm0/issues/23687)) ([915e342](https://github.com/vm0-ai/vm0/commit/915e3422dc04d9729e5691c76147fa0dbdecf2fc))
+
 ## [0.58.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.6...guest-agent-v0.58.7) (2026-07-29)
 
 ## [0.58.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.5...guest-agent-v0.58.6) (2026-07-29)
@@ -491,7 +740,6 @@
 ### Bug Fixes
 
 * add runner exit signal diagnostics ([#20674](https://github.com/vm0-ai/vm0/issues/20674)) ([bf46c07](https://github.com/vm0-ai/vm0/commit/bf46c07f8a9954576040760dfcfb3bb81ee2d1ea))
-* remove minimax codex legacy base url ([#20707](https://github.com/vm0-ai/vm0/issues/20707)) ([a4a9e77](https://github.com/vm0-ai/vm0/commit/a4a9e77fe2d8e1065f1b57a9ead26565b054fa39))
 
 
 ### Refactoring
@@ -505,7 +753,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 
 ## [0.49.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.48.0...guest-agent-v0.49.0) (2026-07-08)
 
@@ -658,7 +905,6 @@
 
 ### Features
 
-* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
 
 ## [0.43.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.5...guest-agent-v0.43.6) (2026-07-01)
 
