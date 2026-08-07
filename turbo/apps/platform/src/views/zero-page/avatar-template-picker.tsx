@@ -196,7 +196,7 @@ function CatalogFiltersPopover({
           size="sm"
           className="h-9 gap-2 rounded-full bg-background px-3 shadow-none"
         >
-          <SlidersHorizontal size={15} strokeWidth={1.7} />
+          <SlidersHorizontal size={15} />
           {t(($) => {
             return $.artifacts.templates.filters.title;
           })}
@@ -391,12 +391,7 @@ function AvatarTemplateMedia({
           className="h-full w-full object-cover"
         />
       ) : (
-        <User
-          size={40}
-          strokeWidth={1.4}
-          className="text-muted-foreground"
-          aria-hidden="true"
-        />
+        <User size={40} className="text-muted-foreground" aria-hidden="true" />
       )}
     </div>
   );
@@ -431,7 +426,7 @@ function AvatarTemplateCardContent({
             className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
             aria-hidden="true"
           >
-            <Check size={13} strokeWidth={2.2} />
+            <Check size={13} />
           </span>
         )}
       </div>
@@ -812,12 +807,10 @@ function VoicePreviewControl({
       >
         <Play
           size={17}
-          strokeWidth={1.9}
           className="ml-0.5 group-data-[playing=true]/voice:hidden"
         />
         <Pause
           size={17}
-          strokeWidth={1.9}
           className="hidden group-data-[playing=true]/voice:block"
         />
       </button>
@@ -945,7 +938,7 @@ function AvatarVoiceCard({
               className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
               aria-hidden="true"
             >
-              <Check size={13} strokeWidth={2.2} />
+              <Check size={13} />
             </span>
           )}
 >>>>>>> a8cd3a090c (refactor: replace @tabler/icons-react with lucide-react)

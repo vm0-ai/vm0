@@ -487,7 +487,6 @@ function ExpandedManageSection() {
           <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <ChevronRight
               size={12}
-              strokeWidth={2}
               className={manageCollapsed ? "" : "rotate-90"}
             />
           </span>
@@ -872,7 +871,7 @@ function ChatListColumn() {
                 aria-label={searchLabel}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
               >
-                <Search size={17} strokeWidth={1.8} />
+                <Search size={17} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -894,7 +893,7 @@ function ChatListColumn() {
                 aria-current={isNewChatActive ? "page" : undefined}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 no-underline transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
               >
-                <Edit size={17} strokeWidth={1.8} />
+                <Edit size={17} />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">

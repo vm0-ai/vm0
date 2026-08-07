@@ -154,11 +154,7 @@ function CreateWorkspaceItem() {
         disabled={clerk === null || creatingOrg}
         className="min-w-0 gap-3 px-3 py-2.5 rounded-lg"
       >
-        <Plus
-          size={18}
-          strokeWidth={1.5}
-          className="shrink-0 text-muted-foreground"
-        />
+        <Plus size={18} className="shrink-0 text-muted-foreground" />
         <span>
           {creatingOrg
             ? t(($) => {

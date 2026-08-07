@@ -348,10 +348,10 @@ function createChatThreadMentionNodeView(node: ProseMirrorNode): NodeView {
   dom.style.outline = "none";
   dom.style.userSelect = "none";
   // Mirrors MessageCircle from lucide-react.
-  const icon = createComposerIcon(13, 1.7, [
+  const icon = createComposerIcon(13, [
     "M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719",
   ]);
-  icon.setAttribute("class", "shrink-0");
+  icon.classList.add("shrink-0");
   const title = document.createElement("span");
   title.className = "min-w-0 select-none truncate";
   dom.append(icon, title);
@@ -483,19 +483,23 @@ function feedbackItemNodeAttributes(
 }
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const LUCIDE_DEFAULT_STROKE_WIDTH = 2;
 
 function createComposerIcon(
   size: number,
-  strokeWidth: number,
   paths: readonly string[],
 ): SVGSVGElement {
   const icon = document.createElementNS(SVG_NAMESPACE, "svg");
+  // Mirrors what lucide-react renders: the default stroke width as an
+  // attribute, plus the "lucide" class so the global icon stroke rule in
+  // packages/ui styles/globals.css governs these hand-built copies too.
+  icon.classList.add("lucide");
   icon.setAttribute("width", String(size));
   icon.setAttribute("height", String(size));
   icon.setAttribute("viewBox", "0 0 24 24");
   icon.setAttribute("fill", "none");
   icon.setAttribute("stroke", "currentColor");
-  icon.setAttribute("stroke-width", String(strokeWidth));
+  icon.setAttribute("stroke-width", String(LUCIDE_DEFAULT_STROKE_WIDTH));
   icon.setAttribute("stroke-linecap", "round");
   icon.setAttribute("stroke-linejoin", "round");
   icon.setAttribute("aria-hidden", "true");
@@ -527,11 +531,11 @@ function createFeedbackItemNodeView(
   quoteIconContainer.className =
     "flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted";
   // Mirrors Quote from lucide-react.
-  const quoteIcon = createComposerIcon(12, 1.5, [
+  const quoteIcon = createComposerIcon(12, [
     "M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z",
     "M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z",
   ]);
-  quoteIcon.setAttribute("class", "-scale-x-100 text-muted-foreground");
+  quoteIcon.classList.add("-scale-x-100", "text-muted-foreground");
   quoteIconContainer.append(quoteIcon);
   const quoteText = document.createElement("span");
   quoteText.className = "min-w-0 truncate text-xs font-medium";
@@ -542,9 +546,7 @@ function createFeedbackItemNodeView(
     "text-muted-foreground/70 transition-colors hover:bg-muted " +
     "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
     "focus-visible:ring-ring";
-  removeButton.append(
-    createComposerIcon(14, 1.8, ["M18 6 6 18", "m6 6 12 12"]),
-  );
+  removeButton.append(createComposerIcon(14, ["M18 6 6 18", "m6 6 12 12"]));
   quoteChip.append(quoteIconContainer, quoteText, removeButton);
   quoteDom.append(quoteChip);
 
@@ -812,9 +814,7 @@ function createTemplateAttachmentNodeView(
     "text-muted-foreground/70 transition-colors hover:bg-muted " +
     "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
     "focus-visible:ring-ring";
-  removeButton.append(
-    createComposerIcon(14, 1.8, ["M18 6 6 18", "m6 6 12 12"]),
-  );
+  removeButton.append(createComposerIcon(14, ["M18 6 6 18", "m6 6 12 12"]));
   chip.append(openButton, removeButton);
   dom.append(chip);
 
@@ -843,14 +843,14 @@ function createTemplateAttachmentNodeView(
       iconContainer.append(image);
     } else {
       // Mirrors FileText from lucide-react.
-      const icon = createComposerIcon(12, 1.5, [
+      const icon = createComposerIcon(12, [
         "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
         "M14 2v5a1 1 0 0 0 1 1h5",
         "M10 9H8",
         "M16 13H8",
         "M16 17H8",
       ]);
-      icon.setAttribute("class", "text-muted-foreground");
+      icon.classList.add("text-muted-foreground");
       iconContainer.append(icon);
     }
   }
@@ -969,25 +969,16 @@ function createInlineTemplateNodeView(
 
   const openButton = document.createElement("button");
   openButton.type = "button";
-<<<<<<< HEAD
   openButton.className = INLINE_TEMPLATE_NAME_ZONE_CLASS;
-  // Mirrors IconColorSwatch from @tabler/icons-react, which the composer
-  // template picker button and sent-message template chips also use.
-=======
-  openButton.className =
-    "flex h-full min-w-0 items-center gap-1.5 rounded-md text-orange-600 " +
-    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-orange-500/40 " +
-    "dark:text-orange-300 dark:focus-visible:ring-orange-300/40";
   // Mirrors SwatchBook from lucide-react, which the composer template picker
   // button and sent-message template chips also use.
->>>>>>> a8cd3a090c (refactor: replace @tabler/icons-react with lucide-react)
-  const icon = createComposerIcon(13, 1.7, [
+  const icon = createComposerIcon(13, [
     "M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z",
     "M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7",
     "M 7 17h.01",
     "m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8",
   ]);
-  icon.setAttribute("class", "shrink-0");
+  icon.classList.add("shrink-0");
   const title = document.createElement("span");
   title.className =
     "min-w-0 select-none truncate text-[13px] font-medium text-orange-600 " +

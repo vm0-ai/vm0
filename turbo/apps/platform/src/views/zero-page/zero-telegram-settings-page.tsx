@@ -290,7 +290,7 @@ function TelegramBotIconFallback({ botId }: { botId: string }) {
       className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#2AABEE]/10 text-[#2AABEE]"
       data-testid={`telegram-bot-avatar-fallback-${botId}`}
     >
-      <Bot className="h-5 w-5" strokeWidth={1.75} />
+      <Bot className="h-5 w-5" />
     </div>
   );
 }
@@ -1600,7 +1600,7 @@ function TelegramMoreActions({
             { bot: botLabel },
           )}
         >
-          <EllipsisVertical size={16} strokeWidth={1.5} />
+          <EllipsisVertical size={16} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
@@ -2191,7 +2191,7 @@ export function ZeroTelegramSettingsPage() {
                     .backToIntegrations;
                 })}
               >
-                <ArrowLeft size={17} strokeWidth={1.8} />
+                <ArrowLeft size={17} />
                 {t(($) => {
                   return $.connectors.providerSettings.telegram
                     .backToIntegrations;

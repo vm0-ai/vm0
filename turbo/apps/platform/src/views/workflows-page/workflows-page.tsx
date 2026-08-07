@@ -191,7 +191,6 @@ function VisibilityIcon({
   return (
     <Icon
       size={15}
-      strokeWidth={1.7}
       className={cn("shrink-0", isPublic ? "text-blue-500" : "text-[#45A7A8]")}
       aria-label={
         isPublic
@@ -364,7 +363,7 @@ function WorkflowRowIcon({
   }
   return (
     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-muted-foreground">
-      <Route size={16} strokeWidth={1.7} />
+      <Route size={16} />
     </span>
   );
 }
@@ -841,16 +840,12 @@ function SortDropdown({
           size="sm"
           className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
         >
-          <ArrowUpDown
-            size={15}
-            strokeWidth={1.8}
-            className="text-muted-foreground"
-          />
+          <ArrowUpDown size={15} className="text-muted-foreground" />
           {current?.label ??
             i18n.t(($) => {
               return $.workflows.list.sort.label;
             })}
-          <ChevronDown size={14} strokeWidth={1.8} />
+          <ChevronDown size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -900,11 +895,7 @@ function AgentFilterDropdown({
               size={16}
             />
           ) : (
-            <User
-              size={15}
-              strokeWidth={1.8}
-              className="text-muted-foreground"
-            />
+            <User size={15} className="text-muted-foreground" />
           )}
           <span className="max-w-[8rem] truncate">
             {selected?.label ??
@@ -912,7 +903,7 @@ function AgentFilterDropdown({
                 return $.workflows.list.allAgents;
               })}
           </span>
-          <ChevronDown size={14} strokeWidth={1.8} />
+          <ChevronDown size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -924,7 +915,7 @@ function AgentFilterDropdown({
             onChange(WORKFLOW_ALL_AGENTS);
           }}
         >
-          <User size={15} strokeWidth={1.8} className="text-muted-foreground" />
+          <User size={15} className="text-muted-foreground" />
           {i18n.t(($) => {
             return $.workflows.list.allAgents;
           })}
@@ -1109,7 +1100,7 @@ export function WorkflowsPage() {
               openCreateWorkflowDialog();
             }}
           >
-            <Plus size={14} strokeWidth={2} />
+            <Plus size={14} />
             {t(($) => {
               return $.workflows.list.createInChat;
             })}

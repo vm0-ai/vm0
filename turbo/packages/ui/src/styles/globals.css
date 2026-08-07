@@ -119,7 +119,7 @@
   /* ===================================
    * Icon System
    * =================================== */
-  --icon-stroke-width: 1.5;
+  --icon-stroke-width: 2;
 
   /* ===================================
    * Input System
@@ -366,8 +366,10 @@
       sans-serif;
   }
 
-  /* Global icon stroke width for Tabler Icons */
-  svg[class*="tabler-icon"] {
+  /* Single global icon stroke width. lucide-react tags every icon with the
+   * "lucide" class, and packages/ui brand icons opt in with the same class,
+   * so this keeps every icon on one weight regardless of call site. */
+  svg.lucide {
     stroke-width: var(--icon-stroke-width);
   }
 }

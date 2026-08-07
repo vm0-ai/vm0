@@ -219,7 +219,7 @@ function DownloadReceiptsDialog({
           className="gap-1.5"
           disabled={downloading}
         >
-          <Download size={14} strokeWidth={1.5} />
+          <Download size={14} />
           {downloading
             ? t(($) => {
                 return $.billing.invoices.preparingReceipts;
@@ -396,7 +396,7 @@ export function OrgInvoicesTab() {
                               { month: invoiceMonth },
                             )}
                           >
-                            <Download size={14} strokeWidth={1.5} />
+                            <Download size={14} />
                           </a>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
@@ -413,7 +413,7 @@ export function OrgInvoicesTab() {
                     </TooltipProvider>
                   ) : (
                     <span className="flex h-7 w-7 items-center justify-center text-muted-foreground/30">
-                      <Download size={14} strokeWidth={1.5} />
+                      <Download size={14} />
                     </span>
                   )}
                 </div>

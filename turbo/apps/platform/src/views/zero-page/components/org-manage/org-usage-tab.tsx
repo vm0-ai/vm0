@@ -411,7 +411,6 @@ function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <ChevronRight
             size={13}
-            strokeWidth={2}
             className="shrink-0 transition-transform group-open:rotate-90"
           />
           <span>

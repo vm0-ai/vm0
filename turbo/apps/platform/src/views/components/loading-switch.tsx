@@ -40,7 +40,6 @@ export function LoadingSwitch({
       {loading && (
         <LoaderCircle
           size={10}
-          strokeWidth={2.5}
           className={cn(
             "absolute top-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin text-muted-foreground/70",
             checked ? "left-1/4" : "left-3/4",

@@ -431,7 +431,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
             })}
             aria-pressed={open}
           >
-            <Package size={17} strokeWidth={1.5} />
+            <Package size={17} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -534,7 +534,7 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
               openBrowserSidebar(thread.threadId);
             }}
           >
-            <Globe size={18} strokeWidth={1.5} />
+            <Globe size={18} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -640,7 +640,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
                     return $.chat.sharing.start;
                   })}
                 >
-                  <Share2 size={18} strokeWidth={1.5} />
+                  <Share2 size={18} />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
@@ -775,7 +775,7 @@ function ChatThreadEmojiMenuButton({
                     {emoji}
                   </span>
                 ) : (
-                  <SmilePlus size={18} strokeWidth={1.75} aria-hidden="true" />
+                  <SmilePlus size={18} aria-hidden="true" />
                 )}
               </button>
             </PopoverTrigger>
@@ -1131,13 +1131,9 @@ function ChatImagePreviewLink({
           )}
         >
           {imageStatus === "loading" ? (
-            <LoaderCircle
-              size={18}
-              strokeWidth={1.8}
-              className="animate-spin"
-            />
+            <LoaderCircle size={18} className="animate-spin" />
           ) : (
-            <Image size={18} strokeWidth={1.5} />
+            <Image size={18} />
           )}
         </span>
       )}
@@ -1234,7 +1230,7 @@ function ChatVideoPreviewButton({
       )}
       <span className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors group-hover/video-preview:bg-black/35">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
-          <Play size={17} strokeWidth={1.8} />
+          <Play size={17} />
         </span>
       </span>
     </button>
@@ -1801,7 +1797,7 @@ function HeaderWorkflowAutomationCard({
           {t(($) => {
             return $.chat.actions.view;
           })}
-          <ArrowUpRight size={12} strokeWidth={1.5} />
+          <ArrowUpRight size={12} />
         </Link>
       </div>
       <WorkflowAutomationCard
@@ -1842,7 +1838,7 @@ function HeaderWorkflowAutomationCard({
               {running ? (
                 <LoaderCircle size={13} className="animate-spin" />
               ) : (
-                <Play size={13} strokeWidth={1.5} />
+                <Play size={13} />
               )}
               {running
                 ? t(($) => {
@@ -3791,7 +3787,7 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
                   );
                 }}
               >
-                <Copy size={16} strokeWidth={1.7} />
+                <Copy size={16} />
                 {t(($) => {
                   return $.chat.sharing.copyLink;
                 })}
@@ -3842,13 +3838,9 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
               }}
             >
               {creating ? (
-                <LoaderCircle
-                  size={16}
-                  strokeWidth={1.7}
-                  className="animate-spin"
-                />
+                <LoaderCircle size={16} className="animate-spin" />
               ) : (
-                <Share2 size={16} strokeWidth={1.7} />
+                <Share2 size={16} />
               )}
               {t(($) => {
                 return $.chat.sharing.create;
@@ -3898,22 +3890,22 @@ function RecommendedFollowupIcon({
   followup: RecommendedFollowup;
 }) {
   if (followup.kind !== "generate") {
-    return <MessageCircle size={14} strokeWidth={1.8} />;
+    return <MessageCircle size={14} />;
   }
 
   if (followup.generationType === "image") {
-    return <Image size={14} strokeWidth={1.8} />;
+    return <Image size={14} />;
   }
   if (followup.generationType === "video") {
-    return <Video size={14} strokeWidth={1.8} />;
+    return <Video size={14} />;
   }
   if (followup.generationType === "presentation") {
-    return <ChartLine size={14} strokeWidth={1.8} />;
+    return <ChartLine size={14} />;
   }
   if (followup.generationType === "website") {
-    return <LinkIcon size={14} strokeWidth={1.8} />;
+    return <LinkIcon size={14} />;
   }
-  return <Package size={14} strokeWidth={1.8} />;
+  return <Package size={14} />;
 }
 
 function recommendedFollowupShownKey(
@@ -3996,7 +3988,6 @@ function RecommendedFollowupList({
             </span>
             <ArrowUpRight
               size={14}
-              strokeWidth={1.8}
               className="shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100"
             />
           </button>
@@ -4094,7 +4085,6 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
             <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
               <LoaderCircle
                 size={16}
-                strokeWidth={1.7}
                 className="animate-spin"
                 aria-hidden="true"
               />
@@ -6026,9 +6016,7 @@ function assistantRecoveryResetText(
 }
 
 function AssistantRecoveryActionSpinner({ loading }: { loading: boolean }) {
-  return loading ? (
-    <LoaderCircle size={14} strokeWidth={1.75} className="animate-spin" />
-  ) : null;
+  return loading ? <LoaderCircle size={14} className="animate-spin" /> : null;
 }
 
 function AssistantRecoveryActions({
@@ -6129,9 +6117,9 @@ function AssistantErrorRecoveryCard({
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
           {recovery.kind === "usage-limit" ? (
-            <Clock size={17} strokeWidth={1.75} />
+            <Clock size={17} />
           ) : (
-            <CircleAlert size={17} strokeWidth={1.75} />
+            <CircleAlert size={17} />
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -6161,11 +6149,7 @@ function AssistantErrorRecoveryCard({
           </p>
           {resetText && (
             <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <Clock
-                size={14}
-                strokeWidth={1.75}
-                className="text-muted-foreground"
-              />
+              <Clock size={14} className="text-muted-foreground" />
               {resetText}
             </div>
           )}
@@ -6194,7 +6178,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
           borderRadius: "12px",
         }}
       >
-        <Hand size={14} strokeWidth={1.75} className="shrink-0" />
+        <Hand size={14} className="shrink-0" />
         <span>
           {t(($) => {
             return $.chat.errors.runCancelled;
@@ -6872,11 +6856,7 @@ function UserMessageActions({
           return $.chat.actions.copyMessage;
         })}
       >
-        {copied ? (
-          <Check size={18} strokeWidth={1.5} />
-        ) : (
-          <Copy size={18} strokeWidth={1.5} />
-        )}
+        {copied ? <Check size={18} /> : <Copy size={18} />}
       </button>
     </div>
   );
@@ -6951,7 +6931,7 @@ function MessageAnnotation({
         className={className}
         title={part.workflowName}
       >
-        <Route size={15} strokeWidth={1.8} className="shrink-0" />
+        <Route size={15} className="shrink-0" />
         <span className="min-w-0 truncate">{part.workflowName}</span>
       </div>
     );
@@ -6964,7 +6944,7 @@ function MessageAnnotation({
         })}
         className={className}
       >
-        <Target size={15} strokeWidth={1.8} className="shrink-0" />
+        <Target size={15} className="shrink-0" />
         <span>
           {t(($) => {
             return $.chat.queue.goal;
@@ -6981,7 +6961,7 @@ function MessageAnnotation({
         })}
         className={className}
       >
-        <Sunrise size={15} strokeWidth={1.8} className="shrink-0" />
+        <Sunrise size={15} className="shrink-0" />
         <span>
           {t(($) => {
             return $.settings.preferences.morningBrief.title;
@@ -7078,7 +7058,7 @@ function SourceMessageAnnotation({
   const content = (
     <>
       {part.kind === "slack" ? (
-        <SlackIcon size={15} strokeWidth={1.8} className="shrink-0" />
+        <SlackIcon size={15} className="shrink-0" />
       ) : (
         <img
           src={annotationIconImgs[part.kind]}
@@ -7091,7 +7071,7 @@ function SourceMessageAnnotation({
         <>
           <span className="shrink-0">·</span>
           <span className="min-w-0 truncate">{openLabel}</span>
-          <ArrowUpRight size={12} strokeWidth={1.5} className="shrink-0" />
+          <ArrowUpRight size={12} className="shrink-0" />
         </>
       ) : null}
     </>
@@ -7285,7 +7265,7 @@ function UserMessageTemplateReference({
         setTemplatePickerOpen(true);
       }}
     >
-      <SwatchBook size={13} strokeWidth={1.7} className="shrink-0" />
+      <SwatchBook size={13} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
       {spec !== undefined && (
         <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
@@ -7429,7 +7409,7 @@ function UserMessageChatThreadReference({
       className={STRUCTURED_INLINE_REFERENCE_CLASS}
       title={title}
     >
-      <MessageCircle size={13} strokeWidth={1.7} className="shrink-0" />
+      <MessageCircle size={13} className="shrink-0" />
       <span className="min-w-0 truncate">{title}</span>
     </Link>
   );
@@ -8368,7 +8348,7 @@ function UsageChip({
           className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors duration-150"
           aria-label={`${ariaLabel} ${total}`}
         >
-          <Coins size={17} strokeWidth={1.5} />
+          <Coins size={17} />
           <span>{total}</span>
         </button>
       </PopoverTrigger>
@@ -8457,7 +8437,7 @@ function PagedGroupPrimaryActions({
                   return $.chat.run.viewLogs;
                 })}
               >
-                <ChartLine size={18} strokeWidth={1.5} />
+                <ChartLine size={18} />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -8480,11 +8460,7 @@ function PagedGroupPrimaryActions({
                   return $.chat.actions.copyMessage;
                 })}
               >
-                {copied ? (
-                  <Check size={18} strokeWidth={1.5} />
-                ) : (
-                  <Copy size={18} strokeWidth={1.5} />
-                )}
+                {copied ? <Check size={18} /> : <Copy size={18} />}
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">

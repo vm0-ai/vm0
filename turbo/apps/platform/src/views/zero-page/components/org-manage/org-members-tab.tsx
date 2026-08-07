@@ -143,7 +143,6 @@ export function OrgMembersTab() {
         <div className="relative flex-1">
           <Search
             size={15}
-            strokeWidth={1.5}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
           />
           <Input
@@ -216,7 +215,7 @@ export function OrgMembersTab() {
           <>
             <div className="px-5 pt-3 pb-1">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                <UserPlus size={13} strokeWidth={1.8} />
+                <UserPlus size={13} />
                 {t(($) => {
                   return $.settings.workspace.members.joinRequests;
                 })}
@@ -305,7 +304,7 @@ function InviteDialog() {
     >
       <DialogTrigger asChild>
         <Button size="sm" className="gap-1.5 rounded-lg">
-          <Plus size={14} strokeWidth={2} />
+          <Plus size={14} />
           {t(($) => {
             return $.settings.workspace.members.addMember;
           })}
@@ -466,7 +465,6 @@ function MemberRow({
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <ShieldCheck
             size={12}
-            strokeWidth={1.8}
             className={
               member.role === "admin"
                 ? "text-blue-500"
@@ -524,7 +522,7 @@ function SelfDemoteAction({ email }: { email: string }) {
             )}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
           >
-            <Ellipsis size={15} strokeWidth={1.5} />
+            <Ellipsis size={15} />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -633,7 +631,7 @@ function MemberActions({ member }: { member: OrgMember }) {
             disabled={changingRole}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
           >
-            <Ellipsis size={15} strokeWidth={1.5} />
+            <Ellipsis size={15} />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -762,7 +760,7 @@ function PendingInvitationRow({
       </div>
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <Clock size={12} strokeWidth={1.8} className="text-amber-500" />
+          <Clock size={12} className="text-amber-500" />
           {t(($) => {
             return $.settings.workspace.members.pending;
           })}
@@ -789,7 +787,7 @@ function PendingInvitationRow({
                   )}
                   className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
                 >
-                  <Ellipsis size={15} strokeWidth={1.5} />
+                  <Ellipsis size={15} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -908,7 +906,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
       </div>
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <UserPlus size={12} strokeWidth={1.8} className="text-blue-500" />
+          <UserPlus size={12} className="text-blue-500" />
           {t(($) => {
             return $.settings.workspace.members.membershipRequest.role;
           })}
@@ -923,7 +921,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
             return $.settings.workspace.members.membershipRequest.acceptTitle;
           })}
         >
-          <Check size={15} strokeWidth={2} />
+          <Check size={15} />
         </button>
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
@@ -933,7 +931,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
             return $.settings.workspace.members.membershipRequest.rejectTitle;
           })}
         >
-          <X size={15} strokeWidth={2} />
+          <X size={15} />
         </button>
       </div>
     </div>

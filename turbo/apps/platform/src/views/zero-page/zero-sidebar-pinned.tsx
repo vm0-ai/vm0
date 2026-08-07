@@ -103,7 +103,7 @@ function PinnedAgentSideDecorator({
               return $.sidebar.markAllRead;
             }),
             disabled: markingRead,
-            icon: <CheckCheck size={16} strokeWidth={2} />,
+            icon: <CheckCheck size={16} />,
             onSelect: markAllRead,
           },
         ]
@@ -116,7 +116,7 @@ function PinnedAgentSideDecorator({
                   return $.sidebar.unpin;
                 }),
                 disabled: savingPinned,
-                icon: <PinOff size={16} strokeWidth={2} />,
+                icon: <PinOff size={16} />,
                 onSelect: unpinAgent,
               }
             : {
@@ -124,7 +124,7 @@ function PinnedAgentSideDecorator({
                   return $.sidebar.pin;
                 }),
                 disabled: savingPinned,
-                icon: <Pin size={16} strokeWidth={2} />,
+                icon: <Pin size={16} />,
                 onSelect: pinAgent,
               },
         ]
@@ -283,7 +283,7 @@ export function PinnedAgentListSection({
             className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
-              <Plus size={16} strokeWidth={2} />
+              <Plus size={16} />
             </span>
             <span className="text-[11px] leading-tight">
               {t(($) => {
@@ -311,11 +311,7 @@ export function PinnedAgentListSection({
             return $.sidebar.pinned;
           })}
           <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <ChevronRight
-              size={12}
-              strokeWidth={2}
-              className={collapsed ? "" : "rotate-90"}
-            />
+            <ChevronRight size={12} className={collapsed ? "" : "rotate-90"} />
           </span>
         </span>
         <TooltipProvider delayDuration={200}>
@@ -332,7 +328,7 @@ export function PinnedAgentListSection({
                   return $.sidebar.openConversation;
                 })}
               >
-                <Plus size={15} strokeWidth={2.5} />
+                <Plus size={15} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">

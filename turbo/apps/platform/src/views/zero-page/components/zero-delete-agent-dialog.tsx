@@ -50,11 +50,7 @@ function DeleteDangerHeader({ agentName }: { agentName: string }) {
     <>
       <DialogHeader className="space-y-0 text-left">
         <div className="flex items-center gap-2">
-          <TriangleAlert
-            size={20}
-            strokeWidth={1.5}
-            className="shrink-0 text-destructive"
-          />
+          <TriangleAlert size={20} className="shrink-0 text-destructive" />
           <DialogTitle>
             {t(
               ($) => {
@@ -360,7 +356,7 @@ export function AgentDeleteDialog({
                   size="sm"
                   className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
-                  <Trash2 size={14} strokeWidth={1.5} />
+                  <Trash2 size={14} />
                   {t(($) => {
                     return $.actions.delete;
                   })}

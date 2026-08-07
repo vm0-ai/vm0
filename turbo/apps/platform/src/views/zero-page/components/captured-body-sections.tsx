@@ -53,7 +53,6 @@ function CollapsibleSection({
         <div className="flex items-center gap-2">
           <ChevronRight
             size={14}
-            strokeWidth={2}
             className="transition-transform group-open:rotate-90 text-muted-foreground shrink-0"
           />
           <span className="text-xs font-medium text-foreground">{title}</span>

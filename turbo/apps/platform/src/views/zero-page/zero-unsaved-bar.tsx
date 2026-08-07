@@ -26,11 +26,7 @@ export function ZeroUnsavedBar({
         className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
       >
         <div className="flex items-center gap-2 text-sm text-foreground">
-          <Pencil
-            size={18}
-            strokeWidth={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <Pencil size={18} className="shrink-0 text-muted-foreground" />
           <span>{message}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -55,7 +51,6 @@ export function ZeroUnsavedBar({
               <LoaderCircle
                 data-testid="save-spinner"
                 size={14}
-                strokeWidth={1.5}
                 className="animate-spin mr-1.5"
               />
             ) : null}

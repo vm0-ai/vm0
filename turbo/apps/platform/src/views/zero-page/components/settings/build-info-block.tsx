@@ -33,7 +33,7 @@ function BuildInfoTarget({
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground">
-            <Icon size={15} strokeWidth={1.5} />
+            <Icon size={15} />
           </span>
           <div className="truncate text-sm font-medium text-foreground">
             {title}
@@ -87,11 +87,7 @@ export function BuildInfoBlock() {
     <div className="flex items-start gap-4 rounded-xl bg-card p-4 zero-border">
       <div className="shrink-0">
         <div className="flex h-7 w-7 items-center justify-center">
-          <GitCommit
-            size={22}
-            strokeWidth={1.5}
-            className="text-muted-foreground"
-          />
+          <GitCommit size={22} className="text-muted-foreground" />
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">

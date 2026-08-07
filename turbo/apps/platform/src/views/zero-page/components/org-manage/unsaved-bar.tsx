@@ -28,11 +28,7 @@ export function UnsavedBar({
         className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
       >
         <div className="flex items-center gap-2 text-sm text-foreground">
-          <Pencil
-            size={18}
-            strokeWidth={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <Pencil size={18} className="shrink-0 text-muted-foreground" />
           <span>
             {t(($) => {
               return $.settings.workspace.unsaved.message;
@@ -60,11 +56,7 @@ export function UnsavedBar({
             disabled={saving || saveDisabled}
           >
             {saving ? (
-              <LoaderCircle
-                size={14}
-                strokeWidth={1.5}
-                className="animate-spin mr-1.5"
-              />
+              <LoaderCircle size={14} className="animate-spin mr-1.5" />
             ) : null}
             {t(($) => {
               return $.settings.shared.save;

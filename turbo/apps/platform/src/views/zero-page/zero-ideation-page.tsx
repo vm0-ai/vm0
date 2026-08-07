@@ -122,7 +122,7 @@ export function ZeroIdeationPage() {
           onClick={handleBack}
           className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
         >
-          <MessageCircle size={14} strokeWidth={1.5} className="shrink-0" />
+          <MessageCircle size={14} className="shrink-0" />
           {t(($) => {
             return $.ideation.chat;
           })}
@@ -193,7 +193,6 @@ export function ZeroIdeationPage() {
                 <div className="relative w-full min-w-0 sm:max-w-[240px] sm:flex-1 sm:min-w-[12rem]">
                   <Search
                     className="pointer-events-none absolute left-3 top-1/2 z-10 size-[14px] -translate-y-1/2 text-muted-foreground"
-                    strokeWidth={1.5}
                     aria-hidden
                   />
                   <Input
@@ -254,7 +253,6 @@ export function ZeroIdeationPage() {
                               <CardContent className="p-4 group relative">
                                 <ArrowUpRight
                                   size={14}
-                                  strokeWidth={2}
                                   className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
                                 />
                                 <p className="text-sm font-semibold text-foreground pr-5">

@@ -24,6 +24,7 @@ function createBrandIcon(
         strokeWidth = 2,
         absoluteStrokeWidth,
         color = "currentColor",
+        className,
         ...props
       },
       ref,
@@ -31,6 +32,10 @@ function createBrandIcon(
       return (
         <svg
           ref={ref}
+          // The "lucide" class opts these into the global icon stroke rule in
+          // styles/globals.css, so brand marks stay on the same weight as
+          // every lucide-react icon.
+          className={className ? `lucide ${className}` : "lucide"}
           xmlns="http://www.w3.org/2000/svg"
           width={size}
           height={size}

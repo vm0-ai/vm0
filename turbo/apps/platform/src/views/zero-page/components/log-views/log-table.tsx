@@ -105,7 +105,6 @@ function LogRow({
             >
               <LoaderCircle
                 size={12}
-                strokeWidth={1.5}
                 className="animate-spin"
                 aria-label={t(($) => {
                   return $.activity.statuses.running;
@@ -117,7 +116,7 @@ function LogRow({
             </span>
           ) : (
             <span className="inline-flex items-center gap-0.5">
-              <Clock size={12} strokeWidth={1.5} />
+              <Clock size={12} />
               {formatDuration(entry.startedAt, entry.completedAt) ?? "\u2014"}
             </span>
           )}
@@ -127,7 +126,7 @@ function LogRow({
             className="rounded p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors inline-flex"
             aria-hidden="true"
           >
-            <ChevronRight size={14} strokeWidth={1.5} />
+            <ChevronRight size={14} />
           </span>
         </div>
       </div>

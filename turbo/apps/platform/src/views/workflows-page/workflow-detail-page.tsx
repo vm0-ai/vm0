@@ -994,7 +994,7 @@ function WorkflowBreadcrumb({
     <DetailPageBreadcrumbBar>
       <BreadcrumbLink
         pathname={ROUTES.workflows}
-        icon={<Route size={14} strokeWidth={1.5} className="shrink-0" />}
+        icon={<Route size={14} className="shrink-0" />}
       >
         {i18n.t(($) => {
           return $.workflows.common.workflows;
@@ -1041,7 +1041,7 @@ function WorkflowHeaderIcon({
   }
   return (
     <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-muted-foreground sm:h-16 sm:w-16">
-      <Route size={28} strokeWidth={1.7} />
+      <Route size={28} />
     </span>
   );
 }
@@ -1160,7 +1160,7 @@ function WorkflowTabNav({
       </div>
       <TabsList className="zero-tabs hidden h-9 gap-1 px-1 py-1 sm:inline-flex">
         <TabsTrigger value="automations" className={WORKFLOW_TAB_TRIGGER_CLASS}>
-          <Clock size={14} strokeWidth={1.5} />
+          <Clock size={14} />
           {i18n.t(($) => {
             return $.workflows.list.automations;
           })}
@@ -1169,13 +1169,13 @@ function WorkflowTabNav({
           value="instructions"
           className={WORKFLOW_TAB_TRIGGER_CLASS}
         >
-          <FileText size={14} strokeWidth={1.5} />
+          <FileText size={14} />
           {i18n.t(($) => {
             return $.workflows.common.instructions;
           })}
         </TabsTrigger>
         <TabsTrigger value="info" className={WORKFLOW_TAB_TRIGGER_CLASS}>
-          <Info size={14} strokeWidth={1.5} />
+          <Info size={14} />
           {i18n.t(($) => {
             return $.workflows.common.settings;
           })}
@@ -1255,7 +1255,7 @@ function WorkflowChatButton({
       {opening ? (
         <LoaderCircle size={14} className="shrink-0 animate-spin" />
       ) : (
-        <MessageCircle size={14} strokeWidth={2} className="shrink-0" />
+        <MessageCircle size={14} className="shrink-0" />
       )}
       <span className="truncate">{chatLabel}</span>
     </Button>
@@ -1338,7 +1338,7 @@ function WorkflowInfoTab({
                 setActionDialog("copy");
               }}
             >
-              <Copy size={14} strokeWidth={1.5} />
+              <Copy size={14} />
               {i18n.t(($) => {
                 return $.workflows.common.copyWorkflow;
               })}
@@ -1372,7 +1372,7 @@ function WorkflowInfoTab({
                     setActionDialog("delete");
                   }}
                 >
-                  <Trash2 size={14} strokeWidth={1.5} />
+                  <Trash2 size={14} />
                   {i18n.t(($) => {
                     return $.workflows.common.deleteWorkflow;
                   })}
@@ -1653,7 +1653,7 @@ function WorkflowConnectorReadiness({
               {checking ? (
                 <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <PlugZap size={14} strokeWidth={1.5} />
+                <PlugZap size={14} />
               )}
               {checkLabel}
             </Button>
@@ -1670,11 +1670,7 @@ function WorkflowConnectorReadiness({
           role="alert"
           className="flex items-start gap-2 border-t border-border/50 px-4 py-3 text-sm text-destructive sm:px-5"
         >
-          <TriangleAlert
-            size={16}
-            strokeWidth={1.5}
-            className="mt-0.5 shrink-0"
-          />
+          <TriangleAlert size={16} className="mt-0.5 shrink-0" />
           <p>{errorMessage}</p>
         </div>
       ) : null}
@@ -1699,11 +1695,7 @@ function WorkflowConnectorReadiness({
             className="flex items-center gap-2 border-t border-border/50 px-4 py-4 text-sm text-muted-foreground sm:px-5"
             aria-live="polite"
           >
-            <CircleCheck
-              size={16}
-              strokeWidth={1.5}
-              className="shrink-0 text-emerald-500"
-            />
+            <CircleCheck size={16} className="shrink-0 text-emerald-500" />
             {copy.empty}
           </div>
         )
@@ -1767,7 +1759,7 @@ function WorkflowConnectorReadinessRow({
               aria-label={`${action.label} ${entry.label}`}
             >
               {action.label}
-              <ExternalLink size={13} strokeWidth={1.5} />
+              <ExternalLink size={13} />
             </a>
           </Button>
         ) : null}
@@ -2017,7 +2009,7 @@ function ShadowWarning({
 
   return (
     <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-      <TriangleAlert size={16} strokeWidth={1.5} className="mt-0.5 shrink-0" />
+      <TriangleAlert size={16} className="mt-0.5 shrink-0" />
       <p className="min-w-0">
         <span className="font-medium">/{detail.name}</span>{" "}
         {i18n.t(($) => {
@@ -2112,7 +2104,7 @@ function WorkflowPublicToggle({
             <DialogDescription>{copy.confirmDescription}</DialogDescription>
           </DialogHeader>
           <Alert variant="destructive">
-            <TriangleAlert size={16} strokeWidth={1.5} />
+            <TriangleAlert size={16} />
             <AlertTitle>{copy.automationWarning}</AlertTitle>
             <AlertDescription>
               {i18n.t(
@@ -2319,7 +2311,7 @@ function WorkflowCopyForm({
       </label>
       {form.removeOriginal ? (
         <Alert variant="destructive">
-          <TriangleAlert size={16} strokeWidth={1.5} />
+          <TriangleAlert size={16} />
           <AlertTitle>
             {i18n.t(($) => {
               return $.workflows.detail.copy.removalAlert;
@@ -2656,11 +2648,7 @@ function WorkflowFilePicker({
           className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-sm px-0.5 py-0.5 text-sm font-medium text-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="min-w-0 truncate">{selectedLabel}</span>
-          <ChevronDown
-            size={14}
-            strokeWidth={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
@@ -2751,7 +2739,7 @@ function WorkflowFileManagementItems({
         {saving ? (
           <LoaderCircle size={15} className="animate-spin" />
         ) : (
-          <Upload size={15} strokeWidth={1.5} />
+          <Upload size={15} />
         )}
         <span>
           {i18n.t(($) => {
@@ -2789,7 +2777,7 @@ function WorkflowFileManagementItems({
           className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-accent disabled:opacity-60"
           onClick={onDeleteSelectedFile}
         >
-          <Trash2 size={15} strokeWidth={1.5} />
+          <Trash2 size={15} />
           <span>
             {i18n.t(($) => {
               return $.workflows.detail.files.deleteSelected;
@@ -4743,7 +4731,7 @@ function AutomationCreateCategoryButton({
           : "text-sidebar-foreground hover:bg-gray-50",
       )}
     >
-      <Icon size={16} strokeWidth={1.5} className="shrink-0" />
+      <Icon size={16} className="shrink-0" />
       <span className="truncate">{category.label}</span>
     </button>
   );
@@ -4771,7 +4759,7 @@ function AutomationCreateOptionCard({
           accentChip,
         )}
       >
-        <Icon size={20} strokeWidth={1.5} />
+        <Icon size={20} />
       </span>
       <span className="flex min-w-0 flex-col gap-1">
         <span className="text-sm font-semibold">{option.title}</span>
@@ -4835,7 +4823,7 @@ function AutomationCreateMenu({
           type="button"
           className="zero-btn-morandi inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium"
         >
-          <Plus size={14} strokeWidth={1.5} />
+          <Plus size={14} />
           <span>
             {i18n.t(($) => {
               return $.workflows.automations.common.addAutomation;
@@ -5009,7 +4997,7 @@ function CreateGoogleMeetTranscriptGeneratedAutomationDialog({
               {creating ? (
                 <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <Video size={14} strokeWidth={1.5} />
+                <Video size={14} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.meet.addAction;
@@ -5780,7 +5768,7 @@ function CreateNotionDatabaseItemAutomationDialog({
               {creating ? (
                 <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <NotionIcon size={14} strokeWidth={1.5} />
+                <NotionIcon size={14} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.notion.addAction;
@@ -5984,7 +5972,7 @@ function CreateNotionPageContentUpdatedAutomationDialog({
               {creating ? (
                 <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <NotionIcon size={14} strokeWidth={1.5} />
+                <NotionIcon size={14} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.notion.addAction;
@@ -6091,7 +6079,7 @@ function CreateNotionChildPageAutomationDialog({
               {creating ? (
                 <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <NotionIcon size={14} strokeWidth={1.5} />
+                <NotionIcon size={14} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.notion.addAction;
@@ -7006,7 +6994,7 @@ function GmailMatchConditionRow({
           onChange(removeGmailMatchCondition(conditions, index));
         }}
       >
-        <X size={16} strokeWidth={1.5} />
+        <X size={16} />
       </Button>
     </div>
   );
@@ -7048,7 +7036,7 @@ function GmailMatchConditionsEditor({
           }
         }}
       >
-        <Plus size={14} strokeWidth={1.5} />
+        <Plus size={14} />
         {i18n.t(($) => {
           return $.workflows.automations.gmail.addCondition;
         })}
@@ -8430,7 +8418,7 @@ function CreateGithubWebhookAutomationDialog({
               {creating ? (
                 <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <GithubIcon size={14} strokeWidth={1.5} />
+                <GithubIcon size={14} />
               )}
               {copy.action}
             </Button>
@@ -8874,7 +8862,7 @@ function RevealWebhookSecretDialog({
               {revealing ? (
                 <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <Eye size={14} strokeWidth={1.5} />
+                <Eye size={14} />
               )}
               {copy.reveal}
             </Button>
@@ -9011,7 +8999,7 @@ function AutomationRow({
           </div>
         </div>
         <AutomationRunStat
-          icon={<History size={14} strokeWidth={1.5} />}
+          icon={<History size={14} />}
           label={i18n.t(($) => {
             return $.workflows.automations.schedule.last;
           })}
@@ -9020,7 +9008,7 @@ function AutomationRow({
         />
         {automation.kind === "schedule" ? (
           <AutomationRunStat
-            icon={<Clock size={14} strokeWidth={1.5} />}
+            icon={<Clock size={14} />}
             label={i18n.t(($) => {
               return $.workflows.automations.schedule.next;
             })}
@@ -9225,7 +9213,7 @@ function AutomationControls({
                 {busy ? (
                   <LoaderCircle size={14} className="animate-spin" />
                 ) : (
-                  <Play size={14} strokeWidth={1.5} />
+                  <Play size={14} />
                 )}
               </Button>
             </TooltipTrigger>
@@ -9258,7 +9246,7 @@ function AutomationControls({
                     setEditingAutomationId(automation.id);
                   }}
                 >
-                  <Pencil size={14} strokeWidth={1.5} />
+                  <Pencil size={14} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -9323,7 +9311,7 @@ function AutomationMoreActionsMenu({
               })}
               className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground data-[state=open]:bg-gray-200 data-[state=open]:text-foreground"
             >
-              <EllipsisVertical size={14} strokeWidth={1.5} />
+              <EllipsisVertical size={14} />
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
@@ -9342,7 +9330,7 @@ function AutomationMoreActionsMenu({
             className="gap-2"
             onModalSelect={onRevealWebhookSecret}
           >
-            <Eye size={14} strokeWidth={1.5} />
+            <Eye size={14} />
             {i18n.t(($) => {
               return $.workflows.automations.webhook.revealTitle;
             })}
@@ -9361,7 +9349,7 @@ function AutomationMoreActionsMenu({
           {deleting ? (
             <LoaderCircle size={14} className="animate-spin" />
           ) : (
-            <Trash2 size={14} strokeWidth={1.5} />
+            <Trash2 size={14} />
           )}
           {i18n.t(($) => {
             return $.workflows.automations.common.deleteAutomation;
@@ -9666,7 +9654,7 @@ function UpdateScheduleAutomationForm({
           {saving ? (
             <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <Clock size={13} strokeWidth={1.5} />
+            <Clock size={13} />
           )}
           <span>
             {i18n.t(($) => {
@@ -9749,7 +9737,7 @@ function UpdateGmailNewMessageAutomationForm({
           {saving ? (
             <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <Mail size={13} strokeWidth={1.5} />
+            <Mail size={13} />
           )}
           <span>
             {i18n.t(($) => {
@@ -9839,7 +9827,7 @@ function UpdateGmailLabelAppliedAutomationForm({
           {saving ? (
             <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <Mail size={13} strokeWidth={1.5} />
+            <Mail size={13} />
           )}
           <span>
             {i18n.t(($) => {
@@ -9965,7 +9953,7 @@ function UpdateGithubLabelAppliedAutomationForm({
           {saving ? (
             <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <GithubIcon size={13} strokeWidth={1.5} />
+            <GithubIcon size={13} />
           )}
           <span>
             {i18n.t(($) => {
@@ -10038,7 +10026,7 @@ function UpdateGithubWorkflowRunCompletedAutomationForm({
           {saving ? (
             <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <GithubIcon size={13} strokeWidth={1.5} />
+            <GithubIcon size={13} />
           )}
           <span>
             {i18n.t(($) => {
@@ -10110,7 +10098,7 @@ function UpdateGithubWebhookAutomationForm({
           {saving ? (
             <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <GithubIcon size={13} strokeWidth={1.5} />
+            <GithubIcon size={13} />
           )}
           <span>
             {i18n.t(($) => {

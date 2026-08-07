@@ -244,7 +244,6 @@ function AvatarPreviewWithShuffle() {
             >
               <Dices
                 size={14}
-                strokeWidth={1.5}
                 style={
                   shuffling
                     ? { animation: "avatar-dice-spin 0.6s ease-out" }
@@ -501,7 +500,7 @@ export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
                   return $.avatar.create;
                 })}
               >
-                <Wand size={16} strokeWidth={1.5} />
+                <Wand size={16} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">

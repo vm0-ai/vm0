@@ -548,7 +548,7 @@ function PolicyActionsMenu({
             },
           )}
         >
-          <EllipsisVertical size={14} strokeWidth={1.5} />
+          <EllipsisVertical size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -558,7 +558,7 @@ function PolicyActionsMenu({
             onEdit(policy);
           }}
         >
-          <Pencil size={14} strokeWidth={1.5} />
+          <Pencil size={14} />
           {t(($) => {
             return $.settings.models.actions.editModel;
           })}
@@ -571,7 +571,7 @@ function PolicyActionsMenu({
             onDelete(policy);
           }}
         >
-          <Trash2 size={14} strokeWidth={1.5} />
+          <Trash2 size={14} />
           {t(($) => {
             return $.settings.models.actions.deleteModel;
           })}
@@ -604,7 +604,7 @@ function AddModelButton({
       disabled={disabled}
       onClick={onClick}
     >
-      <Plus size={14} strokeWidth={2} />
+      <Plus size={14} />
       {t(($) => {
         return $.settings.models.actions.addModel;
       })}

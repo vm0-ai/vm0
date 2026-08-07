@@ -149,7 +149,7 @@ export function ZeroActivityPage() {
                   })}
                   className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
                 >
-                  <Users size={14} strokeWidth={1.5} className="shrink-0" />
+                  <Users size={14} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -174,7 +174,7 @@ export function ZeroActivityPage() {
                   })}
                   className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
                 >
-                  <CircleDot size={14} strokeWidth={1.5} className="shrink-0" />
+                  <CircleDot size={14} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -199,7 +199,7 @@ export function ZeroActivityPage() {
                   })}
                   className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
                 >
-                  <PlugZap size={14} strokeWidth={1.5} className="shrink-0" />
+                  <PlugZap size={14} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

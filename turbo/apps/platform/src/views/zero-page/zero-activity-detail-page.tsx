@@ -219,7 +219,7 @@ function ActivityBreadcrumbLink() {
       pathname="/activities"
       className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
     >
-      <ChartLine size={14} strokeWidth={1.5} className="shrink-0" />
+      <ChartLine size={14} className="shrink-0" />
       {t(($) => {
         return $.activity.detail.activity;
       })}
@@ -430,7 +430,7 @@ export function ActivityHeaderCard({
                         }
                       }}
                     >
-                      <Download size={14} strokeWidth={1.5} />
+                      <Download size={14} />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="left">
@@ -1104,7 +1104,6 @@ export function StepsList({
         <div className="flex justify-center py-8">
           <LoaderCircle
             size={20}
-            strokeWidth={1.5}
             className="animate-spin text-muted-foreground"
           />
         </div>

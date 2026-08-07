@@ -412,7 +412,7 @@ function CreditBalanceItem({
       onModalSelect={onOpenCreditBalance}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
-      <Coins size={18} strokeWidth={1.5} className="text-muted-foreground" />
+      <Coins size={18} className="text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
         {loading ? (
           <span className="block h-4 w-24 rounded bg-muted/60" />
@@ -440,11 +440,7 @@ function UnifiedSettingsGroup({
         onModalSelect={onOpenSettings}
         className="gap-3 px-3 py-2.5 rounded-lg"
       >
-        <Settings
-          size={18}
-          strokeWidth={1.5}
-          className="text-muted-foreground"
-        />
+        <Settings size={18} className="text-muted-foreground" />
         <span>
           {t(($) => {
             return $.settings.accountMenu.settings;
@@ -458,11 +454,7 @@ function UnifiedSettingsGroup({
           }}
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <FlaskConical
-            size={18}
-            strokeWidth={1.5}
-            className="text-muted-foreground"
-          />
+          <FlaskConical size={18} className="text-muted-foreground" />
           <span>
             {t(($) => {
               return $.settings.accountMenu.lab;
@@ -491,7 +483,7 @@ function AccountManagementGroup({
         onClick={onAddAccount}
         className="gap-3 px-3 py-2.5 rounded-lg"
       >
-        <Plus size={18} strokeWidth={1.5} className="text-muted-foreground" />
+        <Plus size={18} className="text-muted-foreground" />
         <span>
           {t(($) => {
             return $.settings.accountMenu.addAccount;
@@ -503,21 +495,13 @@ function AccountManagementGroup({
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5 rounded-lg">
-        <ArrowRightLeft
-          size={18}
-          strokeWidth={1.5}
-          className="text-muted-foreground"
-        />
+        <ArrowRightLeft size={18} className="text-muted-foreground" />
         <span className="flex-1">
           {t(($) => {
             return $.settings.accountMenu.switchAccount;
           })}
         </span>
-        <ChevronRight
-          size={14}
-          strokeWidth={1.5}
-          className="text-muted-foreground"
-        />
+        <ChevronRight size={14} className="text-muted-foreground" />
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-[220px]">
         {others.map((account) => {
@@ -550,7 +534,7 @@ function AccountManagementGroup({
           onClick={onAddAccount}
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <Plus size={18} strokeWidth={1.5} className="text-muted-foreground" />
+          <Plus size={18} className="text-muted-foreground" />
           <span>
             {t(($) => {
               return $.settings.accountMenu.addAccount;
@@ -571,11 +555,7 @@ function ExtraAccountActions() {
       }}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
-      <DatabaseBackup
-        size={18}
-        strokeWidth={1.5}
-        className="text-muted-foreground"
-      />
+      <DatabaseBackup size={18} className="text-muted-foreground" />
       <span>
         {t(($) => {
           return $.settings.accountMenu.exportData;
@@ -598,7 +578,7 @@ function SignOutItem({
       }}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
-      <LogOut size={18} strokeWidth={1.5} className="text-muted-foreground" />
+      <LogOut size={18} className="text-muted-foreground" />
       <span>
         {t(($) => {
           return $.settings.accountMenu.signOut;

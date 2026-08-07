@@ -593,7 +593,7 @@ function VideoThumbnailPreview({
         <div className="absolute inset-0 z-20 bg-black/15 transition-colors group-hover/video-preview:bg-black/35" />
         <span className="absolute inset-0 z-30 flex items-center justify-center">
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
-            <Play size={20} strokeWidth={1.8} />
+            <Play size={20} />
           </span>
         </span>
         <div className="absolute right-2 top-2 z-30 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/video-preview:opacity-100">

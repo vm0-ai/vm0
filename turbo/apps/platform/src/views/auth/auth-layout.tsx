@@ -388,11 +388,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             return $.auth.toggleTheme;
           })}
         >
-          {theme === "dark" ? (
-            <Sun size={16} strokeWidth={2} />
-          ) : (
-            <Moon size={16} strokeWidth={2} />
-          )}
+          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </button>
 
         {/* Logo Header */}

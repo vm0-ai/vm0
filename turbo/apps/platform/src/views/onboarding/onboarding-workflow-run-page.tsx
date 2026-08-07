@@ -110,7 +110,7 @@ export function OnboardingWorkflowRunPage() {
                   setUi({ workflowPreviewId: workflow.id });
                 }}
               >
-                <ScanEye size={16} strokeWidth={1.6} aria-hidden="true" />
+                <ScanEye size={16} aria-hidden="true" />
               </button>
             </div>
           </section>

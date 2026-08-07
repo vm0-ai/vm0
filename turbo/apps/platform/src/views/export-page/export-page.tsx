@@ -120,17 +120,15 @@ function errorMessage(error: unknown, fallback: string): string {
 
 function StatusIcon({ viewState }: { readonly viewState: ExportViewState }) {
   if (viewState === "loading" || viewState === "in-progress") {
-    return (
-      <LoaderCircle size={22} className="animate-spin" strokeWidth={1.8} />
-    );
+    return <LoaderCircle size={22} className="animate-spin" />;
   }
   if (viewState === "download") {
-    return <CircleCheck size={22} strokeWidth={1.8} />;
+    return <CircleCheck size={22} />;
   }
   if (viewState === "failed") {
-    return <CircleAlert size={22} strokeWidth={1.8} />;
+    return <CircleAlert size={22} />;
   }
-  return <DatabaseBackup size={22} strokeWidth={1.8} />;
+  return <DatabaseBackup size={22} />;
 }
 
 function StatusCopy({
@@ -296,7 +294,7 @@ function ExportActions({
       <div className="flex w-full flex-col gap-2">
         <Button asChild className={PRIMARY_ACTION_BUTTON_CLASS}>
           <a href={downloadUrl} download>
-            <Download size={16} strokeWidth={1.8} />
+            <Download size={16} />
             {t(($) => {
               return $.settings.export.actions.download;
             })}
@@ -311,13 +309,9 @@ function ExportActions({
             onClick={onTrigger}
           >
             {triggering ? (
-              <LoaderCircle
-                size={16}
-                className="animate-spin"
-                strokeWidth={1.8}
-              />
+              <LoaderCircle size={16} className="animate-spin" />
             ) : (
-              <RefreshCw size={16} strokeWidth={1.8} />
+              <RefreshCw size={16} />
             )}
             {t(($) => {
               return $.settings.export.actions.again;
@@ -344,9 +338,9 @@ function ExportActions({
       onClick={onTrigger}
     >
       {triggering ? (
-        <LoaderCircle size={16} className="animate-spin" strokeWidth={1.8} />
+        <LoaderCircle size={16} className="animate-spin" />
       ) : (
-        <DatabaseBackup size={16} strokeWidth={1.8} />
+        <DatabaseBackup size={16} />
       )}
       {triggering
         ? t(($) => {
@@ -448,7 +442,7 @@ export function ExportPage() {
               pathname="/"
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground no-underline transition-colors hover:text-foreground"
             >
-              <ArrowLeft size={14} strokeWidth={1.8} />
+              <ArrowLeft size={14} />
               {t(($) => {
                 return $.settings.export.backToZero;
               })}

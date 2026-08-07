@@ -414,7 +414,7 @@ function AgentPhoneCardActions() {
                 return $.connectors.providerSettings.agentphone.options;
               })}
             >
-              <EllipsisVertical size={16} strokeWidth={1.5} />
+              <EllipsisVertical size={16} />
             </button>
           </PopoverTrigger>
           <PopoverContent

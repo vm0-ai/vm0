@@ -335,8 +335,8 @@ function PolicyPill({
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             } ${disabled ? "cursor-default" : "cursor-pointer"}`}
           >
-            {option === "allow" && <Check size={12} strokeWidth={2.5} />}
-            {option === "deny" && <Ban size={12} strokeWidth={2.5} />}
+            {option === "allow" && <Check size={12} />}
+            {option === "deny" && <Ban size={12} />}
             {option === "allow"
               ? t(($) => {
                   return $.connectors.permissions.actions.allow;
@@ -552,7 +552,7 @@ function allowDurationMenuLabel(option: UserPermissionGrantExpiresIn): string {
 
 function MenuItemCheck({ active }: { active: boolean }) {
   return active ? (
-    <Check size={14} strokeWidth={2.5} />
+    <Check size={14} />
   ) : (
     <span className="h-3.5 w-3.5 shrink-0" />
   );
@@ -619,7 +619,7 @@ function PermissionAllowDurationDropdown({
         >
           <Clock size={12} className="shrink-0" />
           <span className="max-w-[90px] truncate">{label}</span>
-          <ChevronDown size={12} strokeWidth={2.5} className="shrink-0" />
+          <ChevronDown size={12} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -836,7 +836,6 @@ function PermissionGroupHeader({
       >
         <ChevronRight
           size={14}
-          strokeWidth={2}
           className={`transition-transform ${expanded ? "rotate-90" : ""}`}
         />
         {category} ({permissions.length})
@@ -1499,7 +1498,6 @@ function LoadedPermissionsDrawerContent({
           <div className="relative w-full">
             <Search
               size={15}
-              strokeWidth={1.5}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
             />
             <input
@@ -1526,7 +1524,7 @@ function LoadedPermissionsDrawerContent({
                   return $.connectors.permissions.clearSearch;
                 })}
               >
-                <X size={13} strokeWidth={1.8} />
+                <X size={13} />
               </button>
             )}
           </div>

@@ -50,7 +50,7 @@ function BrowserSessionStatus({ live }: { readonly live: boolean }) {
 function BrowserSessionPreviewPlaceholder() {
   return (
     <span className="absolute inset-0 flex items-center justify-center bg-muted/30 text-muted-foreground/60">
-      <AppWindow size={30} strokeWidth={1.5} />
+      <AppWindow size={30} />
     </span>
   );
 }

@@ -140,7 +140,7 @@ function CheckCircleIcon() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="shrink-0 text-muted-foreground/40"
+      className="lucide shrink-0 text-muted-foreground/40"
     >
       <circle cx="12" cy="12" r="10" />
       <polyline points="16 9 10.5 15 8 12.5" />
@@ -240,7 +240,7 @@ function UpgradeCard({
           {upgrade.targetLabel}
         </h3>
         <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <Crown size={12} strokeWidth={1.8} className="text-amber-500" />
+          <Crown size={12} className="text-amber-500" />
           {t(($) => {
             return $.queue.upgrade.recommended;
           })}
@@ -337,7 +337,7 @@ function ConcurrencyQuantityControl({
               onQuantityChange(quantity - 1);
             }}
           >
-            <Minus size={14} strokeWidth={2} />
+            <Minus size={14} />
           </button>
           <span className="flex h-9 w-12 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
             {quantity}
@@ -353,7 +353,7 @@ function ConcurrencyQuantityControl({
               onQuantityChange(quantity + 1);
             }}
           >
-            <Plus size={14} strokeWidth={2} />
+            <Plus size={14} />
           </button>
         </div>
       </div>
@@ -392,7 +392,7 @@ function ConcurrencyPurchaseCard({
           })}
         </h3>
         <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <Crown size={12} strokeWidth={1.8} className="text-amber-500" />
+          <Crown size={12} className="text-amber-500" />
           {t(($) => {
             return $.queue.purchase.addOn;
           })}

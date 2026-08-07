@@ -155,11 +155,7 @@ export function SlashWorkflowMenu({
             className="flex h-8 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
           >
             <span className="flex min-w-0 items-center gap-2">
-              <FileText
-                size={16}
-                strokeWidth={1.8}
-                className="shrink-0 text-muted-foreground"
-              />
+              <FileText size={16} className="shrink-0 text-muted-foreground" />
               <span className="truncate">
                 {t(($) => {
                   return $.chat.composer.workflows.viewAll;
@@ -168,7 +164,6 @@ export function SlashWorkflowMenu({
             </span>
             <ChevronRight
               size={16}
-              strokeWidth={1.8}
               className="shrink-0 text-muted-foreground"
             />
           </Link>

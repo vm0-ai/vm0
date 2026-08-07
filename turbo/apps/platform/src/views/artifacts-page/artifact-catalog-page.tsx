@@ -60,19 +60,19 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
   const { t } = useTranslation();
   const icon =
     kind === "presentation" ? (
-      <Presentation size={16} strokeWidth={1.7} />
+      <Presentation size={16} />
     ) : kind === "hosted-site" ? (
-      <Globe size={16} strokeWidth={1.7} />
+      <Globe size={16} />
     ) : kind === "image" ? (
-      <Image size={16} strokeWidth={1.7} />
+      <Image size={16} />
     ) : kind === "video" ? (
-      <Video size={16} strokeWidth={1.7} />
+      <Video size={16} />
     ) : kind === "avatar" ? (
-      <User size={16} strokeWidth={1.7} />
+      <User size={16} />
     ) : kind === "shared-thread" ? (
-      <MessagesSquare size={16} strokeWidth={1.7} />
+      <MessagesSquare size={16} />
     ) : (
-      <File size={16} strokeWidth={1.7} />
+      <File size={16} />
     );
   const kindLabel =
     kind === "presentation"
@@ -235,7 +235,7 @@ function ArtifactSharedConversationList({
               className="group flex w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground transition-colors group-hover:text-foreground">
-                <MessagesSquare size={16} strokeWidth={1.7} aria-hidden />
+                <MessagesSquare size={16} aria-hidden />
               </span>
               <span
                 title={artifact.title}
@@ -245,7 +245,6 @@ function ArtifactSharedConversationList({
               </span>
               <ChevronRight
                 size={16}
-                strokeWidth={1.7}
                 aria-hidden
                 className="shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
               />
@@ -340,7 +339,7 @@ export function ArtifactCatalogError() {
   const { t } = useTranslation();
   return (
     <Alert variant="destructive">
-      <TriangleAlert size={16} strokeWidth={1.5} aria-hidden />
+      <TriangleAlert size={16} aria-hidden />
       <AlertDescription>
         {t(($) => {
           return $.artifacts.catalog.error;
