@@ -110,6 +110,7 @@ import {
   createWorkflowGithubWebhookAutomation$,
   createWorkflowGithubWorkflowRunCompletedAutomation$,
   createWorkflowGoogleCalendarEventAutomation$,
+  createWorkflowGoogleFormsResponseSubmittedAutomation$,
   createWorkflowGoogleMeetTranscriptGeneratedAutomation$,
   createWorkflowGmailLabelAppliedAutomation$,
   createWorkflowGmailNewMessageAutomation$,
@@ -1196,6 +1197,8 @@ function AutomationCreateAction() {
     capabilities?.workflowWebhookAutomationAllowed ?? true;
   const notionWorkflowAutomationsEnabled =
     features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
+  const googleFormsWorkflowAutomationsEnabled =
+    features[FeatureSwitchKey.GoogleFormsWorkflowAutomations] ?? false;
   const githubWebhookAutomationsEnabled =
     features[FeatureSwitchKey.GithubWebhookAutomations] ?? false;
   const strapiIntegrationEnabled =
@@ -1213,6 +1216,9 @@ function AutomationCreateAction() {
       githubLabelAutomationsEnabled
       githubWebhookAutomationsEnabled={githubWebhookAutomationsEnabled}
       googleCalendarAutomationsEnabled
+      googleFormsWorkflowAutomationsEnabled={
+        googleFormsWorkflowAutomationsEnabled
+      }
       googleMeetAutomationsEnabled
       notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
       strapiIntegrationEnabled={strapiIntegrationEnabled}
@@ -4320,6 +4326,7 @@ type AutomationCreateDialogKind =
   | "google-calendar-created"
   | "google-calendar-updated"
   | "google-calendar-cancelled"
+  | "google-forms"
   | "google-meet-transcript-generated"
   | "notion-child-page"
   | "notion-database-item"
@@ -4331,6 +4338,7 @@ type AutomationCategoryKey =
   | "schedule"
   | "email"
   | "calendar"
+  | "forms"
   | "notion"
   | "integrations";
 
@@ -4510,6 +4518,26 @@ function buildNotionAutomationOptions(
   ];
 }
 
+function buildGoogleFormsAutomationOptions(
+  googleFormsWorkflowAutomationsEnabled: boolean,
+): AutomationCreateOption[] {
+  if (!googleFormsWorkflowAutomationsEnabled) {
+    return [];
+  }
+  return [
+    {
+      kind: "google-forms",
+      title: i18n.t(($) => {
+        return $.workflows.automations.forms.responseSubmittedTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.forms.responseSubmittedDescription;
+      }),
+      icon: IconFileText,
+    },
+  ];
+}
+
 // Each category owns a single hue that colours only the card icon chip on the
 // right; the category rail stays neutral and mirrors the app sidebar.
 const AUTOMATION_CATEGORY_CHIP: Readonly<
@@ -4518,6 +4546,7 @@ const AUTOMATION_CATEGORY_CHIP: Readonly<
   schedule: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   email: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
   calendar: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  forms: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
   notion: "bg-gray-500/10 text-gray-700 dark:text-gray-300",
   integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
 });
@@ -4640,6 +4669,7 @@ function buildAutomationCreateCategories({
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
+  googleFormsWorkflowAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
   strapiIntegrationEnabled,
@@ -4648,6 +4678,7 @@ function buildAutomationCreateCategories({
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
+  readonly googleFormsWorkflowAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
   readonly strapiIntegrationEnabled: boolean;
@@ -4656,6 +4687,9 @@ function buildAutomationCreateCategories({
   const calendarOptions = buildCalendarAutomationOptions(
     googleCalendarAutomationsEnabled,
     googleMeetAutomationsEnabled,
+  );
+  const googleFormsOptions = buildGoogleFormsAutomationOptions(
+    googleFormsWorkflowAutomationsEnabled,
   );
   const integrationOptions = buildIntegrationAutomationOptions({
     githubLabelAutomationsEnabled,
@@ -4691,6 +4725,14 @@ function buildAutomationCreateCategories({
       }),
       icon: IconCalendarTime,
       options: calendarOptions,
+    },
+    {
+      key: "forms",
+      label: i18n.t(($) => {
+        return $.workflows.automations.picker.forms;
+      }),
+      icon: IconFileText,
+      options: googleFormsOptions,
     },
     {
       key: "notion",
@@ -4789,6 +4831,7 @@ function AutomationCreateMenu({
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
+  googleFormsWorkflowAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
   strapiIntegrationEnabled,
@@ -4798,6 +4841,7 @@ function AutomationCreateMenu({
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
+  readonly googleFormsWorkflowAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
   readonly strapiIntegrationEnabled: boolean;
@@ -4811,6 +4855,7 @@ function AutomationCreateMenu({
     githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
     googleCalendarAutomationsEnabled,
+    googleFormsWorkflowAutomationsEnabled,
     googleMeetAutomationsEnabled,
     notionWorkflowAutomationsEnabled,
     strapiIntegrationEnabled,
@@ -4924,6 +4969,138 @@ function GoogleCalendarAutomationDialogs({
         }}
       />
     </>
+  );
+}
+
+function CreateGoogleFormsResponseSubmittedAutomationDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createAutomation] = useLoadableSet(
+    createWorkflowGoogleFormsResponseSubmittedAutomation$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.workflows.automations.forms.addTitle;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {i18n.t(($) => {
+              return $.workflows.automations.forms.addDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label={i18n.t(($) => {
+            return $.workflows.automations.forms.addAria;
+          })}
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const formUrl = formTextValue(
+              new FormData(event.currentTarget),
+              "formUrl",
+            );
+            if (!formUrl) {
+              return;
+            }
+            detach(
+              (async () => {
+                const warning = await createAutomation(
+                  {
+                    workflowId,
+                    eventConfig: {
+                      provider: "google-forms",
+                      event: "response_submitted",
+                      formUrl,
+                    },
+                  },
+                  pageSignal,
+                );
+                onOpenChange(false);
+                if (warning) {
+                  toast.warning(warning);
+                }
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {i18n.t(($) => {
+              return $.workflows.automations.forms.formUrl;
+            })}
+            <Input
+              name="formUrl"
+              aria-label={i18n.t(($) => {
+                return $.workflows.automations.forms.formUrl;
+              })}
+              required
+              disabled={creating}
+              placeholder={i18n.t(($) => {
+                return $.workflows.automations.forms.formUrlPlaceholder;
+              })}
+            />
+          </label>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              {i18n.t(($) => {
+                return $.workflows.automations.common.cancel;
+              })}
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconFileText size={14} stroke={1.5} />
+              )}
+              {i18n.t(($) => {
+                return $.workflows.automations.forms.addAction;
+              })}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function GoogleFormsAutomationDialogs({
+  workflowId,
+  createDialog,
+  setCreateDialog,
+}: {
+  readonly workflowId: string;
+  readonly createDialog: WorkflowAutomationCreateDialog;
+  readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
+}) {
+  return (
+    <CreateGoogleFormsResponseSubmittedAutomationDialog
+      workflowId={workflowId}
+      open={createDialog === "google-forms"}
+      onOpenChange={(open) => {
+        setCreateDialog(open ? "google-forms" : null);
+      }}
+    />
   );
 }
 
@@ -5533,6 +5710,11 @@ function WorkflowAutomationCreateDialogs({
         onOpenChange={(open) => {
           setCreateDialog(open ? "gmail-label" : null);
         }}
+      />
+      <GoogleFormsAutomationDialogs
+        workflowId={workflowId}
+        createDialog={createDialog}
+        setCreateDialog={setCreateDialog}
       />
       <CreateGithubLabelAppliedAutomationDialog
         workflowId={workflowId}

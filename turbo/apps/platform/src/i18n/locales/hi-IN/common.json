@@ -4782,6 +4782,13 @@
         "second_other": "{{count}} सेकंड"
       },
       "forms": {
+        "addAction": "Google Forms ऑटोमेशन जोड़ें",
+        "addAria": "Google Forms जवाब ऑटोमेशन जोड़ें",
+        "addDescription": "चुने गए Google Form को नया जवाब मिलने पर यह वर्कफ़्लो चलाएँ।",
+        "addTitle": "Google Forms ऑटोमेशन जोड़ें",
+        "formUrl": "फ़ॉर्म लिंक",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "किसी Google Form को नया जवाब मिलने पर चलाएँ।",
         "responseSubmittedTitle": "Google Forms जवाब सबमिट हुआ",
         "rule": "जब {{form}} को कोई जवाब मिले",
         "summary": "फ़ॉर्म {{form}}"
@@ -5027,6 +5034,7 @@
       "picker": {
         "calendar": "कैलेंडर",
         "email": "ईमेल",
+        "forms": "Google Forms",
         "integrations": "एकीकरण",
         "notion": "Notion",
         "schedule": "अनुसूची"

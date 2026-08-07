@@ -4781,6 +4781,13 @@
         "second_other": "{{count}}초"
       },
       "forms": {
+        "addAction": "Google Forms 자동화 추가",
+        "addAria": "Google Forms 응답 자동화 추가",
+        "addDescription": "선택한 Google 양식에 새 응답이 제출되면 이 워크플로를 실행합니다.",
+        "addTitle": "Google Forms 자동화 추가",
+        "formUrl": "양식 링크",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "Google 양식에 새 응답이 제출되면 실행합니다.",
         "responseSubmittedTitle": "Google Forms 응답이 제출됨",
         "rule": "{{form}}에 응답이 제출될 때",
         "summary": "양식 {{form}}"
@@ -5026,6 +5033,7 @@
       "picker": {
         "calendar": "캘린더",
         "email": "이메일",
+        "forms": "Google Forms",
         "integrations": "통합",
         "notion": "Notion",
         "schedule": "일정"

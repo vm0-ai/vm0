@@ -4782,6 +4782,13 @@
         "second_other": "{{count}} seconds"
       },
       "forms": {
+        "addAction": "Add Google Forms automation",
+        "addAria": "Add Google Forms response automation",
+        "addDescription": "Run this workflow when the selected Google Form receives a new response.",
+        "addTitle": "Add Google Forms automation",
+        "formUrl": "Form link",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "Run when a Google Form receives a new response.",
         "responseSubmittedTitle": "Google Forms response submitted",
         "rule": "When {{form}} receives a response",
         "summary": "Form {{form}}"
@@ -5027,6 +5034,7 @@
       "picker": {
         "calendar": "Calendar",
         "email": "Email",
+        "forms": "Google Forms",
         "integrations": "Integrations",
         "notion": "Notion",
         "schedule": "Schedule"

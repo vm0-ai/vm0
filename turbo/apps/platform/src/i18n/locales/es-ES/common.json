@@ -4862,6 +4862,13 @@
         "second_other": "{{count}} segundos"
       },
       "forms": {
+        "addAction": "Agregar automatización de Google Forms",
+        "addAria": "Agregar automatización de respuestas de Google Forms",
+        "addDescription": "Ejecuta este flujo de trabajo cuando el formulario de Google seleccionado reciba una respuesta nueva.",
+        "addTitle": "Agregar automatización de Google Forms",
+        "formUrl": "Enlace del formulario",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "Ejecutar cuando un formulario de Google reciba una respuesta nueva.",
         "responseSubmittedTitle": "Respuesta de Google Forms enviada",
         "rule": "Cuando {{form}} recibe una respuesta",
         "summary": "Formulario {{form}}"
@@ -5107,6 +5114,7 @@
       "picker": {
         "calendar": "Calendario",
         "email": "Correo electrónico",
+        "forms": "Google Forms",
         "integrations": "Integraciones",
         "notion": "Notion",
         "schedule": "Programación"
