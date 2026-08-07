@@ -11,6 +11,9 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import { webhookPiTranscriptContract } from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { parseGitHubTreeUrl, resolveSkillRef } from "@vm0/core/github-url";
+import { getSkillStorageName } from "@vm0/core/storage-names";
+import { GOAL_SKILL_NAME, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { HttpResponse, http } from "msw";
 import { v5 as uuidv5 } from "uuid";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -51,6 +54,7 @@ import {
   createAgentComposeFixture,
   readAgentComposeByIdFixture,
 } from "../../../test-fixtures/agent-composes";
+import { readSystemStorageVersionNameByS3KeyFixture } from "../../../test-fixtures/storage";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -75,6 +79,7 @@ const CODEX_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const OPENAI_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const AGENT_DISPLAY_NAME = "Pi edge integration agent";
+const STORAGE_ARCHIVE_SUFFIX = "/archive.tar.gz";
 const PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE =
   "1b7c07b8-01bc-4ae2-ac5c-ef5ca9f72683";
 
@@ -405,7 +410,44 @@ interface PiStorageObjects {
 function acceptPiStorageObjects(): PiStorageObjects {
   const objects = new Map<string, Buffer>();
   const seededObjects = new Map<string, Buffer>();
-  context.mocks.s3.send.mockImplementation((command: unknown) => {
+  const systemSkillNameByStorageName = new Map(
+    [...SEED_SKILLS, GOAL_SKILL_NAME].flatMap((skillName) => {
+      const parsed = parseGitHubTreeUrl(resolveSkillRef(skillName));
+      return parsed
+        ? [[getSkillStorageName(parsed.fullPath), skillName] as const]
+        : [];
+    }),
+  );
+  const systemSkillStorageNames = [...systemSkillNameByStorageName.keys()];
+  const resolveBody = async (
+    objectKey: string,
+    key: string,
+  ): Promise<Buffer | undefined> => {
+    const stored = objects.get(objectKey) ?? seededObjects.get(key);
+    if (stored || !key.endsWith(STORAGE_ARCHIVE_SUFFIX)) {
+      return stored;
+    }
+    const storageName = await readSystemStorageVersionNameByS3KeyFixture({
+      s3Key: key.slice(0, -STORAGE_ARCHIVE_SUFFIX.length),
+      storageNames: systemSkillStorageNames,
+    });
+    const skillName =
+      storageName === undefined
+        ? undefined
+        : systemSkillNameByStorageName.get(storageName);
+    if (skillName === undefined) {
+      return undefined;
+    }
+    const archive = createTarGz([
+      {
+        path: "SKILL.md",
+        content: `---\nname: ${skillName}\ndescription: Test fixture for the default ${skillName} Skill.\n---\n`,
+      },
+    ]);
+    seededObjects.set(key, archive);
+    return archive;
+  };
+  context.mocks.s3.send.mockImplementation(async (command: unknown) => {
     const input = commandInput(command);
     const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
     const key = typeof input.Key === "string" ? input.Key : "";
@@ -413,29 +455,26 @@ function acceptPiStorageObjects(): PiStorageObjects {
     switch (commandName(command)) {
       case "PutObjectCommand": {
         objects.set(objectKey, bodyBuffer(input.Body));
-        return Promise.resolve({});
+        return {};
       }
       case "GetObjectCommand": {
-        const body = objects.get(objectKey) ?? seededObjects.get(key);
-        return Promise.resolve(
-          body
-            ? { Body: streamBody(body), ContentLength: body.byteLength }
-            : { Body: undefined },
-        );
+        const body = await resolveBody(objectKey, key);
+        return body
+          ? { Body: streamBody(body), ContentLength: body.byteLength }
+          : { Body: undefined };
       }
       case "HeadObjectCommand": {
-        const body = objects.get(objectKey) ?? seededObjects.get(key);
-        return body
-          ? Promise.resolve({ ContentLength: body.byteLength })
-          : Promise.reject(
-              Object.assign(new Error(`Missing S3 object ${objectKey}`), {
-                name: "NotFound",
-                $metadata: { httpStatusCode: 404 },
-              }),
-            );
+        const body = await resolveBody(objectKey, key);
+        if (!body) {
+          throw Object.assign(new Error(`Missing S3 object ${objectKey}`), {
+            name: "NotFound",
+            $metadata: { httpStatusCode: 404 },
+          });
+        }
+        return { ContentLength: body.byteLength };
       }
       default: {
-        return Promise.resolve({});
+        return {};
       }
     }
   });
