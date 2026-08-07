@@ -347,6 +347,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Show payment method management without requiring an active subscription.",
+    // Remove the switch and disabled paths with #25716 after the app/API
+    // rollout and the roughly two-day stale-client window are complete.
     enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {

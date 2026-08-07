@@ -32,33 +32,44 @@ const portalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return adminRequired;
   }
 
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  const paymentMethodManagementEnabled = isFeatureEnabled(
-    FeatureSwitchKey.PaymentMethodManagement,
-    {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    },
-  );
-
   const bodyResult = await get(bodyResultOf(zeroBillingPortalContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  const { returnUrl } = bodyResult.data;
+  const { returnUrl, mode } = bodyResult.data;
 
   if (!billingRedirectAllowed(returnUrl)) {
     return badRequestMessage("returnUrl must match the platform origin");
   }
 
+  if (mode === "payment_methods") {
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    const paymentMethodManagementEnabled = isFeatureEnabled(
+      FeatureSwitchKey.PaymentMethodManagement,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        overrides,
+      },
+    );
+    // Rollback gate for the new portal mode. Remove with #25716 after the
+    // current app/API rollout and the roughly two-day stale-client window end.
+    if (!paymentMethodManagementEnabled) {
+      return badRequestMessage("Payment method management is not available");
+    }
+  }
+
+  // Previous app clients omit `mode` and can remain active for about two days.
+  // Keep their full Billing Portal behavior until the window closes; #25716.
+  const portalMode = mode ?? "billing";
+
   const url = await set(
     createBillingPortalSession$,
-    { orgId: auth.orgId, returnUrl, paymentMethodManagementEnabled },
+    { orgId: auth.orgId, returnUrl, mode: portalMode },
     signal,
   );
   signal.throwIfAborted();

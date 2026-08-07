@@ -206,12 +206,14 @@ describe("POST /api/zero/billing/portal", () => {
       context.mocks.stripe.billingPortal.sessions.create,
     ).toHaveBeenCalledWith({
       customer: fixture.stripeCustomerId,
-      configuration: PORTAL_CONFIGURATION_ID,
       return_url: returnUrl,
     });
+    expect(
+      context.mocks.stripe.billingPortal.configurations.list,
+    ).not.toHaveBeenCalled();
   });
 
-  it("keeps the existing billing portal when payment methods are disabled", async () => {
+  it("opens the restricted payment method portal for an existing customer", async () => {
     const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
     const fixture = await track(
       store.set(
@@ -225,9 +227,6 @@ describe("POST /api/zero/billing/portal", () => {
         context.signal,
       ),
     );
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.PaymentMethodManagement]: false,
-    });
     mockEnv("APP_URL", APP_ORIGIN);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
@@ -239,7 +238,7 @@ describe("POST /api/zero/billing/portal", () => {
       setupApp({ context, routes: zeroBillingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
-        body: { returnUrl },
+        body: { returnUrl, mode: "payment_methods" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -250,11 +249,12 @@ describe("POST /api/zero/billing/portal", () => {
     });
     expect(
       context.mocks.stripe.billingPortal.configurations.list,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledWith({ limit: 100 });
     expect(
       context.mocks.stripe.billingPortal.sessions.create,
     ).toHaveBeenCalledWith({
       customer: customerId,
+      configuration: PORTAL_CONFIGURATION_ID,
       return_url: returnUrl,
     });
   });
@@ -281,7 +281,7 @@ describe("POST /api/zero/billing/portal", () => {
       setupApp({ context, routes: zeroBillingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
-        body: { returnUrl },
+        body: { returnUrl, mode: "payment_methods" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -337,13 +337,21 @@ describe("POST /api/zero/billing/portal", () => {
       setupApp({ context, routes: zeroBillingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
-        body: { returnUrl: `${APP_ORIGIN}/settings/billing` },
+        body: {
+          returnUrl: `${APP_ORIGIN}/settings/billing`,
+          mode: "payment_methods",
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [500],
+      [400],
     );
 
-    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Payment method management is not available",
+        code: "BAD_REQUEST",
+      },
+    });
     expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
     expect(
       context.mocks.stripe.billingPortal.configurations.list,
@@ -391,7 +399,10 @@ describe("POST /api/zero/billing/portal", () => {
       setupApp({ context, routes: zeroBillingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
-        body: { returnUrl: `${APP_ORIGIN}/settings/billing` },
+        body: {
+          returnUrl: `${APP_ORIGIN}/settings/billing`,
+          mode: "payment_methods",
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -451,7 +462,10 @@ describe("POST /api/zero/billing/portal", () => {
       setupApp({ context, routes: zeroBillingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
-        body: { returnUrl: `${APP_ORIGIN}/settings/billing` },
+        body: {
+          returnUrl: `${APP_ORIGIN}/settings/billing`,
+          mode: "payment_methods",
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],

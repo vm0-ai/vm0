@@ -143,17 +143,14 @@ async function stripeCustomerIdForOrg(
   return allowance?.stripeCustomerId ?? null;
 }
 
-/**
- * Create a Stripe Billing Portal session for managing the org's saved payment
- * methods.
- */
+/** Create either a legacy billing or restricted payment-method portal. */
 export const createBillingPortalSession$ = command(
   async (
     { get, set },
     args: {
       readonly orgId: string;
       readonly returnUrl: string;
-      readonly paymentMethodManagementEnabled: boolean;
+      readonly mode: "billing" | "payment_methods";
     },
     signal: AbortSignal,
   ): Promise<string> => {
@@ -161,7 +158,7 @@ export const createBillingPortalSession$ = command(
     let stripeCustomerId = await stripeCustomerIdForOrg(db, args.orgId);
     signal.throwIfAborted();
 
-    if (!stripeCustomerId && !args.paymentMethodManagementEnabled) {
+    if (!stripeCustomerId && args.mode === "billing") {
       throw new Error("Org has no Stripe customer — subscribe first");
     }
 
@@ -175,7 +172,7 @@ export const createBillingPortalSession$ = command(
     }
 
     const stripe = getStripeClient();
-    if (!args.paymentMethodManagementEnabled) {
+    if (args.mode === "billing") {
       const session = await stripe.billingPortal.sessions.create({
         customer: stripeCustomerId,
         return_url: args.returnUrl,
