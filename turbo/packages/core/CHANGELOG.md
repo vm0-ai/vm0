@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.526.0](https://github.com/vm0-ai/vm0/compare/core-v8.525.0...core-v8.526.0) (2026-08-07)
+
+
+### Features
+
+* complete pi agent handoff end to end ([#25489](https://github.com/vm0-ai/vm0/issues/25489)) ([feeb1cb](https://github.com/vm0-ai/vm0/commit/feeb1cbc8e838b844945cf5efc3ed7e9820c10a4))
+* roll out chat thread unified search to all users ([#25586](https://github.com/vm0-ai/vm0/issues/25586)) ([bfaefe7](https://github.com/vm0-ai/vm0/commit/bfaefe761de60bc39e8ea773487a342468c12a77))
+
+
+### Refactoring
+
+* remove deployed test routes ([#25550](https://github.com/vm0-ai/vm0/issues/25550)) ([7ae186e](https://github.com/vm0-ai/vm0/commit/7ae186e0c9b04199101dd052459062e4dc916d09))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.288.0
+
 ## [8.525.0](https://github.com/vm0-ai/vm0/compare/core-v8.524.7...core-v8.525.0) (2026-08-07)
 
 
