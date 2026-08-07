@@ -117,6 +117,7 @@ import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { PersistedStorageMount } from "@vm0/db/types";
 import {
@@ -5850,11 +5851,34 @@ function storedExecutionContextWithPiResources(
   };
 }
 
+async function resolvePiAgentName(
+  db: Db,
+  resolved: Pick<ResolvedCompose, "composeId" | "agentName">,
+): Promise<string> {
+  const [agent] = await db
+    .select({
+      displayName: zeroAgents.displayName,
+      name: zeroAgents.name,
+    })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, resolved.composeId))
+    .limit(1);
+
+  if (agent?.displayName?.trim()) {
+    return agent.displayName;
+  }
+  if (agent?.name.trim()) {
+    return agent.name;
+  }
+  return resolved.agentName?.trim() || "Pi";
+}
+
 async function preparePiLaunchResources(args: {
   readonly get: <T>(computedValue: Computed<T>) => T;
   readonly db: Db;
   readonly runId: string;
   readonly body: CreateRunBody;
+  readonly resolved: Pick<ResolvedCompose, "composeId" | "agentName">;
   readonly piEdge: PiEdgeModelConfig | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
@@ -5868,10 +5892,13 @@ async function preparePiLaunchResources(args: {
     additionalVolumeSources: args.additionalVolumeSources,
     persistedStorageMounts: args.persistedStorageMounts,
   });
-  const resources = await loadPiLaunchStorageResources(args.get, args.db, {
-    snapshot,
-    persistedStorageMounts: args.persistedStorageMounts,
-  });
+  const [resources, agentName] = await Promise.all([
+    loadPiLaunchStorageResources(args.get, args.db, {
+      snapshot,
+      persistedStorageMounts: args.persistedStorageMounts,
+    }),
+    resolvePiAgentName(args.db, args.resolved),
+  ]);
   const skills = await loadPiRunSkills(resources.env, snapshot);
   if (skills.diagnostics.length > 0) {
     L.warn("Pi run Skill catalog contains diagnostics", {
@@ -5884,6 +5911,7 @@ async function preparePiLaunchResources(args: {
     modelConfig: piSandboxModelConfig(args.piEdge),
     prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
     systemPrompt: renderPiSystemPrompt({
+      agentName,
       appendSystemPrompt: args.body.appendSystemPrompt,
       agentInstructions: resources.agentInstructions,
       skills: skills.skills,
@@ -5984,6 +6012,7 @@ function buildRunnerJobPayload(
       db,
       runId: args.run.id,
       body,
+      resolved: args.resolved,
       piEdge: args.piEdge,
       additionalVolumes: args.additionalVolumes,
       additionalVolumeSources: args.additionalVolumeSources,
