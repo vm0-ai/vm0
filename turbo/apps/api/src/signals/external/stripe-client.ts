@@ -17,9 +17,7 @@ import { testOverride } from "../../lib/singleton";
 /** Stripe expands a reference either to an id string or to the object. */
 export type StripeRef = string | { readonly id: string } | null;
 
-export interface StripeMetadataParam {
-  [key: string]: string | number | null;
-}
+export type StripeMetadataParam = Record<string, string | number | null>;
 
 export interface StripeProduct {
   readonly id: string;
