@@ -843,7 +843,7 @@ describe("Feishu integration", () => {
     const connectBody = feishuConnectBody(connectUrl);
     const statusResponse = await connectApp.request(
       `/api/zero/feishu/connect/status?${new URLSearchParams(
-        Object.entries(connectBody).map(([key, value]) => {
+        Object.entries(connectBody).map(([key, value]): [string, string] => {
           return [key, String(value)];
         }),
       )}`,
