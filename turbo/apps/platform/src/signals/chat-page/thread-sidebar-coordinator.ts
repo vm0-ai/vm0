@@ -1,6 +1,5 @@
 import { command, computed } from "ccstate";
 
-import { artifactSidebarInlineOpenEnabled$ } from "../external/feature-switch.ts";
 import {
   classifyChatAttachment,
   previewAttachmentFromUrl,
@@ -180,9 +179,6 @@ export const openThreadArtifactSplitView$ = command(
  */
 export const openArtifactInOpenSidebar$ = command(
   ({ get, set }, input: ArtifactRefInput): boolean => {
-    if (!get(artifactSidebarInlineOpenEnabled$)) {
-      return false;
-    }
     const active = get(activeThreadSidebar$);
     if (
       active?.target.type !== "artifacts" &&

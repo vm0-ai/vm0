@@ -21,7 +21,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-browser";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -160,7 +159,6 @@ function setupArtifactCatalog(
 
 function setupChatThread({
   artifactFiles = [],
-  inlineArtifactOpenEnabled = false,
   waitForHistoryResponse,
   historyMessages = [],
   messages = [
@@ -191,7 +189,6 @@ function setupChatThread({
   ],
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
-  inlineArtifactOpenEnabled?: boolean;
   waitForHistoryResponse?: () => Promise<void>;
   historyMessages?: MockChatEventInput[];
   messages?: MockChatEventInput[];
@@ -281,9 +278,6 @@ function setupChatThread({
   detachedSetupPage({
     context,
     path: THREAD_PATH,
-    featureSwitches: {
-      [FeatureSwitchKey.ArtifactSidebarInlineOpen]: inlineArtifactOpenEnabled,
-    },
   });
 
   return {
@@ -482,9 +476,7 @@ describe("thread-owned utility sidebar", () => {
       });
     });
 
-    setupChatThread({
-      inlineArtifactOpenEnabled: true,
-    });
+    setupChatThread();
     await openCatalogArtifact("diagram-notes.md");
 
     const diagram = await screen.findByAltText("Diagram");
