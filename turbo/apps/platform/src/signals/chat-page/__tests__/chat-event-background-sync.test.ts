@@ -2,6 +2,7 @@ import { waitFor } from "@testing-library/react";
 import {
   chatEventResponse,
   chatThreadEventsContract,
+  chatThreadsContract,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +33,7 @@ const USER_ID = "background-sync-user";
 const ORG_ID = "background-sync-org";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000801";
 const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
+const THIRD_THREAD_ID = "b0000000-0000-4000-a000-000000000809";
 const FIRST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_EVENT_ID = "00000000-0000-4000-8000-000000000804";
@@ -94,6 +96,54 @@ function mockSignedInUser(): void {
 describe("chat event background sync", () => {
   afterEach(() => {
     clearMockedAuth();
+  });
+
+  it("subscribes while prefetching unread and active threads once", async () => {
+    mockSignedInUser();
+    const initialThreadIdsReady = context.mocks.deferred<void>();
+    const requestedThreadIds: string[] = [];
+
+    context.mocks.api(chatThreadsContract.unreadIds, async ({ respond }) => {
+      await initialThreadIdsReady.promise;
+      return respond(200, { threadIds: [THREAD_ID, OTHER_THREAD_ID] });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, async ({ respond }) => {
+      await initialThreadIdsReady.promise;
+      return respond(200, { threadIds: [OTHER_THREAD_ID, THIRD_THREAD_ID] });
+    });
+    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
+      requestedThreadIds.push(params.threadId);
+      return respond(200, { events: [] });
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const subscriberSignal = context.store.set(
+      resetSubscriberSignal$,
+      context.signal,
+    );
+    const subscription = context.store.set(
+      setupChatEventBackgroundSync$,
+      subscriberSignal,
+    );
+
+    try {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      });
+
+      expect(requestedThreadIds).toStrictEqual([]);
+      initialThreadIdsReady.resolve();
+
+      await waitFor(() => {
+        expect(requestedThreadIds).toHaveLength(3);
+      });
+      expect(new Set(requestedThreadIds)).toStrictEqual(
+        new Set([THREAD_ID, OTHER_THREAD_ID, THIRD_THREAD_ID]),
+      );
+    } finally {
+      context.store.set(resetSubscriberSignal$, context.signal);
+      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
+    }
   });
 
   it("fills only messages after the cached thread end", async () => {
