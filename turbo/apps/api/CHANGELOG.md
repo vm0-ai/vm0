@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.402.1](https://github.com/vm0-ai/vm0/compare/api-v1.402.0...api-v1.402.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **connectors:** enforce exact custom credential readers ([#25724](https://github.com/vm0-ai/vm0/issues/25724)) ([bc85cc7](https://github.com/vm0-ai/vm0/commit/bc85cc7fab9ad03722c8d986f163408911c300e7))
+* **runner:** consume explicit pi execution mode ([#25738](https://github.com/vm0-ai/vm0/issues/25738)) ([d1af021](https://github.com/vm0-ai/vm0/commit/d1af0212e7e74fcd7563bdfcd83ddb3c336e4829))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.1
+    * @vm0/core bumped to 8.530.1
+    * @vm0/db bumped to 1.179.1
+    * @vm0/pi-agent-runtime bumped to 1.3.4
+
 ## [1.402.0](https://github.com/vm0-ai/vm0/compare/api-v1.401.1...api-v1.402.0) (2026-08-07)
 
 

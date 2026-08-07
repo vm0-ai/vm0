@@ -32,7 +32,7 @@ use crate::active_input::ActiveInputSource;
 use crate::error::RunnerResult;
 use crate::ids::RunId;
 use crate::pi_standby::PiStandbySubscription;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use crate::types::{ExecutionContext, HeartbeatState, PiExecutionMode, SandboxReuseResult};
 
 const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -369,6 +369,7 @@ pub struct JobCandidate {
     poll_http_request_elapsed: Option<Duration>,
     reuse_key: Option<String>,
     history_generation_run_id: Option<RunId>,
+    pi_execution_mode: Option<PiExecutionMode>,
     runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
@@ -400,6 +401,7 @@ impl JobCandidate {
             poll_http_request_elapsed: None,
             reuse_key: None,
             history_generation_run_id: None,
+            pi_execution_mode: None,
             runner_preference_context: None,
         }
     }
@@ -494,6 +496,10 @@ impl JobCandidate {
         self.history_generation_run_id
     }
 
+    pub(crate) fn pi_execution_mode(&self) -> Option<PiExecutionMode> {
+        self.pi_execution_mode
+    }
+
     pub(crate) fn runner_preference(&self) -> Option<&RunnerPreference> {
         self.runner_preference_context
             .as_ref()
@@ -571,6 +577,14 @@ impl JobCandidate {
         history_generation_run_id: Option<RunId>,
     ) -> Self {
         self.history_generation_run_id = history_generation_run_id;
+        self
+    }
+
+    pub(crate) fn with_pi_execution_mode(
+        mut self,
+        pi_execution_mode: Option<PiExecutionMode>,
+    ) -> Self {
+        self.pi_execution_mode = pi_execution_mode;
         self
     }
 

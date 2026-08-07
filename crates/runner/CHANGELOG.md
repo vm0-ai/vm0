@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.160.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.7...runner-rs-v0.160.8) (2026-08-07)
+
+
+### Bug Fixes
+
+* **runner:** consume explicit pi execution mode ([#25738](https://github.com/vm0-ai/vm0/issues/25738)) ([d1af021](https://github.com/vm0-ai/vm0/commit/d1af0212e7e74fcd7563bdfcd83ddb3c336e4829))
+
 ## [0.160.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.6...runner-rs-v0.160.7) (2026-08-07)
 
 

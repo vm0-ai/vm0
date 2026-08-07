@@ -227,14 +227,30 @@ describe("Pi execution mode contract", () => {
     },
   );
 
-  it("does not infer a mode from historical Pi-shaped context", () => {
-    const parsed = storedExecutionContextSchema.parse({
-      ...storedContext,
-      ...piRuntimeContext,
-    });
+  it.each(["piSystemPrompt", "piModelConfig", "runSkillSnapshot"] as const)(
+    "rejects %s without Pi execution mode",
+    (field) => {
+      const invalidStoredContext = {
+        ...storedContext,
+        [field]: piRuntimeContext[field],
+      };
+      const invalidRunnerContext = {
+        ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
+        [field]: piRuntimeContext[field],
+      };
 
-    expect(parsed).not.toHaveProperty("piExecutionMode");
-  });
+      expect(
+        storedExecutionContextSchema.safeParse(invalidStoredContext).success,
+      ).toBe(false);
+      expect(
+        compatibleStoredExecutionContextSchema.safeParse(invalidStoredContext)
+          .success,
+      ).toBe(false);
+      expect(
+        executionContextSchema.safeParse(invalidRunnerContext).success,
+      ).toBe(false);
+    },
+  );
 });
 
 describe("connector runtime synchronization contract", () => {
