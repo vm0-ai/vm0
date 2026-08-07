@@ -1,4 +1,5 @@
 import type {
+  CSSProperties,
   FormEvent,
   MouseEvent as ReactMouseEvent,
   ReactNode,
@@ -4268,34 +4269,24 @@ function ThinkingLabel({
   );
 }
 
-function ThinkingBlocks() {
-  return (
-    <span className="zero-blocks shrink-0">
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-    </span>
-  );
-}
-
 function InlineThinkingRow({
+  blockStyle,
   isQueued,
   thinkingLabel,
   serverThinkingLabel,
 }: {
+  blockStyle: CSSProperties;
   isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
     <div className="flex items-center gap-2 h-5">
-      <ThinkingBlocks />
+      <span className="zero-blocks shrink-0" style={blockStyle}>
+        <span />
+        <span />
+        <span />
+      </span>
       <ThinkingLabel
         isQueued={isQueued}
         thinkingLabel={thinkingLabel}
@@ -4353,11 +4344,13 @@ function FinishedRunRow({
 
 function WaitingForAssistantResponse({
   thread,
+  blockStyle,
   isQueued,
   thinkingLabel,
   serverThinkingLabel,
 }: {
   thread: ChatPanelSignals;
+  blockStyle: CSSProperties;
   isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
@@ -4372,7 +4365,11 @@ function WaitingForAssistantResponse({
         <AssistantBubbleAvatar thread={thread} />
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-[1.7] min-w-0 overflow-hidden">
           <div className="flex h-5 min-w-0 items-center gap-2">
-            <ThinkingBlocks />
+            <span className="zero-blocks shrink-0" style={blockStyle}>
+              <span />
+              <span />
+              <span />
+            </span>
             <ThinkingLabel
               isQueued={isQueued}
               thinkingLabel={thinkingLabel}
@@ -4394,6 +4391,7 @@ function WaitingForAssistantResponse({
 
 function AssistantThinkingStatusRow({
   running,
+  blockStyle,
   isQueued,
   thinkingLabel,
   serverThinkingLabel,
@@ -4401,6 +4399,7 @@ function AssistantThinkingStatusRow({
   recommendedFollowupSource,
 }: {
   running: boolean;
+  blockStyle: CSSProperties;
   isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
@@ -4421,6 +4420,7 @@ function AssistantThinkingStatusRow({
       <div className="min-w-0">
         {running ? (
           <InlineThinkingRow
+            blockStyle={blockStyle}
             isQueued={isQueued}
             thinkingLabel={thinkingLabel}
             serverThinkingLabel={serverThinkingLabel}
@@ -4459,6 +4459,12 @@ function equalRecommendedFollowupSources(
 }
 
 function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
+  const [c1, c2, c3] = useGet(thread.blockColors$);
+  const blockStyle = {
+    "--zb-c1": c1,
+    "--zb-c2": c2,
+    "--zb-c3": c3,
+  } as CSSProperties;
   const mode = useLastResolved(thread.thinkingIndicatorMode$) ?? null;
   const thinkingText = useLastResolved(thread.thinkingText$);
   const recommendedFollowupSource =
@@ -4496,6 +4502,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
     return (
       <AssistantThinkingStatusRow
         running={running}
+        blockStyle={blockStyle}
         isQueued={isQueued}
         thinkingLabel={thinkingLabel}
         serverThinkingLabel={serverThinkingLabel}
@@ -4509,6 +4516,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   return (
     <WaitingForAssistantResponse
       thread={thread}
+      blockStyle={blockStyle}
       isQueued={isQueued}
       thinkingLabel={thinkingLabel}
       serverThinkingLabel={serverThinkingLabel}
