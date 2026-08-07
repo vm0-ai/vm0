@@ -29,7 +29,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule } from "../utils.ts";
 
-export interface GatewayTypecheckBoundaryOptions {
+interface GatewayTypecheckBoundaryOptions {
   /** Absolute paths of the files listed in the gateway project. */
   modules?: string[];
   /** Package names or scopes the gateway project isolates. */
