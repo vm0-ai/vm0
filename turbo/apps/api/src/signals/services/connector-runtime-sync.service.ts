@@ -24,7 +24,6 @@ import { resolveActiveNetworkPolicyRefreshes } from "./zero-user-permission-gran
 import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME,
-  customConnectorValueMarkerKey,
   CustomConnectorRuntimePrefixError,
   loadCustomConnectorRuntimeData,
   type StoredValueRow,
@@ -148,31 +147,6 @@ function valuesWithOAuthAccessToken(
   ];
 }
 
-function customCredentialsAvailable(
-  row: CustomTargetSnapshot,
-  values: readonly StoredValueRow[],
-): boolean {
-  const markers = new Set(
-    values.map((value) => {
-      return customConnectorValueMarkerKey(value);
-    }),
-  );
-  if (
-    row.row.connector.authMode === "oauth" &&
-    !markers.has(
-      customConnectorValueMarkerKey({
-        kind: "secret",
-        key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-      }),
-    )
-  ) {
-    return false;
-  }
-  return row.row.connector.fields.every((field) => {
-    return !field.required || markers.has(customConnectorValueMarkerKey(field));
-  });
-}
-
 async function loadCustomSnapshot(args: {
   readonly db: Db;
   readonly scope: ConnectorRuntimeScope;
@@ -274,15 +248,6 @@ async function resolveCustomTarget(args: {
     return customAbsentResult(args.target, "grant-unavailable");
   }
   const values = valuesWithOAuthAccessToken(custom);
-  if (!customCredentialsAvailable(custom, values)) {
-    const resolution = customAbsentResult(
-      args.target,
-      "credentials-unavailable",
-    );
-    return custom.connection?.needsReconnect
-      ? { ...resolution, customAuthState: "reconnect-required" }
-      : resolution;
-  }
   const row = { ...custom.row, values };
   const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle({
     row,
@@ -298,6 +263,7 @@ async function resolveCustomTarget(args: {
       featureSwitchContext: args.snapshot.featureSwitchContext,
       connectorCatalogSnapshot: args.snapshot.connectorCatalogSnapshot,
       grants: [custom.grant],
+      preserveFirewallWithoutCredentials: true,
     }),
   );
   if (!contextResult.ok) {
@@ -331,6 +297,10 @@ async function resolveCustomTarget(args: {
       },
     },
     customAuthRefs: state.authRefs,
+    ...(custom.row.connector.authMode === "oauth" &&
+    custom.connection?.needsReconnect
+      ? { customAuthState: "reconnect-required" }
+      : {}),
   };
 }
 

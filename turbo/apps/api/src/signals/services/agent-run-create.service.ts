@@ -3717,6 +3717,61 @@ function customConnectorRuntimeAuth(args: {
   };
 }
 
+function customConnectorRuntimeAuthForRow(args: {
+  readonly row: CustomConnectorRuntimeDataRows[number];
+  readonly valueMarkers: ReadonlySet<string>;
+  readonly preserveFirewallWithoutCredentials: boolean;
+}): {
+  readonly headers: Record<string, string>;
+  readonly query: Record<string, string>;
+} {
+  const authValueMarkers = new Set(args.valueMarkers);
+  if (args.preserveFirewallWithoutCredentials) {
+    for (const field of args.row.connector.fields) {
+      if (field.required) {
+        authValueMarkers.add(customConnectorValueMarkerKey(field));
+      }
+    }
+    if (args.row.connector.authMode === "oauth") {
+      authValueMarkers.add(
+        customConnectorValueMarkerKey({
+          kind: "secret",
+          key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+        }),
+      );
+    }
+  }
+  const auth = customConnectorRuntimeAuth({
+    connector: args.row.connector,
+    valueMarkers: authValueMarkers,
+  });
+  if (
+    !args.preserveFirewallWithoutCredentials ||
+    Object.keys(auth.headers).length > 0 ||
+    Object.keys(auth.query).length > 0
+  ) {
+    return auth;
+  }
+
+  const declaredValueMarkers = new Set(
+    args.row.connector.fields.map((field) => {
+      return customConnectorValueMarkerKey(field);
+    }),
+  );
+  if (args.row.connector.authMode === "oauth") {
+    declaredValueMarkers.add(
+      customConnectorValueMarkerKey({
+        kind: "secret",
+        key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+      }),
+    );
+  }
+  return customConnectorRuntimeAuth({
+    connector: args.row.connector,
+    valueMarkers: declaredValueMarkers,
+  });
+}
+
 async function buildCustomConnectorRuntimeApis(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
   readonly headers: Record<string, string>;
@@ -3772,6 +3827,7 @@ interface BuildCustomConnectorRuntimeContextArgs {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly grants: readonly AgentCustomConnectorGrant[] | undefined;
+  readonly preserveFirewallWithoutCredentials: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }
 
@@ -3846,22 +3902,25 @@ export async function buildCustomConnectorRuntimeContext(
       }),
     );
     const missingRequired =
-      (row.connector.authMode === "oauth" && !oauthConnected) ||
-      row.connector.fields.some((field) => {
-        return (
-          field.required &&
-          !valueMarkers.has(customConnectorValueMarkerKey(field))
-        );
-      });
+      !args.preserveFirewallWithoutCredentials &&
+      ((row.connector.authMode === "oauth" && !oauthConnected) ||
+        row.connector.fields.some((field) => {
+          return (
+            field.required &&
+            !valueMarkers.has(customConnectorValueMarkerKey(field))
+          );
+        }));
     stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
     if (missingRequired) {
       stats.recordMissingRequiredConnector();
       continue;
     }
     const authTemplateStartedAt = now();
-    const { headers, query } = customConnectorRuntimeAuth({
-      connector: row.connector,
+    const { headers, query } = customConnectorRuntimeAuthForRow({
+      row,
       valueMarkers,
+      preserveFirewallWithoutCredentials:
+        args.preserveFirewallWithoutCredentials,
     });
     stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
     if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
@@ -4072,6 +4131,7 @@ async function loadCustomConnectorContext(
         featureSwitchContext: args.featureSwitchContext,
         connectorCatalogSnapshot: args.connectorCatalogSnapshot,
         grants: args.customConnectorGrants,
+        preserveFirewallWithoutCredentials: false,
         timing,
       });
     },
