@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import { Command } from "commander";
+import { revokedChatEventIds } from "@vm0/api-contracts/contracts/chat-events";
 import type {
   ChatEvent,
   UserMessageDocument,
@@ -178,30 +179,45 @@ function toChatMessage(event: ChatEvent): ChatMessage | null {
 }
 
 /**
+ * The thread event stream keeps a revoked event alongside the event that
+ * replaced it, so claiming a queued message leaves two rows carrying the same
+ * text. Reading the stream without folding revocations reports a conversation
+ * that never happened.
+ */
+function foldMessages(events: readonly ChatEvent[]): ChatMessage[] {
+  const revoked = revokedChatEventIds(events);
+  return events.flatMap((event) => {
+    if (revoked.has(event.id)) {
+      return [];
+    }
+    const message = toChatMessage(event);
+    return message ? [message] : [];
+  });
+}
+
+/**
  * A page holds every event type, so a page of 50 can carry a single message.
  * Walk backwards until the requested message count is filled or the thread's
- * first event is reached.
+ * first event is reached. A revoking event is always newer than its target, so
+ * paging from the newest end always holds the revoker once it holds the target.
  */
 async function loadRecentMessages(
   threadId: string,
   limit: number,
 ): Promise<ChatMessage[]> {
-  const messages: ChatMessage[] = [];
+  const events: ChatEvent[] = [];
   let beforeSeqId: number | undefined;
 
   for (;;) {
-    const events = await listZeroChatEvents({
+    const page = await listZeroChatEvents({
       threadId,
       beforeSeqId,
       limit: PAGE_LIMIT,
     });
-    const page = events.flatMap((event) => {
-      const message = toChatMessage(event);
-      return message ? [message] : [];
-    });
-    messages.unshift(...page);
+    events.unshift(...page);
+    const messages = foldMessages(events);
 
-    const oldestInPage = events[0];
+    const oldestInPage = page[0];
     if (
       messages.length >= limit ||
       oldestInPage === undefined ||

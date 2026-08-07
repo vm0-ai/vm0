@@ -395,6 +395,55 @@ describe("zero chat messages command", () => {
     expect(output).toContain("No chat messages found");
   });
 
+  it("renders a claimed message once instead of alongside the row it revoked", async () => {
+    const pendingId = "00000000-0000-4000-8000-000000000028";
+    server.use(
+      http.get(EVENTS_URL, () => {
+        return HttpResponse.json({
+          events: [
+            promptEvent({
+              id: pendingId,
+              seqId: 1,
+              text: "delegate work to other chat threads",
+              createdAt: "2026-07-29T10:00:00.000Z",
+            }),
+            {
+              ...promptEvent({
+                id: "00000000-0000-4000-8000-000000000029",
+                seqId: 2,
+                text: "delegate work to other chat threads",
+                createdAt: "2026-07-29T10:00:01.000Z",
+              }),
+              revokesEventId: pendingId,
+            },
+            assistantEvent({
+              id: "00000000-0000-4000-8000-00000000002a",
+              seqId: 3,
+              text: "on it",
+              createdAt: "2026-07-29T10:00:02.000Z",
+            }),
+          ],
+        });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync(["node", "cli", "messages", "--json"]);
+
+    const payload = JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0])) as {
+      total: number;
+      messages: readonly { eventId: string; text: string }[];
+    };
+    expect(payload.total).toBe(2);
+    expect(
+      payload.messages.map((message) => {
+        return message.eventId;
+      }),
+    ).toStrictEqual([
+      "00000000-0000-4000-8000-000000000029",
+      "00000000-0000-4000-8000-00000000002a",
+    ]);
+  });
+
   it("renders attachments and mentions instead of reporting empty text", async () => {
     server.use(
       http.get(EVENTS_URL, () => {
